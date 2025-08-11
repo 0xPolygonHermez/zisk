@@ -3,17 +3,29 @@
 source ./utils.sh
 
 main() {
+    current_dir=$(pwd)
+
     current_step=1
-    total_steps=10
+    total_steps=9
+
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        TARGET="x86_64-unknown-linux-gnu"
+    elif [[ "${PLATFORM}" == "darwin" ]]; then
+        TARGET="aarch64-apple-darwin"
+    else
+        err "Unsupported platform: ${PLATFORM}"
+        return 1
+    fi
+
+    info "Executing build_zisk.sh script"
 
     step "Loading environment variables..."
+    # Load environment variables from .env file
     load_env || return 1
     confirm_continue || return 1
 
-    source $HOME/.cargo/env
-
-    mkdir -p "${HOME}/work"
-    cd "${HOME}/work"
+    mkdir -p "${WORKSPACE_DIR}"
+    ensure cd "${WORKSPACE_DIR}" || return 1
 
     step "Cloning pil2-proofman repository..."
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
@@ -25,44 +37,55 @@ main() {
         info "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
         ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
         cd ..
-    else
-        info "Skipping cloning pil2-proofman repository. Pulling existing repository"
-        ensure cd pil2-proofman
-        ensure git pull
     fi
 
-    step  "Cloning ZisK repository..."
-    if [[ -n "$ZISK_BRANCH" ]]; then
-        # Remove existing directory if it exists
-        rm -rf zisk
-        # Clone ZisK repository
-        ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
-        ensure cd zisk
-        # Check out the branch
-        info "Checking out branch '$ZISK_BRANCH'..."
-        ensure git checkout "$ZISK_BRANCH" || return 1
+    step "Setting up ZisK repository..."
+    if [[ -n "${ZISK_REPO_DIR}" ]]; then
+        info "Using ZisK repository defined in ZISK_REPO_DIR variable: ${ZISK_REPO_DIR}"
+        ensure cd "${ZISK_REPO_DIR}"
     else
-        info "Skipping cloning zisk repository. Pulling existing repository"
-        ensure cd zisk
-        ensure git pull || return 1
+        if [[ -n "$ZISK_BRANCH" ]]; then
+            info "Cloning ZisK repository..."
+            # Remove existing directory if it exists
+            rm -rf zisk
+            # Clone ZisK repository
+            ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
+            ensure cd zisk
+            # Check out the branch
+            info "Checking out branch '$ZISK_BRANCH'..."
+            ensure git checkout "$ZISK_BRANCH" || return 1
+        else
+            info "Skipping cloning ZisK repository as ZISK_BRANCH is not defined"
+            ensure cd zisk
+        fi
+        ZISK_REPO_DIR="${DEFAULT_ZISK_REPO_DIR}"
     fi
 
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
-        step "Update ZisK cargo dependencies to use local pil2-proofman repo..."
+        info "Update ZisK cargo dependencies to use local pil2-proofman repo..."
+
+        PIL2_PROOFMAN_DIR="${WORKSPACE_DIR}/pil2-proofman"
+
         # Dependencies to be replaced
         declare -A replacements=(
-        ["proofman"]='{ path = "../pil2-proofman/proofman" }'
-        ["proofman-common"]='{ path = "../pil2-proofman/common" }'
-        ["proofman-macros"]='{ path = "../pil2-proofman/macros" }'
-        ["proofman-util"]='{ path = "../pil2-proofman/util" }'
-        ["pil-std-lib"]='{ path = "../pil2-proofman/pil2-components/lib/std/rs" }'
-        ["witness"]='{ path = "../pil2-proofman/witness" }'
-        ["fields"]='{ path = "../pil2-proofman/fields" }'
+            ["proofman"]="{ path = \"${PIL2_PROOFMAN_DIR}/proofman\" }"
+            ["proofman-common"]="{ path = \"${PIL2_PROOFMAN_DIR}/common\" }"
+            ["proofman-macros"]="{ path = \"${PIL2_PROOFMAN_DIR}/macros\" }"
+            ["proofman-util"]="{ path = \"${PIL2_PROOFMAN_DIR}/util\" }"
+            ["pil-std-lib"]="{ path = \"${PIL2_PROOFMAN_DIR}/pil2-components/lib/std/rs\" }"
+            ["witness"]="{ path = \"${PIL2_PROOFMAN_DIR}/witness\" }"
+            ["fields"]="{ path = \"${PIL2_PROOFMAN_DIR}/fields\" }"
         )
+
         # Iterate over the replacements and update the Cargo.toml file
         for crate in "${!replacements[@]}"; do
+            # Define the pattern for the crate dependency
             pattern="^$crate = \\{ git = \\\"https://github.com/0xPolygonHermez/pil2-proofman.git\\\", (tag|branch) = \\\".*\\\" *\\}"
+
+            # Properly concatenate crate name with the replacement
             replacement="$crate = ${replacements[$crate]}"
+
+            # Perform the replacement using sed
             sed -i -E "s~$pattern~$replacement~" Cargo.toml
         done
     fi
@@ -75,7 +98,7 @@ main() {
         BUILD_FEATURES="--features gpu"
         warn "Building with GPU support..."
     fi
-    if ! (cargo build --release ${BUILD_FEATURES}); then
+    if ! (cargo build --release --target ${TARGET} ${BUILD_FEATURES}); then
         warn "Build failed. Trying to fix missing stddef.h..."
 
         stddef_path=$(find /usr -name "stddef.h" 2>/dev/null | head -n 1)
@@ -89,13 +112,11 @@ main() {
         export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
 
         info  "Retrying build..."
-        ensure cargo build --release ${BUILD_FEATURES} || return 1
+        ensure cargo build --release --target ${TARGET} ${BUILD_FEATURES} || return 1
     fi
 
-    step "Copying binaries to ${HOME}/.zisk/bin..."
-    mkdir -p "$HOME/.zisk/bin"
-    ensure cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk \
-        target/release/libzisk_witness.so target/release/libziskclib.a "$HOME/.zisk/bin" || return 1
+    step "Copying binaries to ${ZISK_BIN_DIR}..."
+    mkdir -p "${ZISK_BIN_DIR}"
 
     if [[ -f "precompiles/sha256f/src/sha256f_script.json" ]]; then
         err "sha256f_script.json file found. This should exist only if building version 0.9.0"
@@ -107,19 +128,35 @@ main() {
         return 1
     fi
 
+    ensure cp target/${TARGET}/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/ziskemu    "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
+
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        ensure cp target/${TARGET}/release/libzisk_witness.so "${ZISK_BIN_DIR}" || return 1
+        ensure cp ziskup/ziskup                     "${ZISK_BIN_DIR}" || return 1
+        ensure cp target/${TARGET}/release/libziskclib.a      "${ZISK_BIN_DIR}" || return 1
+    fi
+
     step "Copying emulator-asm files..."
-    mkdir -p "$HOME/.zisk/zisk/emulator-asm"
-    ensure cp -r ./emulator-asm/src "$HOME/.zisk/zisk/emulator-asm" || return 1
-    ensure cp ./emulator-asm/Makefile "$HOME/.zisk/zisk/emulator-asm" || return 1
-    ensure cp -r ./lib-c $HOME/.zisk/zisk || return 1
-    step "Adding ~/.zisk/bin to PATH..."
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        mkdir -p "${ZISK_DIR}/zisk/emulator-asm"
+        ensure cp -r ./emulator-asm/src "${ZISK_DIR}/zisk/emulator-asm" || return 1
+        ensure cp ./emulator-asm/Makefile "${ZISK_DIR}/zisk/emulator-asm" || return 1
+        ensure cp -r ./lib-c "${ZISK_DIR}/zisk" || return 1
+    fi
 
-    # Add export line to .bashrc if it doesn't exist
-    EXPORT_PATH='export PATH="$PATH:$HOME/.zisk/bin"'
-    grep -Fxq "$EXPORT_PATH" "$HOME/.bashrc" || echo "$EXPORT_PATH" >> "$HOME/.bashrc"
-
+    step "Adding ${ZISK_BIN_DIR} to PATH..."
+    EXPORT_PATH="export PATH=\"$PATH:$ZISK_BIN_DIR\""
     # Ensure the PATH is updated in the current session
     eval "$EXPORT_PATH"
+
+    EXPORT_LINE="export PATH=\"\$PATH:$ZISK_BIN_DIR\""
+    # Ensure the PATH is updated in the shell profile
+    if ! grep -Fxq "$EXPORT_LINE" "$PROFILE"; then
+        echo "$EXPORT_LINE" >> "$PROFILE"
+        info "Added $EXPORT_LINE to $PROFILE"
+    fi
 
     step "Installing ZisK Rust toolchain..."
     ensure cargo-zisk sdk install-toolchain || return 1
@@ -130,7 +167,9 @@ main() {
         return 1
     }
 
-    cd ..
+    cd "$current_dir"
+
+    success "ZisK build completed successfully!"
 }
 
-main || return 1
+main

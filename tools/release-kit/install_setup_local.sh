@@ -28,5 +28,5 @@ main() {
     ensure cargo-zisk check-setup -a || return 1
 }
 
-main || return 1
+main
 
