@@ -14,7 +14,10 @@ use std::{
     fs::File,
     io::Write,
     process::{Command, Stdio},
+    time::Duration,
 };
+use serde_json::Value;
+use tokio::time::sleep;
 
 pub const RUSTUP_TOOLCHAIN_NAME: &str = "zisk";
 
@@ -47,20 +50,33 @@ impl CommandExecutor for Command {
             .map(|_| ())
     }
 }
+
 pub async fn url_exists(client: &Client, url: &str) -> bool {
-    let res = client.head(url).send().await;
-    res.is_ok()
+    let max_retries = 3;
+    let delay = Duration::from_secs(3);
+
+    for attempt in 1..=max_retries {
+        match client.head(url).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    return true;
+                }
+            }
+            Err(_) => {}
+        }
+
+        // If the request failed, wait for 3 seconds before retrying
+        if attempt < max_retries {
+            sleep(delay).await;
+        }
+    }
+
+    false
 }
 
 #[allow(unreachable_code)]
 pub fn is_supported_target() -> bool {
     #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-    return true;
-
-    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
-    return true;
-
-    #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
     return true;
 
     #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
@@ -70,24 +86,57 @@ pub fn is_supported_target() -> bool {
 }
 
 pub async fn get_toolchain_download_url(client: &Client, target: String) -> String {
-    // Get latest tag from https://api.github.com/repos/0xPolygonHermez/rust/releases/latest
-    // and use it to construct the download URL.
+    // GitHub API URL to get the latest release information
     let url = "https://api.github.com/repos/0xPolygonHermez/rust/releases/latest";
-    let json = client.get(url).send().await.unwrap().json::<serde_json::Value>().await.unwrap();
+    let max_retries = 3;
+    let delay = Duration::from_secs(3);
 
-    let name: String = format!("rust-toolchain-{target}.tar.gz");
-    if let Some(assets) = json["assets"].as_array() {
-        // Iterate over the array and extract the desired URL
-        for asset in assets {
-            if let Some(asset_name) = asset["name"].as_str() {
-                if asset_name == name {
-                    if let Some(url) = asset["url"].as_str() {
-                        return url.to_string();
+    for attempt in 1..=max_retries {
+        match client.get(url).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    // If the request is successful, try to parse the JSON response
+                    match response.json::<Value>().await {
+                        Ok(json) => {
+                            // Construct the toolchain filename based on the target
+                            let name = format!("rust-toolchain-{target}.tar.gz");
+                            if let Some(assets) = json["assets"].as_array() {
+                                // Iterate through the assets to find the desired one
+                                for asset in assets {
+                                    if let Some(asset_name) = asset["name"].as_str() {
+                                        if asset_name == name {
+                                            // If the asset name matches, return the download URL
+                                            if let Some(url) = asset["url"].as_str() {
+                                                return url.to_string();
+                                            }
+                                        }
+                                    }
+                                }
+                                eprintln!(
+                                    "No asset found for target {target} in the latest release."
+                                );
+                            } else {
+                                eprintln!("No assets found in the latest release JSON response.");
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to parse get_toolchain_download_url JSON response, error: {}", e);
+                        }
                     }
                 }
             }
+            Err(e) => {
+                eprintln!("Failed to send get_toolchain_download_url request, error: {}", e);
+            }
+        }
+
+        // If the request failed, wait for 3 seconds before retrying
+        if attempt < max_retries {
+            sleep(delay).await;
         }
     }
+
+    // If after 3 attempts the URL is not found, return an empty string
     "".to_string()
 }
 

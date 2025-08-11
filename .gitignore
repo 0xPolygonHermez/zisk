@@ -1,7 +1,6 @@
 /target
 /*.tar.gz
 /riscof
-/build*
 /proofs*
 *.pilout
 *.fixed
