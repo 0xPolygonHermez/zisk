@@ -45,10 +45,10 @@ jobs:
 
       - name: Run tests
         run: |
-          cp "$GITHUB_WORKSPACE/target/x86_64-unknown-linux-gnu/release/ziskemu" /program && \
-          export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib && \
-          ldconfig && \
-          cd /workspace && \
+          cp "$GITHUB_WORKSPACE/target/x86_64-unknown-linux-gnu/release/ziskemu" /program
+          export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib
+          ldconfig
+          cd /workspace
           riscof run --config=config.ini \
             --suite=riscv-arch-test/riscv-test-suite/ \
             --env=riscv-arch-test/riscv-test-suite/env \
