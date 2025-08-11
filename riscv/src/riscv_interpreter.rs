@@ -54,7 +54,7 @@ pub fn riscv_interpreter(code: &[u32]) -> Vec<RiscvInstruction> {
 
         // Ignore instructions that are zero
         if inst == 0 {
-            println!("riscv_interpreter() found inst=0 at position s={} (index in u32 array)", s);
+            // println!("riscv_interpreter() found inst=0 at position s={} (index in u32 array)", s);
             // Create an addi x0, x0, 0 instruction (standard RISC-V NOP)
             let i = RiscvInstruction {
                 rvinst: inst,
