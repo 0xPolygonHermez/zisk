@@ -1,8 +1,7 @@
 use crate::{
-    MemAlignResponse, MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS,
+    MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS,
     MEM_STEPS_BY_MAIN_STEP, MEM_STEP_BASE, RAM_W_ADDR_INIT,
 };
-use std::fmt;
 use zisk_common::ChunkId;
 use zisk_core::RAM_ADDR;
 pub struct MemHelpers {
@@ -197,14 +196,4 @@ impl MemHelpers {
         self.max_distance_between_chunks(from_chunk, to_chunk)
     }
 }
-impl fmt::Debug for MemAlignResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "more:{0} step:{1} value:{2:016X}({2:})",
-            self.more_addr,
-            self.step,
-            self.value.unwrap_or(0)
-        )
-    }
-}
+

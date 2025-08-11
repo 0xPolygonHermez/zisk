@@ -55,13 +55,10 @@ pub async fn url_exists(client: &Client, url: &str) -> bool {
     let delay = Duration::from_secs(3);
 
     for attempt in 1..=max_retries {
-        match client.head(url).send().await {
-            Ok(response) => {
-                if response.status().is_success() {
-                    return true;
-                }
+        if let Ok(response) = client.head(url).send().await {
+            if response.status().is_success() {
+                return true;
             }
-            Err(_) => {}
         }
 
         // If the request failed, wait for 3 seconds before retrying
