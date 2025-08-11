@@ -112,21 +112,21 @@ pub async fn get_toolchain_download_url(client: &Client, target: String) -> Stri
                                         }
                                     }
                                 }
-                                eprintln!(
+                                println!(
                                     "No asset found for target {target} in the latest release."
                                 );
                             } else {
-                                eprintln!("No assets found in the latest release JSON response.");
+                                println!("No assets found in the latest release JSON response.");
                             }
                         }
                         Err(e) => {
-                            eprintln!("Failed to parse get_toolchain_download_url JSON response, error: {}", e);
+                            println!("Failed to parse get_toolchain_download_url JSON response, error: {}", e);
                         }
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Failed to send get_toolchain_download_url request, error: {}", e);
+                println!("Failed to send get_toolchain_download_url request, error: {}", e);
             }
         }
 
