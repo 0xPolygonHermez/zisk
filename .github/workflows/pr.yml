@@ -1,16 +1,19 @@
-name: PR
+name: Test ZisK
 
 on:
   push:
     branches: [develop]
   pull_request:
     branches:
-      - "**"
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:    
   merge_group:
 
 jobs:
-  test-x86_64:
-    name: Test on x86_64
+  cargo-tests:
+    name: Cargo tests
     runs-on: ubuntu-latest
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -40,6 +43,78 @@ jobs:
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
+
+  test-x86_64:
+    name: Test on Ubuntu x86_64
+    runs-on: self-hosted
+    container:
+      image: ubuntu:22.04
+      options: --memory=128g --cpus=128 --shm-size=64g
+    env:
+      ZISK_GHA: "1"
+      ZISK_REPO_DIR: ${{ github.workspace }}
+      BLOCK_INPUTS_DISTRIBUTED: "21429020_5_0.bin"
+      DISTRIBUTED_PROCESSES: "2"
+      DISTRIBUTED_THREADS: "64"
+      PROVE_FLAGS: "-a -y"      
+      TERM: xterm  
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
+
+      - name: Build ZisK
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./build_zisk.sh
+
+      - name: Install setup
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_setup_public.sh
+  
+      - name: Test sha_hasher
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./test_sha_hasher.sh
+
+      - name: Test Ethereum block
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./test_eth_block.sh
+
+  test-macos:
+    name: Test on macOS
+    runs-on: macos-14
+    env:
+      ZISK_GHA: "1"
+      ZISK_REPO_DIR: ${{ github.workspace }}
+      TERM: xterm
+    steps:
+      - name: Check Rust version
+        run: rustc --version
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
+          
+      - name: Build ZisK
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./build_zisk.sh
+
+      - name: Test sha_hasher
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./test_sha_hasher.sh
 
   lint:
     name: Formatting & Clippy

@@ -8,4 +8,4 @@ main() {
     test_elf "${ELF_FILE}" "${INPUTS_PATH}" "PP_INPUTS" "PP_INPUTS_DISTRIBUTED" "Pessimistic proof" || return 1
 }
 
-main || return 1
+main
