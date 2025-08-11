@@ -91,6 +91,7 @@ pub async fn get_toolchain_download_url(client: &Client, target: String) -> Stri
     let max_retries = 3;
     let delay = Duration::from_secs(3);
 
+    println!("Fetching toolchain download URL for target: {target}");
     for attempt in 1..=max_retries {
         match client.get(url).send().await {
             Ok(response) => {
@@ -123,6 +124,11 @@ pub async fn get_toolchain_download_url(client: &Client, target: String) -> Stri
                             println!("Failed to parse get_toolchain_download_url JSON response, error: {}", e);
                         }
                     }
+                } else {
+                    println!(
+                        "Failed to fetch toolchain download URL, status: {}",
+                        response.status()
+                    );
                 }
             }
             Err(e) => {
