@@ -125,14 +125,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneRead, offset, width);
 
                 // Update the row multiplicity of the operation
-                for i in 0..op_size {
-                    let row_idx = next_pc + i;
-                    // Check whether the row index is within the bounds
-                    debug_assert!(row_idx < MemAlignRomSM::TABLE_SIZE as u64);
-
-                    // Update the multiplicity
-                    self.std.inc_virtual_row(self.table_id, row_idx, 1);
-                }
+                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
+                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
 
                 let mut read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -244,14 +238,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneWrite, offset, width);
 
                 // Update the row multiplicity of the operation
-                for i in 0..op_size {
-                    let row_idx = next_pc + i;
-                    // Check whether the row index is within the bounds
-                    debug_assert!(row_idx < MemAlignRomSM::TABLE_SIZE as u64);
-
-                    // Update the multiplicity
-                    self.std.inc_virtual_row(self.table_id, row_idx, 1);
-                }
+                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
+                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
 
                 // Compute the write value
                 let value_write = {
@@ -419,14 +407,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoReads, offset, width);
 
                 // Update the row multiplicity of the operation
-                for i in 0..op_size {
-                    let row_idx = next_pc + i;
-                    // Check whether the row index is within the bounds
-                    debug_assert!(row_idx < MemAlignRomSM::TABLE_SIZE as u64);
-
-                    // Update the multiplicity
-                    self.std.inc_virtual_row(self.table_id, row_idx, 1);
-                }
+                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
+                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
 
                 let mut first_read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -615,14 +597,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoWrites, offset, width);
 
                 // Update the row multiplicity of the operation
-                for i in 0..op_size {
-                    let row_idx = next_pc + i;
-                    // Check whether the row index is within the bounds
-                    debug_assert!(row_idx < MemAlignRomSM::TABLE_SIZE as u64);
-
-                    // Update the multiplicity
-                    self.std.inc_virtual_row(self.table_id, row_idx, 1);
-                }
+                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
+                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
 
                 // RWVWR
                 let mut first_read_row = MemAlignTraceRow::<F> {
