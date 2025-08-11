@@ -40,8 +40,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev
+          apt-get update
+          apt-get install -y libopenmpi-dev openmpi-bin openmpi-common gcc-riscv64-unknown-elf libsodium23 libomp5
           
       - name: Run cargo check
         uses: actions-rs/cargo@v1
@@ -60,11 +60,6 @@ jobs:
       - name: Run tests
         run: |
           cp target/release/ziskemu /program \
-          apt-get update && \
-          apt-get install -y \
-            libopenmpi-dev openmpi-bin openmpi-common \
-            gcc-riscv64-unknown-elf \
-            libsodium23 libomp5 && \
           export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib && \
           ldconfig && \
           riscof run --config=config.ini \
