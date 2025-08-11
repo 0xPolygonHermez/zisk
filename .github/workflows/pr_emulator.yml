@@ -20,70 +20,39 @@ jobs:
   docker-ziskof-check:
     name: Docker Risc Oficial Tests Check
     runs-on: self-hosted
+    container:
+      image: hermeznetwork/ziskof:latest
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       C_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
       CPLUS_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
+      ZISK_GHA: "1"
+      ZISK_REPO_DIR: ${{ github.workspace }}
+      TERM: xterm        
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Cleanup rustup
-        run: rm -rf ~/.rustup
-
-      - name: Install rust
-        uses: actions-rs/toolchain@v1
-        with:
-          components: rustfmt, clippy
-          toolchain: stable
-          default: true
-          override: true
-
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev
-          
-      - name: Set up git private repo access
+          # ZisK dependencies
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
+          # Riscof dependencies
+          apt-get install -y gcc-riscv64-unknown-elf libsodium23 libomp5
+
+      - name: Build ZisK
         run: |
-          git config --global url."https://${{ secrets.ZISK_CI_TOKEN }}@github.com/".insteadOf ssh://git@github.com
-          git config --global url."https://${{ secrets.ZISK_CI_TOKEN }}@github.com".insteadOf https://github.com
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./build_zisk.sh          
 
-      - name: Show git config
+      - name: Run tests
         run: |
-          git config --global --list
-
-      - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-
-      - name: Build project
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release -p ziskemu # --all-features
-        env:
-          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
-          RUST_BACKTRACE: 1
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Run Docker container
-        run: |
-           docker run --rm --entrypoint bash -v ./target/release/ziskemu:/program hermeznetwork/ziskof:latest --login -c " \
-                  apt-get update && \
-                  apt-get install -y \
-                    libopenmpi-dev openmpi-bin openmpi-common \
-                    gcc-riscv64-unknown-elf \
-                    libsodium23 libomp5 && \
-                  export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib && \
-                  ldconfig && \
-                  riscof run --config=config.ini \
-                    --suite=riscv-arch-test/riscv-test-suite/ \
-                    --env=riscv-arch-test/riscv-test-suite/env \
-                    --work-dir=/workspace/output/riscof_work/"
+          cp "$GITHUB_WORKSPACE/target/x86_64-unknown-linux-gnu/release/ziskemu" /program
+          export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib
+          ldconfig
+          cd /workspace
+          riscof run --config=config.ini \
+            --suite=riscv-arch-test/riscv-test-suite/ \
+            --env=riscv-arch-test/riscv-test-suite/env \
+            --work-dir=/workspace/output/riscof_work/
