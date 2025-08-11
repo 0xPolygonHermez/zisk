@@ -64,27 +64,27 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_deps.sh
 
       - name: Build ZisK
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
 
       - name: Install setup
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_setup_public.sh
   
       - name: Test sha_hasher
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
 
       - name: Test Ethereum block
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_eth_block.sh
 
   test-macos:
@@ -103,17 +103,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_deps.sh
           
       - name: Build ZisK
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
 
       - name: Test sha_hasher
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
 
   lint:

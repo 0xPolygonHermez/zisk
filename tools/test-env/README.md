@@ -1,4 +1,4 @@
-# ZisK Release Kit
+# ZisK Test Environment
 
 ## Build docker image
 To build the `zisk-test-env` Docker image, execute the following command:
@@ -14,7 +14,7 @@ To run the Docker container, execute the following command:
 ./run-docker.sh
 ```
 
-This will run Docker container and fopen the Release Kit menu inside the container. If the container already exists, you will be asked whether you want to connect to it or recreate it.
+This will run Docker container and open the ZisK test menu inside the container. If the container already exists, you will be asked whether you want to connect to it or recreate it.
 
 >[!CAUTION]
 >
@@ -25,7 +25,7 @@ This will run Docker container and fopen the Release Kit menu inside the contain
 >The Docker container includes a `${HOME}/output` directory, which is mapped to the `./output` folder on the host.  
 >You can use this folder to copy any files you want to make available outside of the container.
 
-## Menu Options
+## ZisK Test Menu Options
 
 1. **Edit environment variables**  
    Opens the `.env` file with the `nano` editor, allowing you to modify environment variable values.  
