@@ -214,12 +214,11 @@ get_var_from_cargo_toml() {
         # Extract the value of the variable from Cargo.toml
         local value=$(grep -oP "(?<=${var_name} = \")[^\"]+" "${zisk_repo_dir}/Cargo.toml")
 
-        # If the value is found, return it, else return an error message
+        # If the value is found, return it, else return empty string
         if [ -n "$value" ]; then
             echo "$value"
         else
-            err "variable '$var_name' not found in Cargo.toml"
-            return 1
+            echo
         fi
     else
         # If the file doesn't exist, return an error message
