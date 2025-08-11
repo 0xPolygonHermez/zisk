@@ -16,7 +16,6 @@ use std::{
     process::{Command, Stdio},
     time::Duration,
 };
-use serde_json::Value;
 use tokio::time::sleep;
 
 pub const RUSTUP_TOOLCHAIN_NAME: &str = "zisk";
@@ -85,7 +84,7 @@ pub fn is_supported_target() -> bool {
     false
 }
 
-pub async fn get_toolchain_download_url(client: &Client, target: String) -> String {
+pub async fn get_toolchain_download_url(target: String) -> String {
     format!("https://github.com/0xPolygonHermez/rust/releases/latest/download/rust-toolchain-{}.tar.gz", target)
 }
 
