@@ -5,8 +5,9 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
+use sm_frequent_ops::FrequentOpsTable;
 use std::collections::VecDeque;
-use zisk_common::{BusDevice, BusId, Counter, Metrics, OP, OPERATION_BUS_ID, OP_TYPE};
+use zisk_common::{BusDevice, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 /// The `BinaryCounter` struct represents a counter that monitors and measures
@@ -56,16 +57,18 @@ impl Metrics for BinaryCounter {
 
         let op_type = data[OP_TYPE];
 
-        if op_type == BINARY {
-            // Always read the OP index (assume well-formed trace)
-            let op = data[OP];
-            if op == ADD_CODE {
-                self.counter_add.update(1);
-            } else {
-                self.counter_basic_wo_add.update(1);
+        if !FrequentOpsTable::is_frequent_op(data[OP] as u8, data[A], data[B]) {
+            if op_type == BINARY {
+                // Always read the OP index (assume well-formed trace)
+                let op = data[OP];
+                if op == ADD_CODE {
+                    self.counter_add.update(1);
+                } else {
+                    self.counter_basic_wo_add.update(1);
+                }
+            } else if op_type == BINARY_E {
+                self.counter_extension.update(1);
             }
-        } else if op_type == BINARY_E {
-            self.counter_extension.update(1);
         }
     }
 

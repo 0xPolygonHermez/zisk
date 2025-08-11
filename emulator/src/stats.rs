@@ -5,7 +5,12 @@
 //! * Registers read/write counters (total and per register)
 //! * Operations counters (total and per opcode)
 
-use zisk_core::{zisk_ops::ZiskOp, ZiskInst, M3, REGS_IN_MAIN_TOTAL_NUMBER};
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+};
+
+use zisk_core::{zisk_ops::ZiskOp, ZiskInst, ZiskOperationType, M3, REGS_IN_MAIN_TOTAL_NUMBER};
 
 const AREA_PER_SEC: f64 = 1000000_f64;
 const COST_MEM: f64 = 10_f64 / AREA_PER_SEC;
@@ -49,6 +54,10 @@ pub struct Stats {
     ops: [u64; 256],
     /// Counters of register accesses, one per register
     regs: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Flag to indicate whether to store operation data in a buffer
+    store_ops: bool,
+    /// Buffer to store operation data before writing to file
+    op_data_buffer: Vec<u8>,
 }
 
 impl Default for Stats {
@@ -60,6 +69,8 @@ impl Default for Stats {
             steps: 0,
             ops: [0; 256],
             regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
+            op_data_buffer: vec![],
+            store_ops: false,
         }
     }
 }
@@ -126,6 +137,13 @@ impl Stats {
     /// Called every time an operation is executed, if statistics are enabled
     pub fn on_op(&mut self, instruction: &ZiskInst, a: u64, b: u64) {
         // If the operation is a usual operation, then increase the usual counter
+        if self.store_ops && (instruction.op_type == ZiskOperationType::Arith)
+            || (instruction.op_type == ZiskOperationType::Binary)
+            || (instruction.op_type == ZiskOperationType::BinaryE)
+        {
+            // store op, a and b values in file
+            self.store_op_data(instruction.op, a, b);
+        }
         if self.is_usual(instruction, a, b) {
             self.usual += 1;
         }
@@ -133,6 +151,48 @@ impl Stats {
         else {
             self.ops[instruction.op as usize] += 1;
         }
+    }
+    pub fn set_store_ops(&mut self, store: bool) {
+        self.store_ops = store;
+        self.op_data_buffer = Vec::with_capacity(128 * 1024 * 1024);
+    }
+    /// Store operation data in memory buffer
+    fn store_op_data(&mut self, op: u8, a: u64, b: u64) {
+        // Reserve space for: 1 byte (op) + 8 bytes (a) + 8 bytes (b) = 17 bytes
+        self.op_data_buffer.reserve(17);
+
+        // Store op as single byte
+        self.op_data_buffer.push(op);
+
+        // Store a and b as little-endian u64
+        self.op_data_buffer.extend_from_slice(&a.to_le_bytes());
+        self.op_data_buffer.extend_from_slice(&b.to_le_bytes());
+    }
+
+    /// Write all buffered operation data to file
+    pub fn flush_op_data_to_file(&mut self, filename: &str) -> std::io::Result<()> {
+        if self.op_data_buffer.is_empty() {
+            return Ok(());
+        }
+
+        let file = File::create(filename)?;
+        let mut writer = BufWriter::new(file);
+        writer.write_all(&self.op_data_buffer)?;
+        writer.flush()?;
+
+        // Clear buffer after writing
+        self.op_data_buffer.clear();
+        Ok(())
+    }
+
+    /// Get the number of operations stored in buffer
+    pub fn get_buffered_ops_count(&self) -> usize {
+        self.op_data_buffer.len() / 17 // Each operation is 17 bytes
+    }
+
+    /// Clear the operation data buffer without writing to file
+    pub fn clear_op_buffer(&mut self) {
+        self.op_data_buffer.clear();
     }
 
     /// Returns true if the provided operation is a usual operation

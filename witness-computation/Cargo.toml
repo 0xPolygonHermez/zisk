@@ -17,6 +17,7 @@ sm-binary = { path = "../state-machines/binary" }
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
 sm-rom = { path = "../state-machines/rom" }
+sm-frequent-ops = { path = "../state-machines/frequent-ops" }
 data-bus = { path = "../data-bus" }
 precomp-keccakf = { path = "../precompiles/keccakf" }
 precomp-sha256f = { path = "../precompiles/sha256f" }

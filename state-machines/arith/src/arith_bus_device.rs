@@ -6,8 +6,11 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
+use sm_frequent_ops::FrequentOpsTable;
 use std::collections::VecDeque;
-use zisk_common::{BusDevice, BusDeviceMode, BusId, Counter, Metrics, OPERATION_BUS_ID, OP_TYPE};
+use zisk_common::{
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
+};
 use zisk_core::ZiskOperationType;
 
 use crate::ArithFullSM;
@@ -94,6 +97,10 @@ impl BusDevice<u64> for ArithCounterInputGen {
         const ARITH: u64 = ZiskOperationType::Arith as u64;
 
         if data[OP_TYPE] != ARITH {
+            return true;
+        }
+
+        if FrequentOpsTable::is_frequent_op(data[OP] as u8, data[A], data[B]) {
             return true;
         }
 

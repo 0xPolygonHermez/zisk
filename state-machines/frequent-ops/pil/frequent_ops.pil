@@ -1,0 +1,23 @@
+
+
+airtemplate FrequentOps(int N = 2**24, int RC = 2, const int operation_bus_id) {
+
+    #pragma extern_fixed_file "../src/frequent_ops_fixed.bin"
+
+    col witness multiplicity;
+
+    col fixed OP;
+    col fixed A[RC];
+    col fixed B[RC];
+    col fixed C[RC];
+    col fixed FLAG;
+
+    int rows[6] = [0,1,2,147583,147584,147585];
+    for (int index = 0; index < length(rows); ++index) {
+        const int i = rows[index];
+        println(i);
+        println(`ROW#${i} OP=${OP[i]} A=(${A[0][i]}, ${A[1][i]}) B=(${B[0][i]}, ${B[1][i]}) C=(${C[0][i]}, ${C[1][i]}) FLAG=${FLAG[i]}`);
+    }
+
+    lookup_proves(operation_bus_id, [OP, ...A, ...B, ...C, FLAG], mul: multiplicity);
+}

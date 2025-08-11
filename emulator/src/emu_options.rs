@@ -64,6 +64,8 @@ pub struct EmuOptions {
     /// Generates minimal traces.  Enabled with `-g`.
     #[clap(short = 'g', long, value_name = "MINIMAL_TRACES", default_value = "false")]
     pub generate_minimal_traces: bool,
+    #[clap(short, long, value_name = "STORE_OP_OUTPUT")]
+    pub store_op_output: Option<String>,
 }
 
 impl Default for EmuOptions {
@@ -85,6 +87,7 @@ impl Default for EmuOptions {
             tracerv: false,
             stats: false,
             generate_minimal_traces: false,
+            store_op_output: None,
         }
     }
 }
@@ -106,7 +109,9 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "STATS: {:?}", self.stats)?;
         writeln!(f, "TRACERV: {:?}", self.tracerv)?;
         writeln!(f, "LOG_STEP: {:?}", self.log_step)?;
-        writeln!(f, "MINIMAL_TRACES: {:?}", self.generate_minimal_traces)
+        writeln!(f, "MINIMAL_TRACES: {:?}", self.generate_minimal_traces)?;
+        writeln!(f, "STORE_OP_OUTPUT: {:?}", self.store_op_output)?;
+        Ok(())
     }
 }
 
