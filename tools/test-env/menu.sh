@@ -2,12 +2,12 @@
 
 source ./utils.sh
 
-WORK_DIR=$(pwd)
+current_dir=$(pwd)
 
 # Loop until user chooses to exit
 while true; do
     echo "========================================="
-    echo "          ZisK Release Kit Menu          "
+    echo "          ZisK Test Menu          "
     echo "========================================="
     echo " 1) Edit environment variables"
     echo " 2) Build ZisK from source"
@@ -29,44 +29,34 @@ while true; do
 
     case $option in
         1)
-        info "Opening .env file with nano..."
         nano .env
         ;;
         2)
-        info "Running build_zisk.sh..."
-        bash -i ./build_zisk.sh || :
+        ./build_zisk.sh || :
         ;;
         3)
-        info "Running build_setup.sh..."
-        bash -i ./build_setup.sh || :
+        ./build_setup.sh || :
         ;;
         4)
-        info "Running package_setup.sh..."
-        bash -i ./package_setup.sh || :
+        ./package_setup.sh || :
         ;;
         5)
-        info "Running install_zisk_bin.sh..."
-        bash -i ./install_zisk_bin.sh || :
+        ./install_zisk_bin.sh || :
         ;;
         6)
-        info "Running test_sha_hasher.sh..."
-        bash -i ./test_sha_hasher.sh || :
+        ./test_sha_hasher.sh || :
         ;;
         7)
-        info "Running test_pp.sh"
-        bash -i ./test_pp.sh || :
+        ./test_pp.sh || :
         ;;  
         8)
-        info "Running test_eth_block.sh"
-        bash -i ./test_eth_block.sh || :
+        ./test_eth_block.sh || :
         ;;        
         9)
-        info "Running install_setup_public.sh..."
-        bash -i ./install_setup_public.sh || :
+        ./install_setup_public.sh || :
         ;;
         10)
-        info "Running install_setup_local.sh..."
-        bash -i ./install_setup_local.sh || :
+        ./install_setup_local.sh || :
         ;;  
         11)
         info "Open shell"
@@ -83,8 +73,8 @@ while true; do
 
     echo
 
-    cd "$WORK_DIR" || {
-        err "Failed to change directory to $WORK_DIR"
+    cd "$current_dir" || {
+        err "Failed to change directory to $current_dir"
         exit 1
     }
 done

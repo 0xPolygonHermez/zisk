@@ -13,4 +13,4 @@ main() {
     ensure cargo-zisk --version || return 1
 }
 
-main || return 1
+main
