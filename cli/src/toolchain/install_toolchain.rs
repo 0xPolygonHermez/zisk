@@ -24,7 +24,9 @@ pub struct InstallToolchainCmd {}
 impl InstallToolchainCmd {
     pub fn run(&self) -> Result<()> {
         // Setup client.
-        let client = Client::builder().user_agent("Mozilla/5.0").build()?;
+        let client = Client::builder().user_agent("Mozilla/5.0")
+            .timeout(std::time::Duration::from_secs(60))
+            .build()?;
 
         // Setup variables.
         let root_dir = home_dir().unwrap().join(".zisk");
@@ -89,12 +91,14 @@ impl InstallToolchainCmd {
                 let toolchain_download_url =
                     rt.block_on(get_toolchain_download_url(&client, target.to_string()));
 
+                if toolchain_download_url.is_empty() {
+                    return Err(anyhow::anyhow!("Error getting toolchain download URL"));
+                }
+
                 let artifact_exists =
                     rt.block_on(url_exists(&client, toolchain_download_url.as_str()));
                 if !artifact_exists {
-                    return Err(anyhow::anyhow!(
-                        "Unsupported architecture. Please build the toolchain from source."
-                    ));
+                    return Err(anyhow::anyhow!("Error checking if toolchain download URL exists"));
                 }
 
                 let mut file = fs::File::create(&toolchain_archive_path)?;

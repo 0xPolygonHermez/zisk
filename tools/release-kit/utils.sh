@@ -4,11 +4,19 @@
 export PATH="$PATH:$HOME/.zisk/bin"
 
 # Colors
-BOLD=$(tput bold)
-GREEN=$(tput setaf 2)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-RESET=$(tput sgr0)
+if [ -t 1 ]; then
+    BOLD=$(tput bold)
+    GREEN=$(tput setaf 2)
+    RED=$(tput setaf 1)
+    YELLOW=$(tput setaf 3)
+    RESET=$(tput sgr0)
+else 
+    BOLD=""
+    GREEN=""
+    RED=""
+    YELLOW=""
+    RESET=""
+fi
 
 # Helper to ensure a command runs successfully
 # If it fails, it prints an error message and waits for user input
@@ -46,35 +54,61 @@ success() {
     echo "${BOLD}${GREEN}✅ $1${RESET}"
 }
 
-# load_env: Load environment variables from .env file
+tolower() {
+  echo "$1" | awk '{print tolower($0)}'
+}
+
+# load_env: Load environment variables from .env file, without overwriting existing ones
 load_env() {
-    if [[ ! -f ".env" ]]; then
-        echo "❌ No .env file found."
-        return 1
+    # If ZISK_GHA is set to 1, skip loading .env file
+    if [[ -z "$ZISK_GHA" || "$ZISK_GHA" != "1" ]]; then
+        # Check if .env file exists
+        if [[ ! -f ".env" ]]; then
+            info "Skipping loading .env file as it does not exist"
+            return 0
+        fi
+
+        info "📦 Loading environment variables from .env"
+
+        # Loop through each line in the .env file
+        while IFS='=' read -r key value; do
+            # Skip comments and empty lines
+            if [[ -z "$key" || "$key" =~ ^# ]]; then
+                continue
+            fi
+
+            # Check if the variable is already defined
+            if [[ -z "${!key}" ]]; then
+                # If not defined, set the value from the .env file
+                export "$key=$value"
+            else
+                info "Variable '$key' is already defined with value '${!key}', skipping..."
+            fi
+        done < .env
+
+        echo
+        info "🔍 Environment variables:"
+        # List variables that were set
+        grep -vE '^\s*#' .env | grep -vE '^\s*$' | while IFS='=' read -r key _; do
+            echo "  - ${key} = ${!key}"
+        done
+        echo
+    else
+        info "Skipping loading .env file since ZISK_GHA is set to 1"
     fi
-
-    info "📦 Loading environment variables from .env"
-
-    set -a  # export all variables loaded by `source`
-    source .env
-    set +a
-
-    echo
-    info "🔍 Loaded environment variables:"
-    grep -vE '^\s*#' .env | grep -vE '^\s*$' | while IFS='=' read -r key _; do
-        echo "  - ${key} = ${!key}"
-    done
-    echo
 }
 
 # confirm_continue: Ask the user for confirmation to continue
 confirm_continue() {
-    read -p "Do you want to continue? [Y/n] " answer
-    answer=${answer:-y}
+    # If ZISK_GHA is set to 1, skip confirmation
+    if [[ -z "$ZISK_GHA" || "$ZISK_GHA" != "1" ]]; then
+        read -p "Do you want to continue? [Y/n] " answer
+        answer=${answer:-y}
 
-    if [[ "$answer" != [Yy]* ]]; then
-        echo "Aborted."
-        return 1
+        if [[ "$answer" != [Yy]* ]]; then
+            echo "Aborted."
+            return 1
+        fi
     fi
 }
 
@@ -137,3 +171,73 @@ verify_files_exist() {
     done
     return 0
 }
+
+# get_shell_and_profile: Sets PROFILE and PREF_SHELL based on the current shell
+get_shell_and_profile() {
+  case "${SHELL}" in
+    */zsh)
+      PROFILE=${ZDOTDIR:-${HOME}}/.zshenv
+      PREF_SHELL="zsh"
+      ;;
+    */bash)
+      PROFILE=${HOME}/.bashrc
+      PREF_SHELL="bash"
+      ;;
+    */fish)
+      PROFILE=${HOME}/.config/fish/config.fish
+      PREF_SHELL="fish"
+      ;;
+    */ash)
+      PROFILE=${HOME}/.profile
+      PREF_SHELL="ash"
+      ;;
+    *)
+      err "shell ${SHELL} is not supported"
+      exit 1
+      ;;
+  esac
+}
+
+# get_platform: Sets PLATFORM based on the current system
+get_platform() {
+    uname_s=$(uname -s)
+    PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")    
+}
+
+# get_var_from_cargo_toml: Extracts a variable value from Cargo.toml
+get_var_from_cargo_toml() {
+    local zisk_repo_dir=$1
+    local var_name=$2
+    
+    # Check if Cargo.toml exists
+    if [ -f "${zisk_repo_dir}/Cargo.toml" ]; then
+        # Extract the value of the variable from Cargo.toml
+        local value=$(grep -oP "(?<=${var_name} = \")[^\"]+" "${zisk_repo_dir}/Cargo.toml")
+
+        # If the value is found, return it, else return an error message
+        if [ -n "$value" ]; then
+            echo "$value"
+        else
+            err "variable '$var_name' not found in Cargo.toml"
+            return 1
+        fi
+    else
+        # If the file doesn't exist, return an error message
+        err "Cargo.toml not found at ${zisk_repo_dir}/Cargo.toml"
+        return 1
+    fi
+}
+
+# Sets PLATFORM based on the current system
+get_platform || return 1
+# Sets PROFILE and PREF_SHELL based on the current shell
+get_shell_and_profile || return 1
+# Ensure profile is loaded
+touch $PROFILE
+source "$PROFILE"
+
+# Define ZisK directories
+ZISK_DIR="$HOME/.zisk"
+ZISK_BIN_DIR="$ZISK_DIR/bin"
+WORKSPACE_DIR="${HOME}/workspace"
+DEFAULT_ZISK_REPO_DIR="${WORKSPACE_DIR}/zisk"

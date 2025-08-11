@@ -81,11 +81,7 @@ test_elf() {
     local dist_inputs_var_name="$4"
     local desc="$5"
 
-    is_proving_key_installed || return 1
-
-    step "Loading environment variables..."
-    load_env || return 1
-    confirm_continue || return 1
+    current_dir=$(pwd)
 
     export ELF_FILE="$elf_file"
     export INPUTS_PATH="$inputs_path"
@@ -105,15 +101,26 @@ test_elf() {
     current_step=1
     total_steps=$(( 2 + num_inputs * 3 + num_dist_inputs ))
 
+    info "Executing ${desc} script"
+
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        is_proving_key_installed || return 1
+    fi
+
+    step "Loading environment variables..."
+    # Load environment variables from .env file
+    load_env || return 1
+    confirm_continue || return 1
+
     # Create directories for proof results
-    PROOF_RESULTS_DIR="${HOME}/work/proof-results"
+    PROOF_RESULTS_DIR="${WORKSPACE_DIR}/proof-results"
     rm -rf "${PROOF_RESULTS_DIR}"
     mkdir -p "${PROOF_RESULTS_DIR}"
     mkdir -p "${PROOF_RESULTS_DIR}/non-distributed"
     mkdir -p "${PROOF_RESULTS_DIR}/distributed"
 
     # Change to the working directory
-    cd "${HOME}/work" || return 1
+    cd "${WORKSPACE_DIR}" || return 1
 
     # Build mpi command
     MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $DISTRIBUTED_PROCESSES -x OMP_NUM_THREADS=$DISTRIBUTED_THREADS -x RAYON_NUM_THREADS=$DISTRIBUTED_THREADS"
@@ -232,6 +239,8 @@ test_elf() {
     delete_proofs_result "${PROOF_RESULTS_DIR}/non-distributed" "${result_files[@]}"
     delete_proofs_result "${PROOF_RESULTS_DIR}/distributed" "${result_dist_files[@]}"
     rm -rf "${PROOF_RESULTS_DIR}"
+
+    cd "$current_dir"
 
     success "${desc} have been successfully proved!"
 }

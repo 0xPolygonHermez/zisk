@@ -30,4 +30,4 @@ main() {
     # echo "BLOCK_FOLDER_INPUTS=$BLOCK_FOLDER_INPUTS"    
 }
 
-main || return 1
+main

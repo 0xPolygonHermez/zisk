@@ -2,6 +2,9 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Define build-time argument
+ARG GPU=false
+
 # Install base packages
 RUN apt update && apt install -y bash sudo curl gnupg
 
@@ -16,7 +19,11 @@ RUN groupadd --gid 1000 ziskuser \
 # Patch install_deps.sh to source utils.sh from /tmp, then run it as ziskuser
 RUN chmod +x /tmp/install_deps.sh \
  && cd /tmp/ \
- && sudo -u ziskuser ./install_deps.sh \
+ && if [ "$GPU" = "true" ]; then \
+      sudo -u ziskuser ./install_deps.sh --gpu; \
+    else \
+      sudo -u ziskuser ./install_deps.sh; \
+    fi \
  && rm -f ./utils.sh ./install_deps.sh
 
 # Create output directory and set ownership
@@ -24,11 +31,12 @@ RUN mkdir -p /home/ziskuser/output \
  && chown ziskuser:ziskuser /home/ziskuser/output
 
 # Copy project files and adjust permissions
-COPY . /home/ziskuser/zisk-release-kit/
+COPY . /home/ziskuser/scripts/
 RUN chown -R ziskuser:ziskuser /home/ziskuser \
- && find /home/ziskuser/zisk-release-kit -type f -exec chmod +x {} \;
+ && find /home/ziskuser/scripts -type f -exec chmod +x {} \;
 
 # Switch to the non-root user and set working directory
 USER ziskuser
-WORKDIR /home/ziskuser/zisk-release-kit
+WORKDIR /home/ziskuser/scripts
+
 
