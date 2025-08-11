@@ -2,13 +2,14 @@ use core::panic;
 use std::sync::Arc;
 
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use tiny_keccak::keccakf;
 
 use circuit::{Gate, GateOperation, PinId};
 use precompiles_helpers::keccakf_topology;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{KeccakfFixed, KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
+use zisk_pil::{KeccakfFixed, KeccakfTrace, KeccakfTraceRow};
 
 use crate::KeccakfInput;
 
@@ -18,8 +19,11 @@ use rayon::prelude::*;
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
 pub struct KeccakfSM<F: PrimeField64> {
-    /// Reference to the Keccakf Table State Machine.
-    keccakf_table_sm: Arc<KeccakfTableSM>,
+    /// The table ID for the Keccakf Table State Machine
+    table_id: usize,
+
+    /// Reference to the PIL2 standard library.
+    std: Arc<Std<F>>,
 
     /// The circuit description of the Keccakf
     program: Vec<u64>,
@@ -46,7 +50,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     ///
     /// # Returns
     /// A new `KeccakfSM` instance.
-    pub fn new(sctx: Arc<SetupCtx<F>>, keccakf_table_sm: Arc<KeccakfTableSM>) -> Arc<Self> {
+    pub fn new(sctx: Arc<SetupCtx<F>>, std: Arc<Std<F>>) -> Arc<Self> {
         // Get the slot size
         let keccakf_top = keccakf_topology();
         let keccakf_program = keccakf_top.program;
@@ -63,8 +67,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
         let keccakf_fixed = KeccakfFixed::from_vec(fixed_pols);
 
+        // Get the table ID
+        let table_id = std.get_virtual_table_id(KeccakfTableSM::TABLE_ID);
+
         Arc::new(Self {
-            keccakf_table_sm,
+            table_id,
+            std,
             program: keccakf_program,
             gates: keccakf_gates,
             circuit_size,
@@ -478,7 +486,13 @@ impl<F: PrimeField64> KeccakfSM<F> {
             }
 
             // Update the multiplicity table for the circuit
-            let mut multiplicity = vec![0; KeccakfTableTrace::<usize>::NUM_ROWS];
+            let table_size = 1
+                << ((BITS_KECCAKF_TABLE - CHUNKS_KECCAKF_TABLE + 1)
+                    + BITS_KECCAKF_TABLE
+                    + BITS_KECCAKF_TABLE
+                    + 1);
+            // TODO: This can be optimized, there are many zeroes rows!!!
+            let mut multiplicity = vec![0; table_size];
             for (k, row) in par_trace.iter().enumerate().take(self.circuit_size) {
                 let a = &row.free_in_a;
                 let b = &row.free_in_b;
@@ -499,7 +513,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     multiplicity[table_row] += 1;
                 }
             }
-            self.keccakf_table_sm.update_multiplicities(&multiplicity);
+            self.std.inc_virtual_rows_ranged(self.table_id, &multiplicity);
         });
 
         fn update_bit_val<F: PrimeField64>(
@@ -625,7 +639,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         // Update the multiplicity table
         let table_row =
             KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, ones, zeros);
-        self.keccakf_table_sm.update_input(table_row, CHUNKS_KECCAKF as u64);
+        self.std.inc_virtual_row(self.table_id, table_row as u64, CHUNKS_KECCAKF as u64);
 
         // Assign the single constant row
         keccakf_trace[0] = row;
@@ -650,7 +664,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
             let table_row =
                 KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, zeros, zeros);
-            self.keccakf_table_sm.update_input(table_row, CHUNKS_KECCAKF as u64);
+            self.std.inc_virtual_row(self.table_id, table_row as u64, CHUNKS_KECCAKF as u64);
 
             keccakf_trace[i] = padding_row;
         }
