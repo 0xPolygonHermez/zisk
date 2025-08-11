@@ -1,16 +1,8 @@
 //! The `BinaryBasicTableSM` module defines the Binary Basic Table State Machine.
 //!
-//! This state machine is responsible for handling basic binary operations, calculating table rows,
-//! and managing multiplicity tables for binary table traces.
+//! This state machine is responsible for calculating basic binary table rows.
 
-use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc,
-};
-
-use zisk_common::create_atomic_vec;
 use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
-use zisk_pil::BinaryTableTrace;
 
 use crate::binary_constants::*;
 
@@ -39,53 +31,10 @@ pub enum BinaryBasicTableOp {
 }
 
 /// The `BinaryBasicTableSM` struct represents the Binary Basic Table State Machine.
-///
-/// It manages a multiplicity table and provides functionality to process slices and calculate table
-/// rows.
-pub struct BinaryBasicTableSM {
-    /// The multiplicity table, shared across threads.
-    multiplicity: Vec<AtomicU64>,
-    calculated: AtomicBool,
-}
+pub struct BinaryBasicTableSM;
 
 impl BinaryBasicTableSM {
-    /// Creates a new `BinaryBasicTableSM` instance.
-    ///
-    /// # Returns
-    /// An `Arc`-wrapped instance of `BinaryBasicTableSM`.
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            multiplicity: create_atomic_vec(BinaryTableTrace::<usize>::NUM_ROWS),
-            calculated: AtomicBool::new(false),
-        })
-    }
-
-    /// Processes a slice of input data and updates the multiplicity table.
-    ///
-    /// # Arguments
-    /// * `input` - A slice of `u64` values representing the input data.
-    pub fn update_multiplicity(&self, row: u64, value: u64) {
-        if self.calculated.load(Ordering::Relaxed) {
-            return;
-        }
-        self.multiplicity[row as usize].fetch_add(value, Ordering::Relaxed);
-    }
-
-    /// Detaches and returns the current multiplicity table.
-    ///
-    /// # Returns
-    /// A vector containing the multiplicity table.
-    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
-        &self.multiplicity
-    }
-
-    pub fn set_calculated(&self) {
-        self.calculated.store(true, Ordering::Relaxed);
-    }
-
-    pub fn reset_calculated(&self) {
-        self.calculated.store(false, Ordering::Relaxed);
-    }
+    pub const TABLE_ID: usize = 125;
 
     /// Calculates the table row offset based on the provided parameters.
     ///

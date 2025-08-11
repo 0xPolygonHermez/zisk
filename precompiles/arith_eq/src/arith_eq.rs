@@ -23,7 +23,8 @@ pub struct ArithEqSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
 
-    pub arith_eq_lt_table_sm: Arc<ArithEqLtTableSM>,
+    /// The table ID for the Keccakf Table State Machine
+    table_id: usize,
 
     pub q_hsc_range_id: usize,
     pub chunk_range_id: usize,
@@ -47,13 +48,16 @@ impl<F: PrimeField64> ArithEqSM<F> {
     ///
     /// # Returns
     /// A new `ArithEqSM` instance.
-    pub fn new(std: Arc<Std<F>>, arith_eq_lt_table_sm: Arc<ArithEqLtTableSM>) -> Arc<Self> {
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
         let num_available_ops = ArithEqTrace::<usize>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP;
         let p2_22 = 1 << 22;
-        let q_hsc_range_id = std.get_range(0, p2_22 - 1, None);
-        let chunk_range_id = std.get_range(0, 0xFFFF, None);
-        let carry_range_id = std.get_range(-(p2_22 - 1), p2_22, None);
+        let q_hsc_range_id = std.get_range_id(0, p2_22 - 1, None);
+        let chunk_range_id = std.get_range_id(0, 0xFFFF, None);
+        let carry_range_id = std.get_range_id(-(p2_22 - 1), p2_22, None);
+
+        // Get the table ID
+        let table_id = std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID);
 
         Arc::new(Self {
             std,
@@ -61,7 +65,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             q_hsc_range_id,
             chunk_range_id,
             carry_range_id,
-            arith_eq_lt_table_sm,
+            table_id,
         })
     }
     fn expand_addr_step_on_trace(data: &ArithEqStepAddr, trace: &mut [ArithEqTraceRow<F>]) {
@@ -278,7 +282,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
     #[inline(always)]
     fn to_ranged_field(&self, value: i64, range_id: usize) -> F {
-        self.std.range_check(value, 1, range_id);
+        self.std.range_check(range_id, value, 1);
         F::from_i64(value)
     }
 
@@ -331,11 +335,12 @@ impl<F: PrimeField64> ArithEqSM<F> {
                 SEL_OP_ARITH256_MOD => {
                     let x3_lt = data.x3[i] < data.y2[i] || (data.x3[i] == data.y2[i] && prev_x3_lt);
                     trace[i].x3_lt = F::from_bool(x3_lt);
-                    self.arith_eq_lt_table_sm.update_input(
+                    let row = ArithEqLtTableSM::calculate_table_row(
                         prev_x3_lt,
                         x3_lt,
                         data.x3[i] - data.y2[i],
                     );
+                    self.std.inc_virtual_row(self.table_id, row as u64, 1);
                     prev_x3_lt = x3_lt;
 
                     trace[i].y3_lt = F::ZERO;
@@ -344,21 +349,23 @@ impl<F: PrimeField64> ArithEqSM<F> {
                     let x3_lt = data.x3[i] < SECP256K1_PRIME_CHUNKS[i]
                         || (data.x3[i] == SECP256K1_PRIME_CHUNKS[i] && prev_x3_lt);
                     trace[i].x3_lt = F::from_bool(x3_lt);
-                    self.arith_eq_lt_table_sm.update_input(
+                    let row = ArithEqLtTableSM::calculate_table_row(
                         prev_x3_lt,
                         x3_lt,
                         data.x3[i] - SECP256K1_PRIME_CHUNKS[i],
                     );
+                    self.std.inc_virtual_row(self.table_id, row as u64, 1);
                     prev_x3_lt = x3_lt;
 
                     let y3_lt = data.y3[i] < SECP256K1_PRIME_CHUNKS[i]
                         || (data.y3[i] == SECP256K1_PRIME_CHUNKS[i] && prev_y3_lt);
                     trace[i].y3_lt = F::from_bool(y3_lt);
-                    self.arith_eq_lt_table_sm.update_input(
+                    let row = ArithEqLtTableSM::calculate_table_row(
                         prev_y3_lt,
                         y3_lt,
                         data.y3[i] - SECP256K1_PRIME_CHUNKS[i],
                     );
+                    self.std.inc_virtual_row(self.table_id, row as u64, 1);
                     prev_y3_lt = y3_lt;
                 }
                 SEL_OP_BN254_CURVE_ADD
@@ -369,21 +376,23 @@ impl<F: PrimeField64> ArithEqSM<F> {
                     let x3_lt = data.x3[i] < BN254_PRIME_CHUNKS[i]
                         || (data.x3[i] == BN254_PRIME_CHUNKS[i] && prev_x3_lt);
                     trace[i].x3_lt = F::from_bool(x3_lt);
-                    self.arith_eq_lt_table_sm.update_input(
+                    let row = ArithEqLtTableSM::calculate_table_row(
                         prev_x3_lt,
                         x3_lt,
                         data.x3[i] - BN254_PRIME_CHUNKS[i],
                     );
+                    self.std.inc_virtual_row(self.table_id, row as u64, 1);
                     prev_x3_lt = x3_lt;
 
                     let y3_lt = data.y3[i] < BN254_PRIME_CHUNKS[i]
                         || (data.y3[i] == BN254_PRIME_CHUNKS[i] && prev_y3_lt);
                     trace[i].y3_lt = F::from_bool(y3_lt);
-                    self.arith_eq_lt_table_sm.update_input(
+                    let row = ArithEqLtTableSM::calculate_table_row(
                         prev_y3_lt,
                         y3_lt,
                         data.y3[i] - BN254_PRIME_CHUNKS[i],
                     );
+                    self.std.inc_virtual_row(self.table_id, row as u64, 1);
                     prev_y3_lt = y3_lt;
                 }
                 _ => {
@@ -477,9 +486,9 @@ impl<F: PrimeField64> ArithEqSM<F> {
         });
 
         let padding_ops = (self.num_available_ops - index) as u64;
-        self.std.range_check(0, 3 * padding_ops, self.q_hsc_range_id);
-        self.std.range_check(0, 157 * padding_ops, self.chunk_range_id);
-        self.std.range_check(0, 96 * padding_ops, self.carry_range_id);
+        self.std.range_check(self.q_hsc_range_id, 0, 3 * padding_ops);
+        self.std.range_check(self.chunk_range_id, 0, 157 * padding_ops);
+        self.std.range_check(self.carry_range_id, 0, 96 * padding_ops);
 
         let padding_row = ArithEqTraceRow::<F> { ..Default::default() };
 
