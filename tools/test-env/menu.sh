@@ -7,7 +7,7 @@ current_dir=$(pwd)
 # Loop until user chooses to exit
 while true; do
     echo "========================================="
-    echo "          ZisK Release Kit Menu          "
+    echo "          ZisK Test Menu          "
     echo "========================================="
     echo " 1) Edit environment variables"
     echo " 2) Build ZisK from source"
