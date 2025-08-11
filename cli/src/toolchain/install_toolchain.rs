@@ -13,7 +13,9 @@ use std::{
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 
-use crate::{get_target, get_toolchain_download_url, is_supported_target, url_exists, RUSTUP_TOOLCHAIN_NAME};
+use crate::{
+    get_target, get_toolchain_download_url, is_supported_target, url_exists, RUSTUP_TOOLCHAIN_NAME,
+};
 
 #[derive(Parser)]
 #[command(name = "install-toolchain", about = "Install the cargo-zisk toolchain.")]
