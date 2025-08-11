@@ -89,7 +89,7 @@ impl InstallToolchainCmd {
                 let rt = tokio::runtime::Runtime::new()?;
 
                 let toolchain_download_url =
-                    rt.block_on(get_toolchain_download_url(&client, target.to_string()));
+                    rt.block_on(get_toolchain_download_url(target.to_string()));
 
                 if toolchain_download_url.is_empty() {
                     return Err(anyhow::anyhow!("Error getting toolchain download URL"));
