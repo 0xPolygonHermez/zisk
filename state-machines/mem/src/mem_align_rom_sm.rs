@@ -46,6 +46,14 @@ impl MemAlignRomSM {
         (first_row_idx, op_size)
     }
 
+    pub fn get_rows(pc: u64, op_size: u64) -> Vec<u64> {
+        // Check whether the row index is within the bounds
+        debug_assert!(pc + op_size <= Self::TABLE_SIZE as u64);
+
+        // Get the rows for the given program counter and operation size
+        (0..op_size).map(|i| pc + i).collect()
+    }
+
     fn get_first_row_idx(
         opcode: MemOp,
         offset: usize,
