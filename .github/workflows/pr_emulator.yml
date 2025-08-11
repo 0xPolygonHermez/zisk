@@ -20,6 +20,8 @@ jobs:
   docker-ziskof-check:
     name: Docker Risc Oficial Tests Check
     runs-on: self-hosted
+    container:
+      image: hermeznetwork/ziskof:latest
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       C_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
@@ -27,9 +29,6 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-
-      - name: Cleanup rustup
-        run: rm -rf ~/.rustup
 
       - name: Install rust
         uses: actions-rs/toolchain@v1
@@ -44,15 +43,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev
           
-      - name: Set up git private repo access
-        run: |
-          git config --global url."https://${{ secrets.ZISK_CI_TOKEN }}@github.com/".insteadOf ssh://git@github.com
-          git config --global url."https://${{ secrets.ZISK_CI_TOKEN }}@github.com".insteadOf https://github.com
-
-      - name: Show git config
-        run: |
-          git config --global --list
-
       - name: Run cargo check
         uses: actions-rs/cargo@v1
         with:
@@ -67,17 +57,17 @@ jobs:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
 
-      - name: Run Docker container
+      - name: Run tests
         run: |
-           docker run --rm --entrypoint bash -v ./target/release/ziskemu:/program hermeznetwork/ziskof:latest --login -c " \
-                  apt-get update && \
-                  apt-get install -y \
-                    libopenmpi-dev openmpi-bin openmpi-common \
-                    gcc-riscv64-unknown-elf \
-                    libsodium23 libomp5 && \
-                  export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib && \
-                  ldconfig && \
-                  riscof run --config=config.ini \
-                    --suite=riscv-arch-test/riscv-test-suite/ \
-                    --env=riscv-arch-test/riscv-test-suite/env \
-                    --work-dir=/workspace/output/riscof_work/"
+          cp target/release/ziskemu /program \
+          apt-get update && \
+          apt-get install -y \
+            libopenmpi-dev openmpi-bin openmpi-common \
+            gcc-riscv64-unknown-elf \
+            libsodium23 libomp5 && \
+          export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib && \
+          ldconfig && \
+          riscof run --config=config.ini \
+            --suite=riscv-arch-test/riscv-test-suite/ \
+            --env=riscv-arch-test/riscv-test-suite/env \
+            --work-dir=/workspace/output/riscof_work/"
