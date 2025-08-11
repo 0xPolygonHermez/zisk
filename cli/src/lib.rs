@@ -85,7 +85,10 @@ pub fn is_supported_target() -> bool {
 }
 
 pub async fn get_toolchain_download_url(target: String) -> String {
-    format!("https://github.com/0xPolygonHermez/rust/releases/latest/download/rust-toolchain-{}.tar.gz", target)
+    format!(
+        "https://github.com/0xPolygonHermez/rust/releases/latest/download/rust-toolchain-{}.tar.gz",
+        target
+    )
 }
 
 pub async fn download_file(
