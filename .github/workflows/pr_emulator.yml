@@ -45,7 +45,7 @@ jobs:
 
       - name: Run tests
         run: |
-          cp "$GITHUB_WORKSPACE/zisk/target/release/ziskemu" /program && \
+          cp "$GITHUB_WORKSPACE/target/release/ziskemu" /program && \
           export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib && \
           ldconfig && \
           cd /workspace && \
