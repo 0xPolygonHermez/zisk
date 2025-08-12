@@ -114,8 +114,11 @@ confirm_continue() {
 
 # press_any_key: Wait for user to press any key
 press_any_key() {
-    read -p "Press any key to continue..." -n1 -s
-    echo
+    # If ZISK_GHA is set to 1, skip waiting for user input
+    if [[ -z "$ZISK_GHA" || "$ZISK_GHA" != "1" ]]; then
+        read -p "Press any key to continue..." -n1 -s
+        echo
+    fi
 }
 
 # is_proving_key_installed: Check if the proving key is installed
