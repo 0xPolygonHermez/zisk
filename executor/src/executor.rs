@@ -275,20 +275,29 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<JoinHandle<AsmRunnerMO>>)
     {
         if let Some(input_path) = input_data_path.as_ref() {
-            for service in AsmServices::SERVICES {
+            AsmServices::SERVICES.par_iter().for_each(|service| {
+                #[cfg(feature = "stats")]
+                let start_time = Instant::now();
+
                 let port = if let Some(base_port) = self.base_port {
-                    AsmServices::port_for(&service, base_port, self.local_rank)
+                    AsmServices::port_for(service, base_port, self.local_rank)
                 } else {
-                    AsmServices::default_port(&service, self.local_rank)
+                    AsmServices::default_port(service, self.local_rank)
                 };
 
                 let shmem_input_name = AsmSharedMemory::<AsmMTHeader>::shmem_input_name(
                     port,
-                    service,
+                    *service,
                     self.local_rank,
                 );
                 write_input(input_path, &shmem_input_name, self.unlock_mapped_memory);
-            }
+
+                // Add to executor stats
+                #[cfg(feature = "stats")]
+                self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::AsmWriteInput(
+                    ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+                ));
+            });
         }
 
         let chunk_size = self.chunk_size;
@@ -465,9 +474,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
     fn run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>) -> MinimalTraces {
         // Call emulate with these options
-        let input_data = if input_data_path.is_some() {
+        let input_data = if let Some(path) = &input_data_path {
             // Read inputs data from the provided inputs path
-            let path = PathBuf::from(input_data_path.as_ref().unwrap().display().to_string());
+            let path = PathBuf::from(path.display().to_string());
             fs::read(path).expect("Could not read inputs file")
         } else {
             Vec::new()

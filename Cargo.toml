@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 license = "Apache-2.0 or MIT"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
@@ -93,6 +93,7 @@ fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch 
 # witness = { path = "../pil2-proofman/witness" }
 # fields = { path = "../pil2-proofman/fields" }
 
+# External dependencies
 rayon = "1.10"
 num-bigint = "0.4"
 num-traits = "0.2"

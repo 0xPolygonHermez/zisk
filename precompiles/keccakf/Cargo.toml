@@ -12,12 +12,12 @@ name = "keccakf_fixed_gen"
 path = "src/keccakf_fixed_gen.rs"
 
 [dependencies]
-zisk-core = { path = "../../core" }
-zisk-common = { path = "../../common" }
-zisk-pil = { path = "../../pil" }
-precompiles-common = { path = "../common" }
-circuit = { path = "../../tools/circuit" }
-precompiles-helpers = { path = "../helpers" }
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
+zisk-pil = { workspace = true }
+precompiles-common = { workspace = true }
+circuit = { workspace = true }
+precompiles-helpers = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }

@@ -488,8 +488,7 @@ impl FrequentOpsTable {
         } else if b == AND_RESET_LAST_THREE_BITS_B && a < AND_RESET_LAST_THREE_BITS_A_TO {
             Some(AND_RESET_LAST_THREE_BITS_OFFSET + a as usize)
         } else if b == AND_GET_LAST_THREE_BITS_B
-            && a >= AND_GET_LAST_THREE_BITS_FROM
-            && a <= AND_GET_LAST_THREE_BITS_TO
+            && (AND_GET_LAST_THREE_BITS_FROM..=AND_GET_LAST_THREE_BITS_TO).contains(&a)
             && a & 0x7 == 0
         {
             Some(
@@ -694,8 +693,7 @@ impl FrequentOpsTable {
                     && (AND_CODE_ADDR_FROM..AND_CODE_ADDR_TO).contains(&b))
                     || (b == AND_RESET_LAST_THREE_BITS_B && a < AND_RESET_LAST_THREE_BITS_A_TO)
                     || (b == AND_GET_LAST_THREE_BITS_B
-                        && a >= AND_GET_LAST_THREE_BITS_FROM
-                        && a <= AND_GET_LAST_THREE_BITS_TO
+                        && (AND_GET_LAST_THREE_BITS_FROM..=AND_GET_LAST_THREE_BITS_TO).contains(&a)
                         && a & 0x7 == 0)
                     || (a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE)
             }

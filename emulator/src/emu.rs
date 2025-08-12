@@ -76,7 +76,7 @@ pub struct Emu<'a> {
 ///                         Emu::par_step_my_block(&mut self, emu_full_trace_vec: &mut EmuTrace)
 ///                             Emu::source_a_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
 impl<'a> Emu<'a> {
-    pub fn new(rom: &ZiskRom, chunk_size: u64) -> Emu {
+    pub fn new(rom: &ZiskRom, chunk_size: u64) -> Emu<'_> {
         Emu {
             rom,
             mem_helpers: MemHelpers::new(chunk_size),

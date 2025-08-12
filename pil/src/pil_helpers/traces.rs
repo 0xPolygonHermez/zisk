@@ -68,12 +68,10 @@ pub const SHA_256_F_AIR_IDS: &[usize] = &[20];
 
 pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[21];
 
-
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
 use serde_arrays;
-
 
 fn default_array_rom_root() -> [u64; 4] {
     [0; 4]
@@ -83,33 +81,28 @@ fn default_array_inputs() -> [u64; 64] {
     [0; 64]
 }
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
     #[serde(default = "default_array_rom_root", with = "serde_arrays")]
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-    
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self {  
-            rom_root: [0; 4],  
-            inputs: [0; 64], 
-        }
+        Self { rom_root: [0; 4], inputs: [0; 64] }
     }
 }
 
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
- 
+
 values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
- 
+
 trace!(MainFixed<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
 },  0, 0, 4194304 );
