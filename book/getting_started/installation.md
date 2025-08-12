@@ -36,11 +36,11 @@ A way to achieve it is to edit the file `/etc/systemd/system.conf` and add the l
 
 macOS 14 or higher is required.
 
-You must have [Homebrew](https://brew.sh/) installed.
+You must have [Homebrew](https://brew.sh/) and [XCode Command Line Tools](https://developer.apple.com/library/archive/technotes/tn2339/_index.html#//apple_ref/doc/uid/DTS40014588-CH1-WHAT_IS_THE_COMMAND_LINE_TOOLS_PACKAGE_) installed.
 
 Install all required dependencies with:
 ```bash
-brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium
 ```
 
 ## Installing ZisK
