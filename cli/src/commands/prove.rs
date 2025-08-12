@@ -11,7 +11,10 @@ use executor::ZiskExecutionResult;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions};
+use proofman::{ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman_common::{
+    json_to_debug_instances_map, DebugInfo, ModeName, MpiCtx, ParamsGPU, ProofOptions,
+};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -239,34 +242,16 @@ impl ZiskProve {
 
         gpu_params.with_single_instance((0, VIRTUAL_TABLE_AIR_IDS[0]));
 
-        let proofman;
-        #[cfg(distributed)]
-        {
-            proofman = ProofMan::<Goldilocks>::new(
-                proving_key,
-                custom_commits_map,
-                verify_constraints,
-                self.aggregation,
-                self.final_snark,
-                gpu_params,
-                self.verbose.into(),
-                Some(mpi_context.universe),
-            )
-            .expect("Failed to initialize proofman");
-        }
-        #[cfg(not(distributed))]
-        {
-            proofman = ProofMan::<Goldilocks>::new(
-                proving_key,
-                custom_commits_map,
-                verify_constraints,
-                self.aggregation,
-                self.final_snark,
-                gpu_params,
-                self.verbose.into(),
-            )
-            .expect("Failed to initialize proofman");
-        }
+        let proofman = ProofMan::<Goldilocks>::new(
+            proving_key,
+            custom_commits_map,
+            verify_constraints,
+            self.aggregation,
+            self.final_snark,
+            gpu_params,
+            self.verbose.into(),
+        )
+        .expect("Failed to initialize proofman");
         let asm_services =
             AsmServices::new(mpi_context.world_rank, mpi_context.local_rank, self.port);
         let asm_runner_options = AsmRunnerOptions::new()
@@ -300,6 +285,9 @@ impl ZiskProve {
         )
         .expect("Failed to initialize witness library");
 
+        #[cfg(distributed)]
+        proofman.set_mpi_ctx(MpiCtx::new_with_universe(mpi_context.universe));
+
         proofman.register_witness(&mut *witness_lib, library);
 
         let start = std::time::Instant::now();
@@ -318,9 +306,9 @@ impl ZiskProve {
             match self.field {
                 Field::Goldilocks => {
                     proofman.set_barrier();
-                    (proof_id, vadcop_final_proof) = proofman
+                    let result = proofman
                         .generate_proof_from_lib(
-                            self.input.clone(),
+                            ProvePhaseInputs::Full(self.input.clone()),
                             ProofOptions::new(
                                 false,
                                 self.aggregation,
@@ -330,8 +318,16 @@ impl ZiskProve {
                                 self.save_proofs,
                                 self.output_dir.clone(),
                             ),
+                            ProvePhase::Full,
                         )
                         .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+
+                    (proof_id, vadcop_final_proof) =
+                        if let ProvePhaseResult::Full(proof_id, vadcop_final_proof) = result {
+                            (proof_id, vadcop_final_proof)
+                        } else {
+                            (None, None)
+                        };
                 }
             };
         }

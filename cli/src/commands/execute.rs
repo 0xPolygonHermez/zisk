@@ -5,7 +5,7 @@ use colored::Colorize;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::ParamsGPU;
+use proofman_common::{MpiCtx, ParamsGPU};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -157,34 +157,19 @@ impl ZiskExecute {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
-        let proofman;
+        let proofman = ProofMan::<Goldilocks>::new(
+            proving_key,
+            custom_commits_map,
+            true,
+            false,
+            false,
+            ParamsGPU::default(),
+            self.verbose.into(),
+        )
+        .expect("Failed to initialize proofman");
+
         #[cfg(distributed)]
-        {
-            proofman = ProofMan::<Goldilocks>::new(
-                proving_key,
-                custom_commits_map,
-                true,
-                false,
-                false,
-                ParamsGPU::default(),
-                self.verbose.into(),
-                Some(mpi_context.universe),
-            )
-            .expect("Failed to initialize proofman");
-        }
-        #[cfg(not(distributed))]
-        {
-            proofman = ProofMan::<Goldilocks>::new(
-                proving_key,
-                custom_commits_map,
-                true,
-                false,
-                false,
-                ParamsGPU::default(),
-                self.verbose.into(),
-            )
-            .expect("Failed to initialize proofman");
-        }
+        proofman.set_mpi_ctx(MpiCtx::new_with_universe(mpi_context.universe));
 
         let mut witness_lib;
 

@@ -3,6 +3,7 @@ use colored::Colorize;
 use executor::ZiskExecutionResult;
 use fields::Goldilocks;
 use proofman::ProofMan;
+use proofman::{ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -63,9 +64,9 @@ impl ZiskServiceProveHandler {
             move || {
                 let start = std::time::Instant::now();
 
-                let (proof_id, vadcop_final_proof) = proofman
+                let result = proofman
                     .generate_proof_from_lib(
-                        Some(request_input),
+                        ProvePhaseInputs::Full(Some(request_input)),
                         ProofOptions::new(
                             false,
                             request.aggregation,
@@ -75,9 +76,17 @@ impl ZiskServiceProveHandler {
                             false,
                             request.folder.clone(),
                         ),
+                        ProvePhase::Full,
                     )
                     .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))
                     .expect("Failed to generate proof");
+
+                let (proof_id, vadcop_final_proof) =
+                    if let ProvePhaseResult::Full(proof_id, vadcop_final_proof) = result {
+                        (proof_id, vadcop_final_proof)
+                    } else {
+                        (None, None)
+                    };
 
                 let elapsed = start.elapsed();
 

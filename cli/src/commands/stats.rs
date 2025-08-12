@@ -6,7 +6,7 @@ use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU, ProofOptions};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, MpiCtx, ParamsGPU, ProofOptions};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -211,9 +211,10 @@ impl ZiskStats {
                 false,
                 gpu_params,
                 self.verbose.into(),
-                Some(mpi_context.universe),
             )
             .expect("Failed to initialize proofman");
+
+            proofman.set_mpi_ctx(MpiCtx::new_with_universe(mpi_context.universe));
 
             let mut is_active = true;
 

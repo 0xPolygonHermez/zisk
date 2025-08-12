@@ -12,7 +12,7 @@ use asm_runner::{AsmRunnerOptions, AsmServices};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{DebugInfo, ParamsGPU};
+use proofman_common::{DebugInfo, MpiCtx, ParamsGPU};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use uuid::Uuid;
@@ -281,35 +281,19 @@ impl ZiskService {
         .expect("Failed to initialize witness library");
 
         let proofman;
-        #[cfg(distributed)]
-        {
-            proofman = ProofMan::<Goldilocks>::new(
-                config.proving_key.clone(),
-                config.custom_commits_map.clone(),
-                config.verify_constraints,
-                config.aggregation,
-                config.final_snark,
-                config.gpu_params.clone(),
-                config.verbose.into(),
-                Some(mpi_context.universe),
-            )
-            .expect("Failed to initialize proofman");
-        }
+        proofman = ProofMan::<Goldilocks>::new(
+            config.proving_key.clone(),
+            config.custom_commits_map.clone(),
+            config.verify_constraints,
+            config.aggregation,
+            config.final_snark,
+            config.gpu_params.clone(),
+            config.verbose.into(),
+        )
+        .expect("Failed to initialize proofman");
 
-        #[cfg(not(distributed))]
-        {
-            let _ = mpi_context; // avoid unused variable warning
-            proofman = ProofMan::<Goldilocks>::new(
-                config.proving_key.clone(),
-                config.custom_commits_map.clone(),
-                config.verify_constraints,
-                config.aggregation,
-                config.final_snark,
-                config.gpu_params.clone(),
-                config.verbose.into(),
-            )
-            .expect("Failed to initialize proofman");
-        }
+        #[cfg(distributed)]
+        proofman.set_mpi_ctx(MpiCtx::new_with_universe(mpi_context.universe));
 
         proofman.register_witness(witness_lib.as_mut(), library);
 
