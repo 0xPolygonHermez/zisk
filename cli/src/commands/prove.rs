@@ -28,6 +28,7 @@ use std::{
 use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
 #[cfg(feature = "stats")]
 use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_pil::VIRTUAL_TABLE_AIR_IDS;
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -235,6 +236,8 @@ impl ZiskProve {
         if self.max_witness_stored.is_some() {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
+
+        gpu_params.with_single_instance((0, VIRTUAL_TABLE_AIR_IDS[0]));
 
         let proofman;
         #[cfg(distributed)]
