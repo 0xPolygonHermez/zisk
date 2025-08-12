@@ -1,5 +1,5 @@
 use crate::{
-    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
+    commands::{get_proving_key, get_witness_computation_lib, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -13,7 +13,7 @@ use libloading::{Library, Symbol};
 use proofman::ProofMan;
 use proofman::{ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::{
-    json_to_debug_instances_map, DebugInfo, ModeName, MpiCtx, ParamsGPU, ProofOptions,
+    initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions,
 };
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
@@ -136,10 +136,6 @@ impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
         print_banner();
 
-        let mpi_context = initialize_mpi()?;
-
-        proofman_common::initialize_logger(self.verbose.into(), Some(mpi_context.world_rank));
-
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
         let debug_info = match &self.debug {
@@ -252,18 +248,21 @@ impl ZiskProve {
             self.verbose.into(),
         )
         .expect("Failed to initialize proofman");
-        let asm_services =
-            AsmServices::new(mpi_context.world_rank, mpi_context.local_rank, self.port);
+        let mpi_ctx = proofman.get_mpi_ctx();
+
+        initialize_logger(self.verbose.into(), Some(mpi_ctx.rank));
+
+        let asm_services = AsmServices::new(mpi_ctx.rank, mpi_ctx.node_rank, self.port);
         let asm_runner_options = AsmRunnerOptions::new()
             .with_verbose(self.verbose > 0)
             .with_base_port(self.port)
-            .with_world_rank(mpi_context.world_rank)
-            .with_local_rank(mpi_context.local_rank)
+            .with_world_rank(mpi_ctx.rank)
+            .with_local_rank(mpi_ctx.node_rank)
             .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
         if self.asm.is_some() {
             // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_ctx.rank,);
 
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }
@@ -278,15 +277,12 @@ impl ZiskProve {
             self.asm.clone(),
             asm_rom,
             self.chunk_size_bits,
-            Some(mpi_context.world_rank),
-            Some(mpi_context.local_rank),
+            Some(mpi_ctx.rank),
+            Some(mpi_ctx.node_rank),
             self.port,
             self.unlock_mapped_memory,
         )
         .expect("Failed to initialize witness library");
-
-        #[cfg(distributed)]
-        proofman.set_mpi_ctx(MpiCtx::new_with_universe(mpi_context.universe));
 
         proofman.register_witness(&mut *witness_lib, library);
 
@@ -308,7 +304,11 @@ impl ZiskProve {
                     proofman.set_barrier();
                     let result = proofman
                         .generate_proof_from_lib(
-                            ProvePhaseInputs::Full(self.input.clone()),
+                            ProvePhaseInputs::Full(
+                                self.input.clone(),
+                                mpi_ctx.n_processes,
+                                mpi_ctx.rank,
+                            ),
                             ProofOptions::new(
                                 false,
                                 self.aggregation,
@@ -332,7 +332,7 @@ impl ZiskProve {
             };
         }
 
-        if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
+        if mpi_ctx.rank == 0 {
             let elapsed = start.elapsed();
 
             let (result, _stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
@@ -380,7 +380,7 @@ impl ZiskProve {
 
         if self.asm.is_some() {
             // Shut down ASM microservices
-            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_context.world_rank);
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_ctx.rank);
             asm_services.stop_asm_services()?;
         }
 

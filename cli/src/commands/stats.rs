@@ -6,7 +6,9 @@ use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{json_to_debug_instances_map, DebugInfo, MpiCtx, ParamsGPU, ProofOptions};
+use proofman_common::{
+    initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU, ProofOptions,
+};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -18,7 +20,7 @@ use zisk_common::{ExecutorStats, ExecutorStatsEnum, ZiskLibInitFn};
 use zisk_pil::*;
 
 use crate::{
-    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
+    commands::{get_proving_key, get_witness_computation_lib, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -189,33 +191,27 @@ impl ZiskStats {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let proofman;
-        let mpi_context = initialize_mpi()?;
+        let proofman = ProofMan::<Goldilocks>::new(
+            proving_key,
+            custom_commits_map,
+            true,
+            false,
+            false,
+            gpu_params,
+            self.verbose.into(),
+        )
+        .expect("Failed to initialize proofman");
 
-        proofman_common::initialize_logger(self.verbose.into(), Some(mpi_context.world_rank));
+        let mpi_ctx = proofman.get_mpi_ctx();
 
-        let world_ranks;
+        initialize_logger(self.verbose.into(), Some(mpi_ctx.rank));
 
-        let world_rank = mpi_context.world_rank;
-        let local_rank = mpi_context.local_rank;
+        let world_ranks = mpi_ctx.n_processes;
+
+        let world_rank = mpi_ctx.rank;
+        let local_rank = mpi_ctx.node_rank;
         #[cfg(distributed)]
         {
-            let world = mpi_context.universe.world();
-            world_ranks = world.size() as usize;
-
-            proofman = ProofMan::<Goldilocks>::new(
-                proving_key,
-                custom_commits_map,
-                true,
-                false,
-                false,
-                gpu_params,
-                self.verbose.into(),
-            )
-            .expect("Failed to initialize proofman");
-
-            proofman.set_mpi_ctx(MpiCtx::new_with_universe(mpi_context.universe));
-
             let mut is_active = true;
 
             if let Some(mpi_node) = self.mpi_node {
@@ -230,9 +226,9 @@ impl ZiskStats {
             } else {
                 mpi::topology::Color::undefined()
             };
-            let _sub_comm = world.split_by_color(color);
+            let _sub_comm = mpi_ctx.world.split_by_color(color);
 
-            world.split_shared(world_rank);
+            mpi_ctx.world.split_shared(world_rank);
 
             if !is_active {
                 println!(
@@ -243,21 +239,6 @@ impl ZiskStats {
 
                 return Ok(());
             }
-        }
-
-        #[cfg(not(distributed))]
-        {
-            proofman = ProofMan::<Goldilocks>::new(
-                proving_key,
-                custom_commits_map,
-                true,
-                false,
-                false,
-                gpu_params,
-                self.verbose.into(),
-            )
-            .expect("Failed to initialize proofman");
-            world_ranks = 1;
         }
 
         let mut witness_lib;
@@ -272,7 +253,7 @@ impl ZiskStats {
 
         if self.asm.is_some() {
             // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_ctx.rank,);
 
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }

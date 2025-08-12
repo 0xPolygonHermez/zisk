@@ -64,9 +64,15 @@ impl ZiskServiceProveHandler {
             move || {
                 let start = std::time::Instant::now();
 
+                let mpi_ctx = proofman.get_mpi_ctx();
+
                 let result = proofman
                     .generate_proof_from_lib(
-                        ProvePhaseInputs::Full(Some(request_input)),
+                        ProvePhaseInputs::Full(
+                            Some(request_input),
+                            mpi_ctx.n_processes,
+                            mpi_ctx.rank,
+                        ),
                         ProofOptions::new(
                             false,
                             request.aggregation,
@@ -90,7 +96,7 @@ impl ZiskServiceProveHandler {
 
                 let elapsed = start.elapsed();
 
-                if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
+                if mpi_ctx.rank == 0 {
                     let (result, _stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) =
                         *witness_lib
                             .get_execution_result()
