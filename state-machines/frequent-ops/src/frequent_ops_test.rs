@@ -3,6 +3,17 @@ use clap::{Arg, Command};
 pub use frequent_ops_table::FrequentOpsTable;
 use std::path::Path;
 use zisk_core::zisk_ops::{OpType, ZiskOp};
+/// Test binary for the FrequentOpsTable.
+///
+/// This program builds and analyzes the frequent operations table, printing statistics
+/// such as the number of frequent operations and their distribution. Optionally, it can
+/// read a binary file containing operation data using the `--store_ops_file` argument.
+///
+/// Usage:
+///     cargo run --bin frequent_ops_test [-- --store_ops_file <STORE_OPS_FILE>]
+///
+/// Arguments:
+///     --store_ops_file, -s   Optional path to a binary file containing operation data.
 fn main() {
     let matches = Command::new("frequent_ops_test")
         .version("1.0")

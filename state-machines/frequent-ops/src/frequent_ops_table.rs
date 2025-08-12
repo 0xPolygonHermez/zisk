@@ -290,7 +290,7 @@ impl FrequentOpsTable {
                 ops.push([i - j, i]);
             }
             for j in 0..LT_HIGH_DISTANCE_8 {
-                ops.push([i - j * 8 + 16, i]);
+                ops.push([i - j * 8 - 16, i]);
             }
             i += LT_DELTA;
         }
@@ -303,7 +303,7 @@ impl FrequentOpsTable {
     fn is_frequent_lt(a: u64, b: u64) -> bool {
         if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
             true
-        } else if a & 0xFFFF_FFFF_FFFE_0007 == 0xA010_0000 {
+        } else if a <= b && b & 0xFFFF_FFFF_FFFE_0007 == 0xA010_0000 {
             // 256 / 8 = 32 (5 bits)
             let dist = b - a;
             if dist < LT_LOW_DISTANCE_1 {
@@ -315,7 +315,7 @@ impl FrequentOpsTable {
                 false
             }
         } else {
-            a == 0 && b < 8192
+            a == 0 && b < LT_ZERO_TO_B
         }
     }
 
@@ -328,19 +328,22 @@ impl FrequentOpsTable {
         if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
             Some(Self::get_low_values_offset(a, b))
         // TODO_ASSERT
-        } else if a & 0xFFFF_FFFF_FFFE_0007 == 0xA010_0000 {
+        } else if a <= b && (b & 0xFFFF_FFFF_FFFE_0007) == 0xA010_0000 {
             // 256 / 8 = 32 (5 bits)
-            let addr_offset = ((a - LT_FROM_ADDR) >> 3) * LT_LOW_HIGH_DISTANCES;
+            let addr_offset = ((b - LT_FROM_ADDR) >> 3) * LT_LOW_HIGH_DISTANCES;
             let dist = b - a;
             if dist < LT_LOW_DISTANCE_1 {
-                Some(LOW_VALUE_SIZE)
+                Some(LOW_VALUE_SIZE + (addr_offset + dist) as usize)
             } else if dist <= LT_MAX_DISTANCE && dist & 0x7 == 0 {
                 // 16 - dist >> 3 - 2 = 14 - dist >> 3
-                Some(LOW_VALUE_SIZE + ((addr_offset + LT_LOW_DISTANCE_1 - 2 + dist) >> 3) as usize)
+                Some(
+                    LOW_VALUE_SIZE
+                        + (addr_offset + LT_LOW_DISTANCE_1 + ((dist - 16) >> 3)) as usize,
+                )
             } else {
                 None
             }
-        } else if a == 0 && b < 8192 {
+        } else if a == 0 && b < LT_ZERO_TO_B {
             // in this point B >= MAX_B_LOW_VALUE
             Some(LOW_VALUE_SIZE + LT_ALL_FROM_TO_SIZE + (b - MAX_B_LOW_VALUE) as usize)
         } else {
@@ -488,7 +491,7 @@ impl FrequentOpsTable {
         } else if b == AND_RESET_LAST_THREE_BITS_B && a < AND_RESET_LAST_THREE_BITS_A_TO {
             Some(AND_RESET_LAST_THREE_BITS_OFFSET + a as usize)
         } else if b == AND_GET_LAST_THREE_BITS_B
-            && (AND_GET_LAST_THREE_BITS_FROM..=AND_GET_LAST_THREE_BITS_TO).contains(&a)
+            && (AND_GET_LAST_THREE_BITS_FROM..AND_GET_LAST_THREE_BITS_TO).contains(&a)
             && a & 0x7 == 0
         {
             Some(
@@ -557,13 +560,13 @@ impl FrequentOpsTable {
     }
     #[inline(always)]
     fn is_frequent_sub_w(a: u64, b: u64) -> bool {
-        (a == 0 && ((b & 0xFFFF_FFFF_FFFE_0003 == 0xA010_0000) || b < MAX_B_LOW_VALUE))
+        (a == 0 && ((b & 0xFFFF_FFFF_FFF0_0003 == 0xA010_0000) || b < MAX_B_LOW_VALUE))
             || (a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE)
     }
     #[inline(always)]
     fn get_sub_w_offset(a: u64, b: u64) -> Option<usize> {
         if a == 0 {
-            if b & 0xFFFF_FFFF_FFFE_0003 == 0xA010_0000 {
+            if b & 0xFFFF_FFFF_FFF0_0003 == 0xA010_0000 {
                 Some(LOW_VALUE_SIZE + ((b - SUB_W_ADDR_FROM) >> 2) as usize)
             } else if b < MAX_B_LOW_VALUE {
                 Some(Self::get_low_values_offset(0, b))
@@ -693,7 +696,7 @@ impl FrequentOpsTable {
                     && (AND_CODE_ADDR_FROM..AND_CODE_ADDR_TO).contains(&b))
                     || (b == AND_RESET_LAST_THREE_BITS_B && a < AND_RESET_LAST_THREE_BITS_A_TO)
                     || (b == AND_GET_LAST_THREE_BITS_B
-                        && (AND_GET_LAST_THREE_BITS_FROM..=AND_GET_LAST_THREE_BITS_TO).contains(&a)
+                        && (AND_GET_LAST_THREE_BITS_FROM..AND_GET_LAST_THREE_BITS_TO).contains(&a)
                         && a & 0x7 == 0)
                     || (a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE)
             }
@@ -822,14 +825,23 @@ fn test_frequent_ops() {
     let table = fops.generate_full_table();
 
     let tests = [
-        (ZiskOp::Add, 100, 100, true),
-        (ZiskOp::Add, 100, -1i64 as u64, true),
-        (ZiskOp::Add, 100000, 100000, false),
-        (ZiskOp::Add, 100, -200000i64 as u64, false),
-        (ZiskOp::Add, 100, -2i64 as u64, true),
-        (ZiskOp::And, 0xFFFF_FFFF_FFFF_FFFC, 0x8000_1000, true),
-        (ZiskOp::And, 0xFFFF_FFFF_FFFF_FFFC, 0xA010_1000, false),
+        (OP_ADD, 100, 100, true),
+        (OP_ADD, 100, -1i64 as u64, true),
+        (OP_ADD, 100000, 100000, false),
+        (OP_ADD, 100, -200000i64 as u64, false),
+        (OP_ADD, 100, -2i64 as u64, true),
+        (OP_ADD, 0xFFFF_FFFF_FFFF_FFFC, 0x8000_1000, false),
+        (OP_ADD, 0xFFFF_FFFF_FFFF_FFFC, 0xA010_1000, false),
     ];
+    check_tests(&table, &tests);
+}
+
+#[test]
+fn test_all_accesible_values() {
+    let mut fops = FrequentOpsTable::new();
+    fops.build_table();
+    let table = fops.generate_full_table();
+    let tests = table.iter().map(|(op, a, b, _c, _f)| (*op, *a, *b, true)).collect::<Vec<_>>();
     check_tests(&table, &tests);
 }
 
@@ -838,70 +850,46 @@ fn test_low_values() {
     let mut fops = FrequentOpsTable::new();
     fops.build_table();
     let table = fops.generate_full_table();
-    let mut tests: Vec<(ZiskOp, u64, u64, bool)> = Vec::new();
+    let mut tests: Vec<(u8, u64, u64, bool)> = Vec::new();
 
-    for op_index in 0..256 {
-        if let Ok(op) = ZiskOp::try_from_code(op_index as u8) {
-            let _flag = LOW_VALUES_OPCODES.contains(&op);
-            tests.push((op, 0, MAX_B_LOW_VALUE - 1, true));
-            tests.push((op, MAX_A_LOW_VALUE, 0, true));
-            tests.push((op, MAX_A_LOW_VALUE - 1, 0, true));
-            tests.push((op, MAX_A_LOW_VALUE, 0, true));
-            tests.push((op, MAX_A_LOW_VALUE * 10, MAX_B_LOW_VALUE * 10, false));
-            tests.push((op, MAX_A_LOW_VALUE, 200, false));
-            tests.push((op, MAX_A_LOW_VALUE * 10, MAX_B_LOW_VALUE * 10, false));
-            tests.push((op, MAX_A_LOW_VALUE, 200, false));
-            tests.push((op, MAX_A_LOW_VALUE * 10, MAX_B_LOW_VALUE * 10, false));
-            tests.push((op, MAX_A_LOW_VALUE, 200, false));
-            tests.push((op, MAX_A_LOW_VALUE * 10, MAX_B_LOW_VALUE * 10, false));
-            tests.push((op, MAX_A_LOW_VALUE, 200, false));
-            tests.push((op, 200, MAX_B_LOW_VALUE, false));
-            tests.push((op, MAX_A_LOW_VALUE, MAX_B_LOW_VALUE, false));
-        }
+    for op in 0..255 {
+        let found = LOW_VALUES_OPCODES.contains(&op);
+        tests.push((op, 0, MAX_B_LOW_VALUE - 1, found));
+        tests.push((op, 0, MAX_B_LOW_VALUE - 2, found));
+        tests.push((op, 1, MAX_B_LOW_VALUE - 1, found));
+        tests.push((op, 1, MAX_B_LOW_VALUE - 2, found));
+        tests.push((op, MAX_A_LOW_VALUE - 1, 0, found));
+        tests.push((op, MAX_A_LOW_VALUE - 2, 0, found));
+        tests.push((op, MAX_A_LOW_VALUE - 1, 1, found));
+        tests.push((op, MAX_A_LOW_VALUE - 2, 1, found));
+        tests.push((op, MAX_A_LOW_VALUE - 1, MAX_B_LOW_VALUE - 1, found));
+        tests.push((op, MAX_A_LOW_VALUE - 2, MAX_B_LOW_VALUE - 2, found));
+        tests.push((op, MAX_A_LOW_VALUE - 1, MAX_B_LOW_VALUE - 2, found));
+        tests.push((op, MAX_A_LOW_VALUE - 2, MAX_B_LOW_VALUE - 1, found));
     }
     check_tests(&table, &tests);
 }
 
 #[cfg(test)]
-fn check_tests(table: &Vec<(u8, u64, u64, u64, bool)>, tests: &[(ZiskOp, u64, u64, bool)]) {
+fn check_tests(table: &[(u8, u64, u64, u64, bool)], tests: &[(u8, u64, u64, bool)]) {
     for (itest, test) in tests.iter().enumerate() {
-        println!(
-            "> #{} {1} 0x{2:X}({2}) 0x{3:X}({3}) {4}",
-            itest,
-            test.0.name(),
-            test.1,
-            test.2,
-            test.3
-        );
-        if let Some(index) = FrequentOpsTable::get_row(test.0.code(), test.1, test.2) {
-            // let index = offsets.iter().find(|(op, _)| *op == test.0).unwrap().1 + index;
-            println!(
-                "= {} 0x{1:X}({1}) 0x{2:X}({2}) = 0x{3:X}({3}) F:{4} [{5}]",
-                ZiskOp::try_from_code(table[index].0).unwrap().name(),
-                table[index].1,
-                table[index].2,
-                table[index].3,
-                table[index].4 as u8,
-                if test.3 == true
-                    && table[index].0 == test.0.code()
-                    && table[index].1 == test.1
-                    && table[index].2 == test.2
-                {
-                    "\x1B[32mOK\x1B[0m"
-                } else {
-                    "\x1B[31mFAIL\x1B[0m"
-                }
+        let op_name = if let Ok(_op) = ZiskOp::try_from_code(test.0) { _op.name() } else { "?" };
+        if let Some(index) = FrequentOpsTable::get_row(test.0, test.1, test.2) {
+            if !test.3
+                || table[index].0 != test.0
+                || table[index].1 != test.1
+                || table[index].2 != test.2
+            {
+                panic!(
+                    "> #{} {1} 0x{2:X}({2}) 0x{3:X}({3}) {4} = {5} 0x{6:X}({6}) 0x{7:X}({7}) = 0x{8:X}({8}) F:{9} [\x1B[31mFAIL\x1B[0m]",
+                    itest, op_name, test.1, test.2, test.3, ZiskOp::try_from_code(table[index].0).unwrap().name(), table[index].1, table[index].2, table[index].3, table[index].4 as u8
+                );
+            }
+        } else if test.3 {
+            panic!(
+                "> #{} {1} 0x{2:X}({2}) 0x{3:X}({3}) {4} = NOT FOUND [\x1B[31mFAIL\x1B[0m]",
+                itest, op_name, test.1, test.2, test.3
             );
-            assert_eq!(true, test.3);
-            assert_eq!(table[index].0, test.0.code());
-            assert_eq!(table[index].1, test.1);
-            assert_eq!(table[index].2, test.2);
-        } else {
-            println!(
-                "= Not Found [{}]",
-                if test.3 == false { "\x1B[32mOK\x1B[0m" } else { "\x1B[31mFAIL\x1B[0m" }
-            );
-            assert_eq!(test.3, false);
         }
     }
     println!("Table Size: {}", table.len());

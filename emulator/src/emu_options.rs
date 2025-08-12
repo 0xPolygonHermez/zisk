@@ -64,6 +64,7 @@ pub struct EmuOptions {
     /// Generates minimal traces.  Enabled with `-g`.
     #[clap(short = 'g', long, value_name = "MINIMAL_TRACES", default_value = "false")]
     pub generate_minimal_traces: bool,
+    /// Optional file path to store operation data for analysis
     #[clap(short, long, value_name = "STORE_OP_OUTPUT")]
     pub store_op_output: Option<String>,
 }

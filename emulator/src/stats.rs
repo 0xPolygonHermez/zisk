@@ -21,6 +21,8 @@ const COST_MEMA_W2: f64 = 80_f64 / AREA_PER_SEC;
 const COST_USUAL: f64 = 8_f64 / AREA_PER_SEC;
 const COST_STEP: f64 = 50_f64 / AREA_PER_SEC;
 
+const OP_DATA_BUFFER_DEFAULT_CAPACITY: usize = 128 * 1024 * 1024;
+
 /// Keeps counters for every type of memory operation (including registers).
 ///
 /// Since RISC-V registers are mapped to memory, memory operations include register access
@@ -137,9 +139,10 @@ impl Stats {
     /// Called every time an operation is executed, if statistics are enabled
     pub fn on_op(&mut self, instruction: &ZiskInst, a: u64, b: u64) {
         // If the operation is a usual operation, then increase the usual counter
-        if self.store_ops && (instruction.op_type == ZiskOperationType::Arith)
-            || (instruction.op_type == ZiskOperationType::Binary)
-            || (instruction.op_type == ZiskOperationType::BinaryE)
+        if self.store_ops
+            && (instruction.op_type == ZiskOperationType::Arith
+                || instruction.op_type == ZiskOperationType::Binary
+                || instruction.op_type == ZiskOperationType::BinaryE)
         {
             // store op, a and b values in file
             self.store_op_data(instruction.op, a, b);
@@ -154,7 +157,7 @@ impl Stats {
     }
     pub fn set_store_ops(&mut self, store: bool) {
         self.store_ops = store;
-        self.op_data_buffer = Vec::with_capacity(128 * 1024 * 1024);
+        self.op_data_buffer = Vec::with_capacity(OP_DATA_BUFFER_DEFAULT_CAPACITY);
     }
     /// Store operation data in memory buffer
     fn store_op_data(&mut self, op: u8, a: u64, b: u64) {
