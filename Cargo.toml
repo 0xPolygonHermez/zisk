@@ -75,13 +75,13 @@ ziskos = { path = "ziskos/entrypoint" }
 circuit = { path = "tools/circuit" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/opt-vt-one-table-process-witness" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/opt-vt-one-table-process-witness" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/opt-vt-one-table-process-witness" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/opt-vt-one-table-process-witness" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/opt-vt-one-table-process-witness" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/opt-vt-one-table-process-witness" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/opt-vt-one-table-process-witness" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-vt" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-vt" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-vt" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-vt" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-vt" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-vt" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-vt" }
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
