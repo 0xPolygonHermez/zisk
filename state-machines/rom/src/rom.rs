@@ -168,37 +168,6 @@ impl RomSM {
 
         const MAIN_TRACE_LEN: u64 = MainTrace::<usize>::NUM_ROWS as u64;
 
-        // if asm_romh.bios_inst_count.is_empty() {
-        //     for (i, _) in rom.rom_entry_instructions.iter().enumerate() {
-        //         rom_trace[i].multiplicity = F::ONE;
-        //     }
-        // } else {
-        //     let extra = MAIN_TRACE_LEN - asm_romh.header.steps % MAIN_TRACE_LEN;
-
-        //     for (i, inst) in rom.rom_entry_instructions.iter().enumerate() {
-        //         let idx = ((inst.paddr - ROM_ENTRY) as usize) >> 2;
-
-        //         let mut multiplicity = asm_romh.bios_inst_count[idx];
-
-        //         if multiplicity != 0 {
-        //             if inst.paddr == ROM_EXIT {
-        //                 multiplicity += extra;
-        //             }
-        //             rom_trace[i].multiplicity = F::from_u64(multiplicity);
-        //         }
-        //     }
-        // }
-
-        // for (i, inst) in rom.rom_instructions.iter().enumerate() {
-        //     let idx = (inst.paddr - ROM_ADDR) as usize;
-        //     let multiplicity = asm_romh.prog_inst_count[idx];
-
-        //     if multiplicity != 0 {
-        //         rom_trace[i].multiplicity = F::from_u64(multiplicity);
-        //     }
-        // }
-
-        // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
             let inst = &rom.insts[key].i;
