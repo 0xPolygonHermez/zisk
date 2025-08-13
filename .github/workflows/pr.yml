@@ -52,7 +52,7 @@ jobs:
       image: ubuntu:22.04
       options:
         --shm-size=32g
-        -v /cache-setup:/cache-setup:rw
+        -v /home/gha/cache-setup:/output:rw
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
@@ -67,8 +67,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          ls -la /cache-setup
-          echo "cache" > /cache-setup/probe.txt
+          ls -la /output
+          echo "cache" > /output/probe.txt
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_deps.sh
 
@@ -79,7 +79,7 @@ jobs:
 
       - name: Build setup (no recursive)
         env:
-          RECURSIVE_SETUP: "0"
+          USE_CACHE_SETUP: "1"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_setup.sh
@@ -91,7 +91,6 @@ jobs:
 
       - name: Test sha_hasher
         env:
-          SKIP_PROVE: "1"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh

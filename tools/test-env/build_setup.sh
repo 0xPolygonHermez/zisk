@@ -75,15 +75,27 @@ main() {
 	-I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles \
 	-o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
 
-    # Compute setup hash
-    hash_sum=$(sha256sum pil/zisk.pilout tmp/*.fixed \
-    | sort -k2 \
-    | sha256sum \
-    | awk '{print $1}' \
-    | awk '{print substr($0, 1, 4) substr($0, length($0)-3)}')
+    if [[ "${USE_SETUP_CACHE}" == "1" ]]; then
+        # Compute setup hash
+        hash_sum=$(sha256sum pil/zisk.pilout tmp/*.fixed \
+        | sort -k2 \
+        | sha256sum \
+        | awk '{print $1}' \
+        | awk '{print substr($0, 1, 4) substr($0, length($0)-3)}')
 
-    echo "Setup hash: ${hash_sum}"
-    
+        echo "Setup hash: ${hash_sum}"
+
+        CACHE_SETUP_DIR="${HOME}/cache-setup"
+        # Check if setup file exists in cache
+        if [[ -f "${CACHE_SETUP_DIR}/${hash_sum}.tar.gz" ]]; then
+            info "Found cached setup file: ${CACHE_SETUP_DIR}/${hash_sum}.tar.gz"
+            ensure tar -xzf "${CACHE_SETUP_DIR}/${hash_sum}.tar.gz" -C "$HOME/.zisk" || return 1
+            return 0
+        else
+            info "No cached setup file found for hash: ${hash_sum}"
+        fi
+    fi
+
     if [[ ${RECURSIVE_SETUP} == "1" ]];  then
         step  "Generate setup data (recursive)..."
         # Add flags for recursive setup command
@@ -102,6 +114,10 @@ main() {
 
     step "Generate constant tree files..."
     ensure cargo-zisk check-setup $check_setup_flags || return 1
+    
+    if [[ ${USE_SETUP_CACHE} == "1"]]; then
+        ./package_setup.sh
+    fi
 
     cd ..
 }
