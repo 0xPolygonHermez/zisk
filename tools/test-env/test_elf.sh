@@ -92,7 +92,7 @@ test_elf() {
     info "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
-    confirm_continue || return 1
+    confirm_continue || return 0
 
     export ELF_FILE="$elf_file"
     export INPUTS_PATH="$inputs_path"

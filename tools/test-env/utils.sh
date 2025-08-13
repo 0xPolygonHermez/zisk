@@ -23,8 +23,7 @@ fi
 ensure() {
     if ! "$@"; then
         echo "${RED}❌ Error: command failed -> $*${RESET}" >&2
-        read -p "Press any key to continue..." -n1 -s
-        echo
+        press_any_key
         return 1
     fi
 }
@@ -45,8 +44,7 @@ warn() {
 
 err() {
     echo "${RED}❌ Error: $1${RESET}" >&2
-    read -p "Press any key to continue..." -n1 -s
-    echo
+    press_any_key
     return 1
 }
 
@@ -60,42 +58,51 @@ tolower() {
 
 # load_env: Load environment variables from .env file, without overwriting existing ones
 load_env() {
-    # If ZISK_GHA is set to 1, skip loading .env file
-    if [[ -z "$ZISK_GHA" || "$ZISK_GHA" != "1" ]]; then
-        # Check if .env file exists
-        if [[ ! -f ".env" ]]; then
-            info "Skipping loading .env file as it does not exist"
-            return 0
+    local zisk_repo_dir=$1
+
+    # Check if .env file exists
+    if [[ ! -f ".env" ]]; then
+        info "Skipping loading .env file as it does not exist"
+        return 0
+    fi
+
+    info "📦 Loading environment variables from .env"
+
+    # We'll collect printable lines with the source of each variable
+    local -a __env_print_lines=()
+
+    # Loop through each line in the .env file
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        if [[ -z "$key" || "$key" =~ ^# ]]; then
+            continue
         fi
 
-        info "📦 Loading environment variables from .env"
+        # Try to get the value from Cargo.toml (takes precedence)
+        key_value=$(get_var_from_cargo_toml "$key") || return 1
 
-        # Loop through each line in the .env file
-        while IFS='=' read -r key value; do
-            # Skip comments and empty lines
-            if [[ -z "$key" || "$key" =~ ^# ]]; then
-                continue
-            fi
-
-            # Check if the variable is already defined
-            if [[ -z "${!key}" ]]; then
-                # If not defined, set the value from the .env file
+        if [[ -n "$key_value" ]]; then
+            # If defined in Cargo.toml, export it (overrides anything else)
+            export "$key=$key_value"
+            __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
+        elif [[ -z "${!key}" ]]; then
+            # If not already defined, set the value from the .env file if ZISK_GHA is not set
+            if [[ "$ZISK_GHA" != "1" ]]; then
                 export "$key=$value"
-            else
-                info "Variable '$key' is already defined with value '${!key}', skipping..."
+                __env_print_lines+=(" -  [.env] ${key} = ${value}")
             fi
-        done < .env
+        else
+            # Already defined in the shell: keep current value
+            __env_print_lines+=(" - [shell] ${key} = ${!key}")
+        fi
+    done < .env
 
-        echo
-        info "🔍 Environment variables:"
-        # List variables that were set
-        grep -vE '^\s*#' .env | grep -vE '^\s*$' | while IFS='=' read -r key _; do
-            echo "  - ${key} = ${!key}"
-        done
-        echo
-    else
-        info "Skipping loading .env file since ZISK_GHA is set to 1"
-    fi
+    echo
+    info "🔍 Environment variables (with source):"
+    for line in "${__env_print_lines[@]}"; do
+        echo "$line"
+    done
+    echo
 }
 
 # confirm_continue: Ask the user for confirmation to continue
@@ -209,13 +216,12 @@ get_platform() {
 
 # get_var_from_cargo_toml: Extracts a variable value from Cargo.toml
 get_var_from_cargo_toml() {
-    local zisk_repo_dir=$1
-    local var_name=$2
-    
+    local var_name=$1
+
     # Check if Cargo.toml exists
-    if [ -f "${zisk_repo_dir}/Cargo.toml" ]; then
+    if [ -f "${ZISK_REPO_DIR}/Cargo.toml" ]; then
         # Extract the value of the variable from Cargo.toml
-        local value=$(grep -oP "(?<=${var_name} = \")[^\"]+" "${zisk_repo_dir}/Cargo.toml")
+        local value=$(grep -oP "(?<=${var_name} = \")[^\"]+" "${ZISK_REPO_DIR}/Cargo.toml")
 
         # If the value is found, return it, else return empty string
         if [ -n "$value" ]; then
@@ -223,11 +229,74 @@ get_var_from_cargo_toml() {
         else
             echo
         fi
-    else
-        # If the file doesn't exist, return an error message
-        err "Cargo.toml not found at ${zisk_repo_dir}/Cargo.toml"
+    else 
+        echo    
+    fi
+}
+
+# format_duration_ms: format milliseconds to HH:MM:SS.mmm
+format_duration_ms() {
+    local ms=$1
+    local h=$(( ms / 3600000 ))
+    ms=$(( ms % 3600000 ))
+    local m=$(( ms / 60000 ))
+    ms=$(( ms % 60000 ))
+    local s=$(( ms / 1000 ))
+    local rem_ms=$(( ms % 1000 ))
+    printf "%02d:%02d:%02d.%03d" "$h" "$m" "$s" "$rem_ms"
+}
+
+# now_ns: get current time in nanoseconds (fallback to seconds*1e9 if not supported)
+now_ns() {
+    local n
+    n=$(date +%s%N 2>/dev/null)
+    if [[ -z "$n" || "$n" =~ [^0-9] ]]; then
+        n="$(date +%s)000000000"
+    fi
+    printf "%s" "$n"
+}
+
+# run_timed: execute a .sh script and measure its execution time
+# Usage: run_timed "./script.sh"
+run_timed() {
+    local script="$1"
+
+    if [[ -z "$script" ]]; then
+        err "No script provided to run_timed"
         return 1
     fi
+    if [[ ! -f "$script" ]]; then
+        err "Script not found: $script"
+        return 1
+    fi
+
+    info "▶️  Running ${script}"
+    local start_ns end_ns elapsed_ns elapsed_ms exit_code
+
+    # Record start time
+    start_ns=$(now_ns)
+
+    # Execute script
+    "$script"
+    exit_code=$?
+
+    # Record end time
+    end_ns=$(now_ns)
+    elapsed_ns=$(( end_ns - start_ns ))
+    elapsed_ms=$(( elapsed_ns / 1000000 ))
+
+    local pretty
+    pretty=$(format_duration_ms "$elapsed_ms")
+
+    # Show execution time and exit code
+    if [[ $exit_code -eq 0 ]]; then
+        info "✅ Finished ${script} in ${pretty} (exit code 0)"
+    else
+        err  "❌ ${script} exited with code ${exit_code} after ${pretty}"
+    fi
+
+    # Always return success to keep the menu running
+    return 0
 }
 
 # Sets PLATFORM based on the current system

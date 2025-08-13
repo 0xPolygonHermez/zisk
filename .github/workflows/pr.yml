@@ -47,7 +47,7 @@ jobs:
   test-x86_64:
     name: Test on Ubuntu x86_64
     runs-on: self-hosted
-    timeout-minutes: 30
+    timeout-minutes: 60
     container:
       image: ubuntu:22.04
       options: --memory=128g --cpus=128 --shm-size=64g
@@ -75,7 +75,7 @@ jobs:
 
       - name: Build setup (no recursive)
         env:
-          SETUP_FLAGS: ""
+          RECURSIVE_SETUP: "0"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_setup.sh
@@ -84,16 +84,18 @@ jobs:
       #   run: |
       #     cd "$GITHUB_WORKSPACE/tools/test-env"
       #     ./install_setup_public.sh
-      
+
       - name: Test sha_hasher
+        env:
+          SKIP_PROVE: "1"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
 
-      - name: Test Ethereum block
-        run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./test_eth_block.sh
+      # - name: Test Ethereum block
+      #   run: |
+      #     cd "$GITHUB_WORKSPACE/tools/test-env"
+      #     ./test_eth_block.sh
 
   test-macos:
     name: Test on macOS

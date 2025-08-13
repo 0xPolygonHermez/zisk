@@ -13,28 +13,14 @@ main () {
     step "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
-    confirm_continue || return 1
+    confirm_continue || return 0
 
-    # If ZISK_GHA is set to 1 we get the setup file from the Cargo.toml
-    if [[ "$ZISK_GHA" == "1" ]]; then        
-        # If ZISK_REPO_DIR is not set, use default
-        if [[ -z "${ZISK_REPO_DIR}" ]]; then
-            ZISK_REPO_DIR="${DEFAULT_ZISK_REPO_DIR}"
-        fi
-
-        # Get the setup file from the Cargo.toml
-        ZISK_SETUP_FILE=$(get_var_from_cargo_toml "${ZISK_REPO_DIR}" "gha_zisk_setup") || return 1
-
-        # If ZISK_SETUP_FILE is not set or empty, define it using version from cargo-zisk
-        if [[ -z "$ZISK_SETUP_FILE" ]]; then
-            ZISK_VERSION=$(echo "$(ensure cargo-zisk --version)" | awk '{print $2}')
-            IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
-            ZISK_SETUP_FILE="zisk-provingkey-pre-${major}.${minor}.0.tar.gz"
-        fi
-    else
-        # We build the setup file name from the SETUP_VERSION variable
-        ZISK_SETUP_FILE="zisk-provingkey-${SETUP_VERSION}.tar.gz"
-    fi   
+    # If ZISK_SETUP_FILE is not set or empty, define it using version from cargo-zisk
+    if [[ -z "$ZISK_SETUP_FILE" ]]; then
+        ZISK_VERSION=$(echo "$(ensure cargo-zisk --version)" | awk '{print $2}')
+        IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
+        ZISK_SETUP_FILE="zisk-provingkey-pre-${major}.${minor}.0.tar.gz"
+    fi
 
     info "Using setup file: ${ZISK_SETUP_FILE}"
 

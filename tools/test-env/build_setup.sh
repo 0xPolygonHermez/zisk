@@ -8,7 +8,7 @@ main() {
 
     step "Loading environment variables..."
     load_env || return 1
-    confirm_continue || return 1
+    confirm_continue || return 0
 
     mkdir -p "${WORKSPACE_DIR}"
     cd "${WORKSPACE_DIR}"
@@ -76,16 +76,24 @@ main() {
 	-I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles \
 	-o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
 
-    step  "Generate setup data..."
+    if [[ ${RECURSIVE_SETUP} == "1" ]];  then
+        step  "Generate setup data (recursive)..."
+        # Add -r flag (recursive) for setup command
+        setup_flags="-r"
+        # Add -a flag  (aggregation) for check-setup command
+        check_setup_flags=-a
+    else
+        step "Generate setup data (no recursive)..."
+    fi
     ensure node --max-old-space-size=131072 --stack-size=1500 ../pil2-proofman-js/src/main_setup.js \
         -a ./pil/zisk.pilout -b build \
-        -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed ${SETUP_FLAGS} || return 1
+        -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed ${setup_flags} || return 1
 
     step "Copy provingKey directory to \$HOME/.zisk directory..."
     ensure cp -R build/provingKey "$HOME/.zisk" || return 1
 
     step "Generate constant tree files..."
-    ensure cargo-zisk check-setup -a || return 1
+    ensure cargo-zisk check-setup $check_setup_flags || return 1
 
     cd ..
 }
