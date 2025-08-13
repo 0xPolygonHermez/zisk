@@ -8,6 +8,6 @@ repository.workspace = true
 
 [dependencies]
 serde = { workspace = true }
-config = { version = "0.15" }
+config = { workspace = true }
 chrono = { workspace = true }
 anyhow = { workspace = true }

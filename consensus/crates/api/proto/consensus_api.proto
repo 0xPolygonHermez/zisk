@@ -163,10 +163,49 @@ message CoordinatorMessage {
     Heartbeat heartbeat = 1;
     Shutdown shutdown = 2;
     ProverRegisterResponse register_response = 3;
-    ProvePhase1 prove_phase1 = 4;
-    ProvePhase2 prove_phase2 = 5;
-    JobCancelled job_cancelled = 6;
+    ExecuteTaskRequest execute_task = 4;  
+    JobCancelled job_cancelled = 5;
   }
+}
+
+message ExecuteTaskRequest {
+  string prover_id = 1;
+  string job_id = 2;
+  TaskType task_type = 3;
+
+  oneof params {
+    PartialContributionParams partial_contribution = 4;
+    ProveParams prove = 5;
+    RecursionParams recursion = 6;
+  }
+}
+
+enum TaskType {
+  PARTIAL_CONTRIBUTION = 0;
+  PROVE = 1;
+  RECURSION = 2;
+}
+
+message PartialContributionParams {
+  string block_id = 1;
+  string input_path = 2;
+  uint32 rank_id = 3;
+  uint32 total_provers = 4;
+  repeated ProverAllocation prover_allocation = 5;
+  uint32 job_compute_units = 6;
+}
+
+message ProverAllocation {
+  uint32 range_start = 1;
+  uint32 range_end = 2;
+}
+
+message ProveParams {
+  repeated RowData challenges = 1;
+}
+
+message RecursionParams {
+  repeated uint64 data = 2;
 }
 
 // Messages from prover to coordinator
@@ -175,9 +214,8 @@ message ProverMessage {
     HeartbeatAck heartbeat_ack = 1;
     ProverError error = 2;
     ProverRegisterRequest register = 3;
-    ProvePhase1Result phase1_result = 4;
-    FinalProof final_proof = 5;
-    ProverReconnectRequest reconnect = 6;
+    ProverReconnectRequest reconnect = 4;
+    ExecuteTaskResponse execute_task_response = 5;
   }
 }
 
@@ -197,19 +235,6 @@ message ProverRegisterResponse {
   google.protobuf.Timestamp registered_at = 4;
 }
 
-message ProvePhase1 {
-  string job_id = 1;
-  string block_id = 2;
-  string input_path = 3;
-  uint32 rank_id = 4;
-  uint32 total_provers = 5;
-}
-
-message ProvePhase2 {
-  string job_id = 1;
-  repeated uint64 global_challenge = 2;
-}
-
 message HeartbeatAck {
   google.protobuf.Timestamp timestamp = 1;
   string prover_id = 2;
@@ -227,37 +252,30 @@ message ProverRegisterRequest {
   ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
 }
 
+message ProverReconnectRequest {
+  string prover_id = 1;
+  ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
+  string last_known_job_id = 3;
+}
+
 message ComputeCapacity {
   uint32 compute_units = 1;
 }
 
-message ProvePhase1Result {
+message ExecuteTaskResponse {
   string job_id = 1;
   string prover_id = 2;
-  uint32 rank_id = 3;
-  repeated uint64 result_data = 4;
-  bool success = 5;
-  string error_message = 6;
+  TaskType task_type = 3;
+  bool success = 4;
+  string error_message = 5; // Optional error message if success is false
+  repeated RowData result_data = 6;
 }
 
-message FinalProof {
-  string job_id = 1;
-  string prover_id = 2;
-  uint32 rank_id = 3;
-  repeated uint64 proof_data = 4;
-  bool success = 5;
-  string error_message = 6;
+message RowData {
+  repeated uint64 values = 1;
 }
 
 message JobCancelled {
   string job_id = 1;
   string reason = 2;
-}
-
-message ProverReconnectRequest {
-  string prover_id = 1;
-  ComputeCapacity compute_capacity = 2;
-  string last_known_job_id = 3;
-  string last_known_phase = 4; // "phase1", "phase2", "completed", "none"
-  uint32 last_known_rank_id = 5;
 }

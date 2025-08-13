@@ -1,7 +1,10 @@
 use crate::{BlockId, ComputeCapacity, Error, JobId, ProverId, Result};
 use chrono::{DateTime, Utc};
-use consensus_api::{coordinator_message, prover_message, CoordinatorMessage, ProverMessage};
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use consensus_api::{
+    coordinator_message, execute_task_request, prover_message, CoordinatorMessage,
+    ExecuteTaskResponse, ProverAllocation, ProverMessage, RowData, TaskType,
+};
+use std::{collections::HashMap, ops::Range, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info, warn};
 
@@ -12,9 +15,9 @@ pub struct Job {
     pub block: BlockContext,
     pub compute_units: u32,
     pub provers: Vec<ProverId>,
-    pub partitions: Vec<Vec<u32>>,
+    pub partitions: Vec<Range<u32>>,
     pub results: HashMap<JobPhase, HashMap<ProverId, JobResult>>,
-    pub global_challenge: Option<Vec<u64>>,
+    pub challenges: Option<Vec<Vec<u64>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -29,7 +32,7 @@ pub enum JobState {
 #[derive(Debug, Clone)]
 pub struct JobResult {
     success: bool,
-    data: Vec<u64>,
+    data: Vec<RowData>,
 }
 
 #[derive(Debug, Clone)]
@@ -231,32 +234,31 @@ impl ProverManager {
     pub async fn start_proof(
         &self,
         block_id: String,
-        require_compute_capacity: ComputeCapacity,
+        required_compute_capacity: ComputeCapacity,
         input_path: String,
     ) -> Result<JobId> {
         let available_compute_capacity = self.get_available_compute_capacity().await;
 
-        if require_compute_capacity.compute_units == 0 {
+        if required_compute_capacity.compute_units == 0 {
             return Err(Error::InvalidRequest(
                 "Compute capacity must be greater than 0".to_string(),
             ));
         }
 
-        if require_compute_capacity < available_compute_capacity {
+        if required_compute_capacity > available_compute_capacity {
             return Err(Error::InvalidRequest(format!(
-                "Not enough compute capacity available: need {}, have {}",
-                require_compute_capacity, available_compute_capacity
+                "Not enough compute capacity available: need {required_compute_capacity}, have {available_compute_capacity}",
             )));
         }
 
         info!(
             "Starting proof for block {} using {} with input path: {}",
-            block_id, require_compute_capacity, input_path
+            block_id, required_compute_capacity, input_path
         );
 
         // Select only the required number of provers (not all of them)
         let (selected_provers, partitions) =
-            self.partition_and_allocate_by_capacity(require_compute_capacity.clone()).await;
+            self.partition_and_allocate_by_capacity(required_compute_capacity).await;
 
         // Create job
         let job_id = JobId::new();
@@ -268,11 +270,11 @@ impl ProverManager {
                 block_id: block_id.clone(),
                 input_path: PathBuf::from(input_path.clone()),
             },
-            compute_units: require_compute_capacity.compute_units,
+            compute_units: required_compute_capacity.compute_units,
             provers: selected_provers.clone(),
             partitions: partitions.clone(),
             results: HashMap::new(),
-            global_challenge: None,
+            challenges: None,
         };
 
         self.jobs.write().await.insert(job_id.clone(), job);
@@ -283,14 +285,27 @@ impl ProverManager {
         for (rank, prover_id) in selected_provers.iter().enumerate() {
             let prover = provers.get_mut(prover_id).unwrap();
 
+            // Convert range to ProverAllocation vector
+            let range = &partitions[rank];
+            let prover_allocation =
+                vec![ProverAllocation { range_start: range.start, range_end: range.end }];
+
             let message = CoordinatorMessage {
-                payload: Some(coordinator_message::Payload::ProvePhase1(
-                    consensus_api::ProvePhase1 {
+                payload: Some(coordinator_message::Payload::ExecuteTask(
+                    consensus_api::ExecuteTaskRequest {
+                        prover_id: prover_id.clone().into(),
                         job_id: job_id.clone().into(),
-                        block_id: block_id.clone().into(),
-                        input_path: input_path.clone(),
-                        rank_id: rank as u32,
-                        total_provers: provers_len,
+                        task_type: consensus_api::TaskType::PartialContribution as i32,
+                        params: Some(execute_task_request::Params::PartialContribution(
+                            consensus_api::PartialContributionParams {
+                                block_id: block_id.clone().into(),
+                                input_path: input_path.clone(),
+                                rank_id: rank as u32,
+                                total_provers: provers_len,
+                                prover_allocation,
+                                job_compute_units: required_compute_capacity.compute_units,
+                            },
+                        )),
                     },
                 )),
             };
@@ -338,42 +353,62 @@ impl ProverManager {
         // Handle specific message types
         if let Some(payload) = message.payload {
             match payload {
-                prover_message::Payload::Phase1Result(phase1_result) => {
-                    info!(
-                        "Phase 1 result from prover {}: {} (job: {})",
-                        prover_id, phase1_result.success, phase1_result.job_id
-                    );
+                // message ExecuteTaskResponse {
+                //   string prover_id = 2;
+                //   string job_id = 1;
+                //   TaskType task_type = 3;
+                //   bool success = 4;
+                //   string error_message = 5; // Optional error message if success is false
+                //   repeated uint64 result_data = 6; // Serialized result data
+                // }
+                prover_message::Payload::ExecuteTaskResponse(execute_task_response) => {
+                    let job_id = JobId::from(execute_task_response.job_id.clone());
 
-                    // Convert job_id string back to JobId for lookup
-                    let job_id = JobId::from(phase1_result.job_id.clone());
-
-                    // Store the Phase1 result and check if we can proceed to Phase2
-                    self.handle_phase1_result(&job_id, phase1_result).await.map_err(|e| {
-                        error!("Failed to handle Phase1 result: {}", e);
-                        e
-                    })?;
-                }
-                prover_message::Payload::FinalProof(final_proof) => {
-                    info!("Final proof from prover {}: {}", prover_id, final_proof.success);
-
-                    // Convert job_id string back to JobId for completion
-                    let job_id = JobId::from(final_proof.job_id.clone());
-
-                    if final_proof.success {
-                        // Mark job as complete and free provers
-                        self.complete_job(&job_id).await.map_err(|e| {
-                            error!("Failed to complete job {}: {}", job_id, e);
-                            e
-                        })?;
-                    } else {
-                        // Mark job as failed and free provers
+                    if !execute_task_response.success {
                         self.fail_job(&job_id, "Final proof generation failed".to_string())
                             .await
                             .map_err(|e| {
                             error!("Failed to mark job {} as failed: {}", job_id, e);
                             e
                         })?;
+
+                        return Err(Error::Service(format!(
+                            "Prover {} failed to execute task for job {}: {}",
+                            prover_id,
+                            execute_task_response.job_id,
+                            execute_task_response.error_message
+                        )));
                     }
+
+                    info!(
+                        "Execute task result success from prover {} (job_id: {})",
+                        prover_id, job_id
+                    );
+
+                    match TaskType::try_from(execute_task_response.task_type) {
+                        Ok(TaskType::PartialContribution) => {
+                            self.handle_phase1_result(execute_task_response).await.map_err(
+                                |e| {
+                                    error!("Failed to handle Phase1 result: {}", e);
+                                    e
+                                },
+                            )?;
+                        }
+                        Ok(TaskType::Prove) => {
+                            // Mark job as complete and free provers
+                            self.complete_job(&job_id).await.map_err(|e| {
+                                error!("Failed to complete job {}: {}", job_id, e);
+                                e
+                            })?;
+                        }
+                        Ok(other) => {
+                            warn!("Received TaskResult with unexpected task_type {:?} for job {} from prover {}", other, job_id, prover_id);
+                        }
+                        Err(_) => {
+                            warn!("Received TaskResult with unknown task_type (raw: {}) for job {} from prover {}", execute_task_response.task_type, job_id, prover_id);
+                        }
+                    }
+                    // Store the Phase1 result and check if we can proceed to Phase2
                 }
                 prover_message::Payload::Error(prover_error) => {
                     error!("Prover {} error: {}", prover_id, prover_error.error_message);
@@ -447,21 +482,25 @@ impl ProverManager {
     /// Handle Phase1 result and check if we can proceed to Phase2
     pub async fn handle_phase1_result(
         &self,
-        job_id: &JobId,
-        phase1_result: consensus_api::ProvePhase1Result,
+        execute_task_response: ExecuteTaskResponse,
     ) -> Result<()> {
+        let job_id = JobId::from(execute_task_response.job_id.clone());
+
         let mut jobs = self.jobs.write().await;
 
         let job = jobs
-            .get_mut(job_id)
+            .get_mut(&job_id)
             .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
-        let prover_id = ProverId::from(phase1_result.prover_id);
+        let prover_id = ProverId::from(execute_task_response.prover_id);
 
         let phase1_results = job.results.entry(JobPhase::Phase1).or_default();
         phase1_results.insert(
             prover_id.clone(),
-            JobResult { success: phase1_result.success, data: phase1_result.result_data },
+            JobResult {
+                success: execute_task_response.success,
+                data: execute_task_response.result_data,
+            },
         );
 
         info!("Stored Phase1 result for prover {prover_id} in job {job_id}.");
@@ -474,9 +513,11 @@ impl ProverManager {
         let all_successful = phase1_results.values().all(|result| result.success);
 
         if all_successful {
-            // Generate global challenge for Phase2 (this would typically be derived from Phase1 results)
-            let global_challenge = self.generate_global_challenge(job_id).await?;
-            job.global_challenge = Some(global_challenge.clone());
+            let mut challenges = Vec::new();
+            for results in phase1_results.values() {
+                challenges.push(results.data[0].values.clone());
+            }
+            job.challenges = Some(challenges.clone());
             job.state = JobState::Running(JobPhase::Phase2);
 
             // Get the assigned provers and release the jobs lock
@@ -485,7 +526,7 @@ impl ProverManager {
             drop(jobs); // Release jobs lock early
 
             // Start Phase2 for all provers
-            if let Err(e) = self.start_phase2(&job_id, &assigned_provers, global_challenge).await {
+            if let Err(e) = self.start_phase2(&job_id, &assigned_provers, challenges).await {
                 error!("Failed to start Phase2 for job {}: {}", job_id, e);
                 self.fail_job(&job_id, format!("Failed to start Phase2: {e}")).await.map_err(
                     |e| {
@@ -530,7 +571,7 @@ impl ProverManager {
         &self,
         job_id: &JobId,
         assigned_provers: &[ProverId],
-        global_challenge: Vec<u64>,
+        challenges: Vec<Vec<u64>>,
     ) -> Result<()> {
         // Update prover statuses and send Phase2 messages
         let mut provers = self.provers.write().await;
@@ -540,12 +581,18 @@ impl ProverManager {
                 if prover.state == ProverState::Computing(JobPhase::Phase1) {
                     prover.state = ProverState::Computing(JobPhase::Phase2);
 
-                    // Create the Phase2 message
+                    // Create the Phase2 message (use TaskType::Proof)
                     let message = CoordinatorMessage {
-                        payload: Some(coordinator_message::Payload::ProvePhase2(
-                            consensus_api::ProvePhase2 {
-                                job_id: job_id.as_string(),
-                                global_challenge: global_challenge.clone(),
+                        payload: Some(coordinator_message::Payload::ExecuteTask(
+                            consensus_api::ExecuteTaskRequest {
+                                prover_id: prover_id.clone().into(),
+                                job_id: job_id.clone().into(),
+                                task_type: consensus_api::TaskType::Prove as i32,
+                                params: Some(execute_task_request::Params::Prove(
+                                    consensus_api::ProveParams {
+                                        challenges: vec![RowData { values: challenges[0].clone() }],
+                                    },
+                                )),
                             },
                         )),
                     };
@@ -593,24 +640,10 @@ impl ProverManager {
         Ok(())
     }
 
-    /// Generate global challenge for Phase2 (placeholder implementation)
-    async fn generate_global_challenge(&self, job_id: &JobId) -> Result<Vec<u64>> {
-        // TODO: Implement actual global challenge generation based on Phase1 results
-        // For now, return a simple challenge
-        info!("Generating global challenge for job {}", job_id);
-
-        // In a real implementation, this would:
-        // 1. Collect all Phase1 results for the job
-        // 2. Compute a global challenge based on the results
-        // 3. Return the challenge data
-
-        Ok(vec![42, 1337, 12345]) // Placeholder challenge
-    }
-
     async fn partition_and_allocate_by_capacity(
         &self,
-        require_compute_capacity: ComputeCapacity,
-    ) -> (Vec<ProverId>, Vec<Vec<u32>>) {
+        required_compute_capacity: ComputeCapacity,
+    ) -> (Vec<ProverId>, Vec<Range<u32>>) {
         let mut selected_provers = Vec::new();
         let mut partitions = Vec::new();
         let mut accumulated = 0;
@@ -618,16 +651,19 @@ impl ProverManager {
         for (prover_id, prover_connection) in self.provers.write().await.iter() {
             selected_provers.push(prover_id.clone());
 
-            // Compute new partition with its current prover allocation
-            let prover_allocation: Vec<u32> = (accumulated
-                ..accumulated + prover_connection.compute_capacity.compute_units)
-                .collect();
+            // Compute new partition as a range
+            let range_start = accumulated;
+            let remaining_needed = required_compute_capacity.compute_units - accumulated;
+            let prover_allocation =
+                std::cmp::min(remaining_needed, prover_connection.compute_capacity.compute_units);
+            let range_end = accumulated + prover_allocation;
+            let prover_range = range_start..range_end;
 
-            partitions.push(prover_allocation);
+            partitions.push(prover_range);
 
-            accumulated += prover_connection.compute_capacity.compute_units;
+            accumulated += prover_allocation;
 
-            if accumulated >= require_compute_capacity.compute_units {
+            if accumulated >= required_compute_capacity.compute_units {
                 break;
             }
         }
