@@ -9,11 +9,9 @@ use std::any::Any;
 use crate::BinaryCounter;
 use proofman_common::PreCalculate;
 use zisk_common::{
-    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner,
+    plan, BusDeviceMetrics, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner,
 };
-use zisk_pil::{
-    BinaryAddTrace, BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace,
-};
+use zisk_pil::{BinaryAddTrace, BinaryExtensionTrace, BinaryTrace};
 
 /// The `BinaryPlanner` struct organizes execution plans for binaries instances and tables.
 ///
@@ -50,7 +48,7 @@ impl BinaryPlanner {
 
         let extension_num_rows = BinaryExtensionTrace::<usize>::NUM_ROWS;
 
-        let mut plans: Vec<_> = plan(&extension_counters, extension_num_rows as u64)
+        let plans: Vec<_> = plan(&extension_counters, extension_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new(collect_info);
@@ -66,17 +64,6 @@ impl BinaryPlanner {
             })
             .collect();
 
-        if !plans.is_empty() {
-            plans.push(Plan::new(
-                BinaryExtensionTableTrace::<usize>::AIRGROUP_ID,
-                BinaryExtensionTableTrace::<usize>::AIR_ID,
-                None,
-                InstanceType::Table,
-                CheckPoint::None,
-                PreCalculate::None,
-                None,
-            ));
-        }
         plans
     }
     fn plan_for_basics(
@@ -97,7 +84,7 @@ impl BinaryPlanner {
 
         let basic_num_rows = BinaryTrace::<usize>::NUM_ROWS;
 
-        let mut plans: Vec<_> = plan(&basic_counters, basic_num_rows as u64)
+        let plans: Vec<_> = plan(&basic_counters, basic_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new((with_adds, collect_info));
@@ -113,17 +100,6 @@ impl BinaryPlanner {
             })
             .collect();
 
-        if !plans.is_empty() {
-            plans.push(Plan::new(
-                BinaryTableTrace::<usize>::AIRGROUP_ID,
-                BinaryTableTrace::<usize>::AIR_ID,
-                None,
-                InstanceType::Table,
-                CheckPoint::None,
-                PreCalculate::None,
-                None,
-            ));
-        }
         plans
     }
 

@@ -19,9 +19,9 @@ use zisk_pil::BinaryTrace;
 ///
 /// It encapsulates the `BinaryBasicSM` and its associated context, and it processes input data
 /// to compute witnesses for binary operations.
-pub struct BinaryBasicInstance {
+pub struct BinaryBasicInstance<F: PrimeField64> {
     /// Binary Basic state machine.
-    binary_basic_sm: Arc<BinaryBasicSM>,
+    binary_basic_sm: Arc<BinaryBasicSM<F>>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -33,7 +33,7 @@ pub struct BinaryBasicInstance {
     collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
 }
 
-impl BinaryBasicInstance {
+impl<F: PrimeField64> BinaryBasicInstance<F> {
     /// Creates a new `BinaryBasicInstance`.
     ///
     /// # Arguments
@@ -43,7 +43,7 @@ impl BinaryBasicInstance {
     /// # Returns
     /// A new `BinaryBasicInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, mut ictx: InstanceCtx) -> Self {
+    pub fn new(binary_basic_sm: Arc<BinaryBasicSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
             BinaryTrace::<usize>::AIR_ID,
@@ -61,7 +61,7 @@ impl BinaryBasicInstance {
     }
 }
 
-impl<F: PrimeField64> Instance<F> for BinaryBasicInstance {
+impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
     /// Computes the witness for the binary execution plan.
     ///
     /// This method leverages the `BinaryBasicSM` to generate an `AirInstance` using the collected

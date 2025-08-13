@@ -329,11 +329,11 @@ impl MainSM {
         step_range_check: Vec<u32>,
         large_range_checks: &[u32],
     ) {
-        let range_id = std.get_range(0, MEM_REGS_MAX_DIFF as i64, None);
-        std.range_checks(step_range_check, range_id);
+        let range_id = std.get_range_id(0, MEM_REGS_MAX_DIFF as i64, None);
+        std.range_checks(range_id, step_range_check);
 
         for range in large_range_checks {
-            std.range_check(*range as i64, 1, range_id);
+            std.range_check(range_id, *range as i64, 1);
         }
     }
 
