@@ -47,7 +47,7 @@ use std::collections::HashMap;
 use fields::PrimeField64;
 use zisk_pil::MainTraceRow;
 
-use crate::{ZiskInst, ZiskInstBuilder, ROM_ADDR, ROM_ENTRY};
+use crate::{ZiskInst, ZiskInstBuilder, ROM_ENTRY};
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
@@ -114,6 +114,10 @@ pub struct ZiskRom {
     /// List of instruction program counter (address) in incremental order:
     /// 0x1000, 0x1004, ..., 0x80000000, 0x80000004, ...
     pub sorted_pc_list: Vec<u64>,
+
+    /// Minimum rom instruction PC (first program instruction address)
+    /// This is typically 0x80000000 but can be different (e.g., 0x80001000 with Go's internal linker)
+    pub min_program_pc: u64,
 }
 
 /// ZisK ROM implementation
@@ -124,11 +128,11 @@ impl ZiskRom {
     #[inline(always)]
     pub fn get_instruction(&self, pc: u64) -> &ZiskInst {
         // If the address is a program address...
-        if pc >= ROM_ADDR {
+        if pc >= self.min_program_pc {
             // If the address is alligned, take it from the proper vector
             if pc & 0b11 == 0 {
                 // pc is aligned to a 4-byte boundary
-                let rom_index = ((pc - ROM_ADDR) >> 2) as usize;
+                let rom_index = ((pc - self.min_program_pc) >> 2) as usize;
                 if rom_index >= self.rom_instructions.len() {
                     panic!(
                         "ZiskRom::get_instruction() pc=0x{0:X} ({0}) is out of range rom_instructions (rom_index:{1:} >= {2:})",
@@ -167,11 +171,11 @@ impl ZiskRom {
     #[inline(always)]
     pub fn get_mut_instruction(&mut self, pc: u64) -> &mut ZiskInst {
         // If the address is a program address...
-        if pc >= ROM_ADDR {
+        if pc >= self.min_program_pc {
             // If the address is alligned, take it from the proper vector
             if pc & 0b11 == 0 {
                 // pc is aligned to a 4-byte boundary
-                let rom_index = ((pc - ROM_ADDR) >> 2) as usize;
+                let rom_index = ((pc - self.min_program_pc) >> 2) as usize;
                 if rom_index >= self.rom_instructions.len() {
                     panic!(
                         "ZiskRom::get_mut_instruction() pc=0x{0:X} ({0}) is out of range rom_instructions (rom_index:{1:} >= {2:})",
