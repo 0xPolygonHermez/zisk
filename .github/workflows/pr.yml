@@ -50,7 +50,9 @@ jobs:
     timeout-minutes: 60
     container:
       image: ubuntu:22.04
-      options: --shm-size=32g
+      options:
+        --shm-size=32g
+        -v /cache-setup:/cache-setup:rw
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
@@ -65,6 +67,8 @@ jobs:
 
       - name: Install dependencies
         run: |
+          ls -la /cache-setup
+          echo "cache" > /cache-setup/probe.txt
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_deps.sh
 

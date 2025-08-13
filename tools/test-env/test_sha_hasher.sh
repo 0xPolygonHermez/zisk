@@ -9,7 +9,7 @@ main() {
     current_dir=$(pwd)
 
     current_step=1
-    if [[ ${SKIP_PROVE} == 1 ]]; then
+    if [[ "${SKIP_PROVE}" == "1" ]]; then
         total_steps=8
     else
         total_steps=10

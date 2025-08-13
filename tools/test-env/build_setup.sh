@@ -66,28 +66,36 @@ main() {
     step  "Preparing environment for setup..."
     echo "vm.max_map_count=655300" >> /etc/sysctl.conf
     sysctl -w vm.max_map_count=655300
-    export NODE_OPTIONS="--max-old-space-size=230000"
 
     step  "Generate fixed data..."
     ensure cargo run --release --bin keccakf_fixed_gen || return 1
 
     step  "Compiling ZisK PIL..."
-    ensure node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil \
+    ensure node ../pil2-compiler/src/pil.js pil/zisk.pil \
 	-I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles \
 	-o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
 
+    # Compute setup hash
+    hash_sum=$(sha256sum pil/zisk.pilout tmp/*.fixed \
+    | sort -k2 \
+    | sha256sum \
+    | awk '{print $1}' \
+    | awk '{print substr($0, 1, 4) substr($0, length($0)-3)}')
+
+    echo "Setup hash: ${hash_sum}"
+    
     if [[ ${RECURSIVE_SETUP} == "1" ]];  then
         step  "Generate setup data (recursive)..."
-        # Add -r flag (recursive) for setup command
-        setup_flags="-r"
+        # Add flags for recursive setup command
+        setup_flags="-t ../pil2-proofman/pil2-components/lib/std/pil -r"
         # Add -a flag  (aggregation) for check-setup command
         check_setup_flags=-a
     else
         step "Generate setup data (no recursive)..."
     fi
-    ensure node --max-old-space-size=131072 --stack-size=1500 ../pil2-proofman-js/src/main_setup.js \
+    ensure node ../pil2-proofman-js/src/main_setup.js \
         -a ./pil/zisk.pilout -b build \
-        -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed ${setup_flags} || return 1
+        -u tmp/fixed ${setup_flags} || return 1
 
     step "Copy provingKey directory to \$HOME/.zisk directory..."
     ensure cp -R build/provingKey "$HOME/.zisk" || return 1
