@@ -77,7 +77,7 @@ main() {
             fi
         fi
 
-        if [[ ${SKIP_PROVE} != 1]]; then
+        if [[ "${SKIP_PROVE}" != "1" ]]; then
             step "Generating proof..."
             MPI_CMD=""
             # If ZISK_GHA is set, use mpirun command for distributed proving to prove it faster and reduce GHA time
