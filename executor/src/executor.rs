@@ -474,9 +474,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
     fn run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>) -> MinimalTraces {
         // Call emulate with these options
-        let input_data = if input_data_path.is_some() {
+        let input_data = if let Some(input_path) = &input_data_path {
             // Read inputs data from the provided inputs path
-            let path = PathBuf::from(input_data_path.as_ref().unwrap().display().to_string());
+            let path = PathBuf::from(input_path.display().to_string());
             fs::read(path).expect("Could not read inputs file")
         } else {
             Vec::new()

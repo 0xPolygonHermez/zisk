@@ -36,6 +36,7 @@ const ALLOWED_WIDTHS: [u8; 4] = [1, 2, 4, 8];
 const DEFAULT_OFFSET: u64 = 0;
 const DEFAULT_WIDTH: u64 = 8;
 
+#[allow(dead_code)]
 pub struct MemAlignResponse {
     pub more_addr: bool,
     pub step: u64,
