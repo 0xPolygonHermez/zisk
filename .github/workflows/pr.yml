@@ -50,7 +50,7 @@ jobs:
     timeout-minutes: 60
     container:
       image: ubuntu:22.04
-      options: --memory=128g --cpus=128 --shm-size=64g
+      options: --shm-size=32g
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}

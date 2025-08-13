@@ -217,21 +217,26 @@ get_platform() {
 # get_var_from_cargo_toml: Extracts a variable value from Cargo.toml
 get_var_from_cargo_toml() {
     local var_name=$1
+    local file="${ZISK_REPO_DIR}/Cargo.toml"
 
-    # Check if Cargo.toml exists
-    if [ -f "${ZISK_REPO_DIR}/Cargo.toml" ]; then
-        # Extract the value of the variable from Cargo.toml
-        local value=$(grep -oP "(?<=${var_name} = \")[^\"]+" "${ZISK_REPO_DIR}/Cargo.toml")
+    # Guard clauses
+    [[ -f "$file" && -n "$var_name" ]] || { echo; return; }
 
-        # If the value is found, return it, else return empty string
-        if [ -n "$value" ]; then
-            echo "$value"
-        else
-            echo
-        fi
-    else 
-        echo    
+    # Escape regex specials in var_name for sed
+    local escaped_var
+    escaped_var=$(printf '%s' "$var_name" | sed 's/[.[\*^$+?{}|()\\]/\\&/g')
+
+    # Try double-quoted value first
+    local value
+    value=$(LC_ALL=C sed -nE "s/^[[:space:]]*${escaped_var}[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$file" | head -n1)
+
+    # If not found, try single-quoted value
+    if [[ -z "$value" ]]; then
+        value=$(LC_ALL=C sed -nE "s/^[[:space:]]*${escaped_var}[[:space:]]*=[[:space:]]*'([^']*)'.*/\1/p" "$file" | head -n1)
     fi
+
+    # Print value or empty string
+    echo "$value"
 }
 
 # format_duration_ms: format milliseconds to HH:MM:SS.mmm
