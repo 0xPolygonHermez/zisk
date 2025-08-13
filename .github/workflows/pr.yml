@@ -90,7 +90,6 @@ jobs:
       #     ./install_setup_public.sh
 
       - name: Test sha_hasher
-        env:
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
