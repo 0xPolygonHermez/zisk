@@ -24,9 +24,9 @@ use zisk_pil::ArithTrace;
 ///
 /// It encapsulates the `ArithFullSM` and its associated context, and it processes input data
 /// to compute the witnesses for the arithmetic operations.
-pub struct ArithFullInstance {
+pub struct ArithFullInstance<F: PrimeField64> {
     /// Reference to the Arithmetic Full State Machine.
-    arith_full_sm: Arc<ArithFullSM>,
+    arith_full_sm: Arc<ArithFullSM<F>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
     collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
@@ -35,7 +35,7 @@ pub struct ArithFullInstance {
     ictx: InstanceCtx,
 }
 
-impl ArithFullInstance {
+impl<F: PrimeField64> ArithFullInstance<F> {
     /// Creates a new `ArithFullInstance`.
     ///
     /// # Arguments
@@ -44,7 +44,7 @@ impl ArithFullInstance {
     ///
     /// # Returns
     /// A new `ArithFullInstance` instance initialized with the provided state machine and context.
-    pub fn new(arith_full_sm: Arc<ArithFullSM>, mut ictx: InstanceCtx) -> Self {
+    pub fn new(arith_full_sm: Arc<ArithFullSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
             ArithTrace::<usize>::AIR_ID,
@@ -62,7 +62,7 @@ impl ArithFullInstance {
     }
 }
 
-impl<F: PrimeField64> Instance<F> for ArithFullInstance {
+impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
     /// Computes the witness for the arithmetic execution plan.
     ///
     /// This method leverages the `ArithFullSM` to generate an `AirInstance` using the collected

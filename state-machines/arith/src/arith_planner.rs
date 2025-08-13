@@ -46,18 +46,6 @@ impl ArithPlanner {
         self.instances_info.push(instance_info);
         self
     }
-
-    /// Adds an arithmetic table instance to the planner.
-    ///
-    /// # Arguments
-    /// * `table_info` - The `TableInfo` describing the arithmetic table instance to be added.
-    ///
-    /// # Returns
-    /// The updated `ArithPlanner` instance.
-    pub fn add_table_instance(mut self, table_info: TableInfo) -> Self {
-        self.tables_info.push(table_info);
-        self
-    }
 }
 
 impl Planner for ArithPlanner {
