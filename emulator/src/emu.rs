@@ -1528,6 +1528,7 @@ impl<'a> Emu<'a> {
     ) {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs.clone());
+        self.ctx.stats.set_store_ops(options.store_op_output.is_some());
 
         // Check that callback is provided if chunk size is specified
         if options.chunk_size.is_some() {
@@ -1658,6 +1659,9 @@ impl<'a> Emu<'a> {
         if options.stats {
             let report = self.ctx.stats.report();
             println!("{report}");
+            if let Some(store_op_output_file) = &options.store_op_output {
+                self.ctx.stats.flush_op_data_to_file(store_op_output_file).unwrap();
+            }
         }
     }
 

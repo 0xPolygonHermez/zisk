@@ -7,13 +7,14 @@
 use crate::ArithFullSM;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use sm_frequent_ops::FrequentOpsTable;
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
 };
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
@@ -168,6 +169,10 @@ impl BusDevice<u64> for ArithInstanceCollector {
 
         if self.inputs.len() == self.num_operations as usize {
             return false;
+        }
+
+        if FrequentOpsTable::is_frequent_op(data[OP] as u8, data[A], data[B]) {
+            return true;
         }
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Arith as u32 {

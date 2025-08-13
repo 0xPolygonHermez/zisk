@@ -4,6 +4,7 @@ require "main/pil/main.pil"
 require "mem/pil/mem.pil"
 require "mem/pil/mem_align.pil"
 require "mem/pil/mem_align_rom.pil"
+require "frequent-ops/pil/frequent_ops.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
@@ -40,6 +41,8 @@ airgroup Zisk {
 
     MemAlign(N: 2**22, use_predefined_ranges: 0);
     virtual MemAlignRom();
+
+    FrequentOps(operation_bus_id: OPERATION_BUS_ID);
 
     Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
     virtual ArithTable();

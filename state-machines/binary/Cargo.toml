@@ -11,6 +11,7 @@ categories = { workspace = true }
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
+sm-frequent-ops = { workspace = true }
 
 fields = { workspace=true }
 proofman = { workspace = true }

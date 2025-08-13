@@ -5,8 +5,10 @@
 use std::collections::VecDeque;
 
 use crate::BinaryInput;
+use sm_frequent_ops::FrequentOpsTable;
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
+    OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 
@@ -45,6 +47,10 @@ impl BusDevice<u64> for BinaryExtensionCollector {
 
         if self.inputs.len() >= self.num_operations {
             return false;
+        }
+
+        if FrequentOpsTable::is_frequent_op(data[OP] as u8, data[A], data[B]) {
+            return true;
         }
 
         let data: ExtOperationData<u64> =
