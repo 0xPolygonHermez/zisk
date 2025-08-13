@@ -57,8 +57,8 @@ jobs:
       BLOCK_INPUTS_DISTRIBUTED: "21429020_5_0.bin"
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
-      PROVE_FLAGS: "-a -y"      
-      TERM: xterm  
+      PROVE_FLAGS: "-a -y"
+      TERM: xterm
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -73,11 +73,18 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
 
-      - name: Install setup
+      - name: Build setup (no recursive)
+        env:
+          SETUP_FLAGS: ""
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./install_setup_public.sh
-  
+          ./build_setup.sh
+
+      # - name: Install setup
+      #   run: |
+      #     cd "$GITHUB_WORKSPACE/tools/test-env"
+      #     ./install_setup_public.sh
+      
       - name: Test sha_hasher
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
