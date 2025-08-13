@@ -36,12 +36,6 @@ const ALLOWED_WIDTHS: [u8; 4] = [1, 2, 4, 8];
 const DEFAULT_OFFSET: u64 = 0;
 const DEFAULT_WIDTH: u64 = 8;
 
-#[allow(dead_code)]
-pub struct MemAlignResponse {
-    pub more_addr: bool,
-    pub step: u64,
-    pub value: Option<u64>,
-}
 pub struct MemAlignSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,

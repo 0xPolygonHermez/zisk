@@ -4,7 +4,7 @@ set -e
 
 source ./utils.sh
 
-IMAGE_NAME="zisk-release-kit"
+IMAGE_NAME="zisk-test-env"
 CONTAINER_NAME="zisk-docker"
 OUTPUT_DIR="./output"
 
