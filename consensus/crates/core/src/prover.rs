@@ -42,7 +42,7 @@ impl std::fmt::Display for ProverId {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ComputeCapacity {
     pub compute_units: u32,
 }
@@ -51,6 +51,12 @@ pub struct ComputeCapacity {
 impl From<consensus_api::ComputeCapacity> for ComputeCapacity {
     fn from(proto_caps: consensus_api::ComputeCapacity) -> Self {
         Self { compute_units: proto_caps.compute_units }
+    }
+}
+
+impl From<ComputeCapacity> for consensus_api::ComputeCapacity {
+    fn from(val: ComputeCapacity) -> Self {
+        consensus_api::ComputeCapacity { compute_units: val.compute_units }
     }
 }
 

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use consensus_api::{consensus_api_client::ConsensusApiClient, StartProofRequest};
 use tonic::transport::Channel;
-use tracing::info;
+use tracing::{error, info};
 
 /// Handle the prove-block subcommand - makes RPC request to coordinator
 pub async fn handle(server_url: String, input_path: String, compute_capacity: u32) -> Result<()> {
@@ -29,7 +29,7 @@ pub async fn handle(server_url: String, input_path: String, compute_capacity: u3
             info!("Proof job started successfully with job_id: {}", job_id);
         }
         Some(consensus_api::start_proof_response::Result::Error(error)) => {
-            info!("Proof job failed: {} - {}", error.code, error.message);
+            error!("Proof job failed: {} - {}", error.code, error.message);
         }
         None => {
             info!("Received empty response from coordinator");

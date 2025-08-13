@@ -280,8 +280,7 @@ impl ZiskService {
         )
         .expect("Failed to initialize witness library");
 
-        let proofman;
-        proofman = ProofMan::<Goldilocks>::new(
+        let proofman = ProofMan::<Goldilocks>::new(
             config.proving_key.clone(),
             config.custom_commits_map.clone(),
             config.verify_constraints,
