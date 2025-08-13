@@ -94,11 +94,11 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
         let binary_sm = BinarySM::new(std.clone());
-        let arith_sm = ArithSM::new();
+        let arith_sm = ArithSM::new(std.clone());
         let mem_sm = Mem::new(std.clone());
         let frops_sm = FrequentOpsSM::new(std.clone());
         // Step 4: Initialize the precompiles state machines
-        let keccakf_sm = KeccakfManager::new(wcm.get_sctx());
+        let keccakf_sm = KeccakfManager::new(wcm.get_sctx(), std.clone());
         let sha256f_sm = Sha256fManager::new(std.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 

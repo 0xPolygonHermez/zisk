@@ -39,7 +39,7 @@ pub struct StaticSMBundle<F: PrimeField64> {
     mem_sm: Arc<Mem<F>>,
     rom_sm: Arc<RomSM>,
     binary_sm: Arc<BinarySM<F>>,
-    arith_sm: Arc<ArithSM>,
+    arith_sm: Arc<ArithSM<F>>,
     keccakf_sm: Arc<KeccakfManager<F>>,
     sha256f_sm: Arc<Sha256fManager<F>>,
     arith_eq_sm: Arc<ArithEqManager<F>>,
@@ -53,7 +53,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         mem_sm: Arc<Mem<F>>,
         rom_sm: Arc<RomSM>,
         binary_sm: Arc<BinarySM<F>>,
-        arith_sm: Arc<ArithSM>,
+        arith_sm: Arc<ArithSM<F>>,
         keccakf_sm: Arc<KeccakfManager<F>>,
         sha256f_sm: Arc<Sha256fManager<F>>,
         arith_eq_sm: Arc<ArithEqManager<F>>,
@@ -84,7 +84,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
             self.mem_sm.build_planner().plan(it.next().unwrap()),
             <RomSM as ComponentBuilder<F>>::build_planner(&*self.rom_sm).plan(it.next().unwrap()),
             self.binary_sm.build_planner().plan(it.next().unwrap()),
-            <ArithSM as ComponentBuilder<F>>::build_planner(&*self.arith_sm)
+            <ArithSM<F> as ComponentBuilder<F>>::build_planner(&*self.arith_sm)
                 .plan(it.next().unwrap()),
             self.keccakf_sm.build_planner().plan(it.next().unwrap()),
             self.sha256f_sm.build_planner().plan(it.next().unwrap()),
@@ -182,7 +182,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                     add_generator!(mem_sm, Mem<F>);
                     add_generator!(rom_sm, RomSM);
                     add_generator!(binary_sm, BinarySM<F>);
-                    add_generator!(arith_sm, ArithSM);
+                    add_generator!(arith_sm, ArithSM<F>);
                     add_generator!(keccakf_sm, KeccakfManager<F>);
                     add_generator!(sha256f_sm, Sha256fManager<F>);
                     add_generator!(arith_eq_sm, ArithEqManager<F>);

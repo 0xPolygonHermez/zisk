@@ -4,6 +4,7 @@
 /build
 /proofs*
 *.pilout
+*.fixed
 /tmp
 *.log
 /emulator-asm/build*

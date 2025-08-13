@@ -10,6 +10,7 @@ use crate::{
     ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
@@ -24,28 +25,33 @@ const EXTENSION: u64 = 0xFFFFFFFF;
 ///
 /// This state machine coordinates the computation of arithmetic operations and updates
 /// the `ArithTableSM` and `ArithRangeTableSM` components based on operation traces.
-pub struct ArithFullSM {
-    /// The Arithmetic Table State Machine.
-    arith_table_sm: Arc<ArithTableSM>,
+pub struct ArithFullSM<F: PrimeField64> {
+    /// Reference to the PIL2 standard library.
+    std: Arc<Std<F>>,
 
-    /// The Arithmetic Range Table State Machine.
-    arith_range_table_sm: Arc<ArithRangeTableSM>,
+    /// The table ID for the Arithmetic Table State Machine
+    arith_table_id: usize,
+
+    /// The table ID for the Arithmetic Range Table State Machine
+    arith_range_table_id: usize,
 }
 
-impl ArithFullSM {
+impl<F: PrimeField64> ArithFullSM<F> {
     /// Creates a new `ArithFullSM` instance.
     ///
     /// # Arguments
-    /// * `arith_table_sm` - A reference to the `ArithTableSM`.
-    /// * `arith_range_table_sm` - A reference to the `ArithRangeTableSM`.
+    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithFullSM`.
-    pub fn new(
-        arith_table_sm: Arc<ArithTableSM>,
-        arith_range_table_sm: Arc<ArithRangeTableSM>,
-    ) -> Arc<Self> {
-        Arc::new(Self { arith_table_sm, arith_range_table_sm })
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        // Get the Arithmetic table ID
+        let arith_table_id = std.get_virtual_table_id(ArithTableSM::TABLE_ID);
+
+        // Get the Arithmetic Range table ID
+        let arith_range_table_id = std.get_virtual_table_id(ArithRangeTableSM::TABLE_ID);
+
+        Arc::new(Self { std, arith_table_id, arith_range_table_id })
     }
 
     /// Computes the witness for arithmetic operations and updates associated tables.
@@ -55,7 +61,7 @@ impl ArithFullSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed arithmetic trace.
-    pub fn compute_witness<F: PrimeField64>(
+    pub fn compute_witness(
         &self,
         inputs: &[Vec<OperationData<u64>>],
         trace_buffer: Vec<F>,
@@ -92,8 +98,13 @@ impl ArithFullSM {
                     *trace_row = Self::process_slice(&mut range_table, &mut table, &mut aop, input);
                 });
 
-                self.arith_table_sm.process_slice(&table);
-                self.arith_range_table_sm.process_slice(&range_table);
+                for (row, multiplicity) in &table {
+                    self.std.inc_virtual_row(self.arith_table_id, row as u64, multiplicity);
+                }
+
+                for (row, multiplicity) in &range_table {
+                    self.std.inc_virtual_row(self.arith_range_table_id, row as u64, multiplicity);
+                }
             },
         );
 
@@ -128,8 +139,15 @@ impl ArithFullSM {
             );
         }
 
-        self.arith_table_sm.process_slice(&table_inputs);
-        self.arith_range_table_sm.process_slice(&range_table_inputs);
+        // TODO: We should compare against cache-then-increase version instead of increase each time...
+
+        for (row, multiplicity) in &table_inputs {
+            self.std.inc_virtual_row(self.arith_table_id, row as u64, multiplicity);
+        }
+
+        for (row, multiplicity) in &range_table_inputs {
+            self.std.inc_virtual_row(self.arith_range_table_id, row as u64, multiplicity);
+        }
 
         AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
     }
@@ -184,7 +202,7 @@ impl ArithFullSM {
         }
     }
 
-    fn process_slice<F: PrimeField64>(
+    fn process_slice(
         range_table_inputs: &mut ArithRangeTableInputs,
         table_inputs: &mut ArithTableInputs,
         aop: &mut ArithOperation,

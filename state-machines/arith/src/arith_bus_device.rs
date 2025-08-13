@@ -6,6 +6,7 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
+use fields::Goldilocks;
 use sm_frequent_ops::FrequentOpsTable;
 use std::collections::VecDeque;
 use zisk_common::{
@@ -113,7 +114,7 @@ impl BusDevice<u64> for ArithCounterInputGen {
             self.measure(data);
         }
 
-        let bin_inputs = ArithFullSM::generate_inputs(data);
+        let bin_inputs = ArithFullSM::<Goldilocks>::generate_inputs(data);
 
         pending.extend(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)));
 
