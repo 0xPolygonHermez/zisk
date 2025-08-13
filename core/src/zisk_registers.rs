@@ -5,6 +5,10 @@
 //! The 32 8-bytes RISC-V registers are mapped to RW memory starting at address SYS_ADDR.
 //! They occupy 32x8=256 bytes of memory space.
 //!
+//! References:
+//!     - https://riscv-non-isa.github.io/riscv-elf-psabi-doc/#_register_convention
+//!     - https://github.com/riscv-non-isa/riscv-elf-psabi-doc
+//!
 //! | ABI name | X name  | Usage                                     |
 //! |----------|---------|-------------------------------------------|
 //! | REG_ZERO | REG_X0  | Read always as zero                       |
