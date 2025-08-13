@@ -66,7 +66,7 @@ main() {
         if [[ "${BUILD_GPU}" == "1" ]]; then
             warn "Skipping verify constraints step for GPU mode (not supported yet)"
         else    
-            ensure cargo-zisk verify-constraints -e "$ELF_PATH" -i "$INPUT_BIN" 2>&1 | tee constraints_output.log || return 1
+            ensure cargo-zisk verify-constraints "$ELF_PATH" -i "$INPUT_BIN" 2>&1 | tee constraints_output.log || return 1
             if ! grep -F "All global constraints were successfully verified" constraints_output.log; then
                 err "verify constraints failed"
                 return 1

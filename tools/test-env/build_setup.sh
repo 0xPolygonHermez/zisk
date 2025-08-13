@@ -68,17 +68,18 @@ main() {
     sysctl -w vm.max_map_count=655300
     export NODE_OPTIONS="--max-old-space-size=230000"
 
-    step  "Compiling ZisK PIL..."
-    ensure node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil \
-        -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout || return 1
-
     step  "Generate fixed data..."
     ensure cargo run --release --bin keccakf_fixed_gen || return 1
+
+    step  "Compiling ZisK PIL..."
+    ensure node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil \
+	-I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles \
+	-o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
 
     step  "Generate setup data..."
     ensure node --max-old-space-size=131072 --stack-size=1500 ../pil2-proofman-js/src/main_setup.js \
         -a ./pil/zisk.pilout -b build \
-        -i precompiles/keccakf/src/keccakf_fixed.bin -r || return 1
+        -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed ${SETUP_FLAGS} || return 1
 
     step "Copy provingKey directory to \$HOME/.zisk directory..."
     ensure cp -R build/provingKey "$HOME/.zisk" || return 1
