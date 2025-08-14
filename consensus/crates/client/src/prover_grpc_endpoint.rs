@@ -22,8 +22,8 @@ pub enum ComputationResult {
 }
 
 pub struct ProverGrpcEndpoint {
-    config: ProverGrpcEndpointConfig,
-    client: ProverService,
+    config_endpoint: ProverGrpcEndpointConfig,
+    prover_service: ProverService,
 }
 
 impl ProverGrpcEndpoint {
@@ -32,40 +32,40 @@ impl ProverGrpcEndpoint {
         config_service: ProverServiceConfig,
         mpi_context: MpiContext,
     ) -> Result<Self> {
-        let client = ProverService::new(
+        let prover_service = ProverService::new(
             config_endpoint.prover.prover_id.clone(),
             config_endpoint.prover.compute_capacity,
             config_service,
             mpi_context,
         )?;
 
-        Ok(Self { config: config_endpoint, client })
+        Ok(Self { config_endpoint, prover_service })
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        info!("Starting prover client {}", self.config.prover.prover_id);
+        info!("Starting prover client {}", self.config_endpoint.prover.prover_id);
 
         loop {
-            match self.client.get_state() {
+            match self.prover_service.get_state() {
                 ProverState::Disconnected => {
                     if let Err(e) = self.connect_and_run().await {
                         error!("Connection failed: {}", e);
                         tokio::time::sleep(Duration::from_secs(
-                            self.config.connection.reconnect_interval_seconds,
+                            self.config_endpoint.connection.reconnect_interval_seconds,
                         ))
                         .await;
                     }
                 }
                 ProverState::Error => {
                     error!("Prover in error state, attempting to reconnect");
-                    self.client.set_state(ProverState::Disconnected);
+                    self.prover_service.set_state(ProverState::Disconnected);
                     tokio::time::sleep(Duration::from_secs(
-                        self.config.connection.reconnect_interval_seconds,
+                        self.config_endpoint.connection.reconnect_interval_seconds,
                     ))
                     .await;
                 }
                 _ => {
-                    // Should not reach here with new design
+                    // Should not reach here
                     break;
                 }
             }
@@ -75,9 +75,10 @@ impl ProverGrpcEndpoint {
     }
 
     async fn connect_and_run(&mut self) -> Result<()> {
-        info!("Connecting to coordinator at {}", self.config.server.url);
+        info!("Connecting to coordinator at {}", self.config_endpoint.server.url);
 
-        let channel = Channel::from_shared(self.config.server.url.clone())?.connect().await?;
+        let channel =
+            Channel::from_shared(self.config_endpoint.server.url.clone())?.connect().await?;
         let mut client = consensus_api_client::ConsensusApiClient::new(channel);
 
         // Create bidirectional stream
@@ -89,25 +90,25 @@ impl ProverGrpcEndpoint {
         let mut response_stream = response.into_inner();
 
         // Send initial registration
-        let register_message = if let Some(job) = self.client.get_current_job() {
+        let connect_message = if let Some(job) = self.prover_service.get_current_job() {
             ProverMessage {
                 payload: Some(prover_message::Payload::Reconnect(ProverReconnectRequest {
-                    prover_id: self.config.prover.prover_id.as_string(),
-                    compute_capacity: Some(self.config.prover.compute_capacity.into()),
+                    prover_id: self.config_endpoint.prover.prover_id.as_string(),
+                    compute_capacity: Some(self.config_endpoint.prover.compute_capacity.into()),
                     last_known_job_id: job.lock().await.job_id.as_string(),
                 })),
             }
         } else {
             ProverMessage {
                 payload: Some(prover_message::Payload::Register(ProverRegisterRequest {
-                    prover_id: self.config.prover.prover_id.as_string(),
-                    compute_capacity: Some(self.config.prover.compute_capacity.into()),
+                    prover_id: self.config_endpoint.prover.prover_id.as_string(),
+                    compute_capacity: Some(self.config_endpoint.prover.compute_capacity.into()),
                 })),
             }
         };
 
-        message_sender.send(register_message)?;
-        self.client.set_state(ProverState::Connecting);
+        message_sender.send(connect_message)?;
+        self.prover_service.set_state(ProverState::Connecting);
 
         // Create channels for computation results
         let (computation_tx, mut computation_rx) = mpsc::unbounded_channel::<ComputationResult>();
@@ -140,11 +141,9 @@ impl ProverGrpcEndpoint {
                     }
                 }
                 _ = heartbeat_interval.tick() => {
-                    if matches!(self.client.get_state(), ProverState::Idle | ProverState::Computing(_)) {
-                        if let Err(e) = self.send_heartbeat_ack(&message_sender).await {
-                            error!("Error sending heartbeat: {}", e);
-                            break;
-                        }
+                    if let Err(e) = self.send_heartbeat_ack(&message_sender).await {
+                        error!("Error sending heartbeat: {}", e);
+                        break;
                     }
                 }
                 else => {
@@ -155,9 +154,9 @@ impl ProverGrpcEndpoint {
         }
 
         // Cancel any running computation
-        self.client.cancel_current_computation();
+        self.prover_service.cancel_current_computation();
 
-        self.client.set_state(ProverState::Disconnected);
+        self.prover_service.set_state(ProverState::Disconnected);
         Ok(())
     }
 
@@ -168,14 +167,12 @@ impl ProverGrpcEndpoint {
     ) -> Result<()> {
         match result {
             ComputationResult::Phase1 { job_id, success, result } => {
-                self.send_partial_contribution(job_id, success, result, message_sender).await?;
+                self.send_partial_contribution(job_id, success, result, message_sender).await
             }
             ComputationResult::Phase2 { job_id, success, result } => {
-                self.send_proof(job_id, success, result, message_sender).await?;
+                self.send_proof(job_id, success, result, message_sender).await
             }
         }
-
-        Ok(())
     }
 
     async fn send_partial_contribution(
@@ -185,42 +182,31 @@ impl ProverGrpcEndpoint {
         result: Result<Vec<u64>>,
         message_sender: &mpsc::UnboundedSender<ProverMessage>,
     ) -> Result<()> {
-        let message = match result {
+        if let Some(handle) = self.prover_service.take_current_computation() {
+            handle.await?;
+        }
+
+        let (result_data, error_message) = match result {
             Ok(data) => {
                 assert!(success);
-                ProverMessage {
-                    payload: Some(prover_message::Payload::ExecuteTaskResponse(
-                        ExecuteTaskResponse {
-                            prover_id: self.config.prover.prover_id.as_string(),
-                            job_id: job_id.as_string(),
-                            task_type: TaskType::PartialContribution as i32,
-                            success,
-                            result_data: vec![RowData { values: data }],
-                            error_message: String::new(),
-                        },
-                    )),
-                }
+                (vec![RowData { values: data }], String::new())
             }
             Err(e) => {
                 assert!(!success);
-                ProverMessage {
-                    payload: Some(prover_message::Payload::ExecuteTaskResponse(
-                        ExecuteTaskResponse {
-                            prover_id: self.config.prover.prover_id.as_string(),
-                            job_id: job_id.as_string(),
-                            task_type: TaskType::PartialContribution as i32,
-                            success,
-                            result_data: vec![],
-                            error_message: e.to_string(),
-                        },
-                    )),
-                }
+                (vec![], e.to_string())
             }
         };
 
-        if let Some(handle) = self.client.take_current_computation() {
-            handle.await?;
-        }
+        let message = ProverMessage {
+            payload: Some(prover_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                prover_id: self.config_endpoint.prover.prover_id.as_string(),
+                job_id: job_id.as_string(),
+                task_type: TaskType::PartialContribution as i32,
+                success,
+                result_data,
+                error_message,
+            })),
+        };
 
         message_sender.send(message)?;
 
@@ -234,48 +220,37 @@ impl ProverGrpcEndpoint {
         result: Result<Vec<Vec<u64>>>,
         message_sender: &mpsc::UnboundedSender<ProverMessage>,
     ) -> Result<()> {
-        let message = match result {
+        if let Some(handle) = self.prover_service.take_current_computation() {
+            handle.await?;
+        }
+
+        let (result_data, error_message) = match result {
             Ok(data) => {
                 assert!(success);
-                ProverMessage {
-                    payload: Some(prover_message::Payload::ExecuteTaskResponse(
-                        ExecuteTaskResponse {
-                            prover_id: self.config.prover.prover_id.as_string(),
-                            job_id: job_id.as_string(),
-                            task_type: TaskType::Prove as i32,
-                            success: true,
-                            result_data: data.into_iter().map(|v| RowData { values: v }).collect(),
-                            error_message: String::new(),
-                        },
-                    )),
-                }
+                (data.into_iter().map(|v| RowData { values: v }).collect(), String::new())
             }
             Err(e) => {
                 assert!(!success);
-                ProverMessage {
-                    payload: Some(prover_message::Payload::ExecuteTaskResponse(
-                        ExecuteTaskResponse {
-                            prover_id: self.config.prover.prover_id.as_string(),
-                            job_id: job_id.as_string(),
-                            task_type: TaskType::Prove as i32,
-                            success: false,
-                            result_data: vec![],
-                            error_message: e.to_string(),
-                        },
-                    )),
-                }
+                (vec![], e.to_string())
             }
+        };
+
+        let message = ProverMessage {
+            payload: Some(prover_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                prover_id: self.config_endpoint.prover.prover_id.as_string(),
+                job_id: job_id.as_string(),
+                task_type: TaskType::Prove as i32,
+                success,
+                result_data,
+                error_message,
+            })),
         };
 
         message_sender.send(message)?;
 
-        if let Some(handle) = self.client.take_current_computation() {
-            handle.await?;
-        }
-
         // TODO move this logic to the client
-        self.client.set_current_job(None);
-        self.client.set_state(ProverState::Idle);
+        self.prover_service.set_current_job(None);
+        self.prover_service.set_state(ProverState::Idle);
 
         Ok(())
     }
@@ -287,7 +262,7 @@ impl ProverGrpcEndpoint {
         let message = ProverMessage {
             payload: Some(prover_message::Payload::HeartbeatAck(HeartbeatAck {
                 timestamp: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
-                prover_id: self.config.prover.prover_id.as_string(),
+                prover_id: self.config_endpoint.prover.prover_id.as_string(),
             })),
         };
 
@@ -307,10 +282,10 @@ impl ProverGrpcEndpoint {
                 coordinator_message::Payload::RegisterResponse(response) => {
                     if response.accepted {
                         info!("Registration accepted: {}", response.message);
-                        self.client.set_state(ProverState::Idle);
+                        self.prover_service.set_state(ProverState::Idle);
                     } else {
                         error!("Registration rejected: {}", response.message);
-                        self.client.set_state(ProverState::Error);
+                        self.prover_service.set_state(ProverState::Error);
                     }
                 }
                 coordinator_message::Payload::ExecuteTask(request) => {
@@ -334,11 +309,11 @@ impl ProverGrpcEndpoint {
                 coordinator_message::Payload::JobCancelled(cancelled) => {
                     info!("Job {} cancelled: {}", cancelled.job_id, cancelled.reason);
 
-                    if let Some(ref job) = self.client.get_current_job() {
+                    if let Some(ref job) = self.prover_service.get_current_job() {
                         let cancelled_job_id = JobId::from(cancelled.job_id.clone());
                         if job.lock().await.job_id == cancelled_job_id {
-                            self.client.cancel_current_computation();
-                            self.client.set_state(ProverState::Idle);
+                            self.prover_service.cancel_current_computation();
+                            self.prover_service.set_state(ProverState::Idle);
                         }
                     }
                 }
@@ -365,16 +340,16 @@ impl ProverGrpcEndpoint {
         computation_tx: &mpsc::UnboundedSender<ComputationResult>,
         request: ExecuteTaskRequest,
     ) {
-        info!("Starting Phase 1 for job {}", request.job_id);
+        info!("Starting Partial Contribution for job {}", request.job_id);
 
         // Cancel any existing computation
-        self.client.cancel_current_computation();
+        self.prover_service.cancel_current_computation();
 
         // Extract the PartialContribution params
         let params = match request.params {
             Some(execute_task_request::Params::PartialContribution(params)) => params,
             _ => {
-                error!("Expected PartialContribution params for Phase 1 task");
+                error!("Expected PartialContribution params for Partial Contribution task");
                 return;
             }
         };
@@ -385,7 +360,7 @@ impl ProverGrpcEndpoint {
             input_path: PathBuf::from(params.input_path.clone()),
         };
 
-        let job = self.client.new_job(
+        let job = self.prover_service.new_job(
             job_id.clone(),
             block.clone(),
             params.rank_id,
@@ -396,8 +371,9 @@ impl ProverGrpcEndpoint {
 
         // Start computation in background task
         let tx = computation_tx.clone();
-        self.client
-            .set_current_computation(self.client.partial_contribution(job.clone(), tx).await);
+        self.prover_service.set_current_computation(
+            self.prover_service.partial_contribution(job.clone(), tx).await,
+        );
     }
 
     pub async fn prove(
@@ -406,12 +382,12 @@ impl ProverGrpcEndpoint {
         request: ExecuteTaskRequest,
     ) -> Result<()> {
         assert!(
-            self.client.get_current_job().is_some(),
+            self.prover_service.get_current_job().is_some(),
             "Phase 2 received without current job context"
         );
 
         println!("Received Phase 2 request: {:?}", request);
-        let job = self.client.get_current_job().clone().unwrap().clone();
+        let job = self.prover_service.get_current_job().clone().unwrap().clone();
         let job_id = job.lock().await.job_id.clone();
         assert_eq!(job_id.as_string(), request.job_id, "Job ID mismatch in Phase 2");
 
@@ -431,7 +407,8 @@ impl ProverGrpcEndpoint {
         }
 
         let tx = computation_tx.clone();
-        self.client.set_current_computation(self.client.prove(job, challenges, tx).await);
+        self.prover_service
+            .set_current_computation(self.prover_service.prove(job, challenges, tx).await);
 
         Ok(())
     }
