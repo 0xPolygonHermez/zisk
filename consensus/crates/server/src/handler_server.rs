@@ -1,6 +1,6 @@
 use crate::service::ConsensusService;
 use anyhow::Result;
-use consensus_api::consensus_api_server::ConsensusApiServer;
+use consensus_grpc_api::consensus_api_server::ConsensusApiServer;
 use consensus_config::Config;
 use consensus_core::shutdown::create_shutdown_signal;
 use std::net::TcpListener;

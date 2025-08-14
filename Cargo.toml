@@ -33,12 +33,14 @@ members = [
     "common",
     "tools/circuit",
     "server",
-    "consensus/crates/api",
-    "consensus/crates/client",
+    "consensus/crates/grpc-api",
+    "consensus/crates/prover",
+    "consensus/crates/prover-service",
     "consensus/crates/comm",
     "consensus/crates/config",
     "consensus/crates/core",
     "consensus/crates/server",
+    "consensus/crates/common",
 ]
 
 resolver = "2"
@@ -81,9 +83,11 @@ ziskos = { path = "ziskos/entrypoint" }
 circuit = { path = "tools/circuit" }
 
 # Consensus crates
-consensus-api = { path = "consensus/crates/api" }
-consensus-client = { path = "consensus/crates/client" }
+consensus-grpc-api = { path = "consensus/crates/grpc-api" }
+consensus-prover = { path = "consensus/crates/prover" }
+consensus-prover-service = { path = "consensus/crates/prover-service" }
 consensus-comm = { path = "consensus/crates/comm" }
+consensus-common = { path = "consensus/crates/common" }
 consensus-config = { path = "consensus/crates/config" }
 consensus-core = { path = "consensus/crates/core" }
 consensus-server = { path = "consensus/crates/server" }

@@ -1,9 +1,10 @@
 use anyhow::Result;
 use async_stream::stream;
-use consensus_api::{consensus_api_server::*, *};
+use consensus_grpc_api::{consensus_api_server::*, *};
 use consensus_comm::CommManager;
+use consensus_common::{ComputeCapacity, ProverId};
 use consensus_config::Config;
-use consensus_core::{ComputeCapacity, ProverId, ProverManager, ProverManagerConfig};
+use consensus_core::{ProverManager, ProverManagerConfig};
 
 use chrono::{DateTime, Utc};
 use futures_util::{Stream, StreamExt};
@@ -37,7 +38,7 @@ pub struct ServiceInfo {
 
 impl ConsensusService {
     #[instrument(skip(config))]
-    pub async fn new(config: Config) -> consensus_core::Result<Self> {
+    pub async fn new(config: Config) -> consensus_common::Result<Self> {
         info!("Initializing service state");
 
         let start_time_utc = Utc::now();
@@ -153,11 +154,11 @@ impl ConsensusApi for ConsensusService {
         self.validate_admin_request(&request)?;
 
         // TODO: Implement actual job retrieval from database
-        let all_jobs: consensus_core::Result<Vec<consensus_api::JobStatus>> = Ok(vec![]);
+        let all_jobs: consensus_common::Result<Vec<consensus_grpc_api::JobStatus>> = Ok(vec![]);
 
         let response = match all_jobs {
             Ok(jobs) => {
-                let job_statuses: Vec<consensus_api::JobStatus> = jobs;
+                let job_statuses: Vec<consensus_grpc_api::JobStatus> = jobs;
                 let jobs_list = JobsList { jobs: job_statuses };
                 JobsListResponse { result: Some(jobs_list_response::Result::JobsList(jobs_list)) }
             }
@@ -180,11 +181,11 @@ impl ConsensusApi for ConsensusService {
         self.validate_admin_request(&request)?;
 
         // TODO: Implement actual prover retrieval from database
-        let all_provers: consensus_core::Result<Vec<consensus_api::ProverStatus>> = Ok(vec![]);
+        let all_provers: consensus_common::Result<Vec<consensus_grpc_api::ProverStatus>> = Ok(vec![]);
 
         let response = match all_provers {
             Ok(provers) => {
-                let prover_statuses: Vec<consensus_api::ProverStatus> = provers;
+                let prover_statuses: Vec<consensus_grpc_api::ProverStatus> = provers;
                 let provers_list = ProversList { provers: prover_statuses };
                 ProversListResponse {
                     result: Some(provers_list_response::Result::ProversList(provers_list)),
@@ -213,7 +214,7 @@ impl ConsensusApi for ConsensusService {
         let req = request.into_inner();
 
         // TODO: Implement actual job retrieval from database
-        let job: consensus_core::Result<Option<consensus_api::JobStatus>> = Ok(None);
+        let job: consensus_common::Result<Option<consensus_grpc_api::JobStatus>> = Ok(None);
 
         let response = match job {
             Ok(Some(job)) => {
@@ -254,7 +255,7 @@ impl ConsensusApi for ConsensusService {
         let idle_provers = self.prover_manager.num_provers().await;
         let busy_provers = total_provers.saturating_sub(idle_provers);
 
-        let system_status = consensus_api::SystemStatus {
+        let system_status = consensus_grpc_api::SystemStatus {
             total_provers: total_provers as u32,
             compute_capacity: total_capacity.compute_units,
             idle_provers: idle_provers as u32,

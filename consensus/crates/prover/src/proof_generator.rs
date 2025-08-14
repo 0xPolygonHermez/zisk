@@ -1,6 +1,6 @@
 use anyhow::Result;
 use asm_runner::AsmServices;
-use consensus_core::JobId;
+use consensus_common::JobId;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -14,8 +14,7 @@ use witness::WitnessLibrary;
 
 use zisk_common::{MpiContext, ZiskLibInitFn};
 
-use crate::prover_grpc_endpoint::ComputationResult;
-use crate::prover_service::{JobContext, ProverServiceConfig};
+use crate::prover_service::{ComputationResult, JobContext, ProverServiceConfig};
 
 pub struct ProofGenerator {
     // It is important to keep the witness_lib declaration before the proofman declaration

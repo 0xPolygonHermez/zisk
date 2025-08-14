@@ -1,62 +1,13 @@
 use crate::{BlockId, ComputeCapacity, Error, JobId, ProverId, Result};
 use chrono::{DateTime, Utc};
-use consensus_api::{
+use consensus_grpc_api::{
     coordinator_message, execute_task_request, prover_message, CoordinatorMessage,
     ExecuteTaskResponse, ProverAllocation, ProverMessage, RowData, TaskType,
 };
+use consensus_common::{BlockContext, Job, JobPhase, JobResult, JobState, ProverState};
 use std::{collections::HashMap, ops::Range, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info, warn};
-
-#[derive(Debug, Clone)]
-pub struct Job {
-    pub job_id: JobId,
-    pub state: JobState,
-    pub block: BlockContext,
-    pub compute_units: u32,
-    pub provers: Vec<ProverId>,
-    pub partitions: Vec<Range<u32>>,
-    pub results: HashMap<JobPhase, HashMap<ProverId, JobResult>>,
-    pub challenges: Option<Vec<Vec<u64>>>,
-}
-
-#[derive(Debug, Clone)]
-pub enum JobState {
-    Idle,
-    Running(JobPhase),
-    Completed,
-    Failed,
-    Cancelled,
-}
-
-#[derive(Debug, Clone)]
-pub struct JobResult {
-    success: bool,
-    data: Vec<RowData>,
-}
-
-#[derive(Debug, Clone)]
-pub struct BlockContext {
-    pub block_id: BlockId,
-    pub input_path: PathBuf,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum JobPhase {
-    Phase1,
-    Phase2,
-    PhaseAggregation,
-}
-
-impl JobPhase {
-    pub fn as_string(&self) -> String {
-        match self {
-            JobPhase::Phase1 => "Phase1".to_string(),
-            JobPhase::Phase2 => "Phase2".to_string(),
-            JobPhase::PhaseAggregation => "PhaseAggregation".to_string(),
-        }
-    }
-}
 
 /// Information about a connected prover - business logic only, no transport layer
 #[derive(Debug)]
@@ -69,14 +20,6 @@ pub struct ProverConnection {
     pub message_sender: mpsc::Sender<CoordinatorMessage>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProverState {
-    Disconnected,
-    Connecting,
-    Idle,
-    Computing(JobPhase),
-    Error,
-}
 
 /// Configuration for the coordinator functionality
 #[derive(Debug, Clone)]
@@ -292,12 +235,12 @@ impl ProverManager {
 
             let message = CoordinatorMessage {
                 payload: Some(coordinator_message::Payload::ExecuteTask(
-                    consensus_api::ExecuteTaskRequest {
+                    consensus_grpc_api::ExecuteTaskRequest {
                         prover_id: prover_id.clone().into(),
                         job_id: job_id.clone().into(),
-                        task_type: consensus_api::TaskType::PartialContribution as i32,
+                        task_type: consensus_grpc_api::TaskType::PartialContribution as i32,
                         params: Some(execute_task_request::Params::PartialContribution(
-                            consensus_api::PartialContributionParams {
+                            consensus_grpc_api::PartialContributionParams {
                                 block_id: block_id.clone().into(),
                                 input_path: input_path.clone(),
                                 rank_id: rank as u32,
@@ -499,7 +442,7 @@ impl ProverManager {
             prover_id.clone(),
             JobResult {
                 success: execute_task_response.success,
-                data: execute_task_response.result_data,
+                data: execute_task_response.result_data.into_iter().map(Into::into).collect(),
             },
         );
 
@@ -584,12 +527,12 @@ impl ProverManager {
                     // Create the Phase2 message (use TaskType::Proof)
                     let message = CoordinatorMessage {
                         payload: Some(coordinator_message::Payload::ExecuteTask(
-                            consensus_api::ExecuteTaskRequest {
+                            consensus_grpc_api::ExecuteTaskRequest {
                                 prover_id: prover_id.clone().into(),
                                 job_id: job_id.clone().into(),
-                                task_type: consensus_api::TaskType::Prove as i32,
+                                task_type: consensus_grpc_api::TaskType::Prove as i32,
                                 params: Some(execute_task_request::Params::Prove(
-                                    consensus_api::ProveParams {
+                                    consensus_grpc_api::ProveParams {
                                         challenges: vec![RowData { values: challenges[0].clone() }],
                                     },
                                 )),

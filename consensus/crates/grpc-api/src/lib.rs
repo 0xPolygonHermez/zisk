@@ -3,6 +3,9 @@ mod consensus_api_proto {
     tonic::include_proto!("consensus.api.v1");
 }
 
+// Conversions between common types and gRPC types
+pub mod conversions;
+
 // Re-export all the generated types
 pub use consensus_api_proto::*;
 

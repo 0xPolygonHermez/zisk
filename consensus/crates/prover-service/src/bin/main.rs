@@ -2,9 +2,8 @@ use anyhow::Result;
 use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
 use clap::Parser;
 use colored::Colorize;
-use consensus_client::{
-    build_prover_endpoint, initialize_prover_config, ProverClientConfig, ProverServiceConfig,
-};
+use consensus_client::{initialize_prover_config, ProverGrpcEndpoint};
+use consensus_prover::{config::ProverClientConfig, ProverServiceConfig};
 use std::path::PathBuf;
 use tracing::info;
 
@@ -147,7 +146,8 @@ async fn main() -> Result<()> {
 
     print_command_info(&service_config, cli.debug.is_some());
 
-    let mut prover_client = build_prover_endpoint(grpc_config, service_config, mpi_context).await?;
+    let mut prover_client =
+        ProverGrpcEndpoint::new(grpc_config, service_config, mpi_context).await?;
 
     info!(
         "Starting prover client {} ({}) connecting to server {}",

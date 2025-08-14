@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Result};
-use consensus_api::*;
-use consensus_core::{BlockContext, BlockId, JobId, ProverState};
+use consensus_common::{BlockContext, ProverState};
+use consensus_common::{BlockId, JobId};
+use consensus_grpc_api::*;
+use consensus_prover::{prover_service::ComputationResult, ProverService, ProverServiceConfig};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
@@ -9,17 +11,7 @@ use tonic::Request;
 use tracing::{error, info};
 use zisk_common::MpiContext;
 
-use crate::{
-    config::ProverGrpcEndpointConfig,
-    prover_service::{ProverService, ProverServiceConfig},
-};
-
-/// Result from computation tasks
-#[derive(Debug)]
-pub enum ComputationResult {
-    Phase1 { job_id: JobId, success: bool, result: Result<Vec<u64>> },
-    Phase2 { job_id: JobId, success: bool, result: Result<Vec<Vec<u64>>> },
-}
+use crate::config::ProverGrpcEndpointConfig;
 
 pub struct ProverGrpcEndpoint {
     config_endpoint: ProverGrpcEndpointConfig,
@@ -27,7 +19,7 @@ pub struct ProverGrpcEndpoint {
 }
 
 impl ProverGrpcEndpoint {
-    pub fn new(
+    pub async fn new(
         config_endpoint: ProverGrpcEndpointConfig,
         config_service: ProverServiceConfig,
         mpi_context: MpiContext,
@@ -365,7 +357,7 @@ impl ProverGrpcEndpoint {
             block.clone(),
             params.rank_id,
             params.total_provers,
-            params.prover_allocation,
+            params.prover_allocation.into_iter().map(|alloc| alloc.into()).collect(),
             params.job_compute_units,
         );
 

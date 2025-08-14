@@ -1,7 +1,7 @@
 use anyhow::Result;
 use asm_runner::AsmRunnerOptions;
-use consensus_api::ProverAllocation;
-use consensus_core::{BlockContext, ComputeCapacity, JobId, JobPhase, ProverId, ProverState};
+use consensus_common::{BlockContext, JobPhase, ProverAllocationDto, ProverState};
+use consensus_common::{ComputeCapacity, JobId, ProverId};
 use proofman_common::{DebugInfo, ParamsGPU};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -12,7 +12,13 @@ use tokio::task::JoinHandle;
 use zisk_common::MpiContext;
 
 use crate::proof_generator::ProofGenerator;
-use crate::prover_grpc_endpoint::ComputationResult;
+
+/// Result from computation tasks
+#[derive(Debug)]
+pub enum ComputationResult {
+    Phase1 { job_id: JobId, success: bool, result: Result<Vec<u64>> },
+    Phase2 { job_id: JobId, success: bool, result: Result<Vec<Vec<u64>>> },
+}
 
 /// Current job context
 #[derive(Debug, Clone)]
@@ -176,7 +182,7 @@ impl ProverService {
         block: BlockContext,
         rank_id: u32,
         total_provers: u32,
-        allocation: Vec<ProverAllocation>,
+        allocation: Vec<ProverAllocationDto>,
         total_compute_units: u32,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
@@ -186,7 +192,7 @@ impl ProverService {
             total_provers,
             allocation: allocation
                 .iter()
-                .flat_map(|alloc| alloc.range_start..alloc.range_end)
+                .flat_map(|alloc| alloc.range.clone())
                 .collect(),
             total_compute_units,
             phase: JobPhase::Phase1,
