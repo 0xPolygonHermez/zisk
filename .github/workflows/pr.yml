@@ -81,27 +81,19 @@ jobs:
       - name: Build setup
         env:
           USE_CACHE_SETUP: "1"
-        run: |
-          set -a
-          source "$GITHUB_WORKSPACE/.github/workflows/pr.env"
-          set +a        
+        run: |     
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_setup.sh
-
-      # - name: Install setup
-      #   run: |
-      #     cd "$GITHUB_WORKSPACE/tools/test-env"
-      #     ./install_setup_public.sh
 
       - name: Test sha_hasher
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
 
-      # - name: Test Ethereum block
-      #   run: |
-      #     cd "$GITHUB_WORKSPACE/tools/test-env"
-      #     ./test_eth_block.sh
+      - name: Test Ethereum block
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./test_eth_block.sh
 
   test-macos:
     name: Test on macOS

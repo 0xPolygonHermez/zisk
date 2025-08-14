@@ -219,23 +219,52 @@ get_var_from_cargo_toml() {
     local var_name=$1
     local file="$(get_zisk_repo_dir)/Cargo.toml"
 
-    # Guard clauses
+    # Guard clauses: file must exist and var_name must be non-empty
     [[ -f "$file" && -n "$var_name" ]] || { echo; return; }
 
-    # Escape regex specials in var_name for sed
-    local escaped_var
-    escaped_var=$(printf '%s' "$var_name" | sed 's/[.[\*^$+?{}|()\\]/\\&/g')
+    # Normalize the requested key to lowercase (portable on macOS and Linux)
+    local var_lc
+    var_lc="$(printf '%s' "$var_name" | tr '[:upper:]' '[:lower:]')"
 
-    # Try double-quoted value first
+    # Special case: pil2_proofman_branch
+    # Assumption: the "proofman = { ... }" entry is a single line and contains "pil2-proofman" in the URL
+    if [[ "$var_lc" == "pil2_proofman_branch" ]]; then
+        # Find the single line starting with "proofman =" that references pil2-proofman
+        local proof_line
+        proof_line="$(LC_ALL=C grep -E '^[[:space:]]*proofman[[:space:]]*=' "$file" | grep -m1 'pil2-proofman')"
+
+        if [[ -n "$proof_line" ]]; then
+            local branch
+            # Try to extract branch in three formats: "value", 'value', or unquoted value
+            branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE 's/.*branch[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p')
+            [[ -z "$branch" ]] && branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE "s/.*branch[[:space:]]*=[[:space:]]*'([^']*)'.*/\1/p")
+            [[ -z "$branch" ]] && branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE 's/.*branch[[:space:]]*=[[:space:]]*([^,}[:space:]]+).*/\1/p')
+
+            # If a branch was found, print it and return
+            if [[ -n "$branch" ]]; then
+                echo "$branch"
+                return
+            fi
+            # If no branch found, fall back to the standard variable lookup below
+        fi
+        # If no proofman line found, fall back to the standard variable lookup below
+    fi
+
+    # --- Standard behavior: look up a variable by name (lowercased), quoted with "..." or '...' ---
+    # Escape regex special characters in the key for sed
+    local escaped_var
+    escaped_var=$(printf '%s' "$var_lc" | sed 's/[.[\*^$+?{}|()\\]/\\&/g')
+
+    # First, try double-quoted value: key = "value"
     local value
     value=$(LC_ALL=C sed -nE "s/^[[:space:]]*${escaped_var}[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$file" | head -n1)
 
-    # If not found, try single-quoted value
+    # If not found, try single-quoted value: key = 'value'
     if [[ -z "$value" ]]; then
         value=$(LC_ALL=C sed -nE "s/^[[:space:]]*${escaped_var}[[:space:]]*=[[:space:]]*'([^']*)'.*/\1/p" "$file" | head -n1)
     fi
 
-    # Print value or empty string
+    # Print the value or an empty string if not found
     echo "$value"
 }
 
