@@ -51,10 +51,7 @@ jobs:
     container:
       image: ubuntu:22.04
       options:
-        --shm-size=64g
-        --memory=256g
-        --memory-swap=0
-        --ulimit nofile=65535:65535        
+        --shm-size=64g  
         -v /home/gha/cache-setup:/output:rw
     defaults:
       run:
