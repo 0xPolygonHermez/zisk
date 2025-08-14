@@ -70,7 +70,7 @@ main() {
     ensure cargo run --release --bin keccakf_fixed_gen || return 1
 
     step "Compiling ZisK PIL..."
-    ensure node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil \
+    ensure node ../pil2-compiler/src/pil.js pil/zisk.pil \
 	-I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles \
 	-o pil/zisk.pilout -u tmp/fixed -O fixed-to-file || return 1
 
@@ -110,7 +110,7 @@ main() {
             check_setup_flags=-a
         fi
 
-        ensure node --max-old-space-size=131072 --stack-size=1500 ../pil2-proofman-js/src/main_setup.js \
+        ensure node ../pil2-proofman-js/src/main_setup.js \
             -a ./pil/zisk.pilout -b build \
             -u tmp/fixed ${setup_flags} || return 1
     fi
