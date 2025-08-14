@@ -3,12 +3,10 @@
 source ./utils.sh
 
 main () {
-    current_dir=$(pwd)
+    info "▶️  Running $(basename "$0") script..."
 
     current_step=1
     total_steps=5
-
-    info "Executing install_setup_public.sh script"
 
     step "Loading environment variables..."
     # Load environment variables from .env file
@@ -36,8 +34,6 @@ main () {
 
     step "Deleting downloaded public proving key..."
     rm -rf "${ZISK_SETUP_FILE}"
-
-    cd "$current_dir"
 
     success "Public proving key ${ZISK_SETUP_FILE} installed successfully!"
 }

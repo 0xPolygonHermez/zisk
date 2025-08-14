@@ -6,16 +6,16 @@ PROJECT_NAME="sha_hasher"
 EXPECTED_OUTPUT="98211882|bd13089b|6ccf1fca|81f7f0e4|abf6352a|0c39c9b1|1f142cac|233f1280"
 
 main() {
+    info "▶️  Running $(basename "$0") script..."
+
     current_dir=$(pwd)
 
     current_step=1
-    if [[ "${SKIP_PROVE}" == "1" ]]; then
+    if [[ "${DISABLE_PROVE}" == "1" ]]; then
         total_steps=8
     else
         total_steps=10
     fi
-
-    info "Executing test_sha_hasher.sh script"
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
@@ -26,7 +26,6 @@ main() {
     load_env || return 1
     confirm_continue || return 0
 
-    mkdir -p "${WORKSPACE_DIR}"
     cd "${WORKSPACE_DIR}"
 
     step "Deleting shared memory..."
@@ -77,7 +76,7 @@ main() {
             fi
         fi
 
-        if [[ "${SKIP_PROVE}" != "1" ]]; then
+        if [[ "${DISABLE_PROVE}" != "1" ]]; then
             step "Generating proof..."
             MPI_CMD=""
             # If ZISK_GHA is set, use mpirun command for distributed proving to prove it faster and reduce GHA time

@@ -67,8 +67,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          ls -la /output
-          echo "cache" > /output/probe.txt
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_deps.sh
 
@@ -81,6 +79,9 @@ jobs:
         env:
           USE_CACHE_SETUP: "1"
         run: |
+          set -a
+          source "$GITHUB_WORKSPACE/.github/workflows/pr.env"
+          set +a        
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_setup.sh
 

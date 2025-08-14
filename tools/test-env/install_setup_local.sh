@@ -5,6 +5,8 @@ source ./utils.sh
 OUTPUT_DIR="${HOME}/output"
 
 main() {
+    info "▶️  Running $(basename "$0") script..."
+
     current_step=1
     total_steps=3
 
@@ -33,6 +35,8 @@ main() {
 
     step "Generating constant tree files..."
     ensure cargo-zisk check-setup -a || return 1
+
+    success "Local proving key ${ZISK_SETUP_FILE} installed successfully!"
 }
 
 main

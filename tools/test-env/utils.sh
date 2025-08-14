@@ -98,7 +98,7 @@ load_env() {
     done < .env
 
     echo
-    info "🔍 Environment variables (with source):"
+    info "🔍 Environment variables:"
     for line in "${__env_print_lines[@]}"; do
         echo "$line"
     done
@@ -217,7 +217,7 @@ get_platform() {
 # get_var_from_cargo_toml: Extracts a variable value from Cargo.toml
 get_var_from_cargo_toml() {
     local var_name=$1
-    local file="${ZISK_REPO_DIR}/Cargo.toml"
+    local file="$(get_zisk_repo_dir)/Cargo.toml"
 
     # Guard clauses
     [[ -f "$file" && -n "$var_name" ]] || { echo; return; }
@@ -237,6 +237,15 @@ get_var_from_cargo_toml() {
 
     # Print value or empty string
     echo "$value"
+}
+
+# get_zisk_repo_dir: returns the ZisK repository directory
+get_zisk_repo_dir() {
+    if [[ -n "${ZISK_REPO_DIR}" ]]; then
+        echo "${ZISK_REPO_DIR}"
+    else
+        echo "${WORKSPACE_DIR}/zisk"
+    fi
 }
 
 # format_duration_ms: format milliseconds to HH:MM:SS.mmm
@@ -267,15 +276,14 @@ run_timed() {
     local script="$1"
 
     if [[ -z "$script" ]]; then
-        err "No script provided to run_timed"
+        err "no script provided to run_timed"
         return 1
     fi
     if [[ ! -f "$script" ]]; then
-        err "Script not found: $script"
+        err "script not found: $script"
         return 1
     fi
 
-    info "▶️  Running ${script}"
     local start_ns end_ns elapsed_ns elapsed_ms exit_code
 
     # Record start time
@@ -295,9 +303,9 @@ run_timed() {
 
     # Show execution time and exit code
     if [[ $exit_code -eq 0 ]]; then
-        info "✅ Finished ${script} in ${pretty} (exit code 0)"
+        info "🕒 Finished ${script} in ${pretty} (exit code 0)"
     else
-        err  "❌ ${script} exited with code ${exit_code} after ${pretty}"
+        err "${script} exited with code ${exit_code} after ${pretty}"
     fi
 
     # Always return success to keep the menu running
@@ -312,8 +320,11 @@ get_shell_and_profile || return 1
 touch $PROFILE
 source "$PROFILE"
 
-# Define ZisK directories
+# Define directories
 ZISK_DIR="$HOME/.zisk"
 ZISK_BIN_DIR="$ZISK_DIR/bin"
 WORKSPACE_DIR="${HOME}/workspace"
-DEFAULT_ZISK_REPO_DIR="${WORKSPACE_DIR}/zisk"
+OUTPUT_DIR="${HOME}/output"
+
+# Ensure ZisK repository directory exists
+mkdir -p "$(get_zisk_repo_dir)"

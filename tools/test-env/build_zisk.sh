@@ -3,6 +3,8 @@
 source ./utils.sh
 
 main() {
+    info "▶️  Running $(basename "$0") script..."
+
     current_dir=$(pwd)
 
     current_step=1
@@ -17,15 +19,12 @@ main() {
         return 1
     fi
 
-    info "Executing build_zisk.sh script"
-
     step "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
     confirm_continue || return 0
 
-    mkdir -p "${WORKSPACE_DIR}"
-    ensure cd "${WORKSPACE_DIR}" || return 1
+    cd "${WORKSPACE_DIR}"
 
     step "Cloning pil2-proofman repository..."
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
@@ -58,7 +57,6 @@ main() {
             info "Skipping cloning ZisK repository as ZISK_BRANCH is not defined"
             ensure cd zisk
         fi
-        ZISK_REPO_DIR="${DEFAULT_ZISK_REPO_DIR}"
     fi
 
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then

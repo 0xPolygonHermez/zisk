@@ -6,11 +6,6 @@ keywords = ["zisk", "zkvm", "zero-knowledge"]
 repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
-[workspace.metadata]
-PIL2_PROOFMAN_BRANCH = "pre-develop-0.11.0"
-PIL2_PROOFMAN_JS_BRANCH = "pre-develop-0.11.0"
-PIL2_COMPILER_BRANCH = "develop-0.7.0"
-
 [workspace]
 members = [
     "cli",
