@@ -16,6 +16,14 @@ main() {
 
     cd "${WORKSPACE_DIR}"
 
+    info "Debug docker"
+    df -h /tmp
+    df -i /tmp
+    # Ver tamaños de los artefactos grandes
+    du -sh /__w/zisk/zisk/build | sort -h
+    # Si sospechas OOM además de disco:
+    dmesg -T | tail -n 200 | egrep -i 'out of memory|killed process|oom' || true
+
     step  "Cloning pil2-compiler, pil2-proofman and pil2-proofman-js repos..."
 
     # Remove existing directories if they exist
@@ -54,6 +62,8 @@ main() {
     rm -rf package-lock.json
     rm -rf node_modules
     cd ..
+
+    press_any_key
 
     step "Installing npm packages..."
     cd pil2-compiler
@@ -112,7 +122,9 @@ main() {
 
         ensure node ../pil2-proofman-js/src/main_setup.js \
             -a ./pil/zisk.pilout -b build \
-            -u tmp/fixed ${setup_flags} || return 1
+            -u tmp/fixed ${setup_flags}
+
+        dmesg -T | tail -n 200 | egrep -i 'out of memory|killed process|oom' || true
     fi
 
     if [[ ${USE_SETUP_CACHE} == "1" && ${cached} == "0" ]]; then
