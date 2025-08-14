@@ -233,8 +233,6 @@ get_var_from_cargo_toml() {
         local proof_line
         proof_line="$(LC_ALL=C grep -E '^[[:space:]]*proofman[[:space:]]*=' "$file")"
 
-        echo "proof_line = $proof_line"
-
         if [[ -n "$proof_line" ]]; then
             local branch
             # Try to extract branch in three formats: "value", 'value', or unquoted value
