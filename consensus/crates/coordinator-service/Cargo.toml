@@ -1,5 +1,5 @@
 [package]
-name = "consensus-server"
+name = "consensus-coordinator-service"
 description = "Main server binary for Consensus Network"
 version.workspace = true
 edition.workspace = true
@@ -11,7 +11,7 @@ name = "consensus-server"
 path = "src/main.rs"
 
 [dependencies]
-consensus-core = { workspace = true }
+consensus-coordinator = { workspace = true }
 consensus-grpc-api = { workspace = true }
 consensus-config = { workspace = true }
 consensus-comm = { workspace = true }

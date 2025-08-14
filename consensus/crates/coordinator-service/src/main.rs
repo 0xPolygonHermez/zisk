@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
     let args = ConsensusServerArgs::parse();
 
     // Initialize tracing
-    consensus_core::tracing::init()?;
+    consensus_common::tracing::init()?;
 
     match args.command {
         ConsensusServerCommands::Server { port } => {

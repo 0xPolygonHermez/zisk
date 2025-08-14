@@ -746,6 +746,8 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.14",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -760,7 +762,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "consensus-core"
+name = "consensus-coordinator"
 version = "0.11.0"
 dependencies = [
  "anyhow",
@@ -776,8 +778,35 @@ dependencies = [
  "thiserror 2.0.14",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "consensus-coordinator-service"
+version = "0.11.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "chrono",
+ "clap",
+ "consensus-comm",
+ "consensus-common",
+ "consensus-config",
+ "consensus-coordinator",
+ "consensus-grpc-api",
+ "futures-util",
+ "prost",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tracing",
+ "uuid",
+ "witness",
 ]
 
 [[package]]
@@ -827,7 +856,7 @@ dependencies = [
  "clap",
  "colored",
  "consensus-common",
- "consensus-core",
+ "consensus-coordinator",
  "consensus-grpc-api",
  "consensus-prover",
  "proofman-common",
@@ -841,34 +870,6 @@ dependencies = [
  "tracing",
  "vergen",
  "zisk-common",
-]
-
-[[package]]
-name = "consensus-server"
-version = "0.11.0"
-dependencies = [
- "anyhow",
- "async-stream",
- "chrono",
- "clap",
- "consensus-comm",
- "consensus-common",
- "consensus-config",
- "consensus-core",
- "consensus-grpc-api",
- "futures-util",
- "prost",
- "prost-types",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "tracing",
- "uuid",
- "witness",
 ]
 
 [[package]]

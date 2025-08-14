@@ -2,7 +2,7 @@ use crate::service::ConsensusService;
 use anyhow::Result;
 use consensus_grpc_api::consensus_api_server::ConsensusApiServer;
 use consensus_config::Config;
-use consensus_core::shutdown::create_shutdown_signal;
+use consensus_coordinator::shutdown::create_shutdown_signal;
 use std::net::TcpListener;
 use tonic::transport::Server;
 use tracing::{error, info};

@@ -1,10 +1,11 @@
-use crate::{BlockId, ComputeCapacity, Error, JobId, ProverId, Result};
 use chrono::{DateTime, Utc};
+use consensus_common::{
+    BlockContext, BlockId, ComputeCapacity, Error, Job, JobId, JobPhase, JobResult, JobState, ProverId, ProverState, Result
+};
 use consensus_grpc_api::{
     coordinator_message, execute_task_request, prover_message, CoordinatorMessage,
     ExecuteTaskResponse, ProverAllocation, ProverMessage, RowData, TaskType,
 };
-use consensus_common::{BlockContext, Job, JobPhase, JobResult, JobState, ProverState};
 use std::{collections::HashMap, ops::Range, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info, warn};
@@ -19,7 +20,6 @@ pub struct ProverConnection {
     pub last_heartbeat: DateTime<Utc>,
     pub message_sender: mpsc::Sender<CoordinatorMessage>,
 }
-
 
 /// Configuration for the coordinator functionality
 #[derive(Debug, Clone)]
