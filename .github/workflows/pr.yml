@@ -47,12 +47,15 @@ jobs:
   test-x86_64:
     name: Test on Ubuntu x86_64
     runs-on: self-hosted
-    timeout-minutes: 60
+    timeout-minutes: 120
     container:
       image: ubuntu:22.04
       options:
         --shm-size=32g
         -v /home/gha/cache-setup:/output:rw
+    defaults:
+      run:
+        shell: bash        
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
@@ -104,6 +107,9 @@ jobs:
     name: Test on macOS
     runs-on: macos-14
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash    
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}

@@ -326,5 +326,6 @@ ZISK_BIN_DIR="$ZISK_DIR/bin"
 WORKSPACE_DIR="${HOME}/workspace"
 OUTPUT_DIR="${HOME}/output"
 
-# Ensure ZisK repository directory exists
+# Ensure directories exists
+mkdir -p "${WORKSPACE_DIR}"
 mkdir -p "$(get_zisk_repo_dir)"
