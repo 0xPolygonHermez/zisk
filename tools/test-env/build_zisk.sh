@@ -10,6 +10,11 @@ main() {
     current_step=1
     total_steps=9
 
+    # If ZISK_GHA is set, force skip cloning pil2-proofman and use pil2-proofman dependency defined in zisk Cargo.toml
+    if [[ ${ZISK_GHA} == "1" ]]; then
+        PIL2_PROOFMAN_BRANCH=""
+    fi
+
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"
     elif [[ "${PLATFORM}" == "darwin" ]]; then
@@ -36,6 +41,8 @@ main() {
         info "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
         ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
         cd ..
+    else
+        info "Skipping cloning pil2-proofman repository as PIL2_PROOFMAN_BRANCH is not defined"
     fi
 
     step "Setting up ZisK repository..."
@@ -43,6 +50,10 @@ main() {
         info "Using ZisK repository defined in ZISK_REPO_DIR variable: ${ZISK_REPO_DIR}"
         ensure cd "${ZISK_REPO_DIR}"
     else
+        if [[ ${ZISK_GHA} == "1" ]]; then
+            err "ZISK_GHA is set, but ZISK_REPO_DIR is not defined"
+            return 1
+        fi
         if [[ -n "$ZISK_BRANCH" ]]; then
             info "Cloning ZisK repository..."
             # Remove existing directory if it exists
