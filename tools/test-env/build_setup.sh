@@ -55,8 +55,6 @@ main() {
     rm -rf node_modules
     cd ..
 
-    press_any_key
-
     step "Installing npm packages..."
     cd pil2-compiler
     ensure npm i || return 1
@@ -72,8 +70,8 @@ main() {
     ensure cargo run --release --bin keccakf_fixed_gen || return 1
 
     step "Compiling ZisK PIL..."
-    ensure node ../pil2-compiler/src/pil.js pil/zisk.pil \
-	-I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles \
+    ensure node "${WORKSPACE_DIR}/pil2-compiler/src/pil.js" pil/zisk.pil \
+	-I pil,"${WORKSPACE_DIR}/pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles" \
 	-o pil/zisk.pilout -u tmp/fixed -O fixed-to-file || return 1
 
     step "Generating setup..."
@@ -107,12 +105,12 @@ main() {
         else
             info  "Building recursive setup..."
             # Add flags for recursive setup command
-            setup_flags="-t ../pil2-proofman/pil2-components/lib/std/pil -r"
+            setup_flags="-t ${WORKSPACE_DIR}/pil2-proofman/pil2-components/lib/std/pil -r"
             # Add -a flag  (aggregation) for check-setup command
             check_setup_flags=-a
         fi
 
-        ensure node ../pil2-proofman-js/src/main_setup.js \
+        ensure node "${WORKSPACE_DIR}/pil2-proofman-js/src/main_setup.js" \
             -a ./pil/zisk.pilout -b build \
             -u tmp/fixed ${setup_flags}
     fi
