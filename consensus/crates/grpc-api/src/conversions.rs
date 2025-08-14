@@ -7,7 +7,6 @@ use consensus_common::{ComputeCapacity, ProverAllocationDto, RowData};
 /// Conversions between consensus-common types and gRPC types
 /// This module handles the translation layer between our domain types
 /// and the generated gRPC protobuf types.
-
 impl From<ComputeCapacity> for GrpcComputeCapacity {
     fn from(capacity: ComputeCapacity) -> Self {
         GrpcComputeCapacity { compute_units: capacity.compute_units }
