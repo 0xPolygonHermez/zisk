@@ -10,11 +10,6 @@ main() {
     current_step=1
     total_steps=9
 
-    # If ZISK_GHA is set, force skip cloning pil2-proofman and use pil2-proofman dependency defined in zisk Cargo.toml
-    if [[ ${ZISK_GHA} == "1" ]]; then
-        PIL2_PROOFMAN_BRANCH=""
-    fi
-
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"
     elif [[ "${PLATFORM}" == "darwin" ]]; then
@@ -28,6 +23,11 @@ main() {
     # Load environment variables from .env file
     load_env || return 1
     confirm_continue || return 0
+
+    # If ZISK_GHA is set, force skip cloning pil2-proofman and use pil2-proofman dependency defined in zisk Cargo.toml
+    if [[ ${ZISK_GHA} == "1" ]]; then
+        unset PIL2_PROOFMAN_BRANCH
+    fi
 
     cd "${WORKSPACE_DIR}"
 
