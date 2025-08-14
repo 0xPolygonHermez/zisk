@@ -724,56 +724,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "consensus-api"
-version = "0.11.0"
-dependencies = [
- "chrono",
- "consensus-comm",
- "consensus-config",
- "prost",
- "prost-types",
- "serde_json",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "consensus-client"
-version = "0.11.0"
-dependencies = [
- "anyhow",
- "asm-runner",
- "cargo-zisk",
- "clap",
- "colored",
- "config",
- "consensus-api",
- "consensus-core",
- "fields",
- "libloading",
- "proofman",
- "proofman-common",
- "prost-types",
- "rom-setup",
- "serde",
- "tokio",
- "tokio-stream",
- "toml 0.9.5",
- "tonic",
- "tonic-prost",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "vergen",
- "witness",
- "zisk-common",
- "zisk-witness",
-]
-
-[[package]]
 name = "consensus-comm"
 version = "0.11.0"
 dependencies = [
@@ -784,6 +734,18 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "consensus-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.14",
  "uuid",
 ]
 
@@ -803,8 +765,9 @@ version = "0.11.0"
 dependencies = [
  "anyhow",
  "chrono",
- "consensus-api",
+ "consensus-common",
  "consensus-config",
+ "consensus-grpc-api",
  "futures",
  "serde",
  "serde_json",
@@ -818,6 +781,69 @@ dependencies = [
 ]
 
 [[package]]
+name = "consensus-grpc-api"
+version = "0.11.0"
+dependencies = [
+ "chrono",
+ "consensus-comm",
+ "consensus-common",
+ "consensus-config",
+ "prost",
+ "prost-types",
+ "serde_json",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "consensus-prover"
+version = "0.11.0"
+dependencies = [
+ "anyhow",
+ "asm-runner",
+ "consensus-common",
+ "fields",
+ "libloading",
+ "proofman",
+ "proofman-common",
+ "serde",
+ "tokio",
+ "tracing",
+ "vergen",
+ "witness",
+ "zisk-common",
+]
+
+[[package]]
+name = "consensus-prover-service"
+version = "0.11.0"
+dependencies = [
+ "anyhow",
+ "asm-runner",
+ "cargo-zisk",
+ "clap",
+ "colored",
+ "consensus-common",
+ "consensus-core",
+ "consensus-grpc-api",
+ "consensus-prover",
+ "proofman-common",
+ "prost-types",
+ "rom-setup",
+ "serde",
+ "tokio",
+ "tokio-stream",
+ "toml 0.9.5",
+ "tonic",
+ "tracing",
+ "vergen",
+ "zisk-common",
+]
+
+[[package]]
 name = "consensus-server"
 version = "0.11.0"
 dependencies = [
@@ -825,10 +851,11 @@ dependencies = [
  "async-stream",
  "chrono",
  "clap",
- "consensus-api",
  "consensus-comm",
+ "consensus-common",
  "consensus-config",
  "consensus-core",
+ "consensus-grpc-api",
  "futures-util",
  "prost",
  "prost-types",

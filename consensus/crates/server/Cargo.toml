@@ -12,9 +12,10 @@ path = "src/main.rs"
 
 [dependencies]
 consensus-core = { workspace = true }
-consensus-api = { workspace = true }
+consensus-grpc-api = { workspace = true }
 consensus-config = { workspace = true }
 consensus-comm = { workspace = true }
+consensus-common = { path = "../common" }
 witness = { workspace = true }
 
 tonic = { workspace = true }

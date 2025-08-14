@@ -7,8 +7,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-consensus-api = { workspace = true }
+consensus-grpc-api = { workspace = true }
 consensus-config = { path = "../config" }
+consensus-common = { path = "../common" }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

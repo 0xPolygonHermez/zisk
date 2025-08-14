@@ -1,5 +1,5 @@
 [package]
-name = "consensus-api"
+name = "consensus-grpc-api"
 description = "gRPC API layer for Consensus Network"
 version.workspace = true
 edition.workspace = true
@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 consensus-config = { workspace = true }
 consensus-comm = { workspace = true }
+consensus-common = { path = "../common" }
 
 tonic = { workspace = true }
 tonic-prost = { workspace = true }

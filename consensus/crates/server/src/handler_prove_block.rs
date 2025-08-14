@@ -1,5 +1,5 @@
 use anyhow::Result;
-use consensus_api::{consensus_api_client::ConsensusApiClient, StartProofRequest};
+use consensus_grpc_api::{consensus_api_client::ConsensusApiClient, StartProofRequest};
 use tonic::transport::Channel;
 use tracing::{error, info};
 
@@ -25,10 +25,10 @@ pub async fn handle(server_url: String, input_path: String, compute_capacity: u3
     let response = client.start_proof(start_proof_request).await?;
 
     match response.into_inner().result {
-        Some(consensus_api::start_proof_response::Result::JobId(job_id)) => {
+        Some(consensus_grpc_api::start_proof_response::Result::JobId(job_id)) => {
             info!("Proof job started successfully with job_id: {}", job_id);
         }
-        Some(consensus_api::start_proof_response::Result::Error(error)) => {
+        Some(consensus_grpc_api::start_proof_response::Result::Error(error)) => {
             error!("Proof job failed: {} - {}", error.code, error.message);
         }
         None => {
