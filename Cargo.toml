@@ -38,8 +38,8 @@ members = [
     "consensus/crates/prover-service",
     "consensus/crates/comm",
     "consensus/crates/config",
-    "consensus/crates/core",
-    "consensus/crates/server",
+    "consensus/crates/coordinator",
+    "consensus/crates/coordinator-service",
     "consensus/crates/common",
 ]
 
@@ -89,8 +89,8 @@ consensus-prover-service = { path = "consensus/crates/prover-service" }
 consensus-comm = { path = "consensus/crates/comm" }
 consensus-common = { path = "consensus/crates/common" }
 consensus-config = { path = "consensus/crates/config" }
-consensus-core = { path = "consensus/crates/core" }
-consensus-server = { path = "consensus/crates/server" }
+consensus-coordinator = { path = "consensus/crates/coordinator" }
+consensus-coordinator-service = { path = "consensus/crates/coordinator-service" }
 
 # Proofman
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-vt-wip" }

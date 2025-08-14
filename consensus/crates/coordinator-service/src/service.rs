@@ -4,7 +4,7 @@ use consensus_grpc_api::{consensus_api_server::*, *};
 use consensus_comm::CommManager;
 use consensus_common::{ComputeCapacity, ProverId};
 use consensus_config::Config;
-use consensus_core::{ProverManager, ProverManagerConfig};
+use consensus_coordinator::{ProverManager, ProverManagerConfig};
 
 use chrono::{DateTime, Utc};
 use futures_util::{Stream, StreamExt};

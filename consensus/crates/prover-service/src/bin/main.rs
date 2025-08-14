@@ -107,7 +107,7 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing
-    consensus_core::tracing::init()?;
+    consensus_common::tracing::init()?;
 
     let cli = Cli::parse();
 

@@ -4,9 +4,15 @@ use anyhow::Result;
 use asm_runner::AsmRunnerOptions;
 use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib, initialize_mpi};
 use consensus_common::{ComputeCapacity, ProverId};
-use consensus_prover::{config::{ConnectionConfig, ProverClientConfig}, ProverServiceConfig};
+use consensus_prover::{
+    config::{ConnectionConfig, ProverClientConfig},
+    ProverServiceConfig,
+};
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
-use rom_setup::{gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
+use rom_setup::{
+    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
+    DEFAULT_CACHE_PATH,
+};
 use serde::{Deserialize, Serialize};
 use zisk_common::MpiContext;
 

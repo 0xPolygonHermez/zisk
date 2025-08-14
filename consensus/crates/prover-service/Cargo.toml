@@ -28,7 +28,7 @@ proofman-common = { workspace = true }
 rom-setup = { workspace = true }
 asm-runner = { workspace = true }
 consensus-grpc-api = { workspace = true }
-consensus-core = { workspace = true }
+consensus-coordinator = { workspace = true }
 consensus-prover = { workspace = true }
 consensus-common = { workspace = true }
 

@@ -1,5 +1,5 @@
 [package]
-name = "consensus-core"
+name = "consensus-coordinator"
 description = "Core types and functionality for Consensus Network"
 version.workspace = true
 edition.workspace = true
@@ -15,7 +15,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
