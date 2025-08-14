@@ -231,7 +231,9 @@ get_var_from_cargo_toml() {
     if [[ "$var_lc" == "pil2_proofman_branch" ]]; then
         # Find the single line starting with "proofman =" that references pil2-proofman
         local proof_line
-        proof_line="$(LC_ALL=C grep -E '^[[:space:]]*proofman[[:space:]]*=' "$file" | grep -m1 'pil2-proofman')"
+        proof_line="$(LC_ALL=C grep -E '^[[:space:]]*proofman[[:space:]]*=' "$file")"
+
+        echo "proof_line = $proof_line"
 
         if [[ -n "$proof_line" ]]; then
             local branch
