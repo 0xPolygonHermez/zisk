@@ -6,9 +6,13 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+name = "consensus_client"
+path = "src/lib.rs"
+
 [[bin]]
 name = "consensus-client"
-path = "src/main.rs"
+path = "src/bin/main.rs"
 
 [build-dependencies]
 vergen = { version = "8", default-features = false, features = [

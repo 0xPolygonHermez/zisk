@@ -1,8 +1,6 @@
 use anyhow::Result;
 use consensus_core::{ComputeCapacity, ProverId};
 use serde::{Deserialize, Serialize};
-use std::env;
-use std::path::Path;
 
 /// Client configuration structure that can be loaded from TOML
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,29 +60,11 @@ fn default_heartbeat_timeout() -> u64 {
 }
 
 impl ProverGrpcEndpointConfig {
-    /// Load configuration from file or create default
-    pub fn load() -> Result<Self> {
-        let config_path = env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
-
-        if Path::new(&config_path).exists() {
-            Self::load_from_file(&config_path)
-        } else {
-            Err(anyhow::anyhow!("Configuration file '{}' not found.", config_path))
-        }
-    }
-
     /// Load configuration from a specific file
     pub fn load_from_file(path: &str) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let config: ProverGrpcEndpointConfig = toml::from_str(&content)?;
         Ok(config)
-    }
-
-    /// Save configuration to file
-    pub fn save_to_file(&self, path: &str) -> Result<()> {
-        let content = toml::to_string_pretty(self)?;
-        std::fs::write(path, content)?;
-        Ok(())
     }
 
     /// Apply CLI overrides to the configuration
