@@ -52,9 +52,17 @@ pub fn riscv_interpreter(code: &[u32]) -> Vec<RiscvInstruction> {
         // Get the RISCV instruction
         let inst = *inst_ref;
 
-        // Ignore instructions that are zero
+        // Handle zero instructions as NOPs to preserve correct instruction indexing
         if inst == 0 {
-            //println!("riscv_interpreter() found inst=0 at position s={}", s);
+            //println!("riscv_interpreter() found inst=0 at position s={}, treating as NOP", s);
+            // Create a NOP instruction (zero instruction)
+            let nop = RiscvInstruction {
+                rvinst: 0,
+                inst: "nop".to_string(),
+                t: "NOP".to_string(),
+                ..Default::default()
+            };
+            insts.push(nop);
             continue;
         }
 
