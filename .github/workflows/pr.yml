@@ -51,7 +51,10 @@ jobs:
     container:
       image: ubuntu:22.04
       options:
-        --shm-size=32g
+        --shm-size=64g
+        --memory=256g
+        --memory-swap=0
+        --ulimit nofile=65535:65535        
         -v /home/gha/cache-setup:/output:rw
     defaults:
       run:
@@ -78,7 +81,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
 
-      - name: Build setup (no recursive)
+      - name: Build setup
         env:
           USE_CACHE_SETUP: "1"
         run: |
