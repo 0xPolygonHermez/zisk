@@ -49,7 +49,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 120
     container:
-      image: ziskvm/zisk-test-env:latest
+      image: ubuntu:22.04
       options:
         --shm-size=32g  
         -v /home/gha/cache-setup:/output:rw
