@@ -77,7 +77,7 @@ main() {
 
     step "Generating setup..."
     cached=0
-    if [[ "${USE_SETUP_CACHE}" == "1" ]]; then
+    if [[ "${USE_CACHE_SETUP}" == "1" ]]; then
         # Compute setup hash
         HASH_SUM=$(sha256sum pil/zisk.pilout tmp/fixed/*.fixed \
         | sort -k2 \
@@ -116,7 +116,7 @@ main() {
             -u tmp/fixed ${setup_flags}
     fi
 
-    if [[ ${USE_SETUP_CACHE} == "1" && ${cached} == "0" ]]; then
+    if [[ ${USE_CACHE_SETUP} == "1" && ${cached} == "0" ]]; then
         info "Caching setup..."
         mkdir -p "${cache_setup_folder}"
         ensure cp -R build/provingKey "${cache_setup_folder}" || return 1
