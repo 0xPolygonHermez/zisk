@@ -20,7 +20,6 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use std::io::Write;
-use std::ops::Range;
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "stats")]
 use std::time::{Duration, Instant};
@@ -308,10 +307,7 @@ impl ZiskProve {
                             ProvePhaseInputs::Full(ProofInfo::new(
                                 self.input.clone(),
                                 mpi_ctx.n_processes as usize,
-                                vec![Range {
-                                    start: mpi_ctx.rank as u32,
-                                    end: mpi_ctx.rank as u32 + 1,
-                                }],
+                                vec![mpi_ctx.rank as u32],
                             )),
                             ProofOptions::new(
                                 false,

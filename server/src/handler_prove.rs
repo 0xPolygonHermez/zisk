@@ -7,7 +7,6 @@ use proofman::{ProofInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::{fs::File, path::PathBuf};
@@ -72,10 +71,7 @@ impl ZiskServiceProveHandler {
                         ProvePhaseInputs::Full(ProofInfo::new(
                             Some(request_input),
                             mpi_ctx.n_processes as usize,
-                            vec![Range {
-                                start: mpi_ctx.rank as u32,
-                                end: mpi_ctx.rank as u32 + 1,
-                            }],
+                            vec![mpi_ctx.rank as u32],
                         )),
                         ProofOptions::new(
                             false,
