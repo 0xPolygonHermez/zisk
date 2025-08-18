@@ -358,6 +358,8 @@ impl ProverGrpcEndpoint {
             params.total_provers,
             params.prover_allocation.into_iter().map(|alloc| alloc.into()).collect(),
             params.job_compute_units,
+            params.total_tables,
+            params.table_ids,
         );
 
         // Start computation in background task
