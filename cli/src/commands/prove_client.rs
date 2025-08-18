@@ -1,6 +1,5 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use proofman_common::VerboseMode;
 use server::{
     ZiskProveRequest, ZiskRequest, ZiskResponse, ZiskShutdownRequest, ZiskStatusRequest,
     ZiskVerifyConstraintsRequest,
@@ -11,7 +10,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::commands::{initialize_mpi, DEFAULT_PORT};
+use crate::commands::DEFAULT_PORT;
 
 use colored::Colorize;
 
@@ -128,18 +127,6 @@ impl ZiskProveClient {
             }
         };
 
-        // Construct server address
-        let mpi_context = initialize_mpi()?;
-
-        let verbose = match self.command {
-            ClientCommand::Prove { verbose: v, .. }
-            | ClientCommand::VerifyConstraints { verbose: v, .. } => v.into(),
-
-            ClientCommand::Status { .. } | ClientCommand::Shutdown { .. } => VerboseMode::Info,
-        };
-
-        proofman_common::initialize_logger(verbose, Some(mpi_context.world_rank));
-
         // Determine the port to use for this client instance.
         // - If no port is specified, default to DEFAULT_PORT.
         // - If a port is specified, use it as the base port.
@@ -151,7 +138,9 @@ impl ZiskProveClient {
             | ClientCommand::Status { port }
             | ClientCommand::Shutdown { port } => port.unwrap_or(DEFAULT_PORT),
         };
-        port += mpi_context.local_rank as u16;
+
+        // TODO: FIX!
+        // port += mpi_context.node_rank as u16;
 
         let address = format!("localhost:{port}");
 

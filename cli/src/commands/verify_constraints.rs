@@ -1,7 +1,5 @@
 use crate::{
-    commands::{
-        cli_fail_if_gpu_mode, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
-    },
+    commands::{cli_fail_if_gpu_mode, get_proving_key, get_witness_computation_lib, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -13,7 +11,7 @@ use executor::ZiskExecutionResult;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{json_to_debug_instances_map, DebugInfo, MpiCtx, ParamsGPU};
+use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -95,10 +93,6 @@ impl ZiskVerifyConstraints {
         cli_fail_if_gpu_mode()?;
 
         print_banner();
-
-        let mpi_context = initialize_mpi()?;
-
-        proofman_common::initialize_logger(self.verbose.into(), Some(mpi_context.world_rank));
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
@@ -182,23 +176,23 @@ impl ZiskVerifyConstraints {
         .expect("Failed to initialize proofman");
         let mut witness_lib;
 
-        #[cfg(distributed)]
-        proofman.set_mpi_ctx(MpiCtx::new_with_universe(mpi_context.universe));
+        let mpi_ctx = proofman.get_mpi_ctx();
 
-        let asm_services =
-            AsmServices::new(mpi_context.world_rank, mpi_context.local_rank, self.port);
+        initialize_logger(self.verbose.into(), Some(mpi_ctx.rank));
+
+        let asm_services = AsmServices::new(mpi_ctx.rank, mpi_ctx.node_rank, self.port);
         let asm_runner_options = AsmRunnerOptions::new()
             .with_verbose(self.verbose > 0)
             .with_base_port(self.port)
-            .with_world_rank(mpi_context.world_rank)
-            .with_local_rank(mpi_context.local_rank)
+            .with_world_rank(mpi_ctx.rank)
+            .with_local_rank(mpi_ctx.node_rank)
             .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
         let start = std::time::Instant::now();
 
         if self.asm.is_some() {
             // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_ctx.rank);
 
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }
@@ -216,8 +210,8 @@ impl ZiskVerifyConstraints {
                     self.asm.clone(),
                     asm_rom,
                     None,
-                    Some(mpi_context.world_rank),
-                    Some(mpi_context.local_rank),
+                    Some(mpi_ctx.rank),
+                    Some(mpi_ctx.node_rank),
                     self.port,
                     self.unlock_mapped_memory,
                 )
@@ -253,7 +247,7 @@ impl ZiskVerifyConstraints {
 
         if self.asm.is_some() {
             // Shut down ASM microservices
-            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_context.world_rank);
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_ctx.rank);
             asm_services.stop_asm_services()?;
         }
 
