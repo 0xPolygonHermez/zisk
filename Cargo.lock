@@ -1112,7 +1112,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#238757de55211dd85e6ac76c3b9d2ffb3c127ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#c01324afd39b099515b05f9a3e27fda556b70c9d"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1430,7 +1430,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#238757de55211dd85e6ac76c3b9d2ffb3c127ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#c01324afd39b099515b05f9a3e27fda556b70c9d"
 dependencies = [
  "num-bigint",
  "paste",
@@ -1783,13 +1783,14 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "hyper"
-version = "1.6.0"
+version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc2b571658e38e0c01b1fdca3bbbe93c00d3d71693ff2770043f8c29bc7d6f80"
+checksum = "eb3aa54a13a0dfe7fbe3a59e0c76093041720fdc77b110cc0fc260fafb4dc51e"
 dependencies = [
+ "atomic-waker",
  "bytes",
  "futures-channel",
- "futures-util",
+ "futures-core",
  "h2",
  "http",
  "http-body",
@@ -1797,6 +1798,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
+ "pin-utils",
  "smallvec",
  "tokio",
  "want",
@@ -2733,7 +2735,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#238757de55211dd85e6ac76c3b9d2ffb3c127ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#c01324afd39b099515b05f9a3e27fda556b70c9d"
 dependencies = [
  "colored",
  "fields",
@@ -3010,7 +3012,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#238757de55211dd85e6ac76c3b9d2ffb3c127ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#c01324afd39b099515b05f9a3e27fda556b70c9d"
 dependencies = [
  "blake3",
  "bytemuck",
@@ -3041,7 +3043,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#238757de55211dd85e6ac76c3b9d2ffb3c127ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#c01324afd39b099515b05f9a3e27fda556b70c9d"
 dependencies = [
  "crossbeam-channel",
  "env",
@@ -3064,7 +3066,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#238757de55211dd85e6ac76c3b9d2ffb3c127ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#c01324afd39b099515b05f9a3e27fda556b70c9d"
 dependencies = [
  "fields",
  "proofman-common",
@@ -3076,7 +3078,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#238757de55211dd85e6ac76c3b9d2ffb3c127ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#c01324afd39b099515b05f9a3e27fda556b70c9d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3087,7 +3089,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#238757de55211dd85e6ac76c3b9d2ffb3c127ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#c01324afd39b099515b05f9a3e27fda556b70c9d"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3096,7 +3098,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#238757de55211dd85e6ac76c3b9d2ffb3c127ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#c01324afd39b099515b05f9a3e27fda556b70c9d"
 dependencies = [
  "colored",
  "fields",
@@ -4607,7 +4609,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#238757de55211dd85e6ac76c3b9d2ffb3c127ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#c01324afd39b099515b05f9a3e27fda556b70c9d"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -5252,7 +5254,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#238757de55211dd85e6ac76c3b9d2ffb3c127ba6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-vt-wip#c01324afd39b099515b05f9a3e27fda556b70c9d"
 dependencies = [
  "colored",
  "fields",

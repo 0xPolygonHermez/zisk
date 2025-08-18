@@ -132,6 +132,8 @@ impl ProofGenerator {
             Some(job.block.input_path.clone()),
             job.total_compute_units as usize,
             job.allocation.clone(),
+            job.total_tables as usize,
+            job.table_id_start as usize,
         );
         let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
 

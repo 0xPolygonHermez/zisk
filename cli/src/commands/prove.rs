@@ -308,6 +308,8 @@ impl ZiskProve {
                                 self.input.clone(),
                                 mpi_ctx.n_processes as usize,
                                 vec![mpi_ctx.rank as u32],
+                                mpi_ctx.n_processes as usize,
+                                mpi_ctx.rank as usize,
                             )),
                             ProofOptions::new(
                                 false,
