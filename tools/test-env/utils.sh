@@ -87,7 +87,7 @@ load_env() {
             [[ "$key_value" != "0" ]] && __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
         elif [[ -z "${!key}" ]]; then
             # If not already defined, set the value from the .env file if ZISK_GHA is not set
-            if is_gha; then
+            if ! is_gha; then
                 export "$key=$value"
                 [[ "$value" != "0" ]] && __env_print_lines+=(" -  [.env] ${key} = ${value}")
             fi
@@ -336,8 +336,6 @@ run_timed() {
     # Show execution time and exit code
     if [[ $exit_code -eq 0 ]]; then
         info "🕒 Finished ${script} in ${pretty} (exit code 0)"
-    else
-        err "${script} exited with code ${exit_code} after ${pretty}"
     fi
 
     # Always return success to keep the menu running
