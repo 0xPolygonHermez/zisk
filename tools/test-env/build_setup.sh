@@ -89,7 +89,7 @@ main() {
 
         ZISK_VERSION=$(echo "$(ensure cargo-zisk --version)" | awk '{print $2}')
         IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
-        cache_setup_folder="${OUTPUT_DIR}/${major}.${minor}.0/${HASH_SUM}"
+        cache_setup_folder="${OUTPUT_DIR}/${major}.${minor}.0/${PLATFORM}/${HASH_SUM}"
 
         # Check if setup file exists in cache
         if [[ -d "${cache_setup_folder}" ]]; then

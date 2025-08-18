@@ -33,7 +33,7 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-if [$DEBUG -eq 1 ]; then
+if [ $DEBUG -eq 1 ]; then
     echo "Debug mode enabled";
     set -x;  # Enable debugging output
 else
@@ -67,9 +67,10 @@ fi
 # Record the number of files
 MAX_COUNTER=${COUNTER}
 
-# Create an empty input file
-INPUT_FILE="/tmp/empty_input.bin"
-touch $INPUT_FILE
+# Kill previous instances of the emulator server, if any
+pkill ziskemuasm
+echo "Sleeping for 5 seconds to kill previous ziskemuasm instances..."
+sleep 5
 
 # For all files
 COUNTER=0
@@ -119,7 +120,7 @@ do
 
     # Compare output vs reference
     ELF_FILE_DIRECTORY=${ELF_FILE%%my.elf}
-    REFERENCE_FILE="../${ELF_FILE_DIRECTORY}../ref/Reference-sail_c_simulator.signature"
+    REFERENCE_FILE="${ELF_FILE_DIRECTORY}../ref/Reference-sail_c_simulator.signature"
     echo "Calling diff of ./output vs reference=$REFERENCE_FILE"
     if diff output $REFERENCE_FILE; then
         DIFF_PASSED_COUNTER=$((DIFF_PASSED_COUNTER+1))
