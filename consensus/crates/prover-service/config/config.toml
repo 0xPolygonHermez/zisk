@@ -4,6 +4,7 @@ url = "http://127.0.0.1:50051"
 [prover]
 prover_id = "my-prover-001"
 compute_capacity.compute_units = 256
+num_nodes = 1
 
 [connection]
 reconnect_interval_seconds = 5

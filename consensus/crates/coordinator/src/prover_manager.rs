@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use consensus_common::{
-    BlockContext, BlockId, ComputeCapacity, Error, Job, JobId, JobPhase, JobResult, JobState, ProverId, ProverState, Result
+    BlockContext, BlockId, ComputeCapacity, Error, Job, JobId, JobPhase, JobResult, JobState,
+    ProverId, ProverState, Result,
 };
 use consensus_grpc_api::{
     coordinator_message, execute_task_request, prover_message, CoordinatorMessage,
@@ -16,6 +17,7 @@ pub struct ProverConnection {
     pub prover_id: ProverId,
     pub state: ProverState,
     pub compute_capacity: ComputeCapacity,
+    pub num_nodes: u32,
     pub connected_at: DateTime<Utc>,
     pub last_heartbeat: DateTime<Utc>,
     pub message_sender: mpsc::Sender<CoordinatorMessage>,
@@ -108,6 +110,7 @@ impl ProverManager {
         &self,
         prover_id: ProverId,
         compute_capacity: impl Into<ComputeCapacity>,
+        num_nodes: u32,
         message_sender: mpsc::Sender<CoordinatorMessage>,
     ) -> Result<ProverId> {
         // Check if we've reached the maximum number of total provers
@@ -123,6 +126,7 @@ impl ProverManager {
         let connection = ProverConnection {
             prover_id: prover_id.clone(),
             compute_capacity: compute_capacity.into(),
+            num_nodes,
             state: ProverState::Idle,
             connected_at: now,
             last_heartbeat: now,
@@ -225,6 +229,13 @@ impl ProverManager {
         // Send messages to selected provers
         let mut provers = self.provers.write().await;
         let provers_len = selected_provers.len() as u32;
+        let mut table_id_acc = 0;
+
+        let total_tables = selected_provers
+            .iter()
+            .map(|prover_id| provers.get(prover_id).map_or(0, |p| p.num_nodes))
+            .sum::<u32>();
+
         for (rank, prover_id) in selected_provers.iter().enumerate() {
             let prover = provers.get_mut(prover_id).unwrap();
 
@@ -232,6 +243,9 @@ impl ProverManager {
             let range = &partitions[rank];
             let prover_allocation =
                 vec![ProverAllocation { range_start: range.start, range_end: range.end }];
+
+            let ids: Vec<u32> = (table_id_acc..table_id_acc + prover.num_nodes).collect();
+            table_id_acc += prover.num_nodes;
 
             let message = CoordinatorMessage {
                 payload: Some(coordinator_message::Payload::ExecuteTask(
@@ -247,6 +261,8 @@ impl ProverManager {
                                 total_provers: provers_len,
                                 prover_allocation,
                                 job_compute_units: required_compute_capacity.compute_units,
+                                total_tables,
+                                table_ids: ids,
                             },
                         )),
                     },

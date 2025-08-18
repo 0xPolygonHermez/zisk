@@ -1,5 +1,4 @@
 use anyhow::Result;
-use asm_runner::AsmRunnerOptions;
 use consensus_common::{BlockContext, JobPhase, ProverAllocationDto, ProverState};
 use consensus_common::{ComputeCapacity, JobId, ProverId};
 use proofman_common::{DebugInfo, ParamsGPU};
@@ -8,8 +7,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
-
-use zisk_common::MpiContext;
 
 use crate::proof_generator::ProofGenerator;
 
@@ -64,7 +61,10 @@ pub struct ProverServiceConfig {
     pub chunk_size_bits: Option<u64>,
 
     /// Additional options for the ASM runner
-    pub asm_runner_options: AsmRunnerOptions,
+    // pub asm_runner_options: AsmRunnerOptions,
+    pub asm_port: Option<u16>,
+
+    pub unlock_mapped_memory: bool,
 
     pub verify_constraints: bool,
     pub aggregation: bool,
@@ -86,7 +86,9 @@ impl ProverServiceConfig {
         verbose: u8,
         debug: DebugInfo,
         chunk_size_bits: Option<u64>,
-        asm_runner_options: AsmRunnerOptions,
+        // asm_runner_options: AsmRunnerOptions,
+        asm_port: Option<u16>,
+        unlock_mapped_memory: bool,
         verify_constraints: bool,
         aggregation: bool,
         final_snark: bool,
@@ -103,7 +105,8 @@ impl ProverServiceConfig {
             verbose,
             debug_info: Arc::new(debug),
             chunk_size_bits,
-            asm_runner_options,
+            asm_port,
+            unlock_mapped_memory,
             verify_constraints,
             aggregation,
             final_snark,
@@ -127,9 +130,8 @@ impl ProverService {
         prover_id: ProverId,
         compute_capacity: ComputeCapacity,
         config: ProverServiceConfig,
-        mpi_context: MpiContext,
     ) -> Result<Self> {
-        let proof_generator = ProofGenerator::new(&config, mpi_context)?;
+        let proof_generator = ProofGenerator::new(&config)?;
 
         Ok(Self {
             prover_id,
@@ -190,10 +192,7 @@ impl ProverService {
             block,
             rank_id,
             total_provers,
-            allocation: allocation
-                .iter()
-                .flat_map(|alloc| alloc.range.clone())
-                .collect(),
+            allocation: allocation.iter().flat_map(|alloc| alloc.range.clone()).collect(),
             total_compute_units,
             phase: JobPhase::Phase1,
         }));

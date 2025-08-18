@@ -9,7 +9,6 @@ use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info};
-use zisk_common::MpiContext;
 
 use crate::config::ProverGrpcEndpointConfig;
 
@@ -22,13 +21,11 @@ impl ProverGrpcEndpoint {
     pub async fn new(
         config_endpoint: ProverGrpcEndpointConfig,
         config_service: ProverServiceConfig,
-        mpi_context: MpiContext,
     ) -> Result<Self> {
         let prover_service = ProverService::new(
             config_endpoint.prover.prover_id.clone(),
             config_endpoint.prover.compute_capacity,
             config_service,
-            mpi_context,
         )?;
 
         Ok(Self { config_endpoint, prover_service })
@@ -87,6 +84,7 @@ impl ProverGrpcEndpoint {
                 payload: Some(prover_message::Payload::Reconnect(ProverReconnectRequest {
                     prover_id: self.config_endpoint.prover.prover_id.as_string(),
                     compute_capacity: Some(self.config_endpoint.prover.compute_capacity.into()),
+                    num_nodes: self.config_endpoint.prover.num_nodes,
                     last_known_job_id: job.lock().await.job_id.as_string(),
                 })),
             }
@@ -95,6 +93,7 @@ impl ProverGrpcEndpoint {
                 payload: Some(prover_message::Payload::Register(ProverRegisterRequest {
                     prover_id: self.config_endpoint.prover.prover_id.as_string(),
                     compute_capacity: Some(self.config_endpoint.prover.compute_capacity.into()),
+                    num_nodes: 1,
                 })),
             }
         };

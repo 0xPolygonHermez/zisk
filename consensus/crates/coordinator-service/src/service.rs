@@ -1,10 +1,10 @@
 use anyhow::Result;
 use async_stream::stream;
-use consensus_grpc_api::{consensus_api_server::*, *};
 use consensus_comm::CommManager;
 use consensus_common::{ComputeCapacity, ProverId};
 use consensus_config::Config;
 use consensus_coordinator::{ProverManager, ProverManagerConfig};
+use consensus_grpc_api::{consensus_api_server::*, *};
 
 use chrono::{DateTime, Utc};
 use futures_util::{Stream, StreamExt};
@@ -90,7 +90,12 @@ impl ConsensusService {
         let compute_capacity = req.compute_capacity.unwrap_or_default();
 
         prover_manager
-            .register_prover(ProverId::from(req.prover_id), compute_capacity, msg_sender)
+            .register_prover(
+                ProverId::from(req.prover_id),
+                compute_capacity,
+                req.num_nodes,
+                msg_sender,
+            )
             .await
             .map_err(|e| Status::internal(format!("Registration failed: {e}")))
     }
@@ -104,7 +109,12 @@ impl ConsensusService {
         let compute_capacity = req.compute_capacity.unwrap_or_default();
 
         prover_manager
-            .register_prover(ProverId::from(req.prover_id), compute_capacity, msg_sender)
+            .register_prover(
+                ProverId::from(req.prover_id),
+                compute_capacity,
+                req.num_nodes,
+                msg_sender,
+            )
             .await
             .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))
     }
@@ -181,7 +191,8 @@ impl ConsensusApi for ConsensusService {
         self.validate_admin_request(&request)?;
 
         // TODO: Implement actual prover retrieval from database
-        let all_provers: consensus_common::Result<Vec<consensus_grpc_api::ProverStatus>> = Ok(vec![]);
+        let all_provers: consensus_common::Result<Vec<consensus_grpc_api::ProverStatus>> =
+            Ok(vec![]);
 
         let response = match all_provers {
             Ok(provers) => {

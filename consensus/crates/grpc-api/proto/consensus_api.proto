@@ -193,6 +193,8 @@ message PartialContributionParams {
   uint32 total_provers = 4;
   repeated ProverAllocation prover_allocation = 5;
   uint32 job_compute_units = 6;
+  uint32 total_tables = 7;
+  repeated uint32 table_ids = 8;
 }
 
 message ProverAllocation {
@@ -250,12 +252,14 @@ message ProverError {
 message ProverRegisterRequest {
   string prover_id = 1;
   ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
+  uint32 num_nodes = 3; // Number of nodes behind this prover
 }
 
 message ProverReconnectRequest {
   string prover_id = 1;
   ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
-  string last_known_job_id = 3;
+  uint32 num_nodes = 3; // Number of nodes behind this prover
+  string last_known_job_id = 4;
 }
 
 message ComputeCapacity {

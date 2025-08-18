@@ -1,8 +1,7 @@
 use std::{collections::HashMap, fs, path::PathBuf};
 
 use anyhow::Result;
-use asm_runner::AsmRunnerOptions;
-use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib, initialize_mpi};
+use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
 use consensus_common::{ComputeCapacity, ProverId};
 use consensus_prover::{
     config::{ConnectionConfig, ProverClientConfig},
@@ -14,7 +13,6 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use serde::{Deserialize, Serialize};
-use zisk_common::MpiContext;
 
 /// Client configuration structure that can be loaded from TOML
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +42,7 @@ impl ProverGrpcEndpointConfig {
         url: Option<String>,
         prover_id: Option<String>,
         compute_units: Option<u32>,
+        num_nodes: Option<u32>,
     ) {
         if let Some(url) = url {
             self.server.url = url;
@@ -55,6 +54,10 @@ impl ProverGrpcEndpointConfig {
 
         if let Some(compute_units) = compute_units {
             self.prover.compute_capacity.compute_units = compute_units;
+        }
+
+        if let Some(num_nodes) = num_nodes {
+            self.prover.num_nodes = num_nodes;
         }
     }
 
@@ -77,6 +80,8 @@ pub struct ProverConfig {
 
     /// Compute capacity configuration
     pub compute_capacity: ComputeCapacity,
+
+    pub num_nodes: u32,
 }
 
 /// Initialize and configure a prover client with the given configuration
@@ -88,14 +93,8 @@ pub async fn initialize_prover_config(
     url: Option<String>,
     prover_id: Option<String>,
     compute_units: Option<u32>,
-) -> Result<(ProverGrpcEndpointConfig, ProverServiceConfig, MpiContext)> {
-    let mpi_context = initialize_mpi()?;
-
-    proofman_common::initialize_logger(
-        proofman_common::VerboseMode::Info,
-        Some(mpi_context.world_rank),
-    );
-
+    num_nodes: Option<u32>,
+) -> Result<(ProverGrpcEndpointConfig, ProverServiceConfig)> {
     // Validate ELF file
     if !prover_config.elf.exists() {
         return Err(anyhow::anyhow!("ELF file '{}' not found.", prover_config.elf.display()));
@@ -166,13 +165,6 @@ pub async fn initialize_prover_config(
     let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
     custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
-    let asm_runner_options = AsmRunnerOptions::new()
-        .with_verbose(prover_config.verbose > 0)
-        .with_base_port(prover_config.asm_port)
-        .with_world_rank(mpi_context.world_rank)
-        .with_local_rank(mpi_context.local_rank)
-        .with_unlock_mapped_memory(prover_config.unlock_mapped_memory);
-
     let mut gpu_params = ParamsGPU::new(prover_config.preallocate);
 
     if prover_config.max_streams.is_some() {
@@ -196,7 +188,8 @@ pub async fn initialize_prover_config(
         prover_config.verbose,
         debug_info,
         prover_config.chunk_size_bits,
-        asm_runner_options,
+        prover_config.asm_port,
+        prover_config.unlock_mapped_memory,
         prover_config.verify_constraints,
         prover_config.aggregation,
         prover_config.final_snark,
@@ -211,12 +204,12 @@ pub async fn initialize_prover_config(
     };
 
     // Apply CLI overrides if provided
-    grpc_config.apply_cli_overrides(url, prover_id, compute_units);
+    grpc_config.apply_cli_overrides(url, prover_id, compute_units, num_nodes);
 
     // Validate required fields
     if grpc_config.server.url.is_empty() {
         return Err(anyhow::anyhow!("Server URL is required. Set it in config file or use --url"));
     }
 
-    Ok((grpc_config, service_config, mpi_context))
+    Ok((grpc_config, service_config))
 }

@@ -131,12 +131,13 @@ async fn main() -> Result<()> {
         max_witness_stored: cli.max_witness_stored,
     };
 
-    let (grpc_config, service_config, mpi_context) = initialize_prover_config(
+    let (grpc_config, service_config) = initialize_prover_config(
         prover_config,
         &cli.config,
         cli.url,
         cli.prover_id,
         cli.compute_units,
+        None,
     )
     .await?;
 
@@ -146,8 +147,7 @@ async fn main() -> Result<()> {
 
     print_command_info(&service_config, cli.debug.is_some());
 
-    let mut prover_client =
-        ProverGrpcEndpoint::new(grpc_config, service_config, mpi_context).await?;
+    let mut prover_client = ProverGrpcEndpoint::new(grpc_config, service_config).await?;
 
     info!(
         "Starting prover client {} ({}) connecting to server {}",

@@ -9,4 +9,3 @@ pub mod prover_service;
 
 pub use proof_generator::ProofGenerator;
 pub use prover_service::{JobContext, ProverService, ProverServiceConfig};
-
