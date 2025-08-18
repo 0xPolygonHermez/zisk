@@ -84,16 +84,16 @@ load_env() {
         if [[ -n "$key_value" ]]; then
             # If defined in Cargo.toml, export it (overrides anything else)
             export "$key=$key_value"
-            __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
+            [[ "$key_value" != "0" ]] && __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
         elif [[ -z "${!key}" ]]; then
             # If not already defined, set the value from the .env file if ZISK_GHA is not set
-            if [[ "$ZISK_GHA" != "1" ]]; then
+            if is_gha; then
                 export "$key=$value"
-                __env_print_lines+=(" -  [.env] ${key} = ${value}")
+                [[ "$value" != "0" ]] && __env_print_lines+=(" -  [.env] ${key} = ${value}")
             fi
         else
             # Already defined in the shell: keep current value
-            __env_print_lines+=(" - [shell] ${key} = ${!key}")
+            [[ "${!key}" != "0" ]] && __env_print_lines+=(" - [shell] ${key} = ${!key}")
         fi
     done < .env
 
@@ -107,8 +107,8 @@ load_env() {
 
 # confirm_continue: Ask the user for confirmation to continue
 confirm_continue() {
-    # If ZISK_GHA is set to 1, skip confirmation
-    if [[ -z "$ZISK_GHA" || "$ZISK_GHA" != "1" ]]; then
+    # If ZISK_GHA is set, skip confirmation
+    if ! is_gha; then
         read -p "Do you want to continue? [Y/n] " answer
         answer=${answer:-y}
 
@@ -121,8 +121,8 @@ confirm_continue() {
 
 # press_any_key: Wait for user to press any key
 press_any_key() {
-    # If ZISK_GHA is set to 1, skip waiting for user input
-    if [[ -z "$ZISK_GHA" || "$ZISK_GHA" != "1" ]]; then
+    # If ZISK_GHA is set, skip waiting for user input
+    if ! is_gha; then
         read -p "Press any key to continue..." -n1 -s
         echo
     fi
@@ -136,6 +136,11 @@ is_proving_key_installed() {
         err "Proving key not installed. Please install it first."
         return 1    
     fi
+}
+
+# is_gha: Check if the script is running in a GitHub Actions environment
+is_gha() {
+    [[ "$ZISK_GHA" == "1" ]]
 }
 
 # get_var_list: Returns the list of items (separated by commas) in the variable
@@ -214,7 +219,7 @@ get_platform() {
     PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")    
 }
 
-# get_var_from_cargo_toml: Extracts a variable value from Cargo.toml
+# get_var_from_cargo_toml: Extracts a variable value from Cargo.toml (with "gha_" prefix)
 get_var_from_cargo_toml() {
     local var_name=$1
     local file="$(get_zisk_repo_dir)/Cargo.toml"
@@ -240,7 +245,6 @@ get_var_from_cargo_toml() {
             [[ -z "$branch" ]] && branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE "s/.*branch[[:space:]]*=[[:space:]]*'([^']*)'.*/\1/p")
             [[ -z "$branch" ]] && branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE 's/.*branch[[:space:]]*=[[:space:]]*([^,}[:space:]]+).*/\1/p')
 
-            # If a branch was found, print it and return
             if [[ -n "$branch" ]]; then
                 echo "$branch"
                 return
@@ -250,21 +254,20 @@ get_var_from_cargo_toml() {
         # If no proofman line found, fall back to the standard variable lookup below
     fi
 
-    # --- Standard behavior: look up a variable by name (lowercased), quoted with "..." or '...' ---
-    # Escape regex special characters in the key for sed
-    local escaped_var
-    escaped_var=$(printf '%s' "$var_lc" | sed 's/[.[\*^$+?{}|()\\]/\\&/g')
+    # Always add prefix "gha_"
+    local prefixed_var="gha_${var_lc}"
 
-    # First, try double-quoted value: key = "value"
-    local value
-    value=$(LC_ALL=C sed -nE "s/^[[:space:]]*${escaped_var}[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$file" | head -n1)
+    # Escape regex special characters for sed
+    local escaped_prefixed
+    escaped_prefixed=$(printf '%s' "$prefixed_var" | sed 's/[.[\*^$+?{}|()\\]/\\&/g')
+
+    local value=""
+    # Try double-quoted value: key = "value"
+    value=$(LC_ALL=C sed -nE "s/^[[:space:]]*${escaped_prefixed}[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$file" | head -n1)
 
     # If not found, try single-quoted value: key = 'value'
-    if [[ -z "$value" ]]; then
-        value=$(LC_ALL=C sed -nE "s/^[[:space:]]*${escaped_var}[[:space:]]*=[[:space:]]*'([^']*)'.*/\1/p" "$file" | head -n1)
-    fi
+    [[ -z "$value" ]] && value=$(LC_ALL=C sed -nE "s/^[[:space:]]*${escaped_prefixed}[[:space:]]*=[[:space:]]*'([^']*)'.*/\1/p" "$file" | head -n1)
 
-    # Print the value or an empty string if not found
     echo "$value"
 }
 

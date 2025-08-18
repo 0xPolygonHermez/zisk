@@ -25,7 +25,7 @@ main() {
     confirm_continue || return 0
 
     # If ZISK_GHA is set, force skip cloning pil2-proofman and use pil2-proofman dependency defined in zisk Cargo.toml
-    if [[ ${ZISK_GHA} == "1" ]]; then
+    if is_gha; then
         unset PIL2_PROOFMAN_BRANCH
     fi
 
@@ -50,7 +50,7 @@ main() {
         info "Using ZisK repository defined in ZISK_REPO_DIR variable: ${ZISK_REPO_DIR}"
         ensure cd "${ZISK_REPO_DIR}"
     else
-        if [[ ${ZISK_GHA} == "1" ]]; then
+        if is_gha; then
             err "ZISK_GHA is set, but ZISK_REPO_DIR is not defined"
             return 1
         fi
