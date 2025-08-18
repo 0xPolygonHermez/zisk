@@ -244,7 +244,7 @@ impl ProverManager {
             let prover_allocation =
                 vec![ProverAllocation { range_start: range.start, range_end: range.end }];
 
-            let ids: Vec<u32> = (table_id_acc..table_id_acc + prover.num_nodes).collect();
+            let table_id_start = table_id_acc;
             table_id_acc += prover.num_nodes;
 
             let message = CoordinatorMessage {
@@ -262,7 +262,7 @@ impl ProverManager {
                                 prover_allocation,
                                 job_compute_units: required_compute_capacity.compute_units,
                                 total_tables,
-                                table_ids: ids,
+                                table_id_start,
                             },
                         )),
                     },

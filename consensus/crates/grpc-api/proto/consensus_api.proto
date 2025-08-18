@@ -194,7 +194,7 @@ message PartialContributionParams {
   repeated ProverAllocation prover_allocation = 5;
   uint32 job_compute_units = 6;
   uint32 total_tables = 7;
-  repeated uint32 table_ids = 8;
+  uint32 table_id_start = 8;
 }
 
 message ProverAllocation {
