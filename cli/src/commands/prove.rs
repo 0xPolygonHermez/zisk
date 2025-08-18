@@ -11,7 +11,7 @@ use executor::ZiskExecutionResult;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman::{ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman::{ProofInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::{
     initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions,
 };
@@ -20,6 +20,7 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use std::io::Write;
+use std::ops::Range;
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "stats")]
 use std::time::{Duration, Instant};
@@ -304,11 +305,14 @@ impl ZiskProve {
                     proofman.set_barrier();
                     let result = proofman
                         .generate_proof_from_lib(
-                            ProvePhaseInputs::Full(
+                            ProvePhaseInputs::Full(ProofInfo::new(
                                 self.input.clone(),
-                                mpi_ctx.n_processes,
-                                mpi_ctx.rank,
-                            ),
+                                mpi_ctx.n_processes as usize,
+                                vec![Range {
+                                    start: mpi_ctx.rank as u32,
+                                    end: mpi_ctx.rank as u32 + 1,
+                                }],
+                            )),
                             ProofOptions::new(
                                 false,
                                 self.aggregation,

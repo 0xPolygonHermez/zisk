@@ -3,10 +3,11 @@ use colored::Colorize;
 use executor::ZiskExecutionResult;
 use fields::Goldilocks;
 use proofman::ProofMan;
-use proofman::{ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman::{ProofInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
+use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::{fs::File, path::PathBuf};
@@ -68,11 +69,14 @@ impl ZiskServiceProveHandler {
 
                 let result = proofman
                     .generate_proof_from_lib(
-                        ProvePhaseInputs::Full(
+                        ProvePhaseInputs::Full(ProofInfo::new(
                             Some(request_input),
-                            mpi_ctx.n_processes,
-                            mpi_ctx.rank,
-                        ),
+                            mpi_ctx.n_processes as usize,
+                            vec![Range {
+                                start: mpi_ctx.rank as u32,
+                                end: mpi_ctx.rank as u32 + 1,
+                            }],
+                        )),
                         ProofOptions::new(
                             false,
                             request.aggregation,
