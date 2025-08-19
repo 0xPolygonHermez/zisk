@@ -4,8 +4,7 @@
 
 use std::collections::VecDeque;
 
-use crate::BinaryInput;
-use sm_frequent_ops::FrequentOpsTable;
+use crate::{BinaryExtensionFrops, BinaryInput};
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
     OPERATION_BUS_ID,
@@ -16,13 +15,25 @@ use zisk_core::ZiskOperationType;
 pub struct BinaryExtensionCollector {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
+    /// Collected rows for FROPS
+    pub frops_inputs: Vec<u32>,
+
     pub num_operations: usize,
     pub collect_skipper: CollectSkipper,
+
+    /// Flag to indicate that force to execute to end of chunk
+    force_execute_to_end: bool,
 }
 
 impl BinaryExtensionCollector {
     pub fn new(num_operations: usize, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+        Self {
+            inputs: Vec::new(),
+            num_operations,
+            collect_skipper,
+            frops_inputs: Vec::new(),
+            force_execute_to_end: false,
+        }
     }
 }
 
@@ -44,19 +55,16 @@ impl BusDevice<u64> for BinaryExtensionCollector {
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
+        let instance_complete = self.inputs.len() == self.num_operations as usize;
 
-        if self.inputs.len() >= self.num_operations {
+        if instance_complete && !self.force_execute_to_end {
             return false;
         }
 
-        if FrequentOpsTable::is_frequent_op(data[OP] as u8, data[A], data[B]) {
-            return true;
-        }
-
-        let data: ExtOperationData<u64> =
+        let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
-        let op_type = OperationBusData::get_op_type(&data);
+        let op_type = OperationBusData::get_op_type(&op_data);
 
         if op_type as u32 != ZiskOperationType::BinaryE as u32 {
             return true;
@@ -66,7 +74,19 @@ impl BusDevice<u64> for BinaryExtensionCollector {
             return true;
         }
 
-        self.inputs.push(BinaryInput::from(&data));
+        let frops_row = BinaryExtensionFrops::get_row(data[OP] as u8, data[A], data[B]);
+
+        if frops_row != BinaryExtensionFrops::NO_FROPS {
+            self.frops_inputs.push(frops_row as u32);
+            return true;
+        }
+
+        if instance_complete {
+            // instance complete => no FROPS operation => discard, inputs complete
+            return true;
+        }
+
+        self.inputs.push(BinaryInput::from(&op_data));
 
         self.inputs.len() < self.num_operations
     }

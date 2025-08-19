@@ -66,7 +66,7 @@ impl Metrics for BinaryCounter {
                 } else {
                     self.counter_basic_wo_add.update(1);
                 }
-            } else if op_type == BINARY_E {
+            } else if op_type == BINARY_E {                
                 self.counter_extension.update(1);
             }
         }

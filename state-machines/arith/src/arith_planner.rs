@@ -9,8 +9,8 @@ use std::any::Any;
 use crate::ArithCounterInputGen;
 use proofman_common::PreCalculate;
 use zisk_common::{
-    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
-    Plan, Planner, TableInfo,
+    plan_with_frops, BusDeviceMetrics, CheckPoint, ChunkId, InstFropsCount, InstanceInfo,
+    InstanceType, Metrics, Plan, Planner, TableInfo,
 };
 
 /// The `ArithPlanner` struct organizes execution plans for arithmetic instances and tables.
@@ -63,7 +63,7 @@ impl Planner for ArithPlanner {
     /// Panics if any counter cannot be downcasted to an `ArithCounter`.
     fn plan(&self, counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         // Prepare counts
-        let mut count: Vec<Vec<InstCount>> = Vec::with_capacity(self.instances_info.len());
+        let mut count: Vec<Vec<InstFropsCount>> = Vec::with_capacity(self.instances_info.len());
 
         for _ in 0..self.instances_info.len() {
             count.push(Vec::new());
@@ -75,9 +75,10 @@ impl Planner for ArithPlanner {
 
             // Iterate over `instances_info` and add `InstCount` objects to the correct vector
             for (index, instance_info) in self.instances_info.iter().enumerate() {
-                let inst_count = InstCount::new(
+                let inst_count = InstFropsCount::new(
                     *chunk_id,
                     reg_counter.inst_count(instance_info.op_type).unwrap(),
+                    reg_counter.frops_count(instance_info.op_type).unwrap(),
                 );
 
                 // Add the `InstCount` to the corresponding inner vector
@@ -88,7 +89,7 @@ impl Planner for ArithPlanner {
         let mut plan_result = Vec::new();
 
         for (idx, instance) in self.instances_info.iter().enumerate() {
-            let plan: Vec<_> = plan(&count[idx], instance.num_ops as u64)
+            let plan: Vec<_> = plan_with_frops(&count[idx], instance.num_ops as u64)
                 .into_iter()
                 .map(|(check_point, collect_info)| {
                     let converted: Box<dyn Any> = Box::new(collect_info);

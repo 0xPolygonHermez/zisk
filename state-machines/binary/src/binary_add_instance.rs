@@ -80,7 +80,9 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| {
-                collector.as_any().downcast::<BinaryAddCollector>().unwrap().inputs
+                let _collector = collector.as_any().downcast::<BinaryAddCollector>().unwrap();
+                self.binary_add_sm.compute_frops(&_collector.frops_inputs);
+                _collector.inputs
             })
             .collect();
 

@@ -82,7 +82,9 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| {
-                collector.as_any().downcast::<BinaryExtensionCollector>().unwrap().inputs
+                let _collector = collector.as_any().downcast::<BinaryExtensionCollector>().unwrap();
+                self.binary_extension_sm.compute_frops(&_collector.frops_inputs);
+                _collector.inputs
             })
             .collect();
 
