@@ -192,11 +192,11 @@ impl BusDevice<u64> for ArithInstanceCollector {
             return true;
         }
 
-        if self.collect_skipper.should_skip() {
+        let frops_row = ArithFrops::get_row(data[OP] as u8, data[A], data[B]);
+
+        if self.collect_skipper.should_skip_query(frops_row == ArithFrops::NO_FROPS) {
             return true;
         }
-
-        let frops_row = ArithFrops::get_row(data[OP] as u8, data[A], data[B]);
 
         if frops_row != ArithFrops::NO_FROPS {
             self.frops_inputs.push(frops_row as u32);
@@ -214,7 +214,7 @@ impl BusDevice<u64> for ArithInstanceCollector {
             self.inputs.push(data);
         }
 
-        self.inputs.len() < self.num_operations as usize
+        self.inputs.len() < self.num_operations as usize || self.force_execute_to_end
     }
 
     /// Returns the bus IDs associated with this instance.

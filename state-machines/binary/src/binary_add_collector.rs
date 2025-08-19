@@ -31,13 +31,17 @@ impl BinaryAddCollector {
     ///
     /// # Returns
     /// A new `BinaryAddCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: usize, collect_skipper: CollectSkipper) -> Self {
+    pub fn new(
+        num_operations: usize,
+        collect_skipper: CollectSkipper,
+        force_execute_to_end: bool,
+    ) -> Self {
         Self {
             inputs: Vec::new(),
             num_operations,
             collect_skipper,
             frops_inputs: Vec::new(),
-            force_execute_to_end: false,
+            force_execute_to_end,
         }
     }
 }
@@ -66,6 +70,8 @@ impl BusDevice<u64> for BinaryAddCollector {
             return false;
         }
 
+        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
+
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
@@ -75,11 +81,10 @@ impl BusDevice<u64> for BinaryAddCollector {
             return true;
         }
 
-        if self.collect_skipper.should_skip() {
+        if self.collect_skipper.should_skip_query(frops_row == BinaryBasicFrops::NO_FROPS) {
             return true;
         }
 
-        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
         if frops_row != BinaryBasicFrops::NO_FROPS {
             self.frops_inputs.push(frops_row as u32);
             return true;
@@ -92,7 +97,7 @@ impl BusDevice<u64> for BinaryAddCollector {
 
         self.inputs.push([OperationBusData::get_a(&op_data), OperationBusData::get_b(&op_data)]);
 
-        self.inputs.len() < self.num_operations
+        self.inputs.len() < self.num_operations as usize || self.force_execute_to_end
     }
 
     /// Returns the bus IDs associated with this instance.

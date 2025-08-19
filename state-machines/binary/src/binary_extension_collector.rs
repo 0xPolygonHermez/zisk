@@ -26,13 +26,17 @@ pub struct BinaryExtensionCollector {
 }
 
 impl BinaryExtensionCollector {
-    pub fn new(num_operations: usize, collect_skipper: CollectSkipper) -> Self {
+    pub fn new(
+        num_operations: usize,
+        collect_skipper: CollectSkipper,
+        force_execute_to_end: bool,
+    ) -> Self {
         Self {
             inputs: Vec::new(),
             num_operations,
             collect_skipper,
             frops_inputs: Vec::new(),
-            force_execute_to_end: false,
+            force_execute_to_end,
         }
     }
 }
@@ -61,6 +65,8 @@ impl BusDevice<u64> for BinaryExtensionCollector {
             return false;
         }
 
+        let frops_row = BinaryExtensionFrops::get_row(data[OP] as u8, data[A], data[B]);
+
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
@@ -70,11 +76,9 @@ impl BusDevice<u64> for BinaryExtensionCollector {
             return true;
         }
 
-        if self.collect_skipper.should_skip() {
+        if self.collect_skipper.should_skip_query(frops_row == BinaryExtensionFrops::NO_FROPS) {
             return true;
         }
-
-        let frops_row = BinaryExtensionFrops::get_row(data[OP] as u8, data[A], data[B]);
 
         if frops_row != BinaryExtensionFrops::NO_FROPS {
             self.frops_inputs.push(frops_row as u32);
@@ -88,7 +92,7 @@ impl BusDevice<u64> for BinaryExtensionCollector {
 
         self.inputs.push(BinaryInput::from(&op_data));
 
-        self.inputs.len() < self.num_operations
+        self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
 
     /// Returns the bus IDs associated with this instance.

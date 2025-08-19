@@ -10,7 +10,6 @@ use precomp_keccakf::KeccakfCounterInputGen;
 use precomp_sha256f::Sha256fCounterInputGen;
 use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
-use sm_frequent_ops::FrequentOpsCounter;
 use sm_main::MainCounter;
 use sm_mem::MemCounters;
 use zisk_common::{BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
@@ -40,7 +39,6 @@ pub struct StaticDataBus<D> {
     pub keccakf_counter: KeccakfCounterInputGen,
     pub sha256f_counter: Sha256fCounterInputGen,
     pub arith_eq_counter: ArithEqCounterInputGen,
-    pub frequent_ops_counter: FrequentOpsCounter,
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>)>,
@@ -57,7 +55,6 @@ impl StaticDataBus<PayloadType> {
         keccakf_counter: KeccakfCounterInputGen,
         sha256f_counter: Sha256fCounterInputGen,
         arith_eq_counter: ArithEqCounterInputGen,
-        frequent_ops_counter: FrequentOpsCounter,
     ) -> Self {
         Self {
             process_only_operation_bus,
@@ -68,7 +65,6 @@ impl StaticDataBus<PayloadType> {
             keccakf_counter,
             sha256f_counter,
             arith_eq_counter,
-            frequent_ops_counter,
             pending_transfers: VecDeque::new(),
         }
     }
@@ -166,7 +162,6 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             keccakf_counter,
             sha256f_counter,
             arith_eq_counter,
-            frequent_ops_counter,
             pending_transfers: _,
         } = self;
 
@@ -180,7 +175,6 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             (None, Some(Box::new(keccakf_counter))),
             (None, Some(Box::new(sha256f_counter))),
             (None, Some(Box::new(arith_eq_counter))),
-            (None, Some(Box::new(frequent_ops_counter))),
         ];
 
         counters

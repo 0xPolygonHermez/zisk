@@ -52,7 +52,7 @@ impl Default for BinaryExtensionFrops {
     }
 }
 impl BinaryExtensionFrops {
-    pub const TABLE_ID: usize = 5003;
+    pub const TABLE_ID: usize = 5012;
     pub const NO_FROPS: usize = FrequentOpsHelpers::NO_FROPS;
     pub fn new() -> Self {
         Self { table: FrequentOpsHelpers::new() }
@@ -113,21 +113,22 @@ impl BinaryExtensionFrops {
     #[inline(always)]
     pub fn get_row(op: u8, a: u64, b: u64) -> usize {
         // ecall/system call functions are not candidates to be usual
-        match op {
+        let relative_offset = match op {
             OP_SIGNEXTENDB | OP_SIGNEXTENDH | OP_SIGNEXTENDW | OP_SLL | OP_SLLW | OP_SRA
             | OP_SRAW | OP_SRLW => {
                 if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
-                    OP_TABLE_OFFSETS[op as usize - OP_TABLE_OFFSETS_START]
-                        + Self::get_low_values_offset(a, b) as usize
+                    Self::get_low_values_offset(a, b) as usize
                 } else {
-                    FrequentOpsHelpers::NO_FROPS
+                    Self::NO_FROPS
                 }
             }
-            OP_SRL => {
-                OP_TABLE_OFFSETS[op as usize - OP_TABLE_OFFSETS_START]
-                    + Self::get_srl_offset(a, b) as usize
-            }
-            _ => FrequentOpsHelpers::NO_FROPS,
+            OP_SRL => Self::get_srl_offset(a, b) as usize,
+            _ => Self::NO_FROPS,
+        };
+        if relative_offset == Self::NO_FROPS {
+            Self::NO_FROPS
+        } else {
+            relative_offset + OP_TABLE_OFFSETS[op as usize - OP_TABLE_OFFSETS_START]
         }
     }
     #[inline(always)]

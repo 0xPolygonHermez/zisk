@@ -142,7 +142,7 @@ impl Default for BinaryBasicFrops {
     }
 }
 impl BinaryBasicFrops {
-    pub const TABLE_ID: usize = 5002;
+    pub const TABLE_ID: usize = 5011;
     pub const NO_FROPS: usize = FrequentOpsHelpers::NO_FROPS;
     pub fn new() -> Self {
         Self { table: FrequentOpsHelpers::new() }
@@ -619,7 +619,7 @@ impl BinaryBasicFrops {
                 if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
                     Self::get_low_values_offset(a, b)
                 } else {
-                    return Self::NO_FROPS;
+                    Self::NO_FROPS
                 }
             }
             OP_EQ => Self::get_eq_offset(a, b),
@@ -631,9 +631,13 @@ impl BinaryBasicFrops {
             OP_XOR => Self::get_xor_offset(a, b),
             OP_AND => Self::get_and_offset(a, b),
             OP_ADD => Self::get_add_offset(a, b),
-            _ => return Self::NO_FROPS,
+            _ => Self::NO_FROPS,
         };
-        relative_offset + OP_TABLE_OFFSETS[op as usize - OP_TABLE_OFFSETS_START]
+        if relative_offset == Self::NO_FROPS {
+            Self::NO_FROPS
+        } else {
+            relative_offset + OP_TABLE_OFFSETS[op as usize - OP_TABLE_OFFSETS_START]
+        }
     }
     #[inline(always)]
     pub fn count(&self) -> usize {

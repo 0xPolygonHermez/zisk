@@ -37,14 +37,19 @@ impl BinaryBasicCollector {
     ///
     /// # Returns
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: usize, collect_skipper: CollectSkipper, with_adds: bool) -> Self {
+    pub fn new(
+        num_operations: usize,
+        collect_skipper: CollectSkipper,
+        with_adds: bool,
+        force_execute_to_end: bool,
+    ) -> Self {
         Self {
             inputs: Vec::new(),
             num_operations,
             collect_skipper,
             with_adds,
             frops_inputs: Vec::new(),
-            force_execute_to_end: false,
+            force_execute_to_end,
         }
     }
 }
@@ -67,12 +72,13 @@ impl BusDevice<u64> for BinaryBasicCollector {
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
-
         let instance_complete = self.inputs.len() == self.num_operations as usize;
 
         if instance_complete && !self.force_execute_to_end {
             return false;
         }
+
+        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
 
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
@@ -87,10 +93,9 @@ impl BusDevice<u64> for BinaryBasicCollector {
             return true;
         }
 
-        if self.collect_skipper.should_skip() {
+        if self.collect_skipper.should_skip_query(frops_row == BinaryBasicFrops::NO_FROPS) {
             return true;
         }
-        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
 
         if frops_row != BinaryBasicFrops::NO_FROPS {
             self.frops_inputs.push(frops_row as u32);
@@ -103,7 +108,7 @@ impl BusDevice<u64> for BinaryBasicCollector {
         }
         self.inputs.push(BinaryInput::from(&op_data));
 
-        self.inputs.len() < self.num_operations
+        self.inputs.len() < self.num_operations as usize || self.force_execute_to_end
     }
 
     /// Returns the bus IDs associated with this instance.

@@ -48,7 +48,7 @@ impl Default for ArithFrops {
     }
 }
 impl ArithFrops {
-    pub const TABLE_ID: usize = 5001;
+    pub const TABLE_ID: usize = 5010;
     pub const NO_FROPS: usize = FrequentOpsHelpers::NO_FROPS;
     pub fn new() -> Self {
         Self { table: FrequentOpsHelpers::new() }
@@ -88,14 +88,18 @@ impl ArithFrops {
             OP_MULU | OP_MULUH | OP_MULSUH | OP_MUL | OP_MULH | OP_MULW | OP_DIVU | OP_REMU
             | OP_DIV | OP_REM | OP_DIVUW | OP_REMUW | OP_DIVW | OP_REMW => {
                 if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
-                    return OP_TABLE_OFFSETS[op as usize - OP_TABLE_OFFSETS_START]
-                        + Self::get_low_values_offset(a, b);
+                    Self::get_low_values_offset(a, b)
                 } else {
-                    return FrequentOpsHelpers::NO_FROPS;
+                    Self::NO_FROPS
                 }
             }
-            _ => return FrequentOpsHelpers::NO_FROPS,
+            _ => return Self::NO_FROPS,
         };
+        if relative_offset == Self::NO_FROPS {
+            Self::NO_FROPS
+        } else {
+            relative_offset + OP_TABLE_OFFSETS[op as usize - OP_TABLE_OFFSETS_START]
+        }
     }
     #[inline(always)]
     pub fn count(&self) -> usize {
