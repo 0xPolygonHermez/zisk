@@ -20,8 +20,8 @@ jobs:
       
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libgmp-dev libgmpxx4ldbl
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          sudo ./install_deps.sh
       
       - name: Build zisk tools
         uses: actions-rs/cargo@v1
