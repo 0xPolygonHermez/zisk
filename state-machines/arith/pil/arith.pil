@@ -7,7 +7,7 @@ require "arith_range_table.pil"
 //          full   mul_64  full_32  mul_32
 // TOTAL      88       77       57      44
 
-airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_result = 0) {
+airtemplate Arith(int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID, const int dual_result = 0) {
 
     const int CHUNK_SIZE = 2**16;
     const int CHUNKS_INPUT = 4;

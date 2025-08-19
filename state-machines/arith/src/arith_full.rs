@@ -7,7 +7,8 @@
 use std::sync::Arc;
 
 use crate::{
-    ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
+    ArithFrops, ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs,
+    ArithTableSM,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -29,11 +30,14 @@ pub struct ArithFullSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
 
-    /// The table ID for the Arithmetic Table State Machine
-    arith_table_id: usize,
+    /// The table ID for the Table State Machine
+    table_id: usize,
 
-    /// The table ID for the Arithmetic Range Table State Machine
-    arith_range_table_id: usize,
+    /// The table ID for the Range Table State Machine
+    range_table_id: usize,
+
+    /// The table ID for the FROPS
+    frops_table_id: usize,
 }
 
 impl<F: PrimeField64> ArithFullSM<F> {
@@ -46,12 +50,15 @@ impl<F: PrimeField64> ArithFullSM<F> {
     /// An `Arc`-wrapped instance of `ArithFullSM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Get the Arithmetic table ID
-        let arith_table_id = std.get_virtual_table_id(ArithTableSM::TABLE_ID);
+        let table_id = std.get_virtual_table_id(ArithTableSM::TABLE_ID);
 
         // Get the Arithmetic Range table ID
-        let arith_range_table_id = std.get_virtual_table_id(ArithRangeTableSM::TABLE_ID);
+        let range_table_id = std.get_virtual_table_id(ArithRangeTableSM::TABLE_ID);
 
-        Arc::new(Self { std, arith_table_id, arith_range_table_id })
+        // Get the Arithmetic FROPS table ID
+        let frops_table_id = std.get_virtual_table_id(ArithFrops::TABLE_ID);
+
+        Arc::new(Self { std, table_id, range_table_id, frops_table_id })
     }
 
     /// Computes the witness for arithmetic operations and updates associated tables.
@@ -99,11 +106,11 @@ impl<F: PrimeField64> ArithFullSM<F> {
                 });
 
                 for (row, multiplicity) in &table {
-                    self.std.inc_virtual_row(self.arith_table_id, row as u64, multiplicity);
+                    self.std.inc_virtual_row(self.table_id, row as u64, multiplicity);
                 }
 
                 for (row, multiplicity) in &range_table {
-                    self.std.inc_virtual_row(self.arith_range_table_id, row as u64, multiplicity);
+                    self.std.inc_virtual_row(self.range_table_id, row as u64, multiplicity);
                 }
             },
         );
@@ -142,14 +149,20 @@ impl<F: PrimeField64> ArithFullSM<F> {
         // TODO: We should compare against cache-then-increase version instead of increase each time...
 
         for (row, multiplicity) in &table_inputs {
-            self.std.inc_virtual_row(self.arith_table_id, row as u64, multiplicity);
+            self.std.inc_virtual_row(self.table_id, row as u64, multiplicity);
         }
 
         for (row, multiplicity) in &range_table_inputs {
-            self.std.inc_virtual_row(self.arith_range_table_id, row as u64, multiplicity);
+            self.std.inc_virtual_row(self.range_table_id, row as u64, multiplicity);
         }
 
         AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
+    }
+
+    pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
+        for row in frops_inputs {
+            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
+        }
     }
 
     /// Generates binary inputs for operations requiring additional validation (e.g., division).

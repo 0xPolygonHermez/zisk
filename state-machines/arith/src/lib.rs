@@ -1,5 +1,6 @@
 mod arith;
 mod arith_bus_device;
+mod arith_frops;
 mod arith_full;
 mod arith_full_instance;
 mod arith_operation;
@@ -12,6 +13,7 @@ mod arith_table_helpers;
 
 pub use arith::*;
 pub use arith_bus_device::*;
+pub use arith_frops::*;
 use arith_full::*;
 use arith_full_instance::*;
 use arith_operation::*;
