@@ -125,6 +125,9 @@ impl ExecutorStats {
             tasks.push(task);
         }
 
+        // Order by timestamp
+        tasks.sort_by_key(|task| task.timestamp);
+
         tracing::info!("Collected a total of {} statistics", tasks.len());
 
         // Save to stats.json
