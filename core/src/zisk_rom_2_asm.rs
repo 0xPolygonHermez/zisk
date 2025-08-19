@@ -4397,7 +4397,6 @@ impl ZiskRom2Asm {
                 // Check underflow:
                 *code += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
                 // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
-                *code += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, 0x8000000000000000 {}\n",
                     REG_VALUE,
