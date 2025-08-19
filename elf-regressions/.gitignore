@@ -14,5 +14,3 @@ elf-output/
 
 # Docker artifacts
 .dockerignore.tmp
-
-*.md
