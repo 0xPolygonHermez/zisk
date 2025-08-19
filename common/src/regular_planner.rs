@@ -98,7 +98,7 @@ impl RegularPlanner {
         Self { instances_info: Vec::new(), tables_info: Vec::new() }
     }
 
-    /// Adds an instance to the planner.
+    /// Adds an instance to the planner.P
     ///
     /// # Arguments
     /// * `instance_info` - The `InstanceInfo` describing the instance to be added.
@@ -187,7 +187,7 @@ impl Planner for RegularPlanner {
                     InstanceType::Table,
                     CheckPoint::None,
                     None,
-                    1,
+                    4,
                 ));
             }
         }
