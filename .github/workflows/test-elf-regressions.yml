@@ -27,12 +27,6 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
-      
-      - name: Verify ZisK binaries are available
-        run: |
-          echo "Checking if binaries are in PATH..."
-          which cargo-zisk && echo "✓ cargo-zisk found at: $(which cargo-zisk)"
-          which ziskemu && echo "✓ ziskemu found at: $(which ziskemu)"
 
       - name: Build assembly tests
         working-directory: elf-regressions
