@@ -9,9 +9,10 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 readonly ELF_OUTPUT_DIR="${PROJECT_DIR}/elf-output"
 readonly ZISK_DIR="${PROJECT_DIR}/.."
-# TODO: Note that this is using debug versions and not release.
-readonly ZISKEMU="${ZISK_DIR}/target/debug/ziskemu"
-readonly CARGO_ZISK="${ZISK_DIR}/target/debug/cargo-zisk"
+# Binary paths - can be overridden via environment variables
+# Default to debug build locations for local development
+readonly ZISKEMU="${ZISKEMU_PATH:-${ZISK_DIR}/target/debug/ziskemu}"
+readonly CARGO_ZISK="${CARGO_ZISK_PATH:-${ZISK_DIR}/target/debug/cargo-zisk}"
 
 # Colors for output
 if [[ -t 1 ]]; then

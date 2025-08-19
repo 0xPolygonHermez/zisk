@@ -22,14 +22,18 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           sudo ./install_deps.sh
-          sudo apt-get install -y make
       
-      - name: Build zisk tools
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bin cargo-zisk --bin ziskemu
+      - name: Build ZisK
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./build_zisk.sh
       
+      - name: Verify ZisK binaries are available
+        run: |
+          echo "Checking if binaries are in PATH..."
+          which cargo-zisk && echo "✓ cargo-zisk found at: $(which cargo-zisk)"
+          which ziskemu && echo "✓ ziskemu found at: $(which ziskemu)"
+
       - name: Build assembly tests
         working-directory: elf-regressions
         run: ./scripts/build.sh --clean
@@ -37,7 +41,13 @@ jobs:
       - name: Test with rom-setup
         working-directory: elf-regressions
         run: ./scripts/test.sh rom-setup all
+        env:
+          CARGO_ZISK_PATH: cargo-zisk
+          ZISKEMU_PATH: ziskemu
       
       - name: Test with emulator  
         working-directory: elf-regressions
         run: ./scripts/test.sh emu all
+        env:
+          CARGO_ZISK_PATH: cargo-zisk
+          ZISKEMU_PATH: ziskemu
