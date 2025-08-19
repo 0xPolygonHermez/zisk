@@ -1,17 +1,9 @@
 //! The `BinaryExtensionTableSM` module implements the logic for managing the Binary Extension
 //! Table.
 //!
-//! This state machine handles operations like shift-left logical (`Sll`), shift-right logical
-//! (`Srl`), arithmetic shifts, and sign extensions.
+//! This state machine is responsible for calculating extension binary table rows.
 
-use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc,
-};
-
-use zisk_common::create_atomic_vec;
 use zisk_core::{P2_11, P2_19, P2_8};
-use zisk_pil::BinaryExtensionTableTrace;
 
 /// Represents operations supported by the Binary Extension Table.
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -29,56 +21,10 @@ pub enum BinaryExtensionTableOp {
 }
 
 /// The `BinaryExtensionTableSM` struct encapsulates the Binary Extension Table's logic.
-///
-/// This state machine manages multiplicity for table rows and processes operations such as shifts
-/// and sign extensions.
-pub struct BinaryExtensionTableSM {
-    /// The multiplicity table
-    multiplicity: Vec<AtomicU64>,
-    calculated: AtomicBool,
-}
+pub struct BinaryExtensionTableSM;
 
 impl BinaryExtensionTableSM {
-    /// Creates a new `BinaryExtensionTableSM` instance.
-    ///
-    /// # Returns
-    /// An `Arc`-wrapped instance of `BinaryExtensionTableSM` with an initialized multiplicity
-    /// table.
-    pub fn new() -> Arc<Self> {
-        let binary_extension_table = Self {
-            multiplicity: create_atomic_vec(BinaryExtensionTableTrace::<usize>::NUM_ROWS),
-            calculated: AtomicBool::new(false),
-        };
-
-        Arc::new(binary_extension_table)
-    }
-
-    /// Processes a slice of input data and updates the multiplicity table.
-    ///
-    /// # Arguments
-    /// * `input` - A slice of `u64` values to process.
-    pub fn update_multiplicity(&self, row: u64, value: u64) {
-        if self.calculated.load(Ordering::Relaxed) {
-            return;
-        }
-        self.multiplicity[row as usize].fetch_add(value, Ordering::Relaxed);
-    }
-
-    /// Detaches the current multiplicity table, returning its contents and resetting it.
-    ///
-    /// # Returns
-    /// A `Vec<u64>` containing the multiplicity table's current values.
-    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
-        &self.multiplicity
-    }
-
-    pub fn set_calculated(&self) {
-        self.calculated.store(true, Ordering::Relaxed);
-    }
-
-    pub fn reset_calculated(&self) {
-        self.calculated.store(false, Ordering::Relaxed);
-    }
+    pub const TABLE_ID: usize = 124;
 
     /// Calculates the row index in the Binary Extension Table based on the operation and its
     /// inputs.

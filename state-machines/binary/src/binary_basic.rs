@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
@@ -17,22 +18,27 @@ const HALF_BYTES: usize = BYTES / 2;
 const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 
 /// The `BinaryBasicSM` struct encapsulates the logic of the Binary Basic State Machine.
-pub struct BinaryBasicSM {
-    /// Reference to the Binary Basic Table State Machine.
-    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
+pub struct BinaryBasicSM<F: PrimeField64> {
+    /// Reference to the PIL2 standard library.
+    std: Arc<Std<F>>,
+
+    /// The table ID for the Binary Basic State Machine
+    table_id: usize,
 }
 
-impl BinaryBasicSM {
+impl<F: PrimeField64> BinaryBasicSM<F> {
     /// Creates a new Binary Basic State Machine instance.
     ///
     /// # Arguments
-    /// * `binary_basic_table_sm` - An `Arc`-wrapped reference to the Binary Basic Table State
-    ///   Machine.
+    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
     ///
     /// # Returns
-    /// A new `BinaryBasicSM` instance.
-    pub fn new(binary_basic_table_sm: Arc<BinaryBasicTableSM>) -> Arc<Self> {
-        Arc::new(Self { binary_basic_table_sm })
+    /// An `Arc`-wrapped instance of `BinaryBasicSM`.
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        // Get the table ID
+        let table_id = std.get_virtual_table_id(BinaryBasicTableSM::TABLE_ID);
+
+        Arc::new(Self { std, table_id })
     }
 
     /// Determines if an opcode corresponds to a 32-bit operation.
@@ -134,10 +140,7 @@ impl BinaryBasicSM {
     /// # Returns
     /// A `BinaryTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice<F: PrimeField64>(
-        input: &BinaryInput,
-        binary_table_sm: &BinaryBasicTableSM,
-    ) -> BinaryTraceRow<F> {
+    pub fn process_slice(&self, input: &BinaryInput) -> BinaryTraceRow<F> {
         // Create an empty trace
         let mut row: BinaryTraceRow<F> = Default::default();
 
@@ -249,7 +252,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             MAXU_OP | MAXUW_OP | MAX_OP | MAXW_OP => {
@@ -316,7 +319,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             LT_ABS_NP_OP => {
@@ -372,7 +375,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             LT_ABS_PN_OP => {
@@ -428,7 +431,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             LTU_OP | LTUW_OP | LT_OP | LTW_OP => {
@@ -490,7 +493,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             GT_OP => {
@@ -543,7 +546,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             EQ_OP | EQW_OP => {
@@ -590,7 +593,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             ADD_OP | ADDW_OP => {
@@ -635,7 +638,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             SUB_OP | SUBW_OP => {
@@ -679,7 +682,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             LEU_OP | LEUW_OP | LE_OP | LEW_OP => {
@@ -732,7 +735,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             AND_OP => {
@@ -763,7 +766,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             OR_OP => {
@@ -794,7 +797,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             XOR_OP => {
@@ -826,7 +829,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={opcode}"),
@@ -879,7 +882,7 @@ impl BinaryBasicSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<F: PrimeField64>(
+    pub fn compute_witness(
         &self,
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
@@ -911,7 +914,7 @@ impl BinaryBasicSM {
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
             slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                *trace_row = Self::process_slice(&inputs[i][j], &self.binary_basic_table_sm);
+                *trace_row = self.process_slice(&inputs[i][j]);
             });
         });
 
@@ -938,7 +941,7 @@ impl BinaryBasicSM {
                 last as u64,
                 0,
             );
-            self.binary_basic_table_sm.update_multiplicity(row, multiplicity);
+            self.std.inc_virtual_row(self.table_id, row, multiplicity);
         }
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))

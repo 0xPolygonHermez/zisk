@@ -47,6 +47,7 @@ jobs:
   test-x86_64:
     name: Test on Ubuntu x86_64
     runs-on: self-hosted
+    timeout-minutes: 30
     container:
       image: ubuntu:22.04
       options: --memory=128g --cpus=128 --shm-size=64g
@@ -90,6 +91,7 @@ jobs:
   test-macos:
     name: Test on macOS
     runs-on: macos-14
+    timeout-minutes: 15
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}

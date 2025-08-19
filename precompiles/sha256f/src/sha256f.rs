@@ -36,8 +36,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
         let num_available_sha256fs = Sha256fTrace::<usize>::NUM_ROWS / CLOCKS - 1;
         let num_non_usable_rows = Sha256fTrace::<usize>::NUM_ROWS % CLOCKS;
 
-        let a_range_id = std.get_range(0, (1 << 3) - 1, None);
-        let e_range_id = std.get_range(0, (1 << 3) - 1, None);
+        let a_range_id = std.get_range_id(0, (1 << 3) - 1, None);
+        let e_range_id = std.get_range_id(0, (1 << 3) - 1, None);
 
         Arc::new(Self { std, num_available_sha256fs, num_non_usable_rows, a_range_id, e_range_id })
     }
@@ -451,8 +451,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
         a_range_checks[0] += count_zeros as u32;
         e_range_checks[0] += count_zeros as u32;
 
-        self.std.range_checks(a_range_checks, self.a_range_id);
-        self.std.range_checks(e_range_checks, self.e_range_id);
+        self.std.range_checks(self.a_range_id, a_range_checks);
+        self.std.range_checks(self.e_range_id, e_range_checks);
 
         timer_stop_and_log_trace!(SHA256F_PADDING);
 
