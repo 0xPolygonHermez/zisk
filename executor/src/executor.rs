@@ -682,16 +682,17 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 // If the node has rank 0 and the plan targets the ROM instance,
                 // we need to add it to the proof context using a special method.
                 // This method allows us to mark it as an instance to be computed by node 0.
-                let global_id = if plan.airgroup_id == ZISK_AIRGROUP_ID
-                    && plan.air_id == ROM_AIR_IDS[0]
-                {
-                    // If this is the ROM instance, we need to add it to the proof context
-                    // with the rank 0.
-                    pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, plan.n_threads_witness)
-                } else {
-                    match plan.instance_type {
-                        InstanceType::Instance => {
-                            pctx.add_instance(plan.airgroup_id, plan.air_id, plan.n_threads_witness)
+                let global_id =
+                    if plan.airgroup_id == ZISK_AIRGROUP_ID && plan.air_id == ROM_AIR_IDS[0] {
+                        // If this is the ROM instance, we need to add it to the proof context
+                        // with the rank 0.
+                        pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, 1)
+                    } else {
+                        match plan.instance_type {
+                            InstanceType::Instance => {
+                                pctx.add_instance(plan.airgroup_id, plan.air_id, 1)
+                            }
+                            InstanceType::Table => pctx.add_table(plan.airgroup_id, plan.air_id),
                         }
                     };
 
@@ -835,22 +836,22 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 air_id,
                 ExecutorStatsEvent::End,
             );
-
-            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
-            let stats = _stats.unwrap();
-            self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::Air(ExecutorStatsAir {
-                airgroup_id,
-                air_id,
-                collect: ExecutorStatsDuration {
-                    start_time: stats.collect_start_time,
-                    duration: Duration::from_millis(stats.collect_duration),
-                },
-                witness: ExecutorStatsDuration {
-                    start_time: witness_start_time,
-                    duration: witness_start_time.elapsed(),
-                },
-                num_chunks: stats.num_chunks,
-            }));
+            
+            // let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+            // let stats = _stats.unwrap();
+            // self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::Air(ExecutorStatsAir {
+            //     airgroup_id,
+            //     air_id,
+            //     collect: ExecutorStatsDuration {
+            //         start_time: stats.collect_start_time,
+            //         duration: std::time::Duration::from_millis(stats.collect_duration),
+            //     },
+            //     witness: ExecutorStatsDuration {
+            //         start_time: witness_start_time,
+            //         duration: witness_start_time.elapsed(),
+            //     },
+            //     num_chunks: stats.num_chunks,
+            // }));
         }
     }
 
