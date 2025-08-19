@@ -197,7 +197,7 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 
 5. Compile ZisK PIL: (Note that this command may take 20-30 minutes to complete)
     ```bash
-    node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout
+    node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
     ```
 
     This command will create the `pil/zisk.pilout` file
@@ -213,7 +213,7 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 
 7. Generate setup data: (Note that this command may take 2–3 hours to complete):
     ```bash
-    node --max-old-space-size=131072 --stack-size=1500 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -i ./build/keccakf_fixed.bin -r
+    node --max-old-space-size=131072 --stack-size=1500 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -r -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed
     ```
 
     This command generates the `provingKey` directory.

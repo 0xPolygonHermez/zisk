@@ -216,6 +216,7 @@ int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, i
 
 // Configuration
 bool output = false;
+bool silent = false;
 bool metrics = false;
 bool trace = false;
 bool trace_trace = false;
@@ -354,7 +355,7 @@ int main(int argc, char *argv[])
         struct sockaddr_in address;
         int addrlen = sizeof(address);
         int client_fd;
-        printf("Waiting for incoming connections to port %u...\n", port);
+        if (!silent) printf("Waiting for incoming connections to port %u...\n", port);
         client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
         if (client_fd < 0)
         {
@@ -665,7 +666,7 @@ int main(int argc, char *argv[])
                 }
                 case TYPE_SD_REQUEST:
                 {
-                    printf("SHUTDOWN received\n");
+                    if (!silent) printf("SHUTDOWN received\n");
                     bShutdown = true;
 
                     response[0] = TYPE_SD_RESPONSE;
@@ -757,7 +758,9 @@ void print_usage (void)
     printf("\t--chunk <chunk_number>\n");
     printf("\t--shutdown\n");
     printf("\t--mt <number_of_mt_requests>\n");
-    printf("\t-o output off\n");
+    printf("\t-o output on\n");
+    printf("\t--silent silent on\n");
+    printf("\t--shm_prefix <prefix> (default: ZISK)\n");
     printf("\t-m metrics on\n");
     printf("\t-t trace on\n");
     printf("\t-tt trace_trace on\n");
@@ -848,7 +851,12 @@ void parse_arguments(int argc, char *argv[])
             }
             if (strcmp(argv[i], "-o") == 0)
             {
-                output = false;
+                output = true;
+                continue;
+            }
+            if (strcmp(argv[i], "--silent") == 0)
+            {
+                silent = true;
                 continue;
             }
             if (strcmp(argv[i], "-m") == 0)
@@ -1304,6 +1312,7 @@ void configure (void)
         printf("\tsem_chunk_done=%s\n", sem_chunk_done_name);
         printf("\tsem_shutdown_done=%s\n", sem_shutdown_done_name);
         printf("\tmap_locked_flag=%d\n", map_locked_flag);
+        printf("\toutput=%u\n", output);
     }
 }
 
@@ -2664,7 +2673,7 @@ void server_run (void)
 
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
-    printf("trace_address=%lx\n", trace_address);
+    if (verbose) printf("trace_address=%lx\n", trace_address);
     emulator_start();
     gettimeofday(&stop_time,NULL);
     assembly_duration = TimeDiff(start_time, stop_time);

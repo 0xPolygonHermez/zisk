@@ -1,9 +1,10 @@
 /target
 /*.tar.gz
 /riscof
-/build*
+/build
 /proofs*
 *.pilout
+*.fixed
 /tmp
 *.log
 /emulator-asm/build*

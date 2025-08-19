@@ -13,8 +13,7 @@ use proofman_common::PreCalculate;
 
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 use zisk_pil::{
-    INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ROM_DATA_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+    INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 pub struct MemPlanner {
@@ -122,7 +121,6 @@ impl MemPlanner {
         }
 
         let mem_align_check_points = CppMemAlignCheckPoint::from_cpp(self);
-        let enable_mem_align_rom = !mem_align_check_points.is_empty();
 
         let mut last_segment_id = None;
         let mut segment: HashMap<ChunkId, MemAlignCheckPoint> = HashMap::new();
@@ -165,17 +163,6 @@ impl MemPlanner {
                 CheckPoint::Multiple(std::mem::take(&mut chunks)),
                 PreCalculate::Slow,
                 Some(Box::new(std::mem::take(&mut segment))),
-            ));
-        }
-        if enable_mem_align_rom {
-            plans.push(Plan::new(
-                ZISK_AIRGROUP_ID,
-                MEM_ALIGN_ROM_AIR_IDS[0],
-                None,
-                InstanceType::Table,
-                CheckPoint::None,
-                PreCalculate::None,
-                None,
             ));
         }
 

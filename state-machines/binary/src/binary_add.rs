@@ -29,7 +29,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A new `BinaryAddSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_id = std.get_range(0, 0xFFFF, None);
+        let range_id = std.get_range_id(0, 0xFFFF, None);
 
         // Create the BinaryAdd state machine
         Arc::new(Self { std, range_id })
@@ -134,7 +134,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         }
         multiplicities[0] += 4 * (num_rows - total_inputs) as u32;
 
-        self.std.range_checks(multiplicities, self.range_id);
+        self.std.range_checks(self.range_id, multiplicities);
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
