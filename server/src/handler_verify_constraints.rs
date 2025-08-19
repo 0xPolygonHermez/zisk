@@ -14,11 +14,7 @@ use witness::WitnessLibrary;
 use zisk_common::ExecutorStats;
 
 #[cfg(feature = "stats")]
-use std::time::Duration;
-#[cfg(feature = "stats")]
-use std::time::Instant;
-#[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ZiskVerifyConstraintsRequest {
@@ -90,10 +86,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                 #[cfg(feature = "stats")]
                 {
                     let stats = result.1;
-                    stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(ExecutorStatsDuration {
-                        start_time: Instant::now(),
-                        duration: Duration::new(0, 1),
-                    }));
+                    stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
                     stats.lock().unwrap().store_stats();
                 }
             }

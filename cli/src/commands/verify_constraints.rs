@@ -20,12 +20,10 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use std::sync::{Arc, Mutex};
-#[cfg(feature = "stats")]
-use std::time::{Duration, Instant};
 use std::{collections::HashMap, fs, path::PathBuf};
-use zisk_common::{ExecutorStats, ZiskLibInitFn};
 #[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
+use zisk_common::{ExecutorStats, ZiskLibInitFn};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -277,10 +275,7 @@ impl ZiskVerifyConstraints {
         // Store the stats in stats.json
         #[cfg(feature = "stats")]
         {
-            _stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(ExecutorStatsDuration {
-                start_time: Instant::now(),
-                duration: Duration::new(0, 1),
-            }));
+            _stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
             _stats.lock().unwrap().store_stats();
         }
 
