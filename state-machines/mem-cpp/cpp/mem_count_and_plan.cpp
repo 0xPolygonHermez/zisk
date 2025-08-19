@@ -22,12 +22,6 @@ MemCountAndPlan::~MemCountAndPlan() {
 #endif
 }
 
-MemCountAndPlan::~MemCountAndPlan() {
-
-    // Call clear
-    clear();
-}
-
 void MemCountAndPlan::clear() {
     // Wait for and clean up any background threads
     if (parallel_execute && parallel_execute->joinable()) {

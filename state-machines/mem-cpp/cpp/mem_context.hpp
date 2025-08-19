@@ -73,9 +73,6 @@ public:
     uint64_t get_completed_us() {
         return t_completed_us - t_init_us;
     }
-    uint64_t get_completed_us() {
-        return t_completed_us - t_init_us;
-    }
     uint32_t size() {
         return chunks_count.load(std::memory_order_acquire);
     }
