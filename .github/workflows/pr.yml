@@ -44,15 +44,10 @@ jobs:
   test-x86_64:
     name: Test on Ubuntu x86_64
     runs-on: self-hosted
-    timeout-minutes: 120
+    timeout-minutes: 30
     container:
       image: ubuntu:22.04
-      options:
-        --shm-size=32g  
-        -v /home/gha/cache-setup:/output:rw
-    defaults:
-      run:
-        shell: bash        
+      options: --memory=128g --cpus=128 --shm-size=64g
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
@@ -75,13 +70,11 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
 
-      - name: Build setup
-        env:
-          USE_CACHE_SETUP: "1"
-        run: |     
+      - name: Install setup
+        run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./build_setup.sh
-
+          ./install_setup_public.sh
+  
       - name: Test sha_hasher
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"

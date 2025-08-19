@@ -87,11 +87,11 @@ fi
 
 # For all files
 COUNTER=0
-DIFF_PASSED_COUNTER=0
-DIFF_FAILED_COUNTER=0
+PASSED_COUNTER=0
+FAILED_COUNTER=0
 for ELF_FILE in $ELF_FILES
 do
-    # Increase file counter
+    # Increase file COUNTER
     COUNTER=$((COUNTER+1))
 
     # Skip files lower than BEGIN
@@ -106,7 +106,7 @@ do
 
     # Varify the constraints for this file
     echo ""
-    echo "Emulating file ${COUNTER} of ${MAX_COUNTER}: ${ELF_FILE}"
+    echo "[${COUNTER}/${MAX_COUNTER}] Emulating file: ${ELF_FILE}"
 
     # Transpile the ELF RISC-V file to ZisK, and then generate assembly file emu.asm
     ./target/debug/riscv2zisk $ELF_FILE emulator-asm/src/emu.asm --gen=1 || exit 1
@@ -116,10 +116,10 @@ do
     make
 
     # Execute it and save output
-    build/ziskemuasm -s --gen=1 -o --silent 2>&1|tee output &
+    build/ziskemuasm -s --gen=1 -o --silent > output 2>&1 &
 
     # Store the PID of the background process
-    BG_PID=$!
+    # BG_PID=$!
     echo "Sleeping for 10 seconds to let the emulator server initialize..."
     sleep 10
     build/ziskemuasm -c -i empty_input.bin --gen=1 --shutdown
@@ -132,24 +132,23 @@ do
     # Compare output vs reference
     ELF_FILE_DIRECTORY=${ELF_FILE%%my.elf}
     REFERENCE_FILE="$(realpath "${ELF_FILE_DIRECTORY}/../ref/Reference-sail_c_simulator.signature")"
-    echo "Calling diff of ./output vs reference=$REFERENCE_FILE"
+    echo "Comparing output with $REFERENCE_FILE"
     if diff output $REFERENCE_FILE; then
-        DIFF_PASSED_COUNTER=$((DIFF_PASSED_COUNTER+1))
-        echo "After processing file ${ELF_FILE}..."
-        echo "DIFF PASSED total passed=${DIFF_PASSED_COUNTER} total failed=${DIFF_FAILED_COUNTER}"
+        PASSED_COUNTER=$((PASSED_COUNTER+1))
+        echo "✅ Emulation passed. Tests passed=${PASSED_COUNTER}, failed=${FAILED_COUNTER}"
     else
-        DIFF_FAILED_COUNTER=$((DIFF_FAILED_COUNTER+1))
-        echo "After processing file ${ELF_FILE}..."
-        echo "DIFF FAILED total passed=${DIFF_PASSED_COUNTER} total failed=${DIFF_FAILED_COUNTER}"
+        FAILED_COUNTER=$((FAILED_COUNTER+1))
+        cat output
+        echo "❌ Emulation failed. Tests passed=${PASSED_COUNTER}, failed=${FAILED_COUNTER}"
     fi
 
     # Go back to root directory
     cd ..
 done
 
-if [ $DIFF_FAILED_COUNTER -eq 0 ]; then
+if [ $FAILED_COUNTER -eq 0 ]; then
     echo "✅ All ELF files processed successfully."
 else
-    echo "❌ ${DIFF_FAILED_COUNTER} ELF files have failed."
+    echo "❌ ${FAILED_COUNTER} ELF files have failed."
     exit 1
 fi
