@@ -58,6 +58,25 @@ pub struct RiscvInstruction {
 }
 
 impl RiscvInstruction {
+    /// Creates a NOP instruction (ADDI x0, x0, 0)
+    pub fn nop(rvinst: u32) -> Self {
+        Self {
+            rvinst,
+            t: "I".to_string(),
+            inst: "addi".to_string(),
+            rd: 0,
+            rs1: 0,
+            rs2: 0,
+            imm: 0,
+            ..Default::default()
+        }
+    }
+
+    /// Checks if this instruction is a NOP (ADDI x0, x0, 0)
+    pub fn is_nop(&self) -> bool {
+        self.inst == "addi" && self.rd == 0 && self.rs1 == 0 && self.imm == 0
+    }
+
     /// Creates a human-readable string containing RISCV data fields that are non-zero
     pub fn to_text(&self) -> String {
         let mut s = String::new();

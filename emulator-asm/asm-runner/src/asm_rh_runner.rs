@@ -35,9 +35,7 @@ impl PreloadedRH {
 }
 
 #[cfg(feature = "stats")]
-use std::time::Instant;
-#[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
@@ -65,8 +63,18 @@ impl AsmRunnerRH {
         unlock_mapped_memory: bool,
         _stats: Arc<Mutex<ExecutorStats>>,
     ) -> Result<AsmRunnerRH> {
+        let __stats = Arc::clone(&_stats);
+
         #[cfg(feature = "stats")]
-        let start_time = Instant::now();
+        let parent_stats_id = __stats.lock().unwrap().get_id();
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(
+            0,
+            parent_stats_id,
+            "ASM_RH_RUNNER",
+            0,
+            ExecutorStatsEvent::Begin,
+        );
 
         let port = if let Some(base_port) = base_port {
             AsmServices::port_for(&AsmService::RH, base_port, local_rank)
@@ -106,9 +114,13 @@ impl AsmRunnerRH {
 
         // Add to executor stats
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::AsmRomHistogram(
-            ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
-        ));
+        _stats.lock().unwrap().add_stat(
+            0,
+            parent_stats_id,
+            "ASM_RH_RUNNER",
+            0,
+            ExecutorStatsEvent::End,
+        );
 
         Ok(AsmRunnerRH::new(asm_rowh_output))
     }

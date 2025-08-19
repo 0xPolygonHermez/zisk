@@ -54,6 +54,11 @@ private:
     uint64_t t_prepare_us;
     uint64_t t_plan_us;
 
+#ifdef MEM_STATS_ACTIVE
+public:
+    MemStats *mem_stats;
+#endif // MEM_STATS_ACTIVE
+
 public:
     MemSegments segments[MEM_TYPES];
     std::unique_ptr<MemAlignCounter> mem_align_counter;

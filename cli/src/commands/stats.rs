@@ -18,9 +18,7 @@ use zisk_common::{ExecutorStats, ZiskLibInitFn};
 use zisk_pil::*;
 
 use crate::{
-    commands::{
-        cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
-    },
+    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -110,8 +108,6 @@ pub struct ZiskStats {
 
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
-
         print_banner();
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
@@ -483,21 +479,21 @@ impl ZiskStats {
             val if val == ROM_DATA_AIR_IDS[0] => "ROM_DATA".to_string(),
             val if val == INPUT_DATA_AIR_IDS[0] => "INPUT_DATA".to_string(),
             val if val == MEM_ALIGN_AIR_IDS[0] => "MEM_ALIGN".to_string(),
-            val if val == MEM_ALIGN_ROM_AIR_IDS[0] => "MEM_ALIGN_ROM".to_string(),
+            // val if val == MEM_ALIGN_ROM_AIR_IDS[0] => "MEM_ALIGN_ROM".to_string(),
             val if val == ARITH_AIR_IDS[0] => "ARITH".to_string(),
-            val if val == ARITH_TABLE_AIR_IDS[0] => "ARITH_TABLE".to_string(),
-            val if val == ARITH_RANGE_TABLE_AIR_IDS[0] => "ARITH_RANGE_TABLE".to_string(),
+            // val if val == ARITH_TABLE_AIR_IDS[0] => "ARITH_TABLE".to_string(),
+            // val if val == ARITH_RANGE_TABLE_AIR_IDS[0] => "ARITH_RANGE_TABLE".to_string(),
             val if val == ARITH_EQ_AIR_IDS[0] => "ARITH_EQ".to_string(),
-            val if val == ARITH_EQ_LT_TABLE_AIR_IDS[0] => "ARITH_EQ_LT_TABLE".to_string(),
+            // val if val == ARITH_EQ_LT_TABLE_AIR_IDS[0] => "ARITH_EQ_LT_TABLE".to_string(),
             val if val == BINARY_AIR_IDS[0] => "BINARY".to_string(),
             val if val == BINARY_ADD_AIR_IDS[0] => "BINARY_ADD".to_string(),
-            val if val == BINARY_TABLE_AIR_IDS[0] => "BINARY_TABLE".to_string(),
+            // val if val == BINARY_TABLE_AIR_IDS[0] => "BINARY_TABLE".to_string(),
             val if val == BINARY_EXTENSION_AIR_IDS[0] => "BINARY_EXTENSION".to_string(),
-            val if val == BINARY_EXTENSION_TABLE_AIR_IDS[0] => "BINARY_EXTENSION_TABLE".to_string(),
+            // val if val == BINARY_EXTENSION_TABLE_AIR_IDS[0] => "BINARY_EXTENSION_TABLE".to_string(),
             val if val == KECCAKF_AIR_IDS[0] => "KECCAKF".to_string(),
-            val if val == KECCAKF_TABLE_AIR_IDS[0] => "KECCAKF_TABLE".to_string(),
+            // val if val == KECCAKF_TABLE_AIR_IDS[0] => "KECCAKF_TABLE".to_string(),
             val if val == SHA_256_F_AIR_IDS[0] => "SHA_256_F".to_string(),
-            val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
+            // val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
             _ => format!("Unknown air_id: {air_id}"),
         }
     }

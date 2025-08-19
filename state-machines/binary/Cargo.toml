@@ -8,9 +8,9 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-zisk-core = { path = "../../core" }
-zisk-common = { path = "../../common" }
-zisk-pil = { path = "../../pil" }
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
+zisk-pil = { workspace = true }
 
 fields = { workspace=true }
 proofman = { workspace = true }

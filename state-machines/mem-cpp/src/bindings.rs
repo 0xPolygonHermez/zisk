@@ -309,3 +309,9 @@ unsafe extern "C" {
         count: *mut u32,
     ) -> *const MemAlignCheckPoint;
 }
+unsafe extern "C" {
+    pub fn get_mem_stats_len(mcp: *mut MemCountAndPlan) -> u64;
+}
+unsafe extern "C" {
+    pub fn get_mem_stats_ptr(mcp: *mut MemCountAndPlan) -> u64;
+}

@@ -16,9 +16,8 @@ use mem_planner_cpp::MemPlanner;
 use anyhow::{Context, Result};
 
 #[cfg(feature = "stats")]
-use std::time::Instant;
-#[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
+
 pub struct PreloadedMO {
     pub output_shmem: AsmSharedMemory<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
@@ -87,6 +86,17 @@ impl AsmRunnerMO {
         base_port: Option<u16>,
         _stats: Arc<Mutex<ExecutorStats>>,
     ) -> Result<Self> {
+        #[cfg(feature = "stats")]
+        let parent_stats_id = _stats.lock().unwrap().get_id();
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(
+            0,
+            parent_stats_id,
+            "ASM_MO_RUNNER",
+            0,
+            ExecutorStatsEvent::Begin,
+        );
+
         let port = if let Some(base_port) = base_port {
             AsmServices::port_for(&AsmService::MO, base_port, local_rank)
         } else {
@@ -103,17 +113,28 @@ impl AsmRunnerMO {
 
         let handle = std::thread::spawn(move || {
             #[cfg(feature = "stats")]
-            let start_time = Instant::now();
+            let stats_id = __stats.lock().unwrap().get_id();
+            #[cfg(feature = "stats")]
+            __stats.lock().unwrap().add_stat(
+                parent_stats_id,
+                stats_id,
+                "ASM_MO",
+                0,
+                ExecutorStatsEvent::Begin,
+            );
 
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
             let result = asm_services.send_memory_ops_request(max_steps, chunk_size);
 
             // Add to executor stats
             #[cfg(feature = "stats")]
-            __stats.lock().unwrap().add_stat(ExecutorStatsEnum::AsmMemOps(ExecutorStatsDuration {
-                start_time,
-                duration: start_time.elapsed(),
-            }));
+            __stats.lock().unwrap().add_stat(
+                parent_stats_id,
+                stats_id,
+                "ASM_MO",
+                0,
+                ExecutorStatsEvent::End,
+            );
 
             result
         });
@@ -130,7 +151,15 @@ impl AsmRunnerMO {
         mem_planner.execute();
 
         #[cfg(feature = "stats")]
-        let start_time = Instant::now();
+        let stats_id = _stats.lock().unwrap().get_id();
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(
+            parent_stats_id,
+            stats_id,
+            "MO_PROCESS_CHUNKS",
+            0,
+            ExecutorStatsEvent::Begin,
+        );
 
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
@@ -144,12 +173,13 @@ impl AsmRunnerMO {
 
                     // Add to executor stats
                     #[cfg(feature = "stats")]
-                    _stats.lock().unwrap().add_stat(ExecutorStatsEnum::MemOpsChunkDone(
-                        ExecutorStatsDuration {
-                            start_time: Instant::now(),
-                            duration: Duration::from_nanos(1),
-                        },
-                    ));
+                    _stats.lock().unwrap().add_stat(
+                        parent_stats_id,
+                        0,
+                        "MO_CHUNK_DONE",
+                        0,
+                        ExecutorStatsEvent::Mark,
+                    );
 
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
@@ -189,25 +219,58 @@ impl AsmRunnerMO {
 
         // Add to executor stats
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::MemOpsProcessChunks(
-            ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
-        ));
+        _stats.lock().unwrap().add_stat(
+            parent_stats_id,
+            stats_id,
+            "MO_PROCESS_CHUNKS",
+            0,
+            ExecutorStatsEvent::End,
+        );
 
         #[cfg(feature = "stats")]
-        let start_time = Instant::now();
+        let stats_id = _stats.lock().unwrap().get_id();
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(
+            parent_stats_id,
+            stats_id,
+            "MO_COLLECT_PLANS",
+            0,
+            ExecutorStatsEvent::Begin,
+        );
 
         let plans = mem_planner.collect_plans();
 
         // Add to executor stats
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::MemOpsCollectPlans(
-            ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
-        ));
+        _stats.lock().unwrap().add_stat(
+            parent_stats_id,
+            stats_id,
+            "MO_COLLECT_PLANS",
+            0,
+            ExecutorStatsEvent::End,
+        );
+
+        // #[cfg(feature = "stats")]
+        // {
+        //     let mem_stats = mem_planner.get_mem_stats();
+        //     for i in mem_stats {
+        //         _stats.lock().unwrap().add_stat(i);
+        //     }
+        // }
 
         preloaded.handle_mo = Some(std::thread::spawn(move || {
             drop(mem_planner);
             MemPlanner::new()
         }));
+
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(
+            0,
+            parent_stats_id,
+            "ASM_MO_RUNNER",
+            0,
+            ExecutorStatsEvent::End,
+        );
 
         Ok(AsmRunnerMO::new(plans))
     }

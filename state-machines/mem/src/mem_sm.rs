@@ -103,7 +103,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         let std = self.std.clone();
 
-        let range_id = std.get_range(0, MEM_INC_C_MAX_RANGE as i64, None);
+        let range_id = std.get_range_id(0, MEM_INC_C_MAX_RANGE as i64, None);
         let mut range_check_data: Vec<u32> = vec![0; MEM_INC_C_SIZE];
 
         // use special counter for internal reads
@@ -212,7 +212,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
         let distance_end = RAM_W_ADDR_END - last_addr;
 
-        self.std.range_checks(range_check_data, range_id);
+        self.std.range_checks(range_id, range_check_data);
 
         // Add one in range_check_data_max because it's used by intermediate reads, and reads
         // add one to distance to allow same step on read operations.
@@ -243,12 +243,12 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         // println!("AIR_VALUES[{}]: {:?}", segment_id, air_values);
 
-        let range_16bits_id = std.get_range(0, 0xFFFF, None);
+        let range_16bits_id = std.get_range_id(0, 0xFFFF, None);
 
-        self.std.range_check(distance_base[0] as i64, 1, range_16bits_id);
-        self.std.range_check(distance_base[1] as i64, 1, range_16bits_id);
-        self.std.range_check(distance_end[0] as i64, 1, range_16bits_id);
-        self.std.range_check(distance_end[1] as i64, 1, range_16bits_id);
+        self.std.range_check(range_16bits_id, distance_base[0] as i64, 1);
+        self.std.range_check(range_16bits_id, distance_base[1] as i64, 1);
+        self.std.range_check(range_16bits_id, distance_end[0] as i64, 1);
+        self.std.range_check(range_16bits_id, distance_end[1] as i64, 1);
 
         #[cfg(feature = "debug_mem")]
         {

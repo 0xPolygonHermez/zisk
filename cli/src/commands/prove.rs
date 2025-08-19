@@ -1,7 +1,5 @@
 use crate::{
-    commands::{
-        cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
-    },
+    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -20,16 +18,15 @@ use rom_setup::{
 };
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-#[cfg(feature = "stats")]
-use std::time::{Duration, Instant};
 use std::{
     collections::HashMap,
     fs::{self, File},
     path::PathBuf,
 };
-use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
 #[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
+use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
+use zisk_pil::VIRTUAL_TABLE_AIR_IDS;
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -132,8 +129,6 @@ pub struct ZiskProve {
 
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
-
         print_banner();
 
         let mpi_context = initialize_mpi()?;
@@ -240,6 +235,8 @@ impl ZiskProve {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
+        gpu_params.with_single_instance((0, VIRTUAL_TABLE_AIR_IDS[0]));
+
         let proofman;
         #[cfg(distributed)]
         {
@@ -318,6 +315,7 @@ impl ZiskProve {
         } else {
             match self.field {
                 Field::Goldilocks => {
+                    proofman.set_barrier();
                     (proof_id, vadcop_final_proof) = proofman
                         .generate_proof_from_lib(
                             self.input.clone(),
@@ -372,10 +370,7 @@ impl ZiskProve {
             // Store the stats in stats.json
             #[cfg(feature = "stats")]
             {
-                _stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(ExecutorStatsDuration {
-                    start_time: Instant::now(),
-                    duration: Duration::new(0, 1),
-                }));
+                _stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
                 _stats.lock().unwrap().store_stats();
             }
         }
