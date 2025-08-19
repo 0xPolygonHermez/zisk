@@ -54,7 +54,8 @@ pub fn riscv_interpreter(code: &[u32]) -> Vec<RiscvInstruction> {
 
         // Ignore instructions that are zero
         if inst == 0 {
-            //println!("riscv_interpreter() found inst=0 at position s={}", s);
+            // println!("riscv_interpreter() found inst=0 at position s={} (index in u32 array)", s);
+            insts.push(RiscvInstruction::nop(inst));
             continue;
         }
 
