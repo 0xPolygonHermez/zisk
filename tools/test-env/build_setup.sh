@@ -68,7 +68,9 @@ main() {
 
     step "Generate fixed data..."
     ensure cargo run --release --bin keccakf_fixed_gen || return 1
-    ensure cargo run --release --bin frequent_ops_fixed_gen || return 1
+    ensure cargo run --release --bin arith_frops_fixed_gen || return 1
+    ensure cargo run --release --bin binary_basic_frops_fixed_gen || return 1
+    ensure cargo run --release --bin binary_extension_frops_fixed_gen || return 1
 
     step "Compiling ZisK PIL..."
     ensure node "${WORKSPACE_DIR}/pil2-compiler/src/pil.js" pil/zisk.pil \
