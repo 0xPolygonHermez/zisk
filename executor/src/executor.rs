@@ -636,6 +636,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                             pctx.add_instance(plan.airgroup_id, plan.air_id, plan.pre_calculate, 1)
                         }
                         InstanceType::Table => pctx.add_instance_all(plan.airgroup_id, plan.air_id),
+                    }
                 };
 
                 plan.set_global_id(global_id);
