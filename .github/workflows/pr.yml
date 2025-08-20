@@ -23,11 +23,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev nlohmann-json3-dev  build-essential libbenchmark-dev libomp-dev libgmp-dev  nasm libsodium-dev cmake
-
-      - name: Setup CI
-        uses: ./.github/actions/setup
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          sudo ./install_deps.sh
 
       - name: Run cargo check
         uses: actions-rs/cargo@v1
@@ -137,8 +134,16 @@ jobs:
         shell: bash        
     env:
       ZISK_GHA: "1"
+      ZISK_REPO_DIR: ${{ github.workspace }}
       TERM: xterm
     steps:
+      - name: Increase shared memory (/dev/shm)
+        run: |
+          set -euxo pipefail
+          df -h /dev/shm || true
+          sudo mount -o remount,size=16G /dev/shm || sudo mount -o remount,size=16G /run/shm
+          df -h /dev/shm
+
       - name: Checkout sources
         uses: actions/checkout@v4
 
@@ -151,12 +156,13 @@ jobs:
       - name: Install dependencies
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./install_deps.sh
+          sudo ./install_deps.sh
 
       - name: Emulate in assembly Riscof ELF files
         run: |
-          cd "$GITHUB_WORKSPACE/tools"
-          ./emulate_asm_all.sh $GITHUB_WORKSPACE/zisk-testvectors/riscof/riscof_work/rv64i_m
+          . "$HOME/.cargo/env"
+          cd "$GITHUB_WORKSPACE"
+          sudo ./tools/emulate_asm_all.sh $GITHUB_WORKSPACE/zisk-testvectors/riscof/riscof_work/rv64i_m
 
   lint:
     name: Formatting & Clippy
@@ -169,25 +175,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev
-
-      - name: Setup CI
-        uses: ./.github/actions/setup
-
-      - name: Clean rust toolchain
-        run: |
-          rustup self uninstall -y || true
-          rm -rf ~/.rustup ~/.cargo        
-
-      - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          default: true
-          override: true
-          components: rustfmt
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          sudo ./install_deps.sh
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
