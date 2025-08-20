@@ -111,6 +111,10 @@ do
     # Transpile the ELF RISC-V file to ZisK, and then generate assembly file emu.asm
     ./target/debug/riscv2zisk $ELF_FILE emulator-asm/src/emu.asm --gen=1 || exit 1
 
+    # Get the directory of the reference file to compare
+    ELF_FILE_DIRECTORY=${ELF_FILE%%my.elf}
+    REFERENCE_FILE="$(realpath "${ELF_FILE_DIRECTORY}../ref/Reference-sail_c_simulator.signature")"
+
     # Compile the assembly emulator derived from this ELF file
     cd emulator-asm
     make
@@ -130,8 +134,6 @@ do
     #kill $BG_PID
 
     # Compare output vs reference
-    ELF_FILE_DIRECTORY=${ELF_FILE%%my.elf}
-    REFERENCE_FILE="$(realpath "${ELF_FILE_DIRECTORY}/../ref/Reference-sail_c_simulator.signature")"
     echo "Comparing output with $REFERENCE_FILE"
     if diff output $REFERENCE_FILE; then
         PASSED_COUNTER=$((PASSED_COUNTER+1))
