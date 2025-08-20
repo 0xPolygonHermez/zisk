@@ -4,7 +4,7 @@ source ./utils.sh
 
 current_dir=$(pwd)
 
-# Loop until user chooses to exit
+# Main menu loop
 while true; do
     echo "========================================="
     echo "          ZisK Test Menu          "
@@ -23,56 +23,57 @@ while true; do
     echo "12) Exit"
     echo
 
-    # Prompt for input
+    # Prompt for user selection
     read -p "Select an option [1-12]: " option
     echo
 
     case $option in
         1)
-        nano .env
-        ;;
+            nano .env
+            ;;
         2)
-        ./build_zisk.sh || :
-        ;;
+            run_timed "./build_zisk.sh"
+            ;;
         3)
-        ./build_setup.sh || :
-        ;;
+            run_timed "./build_setup.sh"
+            ;;
         4)
-        ./package_setup.sh || :
-        ;;
+            run_timed "./package_setup.sh"
+            ;;
         5)
-        ./install_zisk_bin.sh || :
-        ;;
+            run_timed "./install_zisk_bin.sh"
+            ;;
         6)
-        ./test_sha_hasher.sh || :
-        ;;
+            run_timed "./test_sha_hasher.sh"
+            ;;
         7)
-        ./test_pp.sh || :
-        ;;  
+            run_timed "./test_pp.sh"
+            ;;
         8)
-        ./test_eth_block.sh || :
-        ;;        
+            run_timed "./test_eth_block.sh"
+            ;;
         9)
-        ./install_setup_public.sh || :
-        ;;
+            run_timed "./install_setup_public.sh"
+            ;;
         10)
-        ./install_setup_local.sh || :
-        ;;  
+            run_timed "./install_setup_local.sh"
+            ;;
         11)
-        info "Open shell"
-        bash -i
-        ;;   
+            info "Open shell"
+            bash -i
+            ;;
         12)
-        info "Exiting ZisK Release Kit. Goodbye!"
-        exit
-        ;;
+            info "Exiting ZisK Release Kit. Goodbye!"
+            exit
+            ;;
         *)
-        info "Invalid selection. Please enter a number between 1 and 12."
-        ;;
+            info "Invalid selection. Please enter a number between 1 and 12."
+            ;;
     esac
 
     echo
 
+    # Always go back to original directory after running scripts
     cd "$current_dir" || {
         err "Failed to change directory to $current_dir"
         exit 1

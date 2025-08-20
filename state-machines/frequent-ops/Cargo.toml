@@ -1,5 +1,5 @@
 [package]
-name = "zisk-witness"
+name = "sm-frequent-ops"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -7,40 +7,35 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
-[lib]
-crate-type = ["dylib"]
+[[bin]]
+name = "frequent_ops_fixed_gen"
+path = "src/frequent_ops_fixed_gen.rs"
+
+[[bin]]
+name = "frequent_ops_test"
+path = "src/frequent_ops_test.rs"
 
 [dependencies]
-executor = { workspace = true }
-sm-arith = { workspace = true }
-sm-binary = { workspace = true }
-sm-main = { workspace = true }
-sm-mem = { workspace = true }
-sm-rom = { workspace = true }
-sm-frequent-ops = { workspace = true }
-data-bus = { workspace = true }
-precomp-keccakf = { workspace = true }
-precomp-sha256f = { workspace = true }
-precomp-arith-eq = { workspace = true }
-zisk-pil = { workspace = true }
-ziskemu = { workspace = true }
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
+zisk-pil = { workspace = true }
 
+fields = { workspace=true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-proofman-util = { workspace = true }
 proofman-macros = { workspace = true }
-witness = { workspace = true }
-fields = { workspace=true }
+proofman-util = { workspace = true }
 pil-std-lib = { workspace = true }
 tracing = { workspace = true }
 
-env_logger = "0.11"
+clap = "4.0"
 rayon = { workspace = true }
+num-bigint = { workspace = true }
+static_assertions = { workspace = true }
 
 [features]
 default = []
-no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
+generate_code_arith_range_table = []
+no_lib_link = ["proofman-common/no_lib_link"]
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

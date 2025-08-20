@@ -331,7 +331,7 @@ impl OperationBusData<u64> {
             }
 
             ZiskOperationType::Sha256 => {
-                debug_assert_eq!(ctx.precompiled.input_data.len(), 12);
+                debug_assert_eq!(ctx.precompiled.input_data.len(), 14);
                 buffer[0..OPERATION_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b]);
                 buffer[OPERATION_BUS_DATA_SIZE..OPERATION_BUS_SHA256F_DATA_SIZE]
                     .copy_from_slice(&ctx.precompiled.input_data);

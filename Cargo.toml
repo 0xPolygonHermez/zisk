@@ -6,6 +6,10 @@ keywords = ["zisk", "zkvm", "zero-knowledge"]
 repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
+[workspace.metadata]
+gha_pil2_proofman_js_branch = "pre-develop-0.11.0"
+gha_pil2_compiler_branch = "develop-0.7.0"
+
 [workspace]
 members = [
     "cli",
@@ -22,6 +26,7 @@ members = [
     "state-machines/mem",
     "state-machines/mem-cpp",
     "state-machines/rom",
+    "state-machines/frequent-ops",
     "witness-computation",
     "ziskos/entrypoint",
     "precompiles/common",
@@ -66,6 +71,7 @@ sm-arith = { path = "state-machines/arith" }
 sm-binary = { path = "state-machines/binary" }
 sm-main = { path = "state-machines/main" }
 sm-mem = { path = "state-machines/mem" }
+sm-frequent-ops = { path = "state-machines/frequent-ops" }
 mem-common = { path = "state-machines/mem-common" }
 mem-planner-cpp = { path = "state-machines/mem-cpp" }
 sm-rom = { path = "state-machines/rom" }
@@ -110,3 +116,5 @@ named-sem = "0.2.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 mpi = { version = "0.8.0" }
+static_assertions = "1"
+

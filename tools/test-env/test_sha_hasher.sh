@@ -6,12 +6,16 @@ PROJECT_NAME="sha_hasher"
 EXPECTED_OUTPUT="98211882|bd13089b|6ccf1fca|81f7f0e4|abf6352a|0c39c9b1|1f142cac|233f1280"
 
 main() {
+    info "▶️  Running $(basename "$0") script..."
+
     current_dir=$(pwd)
 
     current_step=1
-    total_steps=10
-
-    info "Executing test_sha_hasher.sh script"
+    if [[ "${DISABLE_PROVE}" == "1" ]]; then
+        total_steps=8
+    else
+        total_steps=10
+    fi
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
@@ -20,9 +24,8 @@ main() {
     step "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
-    confirm_continue || return 1
+    confirm_continue || return 0
 
-    mkdir -p "${WORKSPACE_DIR}"
     cd "${WORKSPACE_DIR}"
 
     step "Deleting shared memory..."
@@ -73,26 +76,28 @@ main() {
             fi
         fi
 
-        step "Generating proof..."
-        MPI_CMD=""
-        # If ZISK_GHA is set, use mpirun command for distributed proving to prove it faster and reduce GHA time
-        if [[ "$ZISK_GHA" == "1" ]]; then
-            # Build mpi command
-            info "Using mpirun for distributed proving"
-            MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $DISTRIBUTED_PROCESSES -x OMP_NUM_THREADS=$DISTRIBUTED_THREADS -x RAYON_NUM_THREADS=$DISTRIBUTED_THREADS"
-        fi
-        ensure $MPI_CMD cargo-zisk prove -e "$ELF_PATH" -i "$INPUT_BIN" -o proof $PROVE_FLAGS 2>&1 | tee prove_output.log || return 1
-        if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
-            err "prove program failed"
-            return 1
-        fi
+        if [[ "${DISABLE_PROVE}" != "1" ]]; then
+            step "Generating proof..."
+            MPI_CMD=""
+            # If ZISK_GHA is set, use mpirun command for distributed proving to prove it faster and reduce GHA time
+            if is_gha; then
+                # Build mpi command
+                info "Using mpirun for distributed proving"
+                MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $DISTRIBUTED_PROCESSES -x OMP_NUM_THREADS=$DISTRIBUTED_THREADS -x RAYON_NUM_THREADS=$DISTRIBUTED_THREADS"
+            fi
+            ensure $MPI_CMD cargo-zisk prove -e "$ELF_PATH" -i "$INPUT_BIN" -o proof $PROVE_FLAGS 2>&1 | tee prove_output.log || return 1
+            if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
+                err "prove program failed"
+                return 1
+            fi
 
-        step "Verifying proof..."
-        ensure cargo-zisk verify -p ./proof/vadcop_final_proof.bin 2>&1 | tee verify_output.log || return 1
-        if ! grep -F "Stark proof was verified" verify_output.log; then
-            err "verify proof failed"
-            return 1
-        fi          
+            step "Verifying proof..."
+            ensure cargo-zisk verify -p ./proof/vadcop_final_proof.bin 2>&1 | tee verify_output.log || return 1
+            if ! grep -F "Stark proof was verified" verify_output.log; then
+                err "verify proof failed"
+                return 1
+            fi
+        fi
     fi
 
     cd "$current_dir"

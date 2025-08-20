@@ -1,0 +1,16 @@
+
+
+airtemplate FrequentOps(int N = 2**24, int RC = 2, const int operation_bus_id) {
+
+    #pragma extern_fixed_file "../src/frequent_ops_fixed.bin"
+
+    col witness multiplicity;
+
+    col fixed OP;
+    col fixed A[RC];
+    col fixed B[RC];
+    col fixed C[RC];
+    col fixed FLAG;
+
+    lookup_proves(operation_bus_id, [OP, ...A, ...B, ...C, FLAG], mul: multiplicity);
+}
