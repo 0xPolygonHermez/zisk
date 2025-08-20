@@ -757,10 +757,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
     ) {
-        #[cfg(feature = "stats")]
-        let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
-        // #[cfg(feature = "stats")]
-        // let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
+        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
+        let witness_start_time = Instant::now();
+
         #[cfg(feature = "stats")]
         let stats_id = self.stats.lock().unwrap().get_id();
         #[cfg(feature = "stats")]
@@ -799,6 +798,18 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             air_id,
             ExecutorStatsEvent::End,
         );
+
+        let stats = Stats {
+            airgroup_id,
+            air_id,
+            collect_start_time: Instant::now(),
+            collect_duration: 0,
+            witness_start_time: Instant::now(),
+            witness_duration: witness_start_time.elapsed().as_millis() as u64,
+            num_chunks: 0,
+        };
+
+        self.witness_stats.lock().unwrap().insert(main_instance.ictx.global_id, stats);
     }
 
     /// computes witness for a secondary state machines instance.
