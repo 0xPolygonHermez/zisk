@@ -23,8 +23,7 @@ fi
 ensure() {
     if ! "$@"; then
         echo "${RED}❌ Error: command failed -> $*${RESET}" >&2
-        read -p "Press any key to continue..." -n1 -s
-        echo
+        press_any_key
         return 1
     fi
 }
@@ -45,8 +44,7 @@ warn() {
 
 err() {
     echo "${RED}❌ Error: $1${RESET}" >&2
-    read -p "Press any key to continue..." -n1 -s
-    echo
+    press_any_key
     return 1
 }
 
@@ -60,48 +58,57 @@ tolower() {
 
 # load_env: Load environment variables from .env file, without overwriting existing ones
 load_env() {
-    # If ZISK_GHA is set to 1, skip loading .env file
-    if [[ -z "$ZISK_GHA" || "$ZISK_GHA" != "1" ]]; then
-        # Check if .env file exists
-        if [[ ! -f ".env" ]]; then
-            info "Skipping loading .env file as it does not exist"
-            return 0
+    local zisk_repo_dir=$1
+
+    # Check if .env file exists
+    if [[ ! -f ".env" ]]; then
+        info "Skipping loading .env file as it does not exist"
+        return 0
+    fi
+
+    info "📦 Loading environment variables from .env"
+
+    # We'll collect printable lines with the source of each variable
+    local -a __env_print_lines=()
+
+    # Loop through each line in the .env file
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        if [[ -z "$key" || "$key" =~ ^# ]]; then
+            continue
         fi
 
-        info "📦 Loading environment variables from .env"
+        # Try to get the value from Cargo.toml (takes precedence)
+        key_value=$(get_var_from_cargo_toml "$key") || return 1
 
-        # Loop through each line in the .env file
-        while IFS='=' read -r key value; do
-            # Skip comments and empty lines
-            if [[ -z "$key" || "$key" =~ ^# ]]; then
-                continue
-            fi
-
-            # Check if the variable is already defined
-            if [[ -z "${!key}" ]]; then
-                # If not defined, set the value from the .env file
+        if [[ -n "$key_value" ]]; then
+            # If defined in Cargo.toml, export it (overrides anything else)
+            export "$key=$key_value"
+            [[ "$key_value" != "0" ]] && __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
+        elif [[ -z "${!key}" ]]; then
+            # If not already defined, set the value from the .env file if ZISK_GHA is not set
+            if ! is_gha; then
                 export "$key=$value"
-            else
-                info "Variable '$key' is already defined with value '${!key}', skipping..."
+                [[ "$value" != "0" ]] && __env_print_lines+=(" -  [.env] ${key} = ${value}")
             fi
-        done < .env
+        else
+            # Already defined in the shell: keep current value
+            [[ "${!key}" != "0" ]] && __env_print_lines+=(" - [shell] ${key} = ${!key}")
+        fi
+    done < .env
 
-        echo
-        info "🔍 Environment variables:"
-        # List variables that were set
-        grep -vE '^\s*#' .env | grep -vE '^\s*$' | while IFS='=' read -r key _; do
-            echo "  - ${key} = ${!key}"
-        done
-        echo
-    else
-        info "Skipping loading .env file since ZISK_GHA is set to 1"
-    fi
+    echo
+    info "🔍 Environment variables:"
+    for line in "${__env_print_lines[@]}"; do
+        echo "$line"
+    done
+    echo
 }
 
 # confirm_continue: Ask the user for confirmation to continue
 confirm_continue() {
-    # If ZISK_GHA is set to 1, skip confirmation
-    if [[ -z "$ZISK_GHA" || "$ZISK_GHA" != "1" ]]; then
+    # If ZISK_GHA is set, skip confirmation
+    if ! is_gha; then
         read -p "Do you want to continue? [Y/n] " answer
         answer=${answer:-y}
 
@@ -114,8 +121,8 @@ confirm_continue() {
 
 # press_any_key: Wait for user to press any key
 press_any_key() {
-    # If ZISK_GHA is set to 1, skip waiting for user input
-    if [[ -z "$ZISK_GHA" || "$ZISK_GHA" != "1" ]]; then
+    # If ZISK_GHA is set, skip waiting for user input
+    if ! is_gha; then
         read -p "Press any key to continue..." -n1 -s
         echo
     fi
@@ -129,6 +136,11 @@ is_proving_key_installed() {
         err "Proving key not installed. Please install it first."
         return 1    
     fi
+}
+
+# is_gha: Check if the script is running in a GitHub Actions environment
+is_gha() {
+    [[ "$ZISK_GHA" == "1" ]]
 }
 
 # get_var_list: Returns the list of items (separated by commas) in the variable
@@ -207,27 +219,127 @@ get_platform() {
     PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")    
 }
 
-# get_var_from_cargo_toml: Extracts a variable value from Cargo.toml
+# get_var_from_cargo_toml: Extracts a variable value from Cargo.toml (with "gha_" prefix)
 get_var_from_cargo_toml() {
-    local zisk_repo_dir=$1
-    local var_name=$2
-    
-    # Check if Cargo.toml exists
-    if [ -f "${zisk_repo_dir}/Cargo.toml" ]; then
-        # Extract the value of the variable from Cargo.toml
-        local value=$(grep -oP "(?<=${var_name} = \")[^\"]+" "${zisk_repo_dir}/Cargo.toml")
+    local var_name=$1
+    local file="$(get_zisk_repo_dir)/Cargo.toml"
 
-        # If the value is found, return it, else return empty string
-        if [ -n "$value" ]; then
-            echo "$value"
-        else
-            echo
+    # Guard clauses: file must exist and var_name must be non-empty
+    [[ -f "$file" && -n "$var_name" ]] || { echo; return; }
+
+    # Normalize the requested key to lowercase (portable on macOS and Linux)
+    local var_lc
+    var_lc="$(printf '%s' "$var_name" | tr '[:upper:]' '[:lower:]')"
+
+    # Special case: pil2_proofman_branch
+    # Assumption: the "proofman = { ... }" entry is a single line and contains "pil2-proofman" in the URL
+    if [[ "$var_lc" == "pil2_proofman_branch" ]]; then
+        # Find the single line starting with "proofman =" that references pil2-proofman
+        local proof_line
+        proof_line="$(LC_ALL=C grep -E '^[[:space:]]*proofman[[:space:]]*=' "$file")"
+
+        if [[ -n "$proof_line" ]]; then
+            local branch
+            # Try to extract branch in three formats: "value", 'value', or unquoted value
+            branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE 's/.*branch[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p')
+            [[ -z "$branch" ]] && branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE "s/.*branch[[:space:]]*=[[:space:]]*'([^']*)'.*/\1/p")
+            [[ -z "$branch" ]] && branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE 's/.*branch[[:space:]]*=[[:space:]]*([^,}[:space:]]+).*/\1/p')
+
+            if [[ -n "$branch" ]]; then
+                echo "$branch"
+                return
+            fi
+            # If no branch found, fall back to the standard variable lookup below
         fi
+        # If no proofman line found, fall back to the standard variable lookup below
+    fi
+
+    # Always add prefix "gha_"
+    local prefixed_var="gha_${var_lc}"
+
+    # Escape regex special characters for sed
+    local escaped_prefixed
+    escaped_prefixed=$(printf '%s' "$prefixed_var" | sed 's/[.[\*^$+?{}|()\\]/\\&/g')
+
+    local value=""
+    # Try double-quoted value: key = "value"
+    value=$(LC_ALL=C sed -nE "s/^[[:space:]]*${escaped_prefixed}[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$file" | head -n1)
+
+    # If not found, try single-quoted value: key = 'value'
+    [[ -z "$value" ]] && value=$(LC_ALL=C sed -nE "s/^[[:space:]]*${escaped_prefixed}[[:space:]]*=[[:space:]]*'([^']*)'.*/\1/p" "$file" | head -n1)
+
+    echo "$value"
+}
+
+# get_zisk_repo_dir: returns the ZisK repository directory
+get_zisk_repo_dir() {
+    if [[ -n "${ZISK_REPO_DIR}" ]]; then
+        echo "${ZISK_REPO_DIR}"
     else
-        # If the file doesn't exist, return an error message
-        err "Cargo.toml not found at ${zisk_repo_dir}/Cargo.toml"
+        echo "${WORKSPACE_DIR}/zisk"
+    fi
+}
+
+# format_duration_ms: format milliseconds to HH:MM:SS.mmm
+format_duration_ms() {
+    local ms=$1
+    local h=$(( ms / 3600000 ))
+    ms=$(( ms % 3600000 ))
+    local m=$(( ms / 60000 ))
+    ms=$(( ms % 60000 ))
+    local s=$(( ms / 1000 ))
+    local rem_ms=$(( ms % 1000 ))
+    printf "%02d:%02d:%02d.%03d" "$h" "$m" "$s" "$rem_ms"
+}
+
+# now_ns: get current time in nanoseconds (fallback to seconds*1e9 if not supported)
+now_ns() {
+    local n
+    n=$(date +%s%N 2>/dev/null)
+    if [[ -z "$n" || "$n" =~ [^0-9] ]]; then
+        n="$(date +%s)000000000"
+    fi
+    printf "%s" "$n"
+}
+
+# run_timed: execute a .sh script and measure its execution time
+# Usage: run_timed "./script.sh"
+run_timed() {
+    local script="$1"
+
+    if [[ -z "$script" ]]; then
+        err "no script provided to run_timed"
         return 1
     fi
+    if [[ ! -f "$script" ]]; then
+        err "script not found: $script"
+        return 1
+    fi
+
+    local start_ns end_ns elapsed_ns elapsed_ms exit_code
+
+    # Record start time
+    start_ns=$(now_ns)
+
+    # Execute script
+    "$script"
+    exit_code=$?
+
+    # Record end time
+    end_ns=$(now_ns)
+    elapsed_ns=$(( end_ns - start_ns ))
+    elapsed_ms=$(( elapsed_ns / 1000000 ))
+
+    local pretty
+    pretty=$(format_duration_ms "$elapsed_ms")
+
+    # Show execution time and exit code
+    if [[ $exit_code -eq 0 ]]; then
+        info "🕒 Finished ${script} in ${pretty} (exit code 0)"
+    fi
+
+    # Always return success to keep the menu running
+    return 0
 }
 
 # Sets PLATFORM based on the current system
@@ -238,8 +350,12 @@ get_shell_and_profile || return 1
 touch $PROFILE
 source "$PROFILE"
 
-# Define ZisK directories
+# Define directories
 ZISK_DIR="$HOME/.zisk"
 ZISK_BIN_DIR="$ZISK_DIR/bin"
 WORKSPACE_DIR="${HOME}/workspace"
-DEFAULT_ZISK_REPO_DIR="${WORKSPACE_DIR}/zisk"
+OUTPUT_DIR="${HOME}/output"
+
+# Ensure directories exists
+mkdir -p "${WORKSPACE_DIR}"
+mkdir -p "$(get_zisk_repo_dir)"

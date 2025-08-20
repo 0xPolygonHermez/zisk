@@ -106,6 +106,8 @@ install_dependencies_darwin() {
 }
 
 main() {
+    info "▶️ Running $(basename "$0") script..."
+
     # Check the system type and call the respective function
     if [[ "${PLATFORM}" == "linux" ]]; then
         install_dependencies_linux || return 1
