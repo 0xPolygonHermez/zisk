@@ -8,10 +8,12 @@
 
 use fields::Goldilocks;
 use std::collections::VecDeque;
-use zisk_common::{BusDevice, BusDeviceMode, BusId, Counter, Metrics, OPERATION_BUS_ID, OP_TYPE};
+use zisk_common::{
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
+};
 use zisk_core::ZiskOperationType;
 
-use crate::ArithFullSM;
+use crate::{ArithFrops, ArithFullSM};
 
 /// The `ArithCounter` struct represents a counter that monitors and measures
 /// arithmetic-related operations on the data bus.
@@ -47,6 +49,10 @@ impl ArithCounterInputGen {
     /// Returns the count of instructions for the specified operation type.
     pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
         (op_type == ZiskOperationType::Arith).then_some(self.counter.inst_count)
+    }
+
+    pub fn frops_count(&self, op_type: ZiskOperationType) -> Option<u64> {
+        (op_type == ZiskOperationType::Arith).then_some(self.counter.frops_count)
     }
 }
 
@@ -95,6 +101,13 @@ impl BusDevice<u64> for ArithCounterInputGen {
         const ARITH: u64 = ZiskOperationType::Arith as u64;
 
         if data[OP_TYPE] != ARITH {
+            return true;
+        }
+
+        if ArithFrops::is_frequent_op(data[OP] as u8, data[A], data[B]) {
+            if self.mode == BusDeviceMode::Counter {
+                self.counter.update_frops(1);
+            };
             return true;
         }
 

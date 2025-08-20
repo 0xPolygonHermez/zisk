@@ -3,6 +3,8 @@
 source ./utils.sh
 
 main() {
+    info "▶️  Running $(basename "$0") script..."
+
     current_dir=$(pwd)
 
     current_step=1
@@ -17,15 +19,17 @@ main() {
         return 1
     fi
 
-    info "Executing build_zisk.sh script"
-
     step "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
-    confirm_continue || return 1
+    confirm_continue || return 0
 
-    mkdir -p "${WORKSPACE_DIR}"
-    ensure cd "${WORKSPACE_DIR}" || return 1
+    # If ZISK_GHA is set, force skip cloning pil2-proofman and use pil2-proofman dependency defined in zisk Cargo.toml
+    if is_gha; then
+        unset PIL2_PROOFMAN_BRANCH
+    fi
+
+    cd "${WORKSPACE_DIR}"
 
     step "Cloning pil2-proofman repository..."
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
@@ -37,6 +41,8 @@ main() {
         info "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
         ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
         cd ..
+    else
+        info "Skipping cloning pil2-proofman repository as PIL2_PROOFMAN_BRANCH is not defined"
     fi
 
     step "Setting up ZisK repository..."
@@ -44,6 +50,10 @@ main() {
         info "Using ZisK repository defined in ZISK_REPO_DIR variable: ${ZISK_REPO_DIR}"
         ensure cd "${ZISK_REPO_DIR}"
     else
+        if is_gha; then
+            err "ZISK_GHA is set, but ZISK_REPO_DIR is not defined"
+            return 1
+        fi
         if [[ -n "$ZISK_BRANCH" ]]; then
             info "Cloning ZisK repository..."
             # Remove existing directory if it exists
@@ -58,7 +68,6 @@ main() {
             info "Skipping cloning ZisK repository as ZISK_BRANCH is not defined"
             ensure cd zisk
         fi
-        ZISK_REPO_DIR="${DEFAULT_ZISK_REPO_DIR}"
     fi
 
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then

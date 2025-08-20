@@ -12,7 +12,7 @@ const int COMPLEX_ADD_BN254_OP = 0xFC;
 const int COMPLEX_SUB_BN254_OP = 0xFD;
 const int COMPLEX_MUL_BN254_OP = 0xFE;
 
-airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
+airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID) {
 
     // TODO: introduction, map
     // TODO: explain concept of q

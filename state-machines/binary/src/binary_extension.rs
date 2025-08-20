@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
+use crate::{BinaryExtensionFrops, BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -43,6 +43,9 @@ pub struct BinaryExtensionSM<F: PrimeField64> {
 
     /// The table ID for the Binary Basic State Machine
     table_id: usize,
+
+    /// The table ID for the Binary Extension FROPS
+    frops_table_id: usize,
 }
 
 impl<F: PrimeField64> BinaryExtensionSM<F> {
@@ -60,7 +63,10 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // Get the table ID
         let table_id = std.get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID);
 
-        Arc::new(Self { std, range_id, table_id })
+        // Get the FROPS table ID
+        let frops_table_id = std.get_virtual_table_id(BinaryExtensionFrops::TABLE_ID);
+
+        Arc::new(Self { std, range_id, table_id, frops_table_id })
     }
 
     /// Determines if the given opcode represents a shift operation.
@@ -387,5 +393,10 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         }
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
+    }
+    pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
+        for row in frops_inputs {
+            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
+        }
     }
 }
