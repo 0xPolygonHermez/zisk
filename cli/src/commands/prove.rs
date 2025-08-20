@@ -7,7 +7,7 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use bytemuck::cast_slice;
 use colored::Colorize;
-use executor::ZiskExecutionResult;
+use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -337,11 +337,21 @@ impl ZiskProve {
         if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
             let elapsed = start.elapsed();
 
-            let (result, _stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
-                .get_execution_result()
-                .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-                .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
-                .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+            #[allow(clippy::type_complexity)]
+            let (result, _stats, _): (
+                ZiskExecutionResult,
+                Arc<Mutex<ExecutorStats>>,
+                Arc<Mutex<HashMap<usize, Stats>>>,
+            ) =
+                *witness_lib
+                    .get_execution_result()
+                    .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
+                    .downcast::<(
+                        ZiskExecutionResult,
+                        Arc<Mutex<ExecutorStats>>,
+                        Arc<Mutex<HashMap<usize, Stats>>>,
+                    )>()
+                    .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
             let elapsed = elapsed.as_secs_f64();
             tracing::info!("");
