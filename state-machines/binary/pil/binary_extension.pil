@@ -65,7 +65,8 @@ x    in2[x]    out[x][0]     out[x][1]
 Result:        0xFFFF8abc    0xFFFFFFFF
 */
 
-airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id) {
+airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID) {
+
     const int bits = 64;
     const int bytes = bits / 8;
 

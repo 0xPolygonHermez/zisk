@@ -14,7 +14,6 @@ use precomp_sha256f::Sha256fManager;
 use proofman::register_std;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
-use sm_frequent_ops::FrequentOpsSM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{any::Any, path::PathBuf, sync::Arc};
@@ -96,7 +95,6 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new(std.clone());
         let mem_sm = Mem::new(std.clone());
-        let frops_sm = FrequentOpsSM::new(std.clone());
         // Step 4: Initialize the precompiles state machines
         let keccakf_sm = KeccakfManager::new(wcm.get_sctx(), std.clone());
         let sha256f_sm = Sha256fManager::new(std.clone());
@@ -122,7 +120,6 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             keccakf_sm.clone(),
             sha256f_sm.clone(),
             arith_eq_sm.clone(),
-            frops_sm.clone(),
         );
 
         // Step 5: Create the executor and register the secondary state machines

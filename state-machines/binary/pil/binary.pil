@@ -49,7 +49,7 @@ const int LT_ABS_PN_OP = 0x07;
 const int LTU_OP = 0x08;
 const int GT_OP = 0x0a;
 
-airtemplate Binary(const int N = 2**21, const int operation_bus_id) {
+airtemplate Binary(const int N = 2**21, const int operation_bus_id = OPERATION_BUS_ID) {
     // Default values
     const int bits = 64;
     const int bytes = bits / 8;

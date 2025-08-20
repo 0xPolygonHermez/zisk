@@ -54,6 +54,23 @@ impl CollectSkipper {
         self.skipped += 1;
         true
     }
+
+    #[inline(always)]
+    pub fn should_skip_query(&mut self, apply: bool) -> bool {
+        if !self.skipping {
+            return false;
+        }
+
+        if self.skip == 0 || self.skipped >= self.skip {
+            self.skipping = false;
+            return false;
+        }
+
+        if apply {
+            self.skipped += 1;
+        }
+        true
+    }
 }
 
 /// Represents different types of checkpoints in a plan.

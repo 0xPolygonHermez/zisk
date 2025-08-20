@@ -8,10 +8,6 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [[bin]]
-name = "frequent_ops_fixed_gen"
-path = "src/frequent_ops_fixed_gen.rs"
-
-[[bin]]
 name = "frequent_ops_test"
 path = "src/frequent_ops_test.rs"
 
