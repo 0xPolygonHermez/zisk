@@ -1,10 +1,11 @@
 use bytemuck::cast_slice;
 use colored::Colorize;
-use executor::ZiskExecutionResult;
+use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -17,11 +18,7 @@ use crate::{
 };
 
 #[cfg(feature = "stats")]
-use std::time::Duration;
-#[cfg(feature = "stats")]
-use std::time::Instant;
-#[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ZiskProveRequest {
@@ -82,14 +79,22 @@ impl ZiskServiceProveHandler {
                 let elapsed = start.elapsed();
 
                 if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
-                    let (result, _stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) =
-                        *witness_lib
-                            .get_execution_result()
-                            .ok_or_else(|| anyhow::anyhow!("No execution result found"))
-                            .expect("Failed to get execution result")
-                            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
-                            .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
-                            .expect("Failed to downcast execution result");
+                    #[allow(clippy::type_complexity)]
+                    let (result, _stats, _witness_stats): (
+                        ZiskExecutionResult,
+                        Arc<Mutex<ExecutorStats>>,
+                        Arc<Mutex<HashMap<usize, Stats>>>,
+                    ) = *witness_lib
+                        .get_execution_result()
+                        .ok_or_else(|| anyhow::anyhow!("No execution result found"))
+                        .expect("Failed to get execution result")
+                        .downcast::<(
+                            ZiskExecutionResult,
+                            Arc<Mutex<ExecutorStats>>,
+                            Arc<Mutex<HashMap<usize, Stats>>>,
+                        )>()
+                        .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
+                        .expect("Failed to downcast execution result");
 
                     let elapsed = elapsed.as_secs_f64();
                     tracing::info!("");
@@ -110,12 +115,7 @@ impl ZiskServiceProveHandler {
                     // Store the stats in stats.json
                     #[cfg(feature = "stats")]
                     {
-                        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(
-                            ExecutorStatsDuration {
-                                start_time: Instant::now(),
-                                duration: Duration::new(0, 1),
-                            },
-                        ));
+                        _stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
                         _stats.lock().unwrap().store_stats();
                     }
 

@@ -31,6 +31,7 @@ libc = "0.2"
 [features]
 default = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
+stats = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }

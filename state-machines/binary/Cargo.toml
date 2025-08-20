@@ -7,10 +7,19 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
+[[bin]]
+name = "binary_basic_frops_fixed_gen"
+path = "src/binary_basic_frops_fixed_gen.rs"
+
+[[bin]]
+name = "binary_extension_frops_fixed_gen"
+path = "src/binary_extension_frops_fixed_gen.rs"
+
 [dependencies]
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
+sm-frequent-ops = { workspace = true }
 
 fields = { workspace=true }
 proofman = { workspace = true }
@@ -22,6 +31,7 @@ pil-std-lib = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
+static_assertions = { workspace = true }
 
 [features]
 default = []

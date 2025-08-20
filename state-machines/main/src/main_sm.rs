@@ -21,14 +21,16 @@ use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuRegTrace};
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
-pub struct MainInstance {
+pub struct MainInstance<F: PrimeField64> {
     /// Instance Context
     pub ictx: InstanceCtx,
 
     pub is_last_segment: bool,
+
+    pub std: Arc<Std<F>>,
 }
 
-impl MainInstance {
+impl<F: PrimeField64> MainInstance<F> {
     /// Creates a new `MainInstance`.
     ///
     /// # Arguments
@@ -36,16 +38,10 @@ impl MainInstance {
     ///
     /// # Returns
     /// A new `MainInstance`.
-    pub fn new(ictx: InstanceCtx, is_last_segment: bool) -> Self {
-        Self { ictx, is_last_segment }
+    pub fn new(ictx: InstanceCtx, is_last_segment: bool, std: Arc<Std<F>>) -> Self {
+        Self { ictx, is_last_segment, std }
     }
-}
 
-/// The `MainSM` struct represents the Main State Machine,
-/// responsible for generating the main witness.
-pub struct MainSM {}
-
-impl MainSM {
     /// Computes the main witness trace for a given segment based on the provided proof context,
     /// ROM, and emulation traces.
     ///
@@ -57,12 +53,12 @@ impl MainSM {
     /// * `main_instance` - Reference to the `MainInstance` representing the current segment.
     ///
     /// The computed trace is added to the proof context's air instance repository.
-    pub fn compute_witness<F: PrimeField64>(
+    pub fn compute_witness(
+        &self,
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         chunk_size: u64,
-        main_instance: &MainInstance,
-        std: Arc<Std<F>>,
+        main_instance: &MainInstance<F>,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         // Create the main trace buffer
@@ -189,7 +185,7 @@ impl MainSM {
             &mut step_range_check,
             &mut large_range_checks,
         );
-        Self::update_std_range_checks(std, step_range_check, &large_range_checks);
+        self.update_std_range_checks(step_range_check, &large_range_checks);
 
         // Generate and add the AIR instance
         let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
@@ -206,7 +202,7 @@ impl MainSM {
     ///
     /// # Returns
     /// The next program counter value after processing the minimal trace.
-    fn fill_partial_trace<F: PrimeField64>(
+    fn fill_partial_trace(
         zisk_rom: &ZiskRom,
         main_trace: &mut [MainTraceRow<F>],
         min_trace: &EmuTrace,
@@ -238,7 +234,7 @@ impl MainSM {
         )
     }
 
-    fn complete_trace_with_initial_reg_steps_per_chunk<F: PrimeField64>(
+    fn complete_trace_with_initial_reg_steps_per_chunk(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
         main_trace: &mut MainTrace<F>,
@@ -302,7 +298,7 @@ impl MainSM {
             reg_steps[reg_index] = reg_prev_mem_step;
         }
     }
-    fn update_reg_airvalues<F: PrimeField64>(
+    fn update_reg_airvalues(
         air_values: &mut MainAirValues<'_, F>,
         final_step: u64,
         last_reg_values: &[u64],
@@ -324,19 +320,21 @@ impl MainSM {
             }
         }
     }
-    fn update_std_range_checks<F: PrimeField64>(
-        std: Arc<Std<F>>,
-        step_range_check: Vec<u32>,
-        large_range_checks: &[u32],
-    ) {
-        let range_id = std.get_range(0, MEM_REGS_MAX_DIFF as i64, None);
-        std.range_checks(step_range_check, range_id);
+    fn update_std_range_checks(&self, step_range_check: Vec<u32>, large_range_checks: &[u32]) {
+        let range_id = self.std.get_range_id(0, MEM_REGS_MAX_DIFF as i64, None);
+        self.std.range_checks(range_id, step_range_check);
 
         for range in large_range_checks {
-            std.range_check(*range as i64, 1, range_id);
+            self.std.range_check(range_id, *range as i64, 1);
         }
     }
+}
 
+/// The `MainSM` struct represents the Main State Machine,
+/// responsible for generating the main witness.
+pub struct MainSM {}
+
+impl MainSM {
     /// Debug method for the main state machine.
     pub fn debug<F: PrimeField64>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
         // No debug information to display

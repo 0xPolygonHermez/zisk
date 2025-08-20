@@ -1,9 +1,12 @@
+const int OPERATION_BUS_ID = 5000;
+
 require "std_direct.pil"
 require "rom/pil/rom.pil"
 require "main/pil/main.pil"
 require "mem/pil/mem.pil"
 require "mem/pil/mem_align.pil"
 require "mem/pil/mem_align_rom.pil"
+require "frequent-ops/pil/frequent_ops.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
@@ -15,8 +18,6 @@ require "keccakf/pil/keccakf.pil"
 require "keccakf/pil/keccakf_table.pil"
 require "sha256f/pil/sha256f.pil"
 
-const int OPERATION_BUS_ID = 5000;
-
 proofval enable_input_data;
 enable_input_data * (1 - enable_input_data);
 
@@ -25,44 +26,55 @@ public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
 
 const int PUBLIC_OP = 0x30;
 
-// Limit the std's tables size
-set_max_std_tables_bits(21);
+const int ARITH_FROPS_TABLE_ID = 5010;
+const int BINARY_BASIC_FROPS_TABLE_ID = 5011;
+const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
 
 airgroup Zisk {
+    set_range_check_tables_virtual(); // Enable virtual tables for range checks
+    set_max_virtual_bits(21); // Set the maximum bits for virtual tables
+
     // Main Program
-    Main(N: 2**22, RC: 2, operation_bus_id: OPERATION_BUS_ID);
+    Main(N: 2**22);
     Rom(N: 2**21);
 
     // Standard Operations
-    Mem(N: 2**22, RC: 2, base_address: 0xA000_0000, size_mb: 512, large_mem: 1);
-    Mem(N: 2**21, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
-    Mem(N: 2**21, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
+    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1);
+    Mem(N: 2**21, base_address: 0x8000_0000, immutable: 1) alias RomData;
+    Mem(N: 2**21, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
 
     MemAlign(N: 2**22, use_predefined_ranges: 0);
-    MemAlignRom();
+    virtual MemAlignRom();
 
-    Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
-    ArithTable();
-    ArithRangeTable();
+    Arith(N: 2**21);
+    virtual ArithTable();
+    virtual ArithRangeTable();
+    virtual FrequentOps(2085944, table_id: ARITH_FROPS_TABLE_ID, 
+                        bin_file: "state-machines/arith/src/arith_frops_fixed.bin") alias ArithFrops;
 
-    Binary(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
-    BinaryAdd(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
-    BinaryTable();
-    BinaryExtension(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
-    BinaryExtensionTable();
+    Binary(N: 2**22);
+    BinaryAdd(N: 2**22);
+    virtual BinaryTable();
+    BinaryExtension(N: 2**22);
+    virtual BinaryExtensionTable();
+
+    virtual FrequentOps(13084068, table_id: BINARY_BASIC_FROPS_TABLE_ID, 
+                        bin_file: "state-machines/binary/src/binary_basic_frops_fixed.bin") alias BinaryBasicFrops;
+    virtual FrequentOps(1607204, table_id: BINARY_EXTENSION_FROPS_TABLE_ID, 
+                        bin_file: "state-machines/binary/src/binary_extension_frops_fixed.bin") alias BinaryExtensionFrops;
 
     // Precompiles
-    ArithEq(N: 2**20, operation_bus_id: OPERATION_BUS_ID);
-    ArithEqLtTable();
+    ArithEq(N: 2**20);
+    virtual ArithEqLtTable();
 
     const int KECCAKF_CHUNKS = 9;
     const int KECCAKF_BITS = 7;
-    Keccakf(N: 2**21, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, RC: 2, RB: 32, mem_bits_in_parallel: 4, operation_bus_id: OPERATION_BUS_ID);
+    Keccakf(N: 2**21, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, RC: 2, RB: 32, mem_bits_in_parallel: 4);
     const int KECCAKF_TABLE_CHUNKS = 1;
     const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + KECCAKF_BITS + 1;
-    KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);
+    virtual KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);
 
-    Sha256f(N: 2**18, RC: 2, RB: 32, operation_bus_id: OPERATION_BUS_ID);
+    Sha256f(N: 2**18, RC: 2, RB: 32);
 
     // Public Inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {

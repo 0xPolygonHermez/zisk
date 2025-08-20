@@ -7,7 +7,7 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use bytemuck::cast_slice;
 use colored::Colorize;
-use executor::ZiskExecutionResult;
+use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -18,16 +18,15 @@ use rom_setup::{
 };
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-#[cfg(feature = "stats")]
-use std::time::{Duration, Instant};
 use std::{
     collections::HashMap,
     fs::{self, File},
     path::PathBuf,
 };
-use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
 #[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
+use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
+use zisk_pil::VIRTUAL_TABLE_AIR_IDS;
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -236,6 +235,8 @@ impl ZiskProve {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
+        gpu_params.with_single_instance((0, VIRTUAL_TABLE_AIR_IDS[0]));
+
         let proofman;
         #[cfg(distributed)]
         {
@@ -336,11 +337,21 @@ impl ZiskProve {
         if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
             let elapsed = start.elapsed();
 
-            let (result, _stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
-                .get_execution_result()
-                .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-                .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
-                .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+            #[allow(clippy::type_complexity)]
+            let (result, _stats, _): (
+                ZiskExecutionResult,
+                Arc<Mutex<ExecutorStats>>,
+                Arc<Mutex<HashMap<usize, Stats>>>,
+            ) =
+                *witness_lib
+                    .get_execution_result()
+                    .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
+                    .downcast::<(
+                        ZiskExecutionResult,
+                        Arc<Mutex<ExecutorStats>>,
+                        Arc<Mutex<HashMap<usize, Stats>>>,
+                    )>()
+                    .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
             let elapsed = elapsed.as_secs_f64();
             tracing::info!("");
@@ -369,10 +380,7 @@ impl ZiskProve {
             // Store the stats in stats.json
             #[cfg(feature = "stats")]
             {
-                _stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(ExecutorStatsDuration {
-                    start_time: Instant::now(),
-                    duration: Duration::new(0, 1),
-                }));
+                _stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
                 _stats.lock().unwrap().store_stats();
             }
         }

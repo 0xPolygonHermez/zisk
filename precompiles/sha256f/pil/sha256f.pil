@@ -12,7 +12,8 @@ require "std_connection.pil"
 // SHA256-f opcode
 const int SHA256F_OP = 0xF9;
 
-airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, const int operation_bus_id) {
+airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, 
+                    const int operation_bus_id = OPERATION_BUS_ID) {
     if (RC != 2) {
         error(`Sha256-f is only implemented for RC=2, but received RC=${RC}`);
     } else if (RB != 32) {
