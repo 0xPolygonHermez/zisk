@@ -113,7 +113,7 @@ do
 
     # Get the directory of the reference file to compare
     ELF_FILE_DIRECTORY=${ELF_FILE%%my.elf}
-    REFERENCE_FILE="$(realpath "${ELF_FILE_DIRECTORY}../ref/Reference-sail_c_simulator.signature")"
+    REFERENCE_FILE="$(realpath "${ELF_FILE_DIRECTORY}/../ref/Reference-sail_c_simulator.signature")"
 
     # Compile the assembly emulator derived from this ELF file
     cd emulator-asm
