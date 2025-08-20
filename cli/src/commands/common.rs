@@ -41,9 +41,7 @@ pub fn get_home_dir() -> String {
 
 /// Gets the default witness computation library file location in the home installation directory.
 pub fn get_default_witness_computation_lib() -> PathBuf {
-    let extension = if cfg!(target_os = "macos") { "dylib" } else { "so" };
-    let witness_computation_lib =
-        format!("{}/.zisk/bin/libzisk_witness.{}", get_home_dir(), extension);
+    let witness_computation_lib = format!("{}/.zisk/bin/libzisk_witness.so", get_home_dir());
     PathBuf::from(witness_computation_lib)
 }
 
