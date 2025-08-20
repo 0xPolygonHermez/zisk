@@ -43,6 +43,13 @@ pub fn rom_full_setup(
         tracing::info!("Computing assembly setup");
         crate::generate_assembly(elf, &elf_hash, zisk_path, output_path.as_path(), verbose)?;
     }
+    #[cfg(target_os = "macos")]
+    {
+        // Use variables in a no-op way to avoid unused variable warnings on macOS
+        let _ = elf;
+        let _ = zisk_path;
+        let _ = verbose;
+    }
 
     tracing::info!("Computing merkle root");
     crate::rom_merkle_setup(elf, &elf_hash, output_path.as_path(), proving_key, false)?;
