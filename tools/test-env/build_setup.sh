@@ -80,10 +80,16 @@ main() {
     step "Generating setup..."
     cached=0
     if [[ "${USE_CACHE_SETUP}" == "1" ]]; then
+        if [[ ${PLATFORM} == "linux" ]]; then
+            SHA_SUM_CMD="sha256sum"
+        else
+            SHA_SUM_CMD="shasum -a 256"
+        fi
+
         # Compute setup hash
-        HASH_SUM=$(sha256sum pil/zisk.pilout tmp/fixed/*.fixed \
+        HASH_SUM=$(${SHA_SUM_CMD} pil/zisk.pilout tmp/fixed/*.fixed \
         | sort -k2 \
-        | sha256sum \
+        | ${SHA_SUM_CMD} \
         | awk '{print $1}' \
         | awk '{print substr($0, 1, 4) substr($0, length($0)-3)}')
 
