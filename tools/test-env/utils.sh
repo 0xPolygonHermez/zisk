@@ -357,5 +357,5 @@ WORKSPACE_DIR="${HOME}/workspace"
 OUTPUT_DIR="${HOME}/output"
 
 # Ensure directories exists
-mkdir -p "${WORKSPACE_DIR}"
-mkdir -p "$(get_zisk_repo_dir)"
+ensure mkdir -p "${WORKSPACE_DIR}"
+ensure mkdir -p "$(get_zisk_repo_dir)"
