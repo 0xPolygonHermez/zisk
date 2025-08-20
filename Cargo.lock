@@ -3165,6 +3165,8 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sm-binary",
+ "sm-frequent-ops",
+ "static_assertions",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -3183,6 +3185,28 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
+ "sm-frequent-ops",
+ "static_assertions",
+ "tracing",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+]
+
+[[package]]
+name = "sm-frequent-ops"
+version = "0.11.0"
+dependencies = [
+ "clap",
+ "fields",
+ "num-bigint",
+ "pil-std-lib",
+ "proofman",
+ "proofman-common",
+ "proofman-macros",
+ "proofman-util",
+ "rayon",
+ "static_assertions",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -4580,6 +4604,7 @@ dependencies = [
  "rayon",
  "sm-arith",
  "sm-binary",
+ "sm-frequent-ops",
  "sm-main",
  "sm-mem",
  "sm-rom",
