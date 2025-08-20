@@ -7,7 +7,7 @@ use zisk_core::{Riscv2zisk, ZiskRom};
 use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
 
 // Thanks to the example provided by @jebbow in his article
-// https://www.jibbow.com/posts/criterion-flamegraphs/
+// https://andreas-zimmerer.medium.com/automatic-flamegraphs-for-benchmarks-with-criterion-f8e59499cc2a
 
 /*
 fn fibonacci(n: u64) -> u64 {
