@@ -354,7 +354,7 @@ source "$PROFILE"
 ZISK_DIR="$HOME/.zisk"
 ZISK_BIN_DIR="$ZISK_DIR/bin"
 WORKSPACE_DIR="${HOME}/workspace"
-OUTPUT_DIR="${HOME}/output"
+OUTPUT_DIR="/output"
 
 # Ensure directories exists
 ensure mkdir -p "${WORKSPACE_DIR}"
