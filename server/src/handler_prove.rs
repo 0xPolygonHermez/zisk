@@ -3,6 +3,7 @@ use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use proofman::ProofMan;
+use proofman::{ProofInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -60,9 +61,17 @@ impl ZiskServiceProveHandler {
             move || {
                 let start = std::time::Instant::now();
 
-                let (proof_id, vadcop_final_proof) = proofman
+                let mpi_ctx = proofman.get_mpi_ctx();
+
+                let result = proofman
                     .generate_proof_from_lib(
-                        Some(request_input),
+                        ProvePhaseInputs::Full(ProofInfo::new(
+                            Some(request_input),
+                            mpi_ctx.n_processes as usize,
+                            vec![mpi_ctx.rank as u32],
+                            mpi_ctx.n_processes as usize,
+                            mpi_ctx.rank as usize,
+                        )),
                         ProofOptions::new(
                             false,
                             request.aggregation,
@@ -72,14 +81,21 @@ impl ZiskServiceProveHandler {
                             false,
                             request.folder.clone(),
                         ),
+                        ProvePhase::Full,
                     )
                     .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))
                     .expect("Failed to generate proof");
 
+                let (proof_id, vadcop_final_proof) =
+                    if let ProvePhaseResult::Full(proof_id, vadcop_final_proof) = result {
+                        (proof_id, vadcop_final_proof)
+                    } else {
+                        (None, None)
+                    };
+
                 let elapsed = start.elapsed();
 
-                if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
-                    #[allow(clippy::type_complexity)]
+                if mpi_ctx.rank == 0 {
                     let (result, _stats, _witness_stats): (
                         ZiskExecutionResult,
                         Arc<Mutex<ExecutorStats>>,
