@@ -15,7 +15,7 @@ use crate::{AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices, AsmSh
 use anyhow::{Context, Result};
 
 #[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
 
 pub trait Task: Send + Sync + 'static {
     type Output: Send + 'static;
@@ -88,6 +88,19 @@ impl AsmRunnerMT {
         base_port: Option<u16>,
         _stats: Arc<Mutex<ExecutorStats>>,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
+        let __stats = Arc::clone(&_stats);
+
+        #[cfg(feature = "stats")]
+        let parent_stats_id = __stats.lock().unwrap().get_id();
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(
+            0,
+            parent_stats_id,
+            "ASM_MT_RUNNER",
+            0,
+            ExecutorStatsEvent::Begin,
+        );
+
         let port = if let Some(base_port) = base_port {
             AsmServices::port_for(&AsmService::MT, base_port, local_rank)
         } else {
@@ -102,17 +115,30 @@ impl AsmRunnerMT {
 
         let start_time = Instant::now();
 
-        let __stats = Arc::clone(&_stats);
-
         let handle = std::thread::spawn(move || {
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+
+            #[cfg(feature = "stats")]
+            let stats_id = __stats.lock().unwrap().get_id();
+            #[cfg(feature = "stats")]
+            __stats.lock().unwrap().add_stat(
+                parent_stats_id,
+                stats_id,
+                "ASM_MT",
+                0,
+                ExecutorStatsEvent::Begin,
+            );
+
             let result = asm_services.send_minimal_trace_request(max_steps, chunk_size);
 
-            // Add to executor stats
             #[cfg(feature = "stats")]
-            __stats.lock().unwrap().add_stat(ExecutorStatsEnum::AsmMtGeneration(
-                ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
-            ));
+            __stats.lock().unwrap().add_stat(
+                parent_stats_id,
+                stats_id,
+                "ASM_MT",
+                0,
+                ExecutorStatsEvent::End,
+            );
 
             result
         });
@@ -131,16 +157,13 @@ impl AsmRunnerMT {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
                     #[cfg(feature = "stats")]
-                    {
-                        use zisk_common::ExecutorStatsDuration;
-
-                        __stats.lock().unwrap().add_stat(
-                            zisk_common::ExecutorStatsEnum::MTChunkDone(ExecutorStatsDuration {
-                                start_time: Instant::now(),
-                                duration: Duration::new(0, 1),
-                            }),
-                        );
-                    }
+                    __stats.lock().unwrap().add_stat(
+                        parent_stats_id,
+                        0,
+                        "MT_CHUNK_DONE",
+                        0,
+                        ExecutorStatsEvent::Mark,
+                    );
 
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
@@ -200,6 +223,15 @@ impl AsmRunnerMT {
             .into_iter()
             .map(|arc| Arc::try_unwrap(arc).map_err(|_| AsmRunError::ArcUnwrap))
             .collect::<std::result::Result<_, _>>()?;
+
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(
+            0,
+            parent_stats_id,
+            "ASM_MT_RUNNER",
+            0,
+            ExecutorStatsEvent::End,
+        );
 
         Ok((AsmRunnerMT::new(emu_traces), tasks))
     }
