@@ -83,6 +83,17 @@ test_elf() {
 
     current_dir=$(pwd)
 
+    info "Executing ${desc} script"
+
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        is_proving_key_installed || return 1
+    fi
+
+    info "Loading environment variables..."
+    # Load environment variables from .env file
+    load_env || return 1
+    confirm_continue || return 0
+
     export ELF_FILE="$elf_file"
     export INPUTS_PATH="$inputs_path"
     export INPUTS="${!inputs_var_name}"
@@ -100,18 +111,6 @@ test_elf() {
 
     current_step=1
     total_steps=$(( 2 + num_inputs * 3 + num_dist_inputs ))
-
-    info "Executing ${desc} script"
-
-    if [[ "${PLATFORM}" == "linux" ]]; then
-        is_proving_key_installed || return 1
-    fi
-
-    step "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
-    confirm_continue || return 1
-
     # Create directories for proof results
     PROOF_RESULTS_DIR="${WORKSPACE_DIR}/proof-results"
     rm -rf "${PROOF_RESULTS_DIR}"
