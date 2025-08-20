@@ -162,13 +162,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
 
 #### Build Setup
 
-The setup building process is highly intensive in terms of CPU and memory usage. You will need a machine with at least the following hardware requirements:
-
-* 32 CPUs
-* 512 GB of RAM
-* 100 GB of free disk space
-
-Please note that the process can be long, taking approximately 2–3 hours depending on the machine used.
+Please note that the process can be long, taking approximately 45-60 min depending on the machine used.
 
 [NodeJS](https://nodejs.org/en/download) version 20.x or higher is required to build the setup files.
 
@@ -188,32 +182,24 @@ Please note that the process can be long, taking approximately 2–3 hours depen
     cd ~/zisk
     ```
 
-4. Adjust memory mapped areas and JavaScript heap size:
+4. Generate fixed data:
     ```bash
-    echo "vm.max_map_count=655300" | sudo tee -a /etc/sysctl.conf
-    sudo sysctl -w vm.max_map_count=655300
-    export NODE_OPTIONS="--max-old-space-size=230000"
+    cargo run --release --bin keccakf_fixed_gen
+    cargo run --release --bin arith_frops_fixed_gen
+    cargo run --release --bin binary_basic_frops_fixed_gen
+    cargo run --release --bin binary_extension_frops_fixed_gen
     ```
 
-5. Compile ZisK PIL: (Note that this command may take 20-30 minutes to complete)
+4. Compile ZisK PIL:
     ```bash
-    node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
+    node ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
     ```
 
     This command will create the `pil/zisk.pilout` file
 
-6. Generate fixed data:
+7. Generate setup data: (Note that this command may take 30-45 min to complete):
     ```bash
-    cargo run --release --bin keccakf_fixed_gen
-    mkdir -p build
-    mv precompiles/keccakf/src/keccakf_fixed.bin build 
-    ```
-
-    These commands generate the `keccakf_fixed.bin` file in the `build` directory.
-
-7. Generate setup data: (Note that this command may take 2–3 hours to complete):
-    ```bash
-    node --max-old-space-size=131072 --stack-size=1500 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -r -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed
+    node ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r
     ```
 
     This command generates the `provingKey` directory.
