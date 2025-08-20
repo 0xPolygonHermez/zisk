@@ -179,7 +179,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          sudo ./install_deps.sh
+          ./install_deps.sh
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
