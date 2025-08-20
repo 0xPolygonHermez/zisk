@@ -120,6 +120,13 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
 
+      - name: Build setup
+        env:
+          USE_CACHE_SETUP: "1"
+        run: |     
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./build_setup.sh
+          
       - name: Test sha_hasher
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
