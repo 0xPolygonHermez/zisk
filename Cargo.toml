@@ -22,7 +22,6 @@ members = [
     "state-machines/mem",
     "state-machines/mem-cpp",
     "state-machines/rom",
-    "state-machines/frequent-ops",
     "witness-computation",
     "ziskos/entrypoint",
     "precompiles/common",

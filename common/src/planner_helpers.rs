@@ -124,8 +124,6 @@ pub fn plan(
     checkpoints
 }
 
-pub const CHECK_POINT_TO_END: u64 = u64::MAX;
-
 /// Generates a nested list of checkpoints from instruction and frops counts across multiple chunks.
 ///
 /// Each inner vector corresponds to a scope of the plan and contains tuples of:

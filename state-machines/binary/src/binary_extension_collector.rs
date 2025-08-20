@@ -59,7 +59,7 @@ impl BusDevice<u64> for BinaryExtensionCollector {
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
-        let instance_complete = self.inputs.len() == self.num_operations as usize;
+        let instance_complete = self.inputs.len() == self.num_operations;
 
         if instance_complete && !self.force_execute_to_end {
             return false;

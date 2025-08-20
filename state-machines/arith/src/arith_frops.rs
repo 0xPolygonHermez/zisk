@@ -1,5 +1,5 @@
+#![allow(dead_code)]
 use std::error::Error;
-use std::u64::MAX;
 
 use sm_frequent_ops::FrequentOpsHelpers;
 use zisk_core::zisk_ops::ZiskOp;

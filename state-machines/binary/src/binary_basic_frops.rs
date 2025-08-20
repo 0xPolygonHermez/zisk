@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use static_assertions::const_assert;
 use std::error::Error;
 use zisk_core::zisk_ops::ZiskOp;
@@ -529,7 +530,6 @@ impl BinaryBasicFrops {
             Self::NO_FROPS
         }
     }
-
     pub fn build_table(&mut self) {
         self.build_low_values_operations();
         self.build_eq_zero();

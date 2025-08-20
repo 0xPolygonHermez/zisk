@@ -16,6 +16,12 @@ pub struct FrequentOpsHelpers {
 
 const FREQUENT_OP_EMPTY: usize = 256;
 
+impl Default for FrequentOpsHelpers {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Helper methods for managing a table of FROPS.
 ///
 /// This struct provides utilities to add, query, and analyze tables of operand pairs
@@ -83,11 +89,6 @@ impl FrequentOpsHelpers {
         ops
     }
 
-    // #[inline(always)]
-    // fn get_low_values_offset(a: u64, b: u64) -> usize {
-    //     (a * MAX_B_LOW_VALUE + b) as usize
-    // }
-
     /// Returns the total count of operations stored in the table.
     ///
     /// Sums up all operand pairs across all opcodes in the table.
@@ -105,7 +106,7 @@ impl FrequentOpsHelpers {
     /// that can be copied into source code.
     pub fn print_table_offsets(&self) {
         let (start, offsets) = self.generate_table_offsets();
-        println!("const OP_TABLE_OFFSETS_START: usize = {};", start);
+        println!("const OP_TABLE_OFFSETS_START: usize = {start};");
         println!("const OP_TABLE_OFFSETS: [usize; {}] = {:?};", offsets.len(), &offsets);
     }
 
@@ -121,7 +122,6 @@ impl FrequentOpsHelpers {
     /// - `Vec<usize>`: Array of offsets for each opcode from start to end
     pub fn generate_table_offsets(&self) -> (usize, Vec<usize>) {
         let op_indexes = self.get_op_indexes();
-        println!("{:?}", self.get_op_indexes());
         let mut offsets: [usize; 256] = [0; 256];
         let mut size: usize = 0;
         let mut start: usize = offsets.len();
@@ -136,15 +136,8 @@ impl FrequentOpsHelpers {
             }
             size += self.table_ops[*index].len();
         }
-        println!("{start} offsets:{:?}", offsets);
         (start, offsets[start..end + 1].to_vec())
     }
-
-    // pub fn test_table_offsets(&self) {
-    //     let (start, offsets) = self.generate_table_offsets();
-    //     assert_eq!(start, OP_TABLE_OFFSETS_START);
-    //     assert_eq!(offsets, OP_TABLE_OFFSETS);
-    // }
 
     /// Generates a complete table with all operand pairs and their computed results.
     ///
@@ -291,8 +284,6 @@ impl FrequentOpsHelpers {
         // Generate the columns
         let (op, a0, a1, b0, b1, c0, c1, flag) = Self::cols_gen(table, num_rows);
 
-        let n = 1 << 24;
-
         // Serialize the columns and write them to a binary file
         let op = FixedColsInfo::new(&format!("{air_name}.OP"), None, op);
         let a0 = FixedColsInfo::new(&format!("{air_name}.A"), Some(vec![0]), a0);
@@ -320,7 +311,7 @@ impl FrequentOpsHelpers {
         table: Vec<(u8, u64, u64, u64, bool)>,
         num_rows: usize,
     ) -> (Vec<F>, Vec<F>, Vec<F>, Vec<F>, Vec<F>, Vec<F>, Vec<F>, Vec<F>) {
-        println!("Generating columns for {} rows", num_rows);
+        println!("Generating columns for {num_rows} rows");
         let mut op = vec![F::ZERO; num_rows];
         let mut a0 = vec![F::ZERO; num_rows];
         let mut b0 = vec![F::ZERO; num_rows];
@@ -374,7 +365,7 @@ impl FrequentOpsHelpers {
         get_row: fn(u8, u64, u64) -> usize,
     ) {
         let tests = table.iter().map(|(op, a, b, _c, _f)| (*op, *a, *b, true)).collect::<Vec<_>>();
-        Self::check_tests(&table, &tests, true, is_frops, get_row);
+        Self::check_tests(table, &tests, true, is_frops, get_row);
     }
 
     /// Tests the lookup functions with boundary values for low-value operand ranges.
@@ -441,7 +432,7 @@ impl FrequentOpsHelpers {
             tests.push((op, max_a_low_value, max_b_low_value + 1, false));
             tests.push((op, max_a_low_value + 1, max_b_low_value, false));
         }
-        Self::check_tests(&table, &tests, false, is_frops, get_row);
+        Self::check_tests(table, &tests, false, is_frops, get_row);
     }
 
     /// Executes a series of test cases against the lookup functions.
@@ -476,7 +467,6 @@ impl FrequentOpsHelpers {
                 if let Ok(_op) = ZiskOp::try_from_code(test.0) { _op.name() } else { "?" };
             let index = get_row(test.0, test.1, test.2);
             if index != Self::NO_FROPS {
-                let index = index as usize;
                 if (!test.3 && strict)
                     || table[index].0 != test.0
                     || table[index].1 != test.1
@@ -492,7 +482,7 @@ impl FrequentOpsHelpers {
                     "> #{} {1} 0x{2:X}({2}) 0x{3:X}({3}) {4} = get_row NOT FOUND [\x1B[31mFAIL\x1B[0m]",
                     itest, op_name, test.1, test.2, test.3
                 );
-            } else if is_frops(test.0, test.1, test.2) == false {
+            } else if !is_frops(test.0, test.1, test.2) {
                 panic!(
                     "> #{} {1} 0x{2:X}({2}) 0x{3:X}({3}) {4} = is_froops NOT FOUND [\x1B[31mFAIL\x1B[0m]",
                     itest, op_name, test.1, test.2, test.3

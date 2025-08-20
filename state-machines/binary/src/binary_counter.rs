@@ -65,12 +65,10 @@ impl Metrics for BinaryCounter {
                 } else {
                     self.counter_add.update(1);
                 }
+            } else if BinaryBasicFrops::is_frequent_op(op as u8, data[A], data[B]) {
+                self.counter_basic_wo_add.update_frops(1);
             } else {
-                if BinaryBasicFrops::is_frequent_op(op as u8, data[A], data[B]) {
-                    self.counter_basic_wo_add.update_frops(1);
-                } else {
-                    self.counter_basic_wo_add.update(1);
-                }
+                self.counter_basic_wo_add.update(1);
             }
         } else if op_type == BINARY_E {
             if BinaryExtensionFrops::is_frequent_op(data[OP] as u8, data[A], data[B]) {

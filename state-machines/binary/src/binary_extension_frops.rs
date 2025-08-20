@@ -1,5 +1,5 @@
+#![allow(dead_code)]
 use sm_frequent_ops::FrequentOpsHelpers;
-use static_assertions::const_assert;
 use std::error::Error;
 use zisk_core::zisk_ops::ZiskOp;
 
@@ -117,12 +117,12 @@ impl BinaryExtensionFrops {
             OP_SIGNEXTENDB | OP_SIGNEXTENDH | OP_SIGNEXTENDW | OP_SLL | OP_SLLW | OP_SRA
             | OP_SRAW | OP_SRLW => {
                 if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
-                    Self::get_low_values_offset(a, b) as usize
+                    Self::get_low_values_offset(a, b)
                 } else {
                     Self::NO_FROPS
                 }
             }
-            OP_SRL => Self::get_srl_offset(a, b) as usize,
+            OP_SRL => Self::get_srl_offset(a, b),
             _ => Self::NO_FROPS,
         };
         if relative_offset == Self::NO_FROPS {
