@@ -36,7 +36,7 @@ A way to achieve it is to edit the file `/etc/systemd/system.conf` and add the l
 
 macOS 14 or higher is required.
 
-You must have [Homebrew](https://brew.sh/) and [XCode Command Line Tools](https://developer.apple.com/library/archive/technotes/tn2339/_index.html#//apple_ref/doc/uid/DTS40014588-CH1-WHAT_IS_THE_COMMAND_LINE_TOOLS_PACKAGE_) installed.
+You must have [Homebrew](https://brew.sh/) and [XCode](https://developer.apple.com/xcode/) installed.
 
 Install all required dependencies with:
 ```bash
@@ -120,9 +120,15 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     3. Try building again        
 
 3. Copy the tools to `~/.zisk/bin` directory:
+    Ubuntu:
     ```bash
     mkdir -p $HOME/.zisk/bin
     cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so target/release/libziskclib.a $HOME/.zisk/bin
+    ```
+    macOS:
+    ```bash
+    mkdir -p $HOME/.zisk/bin
+    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.dylib target/release/libziskclib.a $HOME/.zisk/bin        
     ```
 
 4. Copy required files to support `cargo-zisk rom-setup` command:
@@ -134,11 +140,13 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     ```
 
 5. Add `~/.zisk/bin` to your system PATH:
-    For example, if you are using `bash`:
+
+    If you are using `bash`:
     ```bash
     echo >>$HOME/.bashrc && echo "export PATH=\"\$PATH:$HOME/.zisk/bin\"" >> $HOME/.bashrc
     source $HOME/.bashrc
     ```
+    if you are using `zsh`: // TODO
 
 6. Install the ZisK Rust toolchain:
     ```bash
@@ -179,7 +187,7 @@ Please note that the process can be long, taking approximately 45-60 min dependi
 
 3. All subsequent commands must be executed from the `zisk` folder created in the previous section:
     ```bash
-    cd ~/zisk
+    cd zisk
     ```
 
 4. Generate fixed data:
