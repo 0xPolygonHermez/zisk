@@ -56,7 +56,6 @@ jobs:
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
-      BLOCK_INPUTS_DISTRIBUTED: "21429020_5_0.bin"
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
       PROVE_FLAGS: "-a -y"
@@ -87,7 +86,17 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
 
-      - name: Test Ethereum block
+      - name: Verify Constraints Ethereum block
+        env:
+          DISABLE_PROVE: "1"
+          BLOCK_INPUTS: "18885301_210_24.bin"
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./test_eth_block.sh
+
+      - name: Prove Ethereum block
+        env:
+          BLOCK_INPUTS_DISTRIBUTED: "21429020_5_0.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_eth_block.sh
