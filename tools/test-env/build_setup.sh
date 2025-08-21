@@ -72,7 +72,7 @@ main() {
     ensure cargo run --release --bin binary_basic_frops_fixed_gen || return 1
     ensure cargo run --release --bin binary_extension_frops_fixed_gen || return 1
 
-    export NODE_OPTIONS="--max-old-space-size=8192"
+    export NODE_OPTIONS="--max-old-space-size=4096"
 
     step "Compiling ZisK PIL..."
     ensure node "${WORKSPACE_DIR}/pil2-compiler/src/pil.js" pil/zisk.pil \

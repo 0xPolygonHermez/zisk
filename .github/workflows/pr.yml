@@ -94,7 +94,7 @@ jobs:
 
   test-macos:
     name: Test on macOS
-    runs-on: macos-14-large
+    runs-on: macos-14
     timeout-minutes: 90
     defaults:
       run:
