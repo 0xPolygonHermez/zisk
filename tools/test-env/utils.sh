@@ -351,7 +351,7 @@ touch $PROFILE
 source "$PROFILE"
 
 # Define directories
-ZISK_DIR="$HOME/.zisk"
+ZISK_DIR="${HOME}/.zisk"
 ZISK_BIN_DIR="$ZISK_DIR/bin"
 WORKSPACE_DIR="${HOME}/workspace"
 OUTPUT_DIR="/output"
@@ -359,4 +359,4 @@ OUTPUT_DIR="/output"
 # Ensure directories exists
 ensure mkdir -p "${WORKSPACE_DIR}"
 ensure mkdir -p "$(get_zisk_repo_dir)"
-ensure mkdir -p "${OUTPUT_DIR}"
+ensure mkdir -p "${HOME}/${OUTPUT_DIR}"

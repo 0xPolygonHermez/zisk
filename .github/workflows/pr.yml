@@ -49,7 +49,7 @@ jobs:
       image: ubuntu:22.04
       options:
         --shm-size=32g  
-        -v /home/gha/cache-setup:/output:rw
+        -v /home/gha/cache-setup:/root/output:rw
     defaults:
       run:
         shell: bash        
