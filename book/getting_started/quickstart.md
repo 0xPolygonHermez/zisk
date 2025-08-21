@@ -11,7 +11,7 @@ ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below
 
 **Ubuntu 22.04 or higher** is required.
 
-**macOS 14 or higher** is required.
+**macOS 14 or higher** with [XCode](https://developer.apple.com/xcode/) installed is required.
 
 1. Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
 

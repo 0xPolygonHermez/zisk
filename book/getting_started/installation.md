@@ -100,7 +100,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     cargo build --release
     ```
 
-    **Note**: If you encounter the following error during compilation:
+    **Note**: If you encounter the following error during compilation on Ubuntu:
     ```
     --- stderr
     /usr/lib/x86_64-linux-gnu/openmpi/include/mpi.h:237:10: fatal error: 'stddef.h' file not found
@@ -120,18 +120,15 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     3. Try building again        
 
 3. Copy the tools to `~/.zisk/bin` directory:
-    Ubuntu:
     ```bash
     mkdir -p $HOME/.zisk/bin
-    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so target/release/libziskclib.a $HOME/.zisk/bin
-    ```
-    macOS:
-    ```bash
-    mkdir -p $HOME/.zisk/bin
-    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.dylib target/release/libziskclib.a $HOME/.zisk/bin        
+    LIB_EXT=$([[ "$(uname)" == "Darwin" ]] && echo "dylib" || echo "so")
+    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.$LIB_EXT target/release/libziskclib.a $HOME/.zisk/bin
     ```
 
-4. Copy required files to support `cargo-zisk rom-setup` command:
+4. Copy required files for assembly rom setup:
+    **Note:** This is only needed on Ubuntu x86_64, since assembly execution is not supported on macOS
+
     ```bash
     mkdir -p $HOME/.zisk/zisk/emulator-asm
     cp -r ./emulator-asm/src $HOME/.zisk/zisk/emulator-asm
@@ -141,12 +138,12 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
 
 5. Add `~/.zisk/bin` to your system PATH:
 
-    If you are using `bash`:
+    If you are using `bash` or `zsh`:
     ```bash
-    echo >>$HOME/.bashrc && echo "export PATH=\"\$PATH:$HOME/.zisk/bin\"" >> $HOME/.bashrc
-    source $HOME/.bashrc
+    PROFILE=$([[ "$(uname)" == "Darwin" ]] && echo ".zshenv" || echo ".bashrc")
+    echo >>$HOME/$PROFILE && echo "export PATH=\"\$PATH:$HOME/.zisk/bin\"" >> $HOME/$PROFILE
+    source $HOME/$PROFILE
     ```
-    if you are using `zsh`: // TODO
 
 6. Install the ZisK Rust toolchain:
     ```bash
@@ -170,7 +167,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
 
 #### Build Setup
 
-Please note that the process can be long, taking approximately 45-60 min depending on the machine used.
+Please note that the process can be long, taking approximately 45-60 minutes depending on the machine used.
 
 [NodeJS](https://nodejs.org/en/download) version 20.x or higher is required to build the setup files.
 
@@ -184,6 +181,7 @@ Please note that the process can be long, taking approximately 45-60 min dependi
     ```bash
     (cd pil2-compiler && npm i)
     (cd pil2-proofman-js && npm i)
+    ```
 
 3. All subsequent commands must be executed from the `zisk` folder created in the previous section:
     ```bash
@@ -205,7 +203,7 @@ Please note that the process can be long, taking approximately 45-60 min dependi
 
     This command will create the `pil/zisk.pilout` file
 
-7. Generate setup data: (Note that this command may take 30-45 min to complete):
+7. Generate setup data: (this step may take 30-45 minutes):
     ```bash
     node ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r
     ```
