@@ -6,6 +6,8 @@ ZisK can be installed from prebuilt binaries (recommended) or by building the Zi
 
 ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below).
 
+**Note:** On **macOS**, proof generation is not yet optimized, so some proofs may take longer to generate.
+
 ### Required Tools
 
 Ensure the following tools are installed:
