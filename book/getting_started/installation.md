@@ -36,7 +36,7 @@ A way to achieve it is to edit the file `/etc/systemd/system.conf` and add the l
 
 macOS 14 or higher is required.
 
-You must have [Homebrew](https://brew.sh/) and [XCode](https://developer.apple.com/xcode/) installed.
+You must have [Homebrew](https://brew.sh/) and [Xcode](https://developer.apple.com/xcode/) installed.
 
 Install all required dependencies with:
 ```bash
