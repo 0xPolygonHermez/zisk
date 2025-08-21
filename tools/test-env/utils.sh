@@ -359,3 +359,4 @@ OUTPUT_DIR="/output"
 # Ensure directories exists
 ensure mkdir -p "${WORKSPACE_DIR}"
 ensure mkdir -p "$(get_zisk_repo_dir)"
+ensure mkdir -p "${OUTPUT_DIR}"
