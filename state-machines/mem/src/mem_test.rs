@@ -24,6 +24,7 @@ fn generate_test_plans(
             air_id: addr_index + 10,
             addr_index,
             from_addr: from_addr >> 3,
+            last_addr: (from_addr >> 3) - if from_addr == 0x8000_0000 { 1 } else { 0 },
             rows,
             consecutive_addr: true,
         },

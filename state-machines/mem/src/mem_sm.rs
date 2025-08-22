@@ -1,13 +1,14 @@
 use std::sync::Arc;
-
-#[cfg(feature = "debug_mem")]
-use num_bigint::ToBigInt;
-#[cfg(feature = "debug_mem")]
-use std::{
-    fs::File,
-    io::{BufWriter, Write},
-};
 use zisk_common::SegmentId;
+#[cfg(feature = "debug_mem")]
+use {
+    num_bigint::ToBigInt,
+    std::{
+        env,
+        fs::File,
+        io::{BufWriter, Write},
+    },
+};
 
 use crate::{
     MemInput, MemModule, MEM_BYTES_BITS, MEM_INC_C_BITS, MEM_INC_C_MASK, MEM_INC_C_MAX_RANGE,
@@ -51,7 +52,7 @@ impl<F: PrimeField64> MemSM<F> {
         (RAM_ADDR + RAM_SIZE - 1) as u32
     }
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file(&self, trace: &MemTrace<F>, file_name: &str) {
+    pub fn save_to_file(trace: &MemTrace<F>, file_name: &str) {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
@@ -252,7 +253,10 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         #[cfg(feature = "debug_mem")]
         {
-            self.save_to_file(&trace, &format!("/tmp/mem_trace_{}.txt", segment_id));
+            let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
+            let filename = format!("{path}/mem_trace_{segment_id:04}.txt");
+            println!("Saving {filename}");
+            Self::save_to_file(&trace, &filename);
             println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
         }
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
