@@ -4,7 +4,9 @@
 
 use crate::{BusDevice, CheckPoint, ChunkId, PayloadType};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use pil_std_lib::Std;
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
+use std::sync::Arc;
 
 /// Represents the type of an instance, either a standalone instance or a table.
 #[derive(Debug, PartialEq)]
@@ -35,10 +37,12 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        _trace_buffer: Vec<F>,
+        _buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
         None
     }
+
+    fn compute_multiplicity_instance(&self, _total_inputs: usize) {}
 
     /// Retrieves the checkpoint associated with the instance.
     ///
@@ -61,6 +65,7 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(
         &self,
+        _std: Arc<Std<F>>,
         _chunk_id: ChunkId,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         None

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use crate::MainCounter;
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, BufferPool, FromTrace, ProofCtx, SetupCtx};
 use rayon::prelude::*;
 use sm_mem::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx};
@@ -59,10 +59,10 @@ impl<F: PrimeField64> MainInstance<F> {
         min_traces: &[EmuTrace],
         chunk_size: u64,
         main_instance: &MainInstance<F>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> AirInstance<F> {
         // Create the main trace buffer
-        let mut main_trace = MainTrace::new_from_vec(trace_buffer);
+        let mut main_trace = MainTrace::new_from_vec(buffer_pool.take_buffer());
 
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
@@ -232,6 +232,18 @@ impl<F: PrimeField64> MainInstance<F> {
                 vec![]
             },
         )
+    }
+
+    fn fill_rc(
+        zisk_rom: &ZiskRom,
+        min_trace: &EmuTrace,
+        reg_trace: &mut EmuRegTrace,
+        step_range_check: &mut [u32],
+    ) {
+        // Initialize the emulator with the start state of the emu trace
+        let mut emu = Emu::from_emu_trace_start_one(zisk_rom, &min_trace.start_state);
+
+        emu.step_slice_rc(reg_trace, step_range_check);
     }
 
     fn complete_trace_with_initial_reg_steps_per_chunk(

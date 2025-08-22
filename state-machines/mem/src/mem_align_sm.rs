@@ -116,12 +116,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_read = input.mem_values[0];
 
                 // Get the next pc and op size
-                let (next_pc, op_size) =
+                let (next_pc, _) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneRead, offset, width);
-
-                // Update the row multiplicity of the operation
-                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
-                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
 
                 let mut read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -229,12 +225,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_read = input.mem_values[0];
 
                 // Get the next pc
-                let (next_pc, op_size) =
+                let (next_pc, _) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneWrite, offset, width);
-
-                // Update the row multiplicity of the operation
-                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
-                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
 
                 // Compute the write value
                 let value_write = {
@@ -398,12 +390,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_second_read = input.mem_values[1];
 
                 // Get the next pc
-                let (next_pc, op_size) =
+                let (next_pc, _) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoReads, offset, width);
-
-                // Update the row multiplicity of the operation
-                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
-                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
 
                 let mut first_read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -588,12 +576,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 };
 
                 // Get the next pc
-                let (next_pc, op_size) =
+                let (next_pc, _) =
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoWrites, offset, width);
-
-                // Update the row multiplicity of the operation
-                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
-                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
 
                 // RWVWR
                 let mut first_read_row = MemAlignTraceRow::<F> {
@@ -777,6 +761,195 @@ impl<F: PrimeField64> MemAlignSM<F> {
         }
     }
 
+    pub fn process_multiplicity(std: &Std<F>, input: &MemAlignInput) {
+        let table_id = std.get_virtual_table_id(MemAlignRomSM::TABLE_ID);
+
+        let addr = input.addr;
+        let width = input.width;
+
+        // Compute the width
+        debug_assert!(
+            ALLOWED_WIDTHS.contains(&width),
+            "Width={width} is not allowed. Allowed widths are {ALLOWED_WIDTHS:?}"
+        );
+        let width = width as usize;
+
+        // Compute the offset
+        let offset = (addr & OFFSET_MASK) as u8;
+        debug_assert!(
+            ALLOWED_OFFSETS.contains(&offset),
+            "Offset={offset} is not allowed. Allowed offsets are {ALLOWED_OFFSETS:?}"
+        );
+        let offset = offset as usize;
+
+        let range_id = std.get_range_id(0, CHUNK_BITS_MASK as i64, None);
+
+        match (input.is_write, offset + width > CHUNK_NUM) {
+            (false, false) => {
+                // Unaligned memory op information thrown into the bus
+                let value = input.value;
+
+                // Get the aligned value
+                let value_read = input.mem_values[0];
+
+                // Get the next pc and op size
+                let (next_pc, op_size) =
+                    MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneRead, offset, width);
+
+                // Update the row multiplicity of the operation
+                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
+                std.inc_virtual_rows_same_mul(table_id, &rows, 1);
+
+                for i in 0..CHUNK_NUM {
+                    let read_reg = Self::get_byte(value_read, i, 0);
+                    let value_reg = Self::get_byte(value, i, CHUNK_NUM - offset);
+
+                    std.range_check(range_id, read_reg as i64, 1);
+                    std.range_check(range_id, value_reg as i64, 1);
+                }
+            }
+            (true, false) => {
+                let value = input.value;
+
+                // Get the aligned value
+                let value_read = input.mem_values[0];
+
+                // Get the next pc
+                let (next_pc, op_size) =
+                    MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneWrite, offset, width);
+
+                // Update the row multiplicity of the operation
+                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
+                std.inc_virtual_rows_same_mul(table_id, &rows, 1);
+
+                // Compute the write value
+                let value_write = {
+                    // with:1 offset:4
+                    let width_bytes: u64 = (1 << (width * CHUNK_BITS)) - 1;
+
+                    let mask: u64 = width_bytes << (offset * CHUNK_BITS);
+
+                    // Get the first width bytes of the unaligned value
+                    let value_to_write = (value & width_bytes) << (offset * CHUNK_BITS);
+
+                    // Write zeroes to value_read from offset to offset + width
+                    // and add the value to write to the value read
+                    (value_read & !mask) | value_to_write
+                };
+
+                for i in 0..CHUNK_NUM {
+                    let read_reg = Self::get_byte(value_read, i, 0);
+                    let write_reg = Self::get_byte(value_write, i, 0);
+                    let value_reg = if i >= offset && i < offset + width {
+                        write_reg
+                    } else {
+                        Self::get_byte(value, i, CHUNK_NUM - offset)
+                    };
+
+                    std.range_check(range_id, read_reg as i64, 1);
+                    std.range_check(range_id, value_reg as i64, 1);
+                    std.range_check(range_id, write_reg as i64, 1);
+                }
+            }
+            (false, true) => {
+                let value = input.value;
+
+                // Get the aligned value
+                let value_first_read = input.mem_values[0];
+                let value_second_read = input.mem_values[1];
+
+                // Get the next pc
+                let (next_pc, op_size) =
+                    MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoReads, offset, width);
+
+                // Update the row multiplicity of the operation
+                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
+                std.inc_virtual_rows_same_mul(table_id, &rows, 1);
+                for i in 0..CHUNK_NUM {
+                    let first_read_reg = Self::get_byte(value_first_read, i, 0);
+                    let value_reg = Self::get_byte(value, i, CHUNK_NUM - offset);
+                    let second_read_reg = Self::get_byte(value_second_read, i, 0);
+
+                    std.range_check(range_id, first_read_reg as i64, 1);
+                    std.range_check(range_id, value_reg as i64, 1);
+                    std.range_check(range_id, second_read_reg as i64, 1);
+                }
+            }
+            (true, true) => {
+                let value = input.value;
+
+                // Compute the shift
+                let rem_bytes = (offset + width) % CHUNK_NUM;
+
+                // Get the first aligned value
+                let value_first_read = input.mem_values[0];
+
+                // Recompute the first write value
+                let value_first_write = {
+                    // Normalize the width
+                    let width_norm = CHUNK_NUM - offset;
+
+                    let width_bytes: u64 = (1 << (width_norm * CHUNK_BITS)) - 1;
+
+                    let mask: u64 = width_bytes << (offset * CHUNK_BITS);
+
+                    // Get the first width bytes of the unaligned value
+                    let value_to_write = (value & width_bytes) << (offset * CHUNK_BITS);
+
+                    // Write zeroes to value_read from offset to offset + width
+                    // and add the value to write to the value read
+                    (value_first_read & !mask) | value_to_write
+                };
+
+                // Get the second aligned value
+                let value_second_read = input.mem_values[1];
+
+                // Compute the second write value
+                let value_second_write = {
+                    // Normalize the width
+                    let width_norm = CHUNK_NUM - offset;
+
+                    let mask: u64 = (1 << (rem_bytes * CHUNK_BITS)) - 1;
+
+                    // Get the first width bytes of the unaligned value
+                    let value_to_write = (value >> (width_norm * CHUNK_BITS)) & mask;
+
+                    // Write zeroes to value_read from 0 to offset + width
+                    // and add the value to write to the value read
+                    (value_second_read & !mask) | value_to_write
+                };
+
+                // Get the next pc
+                let (next_pc, op_size) =
+                    MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoWrites, offset, width);
+
+                // Update the row multiplicity of the operation
+                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
+                std.inc_virtual_rows_same_mul(table_id, &rows, 1);
+
+                for i in 0..CHUNK_NUM {
+                    let first_read_reg = Self::get_byte(value_first_read, i, 0);
+                    let first_write_reg = Self::get_byte(value_first_write, i, 0);
+                    let second_write_reg = Self::get_byte(value_second_write, i, 0);
+                    let value_reg = if i < rem_bytes {
+                        0
+                    } else if i >= offset {
+                        first_write_reg
+                    } else {
+                        Self::get_byte(value, i, CHUNK_NUM - offset)
+                    };
+                    let second_read_reg = Self::get_byte(value_second_read, i, 0);
+
+                    std.range_check(range_id, first_read_reg as i64, 1);
+                    std.range_check(range_id, first_write_reg as i64, 1);
+                    std.range_check(range_id, value_reg as i64, 1);
+                    std.range_check(range_id, second_write_reg as i64, 1);
+                    std.range_check(range_id, second_read_reg as i64, 1);
+                }
+            }
+        }
+    }
+
     fn get_byte(value: u64, index: usize, offset: usize) -> u64 {
         let chunk = (offset + index) % CHUNK_NUM;
         (value >> (chunk * CHUNK_BITS)) & CHUNK_BITS_MASK
@@ -789,7 +962,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         let mut trace = MemAlignTrace::<F>::new_from_vec(trace_buffer);
-        let mut reg_range_check = vec![0u32; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
 
@@ -830,15 +1002,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
             self.prove_mem_align_op(input, trace);
         });
 
-        // Iterate over all traces to set range checks
-        trace.row_slice_mut()[0..total_index].iter_mut().for_each(|row| {
-            for j in 0..CHUNK_NUM {
-                let element = row.reg[j].as_canonical_u64() as usize;
-                reg_range_check[element] += 1;
-            }
-        });
-
-        let padding_size = num_rows - total_index;
         let padding_row = MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
 
         // Store the padding rows
@@ -846,18 +1009,15 @@ impl<F: PrimeField64> MemAlignSM<F> {
             .par_iter_mut()
             .for_each(|slot| *slot = padding_row);
 
-        // Compute the program multiplicity
-        self.std.inc_virtual_row(self.table_id, MemAlignRomSM::PADDING_ROW, padding_size as u64);
-
-        reg_range_check[0] += CHUNK_NUM as u32 * padding_size as u32;
-        self.update_std_range_check(reg_range_check);
-
         AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }
 
-    fn update_std_range_check(&self, reg_range_check: Vec<u32>) {
-        // Perform the range checks
+    pub fn compute_multiplicity_instance(&self, total_inputs: usize) {
+        // Compute the program multiplicity
+        let padding_size = MemAlignTrace::<usize>::NUM_ROWS - total_inputs;
+        self.std.inc_virtual_row(self.table_id, MemAlignRomSM::PADDING_ROW, padding_size as u64);
+
         let range_id = self.std.get_range_id(0, CHUNK_BITS_MASK as i64, None);
-        self.std.range_checks(range_id, reg_range_check);
+        self.std.range_check(range_id, 0, CHUNK_NUM as u64 * padding_size as u64);
     }
 }

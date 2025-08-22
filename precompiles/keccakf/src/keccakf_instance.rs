@@ -5,7 +5,8 @@
 //! execution plans.
 use crate::{KeccakfInput, KeccakfSM};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use pil_std_lib::Std;
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::{
     any::Any,
     collections::{HashMap, VecDeque},
@@ -78,14 +79,24 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
-        let inputs: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, collector)| collector.as_any().downcast::<KeccakfCollector>().unwrap().inputs)
-            .collect();
+        let mut inputs = Vec::with_capacity(collectors.len());
 
-        Some(self.keccakf_sm.compute_witness(&inputs, trace_buffer))
+        for (_, collector) in collectors {
+            let c: Box<KeccakfCollector> = collector.as_any().downcast().unwrap();
+            if !c.calculate_inputs {
+                return None;
+            }
+            inputs.push(c.inputs);
+        }
+
+        self.compute_multiplicity_instance(0);
+        Some(self.keccakf_sm.compute_witness(&inputs, buffer_pool.take_buffer()))
+    }
+
+    fn compute_multiplicity_instance(&self, _total_inputs: usize) {
+        self.keccakf_sm.compute_multiplicity_instance();
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -104,7 +115,11 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
         InstanceType::Instance
     }
 
-    fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(
+        &self,
+        _std: Arc<Std<F>>,
+        chunk_id: ChunkId,
+    ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
             KeccakfTrace::<F>::AIR_ID,
@@ -126,6 +141,12 @@ pub struct KeccakfCollector {
 
     /// Helper to skip instructions based on the plan's configuration.
     collect_skipper: CollectSkipper,
+
+    pub calculate_inputs: bool,
+
+    pub calculate_multiplicity: bool,
+
+    inputs_collected: usize,
 }
 
 impl KeccakfCollector {
@@ -140,7 +161,14 @@ impl KeccakfCollector {
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
     pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+        Self {
+            inputs: Vec::new(),
+            num_operations,
+            collect_skipper,
+            calculate_inputs: true,
+            calculate_multiplicity: true,
+            inputs_collected: 0,
+        }
     }
 }
 
@@ -179,12 +207,15 @@ impl BusDevice<PayloadType> for KeccakfCollector {
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationKeccakData(data) = data {
-            self.inputs.push(KeccakfInput::from(&data));
+            self.inputs_collected += 1;
+            if self.calculate_inputs {
+                self.inputs.push(KeccakfInput::from(&data));
+            }
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }
 
-        self.inputs.len() < self.num_operations as usize
+        self.inputs_collected < self.num_operations as usize
     }
 
     /// Returns the bus IDs associated with this instance.

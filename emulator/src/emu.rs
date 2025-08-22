@@ -85,6 +85,17 @@ impl<'a> Emu<'a> {
         }
     }
 
+    pub fn from_emu_trace_start_one(rom: &'a ZiskRom, trace_start: &'a EmuTraceStart) -> Emu<'a> {
+        let mut emu = Emu::from_emu_trace_start(rom, 1, trace_start);
+        emu.ctx.inst_ctx.pc = trace_start.pc;
+        emu.ctx.inst_ctx.sp = trace_start.sp;
+        emu.ctx.inst_ctx.step = trace_start.step;
+        emu.ctx.inst_ctx.c = trace_start.c;
+        emu.ctx.inst_ctx.regs = trace_start.regs;
+
+        emu
+    }
+
     pub fn from_emu_trace_start(
         rom: &'a ZiskRom,
         chunk_size: u64,
@@ -2177,6 +2188,39 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step += 1;
 
         _continue
+    }
+
+    #[inline(always)]
+    pub fn step_slice_rc(&mut self, reg_trace: &mut EmuRegTrace, step_range_check: &mut [u32]) {
+        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+
+        reg_trace.clear_reg_step_ranges();
+
+        if instruction.a_src == SRC_REG {
+            reg_trace.trace_reg_access(
+                instruction.a_offset_imm0 as usize,
+                self.ctx.inst_ctx.step,
+                0,
+            );
+        }
+
+        if instruction.b_src == SRC_REG {
+            reg_trace.trace_reg_access(
+                instruction.b_offset_imm0 as usize,
+                self.ctx.inst_ctx.step,
+                1,
+            );
+        }
+
+        if instruction.store == STORE_REG {
+            reg_trace.trace_reg_access(
+                instruction.store_offset as usize,
+                self.ctx.inst_ctx.step,
+                2,
+            );
+        }
+
+        reg_trace.update_step_range_check(step_range_check);
     }
 
     /// Performs one single step of the emulation

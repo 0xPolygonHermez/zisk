@@ -2,7 +2,6 @@
 //!
 //! This state machine processes binary-related operations.
 
-use crate::BinaryBasicFrops;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
@@ -16,10 +15,6 @@ const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 pub struct BinaryAddSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
-    range_id: usize,
-
-    /// The table ID for the FROPS
-    frops_table_id: usize,
 }
 
 impl<F: PrimeField64> BinaryAddSM<F> {
@@ -31,12 +26,8 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A new `BinaryAddSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_id = std.get_range_id(0, 0xFFFF, None);
-
-        // Get the Arithmetic FROPS table ID
-        let frops_table_id = std.get_virtual_table_id(BinaryBasicFrops::TABLE_ID);
         // Create the BinaryAdd state machine
-        Arc::new(Self { std, range_id, frops_table_id })
+        Arc::new(Self { std })
     }
 
     /// Processes a slice of operation data, generating a trace row and updating multiplicities.
@@ -48,7 +39,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(&self, input: &[u64; 2]) -> (BinaryAddTraceRow<F>, [u64; 4]) {
+    pub fn process_slice(&self, input: &[u64; 2]) -> BinaryAddTraceRow<F> {
         // Create an empty trace
         let mut row: BinaryAddTraceRow<F> = Default::default();
 
@@ -57,7 +48,6 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         let mut b = input[1];
         let mut cin = 0;
 
-        let mut range_checks = [0u64; 4];
         for i in 0..2 {
             let _a = a & 0xFFFF_FFFF;
             let _b = b & 0xFFFF_FFFF;
@@ -75,8 +65,6 @@ impl<F: PrimeField64> BinaryAddSM<F> {
                 row.cout[i] = F::ZERO;
                 cin = 0
             };
-            range_checks[i * 2] = c_chunks[0];
-            range_checks[i * 2 + 1] = c_chunks[1];
             a >>= 32;
             b >>= 32;
         }
@@ -84,7 +72,34 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         row.multiplicity = F::ONE;
 
         // Return
-        (row, range_checks)
+        row
+    }
+
+    #[inline(always)]
+    pub fn process_multiplicity(std: &Std<F>, input: &[u64; 2]) {
+        let range_id = std.get_range_id(0, 0xFFFF, None);
+
+        // Execute the opcode
+        let mut a = input[0];
+        let mut b = input[1];
+        let mut cin = 0;
+
+        for _ in 0..2 {
+            let _a = a & 0xFFFF_FFFF;
+            let _b = b & 0xFFFF_FFFF;
+            let c = _a + _b + cin;
+            let _c = c & 0xFFFF_FFFF;
+            let c_chunks = [_c & 0xFFFF, _c >> 16];
+            if c > MASK_U32 {
+                cin = 1
+            } else {
+                cin = 0
+            };
+            std.range_check(range_id, c_chunks[0] as i64, 1);
+            std.range_check(range_id, c_chunks[1] as i64, 1);
+            a >>= 32;
+            b >>= 32;
+        }
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -116,29 +131,13 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         // Split the add_e_trace.buffer into slices matching each inner vector’s length.
         let flat_inputs: Vec<_> = inputs.iter().flatten().collect();
         let trace_rows = add_trace.row_slice_mut();
-        let mut range_checks: Vec<[u64; 4]> = vec![[0u64; 4]; flat_inputs.len()];
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        flat_inputs
-            .into_par_iter()
-            .zip(trace_rows.par_iter_mut())
-            .zip(range_checks.par_iter_mut())
-            .for_each(|((input, trace_row), range_check)| {
-                let (row, checks) = self.process_slice(input);
-                *trace_row = row;
-                *range_check = checks;
-            });
-
-        let mut multiplicities = vec![0u32; 0xFFFF + 1];
-        for range_check in range_checks {
-            multiplicities[range_check[0] as usize] += 1;
-            multiplicities[range_check[1] as usize] += 1;
-            multiplicities[range_check[2] as usize] += 1;
-            multiplicities[range_check[3] as usize] += 1;
-        }
-        multiplicities[0] += 4 * (num_rows - total_inputs) as u32;
-
-        self.std.range_checks(self.range_id, multiplicities);
+        flat_inputs.into_par_iter().zip(trace_rows.par_iter_mut()).for_each(
+            |(input, trace_row)| {
+                *trace_row = self.process_slice(input);
+            },
+        );
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
@@ -148,9 +147,12 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         AirInstance::new_from_trace(FromTrace::new(&mut add_trace))
     }
-    pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
-        for row in frops_inputs {
-            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
-        }
+    pub fn compute_multiplicity_instance(&self, total_inputs: usize) {
+        let range_id = self.std.get_range_id(0, 0xFFFF, None);
+        self.std.range_check(
+            range_id,
+            0,
+            4 * (BinaryAddTrace::<usize>::NUM_ROWS - total_inputs) as u64,
+        );
     }
 }

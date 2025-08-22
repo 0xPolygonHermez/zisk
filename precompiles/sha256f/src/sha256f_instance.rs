@@ -6,7 +6,8 @@
 
 use crate::{Sha256fInput, Sha256fSM};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use pil_std_lib::Std;
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::collections::VecDeque;
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
@@ -61,14 +62,26 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
-        let inputs: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, collector)| collector.as_any().downcast::<Sha256fCollector>().unwrap().inputs)
-            .collect();
+        let mut inputs = Vec::with_capacity(collectors.len());
 
-        Some(self.sha256f_sm.compute_witness(&inputs, trace_buffer))
+        for (_, collector) in collectors {
+            let c: Box<Sha256fCollector<F>> = collector.as_any().downcast().unwrap();
+            if !c.calculate_inputs {
+                return None;
+            }
+            inputs.push(c.inputs);
+        }
+
+        let total_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
+        self.compute_multiplicity_instance(total_inputs);
+
+        Some(self.sha256f_sm.compute_witness(&inputs, buffer_pool.take_buffer()))
+    }
+
+    fn compute_multiplicity_instance(&self, total_inputs: usize) {
+        self.sha256f_sm.compute_multiplicity_instance(total_inputs);
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -87,7 +100,11 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
         InstanceType::Instance
     }
 
-    fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(
+        &self,
+        std: Arc<Std<F>>,
+        chunk_id: ChunkId,
+    ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
             Sha256fTrace::<F>::AIR_ID,
@@ -98,11 +115,12 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
         let meta = self.ictx.plan.meta.as_ref().unwrap();
         let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
         let (num_ops, collect_skipper) = collect_info[&chunk_id];
-        Some(Box::new(Sha256fCollector::new(num_ops, collect_skipper)))
+        Some(Box::new(Sha256fCollector::new(std, num_ops, collect_skipper)))
     }
 }
 
-pub struct Sha256fCollector {
+pub struct Sha256fCollector<F: PrimeField64> {
+    std: Arc<Std<F>>,
     /// Collected inputs for witness computation.
     inputs: Vec<Sha256fInput>,
 
@@ -111,9 +129,15 @@ pub struct Sha256fCollector {
 
     /// Helper to skip instructions based on the plan's configuration.
     collect_skipper: CollectSkipper,
+
+    pub calculate_inputs: bool,
+
+    pub calculate_multiplicity: bool,
+
+    inputs_collected: u64,
 }
 
-impl Sha256fCollector {
+impl<F: PrimeField64> Sha256fCollector<F> {
     /// Creates a new `Sha256fCollector`.
     ///
     /// # Arguments
@@ -124,12 +148,20 @@ impl Sha256fCollector {
     ///
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+    pub fn new(std: Arc<Std<F>>, num_operations: u64, collect_skipper: CollectSkipper) -> Self {
+        Self {
+            std,
+            inputs: Vec::new(),
+            num_operations,
+            collect_skipper,
+            calculate_inputs: true,
+            calculate_multiplicity: true,
+            inputs_collected: 0,
+        }
     }
 }
 
-impl BusDevice<PayloadType> for Sha256fCollector {
+impl<F: PrimeField64> BusDevice<PayloadType> for Sha256fCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -164,12 +196,19 @@ impl BusDevice<PayloadType> for Sha256fCollector {
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationSha256Data(data) = data {
-            self.inputs.push(Sha256fInput::from(&data));
+            let input = Sha256fInput::from(&data);
+            if self.calculate_multiplicity {
+                Sha256fSM::process_multiplicity(&self.std, &input);
+            }
+            if self.calculate_inputs {
+                self.inputs.push(input);
+            }
+            self.inputs_collected += 1;
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }
 
-        self.inputs.len() < self.num_operations as usize
+        self.inputs_collected < self.num_operations
     }
 
     /// Returns the bus IDs associated with this instance.

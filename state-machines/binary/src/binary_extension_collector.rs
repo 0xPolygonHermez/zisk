@@ -4,7 +4,11 @@
 
 use std::collections::VecDeque;
 
+use crate::BinaryExtensionSM;
 use crate::{BinaryExtensionFrops, BinaryInput};
+use fields::PrimeField64;
+use pil_std_lib::Std;
+use std::sync::Arc;
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
     OPERATION_BUS_ID,
@@ -12,36 +16,46 @@ use zisk_common::{
 use zisk_core::ZiskOperationType;
 
 /// The `BinaryExtensionCollector` struct represents an input collector for binary extension
-pub struct BinaryExtensionCollector {
+pub struct BinaryExtensionCollector<F: PrimeField64> {
+    std: Arc<Std<F>>,
+
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
-    /// Collected rows for FROPS
-    pub frops_inputs: Vec<u32>,
 
     pub num_operations: usize,
     pub collect_skipper: CollectSkipper,
 
     /// Flag to indicate that force to execute to end of chunk
     force_execute_to_end: bool,
+
+    pub calculate_inputs: bool,
+
+    pub calculate_multiplicity: bool,
+
+    inputs_collected: usize,
 }
 
-impl BinaryExtensionCollector {
+impl<F: PrimeField64> BinaryExtensionCollector<F> {
     pub fn new(
+        std: Arc<Std<F>>,
         num_operations: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
     ) -> Self {
         Self {
+            std,
             inputs: Vec::new(),
             num_operations,
             collect_skipper,
-            frops_inputs: Vec::new(),
             force_execute_to_end,
+            calculate_inputs: true,
+            calculate_multiplicity: true,
+            inputs_collected: 0,
         }
     }
 }
 
-impl BusDevice<u64> for BinaryExtensionCollector {
+impl<F: PrimeField64> BusDevice<u64> for BinaryExtensionCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -81,7 +95,10 @@ impl BusDevice<u64> for BinaryExtensionCollector {
         }
 
         if frops_row != BinaryExtensionFrops::NO_FROPS {
-            self.frops_inputs.push(frops_row as u32);
+            if self.calculate_multiplicity {
+                let frops_table_id = self.std.get_virtual_table_id(BinaryExtensionFrops::TABLE_ID);
+                self.std.inc_virtual_row(frops_table_id, frops_row as u64, 1);
+            }
             return true;
         }
 
@@ -90,9 +107,17 @@ impl BusDevice<u64> for BinaryExtensionCollector {
             return true;
         }
 
-        self.inputs.push(BinaryInput::from(&op_data));
+        let input = BinaryInput::from(&op_data);
+        if self.calculate_multiplicity {
+            BinaryExtensionSM::process_multiplicity(&self.std, &input);
+        }
 
-        self.inputs.len() < self.num_operations || self.force_execute_to_end
+        self.inputs_collected += 1;
+        if self.calculate_inputs {
+            self.inputs.push(input);
+        }
+
+        self.inputs_collected < self.num_operations || self.force_execute_to_end
     }
 
     /// Returns the bus IDs associated with this instance.

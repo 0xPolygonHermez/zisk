@@ -1,8 +1,10 @@
 use crate::NestedDeviceMetricsList;
 use data_bus::{DataBus, DataBusTrait};
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use proofman_common::ProofCtx;
 use std::collections::HashMap;
+use std::sync::Arc;
 use zisk_common::{BusDevice, BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan};
 
 pub type DataBusCollectorCollection = Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>>;
@@ -46,6 +48,7 @@ pub trait SMBundle<F: PrimeField64>: Send + Sync {
     #[allow(clippy::borrowed_box)]
     fn build_data_bus_collectors(
         &self,
+        std: Arc<Std<F>>,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
         chunks_to_execute: Vec<Vec<usize>>,
     ) -> DataBusCollectorCollection;

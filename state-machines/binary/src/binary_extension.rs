@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use crate::{BinaryExtensionFrops, BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
+use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -37,15 +37,6 @@ const SE_W_OP: u8 = 0x39;
 pub struct BinaryExtensionSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
-
-    /// The range check ID
-    range_id: usize,
-
-    /// The table ID for the Binary Basic State Machine
-    table_id: usize,
-
-    /// The table ID for the Binary Extension FROPS
-    frops_table_id: usize,
 }
 
 impl<F: PrimeField64> BinaryExtensionSM<F> {
@@ -57,16 +48,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryExtensionSM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Get the range check ID
-        let range_id = std.get_range_id(0, 0xFFFFFF, None);
-
-        // Get the table ID
-        let table_id = std.get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID);
-
-        // Get the FROPS table ID
-        let frops_table_id = std.get_virtual_table_id(BinaryExtensionFrops::TABLE_ID);
-
-        Arc::new(Self { std, range_id, table_id, frops_table_id })
+        Arc::new(Self { std })
     }
 
     /// Determines if the given opcode represents a shift operation.
@@ -152,10 +134,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
 
         // Calculate output based on opcode
-        let binary_extension_table_op: BinaryExtensionTableOp;
         match opcode {
             ZiskOp::Sll => {
-                binary_extension_table_op = BinaryExtensionTableOp::Sll;
                 for j in 0..8 {
                     let bits_to_shift = b_low + 8 * j as u64;
                     let out =
@@ -165,7 +145,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::Srl => {
-                binary_extension_table_op = BinaryExtensionTableOp::Srl;
                 for j in 0..8 {
                     let out = ((a_bytes[j] as u64) << (8 * j as u64)) >> b_low;
                     t_out[j][0] = out & 0xffffffff;
@@ -173,7 +152,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::Sra => {
-                binary_extension_table_op = BinaryExtensionTableOp::Sra;
                 for j in 0..8 {
                     let mut out = ((a_bytes[j] as u64) << (8 * j as u64)) >> b_low;
                     if j == 7 {
@@ -188,7 +166,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SllW => {
-                binary_extension_table_op = BinaryExtensionTableOp::SllW;
                 for j in 0..8 {
                     let mut out: u64;
                     if j >= 4 {
@@ -204,7 +181,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SrlW => {
-                binary_extension_table_op = BinaryExtensionTableOp::SrlW;
                 for j in 0..8 {
                     let mut out: u64;
                     if j >= 4 {
@@ -220,7 +196,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SraW => {
-                binary_extension_table_op = BinaryExtensionTableOp::SraW;
                 for j in 0..8 {
                     let mut out: u64;
                     if j >= 4 {
@@ -236,7 +211,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendB => {
-                binary_extension_table_op = BinaryExtensionTableOp::SignExtendB;
                 for j in 0..8 {
                     let out: u64;
                     if j == 0 {
@@ -253,7 +227,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendH => {
-                binary_extension_table_op = BinaryExtensionTableOp::SignExtendH;
                 for j in 0..8 {
                     let out: u64;
                     if j == 0 {
@@ -272,7 +245,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendW => {
-                binary_extension_table_op = BinaryExtensionTableOp::SignExtendW;
                 for j in 0..4 {
                     let mut out = (a_bytes[j] as u64) << (8 * j as u64);
                     if j == 3 && ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
@@ -295,6 +267,51 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
         row.multiplicity = F::ONE;
 
+        // Return successfully
+        row
+    }
+
+    pub fn process_multiplicity(std: &Std<F>, input: &BinaryInput) {
+        // Get the range check ID
+        let range_id = std.get_range_id(0, 0xFFFFFF, None);
+
+        // Get the table ID
+        let table_id = std.get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID);
+
+        // Get a ZiskOp from the code
+        let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
+
+        // Set if the opcode is a shift operation
+        let op_is_shift = Self::opcode_is_shift(opcode);
+
+        if op_is_shift {
+            let row = (input.b >> 8) & 0xFFFFFF;
+            std.range_check(range_id, row as i64, 1);
+        }
+
+        // Detect if this is a sign extend operation
+        let a_val = if op_is_shift { input.a } else { input.b };
+        let b_val = if op_is_shift { input.b } else { input.a };
+
+        // Split a in bytes and store them in in1
+        let a_bytes: [u8; 8] = a_val.to_le_bytes();
+
+        // Store b low part into in2_low
+        let in2_low: u64 = if op_is_shift { b_val & 0xFF } else { 0 };
+
+        let binary_extension_table_op: BinaryExtensionTableOp = match opcode {
+            ZiskOp::Sll => BinaryExtensionTableOp::Sll,
+            ZiskOp::Srl => BinaryExtensionTableOp::Srl,
+            ZiskOp::Sra => BinaryExtensionTableOp::Sra,
+            ZiskOp::SllW => BinaryExtensionTableOp::SllW,
+            ZiskOp::SrlW => BinaryExtensionTableOp::SrlW,
+            ZiskOp::SraW => BinaryExtensionTableOp::SraW,
+            ZiskOp::SignExtendB => BinaryExtensionTableOp::SignExtendB,
+            ZiskOp::SignExtendH => BinaryExtensionTableOp::SignExtendH,
+            ZiskOp::SignExtendW => BinaryExtensionTableOp::SignExtendW,
+            _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", input.op),
+        };
+
         for (i, a_byte) in a_bytes.iter().enumerate() {
             let row = BinaryExtensionTableSM::calculate_table_row(
                 binary_extension_table_op,
@@ -302,11 +319,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 *a_byte as u64,
                 in2_low,
             );
-            self.std.inc_virtual_row(self.table_id, row, 1);
+            std.inc_virtual_row(table_id, row, 1);
         }
-
-        // Return successfully
-        row
     }
 
     /// Computes the witness for the given set of operations.
@@ -358,19 +372,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             });
         });
 
-        // Iterate over all inputs and check opcode
-        // to update multiplicity for the corresponding table row.
-        for row in inputs.iter() {
-            for input in row.iter() {
-                let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
-                let op_is_shift = Self::opcode_is_shift(opcode);
-                if op_is_shift {
-                    let row = (input.b >> 8) & 0xFFFFFF;
-                    self.std.range_check(self.range_id, row as i64, 1);
-                }
-            }
-        }
-
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
         let padding_row =
@@ -380,7 +381,11 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             .par_iter_mut()
             .for_each(|slot| *slot = padding_row);
 
-        let padding_size = num_rows - total_inputs;
+        AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
+    }
+    pub fn compute_multiplicity_instance(&self, total_inputs: usize) {
+        let table_id = self.std.get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID);
+        let padding_size = BinaryExtensionTrace::<usize>::NUM_ROWS - total_inputs;
         for i in 0..8 {
             let multiplicity = padding_size as u64;
             let row = BinaryExtensionTableSM::calculate_table_row(
@@ -389,14 +394,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 0,
                 0,
             );
-            self.std.inc_virtual_row(self.table_id, row, multiplicity);
-        }
-
-        AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
-    }
-    pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
-        for row in frops_inputs {
-            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
+            self.std.inc_virtual_row(table_id, row, multiplicity);
         }
     }
 }

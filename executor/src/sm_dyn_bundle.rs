@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use data_bus::{DataBus, DataBusTrait};
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use proofman_common::ProofCtx;
 use sm_main::MainSM;
 use zisk_common::{
@@ -66,6 +67,7 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
 
     fn build_data_bus_collectors(
         &self,
+        std: Arc<Std<F>>,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
         chunks_to_execute: Vec<Vec<usize>>,
     ) -> Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>> {
@@ -83,7 +85,7 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
                 for global_idx in global_idxs {
                     let secn_instance = secn_instances.get(global_idx).unwrap();
                     if let Some(bus_device) =
-                        secn_instance.build_inputs_collector(ChunkId(chunk_id))
+                        secn_instance.build_inputs_collector(std.clone(), ChunkId(chunk_id))
                     {
                         data_bus.connect_device(Some(*global_idx), Some(bus_device));
 

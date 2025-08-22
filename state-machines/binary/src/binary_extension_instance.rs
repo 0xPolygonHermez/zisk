@@ -6,7 +6,8 @@
 
 use crate::{BinaryExtensionCollector, BinaryExtensionSM};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use pil_std_lib::Std;
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
@@ -77,18 +78,25 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
-        let inputs: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, collector)| {
-                let _collector = collector.as_any().downcast::<BinaryExtensionCollector>().unwrap();
-                self.binary_extension_sm.compute_frops(&_collector.frops_inputs);
-                _collector.inputs
-            })
-            .collect();
+        let mut inputs = Vec::with_capacity(collectors.len());
 
-        Some(self.binary_extension_sm.compute_witness(&inputs, trace_buffer))
+        for (_, collector) in collectors {
+            let c: Box<BinaryExtensionCollector<F>> = collector.as_any().downcast().unwrap();
+            if !c.calculate_inputs {
+                return None;
+            }
+            inputs.push(c.inputs);
+        }
+
+        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
+        self.compute_multiplicity_instance(total_inputs);
+        Some(self.binary_extension_sm.compute_witness(&inputs, buffer_pool.take_buffer()))
+    }
+
+    fn compute_multiplicity_instance(&self, total_inputs: usize) {
+        self.binary_extension_sm.compute_multiplicity_instance(total_inputs);
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -114,9 +122,14 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(
+        &self,
+        std: Arc<Std<F>>,
+        chunk_id: ChunkId,
+    ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryExtensionCollector::new(
+            std,
             num_ops as usize,
             collect_skipper,
             force_execute_to_end,

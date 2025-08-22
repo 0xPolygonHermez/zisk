@@ -1,7 +1,11 @@
 //! The `BinaryAddCollector` struct represents an input collector for binary add operations.
 
+use crate::BinaryAddSM;
 use crate::BinaryBasicFrops;
+use fields::PrimeField64;
+use pil_std_lib::Std;
 use std::collections::VecDeque;
+use std::sync::Arc;
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
     OPERATION_BUS_ID,
@@ -9,20 +13,24 @@ use zisk_common::{
 use zisk_core::zisk_ops::ZiskOp;
 
 /// The `BinaryAddCollector` struct represents an input collector for binary add operations.
-pub struct BinaryAddCollector {
+pub struct BinaryAddCollector<F: PrimeField64> {
+    std: Arc<Std<F>>,
     /// Collected inputs for witness computation.
     pub inputs: Vec<[u64; 2]>,
-    /// Collected rows for FROPS
-    pub frops_inputs: Vec<u32>,
 
     pub num_operations: usize,
     pub collect_skipper: CollectSkipper,
 
     /// Flag to indicate that force to execute to end of chunk
     force_execute_to_end: bool,
+
+    pub calculate_inputs: bool,
+    pub calculate_multiplicity: bool,
+
+    inputs_collected: usize,
 }
 
-impl BinaryAddCollector {
+impl<F: PrimeField64> BinaryAddCollector<F> {
     /// Creates a new `BinaryAddCollector`.
     ///
     /// # Arguments
@@ -32,21 +40,25 @@ impl BinaryAddCollector {
     /// # Returns
     /// A new `BinaryAddCollector` instance initialized with the provided parameters.
     pub fn new(
+        std: Arc<Std<F>>,
         num_operations: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
     ) -> Self {
         Self {
+            std,
             inputs: Vec::new(),
             num_operations,
             collect_skipper,
-            frops_inputs: Vec::new(),
             force_execute_to_end,
+            calculate_inputs: true,
+            calculate_multiplicity: true,
+            inputs_collected: 0,
         }
     }
 }
 
-impl BusDevice<u64> for BinaryAddCollector {
+impl<F: PrimeField64> BusDevice<u64> for BinaryAddCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -86,7 +98,10 @@ impl BusDevice<u64> for BinaryAddCollector {
         }
 
         if frops_row != BinaryBasicFrops::NO_FROPS {
-            self.frops_inputs.push(frops_row as u32);
+            if self.calculate_multiplicity {
+                let frops_table_id = self.std.get_virtual_table_id(BinaryBasicFrops::TABLE_ID);
+                self.std.inc_virtual_row(frops_table_id, frops_row as u64, 1);
+            }
             return true;
         }
 
@@ -95,9 +110,16 @@ impl BusDevice<u64> for BinaryAddCollector {
             return true;
         }
 
-        self.inputs.push([OperationBusData::get_a(&op_data), OperationBusData::get_b(&op_data)]);
+        let input = [OperationBusData::get_a(&op_data), OperationBusData::get_b(&op_data)];
+        if self.calculate_multiplicity {
+            BinaryAddSM::process_multiplicity(&self.std, &input);
+        }
+        self.inputs_collected += 1;
+        if self.calculate_inputs {
+            self.inputs.push(input);
+        }
 
-        self.inputs.len() < self.num_operations || self.force_execute_to_end
+        self.inputs_collected < self.num_operations || self.force_execute_to_end
     }
 
     /// Returns the bus IDs associated with this instance.

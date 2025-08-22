@@ -10,7 +10,7 @@ use crate::{
     Secp256k1AddInput, Secp256k1DblInput,
 };
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::collections::VecDeque;
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
@@ -19,6 +19,7 @@ use zisk_common::{
     InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
 
+use pil_std_lib::Std;
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithEqTrace;
 
@@ -82,14 +83,25 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
         _pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
-        let inputs: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, collector)| collector.as_any().downcast::<ArithEqCollector>().unwrap().inputs)
-            .collect();
+        let mut inputs = Vec::with_capacity(collectors.len());
 
-        Some(self.arith_eq_sm.compute_witness(sctx, &inputs, trace_buffer))
+        for (_, collector) in collectors {
+            let c: Box<ArithEqCollector<F>> = collector.as_any().downcast().unwrap();
+            if !c.calculate_inputs {
+                return None;
+            }
+            inputs.push(c.inputs);
+        }
+
+        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
+        self.compute_multiplicity_instance(total_inputs);
+        Some(self.arith_eq_sm.compute_witness(sctx, &inputs, buffer_pool.take_buffer()))
+    }
+
+    fn compute_multiplicity_instance(&self, total_inputs: usize) {
+        self.arith_eq_sm.compute_multiplicity_instance(total_inputs);
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -108,24 +120,35 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
         InstanceType::Instance
     }
 
-    fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(
+        &self,
+        std: Arc<Std<F>>,
+        chunk_id: ChunkId,
+    ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(ArithEqCollector::new(num_ops, collect_skipper)))
+        Some(Box::new(ArithEqCollector::new(std, num_ops as usize, collect_skipper)))
     }
 }
 
-pub struct ArithEqCollector {
+pub struct ArithEqCollector<F: PrimeField64> {
+    std: Arc<Std<F>>,
     /// Collected inputs for witness computation.
     inputs: Vec<ArithEqInput>,
 
     /// The number of operations to collect.
-    num_operations: u64,
+    num_operations: usize,
 
     /// Helper to skip instructions based on the plan's configuration.
     collect_skipper: CollectSkipper,
+
+    pub calculate_inputs: bool,
+
+    pub calculate_multiplicity: bool,
+
+    inputs_collected: usize,
 }
 
-impl ArithEqCollector {
+impl<F: PrimeField64> ArithEqCollector<F> {
     /// Creates a new `ArithEqCollector`.
     ///
     /// # Arguments
@@ -136,12 +159,20 @@ impl ArithEqCollector {
     ///
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+    pub fn new(std: Arc<Std<F>>, num_operations: usize, collect_skipper: CollectSkipper) -> Self {
+        Self {
+            std,
+            inputs: Vec::new(),
+            num_operations,
+            collect_skipper,
+            calculate_inputs: true,
+            calculate_multiplicity: true,
+            inputs_collected: 0,
+        }
     }
 }
 
-impl BusDevice<PayloadType> for ArithEqCollector {
+impl<F: PrimeField64> BusDevice<PayloadType> for ArithEqCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -175,7 +206,7 @@ impl BusDevice<PayloadType> for ArithEqCollector {
             return true;
         }
 
-        self.inputs.push(match data {
+        let input = match data {
             ExtOperationData::OperationArith256Data(bus_data) => {
                 ArithEqInput::Arith256(Arith256Input::from(&bus_data))
             }
@@ -205,9 +236,18 @@ impl BusDevice<PayloadType> for ArithEqCollector {
             }
             // Add here new operations
             _ => panic!("Expected ExtOperationData::OperationData"),
-        });
+        };
 
-        self.inputs.len() < self.num_operations as usize
+        if self.calculate_multiplicity {
+            ArithEqSM::process_multiplicity(&self.std, &input);
+        }
+
+        self.inputs_collected += 1;
+        if self.calculate_inputs {
+            self.inputs.push(input);
+        }
+
+        self.inputs_collected < self.num_operations
     }
 
     /// Returns the bus IDs associated with this instance.

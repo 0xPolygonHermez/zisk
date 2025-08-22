@@ -8,7 +8,9 @@ use tiny_keccak::keccakf;
 use circuit::{Gate, GateOperation, PinId};
 use precompiles_helpers::keccakf_topology;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
-use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use proofman_util::{
+    timer_start_info, timer_start_trace, timer_stop_and_log_info, timer_stop_and_log_trace,
+};
 use zisk_pil::{KeccakfFixed, KeccakfTrace, KeccakfTraceRow};
 
 use crate::KeccakfInput;
@@ -613,7 +615,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
         // Set a = 0b00..00, b = 0b11..11 and c = 0b00..00 at the first row
         // Set, e.g., the operation to be an XOR and set d = 0b11..11 = b = a ^ b ^ c
         let mut row: KeccakfTraceRow<F> = Default::default();
-        let zeros = 0u64;
         let ones = MASK_BITS_KECCAKF;
         let gate_op = self.keccakf_fixed[0].GATE_OP.as_canonical_u64();
         // Sanity check
@@ -628,11 +629,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
             row.free_in_c[i] = F::ZERO;
             row.free_in_d[i] = F::from_u64(ones);
         }
-        // Update the multiplicity table
-        let table_row =
-            KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, ones, zeros);
-        self.std.inc_virtual_row(self.table_id, table_row as u64, CHUNKS_KECCAKF as u64);
-
         // Assign the single constant row
         keccakf_trace[0] = row;
 
@@ -654,14 +650,35 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 "Invalid padding dummy gate operation"
             );
 
-            let table_row =
-                KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, zeros, zeros);
-            self.std.inc_virtual_row(self.table_id, table_row as u64, CHUNKS_KECCAKF as u64);
-
             keccakf_trace[i] = padding_row;
         }
         timer_stop_and_log_trace!(KECCAKF_PADDING);
 
         AirInstance::new_from_trace(FromTrace::new(&mut keccakf_trace))
+    }
+
+    pub fn compute_multiplicity_instance(&self) {
+        timer_start_info!(KECCAKF_MULTIPLICITIES);
+        let num_rows = KeccakfTrace::<usize>::NUM_ROWS;
+
+        let num_rows_constants = 1;
+
+        let zeros = 0u64;
+        let ones = MASK_BITS_KECCAKF;
+
+        // TODO: MULTIPLICITIES!!!
+
+        // Update the multiplicity table
+        let table_row =
+            KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, ones, zeros);
+        self.std.inc_virtual_row(self.table_id, table_row as u64, CHUNKS_KECCAKF as u64);
+
+        // A row with all zeros satisfies the constraints (since XOR(0,0,0) = 0)
+        for _ in (num_rows_constants + self.circuit_size * self.num_available_circuits)..num_rows {
+            let table_row =
+                KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, zeros, zeros);
+            self.std.inc_virtual_row(self.table_id, table_row as u64, CHUNKS_KECCAKF as u64);
+        }
+        timer_stop_and_log_info!(KECCAKF_MULTIPLICITIES);
     }
 }

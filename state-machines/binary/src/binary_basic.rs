@@ -4,9 +4,7 @@
 
 use std::sync::Arc;
 
-use crate::{
-    binary_constants::*, BinaryBasicFrops, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput,
-};
+use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
@@ -23,12 +21,6 @@ const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 pub struct BinaryBasicSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
-
-    /// The table ID for the Binary Basic State Machine
-    table_id: usize,
-
-    /// The table ID for the FROPS
-    frops_table_id: usize,
 }
 
 impl<F: PrimeField64> BinaryBasicSM<F> {
@@ -40,13 +32,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryBasicSM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Get the table ID
-        let table_id = std.get_virtual_table_id(BinaryBasicTableSM::TABLE_ID);
-
-        // Get the FROPS table ID
-        let frops_table_id = std.get_virtual_table_id(BinaryBasicFrops::TABLE_ID);
-
-        Arc::new(Self { std, table_id, frops_table_id })
+        Arc::new(Self { std })
     }
 
     /// Determines if an opcode corresponds to a 32-bit operation.
@@ -164,9 +150,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         row.mode32 = F::from_bool(mode32);
         let mode64 = F::from_bool(!mode32);
 
-        // Set c_filtered
-        let c_filtered = if mode32 { c & 0xFFFFFFFF } else { c };
-
         // Split a in bytes and store them in free_in_a
         let a_bytes: [u8; 8] = a.to_le_bytes();
         for (i, value) in a_bytes.iter().enumerate() {
@@ -200,8 +183,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Set opcode is min or max
                 row.op_is_min_max = F::ONE;
 
-                let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
-
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (opcode == MINU_OP) || (opcode == MINUW_OP) {
                     BinaryBasicTableOp::Minu
@@ -218,7 +199,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
                     match a_bytes[i].cmp(&b_bytes[i]) {
                         CmpOrdering::Greater => {
                             cout = 0;
@@ -243,31 +223,11 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     }
                     cin = cout;
                     row.carry[i] = F::from_u64(cin);
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = cout + 2 + 4 * result_is_a;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            BinaryBasicTableOp::Ext32
-                        } else {
-                            binary_basic_table_op
-                        },
-                        if mode32 && (i >= 4) { c_bytes[3] as u64 } else { a_bytes[i] as u64 },
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             MAXU_OP | MAXUW_OP | MAX_OP | MAXW_OP => {
                 // Set opcode is min or max
                 row.op_is_min_max = F::ONE;
-
-                let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (opcode == MAXU_OP) || (opcode == MAXUW_OP) {
@@ -285,7 +245,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
                     match a_bytes[i].cmp(&b_bytes[i]) {
                         CmpOrdering::Greater => {
                             cout = 1;
@@ -310,24 +269,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     }
                     cin = cout;
                     row.carry[i] = F::from_u64(cin);
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = cout + 2 + 4 * result_is_a;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            BinaryBasicTableOp::Ext32
-                        } else {
-                            binary_basic_table_op
-                        },
-                        if mode32 && (i >= 4) { c_bytes[3] as u64 } else { a_bytes[i] as u64 },
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             LT_ABS_NP_OP => {
@@ -352,7 +293,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let _b = b_bytes[i] as u64;
 
                     // Calculate the output carry
-                    let previous_cin = cin;
+                    // let previous_cin = cin;
                     match (_a & 0xFF).cmp(&_b) {
                         CmpOrdering::Less => {
                             cout = 1;
@@ -370,20 +311,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
                     // Set carry for next iteration
                     cin = cout;
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = cout + 8 * plast[i];
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             LT_ABS_PN_OP => {
@@ -408,7 +335,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let _b = (b_bytes[i] as u64 ^ 0xFF) + _cop;
 
                     // Calculate the output carry
-                    let previous_cin = cin;
                     match _a.cmp(&(_b & 0xFF)) {
                         CmpOrdering::Less => {
                             cout = 1;
@@ -426,20 +352,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
                     // Set carry for next iteration
                     cin = cout;
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = cout + 8 * plast[i];
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             LTU_OP | LTUW_OP | LT_OP | LTW_OP => {
@@ -462,7 +374,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
                     match a_bytes[i].cmp(&b_bytes[i]) {
                         CmpOrdering::Greater => {
                             cout = 0;
@@ -484,24 +395,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     }
                     cin = cout;
                     row.carry[i] = F::from_u64(cin);
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = cin + 8 * plast[i];
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            BinaryBasicTableOp::Ext32
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             GT_OP => {
@@ -520,7 +413,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
                     match a_bytes[i].cmp(&b_bytes[i]) {
                         CmpOrdering::Greater => {
                             cout = 1;
@@ -541,20 +433,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
                     // Set carry for next iteration
                     cin = cout;
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = cout + 8 * plast[i];
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             EQ_OP | EQW_OP => {
@@ -573,7 +451,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
                     if (a_bytes[i] == b_bytes[i]) && (cin == 0) {
                         cout = 0;
                     } else {
@@ -584,24 +461,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     }
                     cin = cout;
                     row.carry[i] = F::from_u64(cin);
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = cout + 8 * plast[i];
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            BinaryBasicTableOp::Ext32
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             ADD_OP | ADDW_OP => {
@@ -620,33 +479,10 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
                     let result = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
                     cout = result >> 8;
                     cin = if i == carry_byte { 0 } else { cout };
                     row.carry[i] = F::from_u64(cin);
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = cin;
-
-                    // Set a and b bytes
-                    let a_byte = if mode32 && (i >= 4) { c_bytes[3] } else { a_bytes[i] };
-                    let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            BinaryBasicTableOp::Ext32
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_byte as u64,
-                        b_byte as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             SUB_OP | SUBW_OP => {
@@ -665,32 +501,9 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
                     cout = if a_bytes[i] as u64 >= (b_bytes[i] as u64 + cin) { 0 } else { 1 };
                     cin = if i == carry_byte { 0 } else { cout };
                     row.carry[i] = F::from_u64(cin);
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = cin;
-
-                    // Set a and b bytes
-                    let a_byte = if mode32 && (i >= 4) { c_bytes[3] } else { a_bytes[i] };
-                    let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            BinaryBasicTableOp::Ext32
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_byte as u64,
-                        b_byte as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             LEU_OP | LEUW_OP | LE_OP | LEW_OP => {
@@ -713,7 +526,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Apply the logic to every byte
                 for i in 0..8 {
                     // Calculate carry
-                    let previous_cin = cin;
                     cout = 0;
                     if a_bytes[i] <= b_bytes[i] {
                         cout = 1;
@@ -726,24 +538,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     }
                     cin = cout;
                     row.carry[i] = F::from_u64(cin);
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = cin + 8 * plast[i];
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        if mode32 && (i >= 4) {
-                            BinaryBasicTableOp::Ext32
-                        } else {
-                            binary_basic_table_op
-                        },
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        previous_cin,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             AND_OP => {
@@ -761,20 +555,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // No carry
                 for i in 0..8 {
                     row.carry[i] = F::ZERO;
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = 0;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        0,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             OR_OP => {
@@ -792,20 +572,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // No carry
                 for i in 0..8 {
                     row.carry[i] = F::ZERO;
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = 0;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        0,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             XOR_OP => {
@@ -824,20 +590,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // No carry
                 for i in 0..8 {
                     row.carry[i] = F::ZERO;
-
-                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
-                    let flags = 0;
-
-                    // Store the required in the vector
-                    let row = BinaryBasicTableSM::calculate_table_row(
-                        binary_basic_table_op,
-                        a_bytes[i] as u64,
-                        b_bytes[i] as u64,
-                        0,
-                        plast[i],
-                        flags,
-                    );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
                 }
             }
             _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={opcode}"),
@@ -881,6 +633,561 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
         // Return
         row
+    }
+
+    #[inline(always)]
+    pub fn process_multiplicity(std: &Std<F>, input: &BinaryInput) {
+        // Get the table ID
+        let table_id = std.get_virtual_table_id(BinaryBasicTableSM::TABLE_ID);
+
+        // Execute the opcode
+        let opcode = input.op;
+        let a = input.a;
+        let b = input.b;
+
+        let (c, _) = Self::execute(input.op, input.a, input.b);
+
+        // Set mode32
+        let mode32 = Self::opcode_is_32_bits(opcode);
+
+        // Set c_filtered
+        let c_filtered = if mode32 { c & 0xFFFFFFFF } else { c };
+
+        // Split a in bytes and store them in free_in_a
+        let a_bytes: [u8; 8] = a.to_le_bytes();
+
+        // Split b in bytes and store them in free_in_b
+        let b_bytes: [u8; 8] = b.to_le_bytes();
+
+        // Split c in bytes and store them in free_in_c
+        let c_bytes: [u8; 8] = c.to_le_bytes();
+
+        // Set use last carry and carry[], based on operation
+        let mut cout: u64;
+        let mut cin: u64 = Self::get_inital_carry(opcode);
+        let plast: [u64; 8] =
+            if mode32 { [0, 0, 0, 1, 0, 0, 0, 0] } else { [0, 0, 0, 0, 0, 0, 0, 1] };
+
+        // Calculate the byte that sets the carry
+        let carry_byte = if mode32 { 3 } else { 7 };
+
+        let binary_basic_table_op: BinaryBasicTableOp;
+        match opcode {
+            MINU_OP | MINUW_OP | MIN_OP | MINW_OP => {
+                let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
+
+                // Set the binary basic table opcode
+                binary_basic_table_op = if (opcode == MINU_OP) || (opcode == MINUW_OP) {
+                    BinaryBasicTableOp::Minu
+                } else {
+                    BinaryBasicTableOp::Min
+                };
+
+                // Apply the logic to every byte
+                for i in 0..8 {
+                    // Calculate carry
+                    let previous_cin = cin;
+                    match a_bytes[i].cmp(&b_bytes[i]) {
+                        CmpOrdering::Greater => {
+                            cout = 0;
+                        }
+                        CmpOrdering::Less => {
+                            cout = 1;
+                        }
+                        CmpOrdering::Equal => {
+                            cout = cin;
+                        }
+                    }
+
+                    // If the chunk is signed, then the result is the sign of a
+                    if (binary_basic_table_op == BinaryBasicTableOp::Min)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    {
+                        cout = if (a_bytes[i] & 0x80) != 0 { 1 } else { 0 };
+                    }
+                    if mode32 && (i >= 4) {
+                        cout = 0;
+                    }
+                    cin = cout;
+
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = cout + 2 + 4 * result_is_a;
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        if mode32 && (i >= 4) {
+                            BinaryBasicTableOp::Ext32
+                        } else {
+                            binary_basic_table_op
+                        },
+                        if mode32 && (i >= 4) { c_bytes[3] as u64 } else { a_bytes[i] as u64 },
+                        b_bytes[i] as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            MAXU_OP | MAXUW_OP | MAX_OP | MAXW_OP => {
+                let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
+
+                // Set the binary basic table opcode
+                binary_basic_table_op = if (opcode == MAXU_OP) || (opcode == MAXUW_OP) {
+                    BinaryBasicTableOp::Maxu
+                } else {
+                    BinaryBasicTableOp::Max
+                };
+
+                // Apply the logic to every byte
+                for i in 0..8 {
+                    // Calculate carry
+                    let previous_cin = cin;
+                    match a_bytes[i].cmp(&b_bytes[i]) {
+                        CmpOrdering::Greater => {
+                            cout = 1;
+                        }
+                        CmpOrdering::Less => {
+                            cout = 0;
+                        }
+                        CmpOrdering::Equal => {
+                            cout = cin;
+                        }
+                    }
+
+                    // If the chunk is signed, then the result is the sign of a
+                    if (binary_basic_table_op == BinaryBasicTableOp::Max)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    {
+                        cout = if (a_bytes[i] & 0x80) != 0 { 0 } else { 1 };
+                    }
+                    if mode32 && (i >= 4) {
+                        cout = 0;
+                    }
+                    cin = cout;
+
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = cout + 2 + 4 * result_is_a;
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        if mode32 && (i >= 4) {
+                            BinaryBasicTableOp::Ext32
+                        } else {
+                            binary_basic_table_op
+                        },
+                        if mode32 && (i >= 4) { c_bytes[3] as u64 } else { a_bytes[i] as u64 },
+                        b_bytes[i] as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            LT_ABS_NP_OP => {
+                // Set the binary basic table opcode
+                binary_basic_table_op = BinaryBasicTableOp::LtAbsNP;
+
+                // Apply the logic to every byte
+                for i in 0..8 {
+                    let _clt = cin & 0x01;
+                    let _cop = (cin & 0x02) >> 1;
+
+                    let _a = (a_bytes[i] as u64 ^ 0xFF) + _cop;
+                    let _b = b_bytes[i] as u64;
+
+                    // Calculate the output carry
+                    let previous_cin = cin;
+                    match (_a & 0xFF).cmp(&_b) {
+                        CmpOrdering::Less => {
+                            cout = 1;
+                        }
+                        CmpOrdering::Equal => {
+                            cout = _clt;
+                        }
+                        CmpOrdering::Greater => {
+                            cout = 0;
+                        }
+                    }
+
+                    cout += 2 * (_a >> 8);
+
+                    // Set carry for next iteration
+                    cin = cout;
+
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = cout + 8 * plast[i];
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        binary_basic_table_op,
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            LT_ABS_PN_OP => {
+                // Set the binary basic table opcode
+                binary_basic_table_op = BinaryBasicTableOp::LtAbsPN;
+
+                // Apply the logic to every byte
+                for i in 0..8 {
+                    let _clt = cin & 0x1;
+                    let _cop = (cin & 0x02) >> 1;
+
+                    let _a = a_bytes[i] as u64;
+                    let _b = (b_bytes[i] as u64 ^ 0xFF) + _cop;
+
+                    // Calculate the output carry
+                    let previous_cin = cin;
+                    match _a.cmp(&(_b & 0xFF)) {
+                        CmpOrdering::Less => {
+                            cout = 1;
+                        }
+                        CmpOrdering::Equal => {
+                            cout = _clt;
+                        }
+                        CmpOrdering::Greater => {
+                            cout = 0;
+                        }
+                    }
+
+                    cout += 2 * (_b >> 8);
+
+                    // Set carry for next iteration
+                    cin = cout;
+
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = cout + 8 * plast[i];
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        binary_basic_table_op,
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            LTU_OP | LTUW_OP | LT_OP | LTW_OP => {
+                // Set the binary basic table opcode
+                binary_basic_table_op = if (opcode == LTU_OP) || (opcode == LTUW_OP) {
+                    BinaryBasicTableOp::Ltu
+                } else {
+                    BinaryBasicTableOp::Lt
+                };
+
+                // Apply the logic to every byte
+                for i in 0..8 {
+                    // Calculate carry
+                    let previous_cin = cin;
+                    match a_bytes[i].cmp(&b_bytes[i]) {
+                        CmpOrdering::Greater => {
+                            cout = 0;
+                        }
+                        CmpOrdering::Less => {
+                            cout = 1;
+                        }
+                        CmpOrdering::Equal => {
+                            cout = cin;
+                        }
+                    }
+
+                    // If the chunk is signed, then the result is the sign of a
+                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt))
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    {
+                        cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                    }
+                    cin = cout;
+
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = cin + 8 * plast[i];
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        if mode32 && (i >= 4) {
+                            BinaryBasicTableOp::Ext32
+                        } else {
+                            binary_basic_table_op
+                        },
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            GT_OP => {
+                // Set the binary basic table opcode
+                binary_basic_table_op = BinaryBasicTableOp::Gt;
+
+                // Apply the logic to every byte
+                for i in 0..8 {
+                    // Calculate carry
+                    let previous_cin = cin;
+                    match a_bytes[i].cmp(&b_bytes[i]) {
+                        CmpOrdering::Greater => {
+                            cout = 1;
+                        }
+                        CmpOrdering::Less => {
+                            cout = 0;
+                        }
+                        CmpOrdering::Equal => {
+                            cout = cin;
+                        }
+                    }
+
+                    // The result is the sign of b
+                    if (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
+                        cout = if b_bytes[i] & 0x80 != 0 { 1 } else { 0 };
+                    }
+
+                    // Set carry for next iteration
+                    cin = cout;
+
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = cout + 8 * plast[i];
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        binary_basic_table_op,
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            EQ_OP | EQW_OP => {
+                // Set the binary basic table opcode
+                binary_basic_table_op = BinaryBasicTableOp::Eq;
+
+                // Apply the logic to every byte
+                for i in 0..8 {
+                    // Calculate carry
+                    let previous_cin = cin;
+                    if (a_bytes[i] == b_bytes[i]) && (cin == 0) {
+                        cout = 0;
+                    } else {
+                        cout = 1;
+                    }
+                    if plast[i] == 1 {
+                        cout = 1 - cout;
+                    }
+                    cin = cout;
+
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = cout + 8 * plast[i];
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        if mode32 && (i >= 4) {
+                            BinaryBasicTableOp::Ext32
+                        } else {
+                            binary_basic_table_op
+                        },
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            ADD_OP | ADDW_OP => {
+                // Set the binary basic table opcode
+                binary_basic_table_op = BinaryBasicTableOp::Add;
+
+                // Apply the logic to every byte
+                for i in 0..8 {
+                    // Calculate carry
+                    let previous_cin = cin;
+                    let result = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
+                    cout = result >> 8;
+                    cin = if i == carry_byte { 0 } else { cout };
+
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = cin;
+
+                    // Set a and b bytes
+                    let a_byte = if mode32 && (i >= 4) { c_bytes[3] } else { a_bytes[i] };
+                    let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        if mode32 && (i >= 4) {
+                            BinaryBasicTableOp::Ext32
+                        } else {
+                            binary_basic_table_op
+                        },
+                        a_byte as u64,
+                        b_byte as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            SUB_OP | SUBW_OP => {
+                // Set the binary basic table opcode
+                binary_basic_table_op = BinaryBasicTableOp::Sub;
+
+                // Apply the logic to every byte
+                for i in 0..8 {
+                    // Calculate carry
+                    let previous_cin = cin;
+                    cout = if a_bytes[i] as u64 >= (b_bytes[i] as u64 + cin) { 0 } else { 1 };
+                    cin = if i == carry_byte { 0 } else { cout };
+
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = cin;
+
+                    // Set a and b bytes
+                    let a_byte = if mode32 && (i >= 4) { c_bytes[3] } else { a_bytes[i] };
+                    let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        if mode32 && (i >= 4) {
+                            BinaryBasicTableOp::Ext32
+                        } else {
+                            binary_basic_table_op
+                        },
+                        a_byte as u64,
+                        b_byte as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            LEU_OP | LEUW_OP | LE_OP | LEW_OP => {
+                // Set the binary basic table opcode
+                binary_basic_table_op = if (opcode == LEU_OP) || (opcode == LEUW_OP) {
+                    BinaryBasicTableOp::Leu
+                } else {
+                    BinaryBasicTableOp::Le
+                };
+
+                // Apply the logic to every byte
+                for i in 0..8 {
+                    // Calculate carry
+                    let previous_cin = cin;
+                    cout = 0;
+                    if a_bytes[i] <= b_bytes[i] {
+                        cout = 1;
+                    }
+                    if (binary_basic_table_op == BinaryBasicTableOp::Le)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    {
+                        cout = c;
+                    }
+                    cin = cout;
+
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = cin + 8 * plast[i];
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        if mode32 && (i >= 4) {
+                            BinaryBasicTableOp::Ext32
+                        } else {
+                            binary_basic_table_op
+                        },
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            AND_OP => {
+                // Set the binary basic table opcode
+                binary_basic_table_op = BinaryBasicTableOp::And;
+
+                // No carry
+                for i in 0..8 {
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = 0;
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        binary_basic_table_op,
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        0,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            OR_OP => {
+                // Set the binary basic table opcode
+                binary_basic_table_op = BinaryBasicTableOp::Or;
+
+                // No carry
+                for i in 0..8 {
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = 0;
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        binary_basic_table_op,
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        0,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            XOR_OP => {
+                // Set the binary basic table opcode
+                binary_basic_table_op = BinaryBasicTableOp::Xor;
+
+                // No carry
+                for i in 0..8 {
+                    //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
+                    let flags = 0;
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        binary_basic_table_op,
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        0,
+                        plast[i],
+                        flags,
+                    );
+                    std.inc_virtual_row(table_id, row, 1);
+                }
+            }
+            _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={opcode}"),
+        }
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -938,7 +1245,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             .par_iter_mut()
             .for_each(|slot| *slot = padding_row);
 
-        let padding_size = num_rows - total_inputs;
+        AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
+    }
+
+    pub fn compute_multiplicity_instance(&self, total_inputs: usize) {
+        let table_id = self.std.get_virtual_table_id(BinaryBasicTableSM::TABLE_ID);
+        let padding_size = BinaryTrace::<usize>::NUM_ROWS - total_inputs;
         for last in 0..2 {
             let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
             let row = BinaryBasicTableSM::calculate_table_row(
@@ -949,14 +1261,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 last as u64,
                 0,
             );
-            self.std.inc_virtual_row(self.table_id, row, multiplicity);
-        }
-
-        AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
-    }
-    pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
-        for row in frops_inputs {
-            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
+            self.std.inc_virtual_row(table_id, row, multiplicity);
         }
     }
 }

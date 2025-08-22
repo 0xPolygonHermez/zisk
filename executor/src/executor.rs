@@ -754,7 +754,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         &self,
         pctx: &ProofCtx<F>,
         main_instance: &MainInstance<F>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
         _caller_stats_id: u64,
     ) {
         let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
@@ -785,7 +785,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             min_traces,
             self.chunk_size,
             main_instance,
-            trace_buffer,
+            buffer_pool,
         );
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
@@ -825,7 +825,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         sctx: &SetupCtx<F>,
         global_id: usize,
         secn_instance: &dyn Instance<F>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
         _caller_stats_id: u64,
     ) {
         let witness_start_time = Instant::now();
@@ -850,7 +850,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         };
 
         if let Some(air_instance) =
-            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, trace_buffer)
+            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, buffer_pool)
         {
             pctx.add_air_instance(air_instance, global_id);
         }
@@ -956,7 +956,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         // Create data buses for each chunk
         let data_buses = self
             .sm_bundle
-            .build_data_bus_collectors(&secn_instances, chunks_to_execute)
+            .build_data_bus_collectors(self.std.clone(), &secn_instances, chunks_to_execute)
             .into_iter()
             .map(|db| Arc::new(Mutex::new(db)))
             .collect::<Vec<_>>();
@@ -1112,7 +1112,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         sctx: &SetupCtx<F>,
         global_id: usize,
         table_instance: &dyn Instance<F>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
         _caller_stats_id: u64,
     ) {
         #[cfg(feature = "stats")]
@@ -1129,7 +1129,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         );
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
-        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], trace_buffer)
+        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], buffer_pool)
         {
             if pctx.dctx_is_my_instance(global_id) {
                 pctx.add_air_instance(air_instance, global_id);
@@ -1474,14 +1474,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         pool.install(|| {
             for &global_id in global_ids {
                 let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
-
                 if MAIN_AIR_IDS.contains(&air_id) {
                     let main_instance = &self.main_instances.read().unwrap()[&global_id];
 
                     self.witness_main_instance(
                         &pctx,
                         main_instance,
-                        buffer_pool.take_buffer(),
+                        buffer_pool,
                         #[cfg(feature = "stats")]
                         parent_stats_id,
                         #[cfg(not(feature = "stats"))]
@@ -1523,7 +1522,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                                 &sctx,
                                 global_id,
                                 &**secn_instance,
-                                buffer_pool.take_buffer(),
+                                buffer_pool,
                                 #[cfg(feature = "stats")]
                                 parent_stats_id,
                                 #[cfg(not(feature = "stats"))]
@@ -1535,7 +1534,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                             &sctx,
                             global_id,
                             &**secn_instance,
-                            Vec::new(),
+                            buffer_pool,
                             #[cfg(feature = "stats")]
                             parent_stats_id,
                             #[cfg(not(feature = "stats"))]

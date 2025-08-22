@@ -7,8 +7,7 @@
 use std::sync::Arc;
 
 use crate::{
-    ArithFrops, ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs,
-    ArithTableSM,
+    ArithOperation, ArithRangeTableHelpers, ArithRangeTableSM, ArithTableHelpers, ArithTableSM,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -29,15 +28,6 @@ const EXTENSION: u64 = 0xFFFFFFFF;
 pub struct ArithFullSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
-
-    /// The table ID for the Table State Machine
-    table_id: usize,
-
-    /// The table ID for the Range Table State Machine
-    range_table_id: usize,
-
-    /// The table ID for the FROPS
-    frops_table_id: usize,
 }
 
 impl<F: PrimeField64> ArithFullSM<F> {
@@ -49,16 +39,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithFullSM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        // Get the Arithmetic table ID
-        let table_id = std.get_virtual_table_id(ArithTableSM::TABLE_ID);
-
-        // Get the Arithmetic Range table ID
-        let range_table_id = std.get_virtual_table_id(ArithRangeTableSM::TABLE_ID);
-
-        // Get the Arithmetic FROPS table ID
-        let frops_table_id = std.get_virtual_table_id(ArithFrops::TABLE_ID);
-
-        Arc::new(Self { std, table_id, range_table_id, frops_table_id })
+        Arc::new(Self { std })
     }
 
     /// Computes the witness for arithmetic operations and updates associated tables.
@@ -80,9 +61,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(total_inputs <= num_rows);
 
-        let mut range_table_inputs = ArithRangeTableInputs::new();
-        let mut table_inputs = ArithTableInputs::new();
-
         tracing::info!(
             "··· Creating Arith instance [{} / {} rows filled {:.2}%]",
             total_inputs,
@@ -97,21 +75,9 @@ impl<F: PrimeField64> ArithFullSM<F> {
 
         flat_buffer.par_chunks_mut(chunk_size).zip(flat_inputs.par_chunks(chunk_size)).for_each(
             |(trace_slice, input_slice)| {
-                let mut aop = ArithOperation::new();
-                let mut range_table = ArithRangeTableInputs::new();
-                let mut table = ArithTableInputs::new();
-
                 trace_slice.iter_mut().zip(input_slice.iter()).for_each(|(trace_row, input)| {
-                    *trace_row = Self::process_slice(&mut range_table, &mut table, &mut aop, input);
+                    *trace_row = Self::process_slice(input);
                 });
-
-                for (row, multiplicity) in &table {
-                    self.std.inc_virtual_row(self.table_id, row as u64, multiplicity);
-                }
-
-                for (row, multiplicity) in &range_table {
-                    self.std.inc_virtual_row(self.range_table_id, row as u64, multiplicity);
-                }
             },
         );
 
@@ -127,41 +93,63 @@ impl<F: PrimeField64> ArithFullSM<F> {
             arith_trace.row_slice_mut()[padding_offset..num_rows]
                 .par_iter_mut()
                 .for_each(|elem| *elem = t);
-
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 10, 0, 0);
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 26, 0);
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 17, 0);
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 9, 0);
-            range_table_inputs.multi_use_carry_range_check(padding_rows * 7, 0);
-            table_inputs.multi_add_use(
-                padding_rows,
-                padding_opcode,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-            );
-        }
-
-        // TODO: We should compare against cache-then-increase version instead of increase each time...
-
-        for (row, multiplicity) in &table_inputs {
-            self.std.inc_virtual_row(self.table_id, row as u64, multiplicity);
-        }
-
-        for (row, multiplicity) in &range_table_inputs {
-            self.std.inc_virtual_row(self.range_table_id, row as u64, multiplicity);
         }
 
         AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
     }
 
-    pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
-        for row in frops_inputs {
-            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
+    pub fn compute_multiplicity_instance(&self, total_inputs: usize) {
+        // Get the Arithmetic table ID
+        let table_id = self.std.get_virtual_table_id(ArithTableSM::TABLE_ID);
+
+        // Get the Arithmetic Range table ID
+        let range_table_id = self.std.get_virtual_table_id(ArithRangeTableSM::TABLE_ID);
+
+        let num_rows = ArithTrace::<usize>::NUM_ROWS;
+        let padding_offset = total_inputs;
+        let padding_rows: usize = num_rows.saturating_sub(padding_offset);
+
+        if padding_rows > 0 {
+            let padding_opcode = ZiskOp::Muluh.code();
+            self.std.inc_virtual_row(
+                range_table_id,
+                ArithRangeTableHelpers::get_row_chunk_range_check(0, 0) as u64,
+                padding_rows as u64 * 10,
+            );
+            self.std.inc_virtual_row(
+                range_table_id,
+                ArithRangeTableHelpers::get_row_chunk_range_check(26, 0) as u64,
+                padding_rows as u64 * 2,
+            );
+            self.std.inc_virtual_row(
+                range_table_id,
+                ArithRangeTableHelpers::get_row_chunk_range_check(17, 0) as u64,
+                padding_rows as u64 * 2,
+            );
+            self.std.inc_virtual_row(
+                range_table_id,
+                ArithRangeTableHelpers::get_row_chunk_range_check(9, 0) as u64,
+                padding_rows as u64 * 2,
+            );
+            self.std.inc_virtual_row(
+                range_table_id,
+                ArithRangeTableHelpers::get_row_carry_range_check(0) as u64,
+                padding_rows as u64 * 7,
+            );
+            self.std.inc_virtual_row(
+                table_id,
+                ArithTableHelpers::direct_get_row(
+                    padding_opcode,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                ) as u64,
+                padding_rows as u64,
+            );
         }
     }
 
@@ -215,12 +203,109 @@ impl<F: PrimeField64> ArithFullSM<F> {
         }
     }
 
-    fn process_slice(
-        range_table_inputs: &mut ArithRangeTableInputs,
-        table_inputs: &mut ArithTableInputs,
-        aop: &mut ArithOperation,
-        input: &[u64; 4],
-    ) -> ArithTraceRow<F> {
+    pub fn process_multiplicity(std: &Std<F>, input: &[u64; 4]) {
+        // Get the Arithmetic table ID
+        let table_id = std.get_virtual_table_id(ArithTableSM::TABLE_ID);
+
+        // Get the Arithmetic Range table ID
+        let range_table_id = std.get_virtual_table_id(ArithRangeTableSM::TABLE_ID);
+
+        let mut aop = ArithOperation::new();
+
+        let input_data = ExtOperationData::OperationData(*input);
+
+        let opcode = OperationBusData::get_op(&input_data);
+        let a = OperationBusData::get_a(&input_data);
+        let b = OperationBusData::get_b(&input_data);
+
+        aop.calculate(opcode, a, b);
+        for i in [0, 2] {
+            std.inc_virtual_row(
+                range_table_id,
+                ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.a[i]) as u64,
+                1,
+            );
+            std.inc_virtual_row(
+                range_table_id,
+                ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.b[i]) as u64,
+                1,
+            );
+            std.inc_virtual_row(
+                range_table_id,
+                ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.c[i]) as u64,
+                1,
+            );
+            std.inc_virtual_row(
+                range_table_id,
+                ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.d[i]) as u64,
+                1,
+            );
+        }
+        std.inc_virtual_row(
+            range_table_id,
+            ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab, aop.a[3]) as u64,
+            1,
+        );
+        std.inc_virtual_row(
+            range_table_id,
+            ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 26, aop.a[1]) as u64,
+            1,
+        );
+        std.inc_virtual_row(
+            range_table_id,
+            ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 17, aop.b[3]) as u64,
+            1,
+        );
+        std.inc_virtual_row(
+            range_table_id,
+            ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 9, aop.b[1]) as u64,
+            1,
+        );
+
+        std.inc_virtual_row(
+            range_table_id,
+            ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd, aop.c[3]) as u64,
+            1,
+        );
+        std.inc_virtual_row(
+            range_table_id,
+            ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 26, aop.c[1]) as u64,
+            1,
+        );
+        std.inc_virtual_row(
+            range_table_id,
+            ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 17, aop.d[3]) as u64,
+            1,
+        );
+        std.inc_virtual_row(
+            range_table_id,
+            ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 9, aop.d[1]) as u64,
+            1,
+        );
+
+        for i in 0..7 {
+            std.inc_virtual_row(
+                range_table_id,
+                ArithRangeTableHelpers::get_row_carry_range_check(aop.carry[i]) as u64,
+                1,
+            );
+        }
+
+        let row = ArithTableHelpers::direct_get_row(
+            aop.op,
+            aop.na,
+            aop.nb,
+            aop.np,
+            aop.nr,
+            aop.sext,
+            aop.div_by_zero,
+            aop.div_overflow,
+        );
+        std.inc_virtual_row(table_id, row as u64, 1);
+    }
+
+    fn process_slice(input: &[u64; 4]) -> ArithTraceRow<F> {
+        let mut aop = ArithOperation::new();
         let input_data = ExtOperationData::OperationData(*input);
 
         let opcode = OperationBusData::get_op(&input_data);
@@ -234,10 +319,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
             t.b[i] = F::from_u64(aop.b[i]);
             t.c[i] = F::from_u64(aop.c[i]);
             t.d[i] = F::from_u64(aop.d[i]);
-            range_table_inputs.use_chunk_range_check(0, aop.a[i]);
-            range_table_inputs.use_chunk_range_check(0, aop.b[i]);
-            range_table_inputs.use_chunk_range_check(0, aop.c[i]);
-            range_table_inputs.use_chunk_range_check(0, aop.d[i]);
         }
         for i in [1, 3] {
             t.a[i] = F::from_u64(aop.a[i]);
@@ -245,19 +326,9 @@ impl<F: PrimeField64> ArithFullSM<F> {
             t.c[i] = F::from_u64(aop.c[i]);
             t.d[i] = F::from_u64(aop.d[i]);
         }
-        range_table_inputs.use_chunk_range_check(aop.range_ab, aop.a[3]);
-        range_table_inputs.use_chunk_range_check(aop.range_ab + 26, aop.a[1]);
-        range_table_inputs.use_chunk_range_check(aop.range_ab + 17, aop.b[3]);
-        range_table_inputs.use_chunk_range_check(aop.range_ab + 9, aop.b[1]);
-
-        range_table_inputs.use_chunk_range_check(aop.range_cd, aop.c[3]);
-        range_table_inputs.use_chunk_range_check(aop.range_cd + 26, aop.c[1]);
-        range_table_inputs.use_chunk_range_check(aop.range_cd + 17, aop.d[3]);
-        range_table_inputs.use_chunk_range_check(aop.range_cd + 9, aop.d[1]);
 
         for i in 0..7 {
             t.carry[i] = F::from_i64(aop.carry[i]);
-            range_table_inputs.use_carry_range_check(aop.carry[i]);
         }
         t.op = F::from_u8(aop.op);
         t.m32 = F::from_bool(aop.m32);
@@ -280,17 +351,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
         } else {
             F::ZERO
         };
-
-        table_inputs.add_use(
-            aop.op,
-            aop.na,
-            aop.nb,
-            aop.np,
-            aop.nr,
-            aop.sext,
-            aop.div_by_zero,
-            aop.div_overflow,
-        );
 
         t.fab = if aop.na != aop.nb { F::NEG_ONE } else { F::ONE };
         //  na * (1 - 2 * nb);

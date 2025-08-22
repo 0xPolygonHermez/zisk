@@ -2,7 +2,8 @@ use crate::{MemAlignInput, MemAlignSM, MemHelpers};
 use mem_common::MemAlignCheckPoint;
 
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use pil_std_lib::Std;
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
@@ -40,20 +41,31 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
-        let mut total_rows = 0;
-        let inputs: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, collector)| {
-                let collector = collector.as_any().downcast::<MemAlignCollector>().unwrap();
+        let mut total_inputs = 0;
 
-                total_rows += collector.rows;
+        let mut inputs = Vec::with_capacity(collectors.len());
 
-                collector.inputs
-            })
-            .collect();
-        Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize, trace_buffer))
+        for (_, collector) in collectors {
+            let c: Box<MemAlignCollector<F>> = collector.as_any().downcast().unwrap();
+            if !c.calculate_inputs {
+                return None;
+            }
+            total_inputs += c.rows as u32;
+            inputs.push(c.inputs);
+        }
+
+        self.compute_multiplicity_instance(total_inputs as usize);
+        Some(self.mem_align_sm.compute_witness(
+            &inputs,
+            total_inputs as usize,
+            buffer_pool.take_buffer(),
+        ))
+    }
+
+    fn compute_multiplicity_instance(&self, total_inputs: usize) {
+        self.mem_align_sm.compute_multiplicity_instance(total_inputs);
     }
 
     fn check_point(&self) -> &CheckPoint {
@@ -71,32 +83,46 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(MemAlignCollector::new(&self.checkpoint[&chunk_id])))
+    fn build_inputs_collector(
+        &self,
+        std: Arc<Std<F>>,
+        chunk_id: ChunkId,
+    ) -> Option<Box<dyn BusDevice<PayloadType>>> {
+        Some(Box::new(MemAlignCollector::new(std, &self.checkpoint[&chunk_id])))
     }
 }
 
-pub struct MemAlignCollector {
+pub struct MemAlignCollector<F: PrimeField64> {
+    std: Arc<Std<F>>,
     /// Collected inputs
     inputs: Vec<MemAlignInput>,
 
     pending_count: u32,
     skip_pending: u32,
     rows: u32,
+
+    pub calculate_inputs: bool,
+
+    pub calculate_multiplicity: bool,
+    inputs_collected: usize,
 }
 
-impl MemAlignCollector {
-    pub fn new(mem_align_checkpoint: &MemAlignCheckPoint) -> Self {
+impl<F: PrimeField64> MemAlignCollector<F> {
+    pub fn new(std: Arc<Std<F>>, mem_align_checkpoint: &MemAlignCheckPoint) -> Self {
         Self {
+            std,
             inputs: Vec::new(),
             skip_pending: mem_align_checkpoint.skip,
             pending_count: mem_align_checkpoint.count,
             rows: mem_align_checkpoint.rows,
+            calculate_inputs: true,
+            calculate_multiplicity: true,
+            inputs_collected: 0,
         }
     }
 }
 
-impl BusDevice<u64> for MemAlignCollector {
+impl<F: PrimeField64> BusDevice<u64> for MemAlignCollector<F> {
     fn process_data(
         &mut self,
         bus_id: &BusId,
@@ -128,14 +154,22 @@ impl BusDevice<u64> for MemAlignCollector {
         } else {
             MemHelpers::get_read_value(addr, width, mem_values)
         };
-        self.inputs.push(MemAlignInput {
+        let input = MemAlignInput {
             addr,
             is_write,
             width,
             step: MemBusData::get_step(data),
             value,
             mem_values,
-        });
+        };
+
+        if self.calculate_multiplicity {
+            MemAlignSM::process_multiplicity(&self.std, &input);
+        }
+        if self.calculate_inputs {
+            self.inputs.push(input);
+        }
+        self.inputs_collected += 1;
 
         self.pending_count > 0
     }

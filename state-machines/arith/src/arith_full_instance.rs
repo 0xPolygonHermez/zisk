@@ -6,7 +6,8 @@
 
 use crate::{ArithFrops, ArithFullSM};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use pil_std_lib::Std;
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
@@ -79,17 +80,26 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
-        let inputs: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, collector)| {
-                let _collector = collector.as_any().downcast::<ArithInstanceCollector>().unwrap();
-                self.arith_full_sm.compute_frops(&_collector.frops_inputs);
-                _collector.inputs
-            })
-            .collect();
-        Some(self.arith_full_sm.compute_witness(&inputs, trace_buffer))
+        let mut inputs = Vec::with_capacity(collectors.len());
+
+        for (_, collector) in collectors {
+            let c: Box<ArithInstanceCollector<F>> = collector.as_any().downcast().unwrap();
+            if !c.calculate_inputs {
+                return None;
+            }
+            inputs.push(c.inputs);
+        }
+
+        let total_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
+        self.compute_multiplicity_instance(total_inputs);
+
+        Some(self.arith_full_sm.compute_witness(&inputs, buffer_pool.take_buffer()))
+    }
+
+    fn compute_multiplicity_instance(&self, total_inputs: usize) {
+        self.arith_full_sm.compute_multiplicity_instance(total_inputs);
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -115,18 +125,27 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(
+        &self,
+        std: Arc<Std<F>>,
+        chunk_id: ChunkId,
+    ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(ArithInstanceCollector::new(num_ops, collect_skipper, force_execute_to_end)))
+        Some(Box::new(ArithInstanceCollector::new(
+            std,
+            num_ops,
+            collect_skipper,
+            force_execute_to_end,
+        )))
     }
 }
 
 /// The `ArithInstanceCollector` struct represents an input collector for arithmetic state machines.
-pub struct ArithInstanceCollector {
+pub struct ArithInstanceCollector<F: PrimeField64> {
+    std: Arc<Std<F>>,
+
     /// Collected inputs for witness computation.
     inputs: Vec<OperationData<u64>>,
-    /// Collected rows for FROPS
-    frops_inputs: Vec<u32>,
 
     /// The number of operations to collect.
     num_operations: u64,
@@ -136,9 +155,15 @@ pub struct ArithInstanceCollector {
 
     /// Flag to indicate that force to execute to end of chunk
     force_execute_to_end: bool,
+
+    pub calculate_inputs: bool,
+
+    pub calculate_multiplicity: bool,
+
+    inputs_collected: usize,
 }
 
-impl ArithInstanceCollector {
+impl<F: PrimeField64> ArithInstanceCollector<F> {
     /// Creates a new `ArithInstanceCollector`.
     ///
     /// # Arguments
@@ -150,21 +175,25 @@ impl ArithInstanceCollector {
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
     pub fn new(
+        std: Arc<Std<F>>,
         num_operations: u64,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
     ) -> Self {
         Self {
+            std,
             inputs: Vec::new(),
             num_operations,
             collect_skipper,
-            frops_inputs: Vec::new(),
             force_execute_to_end,
+            calculate_inputs: true,
+            calculate_multiplicity: true,
+            inputs_collected: 0,
         }
     }
 }
 
-impl BusDevice<u64> for ArithInstanceCollector {
+impl<F: PrimeField64> BusDevice<u64> for ArithInstanceCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -199,7 +228,8 @@ impl BusDevice<u64> for ArithInstanceCollector {
         }
 
         if frops_row != ArithFrops::NO_FROPS {
-            self.frops_inputs.push(frops_row as u32);
+            let frops_table_id = self.std.get_virtual_table_id(ArithFrops::TABLE_ID);
+            self.std.inc_virtual_row(frops_table_id, frops_row as u64, 1);
             return true;
         }
 
@@ -211,10 +241,16 @@ impl BusDevice<u64> for ArithInstanceCollector {
         let data: ExtOperationData<u64> = data.try_into().expect("Failed to convert data");
 
         if let ExtOperationData::OperationData(data) = data {
-            self.inputs.push(data);
+            if self.calculate_multiplicity {
+                ArithFullSM::process_multiplicity(&self.std, &data);
+            }
+            if self.calculate_inputs {
+                self.inputs.push(data);
+            }
+            self.inputs_collected += 1;
         }
 
-        self.inputs.len() < self.num_operations as usize || self.force_execute_to_end
+        self.inputs_collected < self.num_operations as usize || self.force_execute_to_end
     }
 
     /// Returns the bus IDs associated with this instance.
