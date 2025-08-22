@@ -21,6 +21,7 @@ fi
 # Helper to ensure a command runs successfully
 # If it fails, it prints an error message and waits for user input
 ensure() {
+    echo -e "${YELLOW}▶ Executing:${RESET} $*"    
     if ! "$@"; then
         echo "${RED}❌ Error: command failed -> $*${RESET}" >&2
         press_any_key
