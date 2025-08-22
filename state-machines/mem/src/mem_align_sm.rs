@@ -761,7 +761,11 @@ impl<F: PrimeField64> MemAlignSM<F> {
         }
     }
 
-    pub fn process_multiplicity(std: &Std<F>, input: &MemAlignInput) {
+    pub fn process_multiplicity(
+        std: &Std<F>,
+        range_checks: &mut [u32],
+        input: &MemAlignInput,
+    ) -> usize {
         let table_id = std.get_virtual_table_id(MemAlignRomSM::TABLE_ID);
 
         let addr = input.addr;
@@ -781,8 +785,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
             "Offset={offset} is not allowed. Allowed offsets are {ALLOWED_OFFSETS:?}"
         );
         let offset = offset as usize;
-
-        let range_id = std.get_range_id(0, CHUNK_BITS_MASK as i64, None);
 
         match (input.is_write, offset + width > CHUNK_NUM) {
             (false, false) => {
@@ -804,9 +806,10 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     let read_reg = Self::get_byte(value_read, i, 0);
                     let value_reg = Self::get_byte(value, i, CHUNK_NUM - offset);
 
-                    std.range_check(range_id, read_reg as i64, 1);
-                    std.range_check(range_id, value_reg as i64, 1);
+                    range_checks[read_reg as usize] += 1;
+                    range_checks[value_reg as usize] += 1;
                 }
+                2
             }
             (true, false) => {
                 let value = input.value;
@@ -846,10 +849,11 @@ impl<F: PrimeField64> MemAlignSM<F> {
                         Self::get_byte(value, i, CHUNK_NUM - offset)
                     };
 
-                    std.range_check(range_id, read_reg as i64, 1);
-                    std.range_check(range_id, value_reg as i64, 1);
-                    std.range_check(range_id, write_reg as i64, 1);
+                    range_checks[read_reg as usize] += 1;
+                    range_checks[value_reg as usize] += 1;
+                    range_checks[write_reg as usize] += 1;
                 }
+                3
             }
             (false, true) => {
                 let value = input.value;
@@ -870,10 +874,11 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     let value_reg = Self::get_byte(value, i, CHUNK_NUM - offset);
                     let second_read_reg = Self::get_byte(value_second_read, i, 0);
 
-                    std.range_check(range_id, first_read_reg as i64, 1);
-                    std.range_check(range_id, value_reg as i64, 1);
-                    std.range_check(range_id, second_read_reg as i64, 1);
+                    range_checks[first_read_reg as usize] += 1;
+                    range_checks[value_reg as usize] += 1;
+                    range_checks[second_read_reg as usize] += 1;
                 }
+                3
             }
             (true, true) => {
                 let value = input.value;
@@ -940,12 +945,13 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     };
                     let second_read_reg = Self::get_byte(value_second_read, i, 0);
 
-                    std.range_check(range_id, first_read_reg as i64, 1);
-                    std.range_check(range_id, first_write_reg as i64, 1);
-                    std.range_check(range_id, value_reg as i64, 1);
-                    std.range_check(range_id, second_write_reg as i64, 1);
-                    std.range_check(range_id, second_read_reg as i64, 1);
+                    range_checks[first_read_reg as usize] += 1;
+                    range_checks[first_write_reg as usize] += 1;
+                    range_checks[value_reg as usize] += 1;
+                    range_checks[second_write_reg as usize] += 1;
+                    range_checks[second_read_reg as usize] += 1;
                 }
+                5
             }
         }
     }
@@ -1019,5 +1025,13 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
         let range_id = self.std.get_range_id(0, CHUNK_BITS_MASK as i64, None);
         self.std.range_check(range_id, 0, CHUNK_NUM as u64 * padding_size as u64);
+    }
+
+    pub fn update_std_range_check(std: &Std<F>, reg_range_check: &[u32]) {
+        // Perform the range checks
+        let range_id = std.get_range_id(0, CHUNK_BITS_MASK as i64, None);
+        for (idx, reg) in reg_range_check.iter().enumerate() {
+            std.range_check(range_id, idx as i64, *reg as u64);
+        }
     }
 }

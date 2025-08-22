@@ -76,9 +76,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     }
 
     #[inline(always)]
-    pub fn process_multiplicity(std: &Std<F>, input: &[u64; 2]) {
-        let range_id = std.get_range_id(0, 0xFFFF, None);
-
+    pub fn process_multiplicity(range_checks: &mut [u32], input: &[u64; 2]) {
         // Execute the opcode
         let mut a = input[0];
         let mut b = input[1];
@@ -95,8 +93,8 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             } else {
                 cin = 0
             };
-            std.range_check(range_id, c_chunks[0] as i64, 1);
-            std.range_check(range_id, c_chunks[1] as i64, 1);
+            range_checks[c_chunks[0] as usize] += 1;
+            range_checks[c_chunks[1] as usize] += 1;
             a >>= 32;
             b >>= 32;
         }
@@ -154,5 +152,13 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             0,
             4 * (BinaryAddTrace::<usize>::NUM_ROWS - total_inputs) as u64,
         );
+    }
+
+    pub fn update_std_range_check(std: &Std<F>, reg_range_check: &[u32]) {
+        // Perform the range checks
+        let range_id = std.get_range_id(0, 0xFFFF, None);
+        for (idx, reg) in reg_range_check.iter().enumerate() {
+            std.range_check(range_id, idx as i64, *reg as u64);
+        }
     }
 }

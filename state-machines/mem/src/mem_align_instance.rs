@@ -104,6 +104,9 @@ pub struct MemAlignCollector<F: PrimeField64> {
     pub calculate_inputs: bool,
 
     pub calculate_multiplicity: bool,
+
+    pub range_checks: Vec<u32>,
+
     inputs_collected: usize,
 }
 
@@ -118,6 +121,7 @@ impl<F: PrimeField64> MemAlignCollector<F> {
             calculate_inputs: true,
             calculate_multiplicity: true,
             inputs_collected: 0,
+            range_checks: vec![0; 256],
         }
     }
 }
@@ -164,12 +168,17 @@ impl<F: PrimeField64> BusDevice<u64> for MemAlignCollector<F> {
         };
 
         if self.calculate_multiplicity {
-            MemAlignSM::process_multiplicity(&self.std, &input);
+            self.inputs_collected +=
+                MemAlignSM::<F>::process_multiplicity(&self.std, &mut self.range_checks, &input);
         }
+
         if self.calculate_inputs {
             self.inputs.push(input);
         }
-        self.inputs_collected += 1;
+
+        if self.inputs_collected == self.rows as usize {
+            MemAlignSM::<F>::update_std_range_check(&self.std, &self.range_checks);
+        }
 
         self.pending_count > 0
     }

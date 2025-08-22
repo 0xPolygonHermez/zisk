@@ -28,6 +28,8 @@ pub struct BinaryAddCollector<F: PrimeField64> {
     pub calculate_multiplicity: bool,
 
     inputs_collected: usize,
+
+    range_checks: Vec<u32>,
 }
 
 impl<F: PrimeField64> BinaryAddCollector<F> {
@@ -54,6 +56,7 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
             calculate_inputs: true,
             calculate_multiplicity: true,
             inputs_collected: 0,
+            range_checks: vec![0; 65536],
         }
     }
 }
@@ -112,11 +115,15 @@ impl<F: PrimeField64> BusDevice<u64> for BinaryAddCollector<F> {
 
         let input = [OperationBusData::get_a(&op_data), OperationBusData::get_b(&op_data)];
         if self.calculate_multiplicity {
-            BinaryAddSM::process_multiplicity(&self.std, &input);
+            BinaryAddSM::<F>::process_multiplicity(&mut self.range_checks, &input);
         }
         self.inputs_collected += 1;
         if self.calculate_inputs {
             self.inputs.push(input);
+        }
+
+        if self.inputs_collected == self.num_operations {
+            BinaryAddSM::<F>::update_std_range_check(&self.std, &self.range_checks);
         }
 
         self.inputs_collected < self.num_operations || self.force_execute_to_end
