@@ -27,6 +27,7 @@ pub struct MemModulePlannerConfig {
     pub air_id: usize,
     pub addr_index: usize,
     pub from_addr: u32,
+    pub last_addr: u32,
     pub rows: u32,
     pub consecutive_addr: bool,
 }
@@ -37,7 +38,7 @@ impl MemModulePlanner {
     ) -> Self {
         Self {
             config,
-            last_addr: config.from_addr,
+            last_addr: config.last_addr,
             // first chunk is open
             rows_available: config.rows,
             segments: Vec::new(),

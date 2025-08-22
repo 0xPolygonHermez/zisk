@@ -237,7 +237,7 @@ impl ZiskStats {
             if !is_active {
                 println!(
                     "{}: {}",
-                    format!("Rank {}", local_rank).bright_yellow().bold(),
+                    format!("Rank {local_rank}").bright_yellow().bold(),
                     "Inactive rank, skipping computation.".bright_yellow()
                 );
 
