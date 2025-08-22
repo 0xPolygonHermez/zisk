@@ -6,28 +6,17 @@ use crate::{
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
 
-/// Converts a u8 vector into a u32 vector
-/// The length of the input vector must be a multiple of 4
-pub fn convert_vector(input: &[u8]) -> Vec<u32> {
-    // Check that the input length is a multiple of 4
-    let input_len = input.len();
-    if (input_len & 0x03) != 0 {
-        panic!("convert_vector() found input length={} not a multiple of 4", input.len());
+/// Converts a u8 vector into a u16 vector
+/// The length of the input vector must be a multiple of 2
+pub fn convert_vector(input: &[u8]) -> Vec<u16> {
+    // Check that the input length is a multiple of 2
+    if (input.len() & 0x01) != 0 {
+        panic!("convert_vector() found input length={} not a multiple of 2", input.len());
     }
 
-    // Calculate the output length
-    let output_len = input_len >> 2;
-
-    // Create an empty u32 vector
-    let mut output: Vec<u32> = Vec::<u32>::new();
-
-    // For every output u32 data, calculate it based on input u8 data, in little endian order
-    for i in 0..output_len {
-        output.push(u32::from_le_bytes(input[4 * i..4 * i + 4].try_into().unwrap()));
-    }
-
-    // Return the output u32 vector
-    output
+    // Convert the input vector into a u16 vector
+    // by taking pairs of u8 values and converting them to u16 using little-endian byte order
+    input.chunks_exact(2).map(|chunk| u16::from_le_bytes(chunk.try_into().unwrap())).collect()
 }
 
 /// Returns a human-readable text that describes an a or b registers source
