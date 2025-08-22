@@ -9,7 +9,7 @@ readonly DOCKER_IMAGE="riscv-asm-builder"
 OUTPUT_DIR="elf-output"
 CLEAN_BUILD=0
 VERBOSE=0
-readonly ASSEMBLER_FLAGS="-march=rv64ima"
+readonly ASSEMBLER_FLAGS="-march=rv64imac"
 readonly LINKER_FLAGS="-Ttext=0x80000000"
 
 # Colors for output (if terminal supports it)
