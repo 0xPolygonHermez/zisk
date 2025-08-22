@@ -757,6 +757,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         buffer_pool: &dyn BufferPool<F>,
         _caller_stats_id: u64,
     ) {
+        let calculate_inputs = true;
+        let calculate_multiplicity = true;
+
         let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
         let witness_start_time = Instant::now();
 
@@ -780,15 +783,26 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             _ => unreachable!(),
         };
 
-        let air_instance = main_instance.compute_witness(
-            &self.zisk_rom,
-            min_traces,
-            self.chunk_size,
-            main_instance,
-            buffer_pool,
-        );
+        if calculate_inputs {
+            let air_instance = main_instance.compute_witness(
+                &self.zisk_rom,
+                min_traces,
+                self.chunk_size,
+                main_instance,
+                buffer_pool,
+            );
 
-        pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
+            pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
+        }
+
+        if calculate_multiplicity {
+            main_instance.compute_multiplicities(
+                &self.zisk_rom,
+                min_traces,
+                self.chunk_size,
+                main_instance,
+            );
+        }
 
         #[cfg(feature = "stats")]
         self.stats.lock().unwrap().add_stat(

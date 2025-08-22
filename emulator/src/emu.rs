@@ -2191,36 +2191,46 @@ impl<'a> Emu<'a> {
     }
 
     #[inline(always)]
-    pub fn step_slice_rc(&mut self, reg_trace: &mut EmuRegTrace, step_range_check: &mut [u32]) {
+    pub fn step_slice_rc(
+        &mut self,
+        mem_reads: &[u64],
+        mem_reads_index: &mut usize,
+        reg_trace: &mut EmuRegTrace,
+        step_range_check: &mut [u32],
+    ) {
+        if self.ctx.inst_ctx.pc == 0 {
+            println!("PC=0 CRASH (step:{})", self.ctx.inst_ctx.step);
+        }
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         reg_trace.clear_reg_step_ranges();
 
-        if instruction.a_src == SRC_REG {
-            reg_trace.trace_reg_access(
-                instruction.a_offset_imm0 as usize,
-                self.ctx.inst_ctx.step,
-                0,
-            );
+        self.source_a_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
+        self.source_b_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
+        // If this is a precompiled, get the required input data from mem_reads
+        self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
+        if instruction.input_size > 0 {
+            self.ctx.inst_ctx.precompiled.input_data.clear();
+            self.ctx.inst_ctx.precompiled.output_data.clear();
+            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            for _ in 0..number_of_mem_reads {
+                let mem_read = mem_reads[*mem_reads_index];
+                *mem_reads_index += 1;
+                self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
+            }
         }
 
-        if instruction.b_src == SRC_REG {
-            reg_trace.trace_reg_access(
-                instruction.b_offset_imm0 as usize,
-                self.ctx.inst_ctx.step,
-                1,
-            );
-        }
-
-        if instruction.store == STORE_REG {
-            reg_trace.trace_reg_access(
-                instruction.store_offset as usize,
-                self.ctx.inst_ctx.step,
-                2,
-            );
-        }
+        (instruction.func)(&mut self.ctx.inst_ctx);
+        self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
 
         reg_trace.update_step_range_check(step_range_check);
+
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
+        self.set_pc(instruction);
+        self.ctx.inst_ctx.end = instruction.end;
+
+        self.ctx.inst_ctx.step += 1;
     }
 
     /// Performs one single step of the emulation

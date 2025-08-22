@@ -97,13 +97,6 @@ impl<F: PrimeField64> MainInstance<F> {
 
         let initial_step = mem_helpers.main_step_to_special_mem_step(last_row_previous_segment);
 
-        let final_step = mem_helpers
-            .main_step_to_special_mem_step(((segment_id.as_usize() + 1) * num_rows) as u64 - 1);
-
-        // To reduce memory used, only take memory for the maximum range of mem_step inside the
-        // minimal trace.
-        let max_range = chunk_size * MEM_STEPS_BY_MAIN_STEP;
-
         // We know each register's previous step, but only by instance. We don't have this
         // information by chunk, so we need to store in the EmuRegTrace the location of the
         // first mem_step register is used in the chunk and information about the last step
@@ -115,7 +108,6 @@ impl<F: PrimeField64> MainInstance<F> {
             .enumerate()
             .take(segment_min_traces.len())
             .map(|(chunk_id, chunk)| {
-                let mut step_range_check = vec![0; max_range as usize];
                 let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
                 let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
                 let (pc, regs) = Self::fill_partial_trace(
@@ -124,29 +116,22 @@ impl<F: PrimeField64> MainInstance<F> {
                     &segment_min_traces[chunk_id],
                     chunk_size,
                     &mut reg_trace,
-                    &mut step_range_check,
                     chunk_id == (end_idx - start_idx - 1),
                 );
-                (pc, regs, reg_trace, step_range_check)
+                (pc, regs, reg_trace)
             })
-            .collect::<Vec<(u64, Vec<u64>, EmuRegTrace, Vec<u32>)>>();
+            .collect::<Vec<(u64, Vec<u64>, EmuRegTrace)>>();
         let last_result = fill_trace_outputs.last().unwrap();
         let next_pc = last_result.0;
-
-        let mut step_range_check: Vec<u32> = (0..max_range as usize)
-            .into_par_iter()
-            .map(|i| fill_trace_outputs.iter().map(|(_, _, _, local)| local[i]).sum())
-            .collect();
 
         // In the range checks are values too large to store in steps_range_check, but there
         // are only a few values that exceed this limit, for this reason, are stored in a vector
 
         let mut reg_steps = [initial_step; REGS_IN_MAIN];
-        let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk(
+        Self::complete_trace_with_initial_reg_steps_per_chunk(
             num_rows,
             &fill_trace_outputs,
             &mut main_trace,
-            &mut step_range_check,
             &mut reg_steps,
         );
 
@@ -177,19 +162,109 @@ impl<F: PrimeField64> MainInstance<F> {
         air_values.segment_previous_c = prev_segment_last_c;
         air_values.segment_last_c = last_row.c;
 
-        Self::update_reg_airvalues(
-            &mut air_values,
+        Self::update_reg_airvalues(&mut air_values, &last_result.1, &reg_steps);
+
+        // Generate and add the AIR instance
+        let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
+        AirInstance::new_from_trace(from_trace)
+    }
+
+    pub fn compute_multiplicities(
+        &self,
+        zisk_rom: &ZiskRom,
+        min_traces: &[EmuTrace],
+        chunk_size: u64,
+        main_instance: &MainInstance<F>,
+    ) {
+        let segment_id = main_instance.ictx.plan.segment_id.unwrap();
+
+        // Determine the number of minimal traces per segment
+        let num_within = MainTrace::<F>::NUM_ROWS / chunk_size as usize;
+        let num_rows = MainTrace::<F>::NUM_ROWS;
+
+        // Determine trace slice for the current segment
+        let start_idx = segment_id.as_usize() * num_within;
+        let end_idx = (start_idx + num_within).min(min_traces.len());
+        let segment_min_traces = &min_traces[start_idx..end_idx];
+
+        // Calculate total filled rows
+        let filled_rows: usize =
+            segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
+
+        tracing::info!(
+            "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
+            segment_id,
+            filled_rows,
+            num_rows,
+            filled_rows as f64 / num_rows as f64 * 100.0
+        );
+
+        // Calculate final_step of instance, last mem slot of last row. The initial_step is 0 for the
+        // first segment, for the rest is the final_step of the previous segment
+
+        let last_row_previous_segment =
+            if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
+
+        let mem_helpers = MemHelpers::new(chunk_size);
+
+        let initial_step = mem_helpers.main_step_to_special_mem_step(last_row_previous_segment);
+
+        let final_step = mem_helpers
+            .main_step_to_special_mem_step(((segment_id.as_usize() + 1) * num_rows) as u64 - 1);
+
+        // To reduce memory used, only take memory for the maximum range of mem_step inside the
+        // minimal trace.
+        let max_range = chunk_size * MEM_STEPS_BY_MAIN_STEP;
+
+        // We know each register's previous step, but only by instance. We don't have this
+        // information by chunk, so we need to store in the EmuRegTrace the location of the
+        // first mem_step register is used in the chunk and information about the last step
+        // where the register is used. The register's last steps of one chunk are the initial
+        // steps of the next chunk. In the end, we need to update with the correct values.
+
+        let fill_trace_outputs = (0..segment_min_traces.len())
+            .into_par_iter()
+            .map(|chunk_id| {
+                let mut step_range_check = vec![0; max_range as usize];
+                let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
+                let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
+                let regs = Self::fill_rc(
+                    zisk_rom,
+                    &segment_min_traces[chunk_id],
+                    chunk_size,
+                    &mut reg_trace,
+                    &mut step_range_check,
+                    chunk_id == (end_idx - start_idx - 1),
+                );
+                (regs, reg_trace, step_range_check)
+            })
+            .collect::<Vec<(Vec<u64>, EmuRegTrace, Vec<u32>)>>();
+        let last_result = fill_trace_outputs.last().unwrap();
+
+        let mut step_range_check: Vec<u32> = (0..max_range as usize)
+            .into_par_iter()
+            .map(|i| fill_trace_outputs.iter().map(|(_, _, rc)| rc[i]).sum())
+            .collect();
+
+        // In the range checks are values too large to store in steps_range_check, but there
+        // are only a few values that exceed this limit, for this reason, are stored in a vector
+
+        let mut reg_steps = [initial_step; REGS_IN_MAIN];
+        let mut large_range_checks = Self::range_checks_with_initial_reg_steps_per_chunk(
+            &fill_trace_outputs,
+            &mut step_range_check,
+            &mut reg_steps,
+        );
+
+        Self::update_reg_steps_with_last_chunk(&last_result.1, &mut reg_steps);
+
+        Self::update_reg_airvalues_rc(
             final_step,
-            &last_result.1,
             &reg_steps,
             &mut step_range_check,
             &mut large_range_checks,
         );
         self.update_std_range_checks(step_range_check, &large_range_checks);
-
-        // Generate and add the AIR instance
-        let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
-        AirInstance::new_from_trace(from_trace)
     }
 
     /// Fills a partial trace in the main trace buffer based on the minimal trace.
@@ -208,7 +283,6 @@ impl<F: PrimeField64> MainInstance<F> {
         min_trace: &EmuTrace,
         chunk_size: u64,
         reg_trace: &mut EmuRegTrace,
-        step_range_check: &mut [u32],
         last_reg_values: bool,
     ) -> (u64, Vec<u64>) {
         // Initialize the emulator with the start state of the emu trace
@@ -220,7 +294,7 @@ impl<F: PrimeField64> MainInstance<F> {
                 &min_trace.mem_reads,
                 &mut mem_reads_index,
                 reg_trace,
-                Some(step_range_check),
+                None,
             );
         }
 
@@ -237,25 +311,70 @@ impl<F: PrimeField64> MainInstance<F> {
     fn fill_rc(
         zisk_rom: &ZiskRom,
         min_trace: &EmuTrace,
+        chunk_size: u64,
         reg_trace: &mut EmuRegTrace,
         step_range_check: &mut [u32],
-    ) {
+        last_reg_values: bool,
+    ) -> Vec<u64> {
         // Initialize the emulator with the start state of the emu trace
-        let mut emu = Emu::from_emu_trace_start_one(zisk_rom, &min_trace.start_state);
+        let mut emu = Emu::from_emu_trace_start(zisk_rom, chunk_size, &min_trace.start_state);
 
-        emu.step_slice_rc(reg_trace, step_range_check);
+        let mut mem_reads_index: usize = 0;
+
+        for _ in 0..min_trace.steps {
+            emu.step_slice_rc(
+                &min_trace.mem_reads,
+                &mut mem_reads_index,
+                reg_trace,
+                step_range_check,
+            );
+        }
+
+        if last_reg_values {
+            emu.ctx.inst_ctx.regs[REGS_IN_MAIN_FROM..=REGS_IN_MAIN_TO].to_vec()
+        } else {
+            vec![]
+        }
     }
 
-    fn complete_trace_with_initial_reg_steps_per_chunk(
-        num_rows: usize,
-        fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
-        main_trace: &mut MainTrace<F>,
+    fn range_checks_with_initial_reg_steps_per_chunk(
+        fill_trace_outputs: &[(Vec<u64>, EmuRegTrace, Vec<u32>)],
         step_range_check: &mut [u32],
         reg_steps: &mut [u64; REGS_IN_MAIN],
     ) -> Vec<u32> {
         let mut large_range_checks: Vec<u32> = vec![];
         let max_range = step_range_check.len() as u64;
-        for (index, (_, _, reg_trace, _)) in fill_trace_outputs.iter().enumerate().skip(1) {
+        for (index, (_, reg_trace, _)) in fill_trace_outputs.iter().enumerate().skip(1) {
+            #[allow(clippy::needless_range_loop)]
+            for reg_index in 0..REGS_IN_MAIN {
+                let reg_prev_mem_step = if fill_trace_outputs[index - 1].1.reg_steps[reg_index] == 0
+                {
+                    reg_steps[reg_index]
+                } else {
+                    fill_trace_outputs[index - 1].1.reg_steps[reg_index]
+                };
+                reg_steps[reg_index] = reg_prev_mem_step;
+                if reg_trace.first_step_uses[reg_index].is_some() {
+                    let mem_step = reg_trace.first_step_uses[reg_index].unwrap();
+                    let range = mem_step - reg_prev_mem_step - 1;
+                    if range >= max_range {
+                        large_range_checks.push(range as u32);
+                    } else {
+                        step_range_check[range as usize] += 1;
+                    }
+                }
+            }
+        }
+        large_range_checks
+    }
+
+    fn complete_trace_with_initial_reg_steps_per_chunk(
+        num_rows: usize,
+        fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace)],
+        main_trace: &mut MainTrace<F>,
+        reg_steps: &mut [u64; REGS_IN_MAIN],
+    ) {
+        for (index, (_, _, reg_trace)) in fill_trace_outputs.iter().enumerate().skip(1) {
             #[allow(clippy::needless_range_loop)]
             for reg_index in 0..REGS_IN_MAIN {
                 let reg_prev_mem_step = if fill_trace_outputs[index - 1].2.reg_steps[reg_index] == 0
@@ -269,12 +388,6 @@ impl<F: PrimeField64> MainInstance<F> {
                     let mem_step = reg_trace.first_step_uses[reg_index].unwrap();
                     let slot = MemHelpers::mem_step_to_slot(mem_step);
                     let row = MemHelpers::mem_step_to_row(mem_step) % num_rows;
-                    let range = mem_step - reg_prev_mem_step - 1;
-                    if range >= max_range {
-                        large_range_checks.push(range as u32);
-                    } else {
-                        step_range_check[range as usize] += 1;
-                    }
                     match slot {
                         0 => {
                             main_trace.row_slice_mut()[row].a_reg_prev_mem_step =
@@ -294,7 +407,6 @@ impl<F: PrimeField64> MainInstance<F> {
                 }
             }
         }
-        large_range_checks
     }
     fn update_reg_steps_with_last_chunk(
         last_emu_reg_trace: &EmuRegTrace,
@@ -312,18 +424,25 @@ impl<F: PrimeField64> MainInstance<F> {
     }
     fn update_reg_airvalues(
         air_values: &mut MainAirValues<'_, F>,
-        final_step: u64,
         last_reg_values: &[u64],
+        reg_steps: &[u64; REGS_IN_MAIN],
+    ) {
+        for ireg in 0..REGS_IN_MAIN {
+            let reg_value = last_reg_values[ireg];
+            let values = [F::from_u32(reg_value as u32), F::from_u32((reg_value >> 32) as u32)];
+            air_values.last_reg_value[ireg] = values;
+            air_values.last_reg_mem_step[ireg] = F::from_u64(reg_steps[ireg]);
+        }
+    }
+
+    fn update_reg_airvalues_rc(
+        final_step: u64,
         reg_steps: &[u64; REGS_IN_MAIN],
         step_range_check: &mut [u32],
         large_range_checks: &mut Vec<u32>,
     ) {
         let max_range = step_range_check.len() as u64;
         for ireg in 0..REGS_IN_MAIN {
-            let reg_value = last_reg_values[ireg];
-            let values = [F::from_u32(reg_value as u32), F::from_u32((reg_value >> 32) as u32)];
-            air_values.last_reg_value[ireg] = values;
-            air_values.last_reg_mem_step[ireg] = F::from_u64(reg_steps[ireg]);
             let range = (final_step - reg_steps[ireg] - 1) as usize;
             if range >= max_range as usize {
                 large_range_checks.push(range as u32);
@@ -332,6 +451,7 @@ impl<F: PrimeField64> MainInstance<F> {
             }
         }
     }
+
     fn update_std_range_checks(&self, step_range_check: Vec<u32>, large_range_checks: &[u32]) {
         let range_id = self.std.get_range_id(0, MEM_REGS_MAX_DIFF as i64, None);
         self.std.range_checks(range_id, step_range_check);
