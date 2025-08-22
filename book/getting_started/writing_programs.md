@@ -248,13 +248,14 @@ cargo-zisk clean
 Before generating a proof (which can take some time), you can verify that all constraints are satisfied:
 
 ```bash
-cargo-zisk verify-constraints -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey
+LIB_EXT=$([[ "$(uname)" == "Darwin" ]] && echo "dylib" || echo "so")
+cargo-zisk verify-constraints -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.$LIB_EXT -k $HOME/.zisk/provingKey
 ```
 In this command:
 
 * `-e` (`--elf`) specifies the ELF file location.
 * `-i` (`--input`) specifies the input file location.
-* `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.so`.
+* `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.$LIB_EXT`.
 * `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
 
 If everything is correct, you will see an output similar to:
@@ -270,13 +271,14 @@ If everything is correct, you will see an output similar to:
 To generate a proof, run the following command:
 
 ```bash
-cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+LIB_EXT=$([[ "$(uname)" == "Darwin" ]] && echo "dylib" || echo "so")
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.$LIB_EXT -k $HOME/.zisk/provingKey -o proof -a -y
 ```
 In this command:
 
 * `-e` (`--elf`) specifies the ELF file location.
 * `-i` (`--input`) specifies the input file location.
-* `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.so`.
+* `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.$LIB_EXT`.
 * `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
 * `-o` (`--output`) determines the output directory (in this example `proof`).
 * `-a` (`--aggregation`) indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.
@@ -343,5 +345,4 @@ cargo-zisk verify -p ./proof/vadcop_final_proof.bin -s $HOME/.zisk/provingKey/zi
 In this command:
 
 * `-p` (`--proof`) specifies the final proof file generated with cargo-zisk prove.
-* `-u` (`--public-inputs`) provides the path to the public inputs associated with the proof.
 * The remaining flags specify the files required for verification; they are optional, set by default to the files found in the `$HOME/.zisk` directory.

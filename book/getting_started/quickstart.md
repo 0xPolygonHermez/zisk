@@ -6,11 +6,12 @@ In this guide, you will learn how to install ZisK, create a simple program and r
 
 ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below).
 
+//TODO:
 >**Note:** Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
 
 **Ubuntu 22.04 or higher** is required.
 
-**macOS 14 or higher** is required.
+**macOS 14 or higher** with [Xcode](https://developer.apple.com/xcode/) installed is required.
 
 1. Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
 
