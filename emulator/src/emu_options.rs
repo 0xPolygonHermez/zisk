@@ -121,5 +121,6 @@ impl EmuOptions {
             && !self.tracerv
             && !self.stats
             && !self.generate_minimal_traces
+            && !self.log_output
     }
 }

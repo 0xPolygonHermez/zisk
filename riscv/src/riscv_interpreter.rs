@@ -251,22 +251,96 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
             // Decode the rest of instruction fields based on the instruction type
 
             if i.t == "CR" {
-                // Format Meaning              15 14 13 12  11 10 9 8 7 6 5 4 3 2 1 0
-                // CR     Register             funct4       rd/rs1      rs2       op
-                i.rd = ((inst >> 7) & 0x1F) as u32;
-                i.rs1 = i.rd;
+                // Format Meaning              |15 14 13 12  |11 10 9 8 7 |6 5 4 3 2 |1 0|
+                // CR     Register             |funct4       |rd/rs1      |rs2       |op |
+                i.rs1 = ((inst >> 7) & 0x1F) as u32;
                 i.rs2 = ((inst >> 2) & 0x1F) as u32;
+
+                if inst_name == "c.jr" {
+                    i.rd = 0;
+                    if i.rs2 != 0 {
+                        panic!("Invalid use of rs2!=0 in c.jr at index={}", code_index);
+                    }
+                } else if inst_name == "c.jalr" {
+                    i.rd = 1;
+                } else if inst_name == "c.mv" {
+                    i.rd = i.rs1;
+                    i.rs1 = 0;
+                } else {
+                    i.rd = i.rs1;
+                }
             } else if i.t == "CI" {
-                // Format Meaning              15 14 13 12  11 10 9 8 7 6 5 4 3 2 1 0
-                // CI     Immediate            funct3   imm rd/rs1      imm       op
-                let imm5 = ((inst >> 12) & 0x1) as u32;
-                let imm4_0 = ((inst >> 2) & 0x1F) as u32;
-                i.imm = signext((imm5 << 5) | imm4_0, 6);
+                // Format Meaning              |15 14 13 |12  |11 10 9 8 7 |6 5 4 3 2 |1 0|
+                // CI     Immediate            |funct3   |imm |rd/rs1      |imm       |op |
                 i.rd = ((inst >> 7) & 0x1F) as u32;
                 i.rs1 = i.rd;
+                if inst_name == "c.addi16sp" {
+                    let imm9 = ((inst >> 12) & 0x1) as u32;
+                    let imm4 = ((inst >> 6) & 0x1) as u32;
+                    let imm6 = ((inst >> 5) & 0x1) as u32;
+                    let imm8_7 = ((inst >> 3) & 0x3) as u32;
+                    let imm5 = ((inst >> 2) & 0x1) as u32;
+                    let imm = (imm9 << 9) | (imm8_7 << 7) | (imm6 << 6) | (imm5 << 5) | (imm4 << 4);
+                    i.imm = signext(imm, 10);
+                } else if (inst_name == "c.addi") || (inst_name == "c.addiw") {
+                    let imm5 = ((inst >> 12) & 0x1) as u32;
+                    let imm4_0 = ((inst >> 2) & 0x1F) as u32;
+                    let imm = (imm5 << 5) | imm4_0;
+                    i.imm = signext(imm, 6);
+                    if i.rd == 0 {
+                        panic!("Invalid use of rd=0 c.addi at index={}", code_index);
+                    }
+                } else if inst_name == "c.li" {
+                    if i.rd == 0 {
+                        // This is a hint and must not be executed
+                        i.inst = "c.nop".to_string(); // Change to c.nop
+                    } else {
+                        let imm5 = ((inst >> 12) & 0x1) as u32;
+                        let imm4_0 = ((inst >> 2) & 0x1F) as u32;
+                        let imm = (imm5 << 5) | imm4_0;
+                        i.imm = signext(imm, 6);
+                        i.rs1 = 0;
+                    }
+                } else if inst_name == "c.lui" {
+                    let imm17 = ((inst >> 12) & 0x1) as u32;
+                    let imm16_12 = ((inst >> 2) & 0x1F) as u32;
+                    i.imm = signext((imm17 << 17) | (imm16_12 << 12), 18);
+                    if i.rd == 0 {
+                        // This is a hint and must not be executed
+                        i.inst = "c.nop".to_string(); // Change to c.nop
+                    }
+                    if i.rd == 2 {
+                        panic!(
+                            "Invalid use of rd=2 in c.lui at index={} inst=0x{:x}",
+                            code_index, inst
+                        );
+                    }
+                } else if inst_name == "c.ldsp" {
+                    let imm5 = ((inst >> 12) & 0x1) as u32;
+                    let imm4_3 = ((inst >> 5) & 0x3) as u32;
+                    let imm8_6 = ((inst >> 2) & 0x7) as u32;
+                    i.imm = ((imm8_6 << 6) | (imm5 << 5) | (imm4_3 << 3)) as i32;
+                    if i.rd == 0 {
+                        panic!("Invalid use of rd=0 in c.ldsp at index={}", code_index);
+                    }
+                    i.rs1 = 2; // x2 is always the base pointer for LDSP instructions
+                } else if inst_name == "c.lwsp" {
+                    let imm5 = ((inst >> 12) & 0x1) as u32;
+                    let imm4_2 = ((inst >> 4) & 0x7) as u32;
+                    let imm7_6 = ((inst >> 2) & 0x3) as u32;
+                    i.imm = ((imm7_6 << 6) | (imm5 << 5) | (imm4_2 << 2)) as i32;
+                    if i.rd == 0 {
+                        panic!("Invalid use of rd=0 in c.lwsp at index={}", code_index);
+                    }
+                    i.rs1 = 2; // x2 is always the base pointer for LWSP instructions
+                } else {
+                    let imm5 = ((inst >> 12) & 0x1) as u32;
+                    let imm4_0 = ((inst >> 2) & 0x1F) as u32;
+                    i.imm = ((imm5 << 5) | imm4_0) as i32;
+                }
             } else if i.t == "CSS" {
-                // Format Meaning              15 14 13 12  11 10 9 8 7 6 5 4 3 2 1 0
-                // CSS    Stack-relative Store funct3   imm             rs2       op
+                // Format Meaning              |15 14 13 |12  11 10 9 8 7 |6 5 4 3 2 |1 0|
+                // CSS    Stack-relative Store |funct3   |imm             |rs2       |op |
 
                 // imm format depends on func3:
                 // 101 imm[5:3|8:6] rs2 10 C.FSDSP (RV32/64)
@@ -278,12 +352,15 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                         let imm5_3 = ((inst >> 10) & 0x7) as u32;
                         let imm8_6 = ((inst >> 7) & 0x7) as u32;
                         i.imm = ((imm8_6 << 6) | (imm5_3 << 3)) as i32;
+                        i.rs1 = 2; // x2 is always the base pointer for CSS instructions
                     }
                     6 => {
                         // C.SWSP
                         let imm5_2 = ((inst >> 9) & 0xF) as u32;
                         let imm7_6 = ((inst >> 7) & 0x3) as u32;
                         i.imm = ((imm7_6 << 6) | (imm5_2 << 2)) as i32;
+                        //i.imm <<= 2; // multiply by 4
+                        i.rs1 = 2; // x2 is always the base pointer for CSS instructions
                     }
                     _ => panic!(
                         "Invalid funct3={} for CSS at index={}",
@@ -294,56 +371,96 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
 
                 i.rs2 = ((inst >> 2) & 0x1F) as u32;
             } else if i.t == "CIW" {
-                // Format Meaning              15 14 13 12  11 10 9 8 7 6 5 4 3 2 1 0
-                // CIW    Wide Immediate       funct3   imm                 rd′   op
+                // Format Meaning              |15 14 13 |12  11 10 9 8 7 6 5 |4 3 2 |1 0|
+                // CIW    Wide Immediate       |funct3   |imm                 |rd′   |op |
                 // Immediate is in format zimm[5:4|9:6|2|3]
                 let imm5_4 = ((inst >> 11) & 0x3) as u32;
-                let imm9_6 = ((inst >> 7) & 0x4) as u32;
+                let imm9_6 = ((inst >> 7) & 0xF) as u32;
                 let imm2 = ((inst >> 6) & 0x1) as u32;
-                let imm3 = ((inst >> 4) & 0x1) as u32;
+                let imm3 = ((inst >> 5) & 0x1) as u32;
                 i.imm = ((imm9_6 << 6) | (imm5_4 << 4) | (imm3 << 3) | (imm2 << 2)) as i32;
 
-                i.rd = Rvd::convert_compressed_reg_index(((inst >> 2) & 0xF) as u32);
+                i.rd = Rvd::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
                 i.rs1 = 2; // x2 is always the source register for CIW instructions
             } else if i.t == "CL" {
-                // Format Meaning              15 14 13 12  11 10 9 8 7 6 5 4 3 2 1 0
-                // CL     Load                 funct3   imm       rs1′  imm rd′   op
-                // Immediate is in format imm[5:3], imm[7:6]
-                let imm5_3 = ((inst >> 10) & 0x7) as u32;
-                let imm7_6 = ((inst >> 5) & 0x3) as u32;
-                i.imm = ((imm7_6 << 6) | (imm5_3 << 3)) as i32;
+                // Format Meaning              |15 14 13 |12  11 10 |9 8 7 |6 5 |4 3 2 |1 0|
+                // CL     Load                 |funct3   |imm       |rs1′  |imm |rd′   |op |
+                if inst_name == "c.lw" {
+                    // Immediate is in format imm[5:3], imm[2|6]
+                    let imm5_3 = ((inst >> 10) & 0x7) as u32;
+                    let imm2 = ((inst >> 6) & 0x1) as u32;
+                    let imm6 = ((inst >> 5) & 0x1) as u32;
+                    i.imm = ((imm6 << 6) | (imm5_3 << 3) | (imm2 << 2)) as i32;
+                } else {
+                    // Immediate is in format imm[5:3], imm[7:6]
+                    let imm5_3 = ((inst >> 10) & 0x7) as u32;
+                    let imm7_6 = ((inst >> 5) & 0x3) as u32;
+                    i.imm = ((imm7_6 << 6) | (imm5_3 << 3)) as i32;
+                }
                 i.rd = Rvd::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
-                i.rs1 = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x3) as u32);
+                i.rs1 = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
             } else if i.t == "CS" {
-                // Format Meaning              15 14 13 12  11 10 9 8 7 6 5 4 3 2 1 0
-                // CS     Store                funct3   imm       rs1′  imm rs2′  op
-                // Immediate is in format imm[5:3], imm[7:6]
-                let imm5_3 = ((inst >> 10) & 0x7) as u32;
-                let imm7_6 = ((inst >> 5) & 0x3) as u32;
-                i.imm = ((imm7_6 << 6) | (imm5_3 << 3)) as i32;
-                i.rs1 = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x3) as u32);
-                i.rs2 = Rvd::convert_compressed_reg_index(((inst >> 2) & 0x3) as u32);
+                // Format Meaning              |15 14 13 |12  11 10 |9 8 7 |6 5 |4 3 2 |1 0|
+                // CS     Store                |funct3   |imm       |rs1′  |imm |rs2′  |op |
+                if inst_name == "c.sw" {
+                    // Immediate is in format imm[5:3], imm[2|6]
+                    let imm5_3 = ((inst >> 10) & 0x7) as u32;
+                    let imm2 = ((inst >> 6) & 0x1) as u32;
+                    let imm6 = ((inst >> 5) & 0x1) as u32;
+                    i.imm = ((imm6 << 6) | (imm5_3 << 3) | (imm2 << 2)) as i32;
+                } else {
+                    // Immediate is in format imm[5:3], imm[7:6]
+                    let imm5_3 = ((inst >> 10) & 0x7) as u32;
+                    let imm7_6 = ((inst >> 5) & 0x3) as u32;
+                    i.imm = ((imm7_6 << 6) | (imm5_3 << 3)) as i32;
+                }
+                i.rs1 = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+                i.rs2 = Rvd::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
+            } else if i.t == "CA" {
+                // Format Meaning              |15 14 13 12  11 10 |9 8 7   |6 5 |4 3 2 |1 0|
+                // CA     Arithmetic           |funct6             |rd'/rs1'|fun2|rs2′  |op |
+                i.rd = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+                i.rs1 = i.rd;
+                i.rs2 = Rvd::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
             } else if i.t == "CB" {
-                // Format Meaning              15 14 13 12  11 10 9 8 7 6 5 4 3 2 1 0
-                // CB     Branch               funct3   offset    rs1′  offset    op
-                // Offset is in format offset[8|4:3] src offset[7:6|2:1|5]
-                let offset8 = ((inst >> 12) & 0x1) as u32;
-                let offset4_3 = ((inst >> 10) & 0x3) as u32;
-                let offset7_6 = ((inst >> 5) & 0x3) as u32;
-                let offset2_1 = ((inst >> 3) & 0x3) as u32;
-                let offset5 = ((inst >> 2) & 0x1) as u32;
-                i.imm = signext(
-                    (offset8 << 8)
+                // Format Meaning              |15 14 13 |12  11 10 |9 8 7 |6 5 4 3 2 |1 0|
+                // CB     Branch               |funct3   |offset    |rs1′  |offset    |op |
+                // Offset is in format offset[8|4:3] and offset[7:6|2:1|5]
+                if inst_name == "c.andi" {
+                    let imm5 = ((inst >> 12) & 0x1) as u32;
+                    let imm4_0 = ((inst >> 2) & 0x1F) as u32;
+                    i.imm = signext((imm5 << 5) | imm4_0, 6);
+                    i.rd = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+                    i.rs1 = i.rd;
+                    if i.rd == 0 {
+                        panic!("Invalid use of rd=0 in c.andi at index={}", code_index);
+                    }
+                } else if inst_name == "c.srli" {
+                    let imm5 = ((inst >> 12) & 0x1) as u32;
+                    let imm4_0 = ((inst >> 2) & 0x1F) as u32;
+                    i.imm = ((imm5 << 5) | imm4_0) as i32;
+                    i.rd = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+                    i.rs1 = i.rd;
+                    if i.rd == 0 {
+                        panic!("Invalid use of rd=0 in c.srli at index={}", code_index);
+                    }
+                } else {
+                    let offset8 = ((inst >> 12) & 0x1) as u32;
+                    let offset4_3 = ((inst >> 10) & 0x3) as u32;
+                    let offset7_6 = ((inst >> 5) & 0x3) as u32;
+                    let offset2_1 = ((inst >> 3) & 0x3) as u32;
+                    let offset5 = ((inst >> 2) & 0x1) as u32;
+                    let offset = (offset8 << 8)
                         | (offset7_6 << 6)
                         | (offset5 << 5)
                         | (offset4_3 << 3)
-                        | (offset2_1 << 1),
-                    9,
-                );
-                i.rs1 = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x3) as u32);
+                        | (offset2_1 << 1);
+                    i.imm = signext(offset, 9);
+                    i.rs1 = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+                }
             } else if i.t == "CJ" {
-                // Format Meaning              15 14 13 12  11 10 9 8 7 6 5 4 3 2 1 0
-                // CJ     Jump                 funct3   jump target               op
+                // Format Meaning              |15 14 13 |12  11 10 9 8 7 6 5 4 3 2 |1 0|
+                // CJ     Jump                 |funct3   |jump target               |op |
                 // Offset format is offset[11|4|9:8|10|6|7|3:1|5]
                 let offset11 = ((inst >> 12) & 0x1) as u32;
                 let offset4 = ((inst >> 11) & 0x1) as u32;
@@ -351,19 +468,17 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                 let offset10 = ((inst >> 8) & 0x1) as u32;
                 let offset6 = ((inst >> 7) & 0x1) as u32;
                 let offset7 = ((inst >> 6) & 0x1) as u32;
-                let offset3_1 = ((inst >> 3) & 0x3) as u32;
+                let offset3_1 = ((inst >> 3) & 0x7) as u32;
                 let offset5 = ((inst >> 2) & 0x1) as u32;
-                i.imm = signext(
-                    (offset11 << 11)
-                        | (offset10 << 10)
-                        | (offset9_8 << 8)
-                        | (offset7 << 7)
-                        | (offset6 << 6)
-                        | (offset4 << 4)
-                        | (offset3_1 << 1)
-                        | offset5,
-                    12,
-                );
+                let offset = (offset11 << 11)
+                    | (offset10 << 10)
+                    | (offset9_8 << 8)
+                    | (offset7 << 7)
+                    | (offset6 << 6)
+                    | (offset5 << 5)
+                    | (offset4 << 4)
+                    | (offset3_1 << 1);
+                i.imm = signext(offset, 12);
             } else {
                 panic!("Invalid i.t={} at index={}", i.t, code_index);
             }
