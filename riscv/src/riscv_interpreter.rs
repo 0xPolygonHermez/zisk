@@ -266,6 +266,10 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                 } else if inst_name == "c.mv" {
                     i.rd = i.rs1;
                     i.rs1 = 0;
+                    if i.rd == 0 {
+                        // This is a hint and must not be executed
+                        i.inst = "c.nop".to_string(); // Change to c.nop
+                    }
                 } else {
                     i.rd = i.rs1;
                 }
@@ -288,7 +292,8 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                     let imm = (imm5 << 5) | imm4_0;
                     i.imm = signext(imm, 6);
                     if i.rd == 0 {
-                        panic!("Invalid use of rd=0 c.addi at index={}", code_index);
+                        // This is a hint and must not be executed
+                        i.inst = "c.nop".to_string(); // Change to c.nop
                     }
                 } else if inst_name == "c.li" {
                     if i.rd == 0 {
@@ -359,7 +364,6 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                         let imm5_2 = ((inst >> 9) & 0xF) as u32;
                         let imm7_6 = ((inst >> 7) & 0x3) as u32;
                         i.imm = ((imm7_6 << 6) | (imm5_2 << 2)) as i32;
-                        //i.imm <<= 2; // multiply by 4
                         i.rs1 = 2; // x2 is always the base pointer for CSS instructions
                     }
                     _ => panic!(
@@ -442,7 +446,8 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                     i.rd = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
                     i.rs1 = i.rd;
                     if i.rd == 0 {
-                        panic!("Invalid use of rd=0 in c.srli at index={}", code_index);
+                        // This is a hint and must not be executed
+                        i.inst = "c.nop".to_string(); // Change to c.nop
                     }
                 } else {
                     let offset8 = ((inst >> 12) & 0x1) as u32;

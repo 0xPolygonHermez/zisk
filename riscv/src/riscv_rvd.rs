@@ -377,6 +377,7 @@ impl Rvd {
 
     // Source: https://www2.eecs.berkeley.edu/Pubs/TechRpts/2015/EECS-2015-209.pdf
 
+    // RVC Instruction Formats:
     // Format Meaning              15 14 13 12  11 10 9 8 7 6 5 4 3 2 1 0
     // CR     Register             funct4       rd/rs1      rs2       op
     // CI     Immediate            funct3   imm rd/rs1      imm       op
@@ -401,14 +402,14 @@ impl Rvd {
                     // Check bits 15 to 13 = funct3
                     0x0 => ("CIW", "c.addi4spn"), // Mapped to addi: addi rd′, x2, nzuimm[9:2]
                     0x1 => ("CL", "c.fld"),       // Unmapped, i.e. not supported
-                    0x2 => ("CL", "c.lw"),        // Mapped to lw
+                    0x2 => ("CL", "c.lw"),        // Mapped to lw: lw rd′, offset(rs1′)
                     0x3 => ("CL", "c.ld"),        // Mapped to ld: ld rd′, offset(rs1′)
                     0x4 => {
                         panic!("Rvd::get_type_and_name() reserved instruction inst=0x{:x}", inst)
                     }
                     0x5 => ("CS", "c.fsd"), // Unmapped, i.e. not supported
-                    0x6 => ("CS", "c.sw"),  // Mapped to sw
-                    0x7 => ("CS", "c.sd"),  // Mapped to sd
+                    0x6 => ("CS", "c.sw"),  // Mapped to sw: sw rs2′,offset(rs1′)
+                    0x7 => ("CS", "c.sd"),  // Mapped to sd: sd rs2′, offset(rs1′)
                     _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{:x}", inst),
                 }
             }
@@ -425,7 +426,7 @@ impl Rvd {
                 0x2 => ("CI", "c.li"),    // Mapped to addi: addi rd, x0, imm
                 0x3 => {
                     if ((inst >> 7) & 0x1F) == 2 {
-                        ("CI", "c.addi16sp") // Mapped to addi
+                        ("CI", "c.addi16sp") // Mapped to addi: addi x2, x2, nzimm[9:4]
                     } else {
                         ("CI", "c.lui") // Mapped to lui: lui rd, imm
                     }
@@ -436,15 +437,15 @@ impl Rvd {
                     0x2 => ("CB", "c.andi"), // Mapped to andi: andi rd′, rd′, imm
                     0x3 => match (inst >> 12) & 0x1 {
                         0x0 => match (inst >> 5) & 0x3 {
-                            0x0 => ("CA", "c.sub"), // Mapped to sub
-                            0x1 => ("CA", "c.xor"), // Mapped to xor
-                            0x2 => ("CA", "c.or"),  // Mapped to or
+                            0x0 => ("CA", "c.sub"), // Mapped to sub: sub rd′, rd′, rs2′
+                            0x1 => ("CA", "c.xor"), // Mapped to xor: xor rd′, rd′, rs2′
+                            0x2 => ("CA", "c.or"),  // Mapped to or: or rd′, rd′, rs2′
                             0x3 => ("CA", "c.and"), // Mapped to and: and rd′, rd′, rs2′
                             _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{:x}", inst),
                         },
                         0x01 => match (inst >> 5) & 0x3 {
-                            0x0 => ("CA", "c.subw"), // Mapped to subw
-                            0x1 => ("CA", "c.addw"), // Mapped to addw
+                            0x0 => ("CA", "c.subw"), // Mapped to subw: subw rd′, rd′, rs2′
+                            0x1 => ("CA", "c.addw"), // Mapped to addw: addw rd′, rd′,rs2′
                             0x2 | 0x3 => {
                                 panic!("Rvd::get_type_and_name() reserved inst=0x{:x}", inst)
                             }
@@ -454,7 +455,7 @@ impl Rvd {
                     },
                     _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{:x}", inst),
                 },
-                0x5 => ("CJ", "c.j"),    // Mapped to jal
+                0x5 => ("CJ", "c.j"),    // Mapped to jal: jal x0, offset
                 0x6 => ("CB", "c.beqz"), // Mapped to beq: beq rs1′, x0, offset
                 0x7 => ("CB", "c.bnez"), // Mapped to bne: bne rs1′, x0, offset
                 _ => panic!("Rvd::get_type_and_name() invalid inst=0x{:x}", inst),

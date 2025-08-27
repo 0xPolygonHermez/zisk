@@ -55,18 +55,29 @@ impl Riscv2ZiskContext<'_> {
     /// map.  C instrucions are already expanded into their equivalent RISCV instructions, so we
     /// only have to map them to their corresponding IMA 32-bits equivalent instructions.
     pub fn convert(&mut self, riscv_instruction: &RiscvInstruction) {
+        // ZisK supports the IMAC RISC-V instruction set
         match riscv_instruction.inst.as_str() {
-            "lb" => self.load_op(riscv_instruction, "signextend_b", 1, 4),
-            "lbu" => self.load_op(riscv_instruction, "copyb", 1, 4),
-            "lh" => self.load_op(riscv_instruction, "signextend_h", 2, 4),
-            "lhu" => self.load_op(riscv_instruction, "copyb", 2, 4),
-            "lw" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
-            "c.lw" | "c.lwsp" => self.load_op(riscv_instruction, "signextend_w", 4, 2),
-            "lwu" => self.load_op(riscv_instruction, "copyb", 4, 4),
-            "ld" => self.load_op(riscv_instruction, "copyb", 8, 4),
-            "c.ld" | "c.ldsp" => self.load_op(riscv_instruction, "copyb", 8, 2),
-            "fence" => self.nop(riscv_instruction, 4),
-            "fence.i" => self.nop(riscv_instruction, 4),
+            // I: Base Integer Instruction Set
+            //////////////////////////////////
+
+            // I.1. Integer Computational (Register-Register)
+            "add" => self.create_register_op(riscv_instruction, "add", 4),
+            "sub" => self.create_register_op(riscv_instruction, "sub", 4),
+            "sll" => self.create_register_op(riscv_instruction, "sll", 4),
+            "slt" => self.create_register_op(riscv_instruction, "lt", 4),
+            "sltu" => self.create_register_op(riscv_instruction, "ltu", 4),
+            "xor" => self.create_register_op(riscv_instruction, "xor", 4),
+            "srl" => self.create_register_op(riscv_instruction, "srl", 4),
+            "sra" => self.create_register_op(riscv_instruction, "sra", 4),
+            "or" => self.create_register_op(riscv_instruction, "or", 4),
+            "and" => self.create_register_op(riscv_instruction, "and", 4),
+            "addw" => self.create_register_op(riscv_instruction, "add_w", 4),
+            "subw" => self.create_register_op(riscv_instruction, "sub_w", 4),
+            "sllw" => self.create_register_op(riscv_instruction, "sll_w", 4),
+            "srlw" => self.create_register_op(riscv_instruction, "srl_w", 4),
+            "sraw" => self.create_register_op(riscv_instruction, "sra_w", 4),
+
+            // I.2. Integer Computational (Register-Immediate)
             "addi" => {
                 if riscv_instruction.is_nop() {
                     self.nop(riscv_instruction, 4);
@@ -74,39 +85,89 @@ impl Riscv2ZiskContext<'_> {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 4);
                 }
             }
-            "c.addi" | "c.addi4spn" | "c.li" | "c.addi16sp" => {
-                if riscv_instruction.is_nop() {
-                    self.nop(riscv_instruction, 2);
-                } else {
-                    self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
-                }
-            }
             "slli" => self.immediate_op(riscv_instruction, "sll", 4),
-            "c.slli" => self.immediate_op(riscv_instruction, "sll", 2),
             "slti" => self.immediate_op(riscv_instruction, "lt", 4),
             "sltiu" => self.immediate_op(riscv_instruction, "ltu", 4),
             "xori" => self.immediate_op_or_x0_copyb(riscv_instruction, "xor", 4),
             "srli" => self.immediate_op(riscv_instruction, "srl", 4),
-            "c.srli" => self.immediate_op(riscv_instruction, "srl", 2),
             "srai" => self.immediate_op(riscv_instruction, "sra", 4),
-            "c.srai" => self.immediate_op(riscv_instruction, "sra", 2),
             "ori" => self.immediate_op_or_x0_copyb(riscv_instruction, "or", 4),
             "andi" => self.immediate_op(riscv_instruction, "and", 4),
-            "c.andi" => self.immediate_op(riscv_instruction, "and", 2),
             "auipc" => self.auipc(riscv_instruction),
             "addiw" => self.immediate_op(riscv_instruction, "add_w", 4),
-            "c.addiw" => self.immediate_op(riscv_instruction, "add_w", 2),
             "slliw" => self.immediate_op(riscv_instruction, "sll_w", 4),
             "srliw" => self.immediate_op(riscv_instruction, "srl_w", 4),
             "sraiw" => self.immediate_op(riscv_instruction, "sra_w", 4),
+
+            // I.3. Control Transfer Instructions
+            "jalr" => self.jalr(riscv_instruction, 4),
+            "jal" => self.jal(riscv_instruction, 4),
+            "beq" => self.create_branch_op(riscv_instruction, "eq", false, 4),
+            "bne" => self.create_branch_op(riscv_instruction, "eq", true, 4),
+            "blt" => self.create_branch_op(riscv_instruction, "lt", false, 4),
+            "bge" => self.create_branch_op(riscv_instruction, "lt", true, 4),
+            "bltu" => self.create_branch_op(riscv_instruction, "ltu", false, 4),
+            "bgeu" => self.create_branch_op(riscv_instruction, "ltu", true, 4),
+
+            // I.4. Load and Store Instructions
+            "lb" => self.load_op(riscv_instruction, "signextend_b", 1, 4),
+            "lbu" => self.load_op(riscv_instruction, "copyb", 1, 4),
+            "lh" => self.load_op(riscv_instruction, "signextend_h", 2, 4),
+            "lhu" => self.load_op(riscv_instruction, "copyb", 2, 4),
+            "lw" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            "lwu" => self.load_op(riscv_instruction, "copyb", 4, 4),
+            "ld" => self.load_op(riscv_instruction, "copyb", 8, 4),
+            "lr.w" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            "lr.d" => self.load_op(riscv_instruction, "copyb", 8, 4),
+            "lui" => self.lui(riscv_instruction, 4),
             "sb" => self.store_op(riscv_instruction, "copyb", 1, 4),
             "sh" => self.store_op(riscv_instruction, "copyb", 2, 4),
             "sw" => self.store_op(riscv_instruction, "copyb", 4, 4),
-            "c.sw" | "c.swsp" => self.store_op(riscv_instruction, "copyb", 4, 2),
             "sd" => self.store_op(riscv_instruction, "copyb", 8, 4),
-            "c.sd" | "c.sdsp" => self.store_op(riscv_instruction, "copyb", 8, 2),
-            "lr.w" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
             "sc.w" => self.sc_w(riscv_instruction),
+            "sc.d" => self.sc_d(riscv_instruction),
+
+            // I.5. Memory Ordering & Fence Instructions
+            "fence" => self.nop(riscv_instruction, 4),
+            "fence.i" => self.nop(riscv_instruction, 4),
+
+            // I.6 Privileged & System Instructions (Part of I Base)
+            "ecall" => self.ecall(riscv_instruction),
+            "ebreak" => self.nop(riscv_instruction, 4),
+            "csrrw" => self.csrrw(riscv_instruction),
+            "csrrs" => self.csrrs(riscv_instruction),
+            "csrrc" => self.csrrc(riscv_instruction),
+            "csrrwi" => self.csrrwi(riscv_instruction),
+            "csrrsi" => self.csrrsi(riscv_instruction),
+            "csrrci" => self.csrrci(riscv_instruction),
+
+            // M: Integer Multiplication and Division
+            /////////////////////////////////////////
+            "mul" => self.create_register_op(riscv_instruction, "mul", 4),
+            "mulh" => self.create_register_op(riscv_instruction, "mulh", 4),
+            "mulhsu" => self.create_register_op(riscv_instruction, "mulsuh", 4),
+            "mulhu" => self.create_register_op(riscv_instruction, "muluh", 4),
+            "mulw" => self.create_register_op(riscv_instruction, "mul_w", 4),
+            "div" => self.create_register_op(riscv_instruction, "div", 4),
+            "divu" => self.create_register_op(riscv_instruction, "divu", 4),
+            "divw" => self.create_register_op(riscv_instruction, "div_w", 4),
+            "divuw" => self.create_register_op(riscv_instruction, "divu_w", 4),
+            "rem" => self.create_register_op(riscv_instruction, "rem", 4),
+            "remu" => self.create_register_op(riscv_instruction, "remu", 4),
+            "remw" => self.create_register_op(riscv_instruction, "rem_w", 4),
+            "remuw" => self.create_register_op(riscv_instruction, "remu_w", 4),
+
+            // A: Atomic Instructions
+            /////////////////////////
+            "amoswap.d" => self.create_atomic_swap(riscv_instruction, "copyb", "copyb", 8),
+            "amoadd.d" => self.create_atomic_op(riscv_instruction, "copyb", "add", "copyb", 8),
+            "amoxor.d" => self.create_atomic_op(riscv_instruction, "copyb", "xor", "copyb", 8),
+            "amoand.d" => self.create_atomic_op(riscv_instruction, "copyb", "and", "copyb", 8),
+            "amoor.d" => self.create_atomic_op(riscv_instruction, "copyb", "or", "copyb", 8),
+            "amomin.d" => self.create_atomic_op(riscv_instruction, "copyb", "min", "copyb", 8),
+            "amomax.d" => self.create_atomic_op(riscv_instruction, "copyb", "max", "copyb", 8),
+            "amominu.d" => self.create_atomic_op(riscv_instruction, "copyb", "minu", "copyb", 8),
+            "amomaxu.d" => self.create_atomic_op(riscv_instruction, "copyb", "maxu", "copyb", 8),
             "amoswap.w" => self.create_atomic_swap(riscv_instruction, "signextend_w", "copyb", 4),
             "amoadd.w" => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "add_w", "copyb", 4)
@@ -130,76 +191,52 @@ impl Riscv2ZiskContext<'_> {
             "amomaxu.w" => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "maxu_w", "copyb", 4)
             }
-            "lr.d" => self.load_op(riscv_instruction, "copyb", 8, 4),
-            "sc.d" => self.sc_d(riscv_instruction),
-            "amoswap.d" => self.create_atomic_swap(riscv_instruction, "copyb", "copyb", 8),
-            "amoadd.d" => self.create_atomic_op(riscv_instruction, "copyb", "add", "copyb", 8),
-            "amoxor.d" => self.create_atomic_op(riscv_instruction, "copyb", "xor", "copyb", 8),
-            "amoand.d" => self.create_atomic_op(riscv_instruction, "copyb", "and", "copyb", 8),
-            "amoor.d" => self.create_atomic_op(riscv_instruction, "copyb", "or", "copyb", 8),
-            "amomin.d" => self.create_atomic_op(riscv_instruction, "copyb", "min", "copyb", 8),
-            "amomax.d" => self.create_atomic_op(riscv_instruction, "copyb", "max", "copyb", 8),
-            "amominu.d" => self.create_atomic_op(riscv_instruction, "copyb", "minu", "copyb", 8),
-            "amomaxu.d" => self.create_atomic_op(riscv_instruction, "copyb", "maxu", "copyb", 8),
-            "add" => self.create_register_op(riscv_instruction, "add", 4),
+
+            // C: Compressed Instructions (16-bit)
+            //////////////////////////////////////
+
+            // C.I.1. Integer Computational (Register-Register)
             "c.mv" | "c.add" => self.create_register_op(riscv_instruction, "add", 2),
-            "mul" => self.create_register_op(riscv_instruction, "mul", 4),
-            "sub" => self.create_register_op(riscv_instruction, "sub", 4),
             "c.sub" => self.create_register_op(riscv_instruction, "sub", 2),
-            "sll" => self.create_register_op(riscv_instruction, "sll", 4),
-            "mulh" => self.create_register_op(riscv_instruction, "mulh", 4),
-            "slt" => self.create_register_op(riscv_instruction, "lt", 4),
-            "mulhsu" => self.create_register_op(riscv_instruction, "mulsuh", 4),
-            "sltu" => self.create_register_op(riscv_instruction, "ltu", 4),
-            "mulhu" => self.create_register_op(riscv_instruction, "muluh", 4),
-            "xor" => self.create_register_op(riscv_instruction, "xor", 4),
             "c.xor" => self.create_register_op(riscv_instruction, "xor", 2),
-            "div" => self.create_register_op(riscv_instruction, "div", 4),
-            "srl" => self.create_register_op(riscv_instruction, "srl", 4),
-            "divu" => self.create_register_op(riscv_instruction, "divu", 4),
-            "sra" => self.create_register_op(riscv_instruction, "sra", 4),
-            "or" => self.create_register_op(riscv_instruction, "or", 4),
             "c.or" => self.create_register_op(riscv_instruction, "or", 2),
-            "rem" => self.create_register_op(riscv_instruction, "rem", 4),
-            "and" => self.create_register_op(riscv_instruction, "and", 4),
             "c.and" => self.create_register_op(riscv_instruction, "and", 2),
-            "remu" => self.create_register_op(riscv_instruction, "remu", 4),
-            "lui" => self.lui(riscv_instruction, 4),
-            "c.lui" => self.lui(riscv_instruction, 2),
-            "addw" => self.create_register_op(riscv_instruction, "add_w", 4),
             "c.addw" => self.create_register_op(riscv_instruction, "add_w", 2),
-            "mulw" => self.create_register_op(riscv_instruction, "mul_w", 4),
-            "subw" => self.create_register_op(riscv_instruction, "sub_w", 4),
             "c.subw" => self.create_register_op(riscv_instruction, "sub_w", 2),
-            "sllw" => self.create_register_op(riscv_instruction, "sll_w", 4),
-            "divw" => self.create_register_op(riscv_instruction, "div_w", 4),
-            "srlw" => self.create_register_op(riscv_instruction, "srl_w", 4),
-            "divuw" => self.create_register_op(riscv_instruction, "divu_w", 4),
-            "sraw" => self.create_register_op(riscv_instruction, "sra_w", 4),
-            "remw" => self.create_register_op(riscv_instruction, "rem_w", 4),
-            "remuw" => self.create_register_op(riscv_instruction, "remu_w", 4),
-            "beq" => self.create_branch_op(riscv_instruction, "eq", false, 4),
-            "c.beqz" => self.create_branch_op(riscv_instruction, "eq", false, 2),
-            "bne" => self.create_branch_op(riscv_instruction, "eq", true, 4),
-            "c.bne" | "c.bnez" => self.create_branch_op(riscv_instruction, "eq", true, 2),
-            "blt" => self.create_branch_op(riscv_instruction, "lt", false, 4),
-            "bge" => self.create_branch_op(riscv_instruction, "lt", true, 4),
-            "bltu" => self.create_branch_op(riscv_instruction, "ltu", false, 4),
-            "bgeu" => self.create_branch_op(riscv_instruction, "ltu", true, 4),
-            "jalr" => self.jalr(riscv_instruction, 4),
+
+            // C.I.2. Integer Computational (Register-Immediate)
+            "c.addi" | "c.addi4spn" | "c.li" | "c.addi16sp" => {
+                if riscv_instruction.is_nop() {
+                    self.nop(riscv_instruction, 2);
+                } else {
+                    self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
+                }
+            }
+            "c.slli" => self.immediate_op(riscv_instruction, "sll", 2),
+            "c.srli" => self.immediate_op(riscv_instruction, "srl", 2),
+            "c.srai" => self.immediate_op(riscv_instruction, "sra", 2),
+            "c.andi" => self.immediate_op(riscv_instruction, "and", 2),
+            "c.addiw" => self.immediate_op(riscv_instruction, "add_w", 2),
+
+            // C.I.3. Control Transfer Instructions
             "c.jr" | "c.jalr" => self.jalr(riscv_instruction, 2),
-            "jal" => self.jal(riscv_instruction, 4),
             "c.j" => self.jal(riscv_instruction, 2),
-            "ecall" => self.ecall(riscv_instruction),
-            "ebreak" => self.nop(riscv_instruction, 4),
+            "c.beqz" => self.create_branch_op(riscv_instruction, "eq", false, 2),
+            "c.bne" | "c.bnez" => self.create_branch_op(riscv_instruction, "eq", true, 2),
+
+            // C.I.4. Load and Store Instructions
+            "c.lw" | "c.lwsp" => self.load_op(riscv_instruction, "signextend_w", 4, 2),
+            "c.ld" | "c.ldsp" => self.load_op(riscv_instruction, "copyb", 8, 2),
+            "c.lui" => self.lui(riscv_instruction, 2),
+            "c.sw" | "c.swsp" => self.store_op(riscv_instruction, "copyb", 4, 2),
+            "c.sd" | "c.sdsp" => self.store_op(riscv_instruction, "copyb", 8, 2),
+
+            // C.I.6.Privileged & System Instructions
             "c.ebreak" => self.nop(riscv_instruction, 2),
-            "csrrw" => self.csrrw(riscv_instruction),
-            "csrrs" => self.csrrs(riscv_instruction),
-            "csrrc" => self.csrrc(riscv_instruction),
-            "csrrwi" => self.csrrwi(riscv_instruction),
-            "csrrsi" => self.csrrsi(riscv_instruction),
-            "csrrci" => self.csrrci(riscv_instruction),
+
+            // C. Other
             "c.nop" => self.nop(riscv_instruction, 2),
+
             _ => panic!(
                 "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
                 riscv_instruction.inst
