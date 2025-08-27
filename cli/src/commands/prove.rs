@@ -334,7 +334,7 @@ impl ZiskProve {
             };
         }
 
-        if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
+        if proofman.is_aggregation_rank() {
             let elapsed = start.elapsed();
 
             #[allow(clippy::type_complexity)]

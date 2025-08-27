@@ -78,7 +78,7 @@ impl ZiskServiceProveHandler {
 
                 let elapsed = start.elapsed();
 
-                if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
+                if proofman.is_aggregation_rank() {
                     #[allow(clippy::type_complexity)]
                     let (result, _stats, _witness_stats): (
                         ZiskExecutionResult,
