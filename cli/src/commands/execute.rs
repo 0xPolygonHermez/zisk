@@ -83,6 +83,9 @@ pub struct ZiskExecute {
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
+
+    #[clap(short = 'h', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskExecute {
@@ -221,7 +224,7 @@ impl ZiskExecute {
                     Some(mpi_context.local_rank),
                     self.port,
                     self.unlock_mapped_memory,
-                    false,
+                    self.shared_tables,
                 )
                 .expect("Failed to initialize witness library");
 

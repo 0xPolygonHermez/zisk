@@ -125,6 +125,9 @@ pub struct ZiskProve {
 
     #[clap(long, default_value_t = false)]
     pub minimal_memory: bool,
+
+    #[clap(short = 'h', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskProve {
@@ -295,7 +298,7 @@ impl ZiskProve {
             Some(mpi_context.local_rank),
             self.port,
             self.unlock_mapped_memory,
-            false,
+            self.shared_tables,
         )
         .expect("Failed to initialize witness library");
 

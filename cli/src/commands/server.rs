@@ -108,6 +108,9 @@ pub struct ZiskServer {
 
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
+
+    #[clap(short = 'h', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskServer {
@@ -229,6 +232,7 @@ impl ZiskServer {
             self.aggregation,
             self.final_snark,
             gpu_params,
+            self.shared_tables,
         );
 
         if let Err(e) = ZiskService::new(config, mpi_context)?.run() {
