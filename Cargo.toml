@@ -37,16 +37,12 @@ members = [
     "common",
     "tools/circuit",
     "server",
-    "verifier",
 ]
 
 resolver = "2"
 
 [profile.release]
 opt-level = 3
-
-[profile.release.package."verifier"]
-opt-level = 0
 
 [profile.bench]
 opt-level = 3
@@ -60,7 +56,6 @@ data-bus = { path = "data-bus" }
 ziskemu = { path = "emulator" }
 asm-runner = { path = "emulator-asm/asm-runner" }
 executor = { path = "executor" }
-verifier = { path = "verifier" }
 lib-c = { path = "lib-c" }
 zisk-pil = { path = "pil" }
 precomp-arith-eq = { path = "precompiles/arith_eq" }
@@ -88,6 +83,7 @@ circuit = { path = "tools/circuit" }
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/rust-verifier" }
 proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/rust-verifier" }
 proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/rust-verifier" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/rust-verifier" }
 proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/rust-verifier" }
 pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/rust-verifier" }
 witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/rust-verifier" }
@@ -96,6 +92,7 @@ fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch 
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
 # proofman-macros = { path = "../pil2-proofman/macros" }
+# proofman-verifier = { path = "../pil2-proofman/verifier" }
 # proofman-util = { path = "../pil2-proofman/util" }
 # pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
 # witness = { path = "../pil2-proofman/witness" }

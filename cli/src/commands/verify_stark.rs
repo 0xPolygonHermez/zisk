@@ -3,7 +3,7 @@ use clap::Parser;
 use colored::Colorize;
 use proofman_common::initialize_logger;
 use std::fs;
-use verifier::verify;
+use proofman_verifier::verify;
 
 use bytemuck::cast_slice;
 
@@ -19,6 +19,9 @@ pub struct ZiskVerify {
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
+
+    #[clap(short = 'k', long)]
+    pub vk: String,
 }
 
 impl ZiskVerify {
@@ -33,10 +36,13 @@ impl ZiskVerify {
 
         let start = std::time::Instant::now();
 
-        let buffer = fs::read(&self.proof)?;
-        let proof_slice: &[u64] = cast_slice(&buffer);
+        let proof_buffer = fs::read(&self.proof)?;
+        let proof_slice: &[u64] = cast_slice(&proof_buffer);
 
-        let valid = verify(proof_slice);
+        let vk_buffer = fs::read(&self.vk)?;
+        let verkey: &[u64] = cast_slice(&vk_buffer);
+
+        let valid = verify(proof_slice, verkey);
 
         let elapsed = start.elapsed();
 
