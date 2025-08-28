@@ -46,15 +46,9 @@ impl ZiskVerify {
             tracing::info!("{}", "\u{2713} Stark proof was verified".bright_green().bold());
         }
 
-        tracing::info!(
-            "{}",
-            "--- VERIFICATION SUMMARY ---".bright_green().bold()
-        );
+        tracing::info!("{}", "--- VERIFICATION SUMMARY ---".bright_green().bold());
         tracing::info!("      time: {} milliseconds", elapsed.as_millis());
-        tracing::info!(
-            "{}",
-            "----------------------------".bright_green().bold()
-        );
+        tracing::info!("{}", "----------------------------".bright_green().bold());
 
         if !valid {
             Err(anyhow!("Stark proof was not verified"))
