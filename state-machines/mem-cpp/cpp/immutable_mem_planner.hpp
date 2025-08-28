@@ -37,6 +37,7 @@ private:
     uint32_t reference_addr;
     uint32_t reference_skip;
     uint32_t current_chunk;
+    uint32_t initial_last_addr;
     uint32_t last_addr;
     #ifndef MEM_CHECK_POINT_MAP
     uint32_t *chunk_table;
@@ -79,6 +80,7 @@ public:
     uint32_t add_intermediates(uint32_t addr);
     void collect_segments(MemSegments &mem_segments);
     void stats();
+    void set_last_addr(uint32_t addr) { initial_last_addr = addr; }    
 };
 
 void ImmutableMemPlanner::add_to_current_segment(uint32_t chunk_id, uint32_t addr, uint32_t count) {

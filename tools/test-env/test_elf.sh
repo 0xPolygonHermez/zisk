@@ -83,6 +83,17 @@ test_elf() {
 
     current_dir=$(pwd)
 
+    info "Executing ${desc} script"
+
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        is_proving_key_installed || return 1
+    fi
+
+    info "Loading environment variables..."
+    # Load environment variables from .env file
+    load_env || return 1
+    confirm_continue || return 0
+
     export ELF_FILE="$elf_file"
     export INPUTS_PATH="$inputs_path"
     export INPUTS="${!inputs_var_name}"
@@ -98,20 +109,16 @@ test_elf() {
     num_inputs=${#inputs[@]}
     num_dist_inputs=${#dist_inputs[@]}
 
+    # Set step counts
     current_step=1
-    total_steps=$(( 2 + num_inputs * 3 + num_dist_inputs ))
-
-    info "Executing ${desc} script"
-
-    if [[ "${PLATFORM}" == "linux" ]]; then
-        is_proving_key_installed || return 1
+    steps_no_dist=3
+    steps_dist=1
+    if [[ "${DISABLE_PROVE}" != "1" ]]; then
+        steps_no_dist=1
+        steps_dist=0
     fi
-
-    step "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
-    confirm_continue || return 1
-
+    total_steps=$(( 2 + num_inputs * $steps_no_dist + num_dist_inputs * $steps_dist ))
+    
     # Create directories for proof results
     PROOF_RESULTS_DIR="${WORKSPACE_DIR}/proof-results"
     rm -rf "${PROOF_RESULTS_DIR}"
@@ -124,9 +131,6 @@ test_elf() {
 
     # Build mpi command
     MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $DISTRIBUTED_PROCESSES -x OMP_NUM_THREADS=$DISTRIBUTED_THREADS -x RAYON_NUM_THREADS=$DISTRIBUTED_THREADS"
-
-    # step "Deleting shared memory..."
-    # rm -rf /dev/shm/ZISK* /dev/shm/sem*
 
     step "Cloning zisk-testvectors repository..."
     rm -rf zisk-testvectors
@@ -168,29 +172,31 @@ test_elf() {
                 fi
             fi
 
-            step "Proving (non-distributed) for ${input_file}..."
-            ensure cargo-zisk prove \
-                -e "${ELF_FILE}" \
-                -i "${INPUTS_PATH}/${input_file}" \
-                -o proof $PROVE_FLAGS \
-                2>&1 | tee "prove_${input_file}.log" || return 1
-            if ! grep -F "Vadcop Final proof was verified" "prove_${input_file}.log"; then
-                err "prove failed for ${input_file}"
-                return 1
-            fi
+            if [[ "${DISABLE_PROVE}" != "1" ]]; then
+                step "Proving (non-distributed) for ${input_file}..."
+                ensure cargo-zisk prove \
+                    -e "${ELF_FILE}" \
+                    -i "${INPUTS_PATH}/${input_file}" \
+                    -o proof $PROVE_FLAGS \
+                    2>&1 | tee "prove_${input_file}.log" || return 1
+                if ! grep -F "Vadcop Final proof was verified" "prove_${input_file}.log"; then
+                    err "prove failed for ${input_file}"
+                    return 1
+                fi
 
-            # move result.json into PROOF_RESULTS_DIR
-            mv proof/result.json "${PROOF_RESULTS_DIR}/non-distributed/${input_file}.json"
-            result_files+=("${input_file}")
+                # move result.json into PROOF_RESULTS_DIR
+                mv proof/result.json "${PROOF_RESULTS_DIR}/non-distributed/${input_file}.json"
+                result_files+=("${input_file}")
 
-            step "Verifying proof for ${input_file}..."
-            ensure cargo-zisk verify \
-                -p ./proof/vadcop_final_proof.bin \
-                2>&1 | tee "verify_${input_file}.log" || return 1
-            if ! grep -F "Stark proof was verified" "verify_${input_file}.log"; then
-                err "verify proof failed for ${input_file}"
-                return 1
-            fi
+                step "Verifying proof for ${input_file}..."
+                ensure cargo-zisk verify \
+                    -p ./proof/vadcop_final_proof.bin \
+                    2>&1 | tee "verify_${input_file}.log" || return 1
+                if ! grep -F "Stark proof was verified" "verify_${input_file}.log"; then
+                    err "verify proof failed for ${input_file}"
+                    return 1
+                fi
+            fi    
         done
     else
         warn "non-distributed inputs variable is empty or not defined; skipping non-distributed proofs"
@@ -198,25 +204,27 @@ test_elf() {
 
     # Process inputs in distributed mode
     if [ ${num_dist_inputs} -gt 0 ]; then
-        for input_file in "${dist_inputs[@]}"; do
-            step "Proving (distributed) for ${input_file}..."
-            export RAYON_NUM_THREADS=$DISTRIBUTED_THREADS
-            ensure $MPI_CMD cargo-zisk prove \
-                -e "${ELF_FILE}" \
-                -i "${INPUTS_PATH}/${input_file}" \
-                -o proof $PROVE_FLAGS \
-                2>&1 | tee "prove_dist_${input_file}.log" || return 1
-            if ! grep -F "Vadcop Final proof was verified" \
-                     "prove_dist_${input_file}.log"; then
-                err "distributed prove failed for ${input_file}"
-                return 1
-            fi
+        if [[ "${DISABLE_PROVE}" != "1" ]]; then
+            for input_file in "${dist_inputs[@]}"; do
+                step "Proving (distributed) for ${input_file}..."
+                export RAYON_NUM_THREADS=$DISTRIBUTED_THREADS
+                ensure $MPI_CMD cargo-zisk prove \
+                    -e "${ELF_FILE}" \
+                    -i "${INPUTS_PATH}/${input_file}" \
+                    -o proof $PROVE_FLAGS \
+                    2>&1 | tee "prove_dist_${input_file}.log" || return 1
+                if ! grep -F "Vadcop Final proof was verified" \
+                        "prove_dist_${input_file}.log"; then
+                    err "distributed prove failed for ${input_file}"
+                    return 1
+                fi
 
-            # move result.json into PROOF_RESULTS_DIR
-            dest_result_file="${PROOF_RESULTS_DIR}/distributed/${input_file}.json"
-            mv proof/result.json "${dest_result_file}"
-            result_dist_files+=("${input_file}")
-        done
+                # move result.json into PROOF_RESULTS_DIR
+                dest_result_file="${PROOF_RESULTS_DIR}/distributed/${input_file}.json"
+                mv proof/result.json "${dest_result_file}"
+                result_dist_files+=("${input_file}")
+            done
+        fi
     else
         warn "distributed inputs variable is empty or not defined; skipping distributed proofs"
     fi

@@ -17,6 +17,7 @@ sm-binary = { workspace = true }
 sm-main = { workspace = true }
 sm-mem = { workspace = true }
 sm-rom = { workspace = true }
+sm-frequent-ops = { workspace = true }
 data-bus = { workspace = true }
 precomp-keccakf = { workspace = true }
 precomp-sha256f = { workspace = true }

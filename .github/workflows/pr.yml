@@ -44,14 +44,18 @@ jobs:
   test-x86_64:
     name: Test on Ubuntu x86_64
     runs-on: self-hosted
-    timeout-minutes: 30
+    timeout-minutes: 120
     container:
       image: ubuntu:22.04
-      options: --memory=128g --cpus=128 --shm-size=64g
+      options:
+        --shm-size=32g  
+        -v /home/gha/cache-setup:/output:rw
+    defaults:
+      run:
+        shell: bash        
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
-      BLOCK_INPUTS_DISTRIBUTED: "21429020_5_0.bin"
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
       PROVE_FLAGS: "-a -y"
@@ -70,17 +74,29 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
 
-      - name: Install setup
-        run: |
+      - name: Build setup
+        env:
+          USE_CACHE_SETUP: "1"
+        run: |     
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./install_setup_public.sh
-  
+          ./build_setup.sh
+
       - name: Test sha_hasher
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
 
-      - name: Test Ethereum block
+      - name: Verify Constraints Ethereum block
+        env:
+          DISABLE_PROVE: "1"
+          BLOCK_INPUTS: "18885301_210_24.bin"
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./test_eth_block.sh
+
+      - name: Prove Ethereum block
+        env:
+          BLOCK_INPUTS_DISTRIBUTED: "21429020_5_0.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_eth_block.sh
@@ -158,10 +174,20 @@ jobs:
           sudo ./tools/emulate_asm_all.sh $GITHUB_WORKSPACE/zisk-testvectors/riscof/riscof_work/rv64i_m
 
   lint:
-    name: Formatting & Clippy
-    runs-on: ubuntu-latest
+    name: Format & Clippy on ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            platform: Ubuntu x86_64
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            platform: macOS
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -169,7 +195,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          sudo ./install_deps.sh
+          ./install_deps.sh
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1

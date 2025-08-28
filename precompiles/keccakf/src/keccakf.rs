@@ -486,13 +486,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
             }
 
             // Update the multiplicity table for the circuit
-            let table_size = 1
-                << ((BITS_KECCAKF_TABLE - CHUNKS_KECCAKF_TABLE + 1)
-                    + BITS_KECCAKF_TABLE
-                    + BITS_KECCAKF_TABLE
-                    + 1);
-            // TODO: This can be optimized, there are many zeroes rows!!!
-            let mut multiplicity = vec![0; table_size];
             for (k, row) in par_trace.iter().enumerate().take(self.circuit_size) {
                 let a = &row.free_in_a;
                 let b = &row.free_in_b;
@@ -510,10 +503,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     let c_val = F::as_canonical_u64(&c[j]);
                     let table_row =
                         KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val, c_val);
-                    multiplicity[table_row] += 1;
+                    self.std.inc_virtual_row(self.table_id, table_row as u64, 1);
                 }
             }
-            self.std.inc_virtual_rows_ranged(self.table_id, &multiplicity);
         });
 
         fn update_bit_val<F: PrimeField64>(

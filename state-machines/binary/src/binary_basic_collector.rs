@@ -4,9 +4,10 @@
 
 use std::collections::VecDeque;
 
-use crate::BinaryInput;
+use crate::{BinaryBasicFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
+    OPERATION_BUS_ID,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -14,12 +15,17 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 pub struct BinaryBasicCollector {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
+    /// Collected rows for FROPS
+    pub frops_inputs: Vec<u32>,
 
     pub num_operations: usize,
     pub collect_skipper: CollectSkipper,
 
     /// Flag to indicate that this instance comute add operations
     with_adds: bool,
+
+    /// Flag to indicate that force to execute to end of chunk
+    force_execute_to_end: bool,
 }
 
 impl BinaryBasicCollector {
@@ -31,8 +37,20 @@ impl BinaryBasicCollector {
     ///
     /// # Returns
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: usize, collect_skipper: CollectSkipper, with_adds: bool) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper, with_adds }
+    pub fn new(
+        num_operations: usize,
+        collect_skipper: CollectSkipper,
+        with_adds: bool,
+        force_execute_to_end: bool,
+    ) -> Self {
+        Self {
+            inputs: Vec::new(),
+            num_operations,
+            collect_skipper,
+            with_adds,
+            frops_inputs: Vec::new(),
+            force_execute_to_end,
+        }
     }
 }
 
@@ -54,31 +72,43 @@ impl BusDevice<u64> for BinaryBasicCollector {
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
+        let instance_complete = self.inputs.len() == self.num_operations;
 
-        if self.inputs.len() >= self.num_operations {
+        if instance_complete && !self.force_execute_to_end {
             return false;
         }
 
-        let data: ExtOperationData<u64> =
+        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
+
+        let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
-        let op_type = OperationBusData::get_op_type(&data);
+        let op_type = OperationBusData::get_op_type(&op_data);
 
         if op_type as u32 != ZiskOperationType::Binary as u32 {
             return true;
         }
 
-        if !self.with_adds && OperationBusData::get_op(&data) == ZiskOp::Add.code() {
+        if !self.with_adds && OperationBusData::get_op(&op_data) == ZiskOp::Add.code() {
             return true;
         }
 
-        if self.collect_skipper.should_skip() {
+        if self.collect_skipper.should_skip_query(frops_row == BinaryBasicFrops::NO_FROPS) {
             return true;
         }
 
-        self.inputs.push(BinaryInput::from(&data));
+        if frops_row != BinaryBasicFrops::NO_FROPS {
+            self.frops_inputs.push(frops_row as u32);
+            return true;
+        }
 
-        self.inputs.len() < self.num_operations
+        if instance_complete {
+            // instance complete => no FROPS operation => discard, inputs complete
+            return true;
+        }
+        self.inputs.push(BinaryInput::from(&op_data));
+
+        self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
 
     /// Returns the bus IDs associated with this instance.

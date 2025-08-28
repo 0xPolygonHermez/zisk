@@ -5,8 +5,9 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
+use crate::{BinaryBasicFrops, BinaryExtensionFrops};
 use std::collections::VecDeque;
-use zisk_common::{BusDevice, BusId, Counter, Metrics, OP, OPERATION_BUS_ID, OP_TYPE};
+use zisk_common::{BusDevice, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 /// The `BinaryCounter` struct represents a counter that monitors and measures
@@ -55,17 +56,26 @@ impl Metrics for BinaryCounter {
         const ADD_CODE: u64 = ZiskOp::Add.code() as u64;
 
         let op_type = data[OP_TYPE];
-
         if op_type == BINARY {
             // Always read the OP index (assume well-formed trace)
             let op = data[OP];
             if op == ADD_CODE {
-                self.counter_add.update(1);
+                if BinaryBasicFrops::is_frequent_op(ADD_CODE as u8, data[A], data[B]) {
+                    self.counter_add.update_frops(1);
+                } else {
+                    self.counter_add.update(1);
+                }
+            } else if BinaryBasicFrops::is_frequent_op(op as u8, data[A], data[B]) {
+                self.counter_basic_wo_add.update_frops(1);
             } else {
                 self.counter_basic_wo_add.update(1);
             }
         } else if op_type == BINARY_E {
-            self.counter_extension.update(1);
+            if BinaryExtensionFrops::is_frequent_op(data[OP] as u8, data[A], data[B]) {
+                self.counter_extension.update_frops(1);
+            } else {
+                self.counter_extension.update(1);
+            }
         }
     }
 

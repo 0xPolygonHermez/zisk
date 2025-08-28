@@ -41,6 +41,7 @@ pub trait Metrics: Send + Sync {
 pub struct Counter {
     /// The total number of counted instructions.
     pub inst_count: u64,
+    pub frops_count: u64,
 }
 
 impl Counter {
@@ -51,6 +52,10 @@ impl Counter {
     #[inline(always)]
     pub fn update(&mut self, num: u64) {
         self.inst_count += num;
+    }
+    #[inline(always)]
+    pub fn update_frops(&mut self, num: u64) {
+        self.frops_count += num;
     }
 }
 
@@ -66,7 +71,10 @@ impl Add for &Counter {
     /// # Returns
     /// A new `Counter` instance with the combined instruction count.
     fn add(self, other: Self) -> Counter {
-        Counter { inst_count: self.inst_count + other.inst_count }
+        Counter {
+            inst_count: self.inst_count + other.inst_count,
+            frops_count: self.frops_count + other.frops_count,
+        }
     }
 }
 
@@ -77,6 +85,7 @@ impl AddAssign<&Counter> for Counter {
     /// * `other` - The counter to add.
     fn add_assign(&mut self, other: &Counter) {
         self.inst_count += other.inst_count;
+        self.frops_count += other.frops_count;
     }
 }
 

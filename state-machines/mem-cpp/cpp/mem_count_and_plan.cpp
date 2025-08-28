@@ -63,11 +63,12 @@ void MemCountAndPlan::prepare() {
     mem_align_counter = std::make_unique<MemAlignCounter>(MEM_ALIGN_ROWS, context);
     plan_workers.clear();
     plan_workers.reserve(MAX_MEM_PLANNERS);
-    rom_data_planner = std::make_unique<ImmutableMemPlanner>(ROM_ROWS, 0x80000000, 128);
-    input_data_planner = std::make_unique<ImmutableMemPlanner>(INPUT_ROWS, 0x90000000, 128);
-    quick_mem_planner = std::make_unique<MemPlanner>(0, RAM_ROWS, 0xA0000000, 512);
+    rom_data_planner = std::make_unique<ImmutableMemPlanner>(ROM_ROWS, ROM_ADDR, 128);
+    rom_data_planner->set_last_addr(ROM_ADDR - 8);
+    input_data_planner = std::make_unique<ImmutableMemPlanner>(INPUT_ROWS, INPUT_ADDR, 128);
+    quick_mem_planner = std::make_unique<MemPlanner>(0, RAM_ROWS, RAM_ADDR, 512);
     for (int i = 0; i < MAX_MEM_PLANNERS; ++i) {
-        plan_workers.emplace_back(i+1, RAM_ROWS, 0xA0000000, 512);
+        plan_workers.emplace_back(i+1, RAM_ROWS, RAM_ADDR, 512);
     }
     t_prepare_us = get_usec() - init;
 }

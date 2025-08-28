@@ -30,7 +30,7 @@ const BINARY_SM_ID: usize = 3;
 const ARITH_SM_ID: usize = 4;
 const KECCAK_SM_ID: usize = 5;
 const SHA256_SM_ID: usize = 6;
-const ARITH_EQ_SM_ID: usize = 7;
+const ARITH_EQ_SM_ID: usize = NUM_SM - 1;
 
 pub struct StaticSMBundle<F: PrimeField64> {
     process_only_operation_bus: bool,
