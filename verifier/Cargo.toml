@@ -10,8 +10,6 @@ categories = ["cryptography"]
 [dependencies]
 fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/rust-verifier" }
 proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/rust-verifier" }
-proofman-common =  { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/rust-verifier" }
-proofman =  { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/rust-verifier" }
 ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
 bytemuck = "1.23.1"
 

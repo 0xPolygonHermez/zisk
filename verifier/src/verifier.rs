@@ -1,9 +1,8 @@
 use fields::{Goldilocks, CubicExtensionField, Field};
-use proofman_common::Boundary;
-use proofman::{VerifierInfo, stark_verify};
+use proofman_verifier::{Boundary, VerifierInfo, stark_verify};
 
 #[rustfmt::skip]
-pub fn q_verify(challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtensionField<Goldilocks>], publics: &[Goldilocks], zi: &[CubicExtensionField<Goldilocks>], xi_challenge: CubicExtensionField<Goldilocks>) -> CubicExtensionField<Goldilocks> {
+pub fn q_verify(challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicExtensionField<Goldilocks>], _publics: &[Goldilocks], zi: &[CubicExtensionField<Goldilocks>], _xi_challenge: CubicExtensionField<Goldilocks>) -> CubicExtensionField<Goldilocks> {
     let mut tmp_3 = vec![CubicExtensionField { value: [Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO] }; 65];
     tmp_3[21] = evals[0] + evals[1];
     tmp_3[0] = evals[57] + tmp_3[21];
