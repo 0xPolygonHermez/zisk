@@ -39,6 +39,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 libloading = { workspace = true }
 
+zstd = "0.13"
 bytemuck = "1.23.1"
 clap = { version = "4.5.7", features = ["derive", "env"] }
 dirs = "6"

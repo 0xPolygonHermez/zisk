@@ -2,8 +2,11 @@ use anyhow::{anyhow, Ok, Result};
 use clap::Parser;
 use colored::Colorize;
 use proofman_common::initialize_logger;
-use std::fs;
 use proofman_verifier::verify;
+use std::fs;
+use std::fs::File;
+use std::io::Read;
+use zstd::stream::read::Decoder;
 
 use bytemuck::cast_slice;
 
@@ -22,6 +25,9 @@ pub struct ZiskVerify {
 
     #[clap(short = 'k', long)]
     pub vk: String,
+
+    #[clap(short = 'z', long, default_value_t = false)]
+    pub zip: bool,
 }
 
 impl ZiskVerify {
@@ -36,7 +42,24 @@ impl ZiskVerify {
 
         let start = std::time::Instant::now();
 
-        let proof_buffer = fs::read(&self.proof)?;
+        let proof_buffer = if self.zip {
+            // Read compressed proof and decompress it
+            tracing::info!("Reading compressed proof file: {}", self.proof);
+            let proof_file = File::open(self.proof.clone())?;
+            let mut decoder = Decoder::new(proof_file)?;
+            let mut proof_buffer = Vec::new();
+            decoder.read_to_end(&mut proof_buffer)?;
+            tracing::info!("Decompressed proof size: {} bytes", proof_buffer.len());
+            proof_buffer
+        } else {
+            // Read uncompressed proof
+            tracing::info!("Reading uncompressed proof file: {}", self.proof);
+            let mut proof_file = File::open(self.proof.clone())?;
+            let mut proof_buffer = Vec::new();
+            proof_file.read_to_end(&mut proof_buffer)?;
+            tracing::info!("Proof size: {} bytes", proof_buffer.len());
+            proof_buffer
+        };
         let proof_slice: &[u64] = cast_slice(&proof_buffer);
 
         let vk_buffer = fs::read(&self.vk)?;

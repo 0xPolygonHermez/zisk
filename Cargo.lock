@@ -444,6 +444,7 @@ dependencies = [
  "zisk-common",
  "zisk-core",
  "zisk-pil",
+ "zstd",
 ]
 
 [[package]]
@@ -786,7 +787,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1076,7 +1077,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "num-bigint",
  "paste",
@@ -2189,7 +2190,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "pil-std-lib"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "colored",
  "fields",
@@ -2446,7 +2447,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "blake3",
  "bytemuck",
@@ -2478,7 +2479,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "crossbeam-channel",
  "env",
@@ -2501,7 +2502,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "fields",
  "proofman-common",
@@ -2513,7 +2514,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2524,7 +2525,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2533,7 +2534,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "colored",
  "fields",
@@ -2544,7 +2545,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "bytemuck",
  "fields",
@@ -3104,6 +3105,7 @@ dependencies = [
  "witness",
  "zisk-common",
  "zisk-witness",
+ "zstd",
 ]
 
 [[package]]
@@ -3780,7 +3782,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4392,7 +4394,7 @@ checksum = "052283831dbae3d879dc7f51f3d92703a316ca49f91540417d38591826127814"
 [[package]]
 name = "witness"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#6279f52c6c2c470e1a618e4b8c36d9dee3167644"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frust-verifier#4bdf19042857fc27bdbfb5e5bf1624d994187adb"
 dependencies = [
  "colored",
  "fields",
@@ -4656,4 +4658,32 @@ dependencies = [
  "rand 0.8.5",
  "static_assertions",
  "tiny-keccak",
+]
+
+[[package]]
+name = "zstd"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
+dependencies = [
+ "zstd-safe",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "7.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f49c4d5f0abb602a93fb8736af2a4f4dd9512e36f7f570d66e65ff867ed3b9d"
+dependencies = [
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "2.0.15+zstd.1.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb81183ddd97d0c74cedf1d50d85c8d08c1b8b68ee863bdee9e706eedba1a237"
+dependencies = [
+ "cc",
+ "pkg-config",
 ]
