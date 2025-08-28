@@ -259,7 +259,7 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                 if inst_name == "c.jr" {
                     i.rd = 0;
                     if i.rs2 != 0 {
-                        panic!("Invalid use of rs2!=0 in c.jr at index={}", code_index);
+                        panic!("Invalid use of rs2!=0 in c.jr at index={code_index}");
                     }
                 } else if inst_name == "c.jalr" {
                     i.rd = 1;
@@ -326,7 +326,7 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                     let imm8_6 = ((inst >> 2) & 0x7) as u32;
                     i.imm = ((imm8_6 << 6) | (imm5 << 5) | (imm4_3 << 3)) as i32;
                     if i.rd == 0 {
-                        panic!("Invalid use of rd=0 in c.ldsp at index={}", code_index);
+                        panic!("Invalid use of rd=0 in c.ldsp at index={code_index}");
                     }
                     i.rs1 = 2; // x2 is always the base pointer for LDSP instructions
                 } else if inst_name == "c.lwsp" {
@@ -335,7 +335,7 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                     let imm7_6 = ((inst >> 2) & 0x3) as u32;
                     i.imm = ((imm7_6 << 6) | (imm5 << 5) | (imm4_2 << 2)) as i32;
                     if i.rd == 0 {
-                        panic!("Invalid use of rd=0 in c.lwsp at index={}", code_index);
+                        panic!("Invalid use of rd=0 in c.lwsp at index={code_index}");
                     }
                     i.rs1 = 2; // x2 is always the base pointer for LWSP instructions
                 } else {
@@ -437,7 +437,7 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                     i.rd = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
                     i.rs1 = i.rd;
                     if i.rd == 0 {
-                        panic!("Invalid use of rd=0 in c.andi at index={}", code_index);
+                        panic!("Invalid use of rd=0 in c.andi at index={code_index}");
                     }
                 } else if inst_name == "c.srli" {
                     let imm5 = ((inst >> 12) & 0x1) as u32;

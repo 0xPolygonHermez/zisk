@@ -405,12 +405,12 @@ impl Rvd {
                     0x2 => ("CL", "c.lw"),        // Mapped to lw: lw rd′, offset(rs1′)
                     0x3 => ("CL", "c.ld"),        // Mapped to ld: ld rd′, offset(rs1′)
                     0x4 => {
-                        panic!("Rvd::get_type_and_name() reserved instruction inst=0x{:x}", inst)
+                        panic!("Rvd::get_type_and_name() reserved instruction inst=0x{inst:x}")
                     }
                     0x5 => ("CS", "c.fsd"), // Unmapped, i.e. not supported
                     0x6 => ("CS", "c.sw"),  // Mapped to sw: sw rs2′,offset(rs1′)
                     0x7 => ("CS", "c.sd"),  // Mapped to sd: sd rs2′, offset(rs1′)
-                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{:x}", inst),
+                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
                 }
             }
             0x01 => match (inst >> 13) & 0x7 {
@@ -441,24 +441,24 @@ impl Rvd {
                             0x1 => ("CA", "c.xor"), // Mapped to xor: xor rd′, rd′, rs2′
                             0x2 => ("CA", "c.or"),  // Mapped to or: or rd′, rd′, rs2′
                             0x3 => ("CA", "c.and"), // Mapped to and: and rd′, rd′, rs2′
-                            _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{:x}", inst),
+                            _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
                         },
                         0x01 => match (inst >> 5) & 0x3 {
                             0x0 => ("CA", "c.subw"), // Mapped to subw: subw rd′, rd′, rs2′
                             0x1 => ("CA", "c.addw"), // Mapped to addw: addw rd′, rd′,rs2′
                             0x2 | 0x3 => {
-                                panic!("Rvd::get_type_and_name() reserved inst=0x{:x}", inst)
+                                panic!("Rvd::get_type_and_name() reserved inst=0x{inst:x}");
                             }
-                            _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{:x}", inst),
+                            _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
                         },
-                        _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{:x}", inst),
+                        _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
                     },
-                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{:x}", inst),
+                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
                 },
                 0x5 => ("CJ", "c.j"),    // Mapped to jal: jal x0, offset
                 0x6 => ("CB", "c.beqz"), // Mapped to beq: beq rs1′, x0, offset
                 0x7 => ("CB", "c.bnez"), // Mapped to bne: bne rs1′, x0, offset
-                _ => panic!("Rvd::get_type_and_name() invalid inst=0x{:x}", inst),
+                _ => panic!("Rvd::get_type_and_name() invalid inst=0x{inst:x}"),
             },
             0x02 => {
                 match (inst >> 13) & 0x7 {
@@ -500,10 +500,10 @@ impl Rvd {
                     0x5 => ("CSS", "c.fsdsp"), // Unmapped, i.e. not supported
                     0x6 => ("CSS", "c.swsp"),  // Mapped to sw: sw rs2, offset(x2)
                     0x7 => ("CSS", "c.sdsp"),  // Mapped to sd: sd rs2, offset(x2)
-                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{:x}", inst),
+                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
                 }
             }
-            _ => panic!("Rvd::get_type_and_name() unknown opcode inst=0x{:x}", inst),
+            _ => panic!("Rvd::get_type_and_name() unknown opcode inst=0x{inst:x}"),
         }
     }
 }
