@@ -277,6 +277,7 @@ impl ZiskService {
             Some(local_rank),
             base_port,
             unlock_mapped_memory,
+            false
         )
         .expect("Failed to initialize witness library");
 

@@ -233,6 +233,7 @@ impl ZiskVerifyConstraints {
                     Some(mpi_context.local_rank),
                     self.port,
                     self.unlock_mapped_memory,
+                    false,
                 )
                 .expect("Failed to initialize witness library");
 
