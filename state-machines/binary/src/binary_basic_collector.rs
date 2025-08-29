@@ -50,6 +50,8 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
     pub fn new(
         std: Arc<Std<F>>,
         num_operations: usize,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
         collect_skipper: CollectSkipper,
         with_adds: bool,
         force_execute_to_end: bool,
@@ -61,8 +63,8 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
             collect_skipper,
             with_adds,
             force_execute_to_end,
-            calculate_inputs: true,
-            calculate_multiplicity: true,
+            calculate_inputs,
+            calculate_multiplicity,
             inputs_collected: 0,
         }
     }

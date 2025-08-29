@@ -5,9 +5,10 @@
 use std::any::Any;
 
 use crate::{
-    BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner,
-    RegularCounters,
+    BusDeviceMetrics, CheckPoint, ChunkId, CollectSkipper, InstCount, InstanceType, Metrics, Plan,
+    Planner, RegularCounters,
 };
+use std::collections::HashMap;
 use zisk_core::ZiskOperationType;
 
 use super::plan;
@@ -61,6 +62,8 @@ pub struct TableInfo {
 
     /// The AIR ID.
     pub air_id: usize,
+
+    pub num_rows: usize,
 }
 
 impl TableInfo {
@@ -72,8 +75,8 @@ impl TableInfo {
     ///
     /// # Returns
     /// A new `TableInfo` instance.
-    pub fn new(airgroup_id: usize, air_id: usize) -> Self {
-        TableInfo { air_id, airgroup_id }
+    pub fn new(airgroup_id: usize, air_id: usize, num_rows: usize) -> Self {
+        TableInfo { air_id, airgroup_id, num_rows }
     }
 }
 /// The `RegularPlanner` struct organizes execution plans for regular and table instances.
@@ -163,9 +166,16 @@ impl Planner for RegularPlanner {
                 .into_iter()
                 .map(|(check_point, collect_info)| {
                     let converted: Box<dyn Any> = Box::new(collect_info);
+                    let collect_info_ref = converted
+                        .downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+                        .expect("Failed to downcast collect_info to expected type");
+
+                    let num_rows: u64 = collect_info_ref.values().map(|(v, _)| *v).sum();
+
                     Plan::new(
                         instance.airgroup_id,
                         instance.air_id,
+                        Some(num_rows as usize),
                         None,
                         InstanceType::Instance,
                         check_point,
@@ -183,6 +193,7 @@ impl Planner for RegularPlanner {
                 plan_result.push(Plan::new(
                     table_instance.airgroup_id,
                     table_instance.air_id,
+                    Some(table_instance.num_rows),
                     None,
                     InstanceType::Table,
                     CheckPoint::None,

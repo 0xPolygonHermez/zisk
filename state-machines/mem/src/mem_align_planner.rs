@@ -105,9 +105,12 @@ impl<'a> MemAlignPlanner<'a> {
         let chunks = std::mem::take(&mut self.chunks);
         let check_points = std::mem::take(&mut self.check_points);
 
+        let num_rows: u32 = check_points.values().map(|cp| cp.rows).sum();
+
         let instance = Plan::new(
             ZISK_AIRGROUP_ID,
             MEM_ALIGN_AIR_IDS[0],
+            Some(num_rows as usize),
             Some(SegmentId(self.instances.len())),
             InstanceType::Instance,
             CheckPoint::Multiple(chunks),

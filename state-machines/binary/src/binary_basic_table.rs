@@ -49,6 +49,7 @@ impl BinaryBasicTableSM {
     /// # Returns
     /// The calculated table row offset.
     #[allow(clippy::too_many_arguments)]
+    #[inline(always)]
     pub fn calculate_table_row(
         //lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
         opcode: BinaryBasicTableOp,

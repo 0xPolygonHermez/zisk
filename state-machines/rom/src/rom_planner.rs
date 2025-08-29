@@ -2,7 +2,7 @@
 //! operations. It aggregates ROM metrics and generates a plan for the execution flow.
 
 use zisk_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Plan, Planner};
-use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{RomTrace, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 /// The `RomPlanner` struct creates an execution plan from aggregated ROM metrics.
 ///
@@ -34,9 +34,12 @@ impl Planner for RomPlanner {
 
         let vec_chunk_ids = metrics.iter().map(|(chunk_id, _)| *chunk_id).collect::<Vec<_>>();
 
+        let num_rows: u64 = RomTrace::<usize>::NUM_ROWS as u64;
+
         vec![Plan::new(
             ZISK_AIRGROUP_ID,
             ROM_AIR_IDS[0],
+            Some(num_rows as usize),
             None,
             InstanceType::Instance,
             CheckPoint::Multiple(vec_chunk_ids),

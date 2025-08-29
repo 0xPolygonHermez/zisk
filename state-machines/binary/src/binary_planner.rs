@@ -7,6 +7,8 @@
 use std::any::Any;
 
 use crate::BinaryCounter;
+use std::collections::HashMap;
+use zisk_common::CollectSkipper;
 use zisk_common::{
     plan_with_frops, BusDeviceMetrics, ChunkId, InstFropsCount, InstanceType, Metrics, Plan,
     Planner,
@@ -58,9 +60,16 @@ impl BinaryPlanner {
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new(collect_info);
+                let collect_info_ref = converted
+                    .downcast_ref::<HashMap<ChunkId, (u64, bool, CollectSkipper)>>()
+                    .expect("Failed to downcast collect_info to expected type");
+
+                let num_rows: u64 = collect_info_ref.values().map(|(v, _, _)| *v).sum();
+
                 Plan::new(
                     BinaryExtensionTrace::<usize>::AIRGROUP_ID,
                     BinaryExtensionTrace::<usize>::AIR_ID,
+                    Some(num_rows as usize),
                     None,
                     InstanceType::Instance,
                     check_point,
@@ -96,9 +105,16 @@ impl BinaryPlanner {
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new((with_adds, collect_info));
+                let collect_info_ref = converted
+                    .downcast_ref::<(bool, HashMap<ChunkId, (u64, bool, CollectSkipper)>)>()
+                    .expect("Failed to downcast collect_info to expected type");
+
+                let num_rows: u64 = collect_info_ref.1.values().map(|(v, _, _)| *v).sum();
+
                 Plan::new(
                     BinaryTrace::<usize>::AIRGROUP_ID,
                     BinaryTrace::<usize>::AIR_ID,
+                    Some(num_rows as usize),
                     None,
                     InstanceType::Instance,
                     check_point,
@@ -125,9 +141,16 @@ impl BinaryPlanner {
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new(collect_info);
+                let collect_info_ref = converted
+                    .downcast_ref::<HashMap<ChunkId, (u64, bool, CollectSkipper)>>()
+                    .expect("Failed to downcast collect_info to expected type");
+
+                let num_rows: u64 = collect_info_ref.values().map(|(v, _, _)| *v).sum();
+
                 Plan::new(
                     BinaryAddTrace::<usize>::AIRGROUP_ID,
                     BinaryAddTrace::<usize>::AIR_ID,
+                    Some(num_rows as usize),
                     None,
                     InstanceType::Instance,
                     check_point,

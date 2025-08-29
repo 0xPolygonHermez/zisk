@@ -92,14 +92,12 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
             inputs.push(c.inputs);
         }
 
-        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
-        self.compute_multiplicity_instance(total_inputs);
-
         Some(self.binary_basic_sm.compute_witness(&inputs, buffer_pool.take_buffer()))
     }
 
-    fn compute_multiplicity_instance(&self, total_inputs: usize) {
-        self.binary_basic_sm.compute_multiplicity_instance(total_inputs);
+    fn compute_multiplicity_instance(&self) {
+        let num_rows = self.ictx.plan.num_rows.unwrap();
+        self.binary_basic_sm.compute_multiplicity_instance(num_rows);
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -129,11 +127,15 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
         &self,
         std: Arc<Std<F>>,
         chunk_id: ChunkId,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryBasicCollector::new(
             std,
             num_ops as usize,
+            calculate_inputs,
+            calculate_multiplicity,
             collect_skipper,
             self.with_adds,
             force_execute_to_end,

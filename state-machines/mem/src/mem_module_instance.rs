@@ -111,6 +111,8 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         &self,
         _std: Arc<Std<F>>,
         chunk_id: ChunkId,
+        _calculate_inputs: bool,
+        _calculate_multiplicity: bool,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let chunk_check_point = self.check_point.chunks.get(&chunk_id).unwrap();
         Some(Box::new(MemModuleCollector::new(

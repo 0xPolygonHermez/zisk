@@ -20,6 +20,7 @@ use crate::{ArithFrops, ArithFullSM};
 ///
 /// It tracks specific operation types (`ZiskOperationType`) and updates counters for each
 /// accepted operation type whenever data is processed on the bus.
+#[derive(Debug)]
 pub struct ArithCounterInputGen {
     /// Vector of counters, one for each accepted `ZiskOperationType`.
     counter: Counter,

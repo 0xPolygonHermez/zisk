@@ -761,6 +761,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         }
     }
 
+    #[inline(always)]
     pub fn process_multiplicity(
         std: &Std<F>,
         range_checks: &mut [u32],

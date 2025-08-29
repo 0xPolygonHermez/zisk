@@ -56,7 +56,6 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
             inputs.push(c.inputs);
         }
 
-        self.compute_multiplicity_instance(total_inputs as usize);
         Some(self.mem_align_sm.compute_witness(
             &inputs,
             total_inputs as usize,
@@ -64,8 +63,9 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         ))
     }
 
-    fn compute_multiplicity_instance(&self, total_inputs: usize) {
-        self.mem_align_sm.compute_multiplicity_instance(total_inputs);
+    fn compute_multiplicity_instance(&self) {
+        let num_rows = self.ictx.plan.num_rows.unwrap() as usize;
+        self.mem_align_sm.compute_multiplicity_instance(num_rows);
     }
 
     fn check_point(&self) -> &CheckPoint {
@@ -87,8 +87,15 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         &self,
         std: Arc<Std<F>>,
         chunk_id: ChunkId,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(MemAlignCollector::new(std, &self.checkpoint[&chunk_id])))
+        Some(Box::new(MemAlignCollector::new(
+            std,
+            calculate_inputs,
+            calculate_multiplicity,
+            &self.checkpoint[&chunk_id],
+        )))
     }
 }
 
@@ -111,15 +118,20 @@ pub struct MemAlignCollector<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> MemAlignCollector<F> {
-    pub fn new(std: Arc<Std<F>>, mem_align_checkpoint: &MemAlignCheckPoint) -> Self {
+    pub fn new(
+        std: Arc<Std<F>>,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
+        mem_align_checkpoint: &MemAlignCheckPoint,
+    ) -> Self {
         Self {
             std,
             inputs: Vec::new(),
             skip_pending: mem_align_checkpoint.skip,
             pending_count: mem_align_checkpoint.count,
             rows: mem_align_checkpoint.rows,
-            calculate_inputs: true,
-            calculate_multiplicity: true,
+            calculate_inputs,
+            calculate_multiplicity,
             inputs_collected: 0,
             range_checks: vec![0; 256],
         }

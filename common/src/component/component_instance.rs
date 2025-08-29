@@ -42,7 +42,7 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
         None
     }
 
-    fn compute_multiplicity_instance(&self, _total_inputs: usize) {}
+    fn compute_multiplicity_instance(&self) {}
 
     /// Retrieves the checkpoint associated with the instance.
     ///
@@ -67,6 +67,8 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
         &self,
         _std: Arc<Std<F>>,
         _chunk_id: ChunkId,
+        _calculate_inputs: bool,
+        _calculate_multiplicity: bool,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         None
     }

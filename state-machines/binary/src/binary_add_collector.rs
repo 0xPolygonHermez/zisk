@@ -44,6 +44,8 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
     pub fn new(
         std: Arc<Std<F>>,
         num_operations: usize,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
     ) -> Self {
@@ -53,8 +55,8 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
             num_operations,
             collect_skipper,
             force_execute_to_end,
-            calculate_inputs: true,
-            calculate_multiplicity: true,
+            calculate_inputs,
+            calculate_multiplicity,
             inputs_collected: 0,
             range_checks: vec![0; 65536],
         }

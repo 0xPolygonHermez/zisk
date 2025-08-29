@@ -91,11 +91,10 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
             inputs.push(c.inputs);
         }
 
-        self.compute_multiplicity_instance(0);
         Some(self.keccakf_sm.compute_witness(&inputs, buffer_pool.take_buffer()))
     }
 
-    fn compute_multiplicity_instance(&self, _total_inputs: usize) {
+    fn compute_multiplicity_instance(&self) {
         self.keccakf_sm.compute_multiplicity_instance();
     }
 
@@ -119,6 +118,8 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
         &self,
         _std: Arc<Std<F>>,
         chunk_id: ChunkId,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
@@ -128,7 +129,12 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
         );
 
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(KeccakfCollector::new(num_ops, collect_skipper)))
+        Some(Box::new(KeccakfCollector::new(
+            num_ops,
+            calculate_inputs,
+            calculate_multiplicity,
+            collect_skipper,
+        )))
     }
 }
 
@@ -160,13 +166,18 @@ impl KeccakfCollector {
     ///
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
+    pub fn new(
+        num_operations: u64,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
+        collect_skipper: CollectSkipper,
+    ) -> Self {
         Self {
             inputs: Vec::new(),
             num_operations,
             collect_skipper,
-            calculate_inputs: true,
-            calculate_multiplicity: true,
+            calculate_inputs,
+            calculate_multiplicity,
             inputs_collected: 0,
         }
     }

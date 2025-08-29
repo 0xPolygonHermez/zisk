@@ -110,6 +110,7 @@ impl MemPlanner {
                 plans.push(Plan::new(
                     ZISK_AIRGROUP_ID,
                     *air_id,
+                    None,
                     Some(SegmentId(segment_id as usize)),
                     InstanceType::Instance,
                     CheckPoint::Multiple(chunks),
@@ -128,10 +129,12 @@ impl MemPlanner {
             let current_segment_id = SegmentId(checkpoint.segment_id as usize);
             if Some(current_segment_id) != last_segment_id {
                 if last_segment_id.is_some() {
+                    let num_rows: u32 = segment.values().map(|cp| cp.rows).sum();
                     // If we have a previous segment, push it to plans
                     plans.push(Plan::new(
                         ZISK_AIRGROUP_ID,
                         MEM_ALIGN_AIR_IDS[0],
+                        Some(num_rows as usize),
                         last_segment_id,
                         InstanceType::Instance,
                         CheckPoint::Multiple(std::mem::take(&mut chunks)),
@@ -154,9 +157,11 @@ impl MemPlanner {
             );
         }
         if !chunks.is_empty() {
+            let num_rows: u32 = segment.values().map(|cp| cp.rows).sum();
             plans.push(Plan::new(
                 ZISK_AIRGROUP_ID,
                 MEM_ALIGN_AIR_IDS[0],
+                Some(num_rows as usize),
                 Some(last_segment_id.unwrap()),
                 InstanceType::Instance,
                 CheckPoint::Multiple(std::mem::take(&mut chunks)),

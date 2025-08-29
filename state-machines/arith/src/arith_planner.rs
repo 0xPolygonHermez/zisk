@@ -7,6 +7,8 @@
 use std::any::Any;
 
 use crate::ArithCounterInputGen;
+use std::collections::HashMap;
+use zisk_common::CollectSkipper;
 use zisk_common::{
     plan_with_frops, BusDeviceMetrics, CheckPoint, ChunkId, InstFropsCount, InstanceInfo,
     InstanceType, Metrics, Plan, Planner, TableInfo,
@@ -92,9 +94,18 @@ impl Planner for ArithPlanner {
                 .into_iter()
                 .map(|(check_point, collect_info)| {
                     let converted: Box<dyn Any> = Box::new(collect_info);
+
+                    // Downcast to access the data you need
+                    let collect_info_ref = converted
+                        .downcast_ref::<HashMap<ChunkId, (u64, bool, CollectSkipper)>>()
+                        .expect("Failed to downcast collect_info to expected type");
+
+                    let num_rows: u64 = collect_info_ref.values().map(|(v, _, _)| *v).sum();
+
                     Plan::new(
                         instance.airgroup_id,
                         instance.air_id,
+                        Some(num_rows as usize),
                         None,
                         InstanceType::Instance,
                         check_point,
@@ -112,6 +123,7 @@ impl Planner for ArithPlanner {
                 plan_result.push(Plan::new(
                     table_instance.airgroup_id,
                     table_instance.air_id,
+                    Some(table_instance.num_rows),
                     None,
                     InstanceType::Table,
                     CheckPoint::None,

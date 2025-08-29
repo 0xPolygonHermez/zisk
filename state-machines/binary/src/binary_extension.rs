@@ -271,6 +271,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         row
     }
 
+    #[inline(always)]
     pub fn process_multiplicity(std: &Std<F>, input: &BinaryInput) {
         // Get the range check ID
         let range_id = std.get_range_id(0, 0xFFFFFF, None);

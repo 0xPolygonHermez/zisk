@@ -74,14 +74,12 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
             inputs.push(c.inputs);
         }
 
-        let total_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
-        self.compute_multiplicity_instance(total_inputs);
-
         Some(self.sha256f_sm.compute_witness(&inputs, buffer_pool.take_buffer()))
     }
 
-    fn compute_multiplicity_instance(&self, total_inputs: usize) {
-        self.sha256f_sm.compute_multiplicity_instance(total_inputs);
+    fn compute_multiplicity_instance(&self) {
+        let num_rows = self.ictx.plan.num_rows.unwrap();
+        self.sha256f_sm.compute_multiplicity_instance(num_rows);
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -104,6 +102,8 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
         &self,
         std: Arc<Std<F>>,
         chunk_id: ChunkId,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
@@ -115,7 +115,13 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
         let meta = self.ictx.plan.meta.as_ref().unwrap();
         let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
         let (num_ops, collect_skipper) = collect_info[&chunk_id];
-        Some(Box::new(Sha256fCollector::new(std, num_ops, collect_skipper)))
+        Some(Box::new(Sha256fCollector::new(
+            std,
+            num_ops,
+            calculate_inputs,
+            calculate_multiplicity,
+            collect_skipper,
+        )))
     }
 }
 
@@ -148,14 +154,20 @@ impl<F: PrimeField64> Sha256fCollector<F> {
     ///
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
-    pub fn new(std: Arc<Std<F>>, num_operations: u64, collect_skipper: CollectSkipper) -> Self {
+    pub fn new(
+        std: Arc<Std<F>>,
+        num_operations: u64,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
+        collect_skipper: CollectSkipper,
+    ) -> Self {
         Self {
             std,
             inputs: Vec::new(),
             num_operations,
             collect_skipper,
-            calculate_inputs: true,
-            calculate_multiplicity: true,
+            calculate_inputs,
+            calculate_multiplicity,
             inputs_collected: 0,
         }
     }

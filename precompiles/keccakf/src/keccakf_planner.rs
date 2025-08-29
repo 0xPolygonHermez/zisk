@@ -7,10 +7,10 @@
 use std::any::Any;
 
 use crate::KeccakfCounterInputGen;
-
+use std::collections::HashMap;
 use zisk_common::{
-    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
-    Plan, Planner, TableInfo,
+    plan, BusDeviceMetrics, CheckPoint, ChunkId, CollectSkipper, InstCount, InstanceInfo,
+    InstanceType, Metrics, Plan, Planner, TableInfo,
 };
 
 /// The `KeccakfPlanner` struct organizes execution plans for arithmetic instances and tables.
@@ -104,9 +104,16 @@ impl Planner for KeccakfPlanner {
                 .into_iter()
                 .map(|(check_point, collect_info)| {
                     let converted: Box<dyn Any> = Box::new(collect_info);
+                    let collect_info_ref = converted
+                        .downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+                        .expect("Failed to downcast collect_info to expected type");
+
+                    let num_rows: u64 = collect_info_ref.values().map(|(v, _)| *v).sum();
+
                     Plan::new(
                         instance.airgroup_id,
                         instance.air_id,
+                        Some(num_rows as usize),
                         None,
                         InstanceType::Instance,
                         check_point,
@@ -124,6 +131,7 @@ impl Planner for KeccakfPlanner {
                 plan_result.push(Plan::new(
                     table_instance.airgroup_id,
                     table_instance.air_id,
+                    Some(table_instance.num_rows),
                     None,
                     InstanceType::Table,
                     CheckPoint::None,

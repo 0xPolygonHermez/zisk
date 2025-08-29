@@ -63,15 +63,22 @@ impl MainPlanner {
 
         let plans: Vec<Plan> = (0..num_instances)
             .map(|segment_id| {
-                Plan::new(
+                let total_rows = if segment_id == num_instances - 1 {
+                    let remaining = min_traces.len() as u64 - (segment_id as u64 * num_within);
+                    remaining * min_traces_size
+                } else {
+                    num_rows
+                };
+                return Plan::new(
                     ZISK_AIRGROUP_ID,
                     MAIN_AIR_IDS[0],
+                    Some(total_rows as usize),
                     Some(SegmentId(segment_id)),
                     InstanceType::Instance,
                     CheckPoint::Single(ChunkId(segment_id)),
                     Some(Box::new(segment_id == num_instances - 1) as Box<dyn Any>),
                     4,
-                )
+                );
             })
             .collect();
 

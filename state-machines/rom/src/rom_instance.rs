@@ -197,6 +197,8 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         &self,
         _: Arc<Std<F>>,
         _: ChunkId,
+        _: bool,
+        _: bool,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         if self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some() {
             return None;

@@ -17,6 +17,7 @@ impl ArithEqLtTableSM {
     ///
     /// # Returns
     /// The calculated table row offset.
+    #[inline(always)]
     pub fn calculate_table_row(prev_lt: bool, lt: bool, delta: i64) -> usize {
         // 0 0..MAX16
         // 1 -1..MIN16

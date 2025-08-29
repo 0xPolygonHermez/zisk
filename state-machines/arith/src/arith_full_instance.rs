@@ -92,14 +92,12 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
             inputs.push(c.inputs);
         }
 
-        let total_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
-        self.compute_multiplicity_instance(total_inputs);
-
         Some(self.arith_full_sm.compute_witness(&inputs, buffer_pool.take_buffer()))
     }
 
-    fn compute_multiplicity_instance(&self, total_inputs: usize) {
-        self.arith_full_sm.compute_multiplicity_instance(total_inputs);
+    fn compute_multiplicity_instance(&self) {
+        let num_rows = self.ictx.plan.num_rows.unwrap();
+        self.arith_full_sm.compute_multiplicity_instance(num_rows);
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -129,11 +127,15 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
         &self,
         std: Arc<Std<F>>,
         chunk_id: ChunkId,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(ArithInstanceCollector::new(
             std,
             num_ops,
+            calculate_inputs,
+            calculate_multiplicity,
             collect_skipper,
             force_execute_to_end,
         )))
@@ -177,6 +179,8 @@ impl<F: PrimeField64> ArithInstanceCollector<F> {
     pub fn new(
         std: Arc<Std<F>>,
         num_operations: u64,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
     ) -> Self {
@@ -186,8 +190,8 @@ impl<F: PrimeField64> ArithInstanceCollector<F> {
             num_operations,
             collect_skipper,
             force_execute_to_end,
-            calculate_inputs: true,
-            calculate_multiplicity: true,
+            calculate_inputs,
+            calculate_multiplicity,
             inputs_collected: 0,
         }
     }

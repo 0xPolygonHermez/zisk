@@ -577,6 +577,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }
 
+    #[inline(always)]
     pub fn process_multiplicity(std: &Std<F>, input: &ArithEqInput) {
         match input {
             ArithEqInput::Arith256(idata) => Self::process_arith256_rc(std, idata),

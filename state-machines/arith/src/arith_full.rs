@@ -203,6 +203,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         }
     }
 
+    #[inline(always)]
     pub fn process_multiplicity(std: &Std<F>, input: &[u64; 4]) {
         // Get the Arithmetic table ID
         let table_id = std.get_virtual_table_id(ArithTableSM::TABLE_ID);

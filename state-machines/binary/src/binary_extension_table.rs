@@ -41,6 +41,7 @@ impl BinaryExtensionTableSM {
     /// # Panics
     /// In debug mode, it panics if `offset` > 0x07, `a` > 0xFF, or `b` > 0xFF, as these violate
     /// table constraints.
+    #[inline(always)]
     pub fn calculate_table_row(opcode: BinaryExtensionTableOp, offset: u64, a: u64, b: u64) -> u64 {
         //lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1], multiplicity);
         debug_assert!(offset <= 0x07);

@@ -93,6 +93,8 @@ pub struct Plan {
     /// The AIR ID.
     pub air_id: usize,
 
+    pub num_rows: Option<usize>,
+
     /// The segment ID associated with this plan.
     pub segment_id: Option<SegmentId>,
 
@@ -127,6 +129,7 @@ impl Plan {
     pub fn new(
         airgroup_id: usize,
         air_id: usize,
+        num_rows: Option<usize>,
         segment_id: Option<SegmentId>,
         instance_type: InstanceType,
         check_point: CheckPoint,
@@ -136,6 +139,7 @@ impl Plan {
         Plan {
             airgroup_id,
             air_id,
+            num_rows,
             segment_id,
             instance_type,
             check_point,

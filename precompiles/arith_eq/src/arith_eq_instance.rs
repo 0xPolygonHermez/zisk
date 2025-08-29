@@ -95,13 +95,12 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
             inputs.push(c.inputs);
         }
 
-        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
-        self.compute_multiplicity_instance(total_inputs);
         Some(self.arith_eq_sm.compute_witness(sctx, &inputs, buffer_pool.take_buffer()))
     }
 
-    fn compute_multiplicity_instance(&self, total_inputs: usize) {
-        self.arith_eq_sm.compute_multiplicity_instance(total_inputs);
+    fn compute_multiplicity_instance(&self) {
+        let num_rows = self.ictx.plan.num_rows.unwrap();
+        self.arith_eq_sm.compute_multiplicity_instance(num_rows);
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -124,9 +123,17 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
         &self,
         std: Arc<Std<F>>,
         chunk_id: ChunkId,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(ArithEqCollector::new(std, num_ops as usize, collect_skipper)))
+        Some(Box::new(ArithEqCollector::new(
+            std,
+            num_ops as usize,
+            calculate_inputs,
+            calculate_multiplicity,
+            collect_skipper,
+        )))
     }
 }
 
@@ -159,14 +166,20 @@ impl<F: PrimeField64> ArithEqCollector<F> {
     ///
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
-    pub fn new(std: Arc<Std<F>>, num_operations: usize, collect_skipper: CollectSkipper) -> Self {
+    pub fn new(
+        std: Arc<Std<F>>,
+        num_operations: usize,
+        calculate_inputs: bool,
+        calculate_multiplicity: bool,
+        collect_skipper: CollectSkipper,
+    ) -> Self {
         Self {
             std,
             inputs: Vec::new(),
             num_operations,
             collect_skipper,
-            calculate_inputs: true,
-            calculate_multiplicity: true,
+            calculate_inputs,
+            calculate_multiplicity,
             inputs_collected: 0,
         }
     }

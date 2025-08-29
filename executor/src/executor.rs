@@ -863,6 +863,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             guard.remove(&global_id).expect("Missing collectors for given global_id")
         };
 
+        secn_instance.compute_multiplicity_instance();
         if let Some(air_instance) =
             secn_instance.compute_witness(pctx, sctx, collectors_by_instance, buffer_pool)
         {
