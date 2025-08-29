@@ -7,8 +7,9 @@ use colored::Colorize;
 
 use crate::{get_elf_data_hash, DEFAULT_CACHE_PATH};
 
+#[allow(unused_variables)]
 pub fn rom_full_setup(
-    elf: &PathBuf,
+    elf: &Path,
     proving_key: &Path,
     zisk_path: &Path,
     output_dir: &Option<PathBuf>,

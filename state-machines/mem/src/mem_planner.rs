@@ -2,10 +2,10 @@ use mem_common::save_plans;
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "save_mem_bus_data")]
-use std::{env, fs};
-
-#[cfg(feature = "save_mem_bus_data")]
-use zisk_common::{CheckPoint, SegmentId};
+use {
+    std::{env, fs},
+    zisk_common::{CheckPoint, SegmentId},
+};
 
 use zisk_common::{BusDeviceMetrics, ChunkId, Metrics, Plan, Planner};
 
@@ -15,7 +15,7 @@ use zisk_pil::{
 };
 
 #[cfg(feature = "save_mem_bus_data")]
-use mem_common::{save_plans, MemAlignCheckPoint, MemModuleSegmentCheckPoint};
+use mem_common::save_plans;
 
 use crate::{
     MemAlignPlanner, MemCounters, MemModulePlanner, MemModulePlannerConfig, INPUT_DATA_W_ADDR_INIT,
@@ -52,6 +52,7 @@ impl MemPlanner {
                 air_id: MEM_AIR_IDS[0],
                 addr_index: 2,
                 from_addr: RAM_W_ADDR_INIT,
+                last_addr: RAM_W_ADDR_INIT,
                 rows: MemTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: false,
             },
@@ -64,6 +65,7 @@ impl MemPlanner {
                 air_id: ROM_DATA_AIR_IDS[0],
                 addr_index: 0,
                 from_addr: ROM_DATA_W_ADDR_INIT,
+                last_addr: ROM_DATA_W_ADDR_INIT - 1,
                 rows: RomDataTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: true,
             },
@@ -76,6 +78,7 @@ impl MemPlanner {
                 air_id: INPUT_DATA_AIR_IDS[0],
                 addr_index: 1,
                 from_addr: INPUT_DATA_W_ADDR_INIT,
+                last_addr: INPUT_DATA_W_ADDR_INIT,
                 rows: InputDataTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: true,
             },

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use mem_common::MemAlignCheckPoint;
-use proofman_common::PreCalculate;
 use zisk_common::{CheckPoint, ChunkId, CollectCounter, InstanceType, Plan, SegmentId};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
@@ -170,8 +169,8 @@ impl MemAlignInstanceCounter {
             Some(SegmentId(self.plans.len())),
             InstanceType::Instance,
             CheckPoint::Multiple(chunks),
-            PreCalculate::Fast,
             Some(Box::new(checkpoints)),
+            4,
         );
         self.plans.push(plan);
     }

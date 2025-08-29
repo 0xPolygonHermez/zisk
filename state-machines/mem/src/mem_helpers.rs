@@ -26,6 +26,10 @@ impl MemHelpers {
         ChunkId(((step - MEM_STEP_BASE) / self.chunk_size_steps) as usize)
     }
     #[inline(always)]
+    pub fn static_mem_step_to_chunk(step: u64, chunk_size: u64) -> ChunkId {
+        ChunkId(((step - MEM_STEP_BASE) / (chunk_size * MEM_STEPS_BY_MAIN_STEP)) as usize)
+    }
+    #[inline(always)]
     pub fn first_chunk_mem_step(&self, chunk: ChunkId) -> u64 {
         (chunk.0 as u64) * self.chunk_size_steps + MEM_STEP_BASE
     }

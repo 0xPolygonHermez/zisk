@@ -89,9 +89,7 @@ main() {
 
         echo "Setup hash: ${HASH_SUM}"
 
-        ZISK_VERSION=$(echo "$(ensure cargo-zisk --version)" | awk '{print $2}')
-        IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
-        cache_setup_folder="${OUTPUT_DIR}/${major}.${minor}.0/${PLATFORM}/${HASH_SUM}"
+        cache_setup_folder="${OUTPUT_DIR}/${PLATFORM}/${HASH_SUM}"
 
         # Check if setup file exists in cache
         if [[ -d "${cache_setup_folder}" ]]; then
@@ -119,7 +117,7 @@ main() {
     fi
 
     if [[ ${USE_CACHE_SETUP} == "1" && ${cached} == "0" ]]; then
-        info "Caching setup..."
+        info "Caching setup to ${cache_setup_folder}..."
         mkdir -p "${cache_setup_folder}"
         ensure cp -R build/provingKey "${cache_setup_folder}" || return 1
     fi
