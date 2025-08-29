@@ -28,7 +28,7 @@ impl MemAlignCollector {
     }
     fn input_push_read(&mut self, addr: u32, bytes: u8, data: &[u64]) {
         let step = MemBusData::get_step(data);
-        if step >= 58692093 && step <= 58692095 {
+        if step >= 121779671 && step <= 121779671 {
             println!("\x1B[1;36mMEM_DEBUG: INPUT COLLECTOR addr:{addr} step:{step} bytes:{bytes} write:false\x1B[0m");
         }
         let mem_values = MemBusData::get_mem_values(data);
@@ -43,8 +43,8 @@ impl MemAlignCollector {
     }
     fn input_push_write(&mut self, addr: u32, bytes: u8, data: &[u64]) {
         let step = MemBusData::get_step(data);
-        if step >= 58692093 && step <= 58692095 {
-            println!("\x1B[1;36mMEM_DEBUG: INPUT COLLECTOR addr:{addr} step:{step} bytes:{bytes} write:true\x1B[0m");
+        if step >= 121779671 && step <= 121779671 {
+            println!("\x1B[1;36mMEM_DEBUG: INPUT COLLECTOR addr:{addr} step:{step} bytes:{bytes} write:true data:{data:?} value:{}\x1B[0m", MemBusData::get_value(data));
         }
 
         self.inputs.push(MemAlignInput {

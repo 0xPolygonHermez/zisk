@@ -1,6 +1,7 @@
 use rayon::prelude::*;
 #[cfg(feature = "save_mem_bus_data")]
 use std::{env, io::Write, slice};
+use zisk_core::Mem;
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -93,8 +94,8 @@ impl MemCounters {
         let addr_w = MemHelpers::get_addr_w(addr);
         let bytes = MemBusData::get_bytes(data);
         let step = MemBusData::get_step(data);
-        if step >= 58692093 && step <= 58692095 {
-            println!("\x1B[1;36mMEM_DEBUG: COUNTER addr:{addr} step:{step} bytes:{bytes} write:{}\x1B[0m", MemHelpers::is_write(MemBusData::get_op(data)));
+        if step >= 121779671 && step <= 121779671 {
+            println!("\x1B[1;36mMEM_DEBUG: COUNTER addr:{addr} step:{step} bytes:{bytes} write:{} value:{}\x1B[0m", MemHelpers::is_write(MemBusData::get_op(data)), MemBusData::get_value(data));
         }
 
         if MemHelpers::is_aligned(addr, bytes) {

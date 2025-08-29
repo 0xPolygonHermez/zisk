@@ -90,8 +90,13 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
         permutation_assumes(MEMORY_ID, [MEMORY_STORE_OP, mem_addr, step + 1, 8, ...mem_write_values ], sel: is_write); 
     }
 
-
-    permutation_proves(MEMORY_ID, [mem_op, main_addr, step, 1, byte_value, 0]);
+    if (read == 1 && write == 1) {
+        permutation_proves(MEMORY_ID, [mem_op, main_addr, step, 1, is_write * (written_byte_value - byte_value) + byte_value, 0]);
+    } else if (read == 1) {
+        permutation_proves(MEMORY_ID, [MEMORY_LOAD_OP, main_addr, step, 1, byte_value, 0]);
+    } else if (write == 1) {
+        permutation_proves(MEMORY_ID, [MEMORY_STORE_OP, main_addr, step, 1, written_byte_value, 0]);
+    }
 
     range_check(min: 0, max: 0xFFFF, expression: value_16b);
     lookup_assumes(DUAL_BYTE_TABLE_ID, [byte_value, value_8b]);

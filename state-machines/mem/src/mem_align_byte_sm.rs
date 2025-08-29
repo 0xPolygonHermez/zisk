@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use rayon::prelude::*;
+use zisk_common::MemBusData;
 
 use crate::MemAlignInput;
 use proofman_common::{AirInstance, FromTrace};
@@ -415,8 +416,9 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         let offset = (addr & OFFSET_MASK) as u8;
         let addr_w = addr >> OFFSET_BITS;
         let step = input.step as u64;
-        if step >= 58692093 && step <= 58692095 {
-            println!("\x1B[1;36mMEM_DEBUG: COMPUTE_WITNESS_MEM_ALIGN_BYTE addr:{addr} addr_w:{addr_w} step:{step} offset:{offset} write:false\x1B[0m");
+        let debug = step >= 121779671 && step <= 121779671;
+        if debug {
+            println!("\x1B[1;36mMEM_DEBUG: COMPUTE_WITNESS_MEM_ALIGN_BYTE addr:{addr} addr_w:{addr_w} step:{step} offset:{offset} write:false value:{value}\x1B[0m", value=input.value);
         }
 
         let (
@@ -548,6 +550,10 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         } else {
             [low_value, written_composed_value]
         };
+        if debug {
+            println!("\x1B[1;36mMEM_DEBUG: WBV:{written_byte_value} WCV:{written_composed_value} @_W:{addr_w} O:{offset} WR:{write_values:?}\x1B[0m");
+        }
+
         if R::valid_for_write() {
             self.std.range_check(self.table_8b_id, written_byte_value as i64, 1);
         }
