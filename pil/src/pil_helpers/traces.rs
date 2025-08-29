@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "02bfdfad7d1774cdbf44c0e25ccb70726bb2ecc6c9b1b868433b8dcb8bbe3677";
+pub const PILOUT_HASH: &str = "26ecf931e37b68f7fb766b4f34888593dc900dceae3463a8a3a9bb5fa68f5db7";
 
 //AIRGROUP CONSTANTS
 
@@ -153,7 +153,7 @@ trace!(MemAlignByteFixed<F> {
 },  0, 6, 4194304 );
 
 trace!(MemAlignByteTrace<F> {
- sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, written_composed_value: F, written_byte_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F, is_write: F, mem_write_values: [F; 2],
+ sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, written_composed_value: F, written_byte_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F, is_write: F, mem_write_values: [F; 2], bus_byte: F,
 },  0, 6, 4194304 );
 
 trace!(MemAlignReadByteFixed<F> {

@@ -14,7 +14,7 @@ pub fn save_plans(plans: &[Plan], filename: &str) {
             plan.meta.as_ref().unwrap().downcast_ref::<HashMap<ChunkId, MemAlignCheckPoint>>()
         {
             let _chunks = match &plan.check_point {
-                CheckPoint::Single(chunk_id) => format!("[{}]", chunk_id),
+                CheckPoint::Single(chunk_id) => format!("[{chunk_id}]"),
                 CheckPoint::Multiple(chunks) => {
                     chunks.iter().map(|&id| id.to_string()).collect::<Vec<String>>().join(",")
                 }
@@ -53,5 +53,5 @@ pub fn save_plans(plans: &[Plan], filename: &str) {
             content += &mem_cp.to_string(plan.segment_id.unwrap_or(SegmentId(0)).as_usize())
         }
     }
-    fs::write(format!("{}/{}", path, filename), content).expect("Unable to write plans to file");
+    fs::write(format!("{path}/{filename}"), content).expect("Unable to write plans to file");
 }

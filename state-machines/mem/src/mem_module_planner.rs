@@ -61,7 +61,6 @@ impl MemModulePlanner {
         while !self.cursor.end() {
             // searches for the first smallest element in the vector
             let (chunk_id, addr, count) = self.cursor.get_next();
-            // println!("COUNTER: 0x{:X} CHUNK: {} COUNT: {}", addr * 8, chunk_id, count);
             self.add_to_current_instance(chunk_id, addr, count);
         }
         self.close_last_segment();

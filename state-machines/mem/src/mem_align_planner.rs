@@ -80,7 +80,7 @@ impl<'a> MemAlignPlanner<'a> {
         for index in 0..count {
             let chunk_id = self.counters[index].0;
             let totals = self.counters[index].1.to_array();
-            let mut pendings = totals.clone();
+            let mut pendings = totals;
             self.read_byte.add_to_instance(chunk_id, &totals, &mut pendings);
             self.write_byte.add_to_instance(chunk_id, &totals, &mut pendings);
             self.byte.add_to_instance(chunk_id, &totals, &mut pendings);
@@ -114,7 +114,7 @@ impl<'a> MemAlignPlanner<'a> {
                     self.full.rows_available,
                     self.full.num_rows
                 );
-                println!("[Pending] (F5,F3,F2,RB,WB) {:?}", pendings);
+                println!("[Pending] (F5,F3,F2,RB,WB) {pendings:?}");
                 panic!("Some counters are pending");
             }
         }
@@ -136,10 +136,10 @@ impl<'a> MemAlignPlanner<'a> {
 
         self.plans = Vec::with_capacity(total_capacity);
 
-        self.plans.extend(self.read_byte.plans.drain(..));
-        self.plans.extend(self.write_byte.plans.drain(..));
-        self.plans.extend(self.byte.plans.drain(..));
-        self.plans.extend(self.full.plans.drain(..));
+        self.plans.append(&mut self.read_byte.plans);
+        self.plans.append(&mut self.write_byte.plans);
+        self.plans.append(&mut self.byte.plans);
+        self.plans.append(&mut self.full.plans);
     }
     fn calculate_strategy(&mut self) {
         let mut read_byte = 0;
@@ -167,18 +167,11 @@ impl<'a> MemAlignPlanner<'a> {
         let fragmentation_rows = WORSE_FRAGMENTATION * full_instances;
 
         let max_full_free_rows = (full_instances * self.full.num_rows) - full_rows;
-        let full_free_rows = if fragmentation_rows > max_full_free_rows {
-            0
-        } else {
-            // for security reasons, the worst case was that last 4 rows are lost.
-            max_full_free_rows - fragmentation_rows
-        };
 
-        println!(
-            "=== CALCULATE ===> full_free_rows:{full_free_rows} p_read_byte:{p_read_byte} p_write_byte:{p_write_byte} fragmentation_rows:{fragmentation_rows} full_rows:{full_rows}, full_instances:{full_instances} read_byte_instances:{read_byte_instances} write_byte_instances:{write_byte_instances} byte_instances:{byte_instances}"
-        );
+        // for security reasons, the worst case was that last 4 rows are lost.
+        let full_free_rows = max_full_free_rows.saturating_sub(fragmentation_rows);
 
-        let full_free_byte_reads = (full_free_rows / ROWS_READ_BYTE);
+        let full_free_byte_reads = full_free_rows / ROWS_READ_BYTE;
         if (ROWS_READ_BYTE * p_read_byte + ROWS_WRITE_BYTE * p_write_byte) <= full_free_rows {
             /* nothing, no need extra instances use free space on full mem_align */
             println!("MEM_ALIGN_STRATEGY: No extra instances needed");
@@ -218,16 +211,6 @@ impl<'a> MemAlignPlanner<'a> {
         self.read_byte.set_instances(read_byte_instances);
         self.write_byte.set_instances(write_byte_instances);
         self.full.set_instances(full_instances);
-
-        println!(
-            "=== TOTAL ===> MemAlignPlanner mem_align_rows: {}({},{}), mem_align_read_byte: {}({},{}), mem_align_write_byte: {}({},{})",
-            full_rows, full_rows / self.full.num_rows, full_free_rows,
-            read_byte, read_byte / self.read_byte.num_rows, p_read_byte,
-            write_byte, write_byte / self.write_byte.num_rows, p_write_byte
-        );
-        println!(
-            "=== TOTAL ===> MemAlignPlanner MA:{full_instances} R:{read_byte_instances} W:{write_byte_instances} RW:{byte_instances}",
-        );
     }
 }
 

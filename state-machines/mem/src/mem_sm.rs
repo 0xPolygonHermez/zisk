@@ -93,15 +93,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
     ) -> AirInstance<F> {
         let mut trace = MemTrace::<F>::new_from_vec(trace_buffer);
 
-        // println!(
-        //     "[MemSM] segment_id:{} mem_ops:{} rows:{}  [0]{:?} previous_segment:{:?}",
-        //     segment_id,
-        //     mem_ops.len(),
-        //     trace.num_rows,
-        //     mem_ops[0],
-        //     previous_segment
-        // );
-
         let std = self.std.clone();
 
         let range_id = std.get_range_id(0, MEM_INC_C_MAX_RANGE as i64, None);
@@ -162,8 +153,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             trace[i].increment[0] = F::from_usize(lsb_increment);
             trace[i].increment[1] = F::from_usize(msb_increment);
             trace[i].wr = F::from_bool(mem_op.is_write);
-
-            // println!("TRACE[{}] = [0x{:X},{}] {}", i, mem_op.addr * 8, mem_op.step, mem_op.value,);
 
             #[cfg(feature = "debug_mem")]
             if (lsb_increment >= MEM_INC_C_SIZE) || (msb_increment > MEM_INC_C_SIZE) {
@@ -241,8 +230,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         air_values.distance_end[0] = F::from_u16(distance_end[0]);
         air_values.distance_end[1] = F::from_u16(distance_end[1]);
-
-        // println!("AIR_VALUES[{}]: {:?}", segment_id, air_values);
 
         let range_16bits_id = std.get_range_id(0, 0xFFFF, None);
 

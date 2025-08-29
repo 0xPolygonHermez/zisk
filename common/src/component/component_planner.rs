@@ -179,11 +179,7 @@ impl CollectCounter {
 
     /// Returns number of elements remaining to collect
     pub fn remaining_to_collect(&self) -> u32 {
-        if self.collected < self.collect_count {
-            self.collect_count - self.collected
-        } else {
-            0
-        }
+        self.collect_count.saturating_sub(self.collected)
     }
     pub fn count(&self) -> u32 {
         self.collect_count

@@ -40,3 +40,4 @@ disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_
 debug_mem = []
 debug_mem_align = []
 save_mem_bus_data = []
+save_plans = []

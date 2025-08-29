@@ -6,7 +6,6 @@ use std::sync::Mutex;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use rayon::prelude::*;
-use zisk_common::MemBusData;
 
 use crate::MemAlignInput;
 use proofman_common::{AirInstance, FromTrace};
@@ -17,6 +16,7 @@ use zisk_pil::{
 };
 
 pub trait MemAlignByteRow<F: PrimeField64, T> {
+    #[allow(clippy::too_many_arguments)]
     fn set_common_fields(
         &mut self,
         sel_high_4b: bool,
@@ -106,6 +106,7 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignByteTrace<F>> for MemAlignByteT
         self.is_write = F::from_bool(is_write);
         self.written_composed_value = F::from_u32(written_composed_value);
         self.written_byte_value = F::from_u8(written_byte_value);
+        self.bus_byte = if is_write { self.written_byte_value } else { self.byte_value };
         self.mem_write_values =
             [F::from_u32(mem_write_values[0]), F::from_u32(mem_write_values[1])];
     }
@@ -136,7 +137,7 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignByteTrace<F>> for MemAlignByteT
         let num_rows = trace.num_rows();
         let padding_size = num_rows - padding_row;
         if padding_size > 0 {
-            let padding = trace[padding_row].clone();
+            let padding = trace[padding_row];
             trace.row_slice_mut()[padding_row + 1..num_rows]
                 .par_iter_mut()
                 .for_each(|slot| *slot = padding);
@@ -219,7 +220,7 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignReadByteTrace<F>> for MemAlignR
         let num_rows = trace.num_rows();
         let padding_size = num_rows - padding_row;
         if padding_size > 0 {
-            let padding = trace[padding_row].clone();
+            let padding = trace[padding_row];
             trace.row_slice_mut()[padding_row + 1..num_rows]
                 .par_iter_mut()
                 .for_each(|slot| *slot = padding);
@@ -309,7 +310,7 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignWriteByteTrace<F>>
         let num_rows = trace.num_rows();
         let padding_size = num_rows - padding_row;
         if padding_size > 0 {
-            let padding = trace[padding_row].clone();
+            let padding = trace[padding_row];
             trace.row_slice_mut()[padding_row + 1..num_rows]
                 .par_iter_mut()
                 .for_each(|slot| *slot = padding);
@@ -391,12 +392,11 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
                 irow,
                 padding_row,
             );
-            println!("\x1B[1;33mPADDING_SIZE={} SI:{irow} AIR:{}\x1B[0m", padding_size, R::name());
             // padding_size - 1, because compute_row_witness call range_check
             self.std.inc_virtual_row(self.table_dual_byte_id, 0, padding_size - 1);
-            self.std.range_check(self.table_16b_id, 0 as i64, padding_size - 1);
+            self.std.range_check(self.table_16b_id, 0, padding_size - 1);
             if R::valid_for_write() {
-                self.std.range_check(self.table_8b_id, 0 as i64, padding_size - 1);
+                self.std.range_check(self.table_8b_id, 0, padding_size - 1);
             }
         }
         R::create_instance_from_trace(&mut trace, irow)
@@ -415,11 +415,7 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         let low_value = (input.mem_values[0] & 0xFFFF_FFFF) as u32;
         let offset = (addr & OFFSET_MASK) as u8;
         let addr_w = addr >> OFFSET_BITS;
-        let step = input.step as u64;
-        let debug = step == 121059474 || step == 109494470;
-        if debug {
-            println!("\x1B[1;36mMEM_DEBUG: COMPUTE_WITNESS_MEM_ALIGN_BYTE addr:{addr} addr_w:{addr_w} step:{step} offset:{offset} write:false value:{value}\x1B[0m", value=input.value);
-        }
+        let step = input.step;
 
         let (
             sel_high_4b,
@@ -550,14 +546,16 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         } else {
             [low_value, written_composed_value]
         };
-        if debug {
-            println!("\x1B[1;36mMEM_DEBUG: WBV:{written_byte_value} WCV:{written_composed_value} @_W:{addr_w} O:{offset} WR:{write_values:?}\x1B[0m");
-        }
 
         if R::valid_for_write() {
             self.std.range_check(self.table_8b_id, written_byte_value as i64, 1);
         }
-        row.set_write_fields(true, written_composed_value, written_byte_value, write_values);
+        row.set_write_fields(
+            input.is_write,
+            written_composed_value,
+            written_byte_value,
+            write_values,
+        );
 
         if input.is_write {
             assert!(

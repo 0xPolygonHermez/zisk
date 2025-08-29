@@ -91,7 +91,9 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
     }
 
     if (read == 1 && write == 1) {
-        permutation_proves(MEMORY_ID, [mem_op, main_addr, step, 1, is_write * (written_byte_value - byte_value) + byte_value, 0]);
+        col witness air.bus_byte;
+        bus_byte === is_write * (written_byte_value - byte_value) + byte_value;
+        permutation_proves(MEMORY_ID, [mem_op, main_addr, step, 1, bus_byte, 0]);
     } else if (read == 1) {
         permutation_proves(MEMORY_ID, [MEMORY_LOAD_OP, main_addr, step, 1, byte_value, 0]);
     } else if (write == 1) {

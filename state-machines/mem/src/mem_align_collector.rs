@@ -19,12 +19,6 @@ pub struct MemAlignCollector {
 
 impl MemAlignCollector {
     pub fn new(mem_align_checkpoint: &MemAlignCheckPoint) -> Self {
-        if mem_align_checkpoint.air_id == 8 && mem_align_checkpoint.chunk_id == ChunkId(115) {
-            println!(
-                "\x1B[1;36mMEM_DEBUG: COLLECTOR CREATED FOR AIR_ID: {} CHUNK_ID: {} {:?}\x1B[0m",
-                mem_align_checkpoint.air_id, mem_align_checkpoint.chunk_id.0, mem_align_checkpoint
-            );
-        }
         Self {
             inputs: Vec::new(),
             air_id: mem_align_checkpoint.air_id,
@@ -37,10 +31,6 @@ impl MemAlignCollector {
         }
     }
     fn input_push_read(&mut self, addr: u32, bytes: u8, data: &[u64]) {
-        let step = MemBusData::get_step(data);
-        if step == 121059474 || step == 109494470 {
-            println!("\x1B[1;36mMEM_DEBUG: INPUT COLLECTOR addr:{addr} step:{step} bytes:{bytes} write:false\x1B[0m");
-        }
         let mem_values = MemBusData::get_mem_values(data);
         self.inputs.push(MemAlignInput {
             addr,
@@ -52,11 +42,6 @@ impl MemAlignCollector {
         });
     }
     fn input_push_write(&mut self, addr: u32, bytes: u8, data: &[u64]) {
-        let step = MemBusData::get_step(data);
-        if step == 121059474 || step == 109494470 {
-            println!("\x1B[1;36mMEM_DEBUG: INPUT COLLECTOR addr:{addr} step:{step} bytes:{bytes} write:true data:{data:?} value:{}\x1B[0m", MemBusData::get_value(data));
-        }
-
         self.inputs.push(MemAlignInput {
             addr,
             is_write: true,
@@ -86,42 +71,17 @@ impl BusDevice<u64> for MemAlignCollector {
 
         let bytes = MemBusData::get_bytes(data);
         let is_write = MemHelpers::is_write(MemBusData::get_op(data));
-        let step = MemBusData::get_step(data);
-        let debug = step == 121059474 || step == 109494470;
-        {
-            let addr = MemBusData::get_addr(data);
-
-            if debug {
-                println!("\x1B[1;36mMEM_ALIGN_DEBUG: INPUT PROCESS DATA addr:{addr} step:{step} bytes:{bytes} write:false data:{:?}\x1B[0m", data);
-            }
-        }
         if bytes == 1 {
             if is_write {
                 if (MemBusData::get_value(data) & 0xFFFF_FFFF_FFFF_FF00) == 0 {
                     if !self.write_byte.should_skip() {
-                        if debug {
-                            println!("\x1B[1;36mMEM_ALIGN_DEBUG: COLLECT WRITE_BYTE\x1B[0m");
-                        }
                         self.input_push_write(MemBusData::get_addr(data), bytes, data);
-                    } else if debug {
-                        println!("\x1B[1;36mMEM_ALIGN_DEBUG: SKIP WRITE_BYTE\x1B[0m");
                     }
                     return true;
                 }
             } else {
                 if !self.read_byte.should_skip() {
-                    if debug {
-                        println!(
-                            "\x1B[1;36mMEM_ALIGN_DEBUG: COLLECT READ_BYTE ({}/{})\x1B[0m",
-                            self.read_byte.collected, self.read_byte.collect_count
-                        );
-                    }
                     self.input_push_read(MemBusData::get_addr(data), bytes, data);
-                } else if debug {
-                    println!(
-                        "\x1B[1;36mMEM_ALIGN_{}@{}: SKIP READ_BYTE {:?}\x1B[0m",
-                        self.air_id, self.chunk_id, self.read_byte
-                    );
                 }
                 return true;
             }
@@ -135,40 +95,24 @@ impl BusDevice<u64> for MemAlignCollector {
         match rows as u8 {
             5 => {
                 if !self.full_5.should_skip() {
-                    if debug {
-                        println!("\x1B[1;36mMEM_ALIGN_DEBUG: COLLECT FULL_5\x1B[0m");
-                    }
-
                     self.input_push_write(addr, bytes, data);
-                } else if debug {
-                    println!("\x1B[1;36mMEM_ALIGN_DEBUG: SKIP FULL_5\x1B[0m");
                 }
             }
             3 => {
                 if !self.full_3.should_skip() {
-                    if debug {
-                        println!("\x1B[1;36mMEM_ALIGN_DEBUG: COLLECT FULL_3\x1B[0m");
-                    }
                     if is_write {
                         self.input_push_write(addr, bytes, data);
                     } else {
                         self.input_push_read(addr, bytes, data);
                     }
-                } else if debug {
-                    println!("\x1B[1;36mMEM_ALIGN_DEBUG: SKIP FULL_3\x1B[0m");
                 }
             }
             2 => {
                 if !self.full_2.should_skip() {
-                    if debug {
-                        println!("\x1B[1;36mMEM_ALIGN_DEBUG: COLLECT FULL_2\x1B[0m");
-                    }
                     self.input_push_read(addr, bytes, data);
-                } else if debug {
-                    println!("\x1B[1;36mMEM_ALIGN_DEBUG: SKIP FULL_2\x1B[0m");
                 }
             }
-            _ => panic!("Invalid mem_align_op_rows {}", rows),
+            _ => panic!("Invalid mem_align_op_rows {rows}"),
         };
         true
     }

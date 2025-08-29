@@ -89,8 +89,6 @@ impl MemAlignInstanceCounter {
                 let total = totals[i];
                 let pending = pendings[i];
                 let cost_pending = cost * pending;
-                // println!("air:{} chunk_id:{chunk_id} i:{i} rows_available:{} cost:{cost} instances:{} instances_available:{} total:{total} pending:{pending}",
-                //    self.air_id, self.rows_available, self.instances, self.instances_available);
                 if self.rows_available < cost {
                     // before open a new instance, need to close chunk if there are data.
                     if updated {
@@ -147,44 +145,8 @@ impl MemAlignInstanceCounter {
             read_byte: CollectCounter::new(self.collect_data[3].skip, self.collect_data[3].count),
             write_byte: CollectCounter::new(self.collect_data[4].skip, self.collect_data[4].count),
         };
-        if chunk_id == ChunkId(115) && self.air_id == 8 {
-            println!(
-                "\x1B[1;36mMEM_ALIGN_{}@{}: CLOSE CHUNK full5:{},{} full3:{},{} full2:{},{} write:{},{} read:{},{} total:{}\x1B[0m",
-                self.air_id,
-                chunk_id.0,
-                checkpoint.full_5.skip(),
-                checkpoint.full_5.count(),
-                checkpoint.full_3.skip(),
-                checkpoint.full_3.count(),
-                checkpoint.full_2.skip(),
-                checkpoint.full_2.count(),
-                checkpoint.write_byte.skip(),
-                checkpoint.write_byte.count(),
-                checkpoint.read_byte.skip(),
-                checkpoint.read_byte.count(),
-                checkpoint.count()
-            );
-        }
         self.clear_collect_data();
         self.chunks.push(chunk_id);
-        if chunk_id == ChunkId(115) && self.air_id == 8 {
-            println!(
-                "\x1B[1;36mMEM_ALIGN_{}@{}-2: CLOSE CHUNK full5:{},{} full3:{},{} full2:{},{} write:{},{} read:{},{} total:{}\x1B[0m",
-                self.air_id,
-                chunk_id.0,
-                checkpoint.full_5.skip(),
-                checkpoint.full_5.count(),
-                checkpoint.full_3.skip(),
-                checkpoint.full_3.count(),
-                checkpoint.full_2.skip(),
-                checkpoint.full_2.count(),
-                checkpoint.write_byte.skip(),
-                checkpoint.write_byte.count(),
-                checkpoint.read_byte.skip(),
-                checkpoint.read_byte.count(),
-                checkpoint.count()
-            );
-        }
         assert!(self.checkpoints.insert(chunk_id, checkpoint).is_none());
     }
     fn close_and_open_instance(&mut self) -> bool {

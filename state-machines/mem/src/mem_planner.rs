@@ -1,11 +1,5 @@
-use mem_common::save_plans;
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
-#[cfg(feature = "save_mem_bus_data")]
-use {
-    std::{env, fs},
-    zisk_common::{CheckPoint, SegmentId},
-};
 
 use zisk_common::{BusDeviceMetrics, ChunkId, Metrics, Plan, Planner};
 
@@ -14,7 +8,7 @@ use zisk_pil::{
     ZISK_AIRGROUP_ID,
 };
 
-#[cfg(feature = "save_mem_bus_data")]
+#[cfg(any(feature = "save_plans", feature = "save_mem_bus_data"))]
 use mem_common::save_plans;
 
 use crate::{
@@ -106,7 +100,7 @@ impl MemPlanner {
         // plans.append(&mut mem_align_planner.lock().unwrap().collect_plans());
         plans.append(&mut mem_align_planner.collect_plans());
 
-        // #[cfg(feature = "save_mem_bus_data")]
+        #[cfg(any(feature = "save_plans", feature = "save_mem_bus_data"))]
         save_plans(&plans, "plans.txt");
         plans
     }
