@@ -95,7 +95,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         #[cfg(feature = "debug_mem_align")]
         let num_rows = self.num_computed_rows.lock().unwrap();
         let step = input.step as u64;
-        if step >= 121779671 && step <= 121779671 {
+        if step == 121059474 || step == 109494470 {
             println!("\x1B[1;36mMEM_DEBUG: COMPUTE_WITNESS_MEM_ALIGN addr:{addr} step:{step} offset:{offset} write:false\x1B[0m");
         }
 

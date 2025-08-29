@@ -59,7 +59,7 @@ impl fmt::Debug for MemCounters {
 
 impl MemAlignCounters {
     pub fn to_array(&self) -> [u32; 5] {
-        [self.full_5, self.full_3, self.full_2, self.write_byte, self.read_byte]
+        [self.full_5, self.full_3, self.full_2, self.read_byte, self.write_byte]
     }
 }
 impl MemCounters {
@@ -94,7 +94,7 @@ impl MemCounters {
         let addr_w = MemHelpers::get_addr_w(addr);
         let bytes = MemBusData::get_bytes(data);
         let step = MemBusData::get_step(data);
-        if step >= 121779671 && step <= 121779671 {
+        if step == 121059474 || step == 109494470 {
             println!("\x1B[1;36mMEM_DEBUG: COUNTER addr:{addr} step:{step} bytes:{bytes} write:{} value:{}\x1B[0m", MemHelpers::is_write(MemBusData::get_op(data)), MemBusData::get_value(data));
         }
 

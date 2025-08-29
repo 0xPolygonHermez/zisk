@@ -1,3 +1,4 @@
+use core::panic;
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{MemAlignInstanceCounter, MemCounters, MemPlanCalculator};
@@ -9,8 +10,8 @@ use zisk_pil::{
     MEM_ALIGN_WRITE_BYTE_AIR_IDS,
 };
 
-const ROWS_BY_WRITE_BYTE_OP: u32 = 3;
-const ROWS_BY_READ_BYTE_OP: u32 = 2;
+const ROWS_WRITE_BYTE: u32 = 3;
+const ROWS_READ_BYTE: u32 = 2;
 const WORSE_FRAGMENTATION: u32 = 4; // worse case fragmentation rows per full instance
 
 #[allow(dead_code)]
@@ -32,21 +33,21 @@ impl<'a> MemAlignPlanner<'a> {
             MEM_ALIGN_AIR_IDS[0],
             0,
             MemAlignTrace::<usize>::NUM_ROWS as u32,
-            [5, 3, 2, 3, 2],
+            [5, 3, 2, 2, 3],
         );
 
         let read_byte = MemAlignInstanceCounter::new(
             MEM_ALIGN_READ_BYTE_AIR_IDS[0],
             0,
             MemAlignReadByteTrace::<usize>::NUM_ROWS as u32,
-            [0, 0, 0, 0, 1],
+            [0, 0, 0, 1, 0],
         );
 
         let write_byte = MemAlignInstanceCounter::new(
             MEM_ALIGN_WRITE_BYTE_AIR_IDS[0],
             0,
             MemAlignWriteByteTrace::<usize>::NUM_ROWS as u32,
-            [0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 1],
         );
 
         let byte = MemAlignInstanceCounter::new(
@@ -84,11 +85,41 @@ impl<'a> MemAlignPlanner<'a> {
             self.write_byte.add_to_instance(chunk_id, &totals, &mut pendings);
             self.byte.add_to_instance(chunk_id, &totals, &mut pendings);
             self.full.add_to_instance(chunk_id, &totals, &mut pendings);
+            if pendings.iter().any(|&x| x > 0) {
+                println!(
+                    "[ReadByte] Instances:{}/{} Rows:{}/{}",
+                    self.read_byte.get_instances_available(),
+                    self.read_byte.get_instances(),
+                    self.read_byte.rows_available,
+                    self.read_byte.num_rows
+                );
+                println!(
+                    "[WriteByte] Instances:{}/{} Rows:{}/{}",
+                    self.write_byte.get_instances_available(),
+                    self.write_byte.get_instances(),
+                    self.write_byte.rows_available,
+                    self.write_byte.num_rows
+                );
+                println!(
+                    "[Byte] Instances:{}/{} Rows:{}/{}",
+                    self.byte.get_instances_available(),
+                    self.byte.get_instances(),
+                    self.byte.rows_available,
+                    self.byte.num_rows
+                );
+                println!(
+                    "[Full] Instances:{}/{} Rows:{}/{}",
+                    self.full.get_instances_available(),
+                    self.full.get_instances(),
+                    self.full.rows_available,
+                    self.full.num_rows
+                );
+                println!("[Pending] (F5,F3,F2,RB,WB) {:?}", pendings);
+                panic!("Some counters are pending");
+            }
         }
         self.close_instances();
         self.drain_all_plans();
-        println!("Generated {} plans:", self.plans.len());
-        println!("{:?}", self.plans);
     }
     fn close_instances(&mut self) {
         self.read_byte.close_instance();
@@ -125,11 +156,12 @@ impl<'a> MemAlignPlanner<'a> {
 
         let mut byte_instances = 0;
         let mut read_byte_instances = read_byte / self.read_byte.num_rows;
-        let p_read_byte = read_byte % self.read_byte.num_rows;
         let mut write_byte_instances = write_byte / self.write_byte.num_rows;
-        let p_write_byte = write_byte % self.write_byte.num_rows;
-        let full_instances = (full_rows / self.full.num_rows)
+        let mut full_instances = (full_rows / self.full.num_rows)
             + if (full_rows % self.full.num_rows) > 0 { 1 } else { 0 };
+
+        let p_read_byte = read_byte % self.read_byte.num_rows;
+        let p_write_byte = write_byte % self.write_byte.num_rows;
 
         // calculate the worse case of fragmentation at end of instance
         let fragmentation_rows = WORSE_FRAGMENTATION * full_instances;
@@ -142,22 +174,43 @@ impl<'a> MemAlignPlanner<'a> {
             max_full_free_rows - fragmentation_rows
         };
 
-        if (ROWS_BY_READ_BYTE_OP * p_read_byte + ROWS_BY_WRITE_BYTE_OP * p_write_byte)
-            <= full_free_rows
-        {
+        println!(
+            "=== CALCULATE ===> full_free_rows:{full_free_rows} p_read_byte:{p_read_byte} p_write_byte:{p_write_byte} fragmentation_rows:{fragmentation_rows} full_rows:{full_rows}, full_instances:{full_instances} read_byte_instances:{read_byte_instances} write_byte_instances:{write_byte_instances} byte_instances:{byte_instances}"
+        );
+
+        let full_free_byte_reads = (full_free_rows / ROWS_READ_BYTE);
+        if (ROWS_READ_BYTE * p_read_byte + ROWS_WRITE_BYTE * p_write_byte) <= full_free_rows {
             /* nothing, no need extra instances use free space on full mem_align */
-        } else if (ROWS_BY_READ_BYTE_OP * p_read_byte) <= full_free_rows {
+            println!("MEM_ALIGN_STRATEGY: No extra instances needed");
+        } else if (ROWS_WRITE_BYTE * p_write_byte) <= full_free_rows {
+            // If all writes fit in the cache then only need one instance for pending reads.
+            println!("MEM_ALIGN_STRATEGY: All pending writes fit on full free rows, one more read byte instance");
             read_byte_instances += 1;
-        } else if (ROWS_BY_WRITE_BYTE_OP * p_write_byte) <= full_free_rows {
+        } else if (ROWS_READ_BYTE * p_read_byte) <= full_free_rows {
+            // If all reads fit in the cache then only need one instance for pending writes.
+            println!("MEM_ALIGN_STRATEGY: All pending reads fit on full free rows, one more write byte instance");
             write_byte_instances += 1;
         } else if (p_write_byte + p_read_byte) <= self.byte.num_rows {
+            // If all pending reads and writes fit in read-write byte instance, we need one instance for both.
+            println!("MEM_ALIGN_STRATEGY: All pending reads and writes fit on one byte instance");
             byte_instances += 1;
-        } else if (p_read_byte + p_write_byte - (full_free_rows / ROWS_BY_READ_BYTE_OP))
-            <= self.byte.num_rows
+        } else if (p_read_byte + p_write_byte - full_free_byte_reads) <= self.byte.num_rows {
+            // at this point all reads no fit to full free rows, same for writes, and both no fit to byte instance.
+            // but, a part of reads (uses less full rows) could fit in the full free rows. The rest of reads and all
+            // pending writes fit in the byte instance (this is verified by if condition)
+            println!("MEM_ALIGN_STRATEGY: All pending reads and writes fit on one byte instance (after put some reads on full free rows)");
+            byte_instances += 1;
+        } else if (p_read_byte * ROWS_READ_BYTE + p_write_byte * ROWS_WRITE_BYTE
+            - full_free_byte_reads)
+            <= self.full.num_rows
         {
-            // TODO: review
-            byte_instances += 1;
+            // if all pending reads and writes fit on last free rows plus one new full instance.
+            println!("MEM_ALIGN_STRATEGY: All pending reads and writes fit on new full instance (after put some reads on full free rows)");
+            full_instances += 1;
         } else {
+            // if we need to add more than one instance for pending reads and writes, better use
+            // two specific and cheaper instances.
+            println!("MEM_ALIGN_STRATEGY: All pending reads and writes fit needs two instances");
             read_byte_instances += 1;
             write_byte_instances += 1;
         }

@@ -1,6 +1,7 @@
 use crate::{mem_align_byte_sm::MemAlignByteSM, MemAlignCollector};
 use mem_common::MemAlignCheckPoint;
 
+use core::panic;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{collections::HashMap, sync::Arc};

@@ -1,7 +1,9 @@
-use zisk_common::CollectCounter;
+use zisk_common::{ChunkId, CollectCounter};
 
 #[derive(Debug, Clone)]
 pub struct MemAlignCheckPoint {
+    pub air_id: usize,
+    pub chunk_id: ChunkId,
     pub full_2: CollectCounter,
     pub full_3: CollectCounter,
     pub full_5: CollectCounter,
@@ -22,7 +24,8 @@ impl MemAlignCheckPoint {
     #[allow(dead_code)]
     pub fn to_string(&self, segment_id: usize, chunk_id: usize) -> String {
         format!(
-            "MEM_ALIGN #{}@{}  F2({},{}) F3({},{}) F5({},{}) R({},{}) W({},{}) R:{}\n",
+            "MEM_ALIGN_{} #{}@{}  F2({},{}) F3({},{}) F5({},{}) R({},{}) W({},{}) R:{}\n",
+            self.air_id,
             segment_id,
             chunk_id,
             self.full_2.skip(),

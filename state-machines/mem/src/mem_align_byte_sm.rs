@@ -416,7 +416,7 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         let offset = (addr & OFFSET_MASK) as u8;
         let addr_w = addr >> OFFSET_BITS;
         let step = input.step as u64;
-        let debug = step >= 121779671 && step <= 121779671;
+        let debug = step == 121059474 || step == 109494470;
         if debug {
             println!("\x1B[1;36mMEM_DEBUG: COMPUTE_WITNESS_MEM_ALIGN_BYTE addr:{addr} addr_w:{addr_w} step:{step} offset:{offset} write:false value:{value}\x1B[0m", value=input.value);
         }
