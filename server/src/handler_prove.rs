@@ -134,10 +134,9 @@ impl ZiskServiceProveHandler {
                             .join(format!("{}-vadcop_final_proof.bin", request.prefix));
 
                         let vadcop_proof = vadcop_final_proof.unwrap();
-                        let original_size = vadcop_proof.len();
                         let proof_data = cast_slice(&vadcop_proof);
                         let mut file =
-                            File::create(output_file_path).expect("Error while creating file");
+                            File::create(&output_file_path).expect("Error while creating file");
                         file.write_all(proof_data).expect("Error while writing to file");
 
                         // Save the compressed vadcop final proof using zstd (fastest compression level)
@@ -149,10 +148,10 @@ impl ZiskServiceProveHandler {
                         encoder.write_all(proof_data).unwrap();
                         encoder.finish().unwrap();
 
-                        let compressed_size =
-                            std::fs::metadata(&compressed_output_path).unwrap().len();
-                        let compression_ratio = original_size as f64 / compressed_size as f64;
-
+                        let original_size = vadcop_proof.len() * 8;
+                        let compressed_size = std::fs::metadata(&compressed_output_path).unwrap().len();
+                        let compression_ratio = compressed_size as f64 / original_size as f64;
+                        
                         println!("Vadcop final proof saved:");
                         println!("  Original: {} bytes", original_size);
                         println!(

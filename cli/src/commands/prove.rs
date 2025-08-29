@@ -384,15 +384,15 @@ impl ZiskProve {
 
                 // Save the compressed vadcop final proof using zstd (fastest compression level)
                 let compressed_output_path =
-                    self.output_dir.join("proofs/vadcop_final_proof.compressed.bin");
+                    self.output_dir.join("vadcop_final_proof.compressed.bin");
                 let compressed_file = File::create(&compressed_output_path)?;
                 let mut encoder = Encoder::new(compressed_file, 1)?;
                 encoder.write_all(cast_slice(&vadcop_proof))?;
                 encoder.finish()?;
 
-                let original_size = vadcop_proof.len();
+                let original_size = vadcop_proof.len() * 8;
                 let compressed_size = std::fs::metadata(&compressed_output_path)?.len();
-                let compression_ratio = original_size as f64 / compressed_size as f64;
+                let compression_ratio = compressed_size as f64 / original_size as f64;
 
                 println!("Vadcop final proof saved:");
                 println!("  Original: {} bytes", original_size);
