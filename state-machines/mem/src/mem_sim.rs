@@ -23,6 +23,8 @@ mod mem_planner;
 pub use mem_planner::*;
 mod mem_align_planner;
 pub use mem_align_planner::*;
+mod mem_align_instance_counter;
+pub use mem_align_instance_counter::*;
 mod mem_module_planner;
 pub use mem_module_planner::*;
 mod mem_counters_cursor;

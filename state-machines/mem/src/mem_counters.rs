@@ -15,12 +15,23 @@ use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_
 
 // inside a chunk no more than 2^32 access by one address
 
+#[derive(Default, Clone, Copy)]
+pub struct MemAlignCounters {
+    // full - 2 rows (non-aligned 1 address read)
+    pub full_2: u32,
+    // full - 3 rows (non-aligned 1 address write, 2 address read)
+    pub full_3: u32,
+    // full - 5 rows (non-aligned 2 address write)
+    pub full_5: u32,
+    pub read_byte: u32,
+    pub write_byte: u32,
+}
+
 #[derive(Default)]
 pub struct MemCounters {
     pub addr: HashMap<u32, u32>,
     pub addr_sorted: [Vec<(u32, u32)>; 3],
-    pub mem_align: Vec<u8>,
-    pub mem_align_rows: u32,
+    pub mem_align_counters: MemAlignCounters,
     pub file: Option<File>,
 }
 
@@ -45,17 +56,23 @@ impl fmt::Debug for MemCounters {
     }
 }
 
+impl MemAlignCounters {
+    pub fn to_array(&self) -> [u32; 5] {
+        [self.full_5, self.full_3, self.full_2, self.write_byte, self.read_byte]
+    }
+}
 impl MemCounters {
     pub fn new() -> Self {
         Self {
             addr: HashMap::new(),
             addr_sorted: [Vec::new(), Vec::new(), Vec::new()],
-            mem_align: Vec::new(),
-            mem_align_rows: 0,
             file: None,
+            mem_align_counters: MemAlignCounters::default(),
         }
     }
-
+    pub fn to_array(&self) -> [u32; 5] {
+        self.mem_align_counters.to_array()
+    }
     pub fn close(&mut self) {
         // address must be ordered
         let mut addr_vector: Vec<(u32, u32)> = std::mem::take(&mut self.addr).into_iter().collect();
@@ -75,23 +92,54 @@ impl MemCounters {
         let addr = MemBusData::get_addr(data);
         let addr_w = MemHelpers::get_addr_w(addr);
         let bytes = MemBusData::get_bytes(data);
+        let step = MemBusData::get_step(data);
+        if step >= 58692093 && step <= 58692095 {
+            println!("\x1B[1;36mMEM_DEBUG: COUNTER addr:{addr} step:{step} bytes:{bytes} write:{}\x1B[0m", MemHelpers::is_write(MemBusData::get_op(data)));
+        }
 
         if MemHelpers::is_aligned(addr, bytes) {
             self.addr.entry(addr_w).and_modify(|count| *count += 1).or_insert(1);
         } else {
             let op = MemBusData::get_op(data);
-            let addr_count = if MemHelpers::is_double(addr, bytes) { 2 } else { 1 };
-            let ops_by_addr = if MemHelpers::is_write(op) { 2 } else { 1 };
+            let is_write = MemHelpers::is_write(op);
+            let is_full = bytes != 1
+                || if is_write {
+                    if (MemBusData::get_value(data) & 0xFFFF_FFFF_FFFF_FF00) == 0 {
+                        self.mem_align_counters.write_byte += 1;
+                        false
+                    } else {
+                        true
+                    }
+                } else {
+                    self.mem_align_counters.read_byte += 1;
+                    false
+                };
 
-            for index in 0..addr_count {
+            let ops_by_addr = if is_write { 2 } else { 1 };
+
+            self.addr
+                .entry(addr_w)
+                .and_modify(|count| *count += ops_by_addr)
+                .or_insert(ops_by_addr);
+
+            let mem_align_op_rows = if MemHelpers::is_double(addr, bytes) {
                 self.addr
-                    .entry(addr_w + index)
+                    .entry(addr_w + 1)
                     .and_modify(|count| *count += ops_by_addr)
                     .or_insert(ops_by_addr);
+                1 + 2 * ops_by_addr
+            } else {
+                1 + ops_by_addr
+            };
+
+            if is_full {
+                match mem_align_op_rows {
+                    2 => self.mem_align_counters.full_2 += 1,
+                    3 => self.mem_align_counters.full_3 += 1,
+                    5 => self.mem_align_counters.full_5 += 1,
+                    _ => panic!("Invalid mem_align_op_rows"),
+                }
             }
-            let mem_align_op_rows = 1 + addr_count * ops_by_addr;
-            self.mem_align.push(mem_align_op_rows as u8);
-            self.mem_align_rows += mem_align_op_rows;
         }
     }
     #[cfg(feature = "save_mem_bus_data")]

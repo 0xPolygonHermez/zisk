@@ -1,143 +1,180 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{MemCounters, MemPlanCalculator};
+use crate::{MemAlignInstanceCounter, MemCounters, MemPlanCalculator};
 use mem_common::MemAlignCheckPoint;
-use proofman_common::PreCalculate;
-use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
-use zisk_pil::{MemAlignTrace, MEM_ALIGN_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_common::{ChunkId, Plan};
+use zisk_pil::{
+    MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,
+    MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS,
+    MEM_ALIGN_WRITE_BYTE_AIR_IDS,
+};
+
+const ROWS_BY_WRITE_BYTE_OP: u32 = 3;
+const ROWS_BY_READ_BYTE_OP: u32 = 2;
+const WORSE_FRAGMENTATION: u32 = 4; // worse case fragmentation rows per full instance
+
 #[allow(dead_code)]
 pub struct MemAlignPlanner<'a> {
-    instances: Vec<Plan>,
-    num_rows: u32,
+    plans: Vec<Plan>,
     chunk_id: Option<ChunkId>,
     chunks: Vec<ChunkId>,
     check_points: HashMap<ChunkId, MemAlignCheckPoint>,
-    rows_available: u32,
+    full: MemAlignInstanceCounter,
+    read_byte: MemAlignInstanceCounter,
+    write_byte: MemAlignInstanceCounter,
+    byte: MemAlignInstanceCounter,
     counters: Arc<Vec<(ChunkId, &'a MemCounters)>>,
 }
 
 impl<'a> MemAlignPlanner<'a> {
     pub fn new(counters: Arc<Vec<(ChunkId, &'a MemCounters)>>) -> Self {
-        let num_rows = MemAlignTrace::<usize>::NUM_ROWS as u32;
+        let full = MemAlignInstanceCounter::new(
+            MEM_ALIGN_AIR_IDS[0],
+            0,
+            MemAlignTrace::<usize>::NUM_ROWS as u32,
+            [5, 3, 2, 3, 2],
+        );
+
+        let read_byte = MemAlignInstanceCounter::new(
+            MEM_ALIGN_READ_BYTE_AIR_IDS[0],
+            0,
+            MemAlignReadByteTrace::<usize>::NUM_ROWS as u32,
+            [0, 0, 0, 0, 1],
+        );
+
+        let write_byte = MemAlignInstanceCounter::new(
+            MEM_ALIGN_WRITE_BYTE_AIR_IDS[0],
+            0,
+            MemAlignWriteByteTrace::<usize>::NUM_ROWS as u32,
+            [0, 0, 0, 1, 0],
+        );
+
+        let byte = MemAlignInstanceCounter::new(
+            MEM_ALIGN_BYTE_AIR_IDS[0],
+            0,
+            MemAlignByteTrace::<usize>::NUM_ROWS as u32,
+            [0, 0, 0, 1, 1],
+        );
+
         Self {
-            instances: Vec::new(),
-            num_rows,
+            plans: Vec::new(),
             chunk_id: None,
             chunks: Vec::new(),
-            rows_available: num_rows,
             check_points: HashMap::new(),
             counters,
+            read_byte,
+            write_byte,
+            byte,
+            full,
         }
     }
-    pub fn align_plan(&mut self) -> Vec<Plan> {
+    pub fn align_plan(&mut self) {
         if self.counters.is_empty() {
             panic!("MemPlanner::plan() No metrics found");
         }
 
         let count = self.counters.len();
+        self.calculate_strategy();
 
         for index in 0..count {
             let chunk_id = self.counters[index].0;
-            let counter = self.counters[index].1;
-            if counter.mem_align_rows == 0 {
-                continue;
-            };
-            self.set_current_chunk_id(chunk_id);
-            self.add_to_current_instance(counter.mem_align_rows, &counter.mem_align);
+            let totals = self.counters[index].1.to_array();
+            let mut pendings = totals.clone();
+            self.read_byte.add_to_instance(chunk_id, &totals, &mut pendings);
+            self.write_byte.add_to_instance(chunk_id, &totals, &mut pendings);
+            self.byte.add_to_instance(chunk_id, &totals, &mut pendings);
+            self.full.add_to_instance(chunk_id, &totals, &mut pendings);
         }
-        self.close_current_instance();
-        vec![]
+        self.close_instances();
+        self.drain_all_plans();
+        println!("Generated {} plans:", self.plans.len());
+        println!("{:?}", self.plans);
     }
-    fn set_current_chunk_id(&mut self, chunk_id: ChunkId) {
-        if self.chunk_id == Some(chunk_id) && !self.chunks.is_empty() {
-            return;
-        }
-        self.chunk_id = Some(chunk_id);
-        if let Err(pos) = self.chunks.binary_search(&chunk_id) {
-            self.chunks.insert(pos, chunk_id);
-        }
+    fn close_instances(&mut self) {
+        self.read_byte.close_instance();
+        self.write_byte.close_instance();
+        self.byte.close_instance();
+        self.full.close_instance();
     }
-    fn add_to_current_instance(&mut self, total_rows: u32, operations_rows: &[u8]) {
-        let mut pending_rows = total_rows;
-        // operations_rows is array of number of rows per operation, operations_done is the
-        // number of operations processed, for each new instance is the number of operations to skip
-        let mut operations_done: u32 = 0;
-        loop {
-            // check if has available rows to add all inside this chunks.
-            let (count, rows_fit) = if self.rows_available >= pending_rows {
-                // remaing operations is number of operations - operations_done
-                (operations_rows.len() as u32 - operations_done, pending_rows)
-            } else {
-                self.calculate_how_many_operations_fit(operations_done, operations_rows)
-            };
+    fn drain_all_plans(&mut self) {
+        // Calculate total capacity needed
+        let total_capacity: usize = self.read_byte.plans.len()
+            + self.write_byte.plans.len()
+            + self.byte.plans.len()
+            + self.full.plans.len();
 
-            if count != 0 {
-                self.check_points.insert(
-                    self.chunk_id.unwrap(),
-                    MemAlignCheckPoint {
-                        skip: operations_done,
-                        count,
-                        rows: rows_fit,
-                        offset: self.num_rows - self.rows_available,
-                    },
-                );
-            }
+        self.plans = Vec::with_capacity(total_capacity);
 
-            self.rows_available -= rows_fit;
-            pending_rows -= rows_fit;
-            operations_done += count;
-
-            if self.rows_available == 0 || rows_fit == 0 {
-                let use_current_chunk_id = pending_rows > 0;
-                self.close_current_instance();
-                self.open_new_instance(use_current_chunk_id);
-            }
-            if pending_rows == 0 {
-                break;
-            }
-        }
+        self.plans.extend(self.read_byte.plans.drain(..));
+        self.plans.extend(self.write_byte.plans.drain(..));
+        self.plans.extend(self.byte.plans.drain(..));
+        self.plans.extend(self.full.plans.drain(..));
     }
-    fn close_current_instance(&mut self) {
-        // TODO: add instance
-        if self.chunks.is_empty() {
-            return;
+    fn calculate_strategy(&mut self) {
+        let mut read_byte = 0;
+        let mut write_byte = 0;
+        let mut full_rows = 0;
+        for counter in self.counters.iter() {
+            let full = counter.1.mem_align_counters.full_2 * 2
+                + counter.1.mem_align_counters.full_3 * 3
+                + counter.1.mem_align_counters.full_5 * 5;
+            full_rows += full;
+            read_byte += counter.1.mem_align_counters.read_byte;
+            write_byte += counter.1.mem_align_counters.write_byte;
         }
-        // TODO: add multi chunk_id, with skip
-        let chunks = std::mem::take(&mut self.chunks);
-        let check_points = std::mem::take(&mut self.check_points);
 
-        let instance = Plan::new(
-            ZISK_AIRGROUP_ID,
-            MEM_ALIGN_AIR_IDS[0],
-            Some(SegmentId(self.instances.len())),
-            InstanceType::Instance,
-            CheckPoint::Multiple(chunks),
-            PreCalculate::Fast,
-            Some(Box::new(check_points)),
+        let mut byte_instances = 0;
+        let mut read_byte_instances = read_byte / self.read_byte.num_rows;
+        let p_read_byte = read_byte % self.read_byte.num_rows;
+        let mut write_byte_instances = write_byte / self.write_byte.num_rows;
+        let p_write_byte = write_byte % self.write_byte.num_rows;
+        let full_instances = (full_rows / self.full.num_rows)
+            + if (full_rows % self.full.num_rows) > 0 { 1 } else { 0 };
+
+        // calculate the worse case of fragmentation at end of instance
+        let fragmentation_rows = WORSE_FRAGMENTATION * full_instances;
+
+        let max_full_free_rows = (full_instances * self.full.num_rows) - full_rows;
+        let full_free_rows = if fragmentation_rows > max_full_free_rows {
+            0
+        } else {
+            // for security reasons, the worst case was that last 4 rows are lost.
+            max_full_free_rows - fragmentation_rows
+        };
+
+        if (ROWS_BY_READ_BYTE_OP * p_read_byte + ROWS_BY_WRITE_BYTE_OP * p_write_byte)
+            <= full_free_rows
+        {
+            /* nothing, no need extra instances use free space on full mem_align */
+        } else if (ROWS_BY_READ_BYTE_OP * p_read_byte) <= full_free_rows {
+            read_byte_instances += 1;
+        } else if (ROWS_BY_WRITE_BYTE_OP * p_write_byte) <= full_free_rows {
+            write_byte_instances += 1;
+        } else if (p_write_byte + p_read_byte) <= self.byte.num_rows {
+            byte_instances += 1;
+        } else if (p_read_byte + p_write_byte - (full_free_rows / ROWS_BY_READ_BYTE_OP))
+            <= self.byte.num_rows
+        {
+            // TODO: review
+            byte_instances += 1;
+        } else {
+            read_byte_instances += 1;
+            write_byte_instances += 1;
+        }
+        self.byte.set_instances(byte_instances);
+        self.read_byte.set_instances(read_byte_instances);
+        self.write_byte.set_instances(write_byte_instances);
+        self.full.set_instances(full_instances);
+
+        println!(
+            "=== TOTAL ===> MemAlignPlanner mem_align_rows: {}({},{}), mem_align_read_byte: {}({},{}), mem_align_write_byte: {}({},{})",
+            full_rows, full_rows / self.full.num_rows, full_free_rows,
+            read_byte, read_byte / self.read_byte.num_rows, p_read_byte,
+            write_byte, write_byte / self.write_byte.num_rows, p_write_byte
         );
-        self.instances.push(instance);
-    }
-    fn open_new_instance(&mut self, use_current_chunk_id: bool) {
-        self.rows_available = self.num_rows;
-        if use_current_chunk_id {
-            self.chunks.push(self.chunk_id.unwrap());
-        }
-    }
-    fn calculate_how_many_operations_fit(
-        &self,
-        operations_offset: u32,
-        operations_rows: &[u8],
-    ) -> (u32, u32) {
-        let mut count = 0;
-        let mut rows = 0;
-        for row in operations_rows.iter().skip(operations_offset as usize) {
-            if (rows + *row as u32) > self.rows_available {
-                break;
-            }
-            count += 1;
-            rows += *row as u32;
-        }
-        (count, rows)
+        println!(
+            "=== TOTAL ===> MemAlignPlanner MA:{full_instances} R:{read_byte_instances} W:{write_byte_instances} RW:{byte_instances}",
+        );
     }
 }
 
@@ -146,6 +183,6 @@ impl MemPlanCalculator for MemAlignPlanner<'_> {
         self.align_plan();
     }
     fn collect_plans(&mut self) -> Vec<Plan> {
-        std::mem::take(&mut self.instances)
+        std::mem::take(&mut self.plans)
     }
 }

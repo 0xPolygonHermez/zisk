@@ -1,0 +1,112 @@
+
+require "std_permutation.pil"
+require "std_lookup.pil"
+require "std_range_check.pil"
+
+// Specific low cost machine for specific byte unaligned memory access.
+
+airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int write = 1) {
+
+    const int p2_16 = 2**16;
+    const int p2_8 = 2**8;
+    const int p2_24 = 2**24;
+
+    col witness sel_high_4b; // offsets: 7,6,5,4
+    col witness sel_high_2b; // offsets: 7,6 3,2
+    col witness sel_high_b;  // offsets: 7 5 3 1
+
+    col witness direct_value; // no range check, match exactly with value send in bus
+    col witness composed_value;
+
+    if (write == 1) {
+        col witness air.written_composed_value;
+        col witness air.written_byte_value;
+
+        range_check(min: 0, max: 0xFF, expression: air.written_byte_value);
+    }
+
+    col witness value_16b;   // range check 16 bits
+    col witness value_8b;    // range check 8 bits
+    col witness byte_value;  // range check 8 bits
+
+    col witness addr_w;
+    col witness step;
+
+    sel_high_4b * (1 - sel_high_4b) === 0;
+    sel_high_2b * (1 - sel_high_2b) === 0;
+    sel_high_b * (1 - sel_high_b) === 0;
+
+    const expr offset = sel_high_4b * 4 + sel_high_2b * 2 + sel_high_b;
+    const expr main_addr = addr_w * 8 + offset;
+    const expr mem_addr = addr_w * 8;
+
+
+    const expr byte_value_factor = p2_24 * sel_high_2b * sel_high_b +
+                                   p2_16 * sel_high_2b * (1 - sel_high_b) +
+                                   p2_8 * (1 - sel_high_2b) * sel_high_b +
+                                   (1 - sel_high_2b) * (1 - sel_high_b);
+     
+    const expr value_8b_factor = p2_24 * sel_high_2b * (1 - sel_high_b)+
+                                 p2_16 * sel_high_2b * sel_high_b +
+                                 p2_8 * (1 - sel_high_2b) * (1 - sel_high_b) +
+                                 (1 - sel_high_2b) * sel_high_b;
+
+    const expr value_16b_factor = p2_16 * (1 - sel_high_2b) + sel_high_2b;
+
+
+    composed_value === byte_value * byte_value_factor +
+                       value_8b * value_8b_factor + 
+                       value_16b * value_16b_factor;
+
+    const expr mem_read_values[2];
+
+    mem_read_values[0] = sel_high_4b * (direct_value - composed_value) + composed_value;
+    mem_read_values[1] = sel_high_4b * (composed_value - direct_value) + direct_value;
+
+    permutation_assumes(MEMORY_ID, [MEMORY_LOAD_OP, mem_addr, step, 8, ...mem_read_values ]);
+
+
+    if (read == 1 && write == 1) {
+        col witness air.is_write;
+        is_write * (1 - is_write) === 0;
+    } else if (read == 1) {
+        const int air.is_write = 0;
+    } else {
+        const int air.is_write = 1;
+    }
+
+    const expr mem_op = MEMORY_LOAD_OP + air.is_write * (MEMORY_STORE_OP - MEMORY_LOAD_OP);
+
+    if (write == 1) {
+        written_composed_value === written_byte_value * byte_value_factor +
+                       value_8b * value_8b_factor + 
+                       value_16b * value_16b_factor;
+
+        col witness mem_write_values[2];
+
+        mem_write_values[0] === sel_high_4b * (direct_value - written_composed_value) + written_composed_value;
+        mem_write_values[1] === sel_high_4b * (written_composed_value - direct_value) + direct_value;  
+
+        permutation_assumes(MEMORY_ID, [MEMORY_STORE_OP, mem_addr, step + 1, 8, ...mem_write_values ], sel: is_write); 
+    }
+
+
+    permutation_proves(MEMORY_ID, [mem_op, main_addr, step, 1, byte_value, 0]);
+
+    range_check(min: 0, max: 0xFFFF, expression: value_16b);
+    lookup_assumes(DUAL_BYTE_TABLE_ID, [byte_value, value_8b]);
+
+    airval padding_size;
+    direct_update_proves(MEMORY_ID, [MEMORY_LOAD_OP, 0, 0, 8, 0, 0], sel: padding_size);
+
+    // read + write => padding is_write = 0 => no extra WRITE padding
+    // read => padding with LOAD
+    // write => extra padding with WRITE
+
+    if (read == 0 && write == 1) {
+        direct_update_assumes(MEMORY_ID, [MEMORY_STORE_OP, 0, 0, 1, 0, 0], sel: padding_size);
+        direct_update_proves(MEMORY_ID, [MEMORY_STORE_OP, 0, 1, 8, 0, 0], sel: padding_size);
+    } else {
+        direct_update_assumes(MEMORY_ID, [MEMORY_LOAD_OP, 0, 0, 1, 0, 0], sel: padding_size);
+    }
+}

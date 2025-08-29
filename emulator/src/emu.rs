@@ -1020,7 +1020,7 @@ impl<'a> Emu<'a> {
                 // get it from memory
                 self.ctx.inst_ctx.mem.write(addr, val, 8);
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_write(addr, 8);
+                    self.ctx.stats.on_memory_write(addr, 8, val);
                 }
             }
             STORE_IND => {
@@ -1044,7 +1044,7 @@ impl<'a> Emu<'a> {
                 // Get it from memory
                 self.ctx.inst_ctx.mem.write(addr, val, instruction.ind_width);
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_write(addr, instruction.ind_width);
+                    self.ctx.stats.on_memory_write(addr, instruction.ind_width, val);
                 }
             }
             _ => panic!(

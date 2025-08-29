@@ -1,19 +1,24 @@
 use std::sync::Arc;
 
 use crate::{
-    InputDataSM, MemAlignInstance, MemAlignSM, MemCounters, MemModuleInstance, MemPlanner, MemSM,
+    InputDataSM, MemAlignByteInstance, MemAlignByteSM, MemAlignInstance, MemAlignReadByteInstance,
+    MemAlignSM, MemAlignWriteByteInstance, MemCounters, MemModuleInstance, MemPlanner, MemSM,
     RomDataSM,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
 use zisk_common::{BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, Plan, Planner};
-use zisk_pil::{InputDataTrace, MemAlignTrace, MemTrace, RomDataTrace, ZiskProofValues};
+use zisk_pil::{
+    InputDataTrace, MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace,
+    MemAlignWriteByteTrace, MemTrace, RomDataTrace, ZiskProofValues,
+};
 
 pub struct Mem<F: PrimeField64> {
     // Secondary State machines
     mem_sm: Arc<MemSM<F>>,
     mem_align_sm: Arc<MemAlignSM<F>>,
+    mem_align_byte_sm: Arc<MemAlignByteSM<F>>,
     input_data_sm: Arc<InputDataSM<F>>,
     rom_data_sm: Arc<RomDataSM<F>>,
 }
@@ -24,8 +29,9 @@ impl<F: PrimeField64> Mem<F> {
         let mem_sm = MemSM::new(std.clone());
         let input_data_sm = InputDataSM::new(std.clone());
         let rom_data_sm = RomDataSM::new(std.clone());
+        let mem_align_byte_sm = MemAlignByteSM::new(std.clone());
 
-        Arc::new(Self { mem_align_sm, mem_sm, input_data_sm, rom_data_sm })
+        Arc::new(Self { mem_align_sm, mem_sm, input_data_sm, rom_data_sm, mem_align_byte_sm })
     }
 
     pub fn build_mem_counter(&self) -> MemCounters {
@@ -69,6 +75,15 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
             }
             MemAlignTrace::<usize>::AIR_ID => {
                 Box::new(MemAlignInstance::new(self.mem_align_sm.clone(), ictx))
+            }
+            MemAlignByteTrace::<usize>::AIR_ID => {
+                Box::new(MemAlignByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
+            }
+            MemAlignReadByteTrace::<usize>::AIR_ID => {
+                Box::new(MemAlignReadByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
+            }
+            MemAlignWriteByteTrace::<usize>::AIR_ID => {
+                Box::new(MemAlignWriteByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
             }
             _ => panic!("Memory::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }

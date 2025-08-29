@@ -73,6 +73,128 @@ impl CollectSkipper {
     }
 }
 
+/// The `CollectCounter` struct defines logic for a three-phase collection strategy.
+///
+/// Phase 1: Skip initial elements
+/// Phase 2: Collect (don't skip) a specified number of elements  
+/// Phase 3: Skip all remaining elements
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct CollectCounter {
+    /// Number of initial elements to skip
+    pub initial_skip: u32,
+
+    /// Number of elements already skipped in initial phase
+    pub initial_skipped: u32,
+
+    /// Number of elements to collect (not skip) after initial skip
+    pub collect_count: u32,
+
+    /// Number of elements already collected
+    pub collected: u32,
+
+    /// Flag indicating whether we're in initial skip phase
+    pub initial_skipping: bool,
+
+    /// Flag indicating whether we're in final skip-all phase
+    pub final_skip_phase: bool,
+}
+
+impl CollectCounter {
+    /// Creates a new `CollectCounter` instance.
+    ///
+    /// # Arguments
+    /// * `initial_skip` - Number of elements to skip at the beginning
+    /// * `collect_count` - Number of elements to collect after initial skip
+    ///
+    /// # Returns
+    /// A new `CollectCounter` with the specified behavior
+    pub fn new(initial_skip: u32, collect_count: u32) -> Self {
+        CollectCounter {
+            initial_skip,
+            initial_skipped: 0,
+            collect_count,
+            collected: 0,
+            initial_skipping: initial_skip > 0,
+            final_skip_phase: false,
+        }
+    }
+
+    /// Determines whether the current instruction should be skipped.
+    ///
+    /// Behavior:
+    /// 1. Skip first `initial_skip` elements
+    /// 2. Don't skip next `collect_count` elements  
+    /// 3. Skip all remaining elements
+    #[inline(always)]
+    pub fn should_skip(&mut self) -> bool {
+        // Phase 1: Initial skipping
+        if self.initial_skipping {
+            if self.initial_skip == 0 || self.initial_skipped >= self.initial_skip {
+                self.initial_skipping = false;
+            } else {
+                self.initial_skipped += 1;
+                return true;
+            }
+        }
+
+        // Phase 2: Collecting (not skipping)
+        if self.collected < self.collect_count {
+            self.collected += 1;
+            return false;
+        }
+
+        // Phase 3: Skip all remaining elements
+        self.final_skip_phase = true;
+        true
+    }
+
+    /// Reset to initial state with new parameters
+    pub fn reset(&mut self, initial_skip: u32, collect_count: u32) {
+        self.initial_skip = initial_skip;
+        self.initial_skipped = 0;
+        self.collect_count = collect_count;
+        self.collected = 0;
+        self.initial_skipping = initial_skip > 0;
+        self.final_skip_phase = false;
+    }
+
+    /// Returns the current phase as a string
+    pub fn get_phase(&self) -> &str {
+        if self.initial_skipping {
+            "initial_skip"
+        } else if self.collected < self.collect_count {
+            "collecting"
+        } else {
+            "final_skip"
+        }
+    }
+
+    /// Returns whether we're currently in the collecting phase
+    pub fn is_collecting(&self) -> bool {
+        !self.initial_skipping && self.collected < self.collect_count
+    }
+
+    /// Returns whether we're in the final skip phase
+    pub fn is_final_skip(&self) -> bool {
+        self.final_skip_phase
+    }
+
+    /// Returns number of elements remaining to collect
+    pub fn remaining_to_collect(&self) -> u32 {
+        if self.collected < self.collect_count {
+            self.collect_count - self.collected
+        } else {
+            0
+        }
+    }
+    pub fn count(&self) -> u32 {
+        self.collect_count
+    }
+    pub fn skip(&self) -> u32 {
+        self.initial_skip
+    }
+}
+
 /// Represents different types of checkpoints in a plan.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CheckPoint {

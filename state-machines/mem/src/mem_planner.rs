@@ -1,8 +1,8 @@
+use mem_common::save_plans;
 use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
 #[cfg(feature = "save_mem_bus_data")]
 use std::{env, fs};
-
-use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "save_mem_bus_data")]
 use zisk_common::{CheckPoint, SegmentId};
@@ -103,7 +103,7 @@ impl MemPlanner {
         // plans.append(&mut mem_align_planner.lock().unwrap().collect_plans());
         plans.append(&mut mem_align_planner.collect_plans());
 
-        #[cfg(feature = "save_mem_bus_data")]
+        // #[cfg(feature = "save_mem_bus_data")]
         save_plans(&plans, "plans.txt");
         plans
     }

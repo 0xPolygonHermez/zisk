@@ -144,15 +144,18 @@ impl MemPlanner {
             }
 
             chunks.push(ChunkId(checkpoint.chunk_id as usize));
-            segment.insert(
-                ChunkId(checkpoint.chunk_id as usize),
-                MemAlignCheckPoint {
-                    skip: checkpoint.skip,
-                    count: checkpoint.count,
-                    rows: checkpoint.rows,
-                    offset: checkpoint.offset,
-                },
-            );
+
+            // TODO:
+
+            // segment.insert(
+            //     ChunkId(checkpoint.chunk_id as usize),
+            //     MemAlignCheckPoint {
+            //         skip: checkpoint.skip,
+            //         count: checkpoint.count,
+            //         rows: checkpoint.rows,
+            //         offset: checkpoint.offset,
+            //     },
+            // );
         }
         if !chunks.is_empty() {
             plans.push(Plan::new(
