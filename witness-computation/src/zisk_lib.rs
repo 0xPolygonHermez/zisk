@@ -32,7 +32,7 @@ pub struct WitnessLib<F: PrimeField64> {
     local_rank: i32,
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
-    duplicate_tables: bool,
+    shared_tables: bool,
 }
 
 #[no_mangle]
@@ -47,7 +47,7 @@ fn init_library(
     local_rank: Option<i32>,
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
-    duplicate_tables: bool,
+    shared_tables: bool,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, world_rank);
     let chunk_size = 1 << chunk_size_bits.unwrap_or(DEFAULT_CHUNK_SIZE_BITS);
@@ -62,7 +62,7 @@ fn init_library(
         local_rank: local_rank.unwrap_or(0),
         base_port,
         unlock_mapped_memory,
-        duplicate_tables,
+        shared_tables,
     });
 
     Ok(result)
@@ -91,7 +91,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let zisk_rom = Arc::new(zisk_rom);
 
         // Step 3: Initialize the secondary state machines
-        let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), self.duplicate_tables);
+        let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), self.shared_tables);
         register_std(wcm, &std);
 
         let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
