@@ -6617,7 +6617,18 @@ impl ZiskRom2Asm {
     }
 
     fn c_store_ind_mem_op(ctx: &mut ZiskAsmContext, code: &mut String, width: u64) {
-        // Calculate the trace value on top of the address
+        // Dynamic trace value: if rest of bytes were zero, set flag on bit 49
+        if width == 1 {
+            *code += &format!(
+                "\tmov {}, [{}] {}\n",
+                REG_VALUE,
+                REG_ADDRESS,
+                ctx.comment_str("value = 8-B value")
+            );
+        }
+
+        // Calculate the fixed trace value adding write (bit 48) and width (bits 32-34) on top of
+        // the address
         if ctx.address_is_constant {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
@@ -6638,6 +6649,33 @@ impl ZiskRom2Asm {
                 REG_AUX,
                 ctx.comment_str("address |= mem op mask")
             );
+        }
+
+        // Dynamic trace value: if rest of bytes were zero, set flag on bit 49
+        if width == 1 {
+            *code += &format!(
+                "\tshr {}, 8 {}\n",
+                REG_VALUE,
+                ctx.comment_str("value & 0xFFFFFF00 == 0 ?")
+            );
+            *code += &format!(
+                "\tjnz pc_{}_rest_of_bytes_not_zero {}\n",
+                ctx.pc,
+                ctx.comment_str("aux & 0xFFFFFF00 != 0 ?")
+            );
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_AUX,
+                1u64 << 49,
+                ctx.comment_str("aux = 1<<49")
+            );
+            *code += &format!(
+                "\tor {}, {} {}\n",
+                REG_ADDRESS,
+                REG_AUX,
+                ctx.comment_str("address |= 1<<49")
+            );
+            *code += &format!("\npc_{}_rest_of_bytes_not_zero:\n", ctx.pc);
         }
 
         // Copy read data into mem_reads_address and increment it
