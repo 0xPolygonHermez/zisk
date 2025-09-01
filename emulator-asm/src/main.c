@@ -3375,6 +3375,7 @@ void log_mem_op(void)
 
         for (uint64_t m=0; m<mem_op_trace_size; m++)
         {
+            uint64_t rest_are_zeros = (chunk[i] >> 49) & 0x1;
             uint64_t write = (chunk[i] >> 48) & 0x1;
             uint64_t width = (chunk[i] >> 32) & 0xF;
             uint64_t address = chunk[i] & 0xFFFFFFFF;
@@ -3384,10 +3385,11 @@ void log_mem_op(void)
                 ((address >= INPUT_ADDR) && (address < (INPUT_ADDR + MAX_INPUT_SIZE)));
             if (trace_trace || !inside_range)
             {
-                printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = write=%lx, width=%lx, address=%lx%s\n",
+                printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = rest_are_zeros=%lx, write=%lx, width=%lx, address=%lx%s\n",
                     c,
                     m,
                     chunk[i],
+                    rest_are_zeros,
                     write,
                     width,
                     address,
