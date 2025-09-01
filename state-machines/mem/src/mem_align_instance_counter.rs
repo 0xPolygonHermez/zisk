@@ -41,10 +41,18 @@ pub struct MemAlignInstanceCounter {
     pub checkpoints: HashMap<ChunkId, MemAlignCheckPoint>,
     pub plans: Vec<Plan>,
     pub collect_data: [MemAlignCollectData; MA_TYPES],
+    pub used: [u32; MA_TYPES],
+    pub order: Vec<usize>,
 }
 
 impl MemAlignInstanceCounter {
-    pub fn new(air_id: usize, instances: u32, num_rows: u32, costs: [u32; MA_TYPES]) -> Self {
+    pub fn new(
+        air_id: usize,
+        instances: u32,
+        num_rows: u32,
+        costs: &[u32; MA_TYPES],
+        order: &[usize],
+    ) -> Self {
         Self {
             air_id,
             instances,
@@ -59,8 +67,10 @@ impl MemAlignInstanceCounter {
                 MemAlignCollectData::new(costs[3]),
                 MemAlignCollectData::new(costs[4]),
             ],
+            order: order.to_vec(),
             checkpoints: HashMap::new(),
             plans: Vec::new(),
+            used: [0; MA_TYPES],
         }
     }
     pub fn get_instances(&self) -> u32 {
@@ -73,6 +83,12 @@ impl MemAlignInstanceCounter {
         self.instances = instances;
         self.instances_available = instances;
     }
+    pub fn update_order(&mut self, order: &[usize]) {
+        self.order = order.to_vec();
+    }
+    pub fn get_used(&self) -> [u32; MA_TYPES] {
+        self.used
+    }
     pub fn add_to_instance(
         &mut self,
         chunk_id: ChunkId,
@@ -80,7 +96,9 @@ impl MemAlignInstanceCounter {
         pendings: &mut [u32; MA_TYPES],
     ) {
         let mut updated = false;
-        for i in 0..MA_TYPES {
+        let count = self.order.len();
+        for j in 0..count {
+            let i = self.order[j];
             let cost = self.collect_data[i].cost;
             if cost == 0 {
                 continue;
@@ -105,6 +123,7 @@ impl MemAlignInstanceCounter {
                 if cost_pending <= self.rows_available {
                     // could add all pending
                     self.collect_data[i].add(pending, total - pending);
+                    self.used[i] += pending;
                     self.rows_available -= cost_pending;
                     pendings[i] = 0;
                     updated = true;
@@ -120,6 +139,7 @@ impl MemAlignInstanceCounter {
                 assert!(partial > 0);
 
                 self.collect_data[i].add(partial, total - pendings[i]);
+                self.used[i] += partial;
                 self.rows_available -= partial * cost;
                 pendings[i] -= partial;
                 updated = true;
@@ -163,16 +183,47 @@ impl MemAlignInstanceCounter {
             true
         }
     }
+    #[cfg(feature = "mem_align_stats")]
+    pub fn get_total_counts(&self) -> (u32, u32, u32, u32, u32) {
+        let mut full_5 = 0;
+        let mut full_3 = 0;
+        let mut full_2 = 0;
+        let mut read_byte = 0;
+        let mut write_byte = 0;
+        for checkpoint in self.checkpoints.values() {
+            full_5 += checkpoint.full_5.count();
+            full_3 += checkpoint.full_3.count();
+            full_2 += checkpoint.full_2.count();
+            read_byte += checkpoint.read_byte.count();
+            write_byte += checkpoint.write_byte.count();
+        }
+        (full_5, full_3, full_2, read_byte, write_byte)
+    }
+
     pub fn close_instance(&mut self) {
         if self.rows_available == self.num_rows || self.chunks.is_empty() {
             return;
+        }
+        let segment_id = SegmentId(self.plans.len());
+        #[cfg(feature = "mem_align_stats")]
+        {
+            use zisk_pil::MEM_ALIGN_AIR_IDS;
+
+            let totals = self.get_total_counts();
+            let total = if self.air_id == MEM_ALIGN_AIR_IDS[0] {
+                5 * totals.0 + 3 * totals.1 + 2 * totals.2 + 2 * totals.3 + 3 * totals.4
+            } else {
+                totals.0 + totals.1 + totals.2 + totals.3 + totals.4
+            };
+            println!("MEM_ALIGN_SEGMENT AIR:{} SEGMENT:{} FULL_5:{} FULL_3:{} FULL_2:{} READ_BYTE:{} WRITE_BYTE:{} TOTAL:{total}",
+                self.air_id, segment_id, totals.0, totals.1, totals.2, totals.3, totals.4);
         }
         let chunks = std::mem::take(&mut self.chunks);
         let checkpoints = std::mem::take(&mut self.checkpoints);
         let plan = Plan::new(
             ZISK_AIRGROUP_ID,
             self.air_id,
-            Some(SegmentId(self.plans.len())),
+            Some(segment_id),
             InstanceType::Instance,
             CheckPoint::Multiple(chunks),
             Some(Box::new(checkpoints)),
