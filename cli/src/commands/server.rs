@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::{path::PathBuf, process};
 use zisk_common::init_tracing;
+use zisk_pil::VIRTUAL_TABLE_AIR_IDS;
 
 use crate::commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field};
 use crate::ux::print_banner;
@@ -37,7 +38,7 @@ pub struct ZiskServer {
 
     /// Witness computation dynamic library path
     #[clap(short = 'w', long)]
-    pub witness_lib: Option<PathBuf>,
+pub witness_lib: Option<PathBuf>,
 
     /// ELF file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
@@ -214,6 +215,8 @@ impl ZiskServer {
         if self.max_witness_stored.is_some() {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
+
+        gpu_params.with_single_instance((0, VIRTUAL_TABLE_AIR_IDS[0]));
 
         let config = ServerConfig::new(
             self.port,
