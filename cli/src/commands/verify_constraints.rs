@@ -86,6 +86,9 @@ pub struct ZiskVerifyConstraints {
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
+
+    #[clap(short = 'h', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskVerifyConstraints {
@@ -233,6 +236,7 @@ impl ZiskVerifyConstraints {
                     Some(mpi_context.local_rank),
                     self.port,
                     self.unlock_mapped_memory,
+                    self.shared_tables,
                 )
                 .expect("Failed to initialize witness library");
 
