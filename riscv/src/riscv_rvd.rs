@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 /// RVD operation, including a map to store nested operations, if any
 /// It contains a human-readable string name of the operation
+#[derive(Clone)]
 pub struct RvdOperation {
     pub s: String,
     pub map: HashMap<u32, RvdOperation>,
@@ -50,6 +51,17 @@ impl Rvd {
             info.op.map.insert(5, RvdOperation { s: String::from("lhu"), map: HashMap::new() });
             info.op.map.insert(6, RvdOperation { s: String::from("lwu"), map: HashMap::new() });
             self.opcodes.insert(3, info);
+        }
+
+        // Opcode 7
+        {
+            let mut info = RvdInfo {
+                t: String::from("R"),
+                op: RvdOperation { s: String::new(), map: HashMap::new() },
+            };
+            info.op.map.insert(2, RvdOperation { s: String::from("flw"), map: HashMap::new() });
+            info.op.map.insert(3, RvdOperation { s: String::from("fld"), map: HashMap::new() });
+            self.opcodes.insert(7, info);
         }
 
         // Opcode 15
@@ -131,6 +143,17 @@ impl Rvd {
             info.op.map.insert(2, RvdOperation { s: String::from("sw"), map: HashMap::new() });
             info.op.map.insert(3, RvdOperation { s: String::from("sd"), map: HashMap::new() });
             self.opcodes.insert(35, info);
+        }
+
+        // Opcode 39
+        {
+            let mut info = RvdInfo {
+                t: String::from("S"),
+                op: RvdOperation { s: String::new(), map: HashMap::new() },
+            };
+            info.op.map.insert(2, RvdOperation { s: String::from("fsw"), map: HashMap::new() });
+            info.op.map.insert(3, RvdOperation { s: String::from("fsd"), map: HashMap::new() });
+            self.opcodes.insert(39, info);
         }
 
         // Opcode 47
@@ -295,6 +318,28 @@ impl Rvd {
                 info.op.map.insert(7, op);
             }
             self.opcodes.insert(59, info);
+        }
+
+        // Opcode 83
+        {
+            let mut info = RvdInfo {
+                t: String::from("R"),
+                op: RvdOperation { s: String::new(), map: HashMap::new() },
+            };
+            {
+                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
+                op.map.insert(0, RvdOperation { s: String::from("fadd.s"), map: HashMap::new() });
+                op.map.insert(1, RvdOperation { s: String::from("fadd.d"), map: HashMap::new() });
+                info.op.map.insert(0, op.clone());
+                info.op.map.insert(1, op.clone());
+                info.op.map.insert(2, op.clone());
+                info.op.map.insert(3, op.clone());
+                info.op.map.insert(4, op.clone());
+                //info.op.map.insert(5, op);
+                //info.op.map.insert(6, op);
+                info.op.map.insert(7, op);
+            }
+            self.opcodes.insert(83, info);
         }
 
         // Opcode 99

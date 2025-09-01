@@ -91,6 +91,12 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
             // Get the RVD info data for this opcode
             if !rvd.opcodes.contains_key(&opcode) {
                 panic!("Invalid opcode={opcode}=0x{opcode:x} index={code_index}");
+
+                // TODO: delete
+                // let opcode = inst & 0x7F;
+                // let function = inst >> 25;
+                // println!("Invalid opcode={opcode}=0x{opcode:x}=0b{opcode:b} function={function}=0b{function:b} index={code_index}");
+                // continue;
             }
             let inf = &rvd.opcodes[&opcode];
 
@@ -112,7 +118,15 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                 i.imm = signext((inst & 0xFFF00000) >> 20, 12);
                 let l: i32;
                 (i.inst, l) = getinst(&inf.op, i.funct3, funct7);
-                assert!(!i.inst.is_empty());
+                assert!(
+                    !i.inst.is_empty(),
+                    "i.inst.is_empty() for inst=0x{:x} at index={} opcode={} func3={:?} funct7={:?}",
+                    inst,
+                    code_index,
+                    opcode,
+                    i.funct3,
+                    funct7
+                );
                 if l == 2 {
                     i.imm &= 0x3F;
                     i.funct7 = funct7;

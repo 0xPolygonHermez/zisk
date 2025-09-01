@@ -123,3 +123,45 @@ pub const REGS_IN_MAIN_FROM: usize = 1; // First non-zero register in main trace
 pub const REGS_IN_MAIN_TO: usize = 31; // Last non-zero register in main trace
 pub const REGS_IN_MAIN: usize = REGS_IN_MAIN_TO - REGS_IN_MAIN_FROM + 1;
 pub const REGS_IN_MAIN_TOTAL_NUMBER: usize = 32; // Total number of registers in main, including the zero register
+
+// Float registers memory address definitions
+pub const FREG_FIRST: u64 = SYS_ADDR + 40 * 8;
+
+pub const FREG_F0: u64 = FREG_FIRST;
+pub const FREG_F1: u64 = FREG_FIRST + 8;
+pub const FREG_F2: u64 = FREG_FIRST + 2_u64 * 8;
+pub const FREG_F3: u64 = FREG_FIRST + 3_u64 * 8;
+pub const FREG_F4: u64 = FREG_FIRST + 4_u64 * 8;
+pub const FREG_F5: u64 = FREG_FIRST + 5_u64 * 8;
+pub const FREG_F6: u64 = FREG_FIRST + 6_u64 * 8;
+pub const FREG_F7: u64 = FREG_FIRST + 7_u64 * 8;
+pub const FREG_F8: u64 = FREG_FIRST + 8_u64 * 8;
+pub const FREG_F9: u64 = FREG_FIRST + 9_u64 * 8;
+pub const FREG_F10: u64 = FREG_FIRST + 10_u64 * 8;
+pub const FREG_F11: u64 = FREG_FIRST + 11_u64 * 8;
+pub const FREG_F12: u64 = FREG_FIRST + 12_u64 * 8;
+pub const FREG_F13: u64 = FREG_FIRST + 13_u64 * 8;
+pub const FREG_F14: u64 = FREG_FIRST + 14_u64 * 8;
+pub const FREG_F15: u64 = FREG_FIRST + 15_u64 * 8;
+pub const FREG_F16: u64 = FREG_FIRST + 16_u64 * 8;
+pub const FREG_F17: u64 = FREG_FIRST + 17_u64 * 8;
+pub const FREG_F18: u64 = FREG_FIRST + 18_u64 * 8;
+pub const FREG_F19: u64 = FREG_FIRST + 19_u64 * 8;
+pub const FREG_F20: u64 = FREG_FIRST + 20_u64 * 8;
+pub const FREG_F21: u64 = FREG_FIRST + 21_u64 * 8;
+pub const FREG_F22: u64 = FREG_FIRST + 22_u64 * 8;
+pub const FREG_F23: u64 = FREG_FIRST + 23_u64 * 8;
+pub const FREG_F24: u64 = FREG_FIRST + 24_u64 * 8;
+pub const FREG_F25: u64 = FREG_FIRST + 25_u64 * 8;
+pub const FREG_F26: u64 = FREG_FIRST + 26_u64 * 8;
+pub const FREG_F27: u64 = FREG_FIRST + 27_u64 * 8;
+pub const FREG_F28: u64 = FREG_FIRST + 28_u64 * 8;
+pub const FREG_F29: u64 = FREG_FIRST + 29_u64 * 8;
+pub const FREG_F30: u64 = FREG_FIRST + 30_u64 * 8;
+pub const FREG_F31: u64 = FREG_FIRST + 31_u64 * 8;
+
+pub const FREG_CSR: u64 = FREG_FIRST + 32_u64 * 8; // Floating-point control and status register (fcsr)
+
+pub const FREG_LAST: u64 = FREG_CSR;
+
+pub const FREGS_NUMBER: usize = 33; // Total number of float registers, including fcsr

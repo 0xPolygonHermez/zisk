@@ -312,7 +312,7 @@ impl Mem {
         }) {
             &self.read_sections[section]
         } else {
-            panic!("Mem::read() section not found for addr: {addr} with width: {width}");
+            panic!("Mem::read() section not found for addr: {addr}={addr:x} with width: {width}");
         };
 
         // Calculate the buffer relative read position

@@ -237,6 +237,16 @@ impl Riscv2ZiskContext<'_> {
             // C. Other
             "c.nop" => self.nop(riscv_instruction, 2),
 
+            // F: Single-Precision Floating-Point
+            /////////////////////////////////////
+
+            // C.I.4. Load and Store Instructions
+            "flw" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            "fld" => self.load_op(riscv_instruction, "copyb", 8, 4),
+            "fsw" => self.store_op(riscv_instruction, "signextend_w", 4, 4),
+            "fsd" => self.store_op(riscv_instruction, "copyb", 8, 4),
+            "fadd.d" => self.create_register_op(riscv_instruction, "fadd.d", 4),
+
             _ => panic!(
                 "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
                 riscv_instruction.inst
@@ -433,11 +443,12 @@ impl Riscv2ZiskContext<'_> {
     /// and stores the result c into a register
     pub fn create_register_op(&mut self, i: &RiscvInstruction, op: &str, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
+        let reg_offset: u64 = if op == "fadd.d" { 40 } else { 0 };
         let mut zib = ZiskInstBuilder::new(self.s);
-        zib.src_a("reg", i.rs1 as u64, false);
-        zib.src_b("reg", i.rs2 as u64, false);
+        zib.src_a("reg", i.rs1 as u64 + reg_offset, false);
+        zib.src_b("reg", i.rs2 as u64 + reg_offset, false);
         zib.op(op).unwrap();
-        zib.store("reg", i.rd as i64, false, false);
+        zib.store("reg", i.rd as i64 + reg_offset as i64, false, false);
         zib.j(inst_size as i32, inst_size as i32);
         zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rd, i.rs1, i.rs2));
         zib.build();
@@ -495,9 +506,10 @@ impl Riscv2ZiskContext<'_> {
         zib.ind_width(w);
         zib.src_b("ind", i.imm as u64, false);
         zib.op(op).unwrap();
-        zib.store("reg", i.rd as i64, false, false);
+        let reg_offset: i64 = if i.inst == "fld" || i.inst == "flw" { 40 } else { 0 };
+        zib.store("reg", i.rd as i64 + reg_offset, false, false);
         zib.j(inst_size as i32, inst_size as i32);
-        zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst, i.rd, i.imm, i.rs1));
+        zib.verbose(&format!("{} r{}+{}, 0x{:x}(r{})", i.inst, i.rd, reg_offset, i.imm, i.rs1));
         zib.build();
         self.insts.insert(self.s, zib);
         self.s += inst_size;
@@ -510,14 +522,15 @@ impl Riscv2ZiskContext<'_> {
     /// and stores the result in memory
     pub fn store_op(&mut self, i: &RiscvInstruction, op: &str, w: u64, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
+        let reg_offset: u64 = if i.inst == "fsd" || i.inst == "fsw" { 40 } else { 0 };
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("reg", i.rs1 as u64, false);
-        zib.src_b("reg", i.rs2 as u64, false);
+        zib.src_b("reg", i.rs2 as u64 + reg_offset, false);
         zib.op(op).unwrap();
         zib.ind_width(w);
         zib.store("ind", i.imm as i64, false, false);
         zib.j(inst_size as i32, inst_size as i32);
-        zib.verbose(&format!("{} r{}, 0x{}(r{})", i.inst, i.rs2, i.imm, i.rs1));
+        zib.verbose(&format!("{} r{}+{}, 0x{:x}(r{})", i.inst, i.rs2, reg_offset, i.imm, i.rs1));
         zib.build();
         self.insts.insert(self.s, zib);
         self.s += inst_size;

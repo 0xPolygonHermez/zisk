@@ -20,8 +20,8 @@ use std::{
 use tiny_keccak::keccakf;
 
 use crate::{
-    sha256f, EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64,
-    REG_A0, SYS_ADDR,
+    fadd_d, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation,
+    M64, REG_A0, SYS_ADDR,
 };
 
 use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c, Fcall, FcallContext};
@@ -342,6 +342,7 @@ define_ops! {
     (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, opc_bn254_complex_add, op_bn254_complex_add),
     (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, opc_bn254_complex_sub, op_bn254_complex_sub),
     (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, opc_bn254_complex_mul, op_bn254_complex_mul),
+    (FAddD, "fadd.d", Internal, INTERNAL_COST, 0xe0, 0, opc_fadd_d, op_fadd_d),
 }
 
 /* INTERNAL operations */
@@ -1762,5 +1763,41 @@ pub fn opc_fcall_get(ctx: &mut InstContext) {
         ctx.mem.free_input = ctx.fcall.result[ctx.fcall.result_got as usize];
     }
     ctx.fcall.result_got += 1;
+    ctx.flag = false;
+}
+
+/// Implements fcall_get, fcall result
+#[inline(always)]
+pub fn op_fadd_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fadd_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fcall_get()
+#[inline(always)]
+pub fn opc_fadd_d(ctx: &mut InstContext) {
+    // ctx.c = fadd_d(ctx.a, ctx.b);
+
+    // println!("INT fadd_d({},{}) = {}", ctx.a, ctx.b, ctx.c);
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af + bf;
+    ctx.c = cf.to_bits();
+
+    let a_sign: u64 = ctx.a >> 63;
+    let a_exponent: u64 = (ctx.a >> 52) & 0x7FF;
+    let a_mantissa: u64 = ctx.a & 0xFFFFFFFFFFFFF;
+    let b_sign: u64 = ctx.b >> 63;
+    let b_exponent: u64 = (ctx.b >> 52) & 0x7FF;
+    let b_mantissa: u64 = ctx.b & 0xFFFFFFFFFFFFF;
+    let c_sign: u64 = ctx.c >> 63;
+    let c_exponent: u64 = (ctx.c >> 52) & 0x7FF;
+    let c_mantissa: u64 = ctx.c & 0xFFFFFFFFFFFFF;
+
+    println!(">>>>>> opc_fadd_d()\na: u64={:x} sign={}, exponent={}, mantissa=1.{}\nb: u64={:x} sign={}, exponent={}, mantissa=1.{}\nc: u64={:x} sign={}, exponent={}, mantissa=1.{}",
+        ctx.a, a_sign, a_exponent, a_mantissa,
+        ctx.b, b_sign, b_exponent, b_mantissa,
+        ctx.c, c_sign, c_exponent, c_mantissa
+    );
+
     ctx.flag = false;
 }
