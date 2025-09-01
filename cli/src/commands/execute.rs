@@ -206,7 +206,7 @@ impl ZiskExecute {
 
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }
-        
+
         match self.field {
             Field::Goldilocks => {
                 let library = unsafe {

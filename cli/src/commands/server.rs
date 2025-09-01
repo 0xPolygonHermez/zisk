@@ -38,7 +38,7 @@ pub struct ZiskServer {
 
     /// Witness computation dynamic library path
     #[clap(short = 'w', long)]
-pub witness_lib: Option<PathBuf>,
+    pub witness_lib: Option<PathBuf>,
 
     /// ELF file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
