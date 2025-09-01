@@ -5971,6 +5971,10 @@ impl ZiskRom2Asm {
             }
             // TODO: delete
             ZiskOp::FAddD => {}
+            ZiskOp::FSubD => {}
+            ZiskOp::FMulD => {}
+            ZiskOp::FDivD => {}
+            ZiskOp::FClassD => {}
         }
     }
 

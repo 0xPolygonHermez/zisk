@@ -246,6 +246,10 @@ impl Riscv2ZiskContext<'_> {
             "fsw" => self.store_op(riscv_instruction, "signextend_w", 4, 4),
             "fsd" => self.store_op(riscv_instruction, "copyb", 8, 4),
             "fadd.d" => self.create_register_op(riscv_instruction, "fadd.d", 4),
+            "fsub.d" => self.create_register_op(riscv_instruction, "fsub.d", 4),
+            "fmul.d" => self.create_register_op(riscv_instruction, "fmul.d", 4),
+            "fdiv.d" => self.create_register_op(riscv_instruction, "fdiv.d", 4),
+            "fclass.d" => self.create_register_op(riscv_instruction, "fclass.d", 4),
 
             _ => panic!(
                 "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",

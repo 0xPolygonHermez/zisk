@@ -343,6 +343,10 @@ define_ops! {
     (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, opc_bn254_complex_sub, op_bn254_complex_sub),
     (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, opc_bn254_complex_mul, op_bn254_complex_mul),
     (FAddD, "fadd.d", Internal, INTERNAL_COST, 0xe0, 0, opc_fadd_d, op_fadd_d),
+    (FSubD, "fsub.d", Internal, INTERNAL_COST, 0xe1, 0, opc_fsub_d, op_fsub_d),
+    (FMulD, "fmul.d", Internal, INTERNAL_COST, 0xe2, 0, opc_fmul_d, op_fmul_d),
+    (FDivD, "fdiv.d", Internal, INTERNAL_COST, 0xe3, 0, opc_fdiv_d, op_fdiv_d),
+    (FClassD, "fclass.d", Internal, INTERNAL_COST, 0xe4, 0, opc_fclass_d, op_fclass_d),
 }
 
 /* INTERNAL operations */
@@ -1783,21 +1787,146 @@ pub fn opc_fadd_d(ctx: &mut InstContext) {
     let cf: f64 = af + bf;
     ctx.c = cf.to_bits();
 
-    let a_sign: u64 = ctx.a >> 63;
-    let a_exponent: u64 = (ctx.a >> 52) & 0x7FF;
-    let a_mantissa: u64 = ctx.a & 0xFFFFFFFFFFFFF;
-    let b_sign: u64 = ctx.b >> 63;
-    let b_exponent: u64 = (ctx.b >> 52) & 0x7FF;
-    let b_mantissa: u64 = ctx.b & 0xFFFFFFFFFFFFF;
-    let c_sign: u64 = ctx.c >> 63;
-    let c_exponent: u64 = (ctx.c >> 52) & 0x7FF;
-    let c_mantissa: u64 = ctx.c & 0xFFFFFFFFFFFFF;
+    // let a_sign: u64 = ctx.a >> 63;
+    // let a_exponent: u64 = (ctx.a >> 52) & 0x7FF;
+    // let a_mantissa: u64 = ctx.a & 0xFFFFFFFFFFFFF;
+    // let b_sign: u64 = ctx.b >> 63;
+    // let b_exponent: u64 = (ctx.b >> 52) & 0x7FF;
+    // let b_mantissa: u64 = ctx.b & 0xFFFFFFFFFFFFF;
+    // let c_sign: u64 = ctx.c >> 63;
+    // let c_exponent: u64 = (ctx.c >> 52) & 0x7FF;
+    // let c_mantissa: u64 = ctx.c & 0xFFFFFFFFFFFFF;
 
-    println!(">>>>>> opc_fadd_d()\na: u64={:x} sign={}, exponent={}, mantissa=1.{}\nb: u64={:x} sign={}, exponent={}, mantissa=1.{}\nc: u64={:x} sign={}, exponent={}, mantissa=1.{}",
-        ctx.a, a_sign, a_exponent, a_mantissa,
-        ctx.b, b_sign, b_exponent, b_mantissa,
-        ctx.c, c_sign, c_exponent, c_mantissa
-    );
+    // println!(">>>>>> opc_fadd_d()\na: u64={:x} sign={}, exponent={}, mantissa=1.{}\nb: u64={:x} sign={}, exponent={}, mantissa=1.{}\nc: u64={:x} sign={}, exponent={}, mantissa=1.{}",
+    //     ctx.a, a_sign, a_exponent, a_mantissa,
+    //     ctx.b, b_sign, b_exponent, b_mantissa,
+    //     ctx.c, c_sign, c_exponent, c_mantissa
+    // );
 
+    ctx.flag = false;
+}
+
+/// Implements fcall_get, fcall result
+#[inline(always)]
+pub fn op_fsub_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fsub_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fcall_get()
+#[inline(always)]
+pub fn opc_fsub_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af - bf;
+    ctx.c = cf.to_bits();
+
+    // let a_sign: u64 = ctx.a >> 63;
+    // let a_exponent: u64 = (ctx.a >> 52) & 0x7FF;
+    // let a_mantissa: u64 = ctx.a & 0xFFFFFFFFFFFFF;
+    // let b_sign: u64 = ctx.b >> 63;
+    // let b_exponent: u64 = (ctx.b >> 52) & 0x7FF;
+    // let b_mantissa: u64 = ctx.b & 0xFFFFFFFFFFFFF;
+    // let c_sign: u64 = ctx.c >> 63;
+    // let c_exponent: u64 = (ctx.c >> 52) & 0x7FF;
+    // let c_mantissa: u64 = ctx.c & 0xFFFFFFFFFFFFF;
+
+    // println!(">>>>>> opc_fsub_d()\na: u64={:x} sign={}, exponent={}, mantissa=1.{}\nb: u64={:x} sign={}, exponent={}, mantissa=1.{}\nc: u64={:x} sign={}, exponent={}, mantissa=1.{}",
+    //     ctx.a, a_sign, a_exponent, a_mantissa,
+    //     ctx.b, b_sign, b_exponent, b_mantissa,
+    //     ctx.c, c_sign, c_exponent, c_mantissa
+    // );
+
+    ctx.flag = false;
+}
+
+/// Implements fcall_get, fcall result
+#[inline(always)]
+pub fn op_fmul_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fmul_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fcall_get()
+#[inline(always)]
+pub fn opc_fmul_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af * bf;
+    ctx.c = cf.to_bits();
+
+    // let a_sign: u64 = ctx.a >> 63;
+    // let a_exponent: u64 = (ctx.a >> 52) & 0x7FF;
+    // let a_mantissa: u64 = ctx.a & 0xFFFFFFFFFFFFF;
+    // let b_sign: u64 = ctx.b >> 63;
+    // let b_exponent: u64 = (ctx.b >> 52) & 0x7FF;
+    // let b_mantissa: u64 = ctx.b & 0xFFFFFFFFFFFFF;
+    // let c_sign: u64 = ctx.c >> 63;
+    // let c_exponent: u64 = (ctx.c >> 52) & 0x7FF;
+    // let c_mantissa: u64 = ctx.c & 0xFFFFFFFFFFFFF;
+
+    // println!(">>>>>> opc_fmul_d()\na: u64={:x} sign={}, exponent={}, mantissa=1.{}\nb: u64={:x} sign={}, exponent={}, mantissa=1.{}\nc: u64={:x} sign={}, exponent={}, mantissa=1.{}",
+    //     ctx.a, a_sign, a_exponent, a_mantissa,
+    //     ctx.b, b_sign, b_exponent, b_mantissa,
+    //     ctx.c, c_sign, c_exponent, c_mantissa
+    // );
+
+    ctx.flag = false;
+}
+
+/// Implements fcall_get, fcall result
+#[inline(always)]
+pub fn op_fdiv_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fdiv_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fcall_get()
+#[inline(always)]
+pub fn opc_fdiv_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af - bf;
+    ctx.c = cf.to_bits();
+
+    // let a_sign: u64 = ctx.a >> 63;
+    // let a_exponent: u64 = (ctx.a >> 52) & 0x7FF;
+    // let a_mantissa: u64 = ctx.a & 0xFFFFFFFFFFFFF;
+    // let b_sign: u64 = ctx.b >> 63;
+    // let b_exponent: u64 = (ctx.b >> 52) & 0x7FF;
+    // let b_mantissa: u64 = ctx.b & 0xFFFFFFFFFFFFF;
+    // let c_sign: u64 = ctx.c >> 63;
+    // let c_exponent: u64 = (ctx.c >> 52) & 0x7FF;
+    // let c_mantissa: u64 = ctx.c & 0xFFFFFFFFFFFFF;
+
+    // println!(">>>>>> opc_fdiv_d()\na: u64={:x} sign={}, exponent={}, mantissa=1.{}\nb: u64={:x} sign={}, exponent={}, mantissa=1.{}\nc: u64={:x} sign={}, exponent={}, mantissa=1.{}",
+    //     ctx.a, a_sign, a_exponent, a_mantissa,
+    //     ctx.b, b_sign, b_exponent, b_mantissa,
+    //     ctx.c, c_sign, c_exponent, c_mantissa
+    // );
+
+    ctx.flag = false;
+}
+
+/// Implements fcall_get, fcall result
+#[inline(always)]
+pub fn op_fclass_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fclass_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fcall_get()
+#[inline(always)]
+pub fn opc_fclass_d(ctx: &mut InstContext) {
+    // rd bit Meaning
+    // 0: rs1 is - infinite
+    // 1: rs1 is a negative normal number.
+    // 2: rs1 is a negative subnormal number.
+    // .
+    // 3: rs1 is - 0
+    // 4: rs1 is + 0.
+    // 5: rs1 is a positive subnormal number.
+    // 6: rs1 is a positive normal number.
+    // 7: rs1 is + infinite
+    // 8: rs1 is a signaling NaN.
+    // 9: rs1 is a quiet NaN.
+
+    ctx.c = 0;
     ctx.flag = false;
 }
