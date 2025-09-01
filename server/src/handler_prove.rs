@@ -149,9 +149,10 @@ impl ZiskServiceProveHandler {
                         encoder.finish().unwrap();
 
                         let original_size = vadcop_proof.len() * 8;
-                        let compressed_size = std::fs::metadata(&compressed_output_path).unwrap().len();
+                        let compressed_size =
+                            std::fs::metadata(&compressed_output_path).unwrap().len();
                         let compression_ratio = compressed_size as f64 / original_size as f64;
-                        
+
                         println!("Vadcop final proof saved:");
                         println!("  Original: {} bytes", original_size);
                         println!(
