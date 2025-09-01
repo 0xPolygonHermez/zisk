@@ -81,6 +81,8 @@ pub struct ZiskServerParams {
     pub gpu_params: ParamsGPU,
 
     pub unlock_mapped_memory: bool,
+
+    pub shared_tables: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -103,6 +105,7 @@ impl ZiskServerParams {
         final_snark: bool,
         gpu_params: ParamsGPU,
         unlock_mapped_memory: bool,
+        shared_tables: bool,
     ) -> Self {
         Self {
             port,
@@ -124,6 +127,7 @@ impl ZiskServerParams {
             final_snark,
             gpu_params,
             unlock_mapped_memory,
+            shared_tables,
         }
     }
 }
@@ -398,7 +402,7 @@ impl ZiskService {
             Some(local_rank),
             params.asm_port,
             unlock_mapped_memory,
-            shared_tables,
+            params.shared_tables,
         )
         .expect("Failed to initialize witness library");
 
@@ -423,6 +427,7 @@ impl ZiskService {
             params.aggregation,
             params.final_snark,
             params.gpu_params.clone(),
+            params.shared_tables,
         );
 
         Ok(Self {

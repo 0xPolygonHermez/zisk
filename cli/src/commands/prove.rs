@@ -307,13 +307,7 @@ impl ZiskProve {
                     proofman.set_barrier();
                     let result = proofman
                         .generate_proof_from_lib(
-                            ProvePhaseInputs::Full(ProofInfo::new(
-                                self.input.clone(),
-                                mpi_ctx.n_processes as usize,
-                                vec![mpi_ctx.rank as u32],
-                                mpi_ctx.n_processes as usize,
-                                mpi_ctx.rank as usize,
-                            )),
+                            ProvePhaseInputs::Full(ProofInfo::new(self.input.clone(), 1, vec![0])),
                             ProofOptions::new(
                                 false,
                                 self.aggregation,

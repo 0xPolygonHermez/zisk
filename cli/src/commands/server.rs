@@ -201,7 +201,7 @@ impl ZiskServer {
         }
 
         gpu_params.with_single_instance((0, VIRTUAL_TABLE_AIR_IDS[0]));
-        
+
         let server_params = ZiskServerParams::new(
             self.port,
             self.elf.clone(),

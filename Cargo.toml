@@ -83,6 +83,7 @@ circuit = { path = "tools/circuit" }
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
 proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
 proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
 proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
 pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
 witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }

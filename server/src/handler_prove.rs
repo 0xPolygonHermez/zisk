@@ -66,13 +66,7 @@ impl ZiskServiceProveHandler {
 
                 let result = proofman
                     .generate_proof_from_lib(
-                        ProvePhaseInputs::Full(ProofInfo::new(
-                            Some(request_input),
-                            mpi_ctx.n_processes as usize,
-                            vec![mpi_ctx.rank as u32],
-                            mpi_ctx.n_processes as usize,
-                            mpi_ctx.rank as usize,
-                        )),
+                        ProvePhaseInputs::Full(ProofInfo::new(Some(request_input), 1, vec![0])),
                         ProofOptions::new(
                             false,
                             request.aggregation,
@@ -97,6 +91,7 @@ impl ZiskServiceProveHandler {
                 let elapsed = start.elapsed();
 
                 if mpi_ctx.rank == 0 {
+                    #[allow(clippy::type_complexity)]
                     let (result, _stats, _witness_stats): (
                         ZiskExecutionResult,
                         Arc<Mutex<ExecutorStats>>,

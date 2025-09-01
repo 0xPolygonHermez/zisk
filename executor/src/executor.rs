@@ -701,7 +701,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 {
                     // If this is the ROM instance, we need to add it to the proof context
                     // with the rank 0.
-                    pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, plan.n_threads_witness)
+                    pctx.add_instance_assign_partition(
+                        plan.airgroup_id,
+                        plan.air_id,
+                        0,
+                        plan.n_threads_witness,
+                    )
                 } else {
                     match plan.instance_type {
                         InstanceType::Instance => {
@@ -1131,7 +1136,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], trace_buffer)
         {
-            if pctx.dctx_is_my_instance(global_id) {
+            if pctx.dctx_is_my_process_instance(global_id) {
                 pctx.add_air_instance(air_instance, global_id);
             }
         }
@@ -1401,17 +1406,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                 .entry(*global_id)
                 .or_insert_with(|| self.create_secn_instance(*global_id));
             secn_instances[global_id].reset();
-            if secn_instances[global_id].instance_type() == InstanceType::Instance {
-                let checkpoint = secn_instances[global_id].check_point();
-                let chunks = match checkpoint {
-                    CheckPoint::None => vec![],
-                    CheckPoint::Single(chunk_id) => vec![chunk_id.as_usize()],
-                    CheckPoint::Multiple(chunk_ids) => {
-                        chunk_ids.iter().map(|id| id.as_usize()).collect()
-                    }
-                };
-                pctx.dctx_set_chunks(*global_id, chunks);
-            }
         }
 
         // Add to executor stats
