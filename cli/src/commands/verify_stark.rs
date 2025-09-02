@@ -7,6 +7,8 @@ use std::fs;
 
 use crate::ZISK_VERSION_MESSAGE;
 
+use super::get_default_verkey;
+
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
@@ -19,7 +21,7 @@ pub struct ZiskVerify {
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
     #[clap(short = 'k', long)]
-    pub vk: String,
+    pub vk: Option<String>,
 }
 
 impl ZiskVerify {
@@ -36,7 +38,7 @@ impl ZiskVerify {
 
         let proof = fs::read(&self.proof)?;
 
-        let vk = fs::read(&self.vk)?;
+        let vk = &self.get_verkey();
 
         let valid = verify(&proof, &vk);
 
@@ -57,5 +59,16 @@ impl ZiskVerify {
         } else {
             Ok(())
         }
+    }
+
+    /// Gets the verification key
+    /// Uses the default one if not specified by user.
+    pub fn get_verkey(&self) -> Vec<u8> {
+        let vk_file = if self.vk.is_none() {
+            get_default_verkey()
+        } else {
+            self.vk.clone().unwrap()
+        };
+        fs::read(&vk_file).unwrap()
     }
 }
