@@ -245,72 +245,206 @@ impl Rvd {
                     _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 59 inst=0x{inst:x}"),
                 }
             },
+            67 => { // Opcode 67
+                match (inst >> 25) & 0x3 {
+                    0 => ("R4", "fmadd.s"),
+                    1 => ("R4", "fmadd.d"),
+                    _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 67 inst=0x{inst:x}"),
+                }
+            },
+            71 => { // Opcode 71
+                match (inst >> 25) & 0x3 {
+                    0 => ("R4", "fmsub.s"),
+                    1 => ("R4", "fmsub.d"),
+                    _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 71 inst=0x{inst:x}"),
+                }
+            },
+            75 => { // Opcode 75
+                match (inst >> 25) & 0x3 {
+                    0 => ("R4", "fnmsub.s"),
+                    1 => ("R4", "fnmsub.d"),
+                    _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 75 inst=0x{inst:x}"),
+                }
+            },
+            79 => { // Opcode 79
+                match (inst >> 25) & 0x3 {
+                    0 => ("R4", "fnmadd.s"),
+                    1 => ("R4", "fnmadd.d"),
+                    _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 79 inst=0x{inst:x}"),
+                }
+            },
             83 => { // Opcode 83
                 match (inst >> 25) & 0x7F {
-                    0 => {
-                        match (inst >> 12) & 0x7 {
-                            0 => ("R", "fadd.s"),
-                            1 => ("R", "fadd.d"),
-                            2 => ("R", "fsub.s"),
-                            3 => ("R", "fsub.d"),
-                            4 => ("R", "fmul.s"),
-                            5 => ("R", "fmul.d"),
-                            6 => ("R", "fdiv.s"),
-                            7 => ("R", "fdiv.d"),
-                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=0 inst=0x{inst:x}"),
-                        }
-                    },
-                    1 => {
-                        match (inst >> 12) & 0x7 {
-                            0 => ("R", "fsqrt.s"),
-                            1 => ("R", "fsqrt.d"),
-                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=1 inst=0x{inst:x}"),
-                        }
-                    },
-                    2 => {
+                    0 => ("R", "fadd.s"),
+                    1 => ("R", "fadd.d"),
+                    4 => ("R", "fsub.s"),
+                    5 => ("R", "fsub.d"),
+                    8 => ("R", "fmul.s"),
+                    9 => ("R", "fmul.d"),
+                    12 => ("R", "fdiv.s"),
+                    13 => ("R", "fdiv.d"),
+                    16 => {
                         match (inst >> 12) & 0x7 {
                             0 => ("R", "fsgnj.s"),
-                            1 => ("R", "fsgnj.d"),
-                            2 => ("R", "fsgnjn.s"),
-                            3 => ("R", "fsgnjn.d"),
-                            4 => ("R", "fsgnjx.s"),
-                            5 => ("R", "fsgnjx.d"),
-                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=2 inst=0x{inst:x}"),
+                            1 => ("R", "fsgnjn.s"),
+                            2 => ("R", "fsgnjx.s"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=16 inst=0x{inst:x}"),
                         }
                     },
-                    3 => {
+                    17 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => ("R", "fsgnj.d"),
+                            1 => ("R", "fsgnjn.d"),
+                            2 => ("R", "fsgnjx.d"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=17 inst=0x{inst:x}"),
+                        }
+                    },
+                    20 => {
                         match (inst >> 12) & 0x7 {
                             0 => ("R", "fmin.s"),
-                            1 => ("R", "fmin.d"),
-                            2 => ("R", "fmax.s"),
-                            3 => ("R", "fmax.d"),
-                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=3 inst=0x{inst:x}"),
+                            1 => ("R", "fmax.s"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=20 inst=0x{inst:x}"),
                         }
                     },
-                    5 => {
+                    21 => {
                         match (inst >> 12) & 0x7 {
-                            0 => ("R", "fcvt.s.d"),
-                            1 => ("R", "fcvt.d.s"),
-                            2 => ("R", "fcvt.s.w"),
-                            3 => ("R", "fcvt.d.w"),
-                            4 => ("R", "fcvt.s.wu"),
-                            5 => ("R", "fcvt.d.wu"),
-                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=5 inst=0x{inst:x}"),
+                            0 => ("R", "fmin.d"),
+                            1 => ("R", "fmax.d"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=21 inst=0x{inst:x}"),
                         }
                     },
-                    7 => {
+                    32 => {
+                        match (inst >> 20) & 0x1F {
+                            1 => ("R", "fcvt.s.d"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=32 inst=0x{inst:x}"),
+                        }
+                    }
+                    33 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fcvt.d.s"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=33 inst=0x{inst:x}"),
+                        }
+                    }
+                    44 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fsqrt.s"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=44 inst=0x{inst:x}"),
+                        }
+                    },
+                    45 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fsqrt.d"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=45 inst=0x{inst:x}"),
+                        }
+                    },
+                    80 => {
                         match (inst >> 12) & 0x7 {
-                            0 => ("R", "feq.s"),
-                            1 => ("R", "feq.d"),
-                            2 => ("R", "flt.s"),
-                            3 => ("R", "flt.d"),
-                            4 => ("R", "fle.s"),
-                            5 => ("R", "fle.d"),
-                            6 => ("R", "fclass.s"),
-                            7 => ("R", "fclass.d"),
-                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=7 inst=0x{inst:x}"),
+                            2 => ("R", "feq.s"),
+                            1 => ("R", "flt.s"),
+                            0 => ("R", "fle.s"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=80 inst=0x{inst:x}"),
                         }
-                    },
+                    }
+                    81 => {
+                        match (inst >> 12) & 0x7 {
+                            2 => ("R", "feq.d"),
+                            1 => ("R", "flt.d"),
+                            0 => ("R", "fle.d"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=81 inst=0x{inst:x}"),
+                        }
+                    }
+                    96 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fcvt.w.s"),
+                            1 => ("R", "fcvt.wu.s"),
+                            2 => ("R", "fcvt.l.s"),
+                            3 => ("R", "fcvt.lu.s"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=96 inst=0x{inst:x}"),
+                        }
+                    }
+                    97 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fcvt.w.d"),
+                            1 => ("R", "fcvt.wu.d"),
+                            2 => ("R", "fcvt.l.d"),
+                            3 => ("R", "fcvt.lu.d"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=97 inst=0x{inst:x}"),
+                        }
+                    }
+                    104 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fcvt.s.w"),
+                            1 => ("R", "fcvt.s.wu"),
+                            2 => ("R", "fcvt.s.l"),
+                            3 => ("R", "fcvt.s.lu"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=104 inst=0x{inst:x}"),
+                        }
+                    }
+                    105 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fcvt.d.w"),
+                            1 => ("R", "fcvt.d.wu"),
+                            2 => ("R", "fcvt.d.l"),
+                            3 => ("R", "fcvt.d.lu"),
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=105 inst=0x{inst:x}"),
+                        }
+                    }
+                    112 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("R", "fmv.x.w"),
+                                    _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            1 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("R", "fclass.s"),
+                                    _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=112 inst=0x{inst:x}"),
+                        }
+                    }
+                    113 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("R", "fmv.x.d"),
+                                    _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            1 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("R", "fclass.d"),
+                                    _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=113 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=112 inst=0x{inst:x}"),
+                        }
+                    }
+                    120 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("I", "fmv.w.x"),
+                                    _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=120 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=120 inst=0x{inst:x}"),
+                        }
+                    }
+                    121 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("I", "fmv.d.x"),
+                                    _ => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=121 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=121 inst=0x{inst:x}"),
+                        }
+                    }
                     _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 83 inst=0x{inst:x}"),
                 }
             },
@@ -324,6 +458,12 @@ impl Rvd {
                     7 => ("B", "bgeu"),
                     _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 99 inst=0x{inst:x}"),
                 }
+            },
+            103 => { // Opcode 103
+                ("I", "jalr")
+            },
+            111 => { // Opcode 111
+                ("J", "jal")
             },
             115 => { // Opcode 115
                 match (inst >> 12) & 0x7 {
@@ -342,12 +482,6 @@ impl Rvd {
                     7 => ("I", "csrrci"),
                     _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 115 inst=0x{inst:x}"),
                 }
-            },
-            103 => { // Opcode 103
-                ("I", "jalr")
-            },
-            111 => { // Opcode 111
-                ("J", "jal")
             },
             _ => panic!("Rvd::get_type_and_name_32_bits() unknown opcode inst=0x{inst:x}"),
         }

@@ -100,6 +100,16 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                 //     i.funct7 = funct7;
                 // }
             }
+            //  31 ... 27  26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
+            // |  rs3    |funct2| rs2    |  rs1    | funct3 |   rd    |       opcode       | R-type
+            else if i.t == *"R" {
+                i.funct3 = (inst & 0x7000) >> 12;
+                i.rd = (inst & 0xF80) >> 7;
+                i.rs1 = (inst & 0xF8000) >> 15;
+                i.rs2 = (inst & 0x1F00000) >> 20;
+                i.rs3 = inst >> 27;
+                i.funct2 = (inst >> 25) & 0x3;
+            }
             //  31 30 ... 26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
             // |   funct7      |  rs2    |  rs1    | funct3 |   rd    |       opcode       | R-type
             else if i.t == *"R" {
