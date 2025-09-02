@@ -124,10 +124,10 @@ pub struct ZiskProve {
     #[clap(short = 'c', long)]
     pub chunk_size_bits: Option<u64>,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
-    #[clap(short = 'h', long, default_value_t = false)]
+    #[clap(short = 'j', long, default_value_t = false)]
     pub shared_tables: bool,
 }
 

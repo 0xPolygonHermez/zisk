@@ -84,7 +84,7 @@ pub struct ZiskExecute {
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    #[clap(short = 'h', long, default_value_t = false)]
+    #[clap(short = 'j', long, default_value_t = false)]
     pub shared_tables: bool,
 }
 
