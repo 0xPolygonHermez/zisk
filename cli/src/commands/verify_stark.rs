@@ -40,7 +40,7 @@ impl ZiskVerify {
 
         let vk = &self.get_verkey();
 
-        let valid = verify(&proof, &vk);
+        let valid = verify(&proof, vk);
 
         let elapsed = start.elapsed();
 
@@ -64,11 +64,8 @@ impl ZiskVerify {
     /// Gets the verification key
     /// Uses the default one if not specified by user.
     pub fn get_verkey(&self) -> Vec<u8> {
-        let vk_file = if self.vk.is_none() {
-            get_default_verkey()
-        } else {
-            self.vk.clone().unwrap()
-        };
+        let vk_file =
+            if self.vk.is_none() { get_default_verkey() } else { self.vk.clone().unwrap() };
         fs::read(&vk_file).unwrap()
     }
 }
