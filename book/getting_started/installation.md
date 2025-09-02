@@ -208,9 +208,9 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
     node ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r
     ```
 
-    This command generates the `provingKey` directory.
+    This command generates the `build/provingKey` directory.
 
-8. Copy (or move) the `provingKey` directory to `$HOME/.zisk` directory:
+8. Copy (or move) the `build/provingKey` directory to `$HOME/.zisk` directory:
 
     ```bash
     cp -R build/provingKey $HOME/.zisk
