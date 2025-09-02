@@ -331,7 +331,7 @@ version = "0.69.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "271383c67ccabffb7381723dea0672a673f292304fcb45c01cc648c7a8d58088"
 dependencies = [
- "bitflags 2.9.3",
+ "bitflags 2.9.4",
  "cexpr",
  "clang-sys",
  "itertools 0.12.1",
@@ -356,9 +356,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.9.3"
+version = "2.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34efbcccd345379ca2868b2b2c9d3782e9cc58ba87bc7d79d5b53d9c9ae6f25d"
+checksum = "2261d10cca569e4643e526d8dc2e62e433cc8aba21ab764233731f8d369bf394"
 
 [[package]]
 name = "blake3"
@@ -788,7 +788,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1078,7 +1078,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "num-bigint",
  "paste",
@@ -1267,7 +1267,7 @@ version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b903b73e45dc0c6c596f2d37eccece7c1c8bb6e4407b001096387c63d0d93724"
 dependencies = [
- "bitflags 2.9.3",
+ "bitflags 2.9.4",
  "libc",
  "libgit2-sys",
  "log",
@@ -1597,7 +1597,7 @@ version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "046fa2d4d00aea763528b4950358d0ead425372445dc8ff86312b3c69ff7727b"
 dependencies = [
- "bitflags 2.9.3",
+ "bitflags 2.9.4",
  "cfg-if",
  "libc",
 ]
@@ -1810,7 +1810,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "391290121bad3d37fbddad76d8f5d1c1c314cfc646d143d7e07a3086ddff0ce3"
 dependencies = [
- "bitflags 2.9.3",
+ "bitflags 2.9.4",
  "libc",
 ]
 
@@ -2099,7 +2099,7 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c10c2894a6fed806ade6027bcd50662746363a9589d3ec9d9bef30a4e4bc166"
 dependencies = [
- "bitflags 2.9.3",
+ "bitflags 2.9.4",
 ]
 
 [[package]]
@@ -2189,7 +2189,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "pil-std-lib"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "colored",
  "fields",
@@ -2446,7 +2446,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "blake3",
  "bytemuck",
@@ -2478,7 +2478,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "crossbeam-channel",
  "env",
@@ -2501,7 +2501,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "fields",
  "proofman-common",
@@ -2513,7 +2513,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2524,7 +2524,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2533,7 +2533,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "colored",
  "fields",
@@ -2544,7 +2544,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "bytemuck",
  "fields",
@@ -2716,7 +2716,7 @@ version = "0.5.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5407465600fb0548f1442edf71dd20683c6ed326200ace4b1ef0763521bb3b77"
 dependencies = [
- "bitflags 2.9.3",
+ "bitflags 2.9.4",
 ]
 
 [[package]]
@@ -2892,7 +2892,7 @@ version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
 dependencies = [
- "bitflags 2.9.3",
+ "bitflags 2.9.4",
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
@@ -2905,7 +2905,7 @@ version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11181fbabf243db407ef8df94a6ce0b2f9a733bd8be4ad02b4eda9602296cac8"
 dependencies = [
- "bitflags 2.9.3",
+ "bitflags 2.9.4",
  "errno",
  "libc",
  "linux-raw-sys 0.9.4",
@@ -3678,7 +3678,7 @@ version = "0.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adc82fd73de2a9722ac5da747f12383d2bfdb93591ee6c58486e0097890f05f2"
 dependencies = [
- "bitflags 2.9.3",
+ "bitflags 2.9.4",
  "bytes",
  "futures-util",
  "http",
@@ -3766,7 +3766,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3863,9 +3863,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.18.0"
+version = "1.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f33196643e165781c20a5ead5582283a7dacbb87855d867fbc2df3f81eddc1be"
+checksum = "2f87b8aa10b915a06587d0dec516c282ff295b475d94abf425d62b57710070a2"
 dependencies = [
  "getrandom 0.3.3",
  "js-sys",
@@ -4378,7 +4378,7 @@ checksum = "052283831dbae3d879dc7f51f3d92703a316ca49f91540417d38591826127814"
 [[package]]
 name = "witness"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#8359b4e1dab393450c2eb32e86a67adf55f34012"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#16772a472d4c1e1612a80c5be81e039b7aa88a28"
 dependencies = [
  "colored",
  "fields",
