@@ -20,6 +20,7 @@ main() {
     VERIFYKEY_FILE="zisk-verifykey-${PACKAGE_SETUP_VERSION}.tar.gz"
 
     step "Compress proving key..."
+    export COPYFILE_DISABLE=1
     cd build
     ensure tar -czvf "${PROVINGKEY_FILE}" provingKey/ || return 1
 
