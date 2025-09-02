@@ -346,7 +346,23 @@ define_ops! {
     (FSubD, "fsub.d", Internal, INTERNAL_COST, 0xe1, 0, opc_fsub_d, op_fsub_d),
     (FMulD, "fmul.d", Internal, INTERNAL_COST, 0xe2, 0, opc_fmul_d, op_fmul_d),
     (FDivD, "fdiv.d", Internal, INTERNAL_COST, 0xe3, 0, opc_fdiv_d, op_fdiv_d),
-    (FClassD, "fclass.d", Internal, INTERNAL_COST, 0xe4, 0, opc_fclass_d, op_fclass_d),
+    (FSqrtD, "fsqrt.d", Internal, INTERNAL_COST, 0xe4, 0, opc_fsqrt_d, op_fsqrt_d),
+    (FMaxD, "fmax.d", Internal, INTERNAL_COST, 0xe5, 0, opc_fmax_d, op_fmax_d),
+    (FMinD, "fmin.d", Internal, INTERNAL_COST, 0xe6, 0, opc_fmin_d, op_fmin_d),
+    (FEqD, "feq.d", Internal, INTERNAL_COST, 0xe7, 0, opc_feq_d, op_feq_d),
+    (FLeD, "fle.d", Internal, INTERNAL_COST, 0xe8, 0, opc_fle_d, op_fle_d),
+    (FLtD, "flt.d", Internal, INTERNAL_COST, 0xe9, 0, opc_flt_d, op_flt_d),
+    (FClassD, "fclass.d", Internal, INTERNAL_COST, 0xea, 0, opc_fclass_d, op_fclass_d),
+    (FctvDS, "fcvt.d.s", Internal, INTERNAL_COST, 0xeb, 0, opc_fctv_d_s, op_fctv_d_s),
+    (FctvDW, "fcvt.d.w", Internal, INTERNAL_COST, 0xec, 0, opc_fctv_d_w, op_fctv_d_w),
+    (FctvDWU, "fcvt.d.wu", Internal, INTERNAL_COST, 0xed, 0, opc_fctv_d_wu, op_fctv_d_wu),
+    (FctvSD, "fcvt.s.d", Internal, INTERNAL_COST, 0xee, 0, opc_fctv_s_d, op_fctv_s_d),
+    (FctvWD, "fcvt.w.d", Internal, INTERNAL_COST, 0xef, 0, opc_fctv_w_d, op_fctv_w_d),
+    (FctvWUD, "fcvt.wu.d", Internal, INTERNAL_COST, 0xd0, 0, opc_fctv_wu_d, op_fctv_wu_d),
+    (FsgnjD, "fsgnj.d", Internal, INTERNAL_COST, 0xd1, 0, opc_fsgnj_d, op_fsgnj_d),
+    (FsgnjnD, "fsgnjn.d", Internal, INTERNAL_COST, 0xd2, 0, opc_fsgnjn_d, op_fsgnjn_d),
+    (FsgnjxD, "fsgnjx.d", Internal, INTERNAL_COST, 0xd3, 0, opc_fsgnjx_d, op_fsgnjx_d),
+
 }
 
 /* INTERNAL operations */
@@ -1770,13 +1786,13 @@ pub fn opc_fcall_get(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Implements fcall_get, fcall result
+/// Implements fadd_d
 #[inline(always)]
 pub fn op_fadd_d(a: u64, b: u64) -> (u64, bool) {
     unimplemented!("op_fadd_d() is not implemented");
 }
 
-/// InstContext-based wrapper over op_fcall_get()
+/// InstContext-based wrapper over op_fadd_dt()
 #[inline(always)]
 pub fn opc_fadd_d(ctx: &mut InstContext) {
     // ctx.c = fadd_d(ctx.a, ctx.b);
@@ -1806,103 +1822,159 @@ pub fn opc_fadd_d(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Implements fcall_get, fcall result
+/// Implements fsub_d
 #[inline(always)]
 pub fn op_fsub_d(a: u64, b: u64) -> (u64, bool) {
     unimplemented!("op_fsub_d() is not implemented");
 }
 
-/// InstContext-based wrapper over op_fcall_get()
+/// InstContext-based wrapper over op_sub_d()
 #[inline(always)]
 pub fn opc_fsub_d(ctx: &mut InstContext) {
     let af: f64 = f64::from_bits(ctx.a);
     let bf: f64 = f64::from_bits(ctx.b);
     let cf: f64 = af - bf;
     ctx.c = cf.to_bits();
-
-    // let a_sign: u64 = ctx.a >> 63;
-    // let a_exponent: u64 = (ctx.a >> 52) & 0x7FF;
-    // let a_mantissa: u64 = ctx.a & 0xFFFFFFFFFFFFF;
-    // let b_sign: u64 = ctx.b >> 63;
-    // let b_exponent: u64 = (ctx.b >> 52) & 0x7FF;
-    // let b_mantissa: u64 = ctx.b & 0xFFFFFFFFFFFFF;
-    // let c_sign: u64 = ctx.c >> 63;
-    // let c_exponent: u64 = (ctx.c >> 52) & 0x7FF;
-    // let c_mantissa: u64 = ctx.c & 0xFFFFFFFFFFFFF;
-
-    // println!(">>>>>> opc_fsub_d()\na: u64={:x} sign={}, exponent={}, mantissa=1.{}\nb: u64={:x} sign={}, exponent={}, mantissa=1.{}\nc: u64={:x} sign={}, exponent={}, mantissa=1.{}",
-    //     ctx.a, a_sign, a_exponent, a_mantissa,
-    //     ctx.b, b_sign, b_exponent, b_mantissa,
-    //     ctx.c, c_sign, c_exponent, c_mantissa
-    // );
-
     ctx.flag = false;
 }
 
-/// Implements fcall_get, fcall result
+/// Implements fmul_d
 #[inline(always)]
 pub fn op_fmul_d(a: u64, b: u64) -> (u64, bool) {
     unimplemented!("op_fmul_d() is not implemented");
 }
 
-/// InstContext-based wrapper over op_fcall_get()
+/// InstContext-based wrapper over op_fmul_d()
 #[inline(always)]
 pub fn opc_fmul_d(ctx: &mut InstContext) {
     let af: f64 = f64::from_bits(ctx.a);
     let bf: f64 = f64::from_bits(ctx.b);
     let cf: f64 = af * bf;
     ctx.c = cf.to_bits();
-
-    // let a_sign: u64 = ctx.a >> 63;
-    // let a_exponent: u64 = (ctx.a >> 52) & 0x7FF;
-    // let a_mantissa: u64 = ctx.a & 0xFFFFFFFFFFFFF;
-    // let b_sign: u64 = ctx.b >> 63;
-    // let b_exponent: u64 = (ctx.b >> 52) & 0x7FF;
-    // let b_mantissa: u64 = ctx.b & 0xFFFFFFFFFFFFF;
-    // let c_sign: u64 = ctx.c >> 63;
-    // let c_exponent: u64 = (ctx.c >> 52) & 0x7FF;
-    // let c_mantissa: u64 = ctx.c & 0xFFFFFFFFFFFFF;
-
-    // println!(">>>>>> opc_fmul_d()\na: u64={:x} sign={}, exponent={}, mantissa=1.{}\nb: u64={:x} sign={}, exponent={}, mantissa=1.{}\nc: u64={:x} sign={}, exponent={}, mantissa=1.{}",
-    //     ctx.a, a_sign, a_exponent, a_mantissa,
-    //     ctx.b, b_sign, b_exponent, b_mantissa,
-    //     ctx.c, c_sign, c_exponent, c_mantissa
-    // );
-
     ctx.flag = false;
 }
 
-/// Implements fcall_get, fcall result
+/// Implements fdiv_d
 #[inline(always)]
 pub fn op_fdiv_d(a: u64, b: u64) -> (u64, bool) {
     unimplemented!("op_fdiv_d() is not implemented");
 }
 
-/// InstContext-based wrapper over op_fcall_get()
+/// InstContext-based wrapper over op_fdiv_d()
 #[inline(always)]
 pub fn opc_fdiv_d(ctx: &mut InstContext) {
     let af: f64 = f64::from_bits(ctx.a);
     let bf: f64 = f64::from_bits(ctx.b);
     let cf: f64 = af - bf;
     ctx.c = cf.to_bits();
-
-    // let a_sign: u64 = ctx.a >> 63;
-    // let a_exponent: u64 = (ctx.a >> 52) & 0x7FF;
-    // let a_mantissa: u64 = ctx.a & 0xFFFFFFFFFFFFF;
-    // let b_sign: u64 = ctx.b >> 63;
-    // let b_exponent: u64 = (ctx.b >> 52) & 0x7FF;
-    // let b_mantissa: u64 = ctx.b & 0xFFFFFFFFFFFFF;
-    // let c_sign: u64 = ctx.c >> 63;
-    // let c_exponent: u64 = (ctx.c >> 52) & 0x7FF;
-    // let c_mantissa: u64 = ctx.c & 0xFFFFFFFFFFFFF;
-
-    // println!(">>>>>> opc_fdiv_d()\na: u64={:x} sign={}, exponent={}, mantissa=1.{}\nb: u64={:x} sign={}, exponent={}, mantissa=1.{}\nc: u64={:x} sign={}, exponent={}, mantissa=1.{}",
-    //     ctx.a, a_sign, a_exponent, a_mantissa,
-    //     ctx.b, b_sign, b_exponent, b_mantissa,
-    //     ctx.c, c_sign, c_exponent, c_mantissa
-    // );
-
     ctx.flag = false;
+}
+
+/// Implements fsqrt_d
+#[inline(always)]
+pub fn op_fsqrt_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fsqrt_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fsqrt_d()
+#[inline(always)]
+pub fn opc_fsqrt_d(ctx: &mut InstContext) {
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = bf.sqrt();
+    ctx.c = cf.to_bits();
+    ctx.flag = false;
+}
+
+/// Implements fmax_d
+#[inline(always)]
+pub fn op_fmax_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fmax_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fmax_d()
+#[inline(always)]
+pub fn opc_fmax_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = if af > bf { af } else { bf };
+    ctx.c = cf.to_bits();
+    ctx.flag = false;
+}
+
+/// Implements fmin_d
+#[inline(always)]
+pub fn op_fmin_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fmin_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fmin_d()
+#[inline(always)]
+pub fn opc_fmin_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = if af < bf { af } else { bf };
+    ctx.c = cf.to_bits();
+    ctx.flag = false;
+}
+
+/// Implements feq_d
+#[inline(always)]
+pub fn op_feq_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_feq_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_feq_d()
+#[inline(always)]
+pub fn opc_feq_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    if af == bf {
+        ctx.c = 1;
+        ctx.flag = true;
+    } else {
+        ctx.c = 0;
+        ctx.flag = false;
+    }
+}
+
+/// Implements fle_d
+#[inline(always)]
+pub fn op_fle_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fle_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fle_d()
+#[inline(always)]
+pub fn opc_fle_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    if af <= bf {
+        ctx.c = 1;
+        ctx.flag = true;
+    } else {
+        ctx.c = 0;
+        ctx.flag = false;
+    }
+}
+
+/// Implements flt_d
+#[inline(always)]
+pub fn op_flt_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_flt_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_flt_d()
+#[inline(always)]
+pub fn opc_flt_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    if af < bf {
+        ctx.c = 1;
+        ctx.flag = true;
+    } else {
+        ctx.c = 0;
+        ctx.flag = false;
+    }
 }
 
 /// Implements fcall_get, fcall result
@@ -1928,5 +2000,149 @@ pub fn opc_fclass_d(ctx: &mut InstContext) {
     // 9: rs1 is a quiet NaN.
 
     ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Implements fctv_d_s
+#[inline(always)]
+pub fn op_fctv_d_s(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fctv_d_s() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fctv_d_s()
+#[inline(always)]
+pub fn opc_fctv_d_s(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af;
+    ctx.c = cf.to_bits();
+    ctx.flag = false;
+}
+
+/// Implements fctv_d_w
+#[inline(always)]
+pub fn op_fctv_d_w(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fctv_d_w() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fctv_d_w()
+#[inline(always)]
+pub fn opc_fctv_d_w(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af;
+    ctx.c = cf.to_bits();
+    ctx.flag = false;
+}
+
+/// Implements fctv_d_wu
+#[inline(always)]
+pub fn op_fctv_d_wu(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fctv_d_wu() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fctv_d_wu()
+#[inline(always)]
+pub fn opc_fctv_d_wu(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af;
+    ctx.c = cf.to_bits();
+    ctx.flag = false;
+}
+
+/// Implements fctv_s_d
+#[inline(always)]
+pub fn op_fctv_s_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fctv_s_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fctv_s_d()
+#[inline(always)]
+pub fn opc_fctv_s_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af;
+    ctx.c = cf.to_bits();
+    ctx.flag = false;
+}
+
+/// Implements fctv_w_d
+#[inline(always)]
+pub fn op_fctv_w_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fctv_w_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fctv_w_d()
+#[inline(always)]
+pub fn opc_fctv_w_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af;
+    ctx.c = cf.to_bits();
+    ctx.flag = false;
+}
+
+/// Implements fctv_wu_d
+#[inline(always)]
+pub fn op_fctv_wu_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fctv_wu_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fctv_wu_d()
+#[inline(always)]
+pub fn opc_fctv_wu_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af;
+    ctx.c = cf.to_bits();
+    ctx.flag = false;
+}
+
+/// Implements fsgnj_d
+#[inline(always)]
+pub fn op_fsgnj_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fsgnj_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fsgnj_d()
+#[inline(always)]
+pub fn opc_fsgnj_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af;
+    ctx.c = cf.to_bits();
+    ctx.flag = false;
+}
+
+/// Implements fsgnjn_d
+#[inline(always)]
+pub fn op_fsgnjn_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fsgnjn_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fsgnj_d()
+#[inline(always)]
+pub fn opc_fsgnjn_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af;
+    ctx.c = cf.to_bits();
+    ctx.flag = false;
+}
+
+/// Implements fsgnjx_d
+#[inline(always)]
+pub fn op_fsgnjx_d(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fsgnjx_d() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fsgnjx_d()
+#[inline(always)]
+pub fn opc_fsgnjx_d(ctx: &mut InstContext) {
+    let af: f64 = f64::from_bits(ctx.a);
+    let bf: f64 = f64::from_bits(ctx.b);
+    let cf: f64 = af;
+    ctx.c = cf.to_bits();
     ctx.flag = false;
 }

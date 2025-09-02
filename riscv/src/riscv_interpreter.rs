@@ -100,16 +100,6 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                 //     i.funct7 = funct7;
                 // }
             }
-            //  31 ... 27  26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
-            // |  rs3    |funct2| rs2    |  rs1    | funct3 |   rd    |       opcode       | R-type
-            else if i.t == *"R" {
-                i.funct3 = (inst & 0x7000) >> 12;
-                i.rd = (inst & 0xF80) >> 7;
-                i.rs1 = (inst & 0xF8000) >> 15;
-                i.rs2 = (inst & 0x1F00000) >> 20;
-                i.rs3 = inst >> 27;
-                i.funct2 = (inst >> 25) & 0x3;
-            }
             //  31 30 ... 26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
             // |   funct7      |  rs2    |  rs1    | funct3 |   rd    |       opcode       | R-type
             else if i.t == *"R" {
@@ -118,6 +108,16 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                 i.rs1 = (inst & 0xF8000) >> 15;
                 i.rs2 = (inst & 0x1F00000) >> 20;
                 i.funct7 = (inst & 0xFE000000) >> 25;
+            }
+            //  31 ... 27  26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
+            // |  rs3    |funct2| rs2    |  rs1    | funct3 |   rd    |       opcode       | R4-type
+            else if i.t == *"R4" {
+                i.funct3 = (inst & 0x7000) >> 12;
+                i.rd = (inst & 0xF80) >> 7;
+                i.rs1 = (inst & 0xF8000) >> 15;
+                i.rs2 = (inst & 0x1F00000) >> 20;
+                i.rs3 = inst >> 27;
+                i.funct2 = (inst >> 25) & 0x3;
             }
             //  31 30 ... 26 25 24 ... 20 19 ... 15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
             // |  imm[11:5]    |  rs2    |   rs1   | funct3 |   imm[4:0]   |       opcode       | S-type
@@ -204,7 +204,7 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                     panic!("Invalid F funct3={:?} inst=0x{inst:x} at index={code_index}", i.funct3);
                 }
             } else {
-                panic!("Invalid i.t={} at index={}", i.t, code_index);
+                panic!("Invalid i.t={} atsdfsd  index={}", i.t, code_index);
             }
             insts.push(i);
         }

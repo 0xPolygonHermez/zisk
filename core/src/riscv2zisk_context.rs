@@ -239,8 +239,6 @@ impl Riscv2ZiskContext<'_> {
 
             // F: Single-Precision Floating-Point
             /////////////////////////////////////
-
-            // C.I.4. Load and Store Instructions
             "flw" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
             "fld" => self.load_op(riscv_instruction, "copyb", 8, 4),
             "fsw" => self.store_op(riscv_instruction, "signextend_w", 4, 4),
@@ -249,7 +247,22 @@ impl Riscv2ZiskContext<'_> {
             "fsub.d" => self.create_register_op(riscv_instruction, "fsub.d", 4),
             "fmul.d" => self.create_register_op(riscv_instruction, "fmul.d", 4),
             "fdiv.d" => self.create_register_op(riscv_instruction, "fdiv.d", 4),
+            "fsqrt.d" => self.create_register_op(riscv_instruction, "fsqrt.d", 4),
+            "fmax.d" => self.create_register_op(riscv_instruction, "fmax.d", 4),
+            "fmin.d" => self.create_register_op(riscv_instruction, "fmin.d", 4),
+            "feq.d" => self.create_register_op(riscv_instruction, "feq.d", 4),
+            "fle.d" => self.create_register_op(riscv_instruction, "fle.d", 4),
+            "flt.d" => self.create_register_op(riscv_instruction, "flt.d", 4),
             "fclass.d" => self.create_register_op(riscv_instruction, "fclass.d", 4),
+            "fcvt.d.s" => self.create_register_op(riscv_instruction, "fcvt.d.s", 4),
+            "fcvt.d.w" => self.create_register_op(riscv_instruction, "fcvt.d.w", 4),
+            "fcvt.d.wu" => self.create_register_op(riscv_instruction, "fcvt.d.wu", 4),
+            "fcvt.s.d" => self.create_register_op(riscv_instruction, "fcvt.s.d", 4),
+            "fcvt.w.d" => self.create_register_op(riscv_instruction, "fcvt.w.d", 4),
+            "fcvt.wu.d" => self.create_register_op(riscv_instruction, "fcvt.wu.d", 4),
+            "fsgnj.d" => self.create_register_op(riscv_instruction, "fsgnj.d", 4),
+            "fsgnjn.d" => self.create_register_op(riscv_instruction, "fsgnjn.d", 4),
+            "fsgnjx.d" => self.create_register_op(riscv_instruction, "fsgnjx.d", 4),
 
             _ => panic!(
                 "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",

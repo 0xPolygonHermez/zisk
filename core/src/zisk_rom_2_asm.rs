@@ -5970,11 +5970,7 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             // TODO: delete
-            ZiskOp::FAddD => {}
-            ZiskOp::FSubD => {}
-            ZiskOp::FMulD => {}
-            ZiskOp::FDivD => {}
-            ZiskOp::FClassD => {}
+            _ => unimplemented!("Opcode not implemented"),
         }
     }
 
