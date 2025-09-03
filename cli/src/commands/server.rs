@@ -110,7 +110,7 @@ pub struct ZiskServer {
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
-    #[clap(short = 'h', long, default_value_t = false)]
+    #[clap(short = 'j', long, default_value_t = false)]
     pub shared_tables: bool,
 }
 

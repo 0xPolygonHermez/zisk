@@ -87,7 +87,7 @@ pub struct ZiskVerifyConstraints {
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
 
-    #[clap(short = 'h', long, default_value_t = false)]
+    #[clap(short = 'j', long, default_value_t = false)]
     pub shared_tables: bool,
 }
 
