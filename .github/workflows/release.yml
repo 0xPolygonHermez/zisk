@@ -139,7 +139,7 @@ jobs:
             mkdir -p zisk-dist/zisk/emulator-asm/src
           fi
 
-          LIB_EXT=$([[ "$(PLATFORM_NAME)" == "darwin" ]] && echo "dylib" || echo "so")
+          LIB_EXT=$([[ "${PLATFORM_NAME}" == "darwin" ]] && echo "dylib" || echo "so")
 
           cp ./target/${TARGET}/release/cargo-zisk                 zisk-dist/bin/
           cp ./target/${TARGET}/release/ziskemu                    zisk-dist/bin/
