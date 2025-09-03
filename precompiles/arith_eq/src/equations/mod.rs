@@ -14,6 +14,10 @@ mod secp256k1_add;
 mod secp256k1_dbl;
 mod secp256k1_x3;
 mod secp256k1_y3;
+mod secp256r1_add;
+mod secp256r1_dbl;
+mod secp256r1_x3;
+mod secp256r1_y3;
 
 pub use arith256::*;
 pub use arith256_mod::*;
@@ -31,3 +35,7 @@ pub use secp256k1_add::*;
 pub use secp256k1_dbl::*;
 pub use secp256k1_x3::*;
 pub use secp256k1_y3::*;
+pub use secp256r1_add::*;
+pub use secp256r1_dbl::*;
+pub use secp256r1_x3::*;
+pub use secp256r1_y3::*;

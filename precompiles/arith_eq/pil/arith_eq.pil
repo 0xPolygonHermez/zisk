@@ -11,6 +11,8 @@ const int EC_DBL_BN254_OP = 0xFB;
 const int COMPLEX_ADD_BN254_OP = 0xFC;
 const int COMPLEX_SUB_BN254_OP = 0xFD;
 const int COMPLEX_MUL_BN254_OP = 0xFE;
+const int EC_ADD_SECP256R1_OP = 0xE0;
+const int EC_DBL_SECP256R1_OP = 0xE1;
 
 airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID) {
 
@@ -35,15 +37,22 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
         EQ13: y1 - y2 - y3 + (q2 * p2)                        y3            COMPLEX_SUB_BN254
         EQ14: x1 * x2 - y1 * y2 - x3 + (q1 * p2)              x3            COMPLEX_MUL_BN254
         EQ15: y1 * x2 + x1 * y2 - y3 + (q2 * p2)              y3            COMPLEX_MUL_BN254
+        EQ16: s * x2 - s * x1 - y2 + y1 + (q0 * p3)           lambda - ADD  EC_ADD_SECP256R1
+        EQ17: 2 * s * y1 - 3 * x1 * x1 - a + (q0 * p3)        lambda - DBL  EC_DBL_SECP256R1
+        EQ18: s * s - x1 - x2 - x3 + (q1 * p3)                x3            EC_ADD_SECP256R1, EC_DBL_SECP256R1
+        EQ19: s * x1 - s * x3 - y1 - y3 + (q2 * p3)           y3            EC_ADD_SECP256R1, EC_DBL_SECP256R1
 
         where p1 refers to the base field order of:
             · Secp256k1:  0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
-        and p2 refers to the base field order of:
+        p2 refers to the base field order of:
             · BN254:      0x30644E72E131A029B85045B68181585D97816A916871CA8D3C208C16D87CFD47
+        and p3 refers to the base field order of:
+            · Secp256r1:  0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF
     */
 
     const int SECP256K1_PRIME = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F;
     const int BN254_PRIME = 0x30644E72E131A029B85045B68181585D97816A916871CA8D3C208C16D87CFD47;
+    const int SECP256R1_PRIME = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF;
 
     const int CLOCKS = 16;
     col fixed CLK_0 = [1, 0:(CLOCKS-1)]...;
@@ -67,8 +76,8 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     const int CARRY_MIN = -(2**22 - 1);
     const int CARRY_MAX = 2**22;
 
-    const int EQS = 16;     // Number of equations
-    const int OPS = 9;      // Number of operations
+    const int EQS = 20;     // Number of equations
+    const int OPS = 11;     // Number of operations
     const int MAX_CEQS = 3; // Max concurrent equations
     const int QS = 3;       // Number of quotients
 
@@ -84,6 +93,8 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     const expr sel_bn254_complex_add = sel_op[6];
     const expr sel_bn254_complex_sub = sel_op[7];
     const expr sel_bn254_complex_mul = sel_op[8];
+    const expr sel_secp256r1_add = sel_op[9];
+    const expr sel_secp256r1_dbl = sel_op[10];
 
     // groups of selectors
     const expr sel_any_arith256 = sel_arith256 + sel_arith256_mod;
@@ -91,11 +102,12 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     const expr sel_bn254_curve = sel_bn254_curve_add + sel_bn254_curve_dbl;
     const expr sel_bn254_complex = sel_bn254_complex_add + sel_bn254_complex_sub +
                                    sel_bn254_complex_mul;
+    const expr sel_secp256r1 = sel_secp256r1_add + sel_secp256r1_dbl;
     const expr sel_check_diff = sel_secp256k1_add + sel_bn254_curve_add;
     const expr sel_check_x_lt_prime = sel_arith256_mod + sel_secp256k1 +
-                                      sel_bn254_curve + sel_bn254_complex;
+                                      sel_bn254_curve + sel_bn254_complex + sel_secp256r1;
     const expr sel_check_y_lt_prime = sel_secp256k1 + sel_bn254_curve +
-                                      sel_bn254_complex;
+                                      sel_bn254_complex + sel_secp256r1;
 
     const expr eq_selectors[EQS] = [sel_arith256, sel_arith256_mod,
                                     sel_secp256k1_add, sel_secp256k1_dbl,
@@ -104,7 +116,9 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
                                     sel_bn254_curve, sel_bn254_curve,
                                     sel_bn254_complex_add, sel_bn254_complex_add,
                                     sel_bn254_complex_sub, sel_bn254_complex_sub,
-                                    sel_bn254_complex_mul, sel_bn254_complex_mul];
+                                    sel_bn254_complex_mul, sel_bn254_complex_mul,
+                                    sel_secp256r1_add, sel_secp256r1_dbl,
+                                    sel_secp256r1, sel_secp256r1];
 
     // constraint to set (x1,y1) = (x2,y2) in secp256k1_dbl
     sel_secp256k1_dbl * (x1 - x2) === 0;
@@ -113,6 +127,10 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     // constraint to set (x1,y1) = (x2,y2) in bn254_curve_dbl
     sel_bn254_curve_dbl * (x1 - x2) === 0;
     sel_bn254_curve_dbl * (y1 - y2) === 0;
+
+    // constraint to set (x1,y1) = (x2,y2) in secp256r1_dbl
+    sel_secp256r1_dbl * (x1 - x2) === 0;
+    sel_secp256r1_dbl * (y1 - y2) === 0;
 
     const expr chunk_cols[7] = [x1, y1, x2, y2, x3, y3, s];
     const expr qs[QS] = [q0, q1, q2];
@@ -135,6 +153,10 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     include "equations/bn254_complex_sub_y3.pil"
     include "equations/bn254_complex_mul_x3.pil"
     include "equations/bn254_complex_mul_y3.pil"
+    include "equations/secp256r1_add.pil"
+    include "equations/secp256r1_dbl.pil"
+    include "equations/secp256r1_x3.pil"
+    include "equations/secp256r1_y3.pil"
 
     col witness sel_op_clk0[OPS];
 
@@ -149,6 +171,9 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     const expr bn254_complex_add_clk0 = sel_op_clk0[6];
     const expr bn254_complex_sub_clk0 = sel_op_clk0[7];
     const expr bn254_complex_mul_clk0 = sel_op_clk0[8];
+    const expr secp256r1_add_clk0 = sel_op_clk0[9];
+    const expr secp256r1_dbl_clk0 = sel_op_clk0[10];
+    const expr secp256r1_clk0 = sel_op_clk0[9] + sel_op_clk0[10];
 
     expr sum_sel_op = 0;
     expr sum_sel_op_clk0 = 0;
@@ -185,17 +210,21 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
                  + expr_group_by_cbc(secp256k1_add_clk0, eq_secp256k1_add_chunks, i)
                  + expr_group_by_cbc(secp256k1_dbl_clk0, eq_secp256k1_dbl_chunks, i)
                  + expr_group_by_cbc(bn254_curve_add_clk0, eq_bn254_curve_add_chunks, i)
-                 + expr_group_by_cbc(bn254_curve_dbl_clk0, eq_bn254_curve_dbl_chunks, i);
+                 + expr_group_by_cbc(bn254_curve_dbl_clk0, eq_bn254_curve_dbl_chunks, i)
+                 + expr_group_by_cbc(secp256r1_add_clk0, eq_secp256r1_add_chunks, i)
+                 + expr_group_by_cbc(secp256r1_dbl_clk0, eq_secp256r1_dbl_chunks, i);
         eq[1][i] = expr_group_by_cbc(secp256k1_clk0, eq_secp256k1_x3_chunks, i)
                  + expr_group_by_cbc(bn254_curve_clk0, eq_bn254_curve_x3_chunks, i)
                  + expr_group_by_cbc(bn254_complex_add_clk0, eq_bn254_complex_add_x3_chunks, i)
                  + expr_group_by_cbc(bn254_complex_sub_clk0, eq_bn254_complex_sub_x3_chunks, i)
-                 + expr_group_by_cbc(bn254_complex_mul_clk0, eq_bn254_complex_mul_x3_chunks, i);
+                 + expr_group_by_cbc(bn254_complex_mul_clk0, eq_bn254_complex_mul_x3_chunks, i)
+                 + expr_group_by_cbc(secp256r1_clk0, eq_secp256r1_x3_chunks, i);
         eq[2][i] = expr_group_by_cbc(secp256k1_clk0, eq_secp256k1_y3_chunks, i)
                  + expr_group_by_cbc(bn254_curve_clk0, eq_bn254_curve_y3_chunks, i)
                  + expr_group_by_cbc(bn254_complex_add_clk0, eq_bn254_complex_add_y3_chunks, i)
                  + expr_group_by_cbc(bn254_complex_sub_clk0, eq_bn254_complex_sub_y3_chunks, i)
-                 + expr_group_by_cbc(bn254_complex_mul_clk0, eq_bn254_complex_mul_y3_chunks, i);
+                 + expr_group_by_cbc(bn254_complex_mul_clk0, eq_bn254_complex_mul_y3_chunks, i)
+                 + expr_group_by_cbc(secp256r1_clk0, eq_secp256r1_y3_chunks, i);
     }
 
     for (int i = 0; i < length(chunk_cols); ++i) {
@@ -361,7 +390,8 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
                           + clk_cte_selector(bn254_curve_clk0, BN254_PRIME)
                           + clk_cte_selector(bn254_complex_add_clk0, BN254_PRIME)
                           + clk_cte_selector(bn254_complex_sub_clk0, BN254_PRIME)
-                          + clk_cte_selector(bn254_complex_mul_clk0, BN254_PRIME);
+                          + clk_cte_selector(bn254_complex_mul_clk0, BN254_PRIME)
+                          + clk_cte_selector(secp256r1_clk0, SECP256R1_PRIME);
     const expr delta_x3 = x3 - y2 * sel_arith256_mod - lt_cte;
     const expr delta_y3 = y3 - lt_cte;
 
@@ -447,12 +477,12 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     // 15  ---       ----------     -------                 ----------      ---------
 
     const expr use_x2 = sel_arith256 + sel_arith256_mod + sel_secp256k1_add + sel_bn254_curve_add
-                      + sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul;
+                      + sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul + sel_secp256r1_add;
     const expr use_y2 = sel_arith256_mod + sel_secp256k1_add + sel_bn254_curve_add
-                      + sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul;
+                      + sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul + sel_secp256r1_add;
     const expr use_y3 = sel_arith256 + sel_secp256k1_add + sel_secp256k1_dbl + sel_bn254_curve_add
                       + sel_bn254_curve_dbl + sel_bn254_complex_add + sel_bn254_complex_sub
-                      + sel_bn254_complex_mul;
+                      + sel_bn254_complex_mul + sel_secp256r1_add + sel_secp256r1_dbl;
 
     // [secp256k1_dbl] ADDR_X1 === ADDR_OP,
     //                 ADDR_Y1 === ADDR_OP + 32
@@ -465,7 +495,11 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     // [any_arith256]  ADDR_X1 === ADDR_IND_0
 
     const expr use_ind_0 = sel_any_arith256 + sel_secp256k1_add + sel_bn254_curve_add +
-                           sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul;
+                           sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul +
+                           sel_secp256r1_add;
+
+    // TODO: Join this constraints!
+    sel_any_arith256 * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
 
     sel_secp256k1_dbl * clock_eq(step_addr, ADDR_X1, ADDR_OP) === 0;
     sel_secp256k1_dbl * clock_eq(step_addr, ADDR_Y1, ADDR_OP, 32) === 0;
@@ -500,7 +534,14 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     sel_bn254_complex_mul * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
     sel_bn254_complex_mul * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
 
-    sel_any_arith256 * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
+    sel_secp256r1_dbl * clock_eq(step_addr, ADDR_X1, ADDR_OP) === 0;
+    sel_secp256r1_dbl * clock_eq(step_addr, ADDR_Y1, ADDR_OP, 32) === 0;
+
+    sel_secp256r1_add * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
+    sel_secp256r1_add * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 32) === 0;
+
+    sel_secp256r1 * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
+    sel_secp256r1 * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
 
     // [secp256k1_add] ADDR_X2 === ADDR_IND_1
     //                 ADDR_Y2 === ADDR_IND_1 + 32
@@ -508,7 +549,10 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     // [any_arith256]  ADDR_Y1 === ADDR_IND_1
 
     const expr use_ind_1 = sel_any_arith256 + sel_secp256k1_add + sel_bn254_curve_add +
-                           sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul;
+                           sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul +
+                           sel_secp256r1_add;
+
+    sel_any_arith256 * clock_eq(step_addr, ADDR_Y1, ADDR_IND_1) === 0;
 
     sel_secp256k1_add * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
     sel_secp256k1_add * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
@@ -525,7 +569,8 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     sel_bn254_complex_mul * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
     sel_bn254_complex_mul * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
 
-    sel_any_arith256 * clock_eq(step_addr, ADDR_Y1, ADDR_IND_1) === 0;
+    sel_secp256r1_add * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
+    sel_secp256r1_add * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
 
     // [any_arith256]  ADDR_X2 === ADDR_IND_2
 
@@ -636,7 +681,9 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
                         sel_bn254_curve_dbl * EC_DBL_BN254_OP +
                         sel_bn254_complex_add * COMPLEX_ADD_BN254_OP +
                         sel_bn254_complex_sub * COMPLEX_SUB_BN254_OP +
-                        sel_bn254_complex_mul * COMPLEX_MUL_BN254_OP;
+                        sel_bn254_complex_mul * COMPLEX_MUL_BN254_OP +
+                        sel_secp256r1_add * EC_ADD_SECP256R1_OP +
+                        sel_secp256r1_dbl * EC_DBL_SECP256R1_OP;
 
     lookup_proves(operation_bus_id, [bus_op, step_addr'(MAIN_STEP), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk0);
 

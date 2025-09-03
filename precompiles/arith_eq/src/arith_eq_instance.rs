@@ -7,7 +7,7 @@
 use crate::{
     Arith256Input, Arith256ModInput, ArithEqInput, ArithEqSM, Bn254ComplexAddInput,
     Bn254ComplexMulInput, Bn254ComplexSubInput, Bn254CurveAddInput, Bn254CurveDblInput,
-    Secp256k1AddInput, Secp256k1DblInput,
+    Secp256k1AddInput, Secp256k1DblInput, Secp256r1AddInput, Secp256r1DblInput,
 };
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
@@ -202,6 +202,12 @@ impl BusDevice<PayloadType> for ArithEqCollector {
             }
             ExtOperationData::OperationBn254ComplexMulData(bus_data) => {
                 ArithEqInput::Bn254ComplexMul(Bn254ComplexMulInput::from(&bus_data))
+            }
+            ExtOperationData::OperationSecp256r1AddData(bus_data) => {
+                ArithEqInput::Secp256r1Add(Secp256r1AddInput::from(&bus_data))
+            }
+            ExtOperationData::OperationSecp256r1DblData(bus_data) => {
+                ArithEqInput::Secp256r1Dbl(Secp256r1DblInput::from(&bus_data))
             }
             // Add here new operations
             _ => panic!("Expected ExtOperationData::OperationData"),

@@ -342,6 +342,8 @@ define_ops! {
     (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, opc_bn254_complex_add, op_bn254_complex_add),
     (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, opc_bn254_complex_sub, op_bn254_complex_sub),
     (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, opc_bn254_complex_mul, op_bn254_complex_mul),
+    (Secp256r1Add, "secp256r1_add", ArithEq, ARITH_EQ_COST, 0xe0, 144, opc_secp256r1_add, op_secp256r1_add),
+    (Secp256r1Dbl, "secp256r1_dbl", ArithEq, ARITH_EQ_COST, 0xe1, 64, opc_secp256r1_dbl, op_secp256r1_add),
 }
 
 /* INTERNAL operations */
@@ -1616,6 +1618,69 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_bn254_complex_mul(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_bn254_complex_mul() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_secp256r1_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "secp256r1_add");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (p1, p2) = rest.split_at(8);
+
+        let p1: &[u64; 8] = p1.try_into().expect("opc_secp256r1_add: p1.len != 8");
+        let p2: &[u64; 8] = p2.try_into().expect("opc_secp256r1_add: p2.len != 8");
+        let mut p3 = [0u64; 8];
+
+        precompiles_helpers::secp256r1_add(p1, p2, &mut p3);
+
+        // [0:p1,p2]
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Secp256r1Add can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256r1_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256r1_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_secp256r1_dbl(ctx: &mut InstContext) {
+    const WORDS: usize = 8; // one input of 8 64-bit words
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "secp256r1_dbl");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        let p1: &[u64; 8] = &data;
+        let mut p3 = [0u64; 8];
+
+        precompiles_helpers::secp256r1_dbl(p1, &mut p3);
+
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  secp256r1Dbl can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256r1_dbl(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256r1_dbl() is not implemented");
 }
 
 impl From<ZiskRequiredOperation> for ZiskOp {

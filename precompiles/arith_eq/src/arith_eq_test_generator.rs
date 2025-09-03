@@ -4,7 +4,7 @@ use test_data::{
     get_arith256_mod_test_data, get_arith256_test_data, get_bn254_complex_add_test_data,
     get_bn254_complex_mul_test_data, get_bn254_complex_sub_test_data,
     get_bn254_curve_add_test_data, get_bn254_curve_dbl_test_data, get_secp256k1_add_test_data,
-    get_secp256k1_dbl_test_data,
+    get_secp256k1_dbl_test_data, get_secp256r1_add_test_data, get_secp256r1_dbl_test_data,
 };
 
 mod arith_eq_constants;
@@ -22,7 +22,7 @@ fn main() {
     code += "\tarith256::*, arith256_mod::*, bn254_complex_add::*, bn254_complex_mul::*, bn254_complex_sub::*,\n";
     code +=
         "\tbn254_curve_add::*, bn254_curve_dbl::*, complex256::*, point256::*, secp256k1_add::*,\n";
-    code += "\tsecp256k1_dbl::*,\n";
+    code += "\tsecp256k1_dbl::*, secp256r1_add::*, secp256r1_dbl::*,\n";
     code += "};\n\n";
     code += "fn main() {\n";
     code += "\tlet mut p1 = SyscallPoint256 { x: [0,0,0,0], y: [0,0,0,0] };\n";
@@ -69,6 +69,59 @@ fn main() {
             "\tlet mut p1 = SyscallPoint256 {{\n\t\tx: {p1_x:?},\n\t\ty: {p1_y:?}\n\t}};\n"
         );
         code += "\tsyscall_secp256k1_dbl(&mut p1);\n";
+        let p3_x: [u64; 4] = p3[0..4].try_into().unwrap();
+        let p3_y: [u64; 4] = p3[4..8].try_into().unwrap();
+        code +=
+            &format!("\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n");
+        code += "\tassert_eq!(&p1.x, &p3.x);\n";
+        code += "\tassert_eq!(&p1.y, &p3.y);\n\n";
+        index += 1;
+    }
+
+    code += "\tlet mut params = SyscallSecp256r1AddParams { p1: &mut p1, p2: &p2 };\n";
+
+    let initial_index = index;
+    while let Some((p1, p2, p3)) = get_secp256r1_add_test_data(index - initial_index) {
+        code += &format!(
+            "\t// secp256r1_add test rows: {}-{}\n\n",
+            index * ARITH_EQ_ROWS_BY_OP,
+            (index + 1) * ARITH_EQ_ROWS_BY_OP - 1
+        );
+        let p1_x: [u64; 4] = p1[0..4].try_into().unwrap();
+        let p1_y: [u64; 4] = p1[4..8].try_into().unwrap();
+        code += &format!(
+            "\tlet mut p1 = SyscallPoint256 {{\n\t\tx: {p1_x:?},\n\t\ty: {p1_y:?}\n\t}};\n"
+        );
+        let p2_x: [u64; 4] = p2[0..4].try_into().unwrap();
+        let p2_y: [u64; 4] = p2[4..8].try_into().unwrap();
+        code +=
+            &format!("\tlet p2 = SyscallPoint256 {{\n\t\tx: {p2_x:?},\n\t\ty: {p2_y:?}\n\t}};\n");
+        code += "\tparams.p1 = &mut p1;\n";
+        code += "\tparams.p2 = &p2;\n";
+        code += "\tsyscall_secp256r1_add(&mut params);\n";
+
+        let p3_x: [u64; 4] = p3[0..4].try_into().unwrap();
+        let p3_y: [u64; 4] = p3[4..8].try_into().unwrap();
+        code +=
+            &format!("\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n");
+        code += "\tassert_eq!(params.p1.x, p3.x);\n";
+        code += "\tassert_eq!(params.p1.y, p3.y);\n\n";
+        index += 1;
+    }
+
+    let initial_index = index;
+    while let Some((p1, p3)) = get_secp256r1_dbl_test_data(index - initial_index) {
+        code += &format!(
+            "\t// secp256r1_dbl test rows: {}-{}\n\n",
+            index * ARITH_EQ_ROWS_BY_OP,
+            (index + 1) * ARITH_EQ_ROWS_BY_OP - 1
+        );
+        let p1_x: [u64; 4] = p1[0..4].try_into().unwrap();
+        let p1_y: [u64; 4] = p1[4..8].try_into().unwrap();
+        code += &format!(
+            "\tlet mut p1 = SyscallPoint256 {{\n\t\tx: {p1_x:?},\n\t\ty: {p1_y:?}\n\t}};\n"
+        );
+        code += "\tsyscall_secp256r1_dbl(&mut p1);\n";
         let p3_x: [u64; 4] = p3[0..4].try_into().unwrap();
         let p3_y: [u64; 4] = p3[4..8].try_into().unwrap();
         code +=

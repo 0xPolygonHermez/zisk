@@ -2,6 +2,7 @@ use zisk_common::{
     OperationArith256Data, OperationArith256ModData, OperationBn254ComplexAddData,
     OperationBn254ComplexMulData, OperationBn254ComplexSubData, OperationBn254CurveAddData,
     OperationBn254CurveDblData, OperationSecp256k1AddData, OperationSecp256k1DblData,
+    OperationSecp256r1AddData, OperationSecp256r1DblData,
 };
 
 #[derive(Debug)]
@@ -15,6 +16,8 @@ pub enum ArithEqInput {
     Bn254ComplexAdd(Bn254ComplexAddInput),
     Bn254ComplexSub(Bn254ComplexSubInput),
     Bn254ComplexMul(Bn254ComplexMulInput),
+    Secp256r1Add(Secp256r1AddInput),
+    Secp256r1Dbl(Secp256r1DblInput),
 }
 
 #[derive(Debug)]
@@ -219,5 +222,41 @@ impl Bn254ComplexMulInput {
             f1: values[6..14].try_into().unwrap(),
             f2: values[14..22].try_into().unwrap(),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct Secp256r1AddInput {
+    pub addr: u32,
+    pub p1_addr: u32,
+    pub p2_addr: u32,
+    pub step: u64,
+    pub p1: [u64; 8],
+    pub p2: [u64; 8],
+}
+
+impl Secp256r1AddInput {
+    pub fn from(values: &OperationSecp256r1AddData<u64>) -> Self {
+        Self {
+            addr: values[3] as u32,
+            p1_addr: values[4] as u32,
+            p2_addr: values[5] as u32,
+            step: values[2],
+            p1: values[6..14].try_into().unwrap(),
+            p2: values[14..22].try_into().unwrap(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Secp256r1DblInput {
+    pub addr: u32,
+    pub step: u64,
+    pub p1: [u64; 8],
+}
+
+impl Secp256r1DblInput {
+    pub fn from(values: &OperationSecp256r1DblData<u64>) -> Self {
+        Self { addr: values[3] as u32, step: values[2], p1: values[4..12].try_into().unwrap() }
     }
 }
