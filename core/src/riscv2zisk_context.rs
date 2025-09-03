@@ -242,7 +242,7 @@ impl Riscv2ZiskContext<'_> {
 
             // This instruction ends the emulation with an error and its opcode cannot be proven,
             // i.e. the proof generation would fail
-            "halt" => self.halt(riscv_instruction, 2),
+            "halt" => self.halt_with_error(riscv_instruction, 2),
 
             _ => panic!(
                 "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
@@ -490,8 +490,8 @@ impl Riscv2ZiskContext<'_> {
         self.s += inst_size;
     }
 
-    /// Creates a Zisk halt that simply sets the error to true and halts the execution
-    pub fn halt(&mut self, i: &RiscvInstruction, inst_size: u64) {
+    /// Creates a Zisk operation that simply sets the error to true and halts the execution
+    pub fn halt_with_error(&mut self, i: &RiscvInstruction, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("imm", 0, false);
