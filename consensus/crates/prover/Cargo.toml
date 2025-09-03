@@ -1,0 +1,29 @@
+[package]
+name = "consensus-prover"
+description = "Consensus Network Client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[build-dependencies]
+vergen = { version = "8", default-features = false, features = [
+    "build",
+    "git",
+    "git2",
+] }
+
+[dependencies]
+zisk-common = { workspace = true }
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+asm-runner = { workspace = true }
+consensus-common = { path = "../common" }
+fields = { workspace = true }
+witness = { workspace = true }
+
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+libloading = { workspace = true }
