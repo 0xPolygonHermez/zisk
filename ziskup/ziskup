@@ -233,7 +233,7 @@ EOF
   if [[ ":${PATH}:" != *":${ZISK_BIN_DIR}:"* ]]; then
       # Add the ziskup directory to the path and ensure the old PATH variables remain.
       echo "Adding ZisK to your PATH..."
-      echo >>"${PROFILE}" && echo "export PATH=\"\${PATH}:${ZISK_BIN_DIR}\"" >>"${PROFILE}"
+      echo >>"${PROFILE}" && echo "export PATH=\"\$PATH:${ZISK_BIN_DIR}\"" >>"${PROFILE}"
   fi
 
   step "Done! ZisK version ${ZISK_VERSION} has been installed."
