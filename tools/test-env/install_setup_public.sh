@@ -26,8 +26,8 @@ main () {
     ensure curl -L -#o "${ZISK_SETUP_FILE}" "https://storage.googleapis.com/zisk-setup/${ZISK_SETUP_FILE}" || return 1
 
     step "Installing public proving ${ZISK_SETUP_FILE}..."
-    rm -rf "$HOME/.zisk/provingKey/"
-    ensure tar --overwrite -xf "${ZISK_SETUP_FILE}" -C "$HOME/.zisk" || return 1
+    ensure rm -rf "$HOME/.zisk/provingKey/"
+    ensure tar -xf "${ZISK_SETUP_FILE}" -C "$HOME/.zisk" || return 1
 
     step "Generating constant tree files..."
     ensure cargo-zisk check-setup -a || return 1

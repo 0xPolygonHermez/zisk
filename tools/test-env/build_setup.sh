@@ -111,6 +111,7 @@ main() {
             check_setup_flags=-a
         fi
 
+        rm -rf build/provingKey
         ensure node "${WORKSPACE_DIR}/pil2-proofman-js/src/main_setup.js" \
             -a ./pil/zisk.pilout -b build \
             -u tmp/fixed ${setup_flags}

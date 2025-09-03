@@ -28,14 +28,16 @@ print_proofs_result() {
             continue
         fi
 
-        # Extract raw time and drop fractional part
+        # Extract raw time and drop fractional part (portable sed on macOS/Linux)
+        # Matches: "time": 12.345
         local raw_time
-        raw_time=$(grep -Po '"time":\s*\K[0-9.]+' "$fullpath")
+        raw_time=$(sed -nE 's/.*"time"[[:space:]]*:[[:space:]]*([0-9.]+).*/\1/p' "$fullpath")
         local time_int="${raw_time%%.*}"
 
-        # Extract cycles
+        # Extract cycles: integer after "cycles":
         local cycles
-        cycles=$(grep -Po '"cycles":\s*\K[0-9]+' "$fullpath")
+        cycles=$(sed -nE 's/.*"cycles"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$fullpath")
+
 
         printf "| %-30s | %-10s | %-15s |\n" "$f" "$time_int" "$cycles"
     done
@@ -103,8 +105,8 @@ test_elf() {
     declare -a inputs=() dist_inputs=()
 
     # Get list of input files
-    mapfile -t inputs < <(get_var_list INPUTS)
-    mapfile -t dist_inputs < <(get_var_list INPUTS_DISTRIBUTED)
+    get_var_list_to_array inputs "INPUTS"
+    get_var_list_to_array dist_inputs "INPUTS_DISTRIBUTED"
 
     num_inputs=${#inputs[@]}
     num_dist_inputs=${#dist_inputs[@]}
