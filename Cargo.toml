@@ -80,14 +80,14 @@ ziskos = { path = "ziskos/entrypoint" }
 circuit = { path = "tools/circuit" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.11.0" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/upgrade-mem-handler" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/upgrade-mem-handler" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/upgrade-mem-handler" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/upgrade-mem-handler" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/upgrade-mem-handler" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/upgrade-mem-handler" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/upgrade-mem-handler" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/upgrade-mem-handler" }
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
@@ -118,4 +118,3 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 mpi = { version = "0.8.0" }
 static_assertions = "1"
-

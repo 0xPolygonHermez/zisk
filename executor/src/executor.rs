@@ -42,7 +42,7 @@ use zisk_common::{
     Plan,
 };
 use zisk_common::{ChunkId, PayloadType};
-use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS, ROM_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS, INPUT_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use std::thread::JoinHandle;
 use std::time::Instant;
@@ -1577,6 +1577,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         let secn_instances_guard = self.secn_instances.read().unwrap();
 
         let mut secn_instances = HashMap::new();
+        let mut secn_instances_memory = HashMap::new();
         for &global_id in global_ids {
             let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
             if MAIN_AIR_IDS.contains(&air_id)
@@ -1589,7 +1590,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                 if secn_instance.instance_type() == InstanceType::Instance
                     && !self.collectors_by_instance.read().unwrap().contains_key(&global_id)
                 {
-                    secn_instances.insert(global_id, secn_instance);
+                    if air_id == MEM_AIR_IDS[0] || air_id == ROM_DATA_AIR_IDS[0] || air_id == INPUT_DATA_AIR_IDS[0] {
+                        secn_instances_memory.insert(global_id, secn_instance);
+                    } else {
+                        secn_instances.insert(global_id, secn_instance);
+                    }
                 } else {
                     pctx.set_witness_ready(global_id, true);
                 }
@@ -1599,7 +1604,15 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         let pool = create_pool(n_cores);
         pool.install(|| {
             if !secn_instances.is_empty() {
+                timer_start_info!(PRE_CALCULATE_WITNESS_SEC);
                 self.witness_collect_instances(pctx.clone(), secn_instances);
+                timer_stop_and_log_info!(PRE_CALCULATE_WITNESS_SEC);
+            }
+
+            if !secn_instances_memory.is_empty() {
+                timer_start_info!(PRE_CALCULATE_WITNESS_MEMORY);
+                self.witness_collect_instances(pctx.clone(), secn_instances_memory);
+                timer_stop_and_log_info!(PRE_CALCULATE_WITNESS_MEMORY);
             }
         });
 
