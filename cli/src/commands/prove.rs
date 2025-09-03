@@ -1,7 +1,5 @@
 use crate::{
-    commands::{
-        cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
-    },
+    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -9,7 +7,7 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use bytemuck::cast_slice;
 use colored::Colorize;
-use executor::ZiskExecutionResult;
+use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -20,16 +18,16 @@ use rom_setup::{
 };
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-#[cfg(feature = "stats")]
-use std::time::{Duration, Instant};
 use std::{
     collections::HashMap,
     fs::{self, File},
     path::PathBuf,
 };
-use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
 #[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
+use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
+use zisk_pil::VIRTUAL_TABLE_AIR_IDS;
+use zstd::stream::write::Encoder;
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -126,14 +124,15 @@ pub struct ZiskProve {
     #[clap(short = 'c', long)]
     pub chunk_size_bits: Option<u64>,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
+
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
-
         print_banner();
 
         let mpi_context = initialize_mpi()?;
@@ -240,6 +239,8 @@ impl ZiskProve {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
+        gpu_params.with_single_instance((0, VIRTUAL_TABLE_AIR_IDS[0]));
+
         let proofman;
         #[cfg(distributed)]
         {
@@ -298,6 +299,7 @@ impl ZiskProve {
             Some(mpi_context.local_rank),
             self.port,
             self.unlock_mapped_memory,
+            self.shared_tables,
         )
         .expect("Failed to initialize witness library");
 
@@ -318,6 +320,7 @@ impl ZiskProve {
         } else {
             match self.field {
                 Field::Goldilocks => {
+                    proofman.set_barrier();
                     (proof_id, vadcop_final_proof) = proofman
                         .generate_proof_from_lib(
                             self.input.clone(),
@@ -339,11 +342,21 @@ impl ZiskProve {
         if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
             let elapsed = start.elapsed();
 
-            let (result, _stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
-                .get_execution_result()
-                .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-                .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
-                .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+            #[allow(clippy::type_complexity)]
+            let (result, _stats, _): (
+                ZiskExecutionResult,
+                Arc<Mutex<ExecutorStats>>,
+                Arc<Mutex<HashMap<usize, Stats>>>,
+            ) =
+                *witness_lib
+                    .get_execution_result()
+                    .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
+                    .downcast::<(
+                        ZiskExecutionResult,
+                        Arc<Mutex<ExecutorStats>>,
+                        Arc<Mutex<HashMap<usize, Stats>>>,
+                    )>()
+                    .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
             let elapsed = elapsed.as_secs_f64();
             tracing::info!("");
@@ -362,20 +375,37 @@ impl ZiskProve {
                 let log_path = self.output_dir.join("result.json");
                 ProofLog::write_json_log(&log_path, &logs)
                     .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
-                // Save the vadcop final proof
+
+                // Save the uncompressed vadcop final proof
                 let output_file_path = self.output_dir.join("vadcop_final_proof.bin");
-                // write a Vec<u64> to a bin file stored in output_file_path
+                let vadcop_proof = vadcop_final_proof.unwrap();
                 let mut file = File::create(output_file_path)?;
-                file.write_all(cast_slice(&vadcop_final_proof.unwrap()))?;
+                file.write_all(cast_slice(&vadcop_proof))?;
+
+                // Save the compressed vadcop final proof using zstd (fastest compression level)
+                let compressed_output_path =
+                    self.output_dir.join("vadcop_final_proof.compressed.bin");
+                let compressed_file = File::create(&compressed_output_path)?;
+                let mut encoder = Encoder::new(compressed_file, 1)?;
+                encoder.write_all(cast_slice(&vadcop_proof))?;
+                encoder.finish()?;
+
+                let original_size = vadcop_proof.len() * 8;
+                let compressed_size = std::fs::metadata(&compressed_output_path)?.len();
+                let compression_ratio = compressed_size as f64 / original_size as f64;
+
+                println!("Vadcop final proof saved:");
+                println!("  Original: {} bytes", original_size);
+                println!(
+                    "  Compressed: {} bytes (ratio: {:.2}x)",
+                    compressed_size, compression_ratio
+                );
             }
 
             // Store the stats in stats.json
             #[cfg(feature = "stats")]
             {
-                _stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(ExecutorStatsDuration {
-                    start_time: Instant::now(),
-                    duration: Duration::new(0, 1),
-                }));
+                _stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
                 _stats.lock().unwrap().store_stats();
             }
         }

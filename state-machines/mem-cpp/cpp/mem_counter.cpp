@@ -42,7 +42,12 @@ void MemCounter::execute() {
     
     int64_t elapsed_us = 0;
 
-    const MemChunk *chunk = context->get_chunk(0, elapsed_us);
+    const MemChunk *chunk =
+#ifdef MEM_CONTEXT_SEM
+        context->get_chunk(id, 0, elapsed_us);
+#else
+        context->get_chunk(0, elapsed_us);
+#endif
     #ifdef COUNT_CHUNK_STATS
     wait_chunks_us[0] = elapsed_us;
     auto start_execute_us = get_usec();
@@ -58,7 +63,11 @@ void MemCounter::execute() {
         first_chunk_us = get_usec() - init_us;
 
         uint32_t chunk_id = 1;
+#ifdef MEM_CONTEXT_SEM
+        while ((chunk = context->get_chunk(id, chunk_id, elapsed_us)) != nullptr) {
+#else
         while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr) {
+#endif
             #ifdef COUNT_CHUNK_STATS
             wait_chunks_us[chunk_id] = elapsed_us;
             auto start_execute_us = get_usec();
@@ -80,6 +89,13 @@ void MemCounter::execute() {
 }
 
 void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chunk_data, uint32_t chunk_size) {
+
+#ifdef MEM_STATS_ACTIVE
+    // Get start time for stats
+    struct timespec start_time;
+    clock_gettime(CLOCK_REALTIME, &start_time);
+#endif // MEM_STATS_ACTIVE
+
     current_chunk = chunk_id;
 
     for (const MemCountersBusData *chunk_eod = chunk_data + chunk_size; chunk_eod != chunk_data; chunk_data++) {
@@ -115,6 +131,18 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
             }
         }
     }
+
+#ifdef MEM_STATS_ACTIVE
+    // Add stats for this chunk execution
+    struct timespec end_time;
+    clock_gettime(CLOCK_REALTIME, &end_time);
+    assert(mem_stats != nullptr);
+    mem_stats->add_stat(
+        MEM_STATS_EXECUTE_CHUNK_0 + ((id - MEM_STATS_EXECUTE_CHUNK_0) % std::min(8, MAX_THREADS)),
+        start_time.tv_sec,
+        start_time.tv_nsec, 
+        (end_time.tv_sec - start_time.tv_sec) * 1000000000 + (end_time.tv_nsec - start_time.tv_nsec));
+#endif // MEM_STATS_ACTIVE
 }
 
 void MemCounter::count_aligned(uint32_t addr, uint32_t chunk_id, uint32_t count) {

@@ -13,9 +13,7 @@ use std::{
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 
-use crate::{
-    get_target, get_toolchain_download_url, is_supported_target, url_exists, RUSTUP_TOOLCHAIN_NAME,
-};
+use crate::{get_target, get_toolchain_download_url, is_supported_target, RUSTUP_TOOLCHAIN_NAME};
 
 #[derive(Parser)]
 #[command(name = "install-toolchain", about = "Install the cargo-zisk toolchain.")]
@@ -24,7 +22,10 @@ pub struct InstallToolchainCmd {}
 impl InstallToolchainCmd {
     pub fn run(&self) -> Result<()> {
         // Setup client.
-        let client = Client::builder().user_agent("Mozilla/5.0").build()?;
+        let client = Client::builder()
+            .user_agent("Mozilla/5.0")
+            .timeout(std::time::Duration::from_secs(60))
+            .build()?;
 
         // Setup variables.
         let root_dir = home_dir().unwrap().join(".zisk");
@@ -87,15 +88,7 @@ impl InstallToolchainCmd {
                 let rt = tokio::runtime::Runtime::new()?;
 
                 let toolchain_download_url =
-                    rt.block_on(get_toolchain_download_url(&client, target.to_string()));
-
-                let artifact_exists =
-                    rt.block_on(url_exists(&client, toolchain_download_url.as_str()));
-                if !artifact_exists {
-                    return Err(anyhow::anyhow!(
-                        "Unsupported architecture. Please build the toolchain from source."
-                    ));
-                }
+                    rt.block_on(get_toolchain_download_url(target.to_string()));
 
                 let mut file = fs::File::create(&toolchain_archive_path)?;
                 rt.block_on(download_file(&client, toolchain_download_url.as_str(), &mut file))

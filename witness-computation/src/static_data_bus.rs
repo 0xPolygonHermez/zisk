@@ -46,6 +46,7 @@ pub struct StaticDataBus<D> {
 
 impl StaticDataBus<PayloadType> {
     /// Creates a new `DataBus` instance.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         process_only_operation_bus: bool,
         mem_counter: MemCounters,

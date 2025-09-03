@@ -1,27 +1,25 @@
 use bytemuck::cast_slice;
 use colored::Colorize;
-use executor::ZiskExecutionResult;
+use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::{fs::File, path::PathBuf};
 use witness::WitnessLibrary;
 use zisk_common::{ExecutorStats, ProofLog};
+use zstd::stream::write::Encoder;
 
 use crate::{
     ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode, ZiskService,
 };
 
 #[cfg(feature = "stats")]
-use std::time::Duration;
-#[cfg(feature = "stats")]
-use std::time::Instant;
-#[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ZiskProveRequest {
@@ -82,14 +80,22 @@ impl ZiskServiceProveHandler {
                 let elapsed = start.elapsed();
 
                 if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
-                    let (result, _stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) =
-                        *witness_lib
-                            .get_execution_result()
-                            .ok_or_else(|| anyhow::anyhow!("No execution result found"))
-                            .expect("Failed to get execution result")
-                            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
-                            .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
-                            .expect("Failed to downcast execution result");
+                    #[allow(clippy::type_complexity)]
+                    let (result, _stats, _witness_stats): (
+                        ZiskExecutionResult,
+                        Arc<Mutex<ExecutorStats>>,
+                        Arc<Mutex<HashMap<usize, Stats>>>,
+                    ) = *witness_lib
+                        .get_execution_result()
+                        .ok_or_else(|| anyhow::anyhow!("No execution result found"))
+                        .expect("Failed to get execution result")
+                        .downcast::<(
+                            ZiskExecutionResult,
+                            Arc<Mutex<ExecutorStats>>,
+                            Arc<Mutex<HashMap<usize, Stats>>>,
+                        )>()
+                        .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
+                        .expect("Failed to downcast execution result");
 
                     let elapsed = elapsed.as_secs_f64();
                     tracing::info!("");
@@ -110,12 +116,7 @@ impl ZiskServiceProveHandler {
                     // Store the stats in stats.json
                     #[cfg(feature = "stats")]
                     {
-                        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(
-                            ExecutorStatsDuration {
-                                start_time: Instant::now(),
-                                duration: Duration::new(0, 1),
-                            },
-                        ));
+                        _stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
                         _stats.lock().unwrap().store_stats();
                     }
 
@@ -127,14 +128,37 @@ impl ZiskServiceProveHandler {
                         ProofLog::write_json_log(&log_path, &logs)
                             .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))
                             .expect("Failed to generate proof");
-                        // Save the vadcop final proof
-                        let proof_path = request
+                        // Save the uncompressed vadcop final proof
+                        let output_file_path = request
                             .folder
                             .join(format!("{}-vadcop_final_proof.bin", request.prefix));
-                        // write a Vec<u64> to a bin file stored in output_file_path
-                        let mut file = File::create(proof_path).expect("Error while creating file");
-                        file.write_all(cast_slice(&vadcop_final_proof.unwrap()))
-                            .expect("Error while writing to file");
+
+                        let vadcop_proof = vadcop_final_proof.unwrap();
+                        let proof_data = cast_slice(&vadcop_proof);
+                        let mut file =
+                            File::create(&output_file_path).expect("Error while creating file");
+                        file.write_all(proof_data).expect("Error while writing to file");
+
+                        // Save the compressed vadcop final proof using zstd (fastest compression level)
+                        let compressed_output_path = request
+                            .folder
+                            .join(format!("{}-vadcop_final_proof.compressed.bin", request.prefix));
+                        let compressed_file = File::create(&compressed_output_path).unwrap();
+                        let mut encoder = Encoder::new(compressed_file, 1).unwrap();
+                        encoder.write_all(proof_data).unwrap();
+                        encoder.finish().unwrap();
+
+                        let original_size = vadcop_proof.len() * 8;
+                        let compressed_size =
+                            std::fs::metadata(&compressed_output_path).unwrap().len();
+                        let compression_ratio = compressed_size as f64 / original_size as f64;
+
+                        println!("Vadcop final proof saved:");
+                        println!("  Original: {} bytes", original_size);
+                        println!(
+                            "  Compressed: {} bytes (ratio: {:.2}x)",
+                            compressed_size, compression_ratio
+                        );
                     }
                 }
                 is_busy.store(false, std::sync::atomic::Ordering::SeqCst);

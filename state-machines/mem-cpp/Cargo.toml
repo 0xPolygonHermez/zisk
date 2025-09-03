@@ -10,9 +10,10 @@ categories.workspace = true
 build = "build.rs"
 
 [dependencies]
-zisk-common = { path = "../../common" }
-mem-common = { path = "../mem-common" }
-zisk-pil = { path = "../../pil" }
+zisk-common = { workspace = true }
+mem-common = { workspace = true }
+zisk-pil = { workspace = true }
+
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 tracing = { workspace = true }

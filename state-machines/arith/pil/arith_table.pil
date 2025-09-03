@@ -4,6 +4,8 @@ const int ARITH_TABLE_ID = 331;
 
 airtemplate ArithTable(int N = 2**7, int generate_table = 0) {
 
+    // N = 74
+
     // div m32 sa  sb  primary  secondary  opcodes             na   nb   np   nr   sext(c)
     // -----------------------------------------------------------------------------------
     //  0   0   0   0  mulu     muluh      0xb0 176  0xb1 177  =0   =0   =0   =0   =0   =0
