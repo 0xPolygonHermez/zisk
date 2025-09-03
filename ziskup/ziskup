@@ -101,11 +101,6 @@ main() {
     ARCHITECTURE="amd64" # Amd.
   fi
 
-  # If the plaform is macOS darwin we don't install any key
-  if [ "${PLATFORM}" = "darwin" ]; then
-    SETUP_KEY="none"
-  fi
-
   # If we are running in a GitHub action, we install the proving key by default
   if [[ -n "${GH_RUNNER}" ]]; then
     warn "Running from GitHub action, installing proving key"
@@ -259,7 +254,7 @@ OPTIONS:
     -h, --help      Print help information
     -v, --version   Install a specific version
     --arch          Install a specific architecture (supports amd64 and arm64)
-    --platform      Install a specific platform (supports win32, linux, and darwin)
+    --platform      Install a specific platform (supports linux, and darwin)
     --provingkey    Install the proving key
     --verifykey     Install the verify key
     --nokey         No proving/verify key installation
@@ -344,7 +339,12 @@ install_setup() {
 
     # Extract the key
     step "Installing ${KEY_TYPE} key version ${SETUP_VERSION}..."
-    ensure tar --overwrite -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+    if [ "${PLATFORM}" = "linux" ]; then
+      ensure tar --overwrite -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+    else
+      ensure tar -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+    fi  
+    
     rm -f "${KEY_FILE}"
     rm -f "${KEY_FILE}.md5"
     say "Installed ${KEY_TYPE} key version ${SETUP_VERSION}"
