@@ -254,7 +254,7 @@ OPTIONS:
     -h, --help      Print help information
     -v, --version   Install a specific version
     --arch          Install a specific architecture (supports amd64 and arm64)
-    --platform      Install a specific platform (supports linux, and darwin)
+    --platform      Install a specific platform (supports linux and darwin)
     --provingkey    Install the proving key
     --verifykey     Install the verify key
     --nokey         No proving/verify key installation
@@ -343,8 +343,8 @@ install_setup() {
       ensure tar --overwrite -xf "${KEY_FILE}" -C "${HOME}/.zisk"
     else
       ensure tar -xf "${KEY_FILE}" -C "${HOME}/.zisk"
-    fi  
-    
+    fi
+
     rm -f "${KEY_FILE}"
     rm -f "${KEY_FILE}.md5"
     say "Installed ${KEY_TYPE} key version ${SETUP_VERSION}"
