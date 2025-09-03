@@ -1,8 +1,7 @@
 use crate::{
-    MemAlignResponse, MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS,
-    MEM_STEPS_BY_MAIN_STEP, MEM_STEP_BASE, RAM_W_ADDR_INIT,
+    MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEPS_BY_MAIN_STEP,
+    MEM_STEP_BASE, RAM_W_ADDR_INIT,
 };
-use std::fmt;
 use zisk_common::ChunkId;
 use zisk_core::RAM_ADDR;
 pub struct MemHelpers {
@@ -25,6 +24,10 @@ impl MemHelpers {
     #[inline(always)]
     pub fn mem_step_to_chunk(&self, step: u64) -> ChunkId {
         ChunkId(((step - MEM_STEP_BASE) / self.chunk_size_steps) as usize)
+    }
+    #[inline(always)]
+    pub fn static_mem_step_to_chunk(step: u64, chunk_size: u64) -> ChunkId {
+        ChunkId(((step - MEM_STEP_BASE) / (chunk_size * MEM_STEPS_BY_MAIN_STEP)) as usize)
     }
     #[inline(always)]
     pub fn first_chunk_mem_step(&self, chunk: ChunkId) -> u64 {
@@ -195,16 +198,5 @@ impl MemHelpers {
         let from_chunk = self.mem_step_to_chunk(from_step);
         let to_chunk = self.mem_step_to_chunk(to_step);
         self.max_distance_between_chunks(from_chunk, to_chunk)
-    }
-}
-impl fmt::Debug for MemAlignResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "more:{0} step:{1} value:{2:016X}({2:})",
-            self.more_addr,
-            self.step,
-            self.value.unwrap_or(0)
-        )
     }
 }

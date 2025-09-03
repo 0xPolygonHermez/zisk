@@ -4,21 +4,18 @@ use crate::{
     ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode, ZiskService,
 };
 use colored::Colorize;
-use executor::ZiskExecutionResult;
+use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::DebugInfo;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Mutex;
 use witness::WitnessLibrary;
 use zisk_common::ExecutorStats;
 
 #[cfg(feature = "stats")]
-use std::time::Duration;
-#[cfg(feature = "stats")]
-use std::time::Instant;
-#[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ZiskVerifyConstraintsRequest {
@@ -63,11 +60,20 @@ impl ZiskServiceVerifyConstraintsHandler {
 
                 let elapsed = start.elapsed();
 
-                let result: (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
+                #[allow(clippy::type_complexity)]
+                let result: (
+                    ZiskExecutionResult,
+                    Arc<Mutex<ExecutorStats>>,
+                    Arc<Mutex<HashMap<usize, Stats>>>,
+                ) = *witness_lib
                     .get_execution_result()
                     .ok_or_else(|| anyhow::anyhow!("No execution result found"))
                     .expect("Failed to get execution result")
-                    .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
+                    .downcast::<(
+                        ZiskExecutionResult,
+                        Arc<Mutex<ExecutorStats>>,
+                        Arc<Mutex<HashMap<usize, Stats>>>,
+                    )>()
                     .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
                     .expect("Failed to downcast execution result");
 
@@ -90,10 +96,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                 #[cfg(feature = "stats")]
                 {
                     let stats = result.1;
-                    stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(ExecutorStatsDuration {
-                        start_time: Instant::now(),
-                        duration: Duration::new(0, 1),
-                    }));
+                    stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
                     stats.lock().unwrap().store_stats();
                 }
             }

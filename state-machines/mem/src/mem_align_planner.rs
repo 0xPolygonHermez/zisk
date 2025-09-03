@@ -2,9 +2,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{MemCounters, MemPlanCalculator};
 use mem_common::MemAlignCheckPoint;
-use proofman_common::PreCalculate;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
-use zisk_pil::{MemAlignTrace, MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MemAlignTrace, MEM_ALIGN_AIR_IDS, ZISK_AIRGROUP_ID};
 #[allow(dead_code)]
 pub struct MemAlignPlanner<'a> {
     instances: Vec<Plan>,
@@ -112,8 +111,8 @@ impl<'a> MemAlignPlanner<'a> {
             Some(SegmentId(self.instances.len())),
             InstanceType::Instance,
             CheckPoint::Multiple(chunks),
-            PreCalculate::Fast,
             Some(Box::new(check_points)),
+            4,
         );
         self.instances.push(instance);
     }
@@ -146,17 +145,6 @@ impl MemPlanCalculator for MemAlignPlanner<'_> {
         self.align_plan();
     }
     fn collect_plans(&mut self) -> Vec<Plan> {
-        if !self.instances.is_empty() {
-            self.instances.push(Plan::new(
-                ZISK_AIRGROUP_ID,
-                MEM_ALIGN_ROM_AIR_IDS[0],
-                None,
-                InstanceType::Table,
-                CheckPoint::None,
-                PreCalculate::None,
-                None,
-            ));
-        }
         std::mem::take(&mut self.instances)
     }
 }

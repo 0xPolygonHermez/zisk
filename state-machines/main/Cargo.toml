@@ -8,12 +8,12 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-ziskemu = { path = "../../emulator" }
-zisk-core = { path = "../../core" }
-zisk-common = { path = "../../common" }
-zisk-pil = { path = "../../pil" }
-sm-mem = { path = "../mem" }
-asm-runner = { path = "../../emulator-asm/asm-runner" }
+ziskemu = { workspace = true }
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
+zisk-pil = { workspace = true }
+sm-mem = { workspace = true }
+asm-runner = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }

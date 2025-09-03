@@ -1,38 +1,31 @@
 use std::sync::Arc;
 
 use crate::{
-    InputDataSM, MemAlignInstance, MemAlignRomSM, MemAlignSM, MemCounters, MemModuleInstance,
-    MemPlanner, MemSM, RomDataSM,
+    InputDataSM, MemAlignInstance, MemAlignSM, MemCounters, MemModuleInstance, MemPlanner, MemSM,
+    RomDataSM,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
-use zisk_common::{
-    table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, Plan, Planner,
-    MEM_BUS_ID,
-};
-use zisk_pil::{
-    InputDataTrace, MemAlignRomTrace, MemAlignTrace, MemTrace, RomDataTrace, ZiskProofValues,
-};
+use zisk_common::{BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, Plan, Planner};
+use zisk_pil::{InputDataTrace, MemAlignTrace, MemTrace, RomDataTrace, ZiskProofValues};
 
 pub struct Mem<F: PrimeField64> {
     // Secondary State machines
     mem_sm: Arc<MemSM<F>>,
     mem_align_sm: Arc<MemAlignSM<F>>,
-    mem_align_rom_sm: Arc<MemAlignRomSM>,
     input_data_sm: Arc<InputDataSM<F>>,
     rom_data_sm: Arc<RomDataSM<F>>,
 }
 
 impl<F: PrimeField64> Mem<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let mem_align_rom_sm = MemAlignRomSM::new();
-        let mem_align_sm = MemAlignSM::new(std.clone(), mem_align_rom_sm.clone());
+        let mem_align_sm = MemAlignSM::new(std.clone());
         let mem_sm = MemSM::new(std.clone());
         let input_data_sm = InputDataSM::new(std.clone());
         let rom_data_sm = RomDataSM::new(std.clone());
 
-        Arc::new(Self { mem_align_sm, mem_align_rom_sm, mem_sm, input_data_sm, rom_data_sm })
+        Arc::new(Self { mem_align_sm, mem_sm, input_data_sm, rom_data_sm })
     }
 
     pub fn build_mem_counter(&self) -> MemCounters {
@@ -76,10 +69,6 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
             }
             MemAlignTrace::<usize>::AIR_ID => {
                 Box::new(MemAlignInstance::new(self.mem_align_sm.clone(), ictx))
-            }
-            MemAlignRomTrace::<usize>::AIR_ID => {
-                table_instance!(MemAlignRomInstance, MemAlignRomSM, MemAlignRomTrace);
-                Box::new(MemAlignRomInstance::new(self.mem_align_rom_sm.clone(), ictx, MEM_BUS_ID))
             }
             _ => panic!("Memory::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }

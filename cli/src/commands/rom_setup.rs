@@ -6,7 +6,7 @@ use colored::Colorize;
 use proofman_common::initialize_logger;
 
 use crate::{
-    commands::{cli_fail_if_macos, get_proving_key, get_zisk_path},
+    commands::{get_proving_key, get_zisk_path},
     ux::print_banner,
 };
 
@@ -36,8 +36,6 @@ pub struct ZiskRomSetup {
 
 impl ZiskRomSetup {
     pub fn run(&self) -> Result<()> {
-        cli_fail_if_macos()?;
-
         initialize_logger(proofman_common::VerboseMode::Info, None);
 
         tracing::info!(

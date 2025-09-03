@@ -19,7 +19,11 @@ void MemAlignCounter::execute() {
     const MemChunk *chunk;
     uint32_t chunk_id = 0;
     int64_t elapsed_us = 0;
+#ifdef MEM_CONTEXT_SEM
+    while ((chunk = context->get_chunk(MAX_THREADS, chunk_id, elapsed_us)) != nullptr) {
+#else
     while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr) {
+#endif
         execute_chunk(chunk_id, chunk->data, chunk->count);
         #ifdef COUNT_CHUNK_STATS
         #ifdef CHUNK_STATS

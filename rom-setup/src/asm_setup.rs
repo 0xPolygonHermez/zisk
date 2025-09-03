@@ -7,7 +7,7 @@ use anyhow::Result;
 use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
 pub fn generate_assembly(
-    elf: &PathBuf,
+    elf: &Path,
     elf_hash: &str,
     zisk_path: &Path,
     output_path: &Path,

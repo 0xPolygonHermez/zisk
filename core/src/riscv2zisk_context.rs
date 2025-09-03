@@ -64,7 +64,13 @@ impl Riscv2ZiskContext<'_> {
             "ld" => self.load_op(riscv_instruction, "copyb", 8),
             "fence" => self.nop(riscv_instruction),
             "fence.i" => self.nop(riscv_instruction),
-            "addi" => self.immediate_op_or_x0_copyb(riscv_instruction, "add"),
+            "addi" => {
+                if riscv_instruction.is_nop() {
+                    self.nop(riscv_instruction);
+                } else {
+                    self.immediate_op_or_x0_copyb(riscv_instruction, "add");
+                }
+            }
             "slli" => self.immediate_op(riscv_instruction, "sll"),
             "slti" => self.immediate_op(riscv_instruction, "lt"),
             "sltiu" => self.immediate_op(riscv_instruction, "ltu"),

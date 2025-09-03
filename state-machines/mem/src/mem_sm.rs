@@ -1,13 +1,14 @@
 use std::sync::Arc;
-
-#[cfg(feature = "debug_mem")]
-use num_bigint::ToBigInt;
-#[cfg(feature = "debug_mem")]
-use std::{
-    fs::File,
-    io::{BufWriter, Write},
-};
 use zisk_common::SegmentId;
+#[cfg(feature = "debug_mem")]
+use {
+    num_bigint::ToBigInt,
+    std::{
+        env,
+        fs::File,
+        io::{BufWriter, Write},
+    },
+};
 
 use crate::{
     MemInput, MemModule, MEM_BYTES_BITS, MEM_INC_C_BITS, MEM_INC_C_MASK, MEM_INC_C_MAX_RANGE,
@@ -51,7 +52,7 @@ impl<F: PrimeField64> MemSM<F> {
         (RAM_ADDR + RAM_SIZE - 1) as u32
     }
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file(&self, trace: &MemTrace<F>, file_name: &str) {
+    pub fn save_to_file(trace: &MemTrace<F>, file_name: &str) {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
@@ -103,7 +104,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         let std = self.std.clone();
 
-        let range_id = std.get_range(0, MEM_INC_C_MAX_RANGE as i64, None);
+        let range_id = std.get_range_id(0, MEM_INC_C_MAX_RANGE as i64, None);
         let mut range_check_data: Vec<u32> = vec![0; MEM_INC_C_SIZE];
 
         // use special counter for internal reads
@@ -212,7 +213,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
         let distance_end = RAM_W_ADDR_END - last_addr;
 
-        self.std.range_checks(range_check_data, range_id);
+        self.std.range_checks(range_id, range_check_data);
 
         // Add one in range_check_data_max because it's used by intermediate reads, and reads
         // add one to distance to allow same step on read operations.
@@ -243,16 +244,19 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         // println!("AIR_VALUES[{}]: {:?}", segment_id, air_values);
 
-        let range_16bits_id = std.get_range(0, 0xFFFF, None);
+        let range_16bits_id = std.get_range_id(0, 0xFFFF, None);
 
-        self.std.range_check(distance_base[0] as i64, 1, range_16bits_id);
-        self.std.range_check(distance_base[1] as i64, 1, range_16bits_id);
-        self.std.range_check(distance_end[0] as i64, 1, range_16bits_id);
-        self.std.range_check(distance_end[1] as i64, 1, range_16bits_id);
+        self.std.range_check(range_16bits_id, distance_base[0] as i64, 1);
+        self.std.range_check(range_16bits_id, distance_base[1] as i64, 1);
+        self.std.range_check(range_16bits_id, distance_end[0] as i64, 1);
+        self.std.range_check(range_16bits_id, distance_end[1] as i64, 1);
 
         #[cfg(feature = "debug_mem")]
         {
-            self.save_to_file(&trace, &format!("/tmp/mem_trace_{}.txt", segment_id));
+            let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
+            let filename = format!("{path}/mem_trace_{segment_id:04}.txt");
+            println!("Saving {filename}");
+            Self::save_to_file(&trace, &filename);
             println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
         }
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))

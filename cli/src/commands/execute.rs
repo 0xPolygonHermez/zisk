@@ -14,8 +14,7 @@ use std::{collections::HashMap, fs, path::PathBuf};
 
 use crate::{
     commands::{
-        cli_fail_if_gpu_mode, cli_fail_if_macos, get_proving_key, get_witness_computation_lib,
-        initialize_mpi, Field,
+        cli_fail_if_gpu_mode, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
     },
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
@@ -84,11 +83,13 @@ pub struct ZiskExecute {
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
+
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskExecute {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
         cli_fail_if_gpu_mode()?;
 
         print_banner();
@@ -223,6 +224,7 @@ impl ZiskExecute {
                     Some(mpi_context.local_rank),
                     self.port,
                     self.unlock_mapped_memory,
+                    self.shared_tables,
                 )
                 .expect("Failed to initialize witness library");
 

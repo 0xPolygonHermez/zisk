@@ -2,15 +2,24 @@
 #include "api.hpp"
 #include "tools.hpp"
 #include "mem_count_and_plan.hpp"
+#include "mem_stats.hpp"
 
 MemCountAndPlan::MemCountAndPlan() {
     context = std::make_shared<MemContext>();
+
+#ifdef MEM_STATS_ACTIVE
+    mem_stats = new MemStats();
+#endif
 }
 
 MemCountAndPlan::~MemCountAndPlan() {
 
     // Call clear
     clear();
+
+#ifdef MEM_STATS_ACTIVE
+    delete mem_stats;
+#endif
 }
 
 void MemCountAndPlan::clear() {
@@ -46,15 +55,20 @@ void MemCountAndPlan::prepare() {
     
     for (size_t i = 0; i < MAX_THREADS; ++i) {
         count_workers.push_back(new MemCounter(i, context));
+#ifdef MEM_STATS_ACTIVE
+        // Assign mem_stats to each worker if MEM_STATS_ACTIVE is defined
+        count_workers[i]->mem_stats = mem_stats;
+#endif // MEM_STATS_ACTIVE
     }
     mem_align_counter = std::make_unique<MemAlignCounter>(MEM_ALIGN_ROWS, context);
     plan_workers.clear();
     plan_workers.reserve(MAX_MEM_PLANNERS);
-    rom_data_planner = std::make_unique<ImmutableMemPlanner>(ROM_ROWS, 0x80000000, 128);
-    input_data_planner = std::make_unique<ImmutableMemPlanner>(INPUT_ROWS, 0x90000000, 128);
-    quick_mem_planner = std::make_unique<MemPlanner>(0, RAM_ROWS, 0xA0000000, 512);
+    rom_data_planner = std::make_unique<ImmutableMemPlanner>(ROM_ROWS, ROM_ADDR, 128);
+    rom_data_planner->set_last_addr(ROM_ADDR - 8);
+    input_data_planner = std::make_unique<ImmutableMemPlanner>(INPUT_ROWS, INPUT_ADDR, 128);
+    quick_mem_planner = std::make_unique<MemPlanner>(0, RAM_ROWS, RAM_ADDR, 512);
     for (int i = 0; i < MAX_MEM_PLANNERS; ++i) {
-        plan_workers.emplace_back(i+1, RAM_ROWS, 0xA0000000, 512);
+        plan_workers.emplace_back(i+1, RAM_ROWS, RAM_ADDR, 512);
     }
     t_prepare_us = get_usec() - init;
 }
@@ -68,6 +82,13 @@ void MemCountAndPlan::execute(void) {
 }
 
 void MemCountAndPlan::count_phase() {
+
+#ifdef MEM_STATS_ACTIVE
+    // Get start time for stats
+    struct timespec start_time;
+    clock_gettime(CLOCK_REALTIME, &start_time);
+#endif // MEM_STATS_ACTIVE
+
     uint64_t init = t_init_us = get_usec();
     std::vector<std::thread> threads;
     context->init();
@@ -97,10 +118,29 @@ void MemCountAndPlan::count_phase() {
     //         max_tot_wait_us/1000, 
     //         1 << THREAD_BITS,
     //         max_used_slots * 100.0 / ADDR_SLOTS);
-    t_count_us = (uint32_t) (get_usec() - init);    
+    t_count_us = (uint32_t) (get_usec() - init);
+
+#ifdef MEM_STATS_ACTIVE
+    // Add stats for count phase
+    struct timespec end_time;
+    clock_gettime(CLOCK_REALTIME, &end_time);
+    assert(mem_stats != nullptr);
+    mem_stats->add_stat(
+        MEM_STATS_COUNT_PHASE,
+        start_time.tv_sec,
+        start_time.tv_nsec, 
+        (end_time.tv_sec - start_time.tv_sec) * 1000000000 + (end_time.tv_nsec - start_time.tv_nsec));
+#endif // MEM_STATS_ACTIVE
 }
 
 void MemCountAndPlan::plan_phase() {
+
+#ifdef MEM_STATS_ACTIVE
+    // Get start time for stats
+    struct timespec start_time;
+    clock_gettime(CLOCK_REALTIME, &start_time);
+#endif // MEM_STATS_ACTIVE
+
     uint64_t init = get_usec();
     std::vector<std::thread> threads;
 
@@ -135,6 +175,18 @@ void MemCountAndPlan::plan_phase() {
     
     // printf("MEM_ALIGN segments\n");
     // mem_align_counter->debug();
+
+#ifdef MEM_STATS_ACTIVE
+    // Add stats for plan phase
+    struct timespec end_time;
+    clock_gettime(CLOCK_REALTIME, &end_time);
+    assert(mem_stats != nullptr);
+    mem_stats->add_stat(
+        MEM_STATS_PLAN_PHASE,
+        start_time.tv_sec,
+        start_time.tv_nsec, 
+        (end_time.tv_sec - start_time.tv_sec) * 1000000000 + (end_time.tv_nsec - start_time.tv_nsec));
+#endif // MEM_STATS_ACTIVE
 }
 
 void MemCountAndPlan::stats() {
@@ -263,4 +315,23 @@ void MemCountAndPlan::detach_execute() {
     //stats();
     // printf("MemCountAndPlan count(ms):%ld plan(ms):%ld tot(ms):%ld\n", 
     //        t_count_us / 1000, t_plan_us / 1000, (t_count_us + t_plan_us) / 1000);
+}
+
+
+uint64_t get_mem_stats_len(MemCountAndPlan * mcp)
+{
+#ifdef MEM_STATS_ACTIVE
+    return mcp->mem_stats->stats.size();
+#else
+    return 0; // If MEM_STATS_ACTIVE is not defined, return 0
+#endif // MEM_STATS_ACTIVE
+}
+
+uint64_t get_mem_stats_ptr(MemCountAndPlan * mcp)
+{
+#ifdef MEM_STATS_ACTIVE
+    return (uint64_t)mcp->mem_stats->stats.data();
+#else
+    return 0; // If MEM_STATS_ACTIVE is not defined, return 0
+#endif // MEM_STATS_ACTIVE
 }

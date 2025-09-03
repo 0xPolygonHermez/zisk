@@ -1,7 +1,6 @@
 use crate::{
     commands::{
-        cli_fail_if_gpu_mode, cli_fail_if_macos, get_proving_key, get_witness_computation_lib,
-        initialize_mpi, Field,
+        cli_fail_if_gpu_mode, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
     },
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
@@ -10,7 +9,7 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use clap::Parser;
 use colored::Colorize;
-use executor::ZiskExecutionResult;
+use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -20,12 +19,10 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use std::sync::{Arc, Mutex};
-#[cfg(feature = "stats")]
-use std::time::{Duration, Instant};
 use std::{collections::HashMap, fs, path::PathBuf};
-use zisk_common::{ExecutorStats, ZiskLibInitFn};
 #[cfg(feature = "stats")]
-use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+use zisk_common::ExecutorStatsEvent;
+use zisk_common::{ExecutorStats, ZiskLibInitFn};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -89,11 +86,13 @@ pub struct ZiskVerifyConstraints {
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
+
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskVerifyConstraints {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
         cli_fail_if_gpu_mode()?;
 
         print_banner();
@@ -237,6 +236,7 @@ impl ZiskVerifyConstraints {
                     Some(mpi_context.local_rank),
                     self.port,
                     self.unlock_mapped_memory,
+                    self.shared_tables,
                 )
                 .expect("Failed to initialize witness library");
 
@@ -250,10 +250,11 @@ impl ZiskVerifyConstraints {
 
         let elapsed = start.elapsed();
 
-        let (result, _stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
+        #[allow(clippy::type_complexity)]
+        let (result, _stats, _): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
+            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
         tracing::info!("");
@@ -277,10 +278,7 @@ impl ZiskVerifyConstraints {
         // Store the stats in stats.json
         #[cfg(feature = "stats")]
         {
-            _stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(ExecutorStatsDuration {
-                start_time: Instant::now(),
-                duration: Duration::new(0, 1),
-            }));
+            _stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
             _stats.lock().unwrap().store_stats();
         }
 
