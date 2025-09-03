@@ -116,6 +116,7 @@ do
 
     # Compile the assembly emulator derived from this ELF file
     cd emulator-asm
+    make clean
     make
 
     # Execute it and save output
