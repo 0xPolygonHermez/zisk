@@ -59,14 +59,23 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
         let inst = code[code_index];
         code_index += 1;
 
-        // Ignore instructions that are zero
-        // As per spec, they can only be 32 bits instructions, so we need to read the next 16 bits
-        // and check that they are also zero
+        // Manage instructions that are zero
+        // As per spec, they can only be 32 bits nop instructions
+        // In case of 16 zero bits, they are used by some compilers (e.g. Go Lang compiler) to halt
+        // the system with an error
         if inst == 0 {
             // println!("riscv_interpreter() found inst=0 at position s={} (index in u32 array)", s);
+            if code_index == code_len {
+                // This is the last 16 bits in the code buffer, so this must be a 16-bits invalid
+                // instruction, so we must HALT
+                insts.push(RiscvInstruction::halt(0));
+                break;
+            }
+            assert!(code_index < code_len); // There must be at least another 16 bits
             let inst = code[code_index];
             if inst == 0 {
-                // Both 16 bits instructions are zero, so this is a 32-bits NOP
+                // Both 16 bits instructions are zero, so this is a 32-bits nop
+                code_index += 1;
                 insts.push(RiscvInstruction::nop(0));
             } else {
                 // The first 16 bits are zero, but the second 16 bits are not zero, so this is a
