@@ -240,8 +240,35 @@ impl Riscv2ZiskContext<'_> {
             // F: Single-Precision Floating-Point
             /////////////////////////////////////
             "flw" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
-            "fld" => self.load_op(riscv_instruction, "copyb", 8, 4),
             "fsw" => self.store_op(riscv_instruction, "signextend_w", 4, 4),
+            "fadd.s" => self.create_register_op(riscv_instruction, "fadd.d", 4), // single mapped to double
+            "fsub.s" => self.create_register_op(riscv_instruction, "fsub.d", 4), // single mapped to double
+            "fmul.s" => self.create_register_op(riscv_instruction, "fmul.d", 4), // single mapped to double
+            "fdiv.s" => self.create_register_op(riscv_instruction, "fdiv.d", 4), // single mapped to double
+            "fsqrt.s" => self.create_register_op(riscv_instruction, "fsqrt.d", 4), // single mapped to double
+            "fmax.s" => self.create_register_op(riscv_instruction, "fmax.d", 4), // single mapped to double
+            "fmin.s" => self.create_register_op(riscv_instruction, "fmin.d", 4), // single mapped to double
+            "feq.s" => self.create_register_op(riscv_instruction, "feq.d", 4), // single mapped to double
+            "fle.s" => self.create_register_op(riscv_instruction, "fle.d", 4), // single mapped to double
+            "flt.s" => self.create_register_op(riscv_instruction, "flt.d", 4), // single mapped to double
+            "fclass.s" => self.create_register_op(riscv_instruction, "fclass.d", 4), // single mapped to double
+            "fcvt.s.w" => self.create_register_op(riscv_instruction, "fcvt.d.w", 4), // single mapped to double
+            "fcvt.s.wu" => self.create_register_op(riscv_instruction, "fcvt.d.wu", 4), // single mapped to double
+            "fcvt.w.s" => self.create_register_op(riscv_instruction, "fcvt.w.d", 4), // single mapped to double
+            "fcvt.wu.s" => self.create_register_op(riscv_instruction, "fcvt.wu.d", 4), // single mapped to double
+            "fsgnj.s" => self.create_register_op(riscv_instruction, "fsgnj.d", 4), // single mapped to double
+            "fsgnjn.s" => self.create_register_op(riscv_instruction, "fsgnjn.d", 4), // single mapped to double
+            "fsgnjx.s" => self.create_register_op(riscv_instruction, "fsgnjx.d", 4), // single mapped to double
+            "fmadd.s" => self.create_register_op(riscv_instruction, "fadd.d", 4), // single mapped to double
+            "fmsub.s" => self.create_register_op(riscv_instruction, "fsub.d", 4), // single mapped to double
+            "fnmadd.s" => self.create_register_op(riscv_instruction, "fadd.d", 4), // single mapped to double
+            "fnmsub.s" => self.create_register_op(riscv_instruction, "fsub.d", 4), // single mapped to double
+            "fmv.w.x" => self.create_register_op(riscv_instruction, "fadd.d", 4), // single mapped to double
+            "fmv.x.w" => self.create_register_op(riscv_instruction, "fadd.d", 4), // single mapped to double
+
+            // D: Double-Precision Floating-Point
+            /////////////////////////////////////
+            "fld" => self.load_op(riscv_instruction, "copyb", 8, 4),
             "fsd" => self.store_op(riscv_instruction, "copyb", 8, 4),
             "fadd.d" => self.create_register_op(riscv_instruction, "fadd.d", 4),
             "fsub.d" => self.create_register_op(riscv_instruction, "fsub.d", 4),
