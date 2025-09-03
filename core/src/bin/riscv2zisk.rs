@@ -27,6 +27,7 @@ fn main() {
     // Get the 2 input parameters: ELF (RISCV) file name (input data) and ZisK file name (output
     // data)
     let elf_file = args[1].clone();
+    println!("ELF (RISCV) file: {elf_file}");
     let (asm_file, gen_arg) = if args.len() == 4 {
         (Some(args[2].clone()), args[3].clone())
     } else {

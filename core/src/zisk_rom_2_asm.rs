@@ -103,6 +103,7 @@ pub struct ZiskAsmContext {
     mem_step: String,
     mem_sp: String,
     mem_end: String,
+    mem_error: String,
     mem_trace_address: String,
     mem_chunk_address: String,
     mem_chunk_start_step: String,
@@ -408,6 +409,7 @@ impl ZiskRom2Asm {
         ctx.mem_step = format!("qword {}[MEM_STEP]", ctx.ptr);
         ctx.mem_sp = format!("qword {}[MEM_SP]", ctx.ptr);
         ctx.mem_end = format!("qword {}[MEM_END]", ctx.ptr);
+        ctx.mem_error = format!("qword {}[MEM_ERROR]", ctx.ptr);
         ctx.mem_trace_address = format!("qword {}[MEM_TRACE_ADDRESS]", ctx.ptr);
         ctx.mem_chunk_address = format!("qword {}[MEM_CHUNK_ADDRESS]", ctx.ptr);
         ctx.mem_chunk_start_step = format!("qword {}[MEM_CHUNK_START_STEP]", ctx.ptr);
@@ -426,6 +428,7 @@ impl ZiskRom2Asm {
         *code += ".comm MEM_STEP, 8, 8\n";
         *code += ".comm MEM_SP, 8, 8\n";
         *code += ".comm MEM_END, 8, 8\n";
+        *code += ".comm MEM_ERROR, 8, 8\n";
         *code += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
         *code += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
         *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
@@ -610,6 +613,7 @@ impl ZiskRom2Asm {
 
         *code += &format!("\n{}\n", ctx.comment_str("ASM memory initialization"));
         *code += &format!("\tmov {}, 0 {}\n", ctx.mem_end, ctx.comment_str("end = 0"));
+        *code += &format!("\tmov {}, 0 {}\n", ctx.mem_error, ctx.comment_str("error = 0"));
         if ctx.fast()
             || ctx.minimal_trace()
             || ctx.rom_histogram()
@@ -5968,6 +5972,15 @@ impl ZiskRom2Asm {
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Halt => {
+                *code +=
+                    &format!("\tmov {}, 1 {}\n", ctx.mem_error, ctx.comment_str("halt: error = 1"));
+                ctx.c.is_constant = true;
+                ctx.c.constant_value = 0;
+                ctx.c.string_value = "0".to_string();
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_one = true;
             }
         }
     }

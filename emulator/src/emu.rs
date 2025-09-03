@@ -1458,6 +1458,14 @@ impl<'a> Emu<'a> {
         while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
             self.step_fast();
         }
+
+        // Detect and report error
+        if self.ctx.inst_ctx.error {
+            eprintln!(
+                "Emu::run_fast() finished with error at step={} pc=0x{:x}",
+                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+            );
+        }
     }
 
     /// Performs one single step of the emulation
@@ -1655,6 +1663,14 @@ impl<'a> Emu<'a> {
             // println!("Emu::run() done ctx.pc={}", self.ctx.pc); // 2147483828
         }
 
+        // Detect and report error
+        if self.ctx.inst_ctx.error {
+            eprintln!(
+                "Emu::run() finished with error at step={} pc=0x{:x}",
+                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+            );
+        }
+
         // Print stats report
         if options.stats {
             let report = self.ctx.stats.report();
@@ -1717,6 +1733,14 @@ impl<'a> Emu<'a> {
                     panic!("Emu::par_run() reached max_steps");
                 }
             }
+        }
+
+        // Detect and report error
+        if self.ctx.inst_ctx.error {
+            eprintln!(
+                "Emu::par_run() finished with error at step={} pc=0x{:x}",
+                self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
+            );
         }
 
         emu_traces

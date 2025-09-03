@@ -63,15 +63,16 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
         // As per spec, they can only be 32 bits instructions, so we need to read the next 16 bits
         // and check that they are also zero
         if inst == 0 {
-            let inst = code[code_index];
-            code_index += 1;
-            assert!(
-                inst == 0,
-                "riscv_interpreter() found inst!=0 after 0 at position code_index={} (index in u16 array)",
-                code_index - 1
-            );
             // println!("riscv_interpreter() found inst=0 at position s={} (index in u32 array)", s);
-            insts.push(RiscvInstruction::nop(0));
+            let inst = code[code_index];
+            if inst == 0 {
+                // Both 16 bits instructions are zero, so this is a 32-bits NOP
+                insts.push(RiscvInstruction::nop(0));
+            } else {
+                // The first 16 bits are zero, but the second 16 bits are not zero, so this is a
+                // 16-bits invalid instruction, so we must HALT
+                insts.push(RiscvInstruction::halt(0));
+            }
             continue;
         }
 

@@ -237,6 +237,13 @@ impl Riscv2ZiskContext<'_> {
             // C. Other
             "c.nop" => self.nop(riscv_instruction, 2),
 
+            // Special ZisK instructions
+            ////////////////////////////
+
+            // This instruction ends the emulation with an error and its opcode cannot be proven,
+            // i.e. the proof generation would fail
+            "halt" => self.halt(riscv_instruction, 2),
+
             _ => panic!(
                 "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
                 riscv_instruction.inst
@@ -477,6 +484,21 @@ impl Riscv2ZiskContext<'_> {
         zib.src_b("imm", 0, false);
         zib.op("flag").unwrap();
         zib.j(inst_size as i32, inst_size as i32);
+        zib.verbose(&i.inst.to_string());
+        zib.build();
+        self.insts.insert(self.s, zib);
+        self.s += inst_size;
+    }
+
+    /// Creates a Zisk halt that simply sets the error to true and halts the execution
+    pub fn halt(&mut self, i: &RiscvInstruction, inst_size: u64) {
+        assert!(inst_size == 2 || inst_size == 4);
+        let mut zib = ZiskInstBuilder::new(self.s);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", 0, false);
+        zib.op("halt").unwrap();
+        zib.j(inst_size as i32, inst_size as i32);
+        zib.end();
         zib.verbose(&i.inst.to_string());
         zib.build();
         self.insts.insert(self.s, zib);
