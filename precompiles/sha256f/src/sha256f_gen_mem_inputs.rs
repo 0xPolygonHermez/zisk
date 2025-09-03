@@ -2,6 +2,7 @@ use generic_array::{typenum::U64, GenericArray};
 use sha2::compress256;
 
 use precompiles_common::MemBusHelpers;
+use std::collections::VecDeque;
 use zisk_common::{BusId, MEM_BUS_ID, OPERATION_BUS_DATA_SIZE};
 use zisk_core::{convert_u32_to_u64, convert_u64_to_generic_array_bytes, convert_u64_to_u32};
 
@@ -19,7 +20,8 @@ pub fn generate_sha256f_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-) -> Vec<(BusId, Vec<u64>)> {
+    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+) {
     // Get the basic data from the input
     // op,op_type,a,b,addr[2],...
     let state: &mut [u64; 4] = &mut data[6..10].try_into().unwrap();
@@ -33,12 +35,11 @@ pub fn generate_sha256f_mem_inputs(
     *state = convert_u32_to_u64(&state_u32);
 
     // Generate the memory reads/writes
-    let mut mem_inputs = Vec::new();
     let indirect_params = 2;
 
     // Start by generating the indirection reads
     for iparam in 0..indirect_params {
-        mem_inputs.push((
+        pending.push_back((
             MEM_BUS_ID,
             MemBusHelpers::mem_aligned_load(
                 addr_main + iparam as u32 * 8,
@@ -79,7 +80,7 @@ pub fn generate_sha256f_mem_inputs(
             } else {
                 data[current_param_offset + ichunk]
             };
-            mem_inputs.push((
+            pending.push_back((
                 MEM_BUS_ID,
                 MemBusHelpers::mem_aligned_op(
                     param_addr + ichunk as u32 * 8,
@@ -91,6 +92,4 @@ pub fn generate_sha256f_mem_inputs(
             ));
         }
     }
-
-    mem_inputs
 }

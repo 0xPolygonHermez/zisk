@@ -514,43 +514,4 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBn254ComplexMulData(d) => d[B],
         }
     }
-
-    /// Retrieves the extra data from operation data.
-    ///
-    /// # Arguments
-    /// * `data` - A reference to the operation data payload.
-    ///
-    /// # Returns
-    /// The extra data as a `Vec<PayloadType>`.
-    #[inline(always)]
-    pub fn get_extra_data(data: &ExtOperationData<u64>) -> Vec<PayloadType> {
-        match data {
-            ExtOperationData::OperationKeccakData(d) => {
-                d[OPERATION_BUS_DATA_SIZE..OPERATION_BUS_KECCAKF_DATA_SIZE].to_vec()
-            }
-            ExtOperationData::OperationSha256Data(d) => {
-                d[OPERATION_BUS_DATA_SIZE..OPERATION_BUS_SHA256F_DATA_SIZE].to_vec()
-            }
-            ExtOperationData::OperationArith256Data(d) => d[OPERATION_BUS_DATA_SIZE..].to_vec(),
-            ExtOperationData::OperationArith256ModData(d) => d[OPERATION_BUS_DATA_SIZE..].to_vec(),
-            ExtOperationData::OperationSecp256k1AddData(d) => d[OPERATION_BUS_DATA_SIZE..].to_vec(),
-            ExtOperationData::OperationSecp256k1DblData(d) => d[OPERATION_BUS_DATA_SIZE..].to_vec(),
-            ExtOperationData::OperationBn254CurveAddData(d) => {
-                d[OPERATION_BUS_DATA_SIZE..].to_vec()
-            }
-            ExtOperationData::OperationBn254CurveDblData(d) => {
-                d[OPERATION_BUS_DATA_SIZE..].to_vec()
-            }
-            ExtOperationData::OperationBn254ComplexAddData(d) => {
-                d[OPERATION_BUS_DATA_SIZE..].to_vec()
-            }
-            ExtOperationData::OperationBn254ComplexSubData(d) => {
-                d[OPERATION_BUS_DATA_SIZE..].to_vec()
-            }
-            ExtOperationData::OperationBn254ComplexMulData(d) => {
-                d[OPERATION_BUS_DATA_SIZE..].to_vec()
-            }
-            _ => vec![],
-        }
-    }
 }

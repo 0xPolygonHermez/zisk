@@ -4,7 +4,6 @@ mod mem_align_instance;
 mod mem_align_planner;
 mod mem_align_rom_sm;
 mod mem_align_sm;
-mod mem_bus_data_to_input;
 mod mem_constants;
 mod mem_counters;
 mod mem_counters_cursor;

@@ -137,7 +137,11 @@ impl ArithEqCollector {
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
     pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+        Self {
+            inputs: Vec::with_capacity(num_operations as usize),
+            num_operations,
+            collect_skipper,
+        }
     }
 }
 

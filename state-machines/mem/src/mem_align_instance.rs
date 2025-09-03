@@ -88,7 +88,7 @@ pub struct MemAlignCollector {
 impl MemAlignCollector {
     pub fn new(mem_align_checkpoint: &MemAlignCheckPoint) -> Self {
         Self {
-            inputs: Vec::new(),
+            inputs: Vec::with_capacity(mem_align_checkpoint.count as usize),
             skip_pending: mem_align_checkpoint.skip,
             pending_count: mem_align_checkpoint.count,
             rows: mem_align_checkpoint.rows,

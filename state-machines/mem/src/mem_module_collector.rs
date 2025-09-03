@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
 
-use crate::{mem_bus_data_to_input::MemBusDataToInput, MemInput, MemPreviousSegment};
+use crate::{MemHelpers, MemInput, MemPreviousSegment};
 use mem_common::MemModuleCheckPoint;
-use zisk_common::{BusDevice, BusId, SegmentId, MEM_BUS_ID};
+use zisk_common::{BusDevice, BusId, MemBusData, SegmentId, MEM_BUS_ID};
 
 #[derive(Debug)]
 pub struct MemModuleCollector {
@@ -33,7 +33,7 @@ impl MemModuleCollector {
         let to_count = mem_check_point.to_count;
         let skip = mem_check_point.from_skip;
         Self {
-            inputs: Vec::new(),
+            inputs: Vec::with_capacity(count as usize),
             mem_check_point: mem_check_point.clone(),
             prev_segment: None,
             min_addr,
@@ -91,21 +91,169 @@ impl MemModuleCollector {
         false
     }
 
-    /// Pushes the access only if this access must be managed with current instance.
+    /// Processes an unaligned memory access.
     ///
-    /// This function checks whether the given memory access (defined by `addr_w`, `step`, and `value`)
-    /// should be discarded using `discard_addr_step()`. If it is not discarded,
-    /// a new `MemInput` instance is created and pushed to `inputs`.
+    /// Processes an unaligned memory access by computing all necessary aligned memory operations
+    /// required to validate the unaligned access. The method determines the specific access case
+    /// based on whether it involves a single or double memory access and calls the appropriate
+    /// method to handle it.
     ///
     /// # Parameters
-    /// - `addr_w`: The memory address (8 bytes aligned).
-    /// - `step`: The mem_step of the memory access.
-    /// - `is_write`: Indicates whether the access is a write operation.
-    /// - `value`: The value to be read or written.
-    fn filtered_inputs_push(&mut self, inputs: Vec<MemInput>) {
-        for input in inputs {
-            if !self.discart_addr_step(input.addr, input.step, input.value) {
-                self.inputs.push(input);
+    /// - `data`: The data associated with the memory access.
+    fn process_unaligned_data(&mut self, data: &[u64]) {
+        let addr = MemBusData::get_addr(data);
+        let addr_w = MemHelpers::get_addr_w(addr);
+        let bytes = MemBusData::get_bytes(data);
+        let is_write = MemHelpers::is_write(MemBusData::get_op(data));
+        if MemHelpers::is_double(addr, bytes) {
+            if is_write {
+                self.process_unaligned_double_write(addr_w, bytes, data);
+            } else {
+                self.process_unaligned_double_read(addr_w, data);
+            }
+        } else if is_write {
+            self.process_unaligned_single_write(addr_w, bytes, data);
+        } else {
+            self.process_unaligned_single_read(addr_w, data);
+        }
+    }
+
+    /// Processes an unaligned single read operation.
+    ///
+    /// Handles an unaligned single read operation by computing all necessary aligned memory
+    /// operations required to validate the unaligned access. Finally, it uses `filtered_inputs_push`
+    /// to push only the necessary memory accesses into `inputs`.
+    ///
+    /// # Parameters
+    /// - `addr_w`: The memory address (aligned to 8 bytes).
+    /// - `data`: The data associated with the memory access.
+    fn process_unaligned_single_read(&mut self, addr_w: u32, data: &[u64]) {
+        let value = MemBusData::get_mem_values(data)[0];
+        let step = MemBusData::get_step(data);
+        if !self.discart_addr_step(addr_w, step, value) {
+            self.inputs.push(MemInput::new(addr_w, false, step, value));
+        }
+    }
+
+    /// Processes an unaligned single write operation.
+    ///
+    /// Handles an unaligned single write operation by computing all necessary aligned memory
+    /// operations required to validate the unaligned access. Additionally, it calculates the
+    /// write value for the given memory access. Finally, it uses `filtered_inputs_push` to
+    /// push only the necessary memory accesses into `inputs`.
+    ///
+    /// # Parameters
+    /// - `addr_w`: The memory address (aligned to 8 bytes).
+    /// - `bytes`: The number of bytes to be written.
+    /// - `data`: The data associated with the memory access.
+    fn process_unaligned_single_write(&mut self, addr_w: u32, bytes: u8, data: &[u64]) {
+        let read_values = MemBusData::get_mem_values(data);
+        let write_values = MemHelpers::get_write_values(
+            MemBusData::get_addr(data),
+            bytes,
+            MemBusData::get_value(data),
+            read_values,
+        );
+        let step = MemBusData::get_step(data);
+        let read_step = MemHelpers::get_read_step(step);
+        let write_step = MemHelpers::get_write_step(step);
+        if !self.discart_addr_step(addr_w, read_step, read_values[0]) {
+            self.inputs.push(MemInput::new(addr_w, false, read_step, read_values[0]));
+        }
+        if !self.discart_addr_step(addr_w, write_step, write_values[0]) {
+            self.inputs.push(MemInput::new(addr_w, true, write_step, write_values[0]));
+        }
+    }
+
+    /// Processes an unaligned double read operation.
+    ///
+    /// Handles an unaligned double read operation by computing all necessary aligned memory
+    /// operations required to validate the unaligned access. Finally, it uses `filtered_inputs_push`
+    /// to push only the necessary memory accesses into `inputs`.
+    ///
+    /// # Parameters
+    /// - `addr_w`: The memory address (aligned to 8 bytes).
+    /// - `data`: The data associated with the memory access.
+    fn process_unaligned_double_read(&mut self, addr_w: u32, data: &[u64]) {
+        let read_values = MemBusData::get_mem_values(data);
+        let step = MemBusData::get_step(data);
+        if !self.discart_addr_step(addr_w, step, read_values[0]) {
+            self.inputs.push(MemInput::new(addr_w, false, step, read_values[0]));
+        }
+
+        if !self.discart_addr_step(addr_w + 1, step, read_values[1]) {
+            self.inputs.push(MemInput::new(addr_w + 1, false, step, read_values[1]));
+        }
+    }
+
+    /// Processes an unaligned double write operation.
+    ///
+    /// Handles an unaligned double write operation by computing all necessary aligned memory
+    /// operations required to validate the unaligned access. Additionally, it calculates the
+    /// write value for the given memory access. Finally, it uses `filtered_inputs_push` to
+    /// push only the necessary memory accesses into `inputs`.
+    ///
+    /// # Parameters
+    /// - `addr_w`: The memory address (aligned to 8 bytes).
+    /// - `bytes`: The number of bytes to be written.
+    /// - `data`: The data associated with the memory access.
+    fn process_unaligned_double_write(&mut self, addr_w: u32, bytes: u8, data: &[u64]) {
+        let read_values = MemBusData::get_mem_values(data);
+        let write_values = MemHelpers::get_write_values(
+            MemBusData::get_addr(data),
+            bytes,
+            MemBusData::get_value(data),
+            read_values,
+        );
+        let step = MemBusData::get_step(data);
+        let read_step = MemHelpers::get_read_step(step);
+        let write_step = MemHelpers::get_write_step(step);
+
+        // IMPORTANT: inputs must be ordered by step
+        if !self.discart_addr_step(addr_w, read_step, read_values[0]) {
+            self.inputs.push(MemInput::new(addr_w, false, read_step, read_values[0]));
+        }
+
+        if !self.discart_addr_step(addr_w + 1, read_step, read_values[1]) {
+            self.inputs.push(MemInput::new(addr_w + 1, false, read_step, read_values[1]));
+        }
+
+        if !self.discart_addr_step(addr_w, write_step, write_values[0]) {
+            self.inputs.push(MemInput::new(addr_w, true, write_step, write_values[0]));
+        }
+
+        if !self.discart_addr_step(addr_w + 1, write_step, write_values[1]) {
+            self.inputs.push(MemInput::new(addr_w + 1, true, write_step, write_values[1]));
+        }
+    }
+
+    pub fn bus_data_to_input(&mut self, data: &[u64]) {
+        // decoding information in bus
+
+        let addr = MemBusData::get_addr(data);
+        let bytes = MemBusData::get_bytes(data);
+
+        // If the access is unaligned (not aligned to 8 bytes or has a width different from 8 bytes).
+
+        if !MemHelpers::is_aligned(addr, bytes) {
+            self.process_unaligned_data(data);
+        } else {
+            // Direct case when is aligned, calculated 8 bytes addres (addr_w) and check if is a
+            // write or read.
+
+            let step = MemBusData::get_step(data);
+            let addr_w = MemHelpers::get_addr_w(addr);
+            let is_write = MemHelpers::is_write(MemBusData::get_op(data));
+            if is_write {
+                let value = MemBusData::get_value(data);
+                if !self.discart_addr_step(addr_w, step, value) {
+                    self.inputs.push(MemInput::new(addr_w, true, step, value));
+                }
+            } else {
+                let value = MemBusData::get_mem_values(data)[0];
+                if !self.discart_addr_step(addr_w, step, value) {
+                    self.inputs.push(MemInput::new(addr_w, false, step, value));
+                }
             }
         }
     }
@@ -120,8 +268,7 @@ impl BusDevice<u64> for MemModuleCollector {
     ) -> bool {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
-        let inputs = MemBusDataToInput::bus_data_to_input(data);
-        self.filtered_inputs_push(inputs);
+        self.bus_data_to_input(data);
 
         true
     }

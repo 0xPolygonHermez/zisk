@@ -141,76 +141,79 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
 
         match op {
             ARITH256_OP => {
-                pending.extend(generate_arith256_mem_inputs(
-                    addr_main,
-                    step_main,
-                    data,
-                    only_counters,
-                ));
+                generate_arith256_mem_inputs(addr_main, step_main, data, only_counters, pending);
             }
             ARITH256_MOD_OP => {
-                pending.extend(generate_arith256_mod_mem_inputs(
+                generate_arith256_mod_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             SECP256K1_ADD_OP => {
-                pending.extend(generate_secp256k1_add_mem_inputs(
+                generate_secp256k1_add_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             SECP256K1_DBL_OP => {
-                pending.extend(generate_secp256k1_dbl_mem_inputs(
+                generate_secp256k1_dbl_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             BN254_CURVE_ADD_OP => {
-                pending.extend(generate_bn254_curve_add_mem_inputs(
+                generate_bn254_curve_add_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             BN254_CURVE_DBL_OP => {
-                pending.extend(generate_bn254_curve_dbl_mem_inputs(
+                generate_bn254_curve_dbl_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             BN254_COMPLEX_ADD_OP => {
-                pending.extend(generate_bn254_complex_add_mem_inputs(
+                generate_bn254_complex_add_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             BN254_COMPLEX_SUB_OP => {
-                pending.extend(generate_bn254_complex_sub_mem_inputs(
+                generate_bn254_complex_sub_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             BN254_COMPLEX_MUL_OP => {
-                pending.extend(generate_bn254_complex_mul_mem_inputs(
+                generate_bn254_complex_mul_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
 
             _ => {

@@ -1,5 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Arith256Mod;
+use std::collections::VecDeque;
 use zisk_common::BusId;
 
 pub const ARITH_256_MOD_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
@@ -14,7 +15,8 @@ pub fn generate_arith256_mod_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-) -> Vec<(BusId, Vec<u64>)> {
+    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+) {
     // op,op_type,a,b,addr[5],...
     let a: &[u64; 4] = &data[9..13].try_into().unwrap();
     let b: &[u64; 4] = &data[13..17].try_into().unwrap();
@@ -29,6 +31,7 @@ pub fn generate_arith256_mod_mem_inputs(
         data,
         Some(&d),
         only_counters,
+        pending,
         &ARITH_256_MOD_MEM_CONFIG,
-    )
+    );
 }

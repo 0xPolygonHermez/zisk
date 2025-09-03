@@ -120,7 +120,7 @@ impl BusDevice<u64> for Sha256fCounterInputGen {
             self.measure(data);
         }
 
-        pending.extend(generate_sha256f_mem_inputs(addr_main, step_main, data, only_counters));
+        generate_sha256f_mem_inputs(addr_main, step_main, data, only_counters, pending);
 
         true
     }

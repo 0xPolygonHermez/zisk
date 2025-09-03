@@ -30,7 +30,7 @@ pub struct BinaryBasicInstance<F: PrimeField64> {
     with_adds: bool,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
+    collect_info: HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>,
 }
 
 impl<F: PrimeField64> BinaryBasicInstance<F> {
@@ -54,7 +54,7 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let (with_adds, collect_info) = *meta
-            .downcast::<(bool, HashMap<ChunkId, (u64, bool, CollectSkipper)>)>()
+            .downcast::<(bool, HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>)>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { binary_basic_sm, ictx, with_adds, collect_info }
@@ -117,9 +117,11 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
+        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
+            self.collect_info[&chunk_id];
         Some(Box::new(BinaryBasicCollector::new(
             num_ops as usize,
+            num_freq_ops as usize,
             collect_skipper,
             self.with_adds,
             force_execute_to_end,

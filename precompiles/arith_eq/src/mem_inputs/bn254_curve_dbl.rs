@@ -1,5 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Bn254Curve;
+use std::collections::VecDeque;
 use zisk_common::BusId;
 
 pub const BN254_CURVE_DBL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
@@ -15,7 +16,8 @@ pub fn generate_bn254_curve_dbl_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-) -> Vec<(BusId, Vec<u64>)> {
+    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+) {
     // op,op_type,a,b,addr[2],...
     let p1: &[u64; 8] = &data[4..12].try_into().unwrap();
     let mut p3 = [0u64; 8];
@@ -27,6 +29,7 @@ pub fn generate_bn254_curve_dbl_mem_inputs(
         data,
         Some(&p3),
         only_counters,
+        pending,
         &BN254_CURVE_DBL_MEM_CONFIG,
-    )
+    );
 }
