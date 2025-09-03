@@ -84,7 +84,7 @@ pub fn get_default_verifier_bin() -> String {
 /// Gets the default verification key JSON file location in the home installation directory.
 pub fn get_default_verkey() -> String {
     let verkey =
-        format!("{}/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json", get_home_dir());
+        format!("{}/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.bin", get_home_dir());
     verkey
 }
 

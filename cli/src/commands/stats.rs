@@ -103,8 +103,11 @@ pub struct ZiskStats {
     #[clap(long)]
     pub mpi_node: Option<usize>,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
+
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskStats {
@@ -294,6 +297,7 @@ impl ZiskStats {
                     Some(local_rank),
                     self.port,
                     self.unlock_mapped_memory,
+                    self.shared_tables,
                 )
                 .expect("Failed to initialize witness library");
 

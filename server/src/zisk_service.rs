@@ -80,6 +80,8 @@ pub struct ServerConfig {
     pub final_snark: bool,
 
     pub gpu_params: ParamsGPU,
+
+    pub shared_tables: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -101,6 +103,7 @@ impl ServerConfig {
         aggregation: bool,
         final_snark: bool,
         gpu_params: ParamsGPU,
+        shared_tables: bool,
     ) -> Self {
         Self {
             port,
@@ -121,6 +124,7 @@ impl ServerConfig {
             aggregation,
             final_snark,
             gpu_params,
+            shared_tables,
         }
     }
 }
@@ -250,6 +254,7 @@ impl ZiskService {
         let local_rank = config.asm_runner_options.local_rank;
         let base_port = config.asm_runner_options.base_port;
         let unlock_mapped_memory = config.asm_runner_options.unlock_mapped_memory;
+        let shared_tables = config.shared_tables;
 
         let asm_services = if config.emulator {
             None
@@ -277,6 +282,7 @@ impl ZiskService {
             Some(local_rank),
             base_port,
             unlock_mapped_memory,
+            shared_tables,
         )
         .expect("Failed to initialize witness library");
 
