@@ -19,6 +19,7 @@ pub struct BinaryBasicCollector {
     pub frops_inputs: Vec<u32>,
 
     pub num_operations: usize,
+
     pub collect_skipper: CollectSkipper,
 
     /// Flag to indicate that this instance comute add operations
@@ -39,16 +40,17 @@ impl BinaryBasicCollector {
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
     pub fn new(
         num_operations: usize,
+        num_freq_ops: usize,
         collect_skipper: CollectSkipper,
         with_adds: bool,
         force_execute_to_end: bool,
     ) -> Self {
         Self {
-            inputs: Vec::new(),
+            inputs: Vec::with_capacity(num_operations),
             num_operations,
             collect_skipper,
             with_adds,
-            frops_inputs: Vec::new(),
+            frops_inputs: Vec::with_capacity(num_freq_ops),
             force_execute_to_end,
         }
     }

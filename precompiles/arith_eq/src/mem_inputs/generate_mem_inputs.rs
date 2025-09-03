@@ -1,4 +1,5 @@
 use precompiles_common::MemBusHelpers;
+use std::collections::VecDeque;
 use zisk_common::{BusId, MEM_BUS_ID, OPERATION_BUS_DATA_SIZE};
 
 #[derive(Debug)]
@@ -15,14 +16,14 @@ pub fn generate_mem_inputs(
     data: &[u64],
     write_data: Option<&[u64]>,
     only_counters: bool,
+    pending: &mut VecDeque<(BusId, Vec<u64>)>,
     config: &ArithEqMemInputConfig,
-) -> Vec<(BusId, Vec<u64>)> {
-    let mut mem_inputs = Vec::new();
+) {
     let params_count = config.read_params + config.write_params;
     let params_offset = OPERATION_BUS_DATA_SIZE + config.indirect_params;
 
     for iparam in 0..config.indirect_params {
-        mem_inputs.push((
+        pending.push_back((
             MEM_BUS_ID,
             MemBusHelpers::mem_aligned_load(
                 addr_main + iparam as u32 * 8,
@@ -62,7 +63,7 @@ pub fn generate_mem_inputs(
             } else {
                 data[current_param_offset + ichunk]
             };
-            mem_inputs.push((
+            pending.push_back((
                 MEM_BUS_ID,
                 MemBusHelpers::mem_aligned_op(
                     param_addr + ichunk as u32 * 8,
@@ -74,5 +75,4 @@ pub fn generate_mem_inputs(
             ));
         }
     }
-    mem_inputs
 }

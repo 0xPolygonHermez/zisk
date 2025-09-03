@@ -120,9 +120,7 @@ impl BusDevice<u64> for ArithCounterInputGen {
             self.measure(data);
         }
 
-        let bin_inputs = ArithFullSM::<Goldilocks>::generate_inputs(data);
-
-        pending.extend(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)));
+        ArithFullSM::<Goldilocks>::generate_inputs(data, pending);
 
         true
     }

@@ -120,7 +120,7 @@ impl BusDevice<u64> for KeccakfCounterInputGen {
             self.measure(data);
         }
 
-        pending.extend(generate_keccakf_mem_inputs(addr_main, step_main, data, only_counters));
+        generate_keccakf_mem_inputs(addr_main, step_main, data, only_counters, pending);
 
         true
     }

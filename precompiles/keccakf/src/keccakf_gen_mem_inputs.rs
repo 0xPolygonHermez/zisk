@@ -1,6 +1,7 @@
 use tiny_keccak::keccakf;
 
 use precompiles_common::MemBusHelpers;
+use std::collections::VecDeque;
 use zisk_common::{BusId, MEM_BUS_ID, OPERATION_BUS_DATA_SIZE};
 
 #[derive(Debug)]
@@ -16,7 +17,8 @@ pub fn generate_keccakf_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-) -> Vec<(BusId, Vec<u64>)> {
+    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+) {
     // Get the basic data from the input
     // op,op_type,a,b,...
     let state: &mut [u64; 25] = &mut data[4..29].try_into().unwrap();
@@ -30,7 +32,6 @@ pub fn generate_keccakf_mem_inputs(
     let chunks_per_param = 25;
     let params_count = read_params + write_params;
     let params_offset = OPERATION_BUS_DATA_SIZE;
-    let mut mem_inputs = Vec::new();
     for iparam in 0..params_count {
         let is_write = iparam >= read_params;
         let param_index = if is_write { iparam - read_params } else { iparam };
@@ -51,7 +52,7 @@ pub fn generate_keccakf_mem_inputs(
             } else {
                 data[current_param_offset + ichunk]
             };
-            mem_inputs.push((
+            pending.push_back((
                 MEM_BUS_ID,
                 MemBusHelpers::mem_aligned_op(
                     param_addr + ichunk as u32 * 8,
@@ -63,6 +64,4 @@ pub fn generate_keccakf_mem_inputs(
             ));
         }
     }
-
-    mem_inputs
 }
