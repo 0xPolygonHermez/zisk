@@ -127,7 +127,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     ```
 
 4. Copy required files for assembly rom setup:
-    **Note:** This is only needed on Ubuntu x86_64, since assembly execution is not supported on macOS
+    **Note:** This is only needed on Linux x86_64, since assembly execution is not supported on macOS
 
     ```bash
     mkdir -p $HOME/.zisk/zisk/emulator-asm
