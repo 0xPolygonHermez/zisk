@@ -486,7 +486,7 @@ impl ZiskService {
         match option {
             Some(0) => {
                 info_file!("Received process 'VerifyConstraints' request");
-                // Deserialize the rest of the bytes into ZiskVerifyConstraintsRequest
+                // Deserialize the rest of bytes into ZiskVerifyConstraintsRequest
                 let payload: ZiskVerifyConstraintsRequest =
                     serde_json::from_slice(&bytes[1..]).expect("Failed to deserialize payload");
                 ZiskServiceVerifyConstraintsHandler::process_handle(
@@ -498,7 +498,7 @@ impl ZiskService {
             Some(1) => {
                 info_file!("Received process 'Prove' request");
                 // Prove request
-                // Deserialize the rest of the bytes into ZiskProveRequest
+                // Deserialize the rest of bytes into ZiskProveRequest
                 let payload: ZiskProveRequest =
                     serde_json::from_slice(&bytes[1..]).expect("Failed to deserialize payload");
                 ZiskServiceProveHandler::process_handle(payload, self.proofman.clone());
