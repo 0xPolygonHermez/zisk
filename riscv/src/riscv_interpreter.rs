@@ -71,7 +71,6 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                 insts.push(RiscvInstruction::halt(0));
                 break;
             }
-            assert!(code_index < code_len); // There must be at least another 16 bits
             let inst = code[code_index];
             if inst == 0 {
                 // Both 16 bits instructions are zero, so this is a 32-bits nop
