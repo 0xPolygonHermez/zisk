@@ -788,7 +788,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1078,7 +1078,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "num-bigint",
  "paste",
@@ -1856,9 +1856,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.27"
+version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
+checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
 name = "lru-slab"
@@ -2189,7 +2189,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "pil-std-lib"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "colored",
  "fields",
@@ -2446,7 +2446,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "blake3",
  "bytemuck",
@@ -2478,7 +2478,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "crossbeam-channel",
  "env",
@@ -2501,7 +2501,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "fields",
  "proofman-common",
@@ -2513,7 +2513,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2524,7 +2524,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2533,7 +2533,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "colored",
  "fields",
@@ -2544,7 +2544,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "bytemuck",
  "fields",
@@ -3766,7 +3766,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4378,7 +4378,7 @@ checksum = "052283831dbae3d879dc7f51f3d92703a316ca49f91540417d38591826127814"
 [[package]]
 name = "witness"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-improvements#88f115ae2ad70a936b8452b43a51a1debb3a288b"
 dependencies = [
  "colored",
  "fields",
@@ -4664,9 +4664,9 @@ dependencies = [
 
 [[package]]
 name = "zstd-sys"
-version = "2.0.15+zstd.1.5.7"
+version = "2.0.16+zstd.1.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb81183ddd97d0c74cedf1d50d85c8d08c1b8b68ee863bdee9e706eedba1a237"
+checksum = "91e19ebc2adc8f83e43039e79776e3fda8ca919132d68a1fed6a5faca2683748"
 dependencies = [
  "cc",
  "pkg-config",

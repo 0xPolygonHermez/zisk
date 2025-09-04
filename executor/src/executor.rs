@@ -42,7 +42,10 @@ use zisk_common::{
     Plan,
 };
 use zisk_common::{ChunkId, PayloadType};
-use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{
+    RomRomTrace, ZiskPublicValues, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS,
+    ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
+};
 
 use std::thread::JoinHandle;
 use std::time::Instant;
@@ -1410,7 +1413,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                         chunk_ids.iter().map(|id| id.as_usize()).collect()
                     }
                 };
-                pctx.dctx_set_chunks(*global_id, chunks);
+                let (_, air_id) = pctx.dctx_get_instance_info(*global_id);
+                let mem_global_id = air_id == MEM_AIR_IDS[0]
+                    || air_id == ROM_DATA_AIR_IDS[0]
+                    || air_id == INPUT_DATA_AIR_IDS[0];
+                pctx.dctx_set_chunks(*global_id, chunks, mem_global_id);
             }
         }
 
