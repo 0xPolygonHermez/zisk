@@ -1,13 +1,17 @@
 #include "mem_counter.hpp"
 #include <assert.h>
+#include <string.h>
+
 MemCounter::MemCounter(uint32_t id, std::shared_ptr<MemContext> context)
 :id(id), context(context), addr_mask(id * 8) {
     count = 0;
     queue_full = 0;
+    first_chunk_us = 0;
     tot_wait_us = 0;
     #ifdef USE_ADDR_COUNT_TABLE
     addr_count_table = (AddrCount *)malloc(ADDR_TABLE_SIZE * sizeof(AddrCount));
-    memset(addr_count_table, 0, ADDR_TABLE_SIZE * sizeof(AddrCount));
+    explicit_bzero(addr_count_table, ADDR_TABLE_SIZE * sizeof(AddrCount));
+    // memset(addr_count_table, 0, ADDR_TABLE_SIZE * sizeof(AddrCount));
     #else
     addr_table = (uint32_t *)malloc(ADDR_TABLE_SIZE * sizeof(uint32_t));
     memset(addr_table, 0, ADDR_TABLE_SIZE * sizeof(uint32_t));
@@ -18,7 +22,7 @@ MemCounter::MemCounter(uint32_t id, std::shared_ptr<MemContext> context)
     addr_slots = (uint32_t *)std::aligned_alloc(64, ADDR_SLOTS_SIZE * sizeof(uint32_t));
 
     memset(first_offset, 0xFF, sizeof(first_offset));
-    memset(last_offset, 0, sizeof(last_offset));
+    explicit_bzero(last_offset, sizeof(last_offset));
 
     free_slot = 0;
     addr_count = 0;
@@ -34,19 +38,64 @@ MemCounter::~MemCounter() {
 }
 
 void MemCounter::execute() {
-    uint64_t init = get_usec();
-    const MemChunk *chunk;
-    uint32_t chunk_id = 0;
-    uint64_t elapsed_us = 0;
-    while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr) {
-        execute_chunk(chunk_id, chunk->data, chunk->count);
+    uint64_t init_us = get_usec();
+    
+    int64_t elapsed_us = 0;
+
+    const MemChunk *chunk =
+#ifdef MEM_CONTEXT_SEM
+        context->get_chunk(id, 0, elapsed_us);
+#else
+        context->get_chunk(0, elapsed_us);
+#endif
+    #ifdef COUNT_CHUNK_STATS
+    wait_chunks_us[0] = elapsed_us;
+    auto start_execute_us = get_usec();
+    #endif
+    if (chunk != nullptr) {
+        execute_chunk(0, chunk->data, chunk->count);
+        #ifdef COUNT_CHUNK_STATS
+        chunks_us[0] = get_usec() - start_execute_us;
+        tot_wait_us += elapsed_us > 0 ? elapsed_us : 0;
+        #else
         tot_wait_us += elapsed_us;
-        ++chunk_id;
+        #endif
+        first_chunk_us = get_usec() - init_us;
+
+        uint32_t chunk_id = 1;
+#ifdef MEM_CONTEXT_SEM
+        while ((chunk = context->get_chunk(id, chunk_id, elapsed_us)) != nullptr) {
+#else
+        while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr) {
+#endif
+            #ifdef COUNT_CHUNK_STATS
+            wait_chunks_us[chunk_id] = elapsed_us;
+            auto start_execute_us = get_usec();
+            #endif
+            execute_chunk(chunk_id, chunk->data, chunk->count);
+            #ifdef COUNT_CHUNK_STATS
+            chunks_us[chunk_id] = get_usec() - start_execute_us;
+            tot_wait_us += elapsed_us > 0 ? elapsed_us : 0;
+            #else
+            tot_wait_us += elapsed_us;
+            #endif
+            ++chunk_id;
+        }
+        #ifdef COUNT_CHUNK_STATS
+        wait_chunks_us[chunk_id] = elapsed_us;
+        #endif
     }
-    elapsed_ms = ((get_usec() - init) / 1000);
+    elapsed_ms = ((get_usec() - init_us) / 1000);
 }
 
 void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chunk_data, uint32_t chunk_size) {
+
+#ifdef MEM_STATS_ACTIVE
+    // Get start time for stats
+    struct timespec start_time;
+    clock_gettime(CLOCK_REALTIME, &start_time);
+#endif // MEM_STATS_ACTIVE
+
     current_chunk = chunk_id;
 
     for (const MemCountersBusData *chunk_eod = chunk_data + chunk_size; chunk_eod != chunk_data; chunk_data++) {
@@ -82,6 +131,18 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
             }
         }
     }
+
+#ifdef MEM_STATS_ACTIVE
+    // Add stats for this chunk execution
+    struct timespec end_time;
+    clock_gettime(CLOCK_REALTIME, &end_time);
+    assert(mem_stats != nullptr);
+    mem_stats->add_stat(
+        MEM_STATS_EXECUTE_CHUNK_0 + ((id - MEM_STATS_EXECUTE_CHUNK_0) % std::min(8, MAX_THREADS)),
+        start_time.tv_sec,
+        start_time.tv_nsec, 
+        (end_time.tv_sec - start_time.tv_sec) * 1000000000 + (end_time.tv_nsec - start_time.tv_nsec));
+#endif // MEM_STATS_ACTIVE
 }
 
 void MemCounter::count_aligned(uint32_t addr, uint32_t chunk_id, uint32_t count) {
@@ -139,4 +200,21 @@ void MemCounter::count_aligned(uint32_t addr, uint32_t chunk_id, uint32_t count)
         addr_table[offset] = pos + 2;
         #endif
     }
+}
+
+void MemCounter::stats() {
+    #ifdef COUNT_CHUNK_STATS
+    uint32_t chunks_count = context->size();
+    if (chunks_count > 0) {
+        printf("counter[%d].chunk_us: %ld", id, chunks_us[0]);
+        for (size_t j = 1; j < chunks_count; ++j) {
+            printf(";%ld", chunks_us[j]);
+        }
+        printf("\ncounter[%d].wait_chunks_us: %ld", id, wait_chunks_us[0]);
+        for (size_t j = 1; j < chunks_count; ++j) {
+            printf(";%ld", wait_chunks_us[j]);
+        }
+        printf("\n");
+    }
+    #endif
 }

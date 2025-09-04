@@ -12,11 +12,11 @@ name = "mem_sim"
 path = "src/mem_sim.rs"
 
 [dependencies]
-zisk-core = { path = "../../core" }
-zisk-common = { path = "../../common" }
-zisk-pil = { path = "../../pil" }
-mem-planner-cpp = { path = "../mem-cpp" }
-mem-common = { path = "../mem-common" }
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
+zisk-pil = { workspace = true }
+mem-planner-cpp = { workspace = true }
+mem-common = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }

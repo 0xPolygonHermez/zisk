@@ -4,8 +4,6 @@
 
 use std::any::Any;
 
-use proofman_common::PreCalculate;
-
 use crate::{BusDeviceMetrics, ChunkId, InstanceType, SegmentId};
 
 /// The `CollectSkipper` struct defines logic for skipping instructions during input collection.
@@ -54,6 +52,23 @@ impl CollectSkipper {
         self.skipped += 1;
         true
     }
+
+    #[inline(always)]
+    pub fn should_skip_query(&mut self, apply: bool) -> bool {
+        if !self.skipping {
+            return false;
+        }
+
+        if self.skip == 0 || self.skipped >= self.skip {
+            self.skipping = false;
+            return false;
+        }
+
+        if apply {
+            self.skipped += 1;
+        }
+        true
+    }
 }
 
 /// Represents different types of checkpoints in a plan.
@@ -92,7 +107,7 @@ pub struct Plan {
 
     pub global_id: Option<usize>,
 
-    pub pre_calculate: PreCalculate,
+    pub n_threads_witness: usize,
 }
 
 impl Plan {
@@ -115,8 +130,8 @@ impl Plan {
         segment_id: Option<SegmentId>,
         instance_type: InstanceType,
         check_point: CheckPoint,
-        pre_calculate: PreCalculate,
         meta: Option<Box<dyn Any>>,
+        n_threads_witness: usize,
     ) -> Self {
         Plan {
             airgroup_id,
@@ -125,8 +140,8 @@ impl Plan {
             instance_type,
             check_point,
             meta,
-            pre_calculate,
             global_id: None,
+            n_threads_witness,
         }
     }
 

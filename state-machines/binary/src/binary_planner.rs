@@ -7,13 +7,11 @@
 use std::any::Any;
 
 use crate::BinaryCounter;
-use proofman_common::PreCalculate;
 use zisk_common::{
-    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner,
+    plan_with_frops, BusDeviceMetrics, ChunkId, InstFropsCount, InstanceType, Metrics, Plan,
+    Planner,
 };
-use zisk_pil::{
-    BinaryAddTrace, BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace,
-};
+use zisk_pil::{BinaryAddTrace, BinaryExtensionTrace, BinaryTrace};
 
 /// The `BinaryPlanner` struct organizes execution plans for binaries instances and tables.
 ///
@@ -43,14 +41,20 @@ impl BinaryPlanner {
     }
 
     fn plan_for_extensions(&self, counters: &Vec<(ChunkId, &BinaryCounter)>) -> Vec<Plan> {
-        let extension_counters: Vec<InstCount> = counters
+        let extension_counters: Vec<InstFropsCount> = counters
             .iter()
-            .map(|(chunk_id, c)| InstCount::new(*chunk_id, c.counter_extension.inst_count))
+            .map(|(chunk_id, c)| {
+                InstFropsCount::new(
+                    *chunk_id,
+                    c.counter_extension.inst_count,
+                    c.counter_extension.frops_count,
+                )
+            })
             .collect();
 
         let extension_num_rows = BinaryExtensionTrace::<usize>::NUM_ROWS;
 
-        let mut plans: Vec<_> = plan(&extension_counters, extension_num_rows as u64)
+        let plans: Vec<_> = plan_with_frops(&extension_counters, extension_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new(collect_info);
@@ -60,23 +64,12 @@ impl BinaryPlanner {
                     None,
                     InstanceType::Instance,
                     check_point,
-                    PreCalculate::Fast,
                     Some(converted),
+                    4,
                 )
             })
             .collect();
 
-        if !plans.is_empty() {
-            plans.push(Plan::new(
-                BinaryExtensionTableTrace::<usize>::AIRGROUP_ID,
-                BinaryExtensionTableTrace::<usize>::AIR_ID,
-                None,
-                InstanceType::Table,
-                CheckPoint::None,
-                PreCalculate::None,
-                None,
-            ));
-        }
         plans
     }
     fn plan_for_basics(
@@ -84,20 +77,22 @@ impl BinaryPlanner {
         counters: &Vec<(ChunkId, &BinaryCounter)>,
         with_adds: bool,
     ) -> Vec<Plan> {
-        let basic_counters: Vec<InstCount> = counters
+        let basic_counters: Vec<InstFropsCount> = counters
             .iter()
             .map(|(chunk_id, c)| {
-                InstCount::new(
+                InstFropsCount::new(
                     *chunk_id,
                     c.counter_basic_wo_add.inst_count
                         + if with_adds { c.counter_add.inst_count } else { 0 },
+                    c.counter_basic_wo_add.frops_count
+                        + if with_adds { c.counter_add.frops_count } else { 0 },
                 )
             })
             .collect();
 
         let basic_num_rows = BinaryTrace::<usize>::NUM_ROWS;
 
-        let mut plans: Vec<_> = plan(&basic_counters, basic_num_rows as u64)
+        let plans: Vec<_> = plan_with_frops(&basic_counters, basic_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new((with_adds, collect_info));
@@ -107,35 +102,26 @@ impl BinaryPlanner {
                     None,
                     InstanceType::Instance,
                     check_point,
-                    PreCalculate::Fast,
                     Some(converted),
+                    4,
                 )
             })
             .collect();
 
-        if !plans.is_empty() {
-            plans.push(Plan::new(
-                BinaryTableTrace::<usize>::AIRGROUP_ID,
-                BinaryTableTrace::<usize>::AIR_ID,
-                None,
-                InstanceType::Table,
-                CheckPoint::None,
-                PreCalculate::None,
-                None,
-            ));
-        }
         plans
     }
 
     fn plan_for_adds(&self, counters: &Vec<(ChunkId, &BinaryCounter)>) -> Vec<Plan> {
-        let add_counters: Vec<InstCount> = counters
+        let add_counters: Vec<InstFropsCount> = counters
             .iter()
-            .map(|(chunk_id, c)| InstCount::new(*chunk_id, c.counter_add.inst_count))
+            .map(|(chunk_id, c)| {
+                InstFropsCount::new(*chunk_id, c.counter_add.inst_count, c.counter_add.frops_count)
+            })
             .collect();
 
         let add_num_rows = BinaryAddTrace::<usize>::NUM_ROWS;
 
-        plan(&add_counters, add_num_rows as u64)
+        plan_with_frops(&add_counters, add_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new(collect_info);
@@ -145,8 +131,8 @@ impl BinaryPlanner {
                     None,
                     InstanceType::Instance,
                     check_point,
-                    PreCalculate::Fast,
                     Some(converted),
+                    4,
                 )
             })
             .collect()

@@ -10,16 +10,11 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use std::{
-    collections::HashMap,
-    env, fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use crate::{
     commands::{
-        cli_fail_if_gpu_mode, cli_fail_if_macos, get_proving_key, get_witness_computation_lib,
-        initialize_mpi, Field,
+        cli_fail_if_gpu_mode, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
     },
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
@@ -89,14 +84,12 @@ pub struct ZiskExecute {
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    // PRECOMPILES OPTIONS
-    /// Sha256f script path
-    pub sha256f_script: Option<PathBuf>,
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskExecute {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
         cli_fail_if_gpu_mode()?;
 
         print_banner();
@@ -104,17 +97,6 @@ impl ZiskExecute {
         let mpi_context = initialize_mpi()?;
 
         proofman_common::initialize_logger(self.verbose.into(), Some(mpi_context.world_rank));
-
-        let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
-            sha256f_path.clone()
-        } else {
-            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{home_dir}/.zisk/bin/sha256f_script.json"));
-            if !script_path.exists() {
-                panic!("Sha256f script file not found at {script_path:?}");
-            }
-            script_path
-        };
 
         let default_cache_path =
             std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
@@ -173,7 +155,7 @@ impl ZiskExecute {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info(&sha256f_script);
+        self.print_command_info();
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -218,6 +200,13 @@ impl ZiskExecute {
             .with_local_rank(mpi_context.local_rank)
             .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
+        if self.asm.is_some() {
+            // Start ASM microservices
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
+
+            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
+        }
+
         match self.field {
             Field::Goldilocks => {
                 let library = unsafe {
@@ -230,24 +219,16 @@ impl ZiskExecute {
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,
-                    sha256f_script,
                     None,
                     Some(mpi_context.world_rank),
                     Some(mpi_context.local_rank),
                     self.port,
                     self.unlock_mapped_memory,
+                    self.shared_tables,
                 )
                 .expect("Failed to initialize witness library");
 
                 proofman.register_witness(&mut *witness_lib, library);
-
-                if self.asm.is_some() {
-                    // Start ASM microservices
-                    tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
-
-                    asm_services
-                        .start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
-                }
 
                 proofman
                     .execute_from_lib(self.input.clone(), self.output_path.clone())
@@ -264,7 +245,7 @@ impl ZiskExecute {
         Ok(())
     }
 
-    fn print_command_info(&self, sha256f_script: &Path) {
+    fn print_command_info(&self) {
         // Print Execute command info
         println!("{} Execute", format!("{: >12}", "Command").bright_green().bold());
         println!(
@@ -297,7 +278,6 @@ impl ZiskExecute {
             get_proving_key(self.proving_key.as_ref()).display()
         );
 
-        println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();

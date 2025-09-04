@@ -6,26 +6,20 @@ use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU, ProofOptions};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    env, fs,
-    path::{Path, PathBuf},
-    thread,
-    time::Instant,
-};
-use zisk_common::ZiskLibInitFn;
+use std::sync::{Arc, Mutex};
+use std::{collections::HashMap, fs, path::PathBuf, thread, time::Instant};
+use zisk_common::{ExecutorStats, ZiskLibInitFn};
+// use zisk_common::ExecutorStatsEnum;
 use zisk_pil::*;
 
 use crate::{
-    commands::{
-        cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
-    },
+    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -106,17 +100,18 @@ pub struct ZiskStats {
     pub debug: Option<Option<String>>,
 
     // PRECOMPILES OPTIONS
-    /// Sha256f script path
-    pub sha256f_script: Option<PathBuf>,
-
     #[clap(long)]
     pub mpi_node: Option<usize>,
+
+    #[clap(short = 'm', long, default_value_t = false)]
+    pub minimal_memory: bool,
+
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
-
         print_banner();
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
@@ -127,17 +122,6 @@ impl ZiskStats {
             Some(Some(debug_value)) => {
                 json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
             }
-        };
-
-        let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
-            sha256f_path.clone()
-        } else {
-            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{home_dir}/.zisk/bin/sha256f_script.json"));
-            if !script_path.exists() {
-                panic!("Sha256f script file not found at {script_path:?}");
-            }
-            script_path
         };
 
         let default_cache_path =
@@ -195,7 +179,7 @@ impl ZiskStats {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info(&sha256f_script);
+        self.print_command_info();
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -223,20 +207,6 @@ impl ZiskStats {
             let world = mpi_context.universe.world();
             world_ranks = world.size() as usize;
 
-            if let Some(mpi_node) = self.mpi_node {
-                let m2 = mpi_node as i32 * 2;
-                if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
-                    world.split_shared(mpi_context.world_rank);
-                    world.barrier();
-                    println!(
-                        "{}: {}",
-                        format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
-                        "Exiting stats command.".bright_yellow()
-                    );
-                    return Ok(());
-                }
-            }
-
             proofman = ProofMan::<Goldilocks>::new(
                 proving_key,
                 custom_commits_map,
@@ -248,6 +218,34 @@ impl ZiskStats {
                 Some(mpi_context.universe),
             )
             .expect("Failed to initialize proofman");
+
+            let mut is_active = true;
+
+            if let Some(mpi_node) = self.mpi_node {
+                if local_rank != mpi_node as i32 {
+                    is_active = false;
+                }
+            }
+
+            // All processes must participate in these calls:
+            let color = if is_active {
+                mpi::topology::Color::with_value(1)
+            } else {
+                mpi::topology::Color::undefined()
+            };
+            let _sub_comm = world.split_by_color(color);
+
+            world.split_shared(world_rank);
+
+            if !is_active {
+                println!(
+                    "{}: {}",
+                    format!("Rank {local_rank}").bright_yellow().bold(),
+                    "Inactive rank, skipping computation.".bright_yellow()
+                );
+
+                return Ok(());
+            }
         }
 
         #[cfg(not(distributed))]
@@ -275,6 +273,13 @@ impl ZiskStats {
             .with_local_rank(local_rank)
             .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
+        if self.asm.is_some() {
+            // Start ASM microservices
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
+
+            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
+        }
+
         match self.field {
             Field::Goldilocks => {
                 let library = unsafe {
@@ -287,35 +292,40 @@ impl ZiskStats {
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,
-                    sha256f_script,
                     self.chunk_size_bits,
                     Some(world_rank),
                     Some(local_rank),
                     self.port,
                     self.unlock_mapped_memory,
+                    self.shared_tables,
                 )
                 .expect("Failed to initialize witness library");
 
                 proofman.register_witness(&mut *witness_lib, library);
 
-                if self.asm.is_some() {
-                    // Start ASM microservices
-                    tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
-
-                    asm_services
-                        .start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
-                }
-
                 proofman
-                    .compute_witness_from_lib(self.input.clone(), &debug_info)
+                    .compute_witness_from_lib(
+                        self.input.clone(),
+                        &debug_info,
+                        ProofOptions::new(
+                            false,
+                            false,
+                            false,
+                            false,
+                            self.minimal_memory,
+                            false,
+                            PathBuf::new(),
+                        ),
+                    )
                     .map_err(|e| anyhow::anyhow!("Error generating stats: {}", e))?;
             }
         };
 
-        let (_, stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+        #[allow(clippy::type_complexity)]
+        let (_, stats, witness_stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize,Stats>>>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
+            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
         if world_rank % 2 == 1 {
@@ -328,7 +338,9 @@ impl ZiskStats {
             "-".repeat(55)
         );
 
-        Self::print_stats(&stats);
+        Self::print_stats(&witness_stats);
+
+        stats.lock().unwrap().print_stats();
 
         if self.asm.is_some() {
             // Shut down ASM microservices
@@ -339,7 +351,7 @@ impl ZiskStats {
         Ok(())
     }
 
-    fn print_command_info(&self, sha256f_script: &Path) {
+    fn print_command_info(&self) {
         // Print Stats command info
         println!("{} Stats", format!("{: >12}", "Command").bright_green().bold());
         println!(
@@ -374,7 +386,6 @@ impl ZiskStats {
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
-        println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();
@@ -384,8 +395,9 @@ impl ZiskStats {
     ///
     /// # Arguments
     /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
-    pub fn print_stats(stats: &[(usize, usize, Stats)]) {
-        println!("    Number of airs: {}", stats.len());
+    pub fn print_stats(executor_stats: &Mutex<HashMap<usize, Stats>>) {
+        let air_stats = executor_stats.lock().unwrap();
+        println!("    Number of airs: {}", air_stats.len());
         println!();
         println!("    Stats by Air:");
         println!(
@@ -394,30 +406,33 @@ impl ZiskStats {
         );
         println!("    {}", "-".repeat(70));
 
-        // Sort individual stats by (airgroup_id, air_id)
-        let mut sorted_stats = stats.to_vec();
-        sorted_stats.sort_by_key(|(airgroup_id, air_id, _)| (*airgroup_id, *air_id));
+        // Convert HashMap values to flat Vec
+        let mut sorted_stats: Vec<&Stats> = air_stats.values().collect();
+        sorted_stats.sort_by_key(|stat| (stat.airgroup_id, stat.air_id));
 
         let mut total_collect_time = 0;
         let mut total_witness_time = 0;
-        for (airgroup_id, air_id, stats) in sorted_stats.iter() {
+        for stat in sorted_stats.iter() {
+            let collect_ms = stat.collect_duration;
+            let witness_ms = stat.witness_duration;
+
             println!(
                 "    {:<8} {:<25} {:<8} {:<12} {:<12}",
-                air_id,
-                Self::air_name(*airgroup_id, *air_id),
-                stats.num_chunks,
-                stats.collect_duration,
-                stats.witness_duration,
+                stat.air_id,
+                Self::air_name(stat.airgroup_id, stat.air_id),
+                stat.num_chunks,
+                collect_ms,
+                witness_ms,
             );
             // Accumulate total times
-            total_collect_time += stats.collect_duration;
-            total_witness_time += stats.witness_duration;
+            total_collect_time += collect_ms;
+            total_witness_time += witness_ms;
         }
 
         // Group stats
-        let mut grouped: HashMap<(usize, usize), Vec<Stats>> = HashMap::new();
-        for (airgroup_id, air_id, stats) in stats.iter() {
-            grouped.entry((*airgroup_id, *air_id)).or_default().push(stats.clone());
+        let mut grouped: HashMap<(usize, usize), Vec<&Stats>> = HashMap::new();
+        for stat in air_stats.values() {
+            grouped.entry((stat.airgroup_id, stat.air_id)).or_default().push(stat);
         }
 
         println!();
@@ -443,13 +458,16 @@ impl ZiskStats {
             let (mut n_min, mut n_max, mut n_sum) = (usize::MAX, 0, 0usize);
 
             for e in &entries {
-                c_min = c_min.min(e.collect_duration);
-                c_max = c_max.max(e.collect_duration);
-                c_sum += e.collect_duration;
+                let collect_ms = e.collect_duration;
+                let witness_ms = e.witness_duration;
 
-                w_min = w_min.min(e.witness_duration);
-                w_max = w_max.max(e.witness_duration);
-                w_sum += e.witness_duration;
+                c_min = c_min.min(collect_ms);
+                c_max = c_max.max(collect_ms);
+                c_sum += collect_ms;
+
+                w_min = w_min.min(witness_ms);
+                w_max = w_max.max(witness_ms);
+                w_sum += witness_ms;
 
                 n_min = n_min.min(e.num_chunks);
                 n_max = n_max.max(e.num_chunks);
@@ -490,22 +508,21 @@ impl ZiskStats {
             val if val == ROM_DATA_AIR_IDS[0] => "ROM_DATA".to_string(),
             val if val == INPUT_DATA_AIR_IDS[0] => "INPUT_DATA".to_string(),
             val if val == MEM_ALIGN_AIR_IDS[0] => "MEM_ALIGN".to_string(),
-            val if val == MEM_ALIGN_ROM_AIR_IDS[0] => "MEM_ALIGN_ROM".to_string(),
+            // val if val == MEM_ALIGN_ROM_AIR_IDS[0] => "MEM_ALIGN_ROM".to_string(),
             val if val == ARITH_AIR_IDS[0] => "ARITH".to_string(),
-            val if val == ARITH_TABLE_AIR_IDS[0] => "ARITH_TABLE".to_string(),
-            val if val == ARITH_RANGE_TABLE_AIR_IDS[0] => "ARITH_RANGE_TABLE".to_string(),
+            // val if val == ARITH_TABLE_AIR_IDS[0] => "ARITH_TABLE".to_string(),
+            // val if val == ARITH_RANGE_TABLE_AIR_IDS[0] => "ARITH_RANGE_TABLE".to_string(),
             val if val == ARITH_EQ_AIR_IDS[0] => "ARITH_EQ".to_string(),
-            val if val == ARITH_EQ_LT_TABLE_AIR_IDS[0] => "ARITH_EQ_LT_TABLE".to_string(),
+            // val if val == ARITH_EQ_LT_TABLE_AIR_IDS[0] => "ARITH_EQ_LT_TABLE".to_string(),
             val if val == BINARY_AIR_IDS[0] => "BINARY".to_string(),
             val if val == BINARY_ADD_AIR_IDS[0] => "BINARY_ADD".to_string(),
-            val if val == BINARY_TABLE_AIR_IDS[0] => "BINARY_TABLE".to_string(),
+            // val if val == BINARY_TABLE_AIR_IDS[0] => "BINARY_TABLE".to_string(),
             val if val == BINARY_EXTENSION_AIR_IDS[0] => "BINARY_EXTENSION".to_string(),
-            val if val == BINARY_EXTENSION_TABLE_AIR_IDS[0] => "BINARY_EXTENSION_TABLE".to_string(),
+            // val if val == BINARY_EXTENSION_TABLE_AIR_IDS[0] => "BINARY_EXTENSION_TABLE".to_string(),
             val if val == KECCAKF_AIR_IDS[0] => "KECCAKF".to_string(),
-            val if val == KECCAKF_TABLE_AIR_IDS[0] => "KECCAKF_TABLE".to_string(),
+            // val if val == KECCAKF_TABLE_AIR_IDS[0] => "KECCAKF_TABLE".to_string(),
             val if val == SHA_256_F_AIR_IDS[0] => "SHA_256_F".to_string(),
-            val if val == SHA_256_F_TABLE_AIR_IDS[0] => "SHA_256_F_TABLE".to_string(),
-            val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
+            // val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
             _ => format!("Unknown air_id: {air_id}"),
         }
     }

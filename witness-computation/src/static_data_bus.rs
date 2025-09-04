@@ -46,6 +46,7 @@ pub struct StaticDataBus<D> {
 
 impl StaticDataBus<PayloadType> {
     /// Creates a new `DataBus` instance.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         process_only_operation_bus: bool,
         mem_counter: MemCounters,
@@ -73,61 +74,65 @@ impl StaticDataBus<PayloadType> {
     /// # Arguments
     /// * `bus_id` - The ID of the bus to route the data to.
     /// * `payload` - A reference to the data payload being routed.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
+    ///
+    /// # Returns
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn route_data(&mut self, bus_id: BusId, payload: &[PayloadType]) {
+    fn route_data(&mut self, bus_id: BusId, payload: &[PayloadType]) -> bool {
         match bus_id {
             MEM_BUS_ID => {
+                let mut _continue = true;
                 if !self.process_only_operation_bus {
                     // If we are not processing only operation bus, we process memory bus data.
-                    self.mem_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
+                    _continue &= self.mem_counter.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                    );
                 }
+
+                _continue
             }
             OPERATION_BUS_ID => match payload[1] as u32 {
                 PUB_OUT_OP_TYPE_ID => {
-                    self.main_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
+                    self.main_counter.process_data(&bus_id, payload, &mut self.pending_transfers)
                 }
                 BINARY_OP_TYPE_ID | BINARY_E_OP_TYPE_ID => {
-                    self.binary_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
+                    self.binary_counter.process_data(&bus_id, payload, &mut self.pending_transfers)
                 }
                 ARITH_OP_TYPE_ID => {
-                    self.arith_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
+                    self.arith_counter.process_data(&bus_id, payload, &mut self.pending_transfers)
                 }
                 KECCAK_OP_TYPE_ID => {
-                    self.keccakf_counter.process_data(
-                        &bus_id,
-                        payload,
-                        &mut self.pending_transfers,
-                    );
+                    self.keccakf_counter.process_data(&bus_id, payload, &mut self.pending_transfers)
                 }
                 SHA256_OP_TYPE_ID => {
-                    self.sha256f_counter.process_data(
-                        &bus_id,
-                        payload,
-                        &mut self.pending_transfers,
-                    );
+                    self.sha256f_counter.process_data(&bus_id, payload, &mut self.pending_transfers)
                 }
-                ARITH_EQ_OP_TYPE_ID => {
-                    self.arith_eq_counter.process_data(
-                        &bus_id,
-                        payload,
-                        &mut self.pending_transfers,
-                    );
-                }
-                _ => {}
+                ARITH_EQ_OP_TYPE_ID => self.arith_eq_counter.process_data(
+                    &bus_id,
+                    payload,
+                    &mut self.pending_transfers,
+                ),
+                _ => true,
             },
-            _ => (),
+            _ => true,
         }
     }
 }
 
 impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<PayloadType> {
     #[inline(always)]
-    fn write_to_bus(&mut self, bus_id: BusId, payload: &[PayloadType]) {
-        self.route_data(bus_id, payload);
+    fn write_to_bus(&mut self, bus_id: BusId, payload: &[PayloadType]) -> bool {
+        let mut _continue = self.route_data(bus_id, payload);
 
         while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
-            self.route_data(bus_id, &payload);
+            _continue &= self.route_data(bus_id, &payload);
         }
+
+        _continue
     }
 
     fn on_close(&mut self) {

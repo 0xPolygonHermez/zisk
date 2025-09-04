@@ -1,11 +1,11 @@
 use named_sem::NamedSemaphore;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use zisk_common::ExecutorStats;
 use zisk_common::{ChunkId, EmuTrace};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::atomic::{fence, Ordering};
-use std::sync::Arc;
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tracing::{error, info};
@@ -13,6 +13,9 @@ use tracing::{error, info};
 use crate::{AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
 
 use anyhow::{Context, Result};
+
+#[cfg(feature = "stats")]
+use zisk_common::ExecutorStatsEvent;
 
 pub trait Task: Send + Sync + 'static {
     type Output: Send + 'static;
@@ -25,6 +28,32 @@ pub enum MinimalTraces {
     None,
     EmuTrace(Vec<EmuTrace>),
     AsmEmuTrace(AsmRunnerMT),
+}
+
+pub struct PreloadedMT {
+    pub output_shmem: AsmSharedMemory<AsmMTHeader>,
+}
+
+impl PreloadedMT {
+    pub fn new(
+        local_rank: i32,
+        base_port: Option<u16>,
+        unlock_mapped_memory: bool,
+    ) -> Result<Self> {
+        let port = if let Some(base_port) = base_port {
+            AsmServices::port_for(&AsmService::MT, base_port, local_rank)
+        } else {
+            AsmServices::default_port(&AsmService::MT, local_rank)
+        };
+
+        let output_name =
+            AsmSharedMemory::<AsmMTHeader>::shmem_output_name(port, AsmService::MT, local_rank);
+
+        let output_shared_memory =
+            AsmSharedMemory::<AsmMTHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
+
+        Ok(Self { output_shmem: output_shared_memory })
+    }
 }
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
@@ -50,49 +79,92 @@ impl AsmRunnerMT {
 
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<T: Task>(
-        asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
+        preloaded: &mut PreloadedMT,
         max_steps: u64,
         chunk_size: u64,
         task_factory: TaskFactory<T>,
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
-        unlock_mapped_memory: bool,
+        _stats: Arc<Mutex<ExecutorStats>>,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
+        let __stats = Arc::clone(&_stats);
+
+        #[cfg(feature = "stats")]
+        let parent_stats_id = __stats.lock().unwrap().get_id();
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(
+            0,
+            parent_stats_id,
+            "ASM_MT_RUNNER",
+            0,
+            ExecutorStatsEvent::Begin,
+        );
+
+        let port = if let Some(base_port) = base_port {
+            AsmServices::port_for(&AsmService::MT, base_port, local_rank)
+        } else {
+            AsmServices::default_port(&AsmService::MT, local_rank)
+        };
+
         let sem_chunk_done_name =
-            AsmSharedMemory::<AsmMTHeader>::shmem_chunk_done_name(AsmService::MT, local_rank);
+            AsmSharedMemory::<AsmMTHeader>::shmem_chunk_done_name(port, AsmService::MT, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        let start = Instant::now();
+        let start_time = Instant::now();
 
         let handle = std::thread::spawn(move || {
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-            asm_services.send_minimal_trace_request(max_steps, chunk_size)
-        });
 
-        // Initialize the assembly shared memory if necessary
-        let mut asm_shared_memory = asm_shared_memory.lock().unwrap();
-
-        if asm_shared_memory.is_none() {
-            *asm_shared_memory = Some(
-                AsmSharedMemory::create_shmem(AsmService::MT, local_rank, unlock_mapped_memory)
-                    .expect("Error creating MT assembly shared memory"),
+            #[cfg(feature = "stats")]
+            let stats_id = __stats.lock().unwrap().get_id();
+            #[cfg(feature = "stats")]
+            __stats.lock().unwrap().add_stat(
+                parent_stats_id,
+                stats_id,
+                "ASM_MT",
+                0,
+                ExecutorStatsEvent::Begin,
             );
-        }
+
+            let result = asm_services.send_minimal_trace_request(max_steps, chunk_size);
+
+            #[cfg(feature = "stats")]
+            __stats.lock().unwrap().add_stat(
+                parent_stats_id,
+                stats_id,
+                "ASM_MT",
+                0,
+                ExecutorStatsEvent::End,
+            );
+
+            result
+        });
 
         let mut chunk_id = ChunkId(0);
 
         // Get the pointer to the data in the shared memory.
-        let mut data_ptr = asm_shared_memory.as_ref().unwrap().data_ptr() as *const AsmMTChunk;
+        let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMTChunk;
 
         let mut emu_traces = Vec::new();
         let mut handles = Vec::new();
 
+        let __stats = Arc::clone(&_stats);
+
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
+                    #[cfg(feature = "stats")]
+                    __stats.lock().unwrap().add_stat(
+                        parent_stats_id,
+                        0,
+                        "MT_CHUNK_DONE",
+                        0,
+                        ExecutorStatsEvent::Mark,
+                    );
+
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
@@ -116,7 +188,7 @@ impl AsmRunnerMT {
                         break 1;
                     }
 
-                    break asm_shared_memory.as_ref().unwrap().header().exit_code;
+                    break preloaded.output_shmem.map_header().exit_code;
                 }
             }
         };
@@ -133,7 +205,7 @@ impl AsmRunnerMT {
         }
 
         let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
-        let mhz = (total_steps as f64 / start.elapsed().as_secs_f64()) / 1_000_000.0;
+        let mhz = (total_steps as f64 / start_time.elapsed().as_secs_f64()) / 1_000_000.0;
         info!("··· Assembly execution speed: {:.2} MHz", mhz);
 
         // Wait for the assembly emulator to complete writing the trace
@@ -151,6 +223,15 @@ impl AsmRunnerMT {
             .into_iter()
             .map(|arc| Arc::try_unwrap(arc).map_err(|_| AsmRunError::ArcUnwrap))
             .collect::<std::result::Result<_, _>>()?;
+
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(
+            0,
+            parent_stats_id,
+            "ASM_MT_RUNNER",
+            0,
+            ExecutorStatsEvent::End,
+        );
 
         Ok((AsmRunnerMT::new(emu_traces), tasks))
     }

@@ -1,9 +1,5 @@
-#[cfg(feature = "stats")]
-use crate::commands::ZiskStats;
 use crate::{
-    commands::{
-        cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
-    },
+    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -11,8 +7,7 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use bytemuck::cast_slice;
 use colored::Colorize;
-use executor::Stats;
-use executor::ZiskExecutionResult;
+use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -22,15 +17,17 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use std::io::Write;
-#[cfg(feature = "stats")]
-use std::time::Instant;
+use std::sync::{Arc, Mutex};
 use std::{
     collections::HashMap,
-    env,
     fs::{self, File},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
-use zisk_common::{ProofLog, ZiskLibInitFn};
+#[cfg(feature = "stats")]
+use zisk_common::ExecutorStatsEvent;
+use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
+use zisk_pil::VIRTUAL_TABLE_AIR_IDS;
+use zstd::stream::write::Encoder;
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -127,19 +124,16 @@ pub struct ZiskProve {
     #[clap(short = 'c', long)]
     pub chunk_size_bits: Option<u64>,
 
-    // PRECOMPILES OPTIONS
-    /// Sha256f script path
-    pub sha256f_script: Option<PathBuf>,
+    #[clap(short = 'm', long, default_value_t = false)]
+    pub minimal_memory: bool,
+
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
-
         print_banner();
-
-        #[cfg(feature = "stats")]
-        let start_time = Instant::now();
 
         let mpi_context = initialize_mpi()?;
 
@@ -153,17 +147,6 @@ impl ZiskProve {
             Some(Some(debug_value)) => {
                 json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
             }
-        };
-
-        let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
-            sha256f_path.clone()
-        } else {
-            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{home_dir}/.zisk/bin/sha256f_script.json"));
-            if !script_path.exists() {
-                panic!("Sha256f script file not found at {script_path:?}");
-            }
-            script_path
         };
 
         if self.output_dir.join("proofs").exists() {
@@ -237,7 +220,7 @@ impl ZiskProve {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info(&sha256f_script);
+        self.print_command_info();
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -255,6 +238,8 @@ impl ZiskProve {
         if self.max_witness_stored.is_some() {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
+
+        gpu_params.with_single_instance((0, VIRTUAL_TABLE_AIR_IDS[0]));
 
         let proofman;
         #[cfg(distributed)]
@@ -309,12 +294,12 @@ impl ZiskProve {
             self.elf.clone(),
             self.asm.clone(),
             asm_rom,
-            sha256f_script,
             self.chunk_size_bits,
             Some(mpi_context.world_rank),
             Some(mpi_context.local_rank),
             self.port,
             self.unlock_mapped_memory,
+            self.shared_tables,
         )
         .expect("Failed to initialize witness library");
 
@@ -328,13 +313,14 @@ impl ZiskProve {
             match self.field {
                 Field::Goldilocks => {
                     return proofman
-                        .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
+                        .verify_proof_constraints_from_lib(self.input.clone(), &debug_info, false)
                         .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e));
                 }
             };
         } else {
             match self.field {
                 Field::Goldilocks => {
+                    proofman.set_barrier();
                     (proof_id, vadcop_final_proof) = proofman
                         .generate_proof_from_lib(
                             self.input.clone(),
@@ -343,6 +329,7 @@ impl ZiskProve {
                                 self.aggregation,
                                 self.final_snark,
                                 self.verify_proofs,
+                                self.minimal_memory,
                                 self.save_proofs,
                                 self.output_dir.clone(),
                             ),
@@ -355,11 +342,21 @@ impl ZiskProve {
         if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
             let elapsed = start.elapsed();
 
-            let (result, _stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
-                .get_execution_result()
-                .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-                .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
-                .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+            #[allow(clippy::type_complexity)]
+            let (result, _stats, _): (
+                ZiskExecutionResult,
+                Arc<Mutex<ExecutorStats>>,
+                Arc<Mutex<HashMap<usize, Stats>>>,
+            ) =
+                *witness_lib
+                    .get_execution_result()
+                    .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
+                    .downcast::<(
+                        ZiskExecutionResult,
+                        Arc<Mutex<ExecutorStats>>,
+                        Arc<Mutex<HashMap<usize, Stats>>>,
+                    )>()
+                    .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
             let elapsed = elapsed.as_secs_f64();
             tracing::info!("");
@@ -378,17 +375,38 @@ impl ZiskProve {
                 let log_path = self.output_dir.join("result.json");
                 ProofLog::write_json_log(&log_path, &logs)
                     .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
-                // Save the vadcop final proof
+
+                // Save the uncompressed vadcop final proof
                 let output_file_path = self.output_dir.join("vadcop_final_proof.bin");
-                // write a Vec<u64> to a bin file stored in output_file_path
+                let vadcop_proof = vadcop_final_proof.unwrap();
                 let mut file = File::create(output_file_path)?;
-                file.write_all(cast_slice(&vadcop_final_proof.unwrap()))?;
+                file.write_all(cast_slice(&vadcop_proof))?;
+
+                // Save the compressed vadcop final proof using zstd (fastest compression level)
+                let compressed_output_path =
+                    self.output_dir.join("vadcop_final_proof.compressed.bin");
+                let compressed_file = File::create(&compressed_output_path)?;
+                let mut encoder = Encoder::new(compressed_file, 1)?;
+                encoder.write_all(cast_slice(&vadcop_proof))?;
+                encoder.finish()?;
+
+                let original_size = vadcop_proof.len() * 8;
+                let compressed_size = std::fs::metadata(&compressed_output_path)?.len();
+                let compression_ratio = compressed_size as f64 / original_size as f64;
+
+                println!("Vadcop final proof saved:");
+                println!("  Original: {} bytes", original_size);
+                println!(
+                    "  Compressed: {} bytes (ratio: {:.2}x)",
+                    compressed_size, compression_ratio
+                );
             }
 
             // Store the stats in stats.json
             #[cfg(feature = "stats")]
             {
-                ZiskStats::store_stats(start_time, &_stats);
+                _stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
+                _stats.lock().unwrap().store_stats();
             }
         }
 
@@ -403,7 +421,7 @@ impl ZiskProve {
         Ok(())
     }
 
-    fn print_command_info(&self, sha256f_script: &Path) {
+    fn print_command_info(&self) {
         println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
         println!(
             "{: >12} {}",
@@ -437,7 +455,6 @@ impl ZiskProve {
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
-        println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();

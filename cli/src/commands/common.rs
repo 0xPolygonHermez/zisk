@@ -41,7 +41,9 @@ pub fn get_home_dir() -> String {
 
 /// Gets the default witness computation library file location in the home installation directory.
 pub fn get_default_witness_computation_lib() -> PathBuf {
-    let witness_computation_lib = format!("{}/.zisk/bin/libzisk_witness.so", get_home_dir());
+    let extension = if cfg!(target_os = "macos") { "dylib" } else { "so" };
+    let witness_computation_lib =
+        format!("{}/.zisk/bin/libzisk_witness.{}", get_home_dir(), extension);
     PathBuf::from(witness_computation_lib)
 }
 
@@ -82,7 +84,7 @@ pub fn get_default_verifier_bin() -> String {
 /// Gets the default verification key JSON file location in the home installation directory.
 pub fn get_default_verkey() -> String {
     let verkey =
-        format!("{}/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json", get_home_dir());
+        format!("{}/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.bin", get_home_dir());
     verkey
 }
 

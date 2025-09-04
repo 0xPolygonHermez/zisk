@@ -63,9 +63,6 @@ pub struct ServerConfig {
     /// Debug information
     pub debug_info: Arc<DebugInfo>,
 
-    /// Path to the SHA256f script
-    pub sha256f_script: PathBuf,
-
     /// Time when the server was launched
     pub launch_time: Instant,
 
@@ -83,6 +80,8 @@ pub struct ServerConfig {
     pub final_snark: bool,
 
     pub gpu_params: ParamsGPU,
+
+    pub shared_tables: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -98,13 +97,13 @@ impl ServerConfig {
         proving_key: PathBuf,
         verbose: u8,
         debug: DebugInfo,
-        sha256f_script: PathBuf,
         chunk_size_bits: Option<u64>,
         asm_runner_options: AsmRunnerOptions,
         verify_constraints: bool,
         aggregation: bool,
         final_snark: bool,
         gpu_params: ParamsGPU,
+        shared_tables: bool,
     ) -> Self {
         Self {
             port,
@@ -117,7 +116,6 @@ impl ServerConfig {
             proving_key,
             verbose,
             debug_info: Arc::new(debug),
-            sha256f_script,
             launch_time: Instant::now(),
             server_id: Uuid::new_v4(),
             chunk_size_bits,
@@ -126,6 +124,7 @@ impl ServerConfig {
             aggregation,
             final_snark,
             gpu_params,
+            shared_tables,
         }
     }
 }
@@ -238,9 +237,11 @@ pub enum ZiskResponse {
 
 pub struct ZiskService {
     config: Arc<ServerConfig>,
-    proofman: Arc<ProofMan<Goldilocks>>,
+    // It is important to keep the witness_lib declaration before the proofman declaration
+    // to ensure that the witness library is dropped before the proofman.
     witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
-    asm_services: AsmServices,
+    proofman: Arc<ProofMan<Goldilocks>>,
+    asm_services: Option<AsmServices>,
     is_busy: Arc<AtomicBool>,
     pending_handles: Vec<std::thread::JoinHandle<()>>,
 }
@@ -253,10 +254,18 @@ impl ZiskService {
         let local_rank = config.asm_runner_options.local_rank;
         let base_port = config.asm_runner_options.base_port;
         let unlock_mapped_memory = config.asm_runner_options.unlock_mapped_memory;
+        let shared_tables = config.shared_tables;
 
-        let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-        asm_services
-            .start_asm_services(config.asm.as_ref().unwrap(), config.asm_runner_options.clone())?;
+        let asm_services = if config.emulator {
+            None
+        } else {
+            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+            asm_services.start_asm_services(
+                config.asm.as_ref().unwrap(),
+                config.asm_runner_options.clone(),
+            )?;
+            Some(asm_services)
+        };
 
         let library =
             unsafe { Library::new(config.witness_lib.clone()).expect("Failed to load library") };
@@ -268,12 +277,12 @@ impl ZiskService {
             config.elf.clone(),
             config.asm.clone(),
             config.asm_rom.clone(),
-            config.sha256f_script.clone(),
             config.chunk_size_bits,
             Some(world_rank),
             Some(local_rank),
             base_port,
             unlock_mapped_memory,
+            shared_tables,
         )
         .expect("Failed to initialize witness library");
 
@@ -412,14 +421,14 @@ impl ZiskService {
             }
             ZiskRequest::Shutdown { payload } => {
                 must_shutdown = true;
-                ZiskServiceShutdownHandler::handle(&config, payload, &self.asm_services)
+                ZiskServiceShutdownHandler::handle(&config, payload, self.asm_services.as_ref())
             }
             ZiskRequest::VerifyConstraints { payload } => {
                 ZiskServiceVerifyConstraintsHandler::handle(
                     config.clone(),
                     payload,
-                    self.proofman.clone(),
                     self.witness_lib.clone(),
+                    self.proofman.clone(),
                     self.is_busy.clone(),
                     self.config.debug_info.clone(),
                 )
@@ -428,8 +437,8 @@ impl ZiskService {
             ZiskRequest::Prove { payload } => ZiskServiceProveHandler::handle(
                 config.clone(),
                 payload,
-                self.proofman.clone(),
                 self.witness_lib.clone(),
+                self.proofman.clone(),
                 self.is_busy.clone(),
             ),
         };

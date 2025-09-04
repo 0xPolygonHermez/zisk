@@ -99,7 +99,7 @@ impl MemCounters {
     pub fn save_to_file(&mut self, chunk_id: ChunkId, data: &[u64]) {
         if self.file.is_none() {
             let path = env::var("BUS_DATA_DIR").unwrap_or("tmp/bus_data".to_string());
-            self.file = Some(File::create(format!("{}/mem_{:04}.bin", path, chunk_id)).unwrap());
+            self.file = Some(File::create(format!("{path}/mem_{chunk_id:04}.bin")).unwrap());
         }
         let bytes = unsafe {
             slice::from_raw_parts(data.as_ptr() as *const u8, MEM_BUS_DATA_SIZE * size_of::<u64>())
@@ -113,7 +113,7 @@ impl MemCounters {
         if self.file.is_none() {
             let path = env::var("BUS_DATA_DIR").unwrap_or("tmp/bus_data".to_string());
             self.file =
-                Some(File::create(format!("{}/mem_count_data_{:04}.bin", path, chunk_id)).unwrap());
+                Some(File::create(format!("{path}/mem_count_data_{chunk_id:04}.bin")).unwrap());
         }
         let values: [u32; 2] = [
             MemBusData::get_addr(data),
@@ -129,7 +129,7 @@ impl MemCounters {
     pub fn load_from_file(
         chunk_id: ChunkId,
     ) -> Result<Vec<[u64; MEM_BUS_DATA_SIZE]>, std::io::Error> {
-        let mut file = File::open(format!("tmp/bus_data/mem_{chunk_id}.bin"))?;
+        let mut file = File::open(format!("tmp/bus_data/mem_{chunk_id:04}.bin"))?;
         const BUS_DATA_BYTES: usize = MEM_BUS_DATA_SIZE * size_of::<u64>();
         let count = file.metadata().unwrap().len() as usize / BUS_DATA_BYTES;
         let mut buffer = [0u8; BUS_DATA_BYTES];
@@ -174,16 +174,21 @@ impl BusDevice<u64> for MemCounters {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+    ) -> bool {
         debug_assert!(bus_id == &MEM_BUS_ID);
 
         #[cfg(feature = "save_mem_bus_data")]
         {
-            let chunk_id = MemHelpers::mem_step_to_chunk(MemBusData::get_step(data));
-            self.save_to_compact_file(chunk_id, data);
+            // TODO: dynamic chunk_size
+            let chunk_id =
+                MemHelpers::static_mem_step_to_chunk(MemBusData::get_step(data), 1 << 20);
+            // self.save_to_compact_file(chunk_id, data);
+            self.save_to_file(chunk_id, data);
         }
 
         self.measure(data);
+
+        true
     }
 
     fn bus_id(&self) -> Vec<BusId> {

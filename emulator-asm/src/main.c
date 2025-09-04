@@ -216,6 +216,7 @@ int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, i
 
 // Configuration
 bool output = false;
+bool silent = false;
 bool metrics = false;
 bool trace = false;
 bool trace_trace = false;
@@ -354,7 +355,7 @@ int main(int argc, char *argv[])
         struct sockaddr_in address;
         int addrlen = sizeof(address);
         int client_fd;
-        printf("Waiting for incoming connections to port %u...\n", port);
+        if (!silent) printf("Waiting for incoming connections to port %u...\n", port);
         client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
         if (client_fd < 0)
         {
@@ -665,7 +666,7 @@ int main(int argc, char *argv[])
                 }
                 case TYPE_SD_REQUEST:
                 {
-                    printf("SHUTDOWN received\n");
+                    if (!silent) printf("SHUTDOWN received\n");
                     bShutdown = true;
 
                     response[0] = TYPE_SD_RESPONSE;
@@ -757,7 +758,9 @@ void print_usage (void)
     printf("\t--chunk <chunk_number>\n");
     printf("\t--shutdown\n");
     printf("\t--mt <number_of_mt_requests>\n");
-    printf("\t-o output off\n");
+    printf("\t-o output on\n");
+    printf("\t--silent silent on\n");
+    printf("\t--shm_prefix <prefix> (default: ZISK)\n");
     printf("\t-m metrics on\n");
     printf("\t-t trace on\n");
     printf("\t-tt trace_trace on\n");
@@ -848,7 +851,12 @@ void parse_arguments(int argc, char *argv[])
             }
             if (strcmp(argv[i], "-o") == 0)
             {
-                output = false;
+                output = true;
+                continue;
+            }
+            if (strcmp(argv[i], "--silent") == 0)
+            {
+                silent = true;
                 continue;
             }
             if (strcmp(argv[i], "-m") == 0)
@@ -1304,6 +1312,7 @@ void configure (void)
         printf("\tsem_chunk_done=%s\n", sem_chunk_done_name);
         printf("\tsem_shutdown_done=%s\n", sem_shutdown_done_name);
         printf("\tmap_locked_flag=%d\n", map_locked_flag);
+        printf("\toutput=%u\n", output);
     }
 }
 
@@ -1635,6 +1644,67 @@ void client_run (void)
                 gettimeofday(&stop_time, NULL);
                 duration = TimeDiff(start_time, stop_time);
                 printf("client (MT)[%lu]: done in %lu us\n", i, duration);
+
+                // Pretend to spend some time processing the incoming data
+                usleep((1000000));
+
+                break;
+            }
+            case RomHistogram:
+            {
+                gettimeofday(&start_time, NULL);
+
+                // Prepare message to send
+                request[0] = TYPE_RH_REQUEST;
+                request[1] = 1ULL << 32; // max_steps
+                request[2] = 0;
+                request[3] = 0;
+                request[4] = 0;
+
+                // Send data to server
+                result = send(socket_fd, request, sizeof(request), 0);
+                if (result < 0)
+                {
+                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+
+                // Read server response
+                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+                if (bytes_received < 0)
+                {
+                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (bytes_received != sizeof(response))
+                {
+                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[0] != TYPE_RH_RESPONSE)
+                {
+                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[1] != 0)
+                {
+                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                printf("client (RH)[%lu]: done in %lu us\n", i, duration);
 
                 // Pretend to spend some time processing the incoming data
                 usleep((1000000));
@@ -2513,6 +2583,9 @@ void server_setup (void)
     if (call_chunk_done)
     {
         assert(strlen(sem_chunk_done_name) > 0);
+
+        sem_unlink(sem_chunk_done_name);
+
         sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0666, 0);
         if (sem_chunk_done == SEM_FAILED)
         {
@@ -2529,6 +2602,9 @@ void server_setup (void)
     /*********************/
     
     assert(strlen(sem_shutdown_done_name) > 0);
+
+    sem_unlink(sem_shutdown_done_name);
+    
     sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT, 0666, 0);
     if (sem_shutdown_done == SEM_FAILED)
     {
@@ -2570,6 +2646,10 @@ void server_reset (void)
 
 void server_run (void)
 {
+    if ((gen_method == RomHistogram)) {
+        memset((void *)trace_address, 0, trace_size);
+    }
+
 #ifdef ASM_CALL_METRICS
     reset_asm_call_metrics();
 #endif
@@ -2593,7 +2673,7 @@ void server_run (void)
 
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
-    printf("trace_address=%lx\n", trace_address);
+    if (verbose) printf("trace_address=%lx\n", trace_address);
     emulator_start();
     gettimeofday(&stop_time,NULL);
     assembly_duration = TimeDiff(start_time, stop_time);
