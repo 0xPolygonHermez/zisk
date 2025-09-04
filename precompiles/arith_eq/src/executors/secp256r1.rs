@@ -15,6 +15,12 @@ lazy_static! {
         16
     )
     .unwrap();
+
+    pub static ref SECP256R1_A: BigInt = BigInt::parse_bytes(
+        b"ffffffff00000001000000000000000000000000fffffffffffffffffffffffc",
+        16
+    )
+    .unwrap();
     pub static ref SECP256R1_ADD_Q0_OFFSET: BigInt = BigInt::from(1) << 257;
     pub static ref SECP256R1_DBL_Q0_OFFSET: BigInt = BigInt::from(1) << 258;
     pub static ref SECP256R1_Q1_OFFSET: BigInt = BigInt::from(4);
@@ -65,7 +71,7 @@ impl Secp256r1 {
         let y3 = bigint_from_field(&y3);
 
         let q0 = if is_dbl {
-            let _q0: BigInt = 2 * &s * &y1 - 3 * &x1 * &x1 + 3;
+            let _q0: BigInt = 2 * &s * &y1 - 3 * &x1 * &x1 - &*SECP256R1_A;
             assert!((&_q0 % &*SECP256R1_PRIME).is_zero());
             &*SECP256R1_DBL_Q0_OFFSET - (&_q0 / &*SECP256R1_PRIME)
         } else {

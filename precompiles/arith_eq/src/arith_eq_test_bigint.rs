@@ -1,7 +1,7 @@
 mod test_data;
 use test_data::{
     get_arith256_mod_test_data, get_arith256_test_data, get_secp256k1_add_test_data,
-    get_secp256k1_dbl_test_data,
+    get_secp256k1_dbl_test_data, get_secp256r1_add_test_data, get_secp256r1_dbl_test_data,
 };
 
 mod equations;
@@ -9,6 +9,7 @@ mod executors;
 use executors::arith256::Arith256;
 use executors::arith256_mod::Arith256Mod;
 use executors::secp256k1::Secp256k1;
+use executors::secp256r1::Secp256r1;
 
 // cargo run --release --features="test_data" --bin arith_eq_test_bigint
 
@@ -17,17 +18,18 @@ fn main() {
     let mut index = 0;
     while let Some((p1, p2, p3)) = get_secp256k1_add_test_data(index) {
         println!("testing index secp256k1_add #{} ....", index);
-        println!("p1: {:?}", p1);
-        println!("p2: {:?}", p2);
-        println!("p3: {:?}", p3);
+        if verbose {
+            println!("SECP256K1_ADD\n  p1: {:?},\n  p2: {:?},\n  p3: {:?}", p1, p2, p3);
+        }
         Secp256k1::verify_add(&p1, &p2, &p3);
         index += 1;
     }
     index = 0;
     while let Some((p1, p3)) = get_secp256k1_dbl_test_data(index) {
         println!("testing index secp256k1_dbl #{} ....", index);
-        println!("p1: {:?}", p1);
-        println!("p3: {:?}", p3);
+        if verbose {
+            println!("SECP256K1_DBL\n  p1: {:?},\n  p3: {:?}", p1, p3);
+        }
         Secp256k1::verify_dbl(&p1, &p3);
         index += 1;
     }
@@ -49,6 +51,25 @@ fn main() {
             println!("ARITH256_MOD a:{:?}\nb:{:?}\nc:{:?}dh:{:?}\ndl:{:?}", a, b, c, module, d);
         }
         Arith256Mod::verify(&a, &b, &c, &module, &d);
+        index += 1;
+    }
+
+    index = 0;
+    while let Some((p1, p2, p3)) = get_secp256r1_add_test_data(index) {
+        println!("testing index secp256r1_add #{} ....", index);
+        if verbose {
+            println!("SECP256R1_ADD\n  p1: {:?},\n  p2: {:?},\n  p3: {:?}", p1, p2, p3);
+        }
+        Secp256r1::verify_add(&p1, &p2, &p3);
+        index += 1;
+    }
+    index = 0;
+    while let Some((p1, p3)) = get_secp256r1_dbl_test_data(index) {
+        println!("testing index secp256r1_dbl #{} ....", index);
+        if verbose {
+            println!("SECP256R1_DBL\n  p1: {:?},\n  p3: {:?}", p1, p3);
+        }
+        Secp256r1::verify_dbl(&p1, &p3);
         index += 1;
     }
 }

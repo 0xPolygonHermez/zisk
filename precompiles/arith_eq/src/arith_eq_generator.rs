@@ -296,4 +296,75 @@ fn main() {
 
     let pil_file = pil_code_path.join("bn254_complex_mul_y3.pil");
     eq.generate_pil_code_to_file("eq_bn254_complex_mul_y3", pil_file.to_str().unwrap());
+
+    // SECP256R1
+
+    // s - different points
+
+    let mut eq = Equation::new(&config);
+    eq.parse(
+        "s*x2-s*x1-y2+y1-p*q0+p*offset",
+        &[
+            ("p", "0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff"),
+            ("offset", "0x20000000000000000000000000000000000000000000000000000000000000000"),
+        ],
+    );
+
+    let rust_file = rust_code_path.join("secp256r1_add.rs");
+    eq.generate_rust_code_to_file("Secp256r1Add", "x1,y1,x2,y2,s,q0", rust_file.to_str().unwrap());
+
+    let pil_file = pil_code_path.join("secp256r1_add.pil");
+    eq.generate_pil_code_to_file("eq_secp256r1_add", pil_file.to_str().unwrap());
+
+    // s - duplicate points
+
+    let mut eq = Equation::new(&config);
+    eq.parse(
+        "2*s*y1-3*x1*x1-a+p*q0-p*offset",
+        &[
+            ("a", "0xffffffff00000001000000000000000000000000fffffffffffffffffffffffc"),
+            ("p", "0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff"),
+            ("offset", "0x40000000000000000000000000000000000000000000000000000000000000000"),
+        ],
+    );
+
+    let rust_file = rust_code_path.join("secp256r1_dbl.rs");
+    eq.generate_rust_code_to_file("Secp256r1Dbl", "x1,y1,s,q0", rust_file.to_str().unwrap());
+
+    let pil_file = pil_code_path.join("secp256r1_dbl.pil");
+    eq.generate_pil_code_to_file("eq_secp256r1_dbl", pil_file.to_str().unwrap());
+
+    // x3
+
+    let mut eq = Equation::new(&config);
+    eq.parse(
+        "s*s-x1-x2-x3-p*q1+p*offset",
+        &[
+            ("p", "0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff"),
+            ("offset", "0x4"),
+        ],
+    );
+
+    let rust_file = rust_code_path.join("secp256r1_x3.rs");
+    eq.generate_rust_code_to_file("Secp256r1X3", "x1,x2,x3,s,q1", rust_file.to_str().unwrap());
+
+    let pil_file = pil_code_path.join("secp256r1_x3.pil");
+    eq.generate_pil_code_to_file("eq_secp256r1_x3", pil_file.to_str().unwrap());
+
+    // y3
+
+    let mut eq = Equation::new(&config);
+    eq.parse(
+        "s*x1-s*x3-y1-y3+p*q2-p*offset",
+        &[
+            ("p", "0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff"),
+            ("offset", "0x20000000000000000000000000000000000000000000000000000000000000000"),
+        ],
+    );
+
+    let rust_file = rust_code_path.join("secp256r1_y3.rs");
+    eq.generate_rust_code_to_file("Secp256r1Y3", "x1,y1,x3,y3,s,q2", rust_file.to_str().unwrap());
+
+    let pil_file = pil_code_path.join("secp256r1_y3.pil");
+    eq.generate_pil_code_to_file("eq_secp256r1_y3", pil_file.to_str().unwrap());
 }
