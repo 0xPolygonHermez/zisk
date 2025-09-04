@@ -99,6 +99,7 @@ jobs:
 
       - name: Prove Ethereum block
         env:
+          DISABLE_ROM_SETUP: "1"
           BLOCK_INPUTS_DISTRIBUTED: "21429020_5_0.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
