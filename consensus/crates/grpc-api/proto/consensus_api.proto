@@ -174,19 +174,19 @@ message ExecuteTaskRequest {
   TaskType task_type = 3;
 
   oneof params {
-    PartialContributionParams partial_contribution = 4;
-    ProveParams prove = 5;
-    RecursionParams recursion = 6;
+    ContributionParams contribution_params = 4;
+    ProveParams prove_params = 5;
+    AggParams agg_params = 6;
   }
 }
 
 enum TaskType {
   PARTIAL_CONTRIBUTION = 0;
   PROVE = 1;
-  RECURSION = 2;
+  AGGREGATE = 2;
 }
 
-message PartialContributionParams {
+message ContributionParams {
   string block_id = 1;
   string input_path = 2;
   uint32 rank_id = 3;
@@ -206,8 +206,22 @@ message ProveParams {
   Challenges challenges = 1;
 }
 
-message RecursionParams {
-  repeated uint64 data = 2;
+message AggParams {
+  ProofList agg_proofs = 1;
+  bool last_proof = 2;
+  bool final_proof = 3;
+  AggOptions options = 4;
+}
+
+message AggOptions {
+    bool verify_constraints = 1;
+    bool aggregation = 2;
+    bool final_snark = 3;
+    bool verify_proofs = 4;
+    bool save_proofs = 5;
+    bool test_mode = 6;
+    bool output_dir_path = 7;
+    bool minimal_memory = 8;
 }
 
 // Messages from prover to coordinator
@@ -273,8 +287,8 @@ message ExecuteTaskResponse {
   bool success = 4;
   string error_message = 5; // Optional error message if success is false
   oneof result_data {
-    ProofList proofs = 6;
-    Challenges challenges = 7;
+    Challenges challenges = 6;
+    ProofList proofs = 7;
   }
 }
 

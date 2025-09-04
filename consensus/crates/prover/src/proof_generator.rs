@@ -4,6 +4,7 @@ use asm_runner::AsmServices;
 use consensus_common::JobId;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
+use proofman::AggProofs;
 use proofman::{ProofInfo, ProofMan};
 use proofman_common::ProofOptions;
 use std::path::PathBuf;
@@ -12,7 +13,6 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 use witness::WitnessLibrary;
-use proofman::AggProofs;
 
 use zisk_common::ZiskLibInitFn;
 

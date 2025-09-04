@@ -345,7 +345,7 @@ impl ProverGrpcEndpoint {
 
         // Extract the PartialContribution params
         let params = match request.params {
-            Some(execute_task_request::Params::PartialContribution(params)) => params,
+            Some(execute_task_request::Params::ContributionParams(params)) => params,
             _ => {
                 error!("Expected PartialContribution params for Partial Contribution task");
                 return;
@@ -395,7 +395,7 @@ impl ProverGrpcEndpoint {
 
         // Extract the Prove params
         let prove_params = match request.params {
-            Some(execute_task_request::Params::Prove(params)) => params,
+            Some(execute_task_request::Params::ProveParams(params)) => params,
             _ => {
                 return Err(anyhow!("Expected Prove params for Phase 2 task"));
             }

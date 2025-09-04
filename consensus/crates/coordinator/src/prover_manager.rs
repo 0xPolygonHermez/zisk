@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use consensus_common::{
-    BlockContext, BlockId, ComputeCapacity, Error, Job, JobId, JobPhase, JobResult, JobState,
-    ProverId, ProverState, Result,
+    BlockContext, BlockId, ComputeCapacity, Error, Job, JobId, JobPhase, JobResult, JobResultData,
+    JobState, ProverId, ProverState, Result,
 };
 use consensus_grpc_api::{
     coordinator_message, execute_task_request, prover_message, Challenges, CoordinatorMessage,
@@ -253,8 +253,8 @@ impl ProverManager {
                         prover_id: prover_id.clone().into(),
                         job_id: job_id.clone().into(),
                         task_type: consensus_grpc_api::TaskType::PartialContribution as i32,
-                        params: Some(execute_task_request::Params::PartialContribution(
-                            consensus_grpc_api::PartialContributionParams {
+                        params: Some(execute_task_request::Params::ContributionParams(
+                            consensus_grpc_api::ContributionParams {
                                 block_id: block_id.clone().into(),
                                 input_path: input_path.clone(),
                                 rank_id: rank as u32,
@@ -312,14 +312,6 @@ impl ProverManager {
         // Handle specific message types
         if let Some(payload) = message.payload {
             match payload {
-                // message ExecuteTaskResponse {
-                //   string prover_id = 2;
-                //   string job_id = 1;
-                //   TaskType task_type = 3;
-                //   bool success = 4;
-                //   string error_message = 5; // Optional error message if success is false
-                //   repeated uint64 result_data = 6; // Serialized result data
-                // }
                 prover_message::Payload::ExecuteTaskResponse(execute_task_response) => {
                     let job_id = JobId::from(execute_task_response.job_id.clone());
 
@@ -355,7 +347,7 @@ impl ProverManager {
                         }
                         Ok(TaskType::Prove) => {
                             // Mark job as complete and free provers
-                            self.complete_job(&job_id).await.map_err(|e| {
+                            self.handle_phase2_result(&job_id).await.map_err(|e| {
                                 error!("Failed to complete job {}: {}", job_id, e);
                                 e
                             })?;
@@ -400,7 +392,7 @@ impl ProverManager {
     }
 
     /// Complete a job and reset all assigned provers back to Idle status
-    async fn complete_job(&self, job_id: &JobId) -> Result<()> {
+    async fn handle_phase2_result(&self, job_id: &JobId) -> Result<()> {
         let mut jobs = self.jobs.write().await;
         let job = jobs
             .get_mut(job_id)
@@ -457,10 +449,8 @@ impl ProverManager {
 
         let data = match execute_task_response.result_data {
             Some(consensus_grpc_api::execute_task_response::ResultData::Challenges(challenges)) => {
-                vec![consensus_common::RowData {
-                    airgroup_id: 0, // or some appropriate default
-                    values: challenges.values,
-                }]
+                assert!(!challenges.values.is_empty());
+                JobResultData::Challenges(challenges.values)
             }
             _ => {
                 return Err(Error::InvalidRequest(
@@ -482,10 +472,14 @@ impl ProverManager {
         let all_successful = phase1_results.values().all(|result| result.success);
 
         if all_successful {
-            let mut challenges = Vec::new();
-            for results in phase1_results.values() {
-                challenges.push(results.data[0].values.clone());
-            }
+            let challenges: Vec<Vec<u64>> = phase1_results
+                .values()
+                .map(|results| match &results.data {
+                    JobResultData::Challenges(values) => values.clone(),
+                    _ => unreachable!("Expected Challenges data in Phase1 results"),
+                })
+                .collect();
+
             job.challenges = Some(challenges.clone());
             job.state = JobState::Running(JobPhase::Phase2);
 
@@ -557,7 +551,7 @@ impl ProverManager {
                                 prover_id: prover_id.clone().into(),
                                 job_id: job_id.clone().into(),
                                 task_type: consensus_grpc_api::TaskType::Prove as i32,
-                                params: Some(execute_task_request::Params::Prove(
+                                params: Some(execute_task_request::Params::ProveParams(
                                     consensus_grpc_api::ProveParams {
                                         challenges: Some(Challenges {
                                             values: challenges[0].clone(),

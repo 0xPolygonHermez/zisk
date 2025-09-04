@@ -170,15 +170,21 @@ pub enum JobState {
 }
 
 #[derive(Debug, Clone)]
-pub struct RowData {
+pub struct AggProofData {
     pub airgroup_id: u64,
     pub values: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
+pub enum JobResultData {
+    Challenges(Vec<u64>),
+    AggProofs(Vec<AggProofData>),
+}
+
+#[derive(Debug, Clone)]
 pub struct JobResult {
     pub success: bool,
-    pub data: Vec<RowData>,
+    pub data: JobResultData,
 }
 
 #[derive(Debug, Clone)]

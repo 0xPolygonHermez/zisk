@@ -1,13 +1,13 @@
 use anyhow::Result;
 use consensus_common::{BlockContext, JobPhase, ProverAllocationDto, ProverState};
 use consensus_common::{ComputeCapacity, JobId, ProverId};
+use proofman::AggProofs;
 use proofman_common::{DebugInfo, ParamsGPU};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
-use proofman::AggProofs;
 
 use crate::proof_generator::ProofGenerator;
 
@@ -185,6 +185,7 @@ impl ProverService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_job(
         &mut self,
         job_id: JobId,

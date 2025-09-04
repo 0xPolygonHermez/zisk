@@ -132,7 +132,7 @@ impl ZiskProveClient {
         // - If a port is specified, use it as the base port.
         // In both cases, the local MPI rank is added to the port to avoid conflicts
         // when running multiple processes on the same machine.
-        let mut port = match self.command {
+        let port = match self.command {
             ClientCommand::Prove { port, .. }
             | ClientCommand::VerifyConstraints { port, .. }
             | ClientCommand::Status { port }

@@ -1,7 +1,8 @@
 use crate::{
-    execute_task_response::ResultData, ComputeCapacity as GrpcComputeCapacity, ProverAllocation as GrpcProverAllocation, Proof as GrpcProof
+    ComputeCapacity as GrpcComputeCapacity, Proof as GrpcProof,
+    ProverAllocation as GrpcProverAllocation,
 };
-use consensus_common::{ComputeCapacity, ProverAllocationDto, RowData};
+use consensus_common::{AggProofData, ComputeCapacity, ProverAllocationDto};
 
 /// Conversions between consensus-common types and gRPC types
 /// This module handles the translation layer between our domain types
@@ -18,15 +19,15 @@ impl From<GrpcComputeCapacity> for ComputeCapacity {
     }
 }
 
-impl From<RowData> for GrpcProof {
-    fn from(row_data: RowData) -> Self {
+impl From<AggProofData> for GrpcProof {
+    fn from(row_data: AggProofData) -> Self {
         GrpcProof { airgroup_id: row_data.airgroup_id, values: row_data.values }
     }
 }
 
-impl From<GrpcProof> for RowData {
+impl From<GrpcProof> for AggProofData {
     fn from(grpc_row_data: GrpcProof) -> Self {
-        RowData { airgroup_id: grpc_row_data.airgroup_id, values: grpc_row_data.values }
+        AggProofData { airgroup_id: grpc_row_data.airgroup_id, values: grpc_row_data.values }
     }
 }
 
@@ -41,18 +42,3 @@ impl From<ProverAllocationDto> for GrpcProverAllocation {
         Self { range_start: dto.range.start, range_end: dto.range.end }
     }
 }
-
-// impl From<ResultData> for RowData {
-//     fn from(result_data: ResultData) -> Self {
-//         match result_data {
-//             ResultData::Proofs(proofs) => Self {
-//                 airgroup_id: proofs.airgroup_id,
-//                 values: proofs.values,
-//             },
-//             ResultData::Challenges(challenges) => Self {
-//                 airgroup_id: 0, // or some appropriate default
-//                 values: challenges.values,
-//             },
-//         }
-//     }
-// }
