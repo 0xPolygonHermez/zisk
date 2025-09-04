@@ -457,7 +457,6 @@ impl ConsensusApi for ConsensusService {
                     outbound_result = outbound_receiver.recv() => {
                         match outbound_result {
                             Some(message) => {
-                                info!("Sending message to prover {}: {:?}", prover_id, message);
                                 yield Ok(message);
                             }
                             None => {

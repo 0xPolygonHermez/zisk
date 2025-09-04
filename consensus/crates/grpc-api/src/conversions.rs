@@ -1,8 +1,9 @@
 use crate::{
-    ComputeCapacity as GrpcComputeCapacity, Proof as GrpcProof,
-    ProverAllocation as GrpcProverAllocation,
+    ComputeCapacity as GrpcComputeCapacity,
+    Proof as GrpcProof,
+    // ProverAllocation as GrpcProverAllocation,
 };
-use consensus_common::{AggProofData, ComputeCapacity, ProverAllocationDto};
+use consensus_common::{AggProofData, ComputeCapacity};
 
 /// Conversions between consensus-common types and gRPC types
 /// This module handles the translation layer between our domain types
@@ -28,17 +29,5 @@ impl From<AggProofData> for GrpcProof {
 impl From<GrpcProof> for AggProofData {
     fn from(grpc_row_data: GrpcProof) -> Self {
         AggProofData { airgroup_id: grpc_row_data.airgroup_id, values: grpc_row_data.values }
-    }
-}
-
-impl From<GrpcProverAllocation> for ProverAllocationDto {
-    fn from(pb: GrpcProverAllocation) -> Self {
-        Self { range: pb.range_start..pb.range_end }
-    }
-}
-
-impl From<ProverAllocationDto> for GrpcProverAllocation {
-    fn from(dto: ProverAllocationDto) -> Self {
-        Self { range_start: dto.range.start, range_end: dto.range.end }
     }
 }

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use consensus_common::{BlockContext, JobPhase, ProverAllocationDto, ProverState};
+use consensus_common::{AggregationParams, BlockContext, JobPhase, ProverState};
 use consensus_common::{ComputeCapacity, JobId, ProverId};
 use proofman::AggProofs;
 use proofman_common::{DebugInfo, ParamsGPU};
@@ -14,8 +14,9 @@ use crate::proof_generator::ProofGenerator;
 /// Result from computation tasks
 #[derive(Debug)]
 pub enum ComputationResult {
-    Phase1 { job_id: JobId, success: bool, result: Result<Vec<u64>> },
-    Phase2 { job_id: JobId, success: bool, result: Result<Vec<AggProofs>> },
+    Challenge { job_id: JobId, success: bool, result: Result<Vec<u64>> },
+    Proofs { job_id: JobId, success: bool, result: Result<Vec<AggProofs>> },
+    AggProof { job_id: JobId, success: bool, result: Result<Option<Vec<u64>>> },
 }
 
 /// Current job context
@@ -192,7 +193,7 @@ impl ProverService {
         block: BlockContext,
         rank_id: u32,
         total_provers: u32,
-        allocation: Vec<ProverAllocationDto>,
+        allocation: Vec<u32>,
         total_compute_units: u32,
         total_tables: u32,
         table_id_start: u32,
@@ -202,15 +203,15 @@ impl ProverService {
             block,
             rank_id,
             total_provers,
-            allocation: allocation.iter().flat_map(|alloc| alloc.range.clone()).collect(),
+            allocation,
             total_compute_units,
-            phase: JobPhase::Phase1,
+            phase: JobPhase::Contributions,
             total_tables,
             table_id_start,
         }));
         self.current_job = Some(current_job.clone());
 
-        self.state = ProverState::Computing(JobPhase::Phase1);
+        self.state = ProverState::Computing(JobPhase::Contributions);
 
         current_job
     }
@@ -230,5 +231,14 @@ impl ProverService {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         self.proof_generator.prove(job, challenges, tx).await
+    }
+
+    pub async fn aggregate(
+        &self,
+        job: Arc<Mutex<JobContext>>,
+        agg_params: AggregationParams,
+        tx: mpsc::UnboundedSender<ComputationResult>,
+    ) -> JoinHandle<()> {
+        self.proof_generator.aggregate(job, agg_params, tx).await
     }
 }

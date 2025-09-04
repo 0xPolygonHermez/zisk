@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use consensus_common::{BlockContext, ProverState};
+use consensus_common::{AggProofData, AggregationParams, BlockContext, ProverState};
 use consensus_common::{BlockId, JobId};
 use consensus_grpc_api::execute_task_response::ResultData;
 use consensus_grpc_api::*;
@@ -159,11 +159,14 @@ impl ProverGrpcEndpoint {
         message_sender: &mpsc::UnboundedSender<ProverMessage>,
     ) -> Result<()> {
         match result {
-            ComputationResult::Phase1 { job_id, success, result } => {
+            ComputationResult::Challenge { job_id, success, result } => {
                 self.send_partial_contribution(job_id, success, result, message_sender).await
             }
-            ComputationResult::Phase2 { job_id, success, result } => {
+            ComputationResult::Proofs { job_id, success, result } => {
                 self.send_proof(job_id, success, result, message_sender).await
+            }
+            ComputationResult::AggProof { job_id, success, result } => {
+                self.send_aggregation(job_id, success, result, message_sender).await
             }
         }
     }
@@ -246,6 +249,53 @@ impl ProverGrpcEndpoint {
 
         message_sender.send(message)?;
 
+        Ok(())
+    }
+
+    async fn send_aggregation(
+        &mut self,
+        job_id: JobId,
+        success: bool,
+        result: Result<Option<Vec<u64>>>,
+        message_sender: &mpsc::UnboundedSender<ProverMessage>,
+    ) -> Result<()> {
+        if let Some(handle) = self.prover_service.take_current_computation() {
+            handle.await?;
+        }
+
+        let (result_data, error_message) = match result {
+            Ok(data) => {
+                assert!(success);
+
+                if let Some(final_proof) = data {
+                    (
+                        Some(ResultData::FinalProof(FinalProof { values: final_proof })),
+                        String::new(),
+                    )
+                } else {
+                    (None, String::new())
+                }
+            }
+            Err(e) => {
+                // ! FIXME, return an error?
+                assert!(!success);
+                (None, e.to_string())
+            }
+        };
+
+        let message = ProverMessage {
+            payload: Some(prover_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                prover_id: self.config_endpoint.prover.prover_id.as_string(),
+                job_id: job_id.as_string(),
+                task_type: TaskType::Aggregate as i32,
+                success,
+                result_data,
+                error_message,
+            })),
+        };
+
+        message_sender.send(message)?;
+
         // TODO move this logic to the client
         self.prover_service.set_current_job(None);
         self.prover_service.set_state(ProverState::Idle);
@@ -294,9 +344,8 @@ impl ProverGrpcEndpoint {
                         Ok(TaskType::Prove) => {
                             self.prove(computation_tx, request).await?;
                         }
-                        Ok(other) => {
-                            error!("Received unexpected task type: {:?}", other);
-                            return Err(anyhow!("Unexpected task type: {:?}", other));
+                        Ok(TaskType::Aggregate) => {
+                            self.aggregate(computation_tx, request).await?;
                         }
                         Err(_) => {
                             error!("Unknown task type: {}", request.task_type);
@@ -363,7 +412,7 @@ impl ProverGrpcEndpoint {
             block.clone(),
             params.rank_id,
             params.total_provers,
-            params.prover_allocation.into_iter().map(|alloc| alloc.into()).collect(),
+            params.prover_allocation,
             params.job_compute_units,
             params.total_tables,
             params.table_id_start,
@@ -407,6 +456,57 @@ impl ProverGrpcEndpoint {
         let tx = computation_tx.clone();
         self.prover_service
             .set_current_computation(self.prover_service.prove(job, challenges, tx).await);
+
+        Ok(())
+    }
+
+    pub async fn aggregate(
+        &mut self,
+        computation_tx: &mpsc::UnboundedSender<ComputationResult>,
+        request: ExecuteTaskRequest,
+    ) -> Result<()> {
+        assert!(
+            self.prover_service.get_current_job().is_some(),
+            "Aggregate received without current job context"
+        );
+
+        let job = self.prover_service.get_current_job().clone().unwrap().clone();
+        let job_id = job.lock().await.job_id.clone();
+        assert_eq!(job_id.as_string(), request.job_id, "Job ID mismatch in Aggregate");
+
+        info!("Starting Aggregate for job {}", job_id);
+
+        // Extract the Aggregate params
+        let agg_params = match request.params {
+            Some(execute_task_request::Params::AggParams(params)) => params,
+            _ => {
+                return Err(anyhow!("Expected Aggregate params for Aggregate task"));
+            }
+        };
+
+        let agg_params = AggregationParams {
+            agg_proofs: agg_params
+                .agg_proofs
+                .unwrap()
+                .proofs
+                .into_iter()
+                .map(|p| AggProofData { airgroup_id: p.airgroup_id, values: p.values })
+                .collect(),
+            last_proof: agg_params.last_proof,
+            final_proof: agg_params.final_proof,
+            verify_constraints: agg_params.verify_constraints,
+            aggregation: agg_params.aggregation,
+            final_snark: agg_params.final_snark,
+            verify_proofs: agg_params.verify_proofs,
+            save_proofs: agg_params.save_proofs,
+            test_mode: agg_params.test_mode,
+            output_dir_path: PathBuf::from(agg_params.output_dir_path),
+            minimal_memory: agg_params.minimal_memory,
+        };
+
+        let tx = computation_tx.clone();
+        self.prover_service
+            .set_current_computation(self.prover_service.aggregate(job, agg_params, tx).await);
 
         Ok(())
     }

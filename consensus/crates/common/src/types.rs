@@ -155,7 +155,7 @@ pub struct Job {
     pub block: BlockContext,
     pub compute_units: u32,
     pub provers: Vec<ProverId>,
-    pub partitions: Vec<Range<u32>>,
+    pub partitions: Vec<Vec<u32>>,
     pub results: HashMap<JobPhase, HashMap<ProverId, JobResult>>,
     pub challenges: Option<Vec<Vec<u64>>>,
 }
@@ -195,17 +195,17 @@ pub struct BlockContext {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum JobPhase {
-    Phase1,
-    Phase2,
-    PhaseAggregation,
+    Contributions,
+    Prove,
+    Aggregate,
 }
 
 impl JobPhase {
     pub fn as_string(&self) -> String {
         match self {
-            JobPhase::Phase1 => "Phase1".to_string(),
-            JobPhase::Phase2 => "Phase2".to_string(),
-            JobPhase::PhaseAggregation => "PhaseAggregation".to_string(),
+            JobPhase::Contributions => "Contributions".to_string(),
+            JobPhase::Prove => "Prove".to_string(),
+            JobPhase::Aggregate => "Aggregate".to_string(),
         }
     }
 }
@@ -213,4 +213,18 @@ impl JobPhase {
 #[derive(Debug, Clone)]
 pub struct ProverAllocationDto {
     pub range: Range<u32>,
+}
+
+pub struct AggregationParams {
+    pub agg_proofs: Vec<AggProofData>,
+    pub last_proof: bool,
+    pub final_proof: bool,
+    pub verify_constraints: bool,
+    pub aggregation: bool,
+    pub final_snark: bool,
+    pub verify_proofs: bool,
+    pub save_proofs: bool,
+    pub test_mode: bool,
+    pub output_dir_path: PathBuf,
+    pub minimal_memory: bool,
 }

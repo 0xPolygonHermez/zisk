@@ -1,6 +1,7 @@
 use anyhow::Result;
 use asm_runner::AsmRunnerOptions;
 use asm_runner::AsmServices;
+use consensus_common::AggregationParams;
 use consensus_common::JobId;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
@@ -103,7 +104,7 @@ impl ProofGenerator {
             let result = Self::compute_phase1_task(job_id.clone(), job, proofman).await;
             match result {
                 Ok(data) => {
-                    let _ = tx.send(ComputationResult::Phase1 {
+                    let _ = tx.send(ComputationResult::Challenge {
                         job_id,
                         success: true,
                         result: Ok(data),
@@ -111,7 +112,7 @@ impl ProofGenerator {
                 }
                 Err(error) => {
                     error!("Phase 1 computation failed for job {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::Phase1 {
+                    let _ = tx.send(ComputationResult::Challenge {
                         job_id,
                         success: false,
                         result: Err(error),
@@ -130,6 +131,7 @@ impl ProofGenerator {
 
         // Prepare parameters
         let job = job.lock().await;
+        println!("Allocation: {:?}", job.allocation);
         let proof_info = ProofInfo::new(
             Some(job.block.input_path.clone()),
             job.total_compute_units as usize,
@@ -190,7 +192,7 @@ impl ProofGenerator {
             let result = Self::execute_phase2(job, proofman, challenges).await;
             match result {
                 Ok(data) => {
-                    let _ = tx.send(ComputationResult::Phase2 {
+                    let _ = tx.send(ComputationResult::Proofs {
                         job_id,
                         success: true,
                         result: Ok(data),
@@ -198,7 +200,7 @@ impl ProofGenerator {
                 }
                 Err(error) => {
                     error!("Phase 2 computation failed for job {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::Phase2 {
+                    let _ = tx.send(ComputationResult::Proofs {
                         job_id,
                         success: false,
                         result: Err(error),
@@ -223,25 +225,25 @@ impl ProofGenerator {
 
         let options = ProofOptions {
             verify_constraints: false,
-            aggregation: false,
+            aggregation: true,
             final_snark: false,
-            verify_proofs: true,
-            save_proofs: true,
+            verify_proofs: false,
+            save_proofs: false,
             test_mode: false,
-            output_dir_path: PathBuf::from("."),
-            minimal_memory: true,
+            output_dir_path: PathBuf::default(),
+            minimal_memory: false,
         };
         let phase = proofman::ProvePhase::Internal;
 
         // Handle the result immediately without holding it across await
         let proof = match proofman.generate_proof_from_lib(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Internal(proof)) => {
-                info!("Phase 1 computation successful for job {}", job_id);
+                info!("Phase 2 computation successful for job {}", job_id);
                 proof
             }
             Ok(_) => {
-                error!("Error during Phase 1 computation for job {}", job_id);
-                return Err(anyhow::anyhow!("Unexpected result type during Phase 1 computation"));
+                error!("Error during Phase 2 computation for job {}", job_id);
+                return Err(anyhow::anyhow!("Unexpected result type during Phase 2 computation"));
             }
             Err(err) => {
                 error!("Failed to generate proof for job {}: {:?}", job_id, err);
@@ -251,6 +253,77 @@ impl ProofGenerator {
 
         info!("Phase 2 computation completed for job {}", job.job_id);
 
+        Ok(proof)
+    }
+
+    pub async fn aggregate(
+        &self,
+        job: Arc<Mutex<JobContext>>,
+        agg_params: AggregationParams,
+        tx: mpsc::UnboundedSender<ComputationResult>,
+    ) -> JoinHandle<()> {
+        let proofman = self.proofman.clone();
+
+        let job_id = job.lock().await.job_id.clone();
+
+        tokio::spawn(async move {
+            let result = Self::execute_aggregation(job, proofman, agg_params).await;
+            match result {
+                Ok(data) => {
+                    let _ = tx.send(ComputationResult::AggProof {
+                        job_id,
+                        success: true,
+                        result: Ok(data),
+                    });
+                }
+                Err(error) => {
+                    error!("Phase 2 computation failed for job {}: {}", job_id, error);
+                    let _ = tx.send(ComputationResult::AggProof {
+                        job_id,
+                        success: false,
+                        result: Err(error),
+                    });
+                }
+            }
+        })
+    }
+
+    pub async fn execute_aggregation(
+        job: Arc<Mutex<JobContext>>,
+        proofman: Arc<ProofMan<Goldilocks>>,
+        agg_params: AggregationParams,
+    ) -> Result<Option<Vec<u64>>> {
+        let job = job.lock().await;
+        let job_id = job.job_id.clone();
+
+        info!("Computing Aggregation for job {}", job_id);
+
+        let agg_proofs: Vec<AggProofs> = agg_params
+            .agg_proofs
+            .iter()
+            .map(|v| AggProofs { airgroup_id: v.airgroup_id, proof: v.values.clone() })
+            .collect();
+
+        let options = ProofOptions {
+            verify_constraints: agg_params.verify_constraints,
+            aggregation: agg_params.aggregation,
+            final_snark: agg_params.final_snark,
+            verify_proofs: agg_params.verify_proofs,
+            save_proofs: agg_params.save_proofs,
+            test_mode: agg_params.test_mode,
+            output_dir_path: agg_params.output_dir_path,
+            minimal_memory: agg_params.minimal_memory,
+        };
+
+        // Handle the result immediately without holding it across await
+        let proof = proofman.receive_aggregated_proofs(
+            agg_proofs,
+            agg_params.last_proof,
+            agg_params.final_proof,
+            &options,
+        );
+
+        info!("Aggregation computation successful for job {}", job_id);
         Ok(proof)
     }
 }

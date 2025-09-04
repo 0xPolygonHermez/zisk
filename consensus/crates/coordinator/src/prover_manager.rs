@@ -1,13 +1,13 @@
 use chrono::{DateTime, Utc};
 use consensus_common::{
-    BlockContext, BlockId, ComputeCapacity, Error, Job, JobId, JobPhase, JobResult, JobResultData,
-    JobState, ProverId, ProverState, Result,
+    AggProofData, BlockContext, BlockId, ComputeCapacity, Error, Job, JobId, JobPhase, JobResult,
+    JobResultData, JobState, ProverId, ProverState, Result,
 };
 use consensus_grpc_api::{
     coordinator_message, execute_task_request, prover_message, Challenges, CoordinatorMessage,
-    ExecuteTaskResponse, ProverAllocation, ProverMessage, TaskType,
+    ExecuteTaskResponse, Proof, ProofList, ProverMessage, TaskType,
 };
-use std::{collections::HashMap, ops::Range, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info, warn};
 
@@ -212,7 +212,7 @@ impl ProverManager {
         let block_id = BlockId::from(block_id);
         let job = Job {
             job_id: job_id.clone(),
-            state: JobState::Running(JobPhase::Phase1),
+            state: JobState::Running(JobPhase::Contributions),
             block: BlockContext {
                 block_id: block_id.clone(),
                 input_path: PathBuf::from(input_path.clone()),
@@ -241,8 +241,7 @@ impl ProverManager {
 
             // Convert range to ProverAllocation vector
             let range = &partitions[rank];
-            let prover_allocation =
-                vec![ProverAllocation { range_start: range.start, range_end: range.end }];
+            let prover_allocation = range.clone();
 
             let table_id_start = table_id_acc;
             table_id_acc += prover.num_nodes;
@@ -272,7 +271,7 @@ impl ProverManager {
             // Send message through the prover's channel (bounded channels require async send)
             match prover.message_sender.try_send(message) {
                 Ok(()) => {
-                    prover.state = ProverState::Computing(JobPhase::Phase1);
+                    prover.state = ProverState::Computing(JobPhase::Contributions);
                 }
                 Err(mpsc::error::TrySendError::Full(_)) => {
                     // TODO: Handle backpressure - maybe queue for retry or mark prover as slow
@@ -346,14 +345,28 @@ impl ProverManager {
                             )?;
                         }
                         Ok(TaskType::Prove) => {
-                            // Mark job as complete and free provers
-                            self.handle_phase2_result(&job_id).await.map_err(|e| {
-                                error!("Failed to complete job {}: {}", job_id, e);
-                                e
-                            })?;
+                            // Handle Phase2 completion - wait for all provers to complete
+                            self.handle_phase2_result(&job_id, execute_task_response)
+                                .await
+                                .map_err(|e| {
+                                    error!(
+                                        "Failed to handle Phase2 result for job {}: {}",
+                                        job_id, e
+                                    );
+                                    e
+                                })?;
                         }
-                        Ok(other) => {
-                            warn!("Received TaskResult with unexpected task_type {:?} for job {} from prover {}", other, job_id, prover_id);
+                        Ok(TaskType::Aggregate) => {
+                            // Handle Phase2 completion - wait for all provers to complete
+                            self.handle_agregate_result(&job_id, execute_task_response)
+                                .await
+                                .map_err(|e| {
+                                    error!(
+                                        "Failed to handle Aggregation result for job {}: {}",
+                                        job_id, e
+                                    );
+                                    e
+                                })?;
                         }
                         Err(_) => {
                             warn!("Received TaskResult with unknown task_type (raw: {}) for job {} from prover {}", execute_task_response.task_type, job_id, prover_id);
@@ -391,19 +404,248 @@ impl ProverManager {
         Ok(())
     }
 
-    /// Complete a job and reset all assigned provers back to Idle status
-    async fn handle_phase2_result(&self, job_id: &JobId) -> Result<()> {
+    /// Handle Phase2 result and check if the job is complete
+    async fn handle_phase2_result(
+        &self,
+        job_id: &JobId,
+        execute_task_response: ExecuteTaskResponse,
+    ) -> Result<()> {
         let mut jobs = self.jobs.write().await;
         let job = jobs
             .get_mut(job_id)
             .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
-        job.state = JobState::Completed;
+        let prover_id = ProverId::from(execute_task_response.prover_id);
 
-        // Reset prover statuses back to Idle
-        self.mark_provers_with_state(&job.provers, ProverState::Idle).await?;
+        // Store Phase2 result
+        let phase2_results = job.results.entry(JobPhase::Prove).or_default();
 
-        info!("Completed job {} and freed {} provers", job_id, job.provers.len());
+        // Check if we already have a result from this prover
+        if phase2_results.contains_key(&prover_id) {
+            warn!("Received duplicate Phase2 result from prover {} for job {}", prover_id, job_id);
+            return Err(Error::InvalidRequest(format!(
+                "Duplicate Phase2 result from prover {prover_id} for job {job_id}"
+            )));
+        }
+
+        let data = match execute_task_response.result_data {
+            Some(consensus_grpc_api::execute_task_response::ResultData::Proofs(proof_list)) => {
+                let agg_proofs: Vec<AggProofData> = proof_list
+                    .proofs
+                    .into_iter()
+                    .map(|proof| AggProofData {
+                        airgroup_id: proof.airgroup_id,
+                        values: proof.values,
+                    })
+                    .collect();
+                JobResultData::AggProofs(agg_proofs)
+            }
+            _ => {
+                return Err(Error::InvalidRequest(
+                    "Expected Proofs result data for Phase2".to_string(),
+                ));
+            }
+        };
+
+        phase2_results
+            .insert(prover_id.clone(), JobResult { success: execute_task_response.success, data });
+
+        info!("Stored Phase2 result for prover {prover_id} in job {job_id}.");
+
+        // Check if we have results from all assigned provers
+        if phase2_results.len() < job.provers.len() {
+            info!(
+                "Phase2 progress for job {}: {}/{} provers completed",
+                job_id,
+                phase2_results.len(),
+                job.provers.len()
+            );
+            return Ok(());
+        }
+
+        // Check if all Phase2 results are successful
+        let all_successful = phase2_results.values().all(|result| result.success);
+
+        if all_successful {
+            job.state = JobState::Running(JobPhase::Aggregate);
+
+            // Get the assigned provers and release the jobs lock
+            let assigned_provers = job.provers.clone();
+            let job_id = job.job_id.clone();
+            drop(jobs); // Release jobs lock early
+
+            // Start Phase2 for all provers
+            if let Err(e) = self.start_phase3(&job_id, &assigned_provers).await {
+                error!("Failed to start Phase2 for job {}: {}", job_id, e);
+                self.fail_job(&job_id, format!("Failed to start Phase2: {e}")).await.map_err(
+                    |e| {
+                        error!("Failed to mark job {} as failed: {}", job_id, e);
+                        e
+                    },
+                )?;
+            }
+            // job.state = JobState::Completed;
+
+            // // Get the assigned provers before releasing the lock
+            // let assigned_provers = job.provers.clone();
+            // drop(jobs); // Release jobs lock early
+
+            // // Reset prover statuses back to Idle
+            // self.mark_provers_with_state(&assigned_provers, ProverState::Idle).await?;
+
+            // info!("Completed job {} and freed {} provers", job_id, assigned_provers.len());
+        } else {
+            // Some Phase2 results failed
+            let failed_provers: Vec<ProverId> = phase2_results
+                .iter()
+                .filter_map(
+                    |(prover_id, result)| {
+                        if !result.success {
+                            Some(prover_id.clone())
+                        } else {
+                            None
+                        }
+                    },
+                )
+                .collect();
+
+            warn!("Phase2 failed for provers {:?} in job {}", failed_provers, job_id);
+            let reason = format!("Phase2 failed for provers: {failed_provers:?}");
+
+            // Release jobs lock before calling fail_job
+            let job_id_clone = job.job_id.clone();
+            drop(jobs);
+
+            self.fail_job(&job_id_clone, reason).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Handle Phase2 result and check if the job is complete
+    async fn handle_agregate_result(
+        &self,
+        job_id: &JobId,
+        execute_task_response: ExecuteTaskResponse,
+    ) -> Result<()> {
+        info!("Handling aggregation result for job {}", job_id);
+        // let mut jobs = self.jobs.write().await;
+        // let job = jobs
+        //     .get_mut(job_id)
+        //     .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
+
+        // let prover_id = ProverId::from(execute_task_response.prover_id);
+
+        // // Store Phase2 result
+        // let phase2_results = job.results.entry(JobPhase::Phase2).or_default();
+
+        // // Check if we already have a result from this prover
+        // if phase2_results.contains_key(&prover_id) {
+        //     warn!("Received duplicate Phase2 result from prover {} for job {}", prover_id, job_id);
+        //     return Err(Error::InvalidRequest(format!(
+        //         "Duplicate Phase2 result from prover {prover_id} for job {job_id}"
+        //     )));
+        // }
+
+        // let data = match execute_task_response.result_data {
+        //     Some(consensus_grpc_api::execute_task_response::ResultData::Proofs(proof_list)) => {
+        //         let agg_proofs: Vec<AggProofData> = proof_list
+        //             .proofs
+        //             .into_iter()
+        //             .map(|proof| AggProofData {
+        //                 airgroup_id: proof.airgroup_id,
+        //                 values: proof.values,
+        //             })
+        //             .collect();
+        //         JobResultData::AggProofs(agg_proofs)
+        //     }
+        //     _ => {
+        //         return Err(Error::InvalidRequest(
+        //             "Expected Proofs result data for Phase2".to_string(),
+        //         ));
+        //     }
+        // };
+
+        // phase2_results
+        //     .insert(prover_id.clone(), JobResult { success: execute_task_response.success, data });
+
+        // info!("Stored Phase2 result for prover {prover_id} in job {job_id}.");
+
+        // // Check if we have results from all assigned provers
+        // if phase2_results.len() < job.provers.len() {
+        //     info!(
+        //         "Phase2 progress for job {}: {}/{} provers completed",
+        //         job_id,
+        //         phase2_results.len(),
+        //         job.provers.len()
+        //     );
+        //     return Ok(());
+        // }
+
+        // // Check if all Phase2 results are successful
+        // let all_successful = phase2_results.values().all(|result| result.success);
+
+        // if all_successful {
+        //     let agg_proofs: Vec<Vec<AggProofData>> = phase2_results
+        //         .values()
+        //         .map(|results| match &results.data {
+        //             JobResultData::AggProofs(values) => values.clone(),
+        //             _ => unreachable!("Expected AggProofs data in Phase2 results"),
+        //         })
+        //         .collect();
+
+        //     job.agg_proofs = Some(agg_proofs.clone());
+        //     job.state = JobState::Running(JobPhase::PhaseAggregation);
+
+        //     // Get the assigned provers and release the jobs lock
+        //     let assigned_provers = job.provers.clone();
+        //     let job_id = job.job_id.clone();
+        //     drop(jobs); // Release jobs lock early
+
+        //     // Start Phase2 for all provers
+        //     if let Err(e) = self.start_phase3(&job_id, &assigned_provers, agg_proofs).await {
+        //         error!("Failed to start Phase2 for job {}: {}", job_id, e);
+        //         self.fail_job(&job_id, format!("Failed to start Phase2: {e}")).await.map_err(
+        //             |e| {
+        //                 error!("Failed to mark job {} as failed: {}", job_id, e);
+        //                 e
+        //             },
+        //         )?;
+        //     }
+        //     // job.state = JobState::Completed;
+
+        //     // // Get the assigned provers before releasing the lock
+        //     // let assigned_provers = job.provers.clone();
+        //     // drop(jobs); // Release jobs lock early
+
+        //     // // Reset prover statuses back to Idle
+        //     // self.mark_provers_with_state(&assigned_provers, ProverState::Idle).await?;
+
+        //     // info!("Completed job {} and freed {} provers", job_id, assigned_provers.len());
+        // } else {
+        //     // Some Phase2 results failed
+        //     let failed_provers: Vec<ProverId> = phase2_results
+        //         .iter()
+        //         .filter_map(
+        //             |(prover_id, result)| {
+        //                 if !result.success {
+        //                     Some(prover_id.clone())
+        //                 } else {
+        //                     None
+        //                 }
+        //             },
+        //         )
+        //         .collect();
+
+        //     warn!("Phase2 failed for provers {:?} in job {}", failed_provers, job_id);
+        //     let reason = format!("Phase2 failed for provers: {failed_provers:?}");
+
+        //     // Release jobs lock before calling fail_job
+        //     let job_id_clone = job.job_id.clone();
+        //     drop(jobs);
+
+        //     self.fail_job(&job_id_clone, reason).await?;
+        // }
 
         Ok(())
     }
@@ -445,7 +687,7 @@ impl ProverManager {
 
         let prover_id = ProverId::from(execute_task_response.prover_id);
 
-        let phase1_results = job.results.entry(JobPhase::Phase1).or_default();
+        let phase1_results = job.results.entry(JobPhase::Contributions).or_default();
 
         let data = match execute_task_response.result_data {
             Some(consensus_grpc_api::execute_task_response::ResultData::Challenges(challenges)) => {
@@ -464,7 +706,14 @@ impl ProverManager {
 
         info!("Stored Phase1 result for prover {prover_id} in job {job_id}.");
 
-        if phase1_results.len() < self.num_provers().await {
+        // Check if we have results from ALL assigned provers
+        if phase1_results.len() < job.provers.len() {
+            info!(
+                "Phase1 progress for job {}: {}/{} provers completed",
+                job_id,
+                phase1_results.len(),
+                job.provers.len()
+            );
             return Ok(());
         }
 
@@ -481,7 +730,7 @@ impl ProverManager {
                 .collect();
 
             job.challenges = Some(challenges.clone());
-            job.state = JobState::Running(JobPhase::Phase2);
+            job.state = JobState::Running(JobPhase::Prove);
 
             // Get the assigned provers and release the jobs lock
             let assigned_provers = job.provers.clone();
@@ -541,8 +790,8 @@ impl ProverManager {
         for prover_id in assigned_provers {
             if let Some(prover) = provers.get_mut(prover_id) {
                 // Prover should still be in Working status from Phase1
-                if prover.state == ProverState::Computing(JobPhase::Phase1) {
-                    prover.state = ProverState::Computing(JobPhase::Phase2);
+                if prover.state == ProverState::Computing(JobPhase::Contributions) {
+                    prover.state = ProverState::Computing(JobPhase::Prove);
 
                     // Create the Phase2 message (use TaskType::Proof)
                     let message = CoordinatorMessage {
@@ -605,34 +854,250 @@ impl ProverManager {
         Ok(())
     }
 
-    async fn partition_and_allocate_by_capacity(
+    /// Start Phase3 for all provers that completed Phase2
+    async fn start_phase3(
         &self,
-        required_compute_capacity: ComputeCapacity,
-    ) -> (Vec<ProverId>, Vec<Range<u32>>) {
-        let mut selected_provers = Vec::new();
-        let mut partitions = Vec::new();
-        let mut accumulated = 0;
+        job_id: &JobId,
+        assigned_provers: &[ProverId],
+        // proofs: Vec<Vec<AggProofData>>,
+    ) -> Result<()> {
+        // Update prover statuses and send Phase3 messages
+        let mut provers = self.provers.write().await;
 
-        for (prover_id, prover_connection) in self.provers.write().await.iter() {
-            selected_provers.push(prover_id.clone());
+        // For the sake of simplicity, we use now only the first prover to aggregate the proofs
+        let agg_prover = self.select_agg_prover(&provers);
 
-            // Compute new partition as a range
-            let range_start = accumulated;
-            let remaining_needed = required_compute_capacity.compute_units - accumulated;
-            let prover_allocation =
-                std::cmp::min(remaining_needed, prover_connection.compute_capacity.compute_units);
-            let range_end = accumulated + prover_allocation;
-            let prover_range = range_start..range_end;
+        let jobs = self.jobs.read().await;
+        let agg_proofs = jobs.get(job_id).unwrap().results.get(&JobPhase::Prove).unwrap();
 
-            partitions.push(prover_range);
+        // Get all job_result from agg_proofs unless agg_prover contains the prover_id
+        let proofs: Vec<Vec<AggProofData>> = agg_proofs
+            .iter()
+            .filter_map(|(prover_id, result)| {
+                if !agg_prover.contains(prover_id) {
+                    match &result.data {
+                        JobResultData::AggProofs(values) => Some(values.clone()),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-            accumulated += prover_allocation;
+        let proofs: Vec<AggProofData> = proofs.into_iter().flatten().collect();
+        println!("Starting aggregation with {} proofs", proofs.len());
 
-            if accumulated >= required_compute_capacity.compute_units {
-                break;
+        for prover_id in agg_prover {
+            if let Some(prover) = provers.get_mut(&prover_id) {
+                // Prover should still be in Working status from Phase2
+                if prover.state != ProverState::Computing(JobPhase::Prove) {
+                    warn!("Prover {} is not in working state for job {}", prover_id, job_id);
+                    return Err(Error::InvalidRequest(format!(
+                        "Prover {prover_id} is not in computing state for job {job_id}",
+                    )));
+                }
+                prover.state = ProverState::Computing(JobPhase::Aggregate);
+
+                let proofs: Vec<Proof> = proofs
+                    .clone() // This clone must be removed when using more than one prover
+                    .into_iter()
+                    .map(|p| Proof { airgroup_id: p.airgroup_id, values: p.values })
+                    .collect();
+
+                // Create the Phase2 message (use TaskType::Proof)
+                let message = CoordinatorMessage {
+                    payload: Some(coordinator_message::Payload::ExecuteTask(
+                        consensus_grpc_api::ExecuteTaskRequest {
+                            prover_id: prover_id.clone().into(),
+                            job_id: job_id.clone().into(),
+                            task_type: consensus_grpc_api::TaskType::Aggregate as i32,
+                            params: Some(execute_task_request::Params::AggParams(
+                                consensus_grpc_api::AggParams {
+                                    agg_proofs: Some(ProofList { proofs }),
+                                    last_proof: true,
+                                    final_proof: true,
+                                    verify_constraints: true,
+                                    aggregation: true,
+                                    final_snark: false,
+                                    verify_proofs: true,
+                                    save_proofs: false,
+                                    test_mode: false,
+                                    output_dir_path: "".to_string(),
+                                    minimal_memory: false,
+                                },
+                            )),
+                        },
+                    )),
+                };
+
+                // Send Phase2 message
+                match prover.message_sender.try_send(message) {
+                    Ok(()) => {
+                        info!("Sent ProveAggregate message to prover {}", prover_id);
+                    }
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        warn!(
+                            "Message buffer full for prover {}, dropping ProveAggregate message",
+                            prover_id
+                        );
+                        return Err(Error::InvalidRequest(format!(
+                            "Failed to send ProveAggregate message to prover {prover_id}: buffer full"
+                        )));
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                        error!("Channel closed for prover {}", prover_id);
+                        return Err(Error::InvalidRequest(format!(
+                            "Failed to send ProveAggregate message to prover {prover_id}: channel closed"
+                        )));
+                    }
+                }
+            } else {
+                warn!("Prover {} not found when starting ProveAggregate", prover_id);
+                return Err(Error::InvalidRequest(format!(
+                    "Prover {prover_id} not found when starting ProveAggregate"
+                )));
             }
         }
 
-        (selected_provers, partitions)
+        info!(
+            "Successfully started ProveAggregate for job {} with {} provers",
+            job_id,
+            assigned_provers.len()
+        );
+        Ok(())
+    }
+
+    fn select_agg_prover(
+        &self,
+        available_provers: &HashMap<ProverId, ProverConnection>,
+    ) -> Vec<ProverId> {
+        // For the sake of simplicity, we use now only the first prover to aggregate the proofs
+        vec![available_provers.iter().next().unwrap().0.clone()]
+    }
+
+    // async fn partition_and_allocate_by_capacity(
+    //     &self,
+    //     required_compute_capacity: ComputeCapacity,
+    // ) -> (Vec<ProverId>, Vec<Range<u32>>) {
+    //     let mut selected_provers = Vec::new();
+    //     let mut partitions = Vec::new();
+    //     let mut accumulated = 0;
+
+    //     for (prover_id, prover_connection) in self.provers.write().await.iter() {
+    //         selected_provers.push(prover_id.clone());
+
+    //         // Compute new partition as a range
+    //         let range_start = accumulated;
+    //         let remaining_needed = required_compute_capacity.compute_units - accumulated;
+    //         let prover_allocation =
+    //             std::cmp::min(remaining_needed, prover_connection.compute_capacity.compute_units);
+    //             println!("Prover {} capacity: {}", prover_id, prover_connection.compute_capacity.compute_units);
+    //         let range_end = accumulated + prover_allocation;
+    //         let prover_range = range_start..range_end;
+
+    //         partitions.push(prover_range);
+
+    //         accumulated += prover_allocation;
+
+    //         if accumulated >= required_compute_capacity.compute_units {
+    //             break;
+    //         }
+    //     }
+
+    //     println!("Selected provers: {:?}", selected_provers);
+    //     println!("Partitions: {:?}", partitions);
+
+    //     (selected_provers, partitions)
+    // }
+
+    async fn partition_and_allocate_by_capacity(
+        &self,
+        required_compute_capacity: ComputeCapacity,
+    ) -> (Vec<ProverId>, Vec<Vec<u32>>) {
+        let mut selected_provers = Vec::new();
+        let mut prover_capacities = Vec::new();
+        let mut total_capacity = 0;
+
+        // Step 1: Select provers that can cover the required compute capacity
+        for (prover_id, prover_connection) in self.provers.write().await.iter() {
+            if matches!(prover_connection.state, ProverState::Idle) {
+                selected_provers.push(prover_id.clone());
+                prover_capacities.push(prover_connection.compute_capacity.compute_units);
+                total_capacity += prover_connection.compute_capacity.compute_units;
+
+                println!(
+                    "Prover {} capacity: {}",
+                    prover_id, prover_connection.compute_capacity.compute_units
+                );
+
+                // Stop when we have enough capacity
+                if total_capacity >= required_compute_capacity.compute_units {
+                    break;
+                }
+            }
+        }
+
+        if selected_provers.is_empty() || total_capacity < required_compute_capacity.compute_units {
+            return (vec![], vec![]);
+        }
+
+        // Step 2: Assign partitions using round-robin
+        let num_provers = selected_provers.len();
+        let total_units = required_compute_capacity.compute_units;
+        let mut prover_allocations = vec![Vec::new(); num_provers];
+
+        // Round-robin assignment of compute units
+        for unit in 0..total_units {
+            let prover_idx = (unit as usize) % num_provers;
+
+            // Check if this prover still has capacity
+            if prover_allocations[prover_idx].len() < prover_capacities[prover_idx] as usize {
+                prover_allocations[prover_idx].push(unit);
+            } else {
+                // If this prover is at capacity, find the next available prover
+                let mut found = false;
+                for offset in 1..num_provers {
+                    let next_idx = (prover_idx + offset) % num_provers;
+                    if prover_allocations[next_idx].len() < prover_capacities[next_idx] as usize {
+                        prover_allocations[next_idx].push(unit);
+                        found = true;
+                        break;
+                    }
+                }
+
+                if !found {
+                    warn!("Could not assign compute unit {} to any prover", unit);
+                    break;
+                }
+            }
+        }
+
+        // // Step 3: Convert allocations to ranges (for protobuf compatibility)
+        // let mut partitions = Vec::new();
+        // for (i, allocation) in prover_allocations.iter().enumerate() {
+        //     if allocation.is_empty() {
+        //         partitions.push(0..0); // Empty range
+        //     } else {
+        //         // Create a range that represents the allocated units
+        //         // Note: This creates non-contiguous ranges for round-robin
+        //         let min_unit = *allocation.iter().min().unwrap();
+        //         let max_unit = *allocation.iter().max().unwrap();
+        //         partitions.push(min_unit..(max_unit + 1));
+
+        //         println!(
+        //             "Prover {} ({}) gets {} units: {:?}",
+        //             selected_provers[i],
+        //             prover_capacities[i],
+        //             allocation.len(),
+        //             allocation
+        //         );
+        //     }
+        // }
+
+        println!("Selected provers: {:?}", selected_provers);
+        println!("Round-robin partitions: {:?}", prover_allocations);
+
+        (selected_provers, prover_allocations)
     }
 }

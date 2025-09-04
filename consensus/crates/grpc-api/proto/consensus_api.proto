@@ -191,16 +191,16 @@ message ContributionParams {
   string input_path = 2;
   uint32 rank_id = 3;
   uint32 total_provers = 4;
-  repeated ProverAllocation prover_allocation = 5;
+  repeated uint32 prover_allocation = 5;
   uint32 job_compute_units = 6;
   uint32 total_tables = 7;
   uint32 table_id_start = 8;
 }
 
-message ProverAllocation {
-  uint32 range_start = 1;
-  uint32 range_end = 2;
-}
+// message ProverAllocation {
+//   uint32 range_start = 1;
+//   uint32 range_end = 2;
+// }
 
 message ProveParams {
   Challenges challenges = 1;
@@ -210,18 +210,14 @@ message AggParams {
   ProofList agg_proofs = 1;
   bool last_proof = 2;
   bool final_proof = 3;
-  AggOptions options = 4;
-}
-
-message AggOptions {
-    bool verify_constraints = 1;
-    bool aggregation = 2;
-    bool final_snark = 3;
-    bool verify_proofs = 4;
-    bool save_proofs = 5;
-    bool test_mode = 6;
-    bool output_dir_path = 7;
-    bool minimal_memory = 8;
+  bool verify_constraints = 4;
+  bool aggregation = 5;
+  bool final_snark = 6;
+  bool verify_proofs = 7;
+  bool save_proofs = 8;
+  bool test_mode = 9;
+  string output_dir_path = 10;
+  bool minimal_memory = 11;
 }
 
 // Messages from prover to coordinator
@@ -289,6 +285,7 @@ message ExecuteTaskResponse {
   oneof result_data {
     Challenges challenges = 6;
     ProofList proofs = 7;
+    FinalProof final_proof = 8;
   }
 }
 
@@ -299,6 +296,10 @@ message ProofList {
 message Proof {
   uint64 airgroup_id = 1;
   repeated uint64 values = 2;
+}
+
+message FinalProof {
+  repeated uint64 values = 1;
 }
 
 message Challenges {

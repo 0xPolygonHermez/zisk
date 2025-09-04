@@ -81,10 +81,6 @@ struct Cli {
     #[clap(long, default_value_t = false)]
     pub verify_constraints: bool,
 
-    /// Whether to enable aggregation
-    #[clap(short = 'a', long, default_value_t = false)]
-    pub aggregation: bool,
-
     /// Whether to generate the final SNARK
     #[clap(short = 'f', long, default_value_t = false)]
     pub final_snark: bool,
@@ -123,7 +119,7 @@ async fn main() -> Result<()> {
         verbose: cli.verbose,
         debug: cli.debug.clone(),
         verify_constraints: cli.verify_constraints,
-        aggregation: cli.aggregation,
+        aggregation: true, // we always aggregate
         final_snark: cli.final_snark,
         preallocate: cli.preallocate,
         max_streams: cli.max_streams,
