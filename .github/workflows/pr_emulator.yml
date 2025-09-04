@@ -19,7 +19,7 @@ on:
 jobs:
   docker-ziskof-check:
     name: Docker Risc Oficial Tests Check
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     container:
       image: hermeznetwork/ziskof:latest
     env:
