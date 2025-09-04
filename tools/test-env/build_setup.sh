@@ -108,7 +108,6 @@ main() {
             # Add flags for recursive setup command
             setup_flags="-t ${WORKSPACE_DIR}/pil2-proofman/pil2-components/lib/std/pil -r"
             # Add -a flag  (aggregation) for check-setup command
-            check_setup_flags=-a
         fi
 
         rm -rf build/provingKey
@@ -131,8 +130,11 @@ main() {
     fi
 
     step "Generate constant tree files..."
+    if [[ ${DISABLE_RECURSIVE_SETUP} != "1" ]];  then
+            check_setup_flags=-a
+    fi
     ensure cargo-zisk check-setup $check_setup_flags || return 1
-
+    
     success "ZisK setup completed successfully!"
 }
 
