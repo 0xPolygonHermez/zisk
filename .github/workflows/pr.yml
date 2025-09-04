@@ -1,8 +1,6 @@
 name: Test ZisK
 
 on:
-  push:
-    branches: [develop]
   pull_request:
     branches:
       - develop
