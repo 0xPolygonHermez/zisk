@@ -12,11 +12,15 @@ SECTIONS
         *(.fipsstart)
     }
     
+    . = ALIGN(8);
+    
     /* Main text section with the actual code */
     .text : {
         *(.text.start)  /* Entry point code */
         *(.text)        /* Other text */
     }
+    
+    . = ALIGN(8);
     
     /* Create a separate section for FIPS end marker */
     .fipsend : {
