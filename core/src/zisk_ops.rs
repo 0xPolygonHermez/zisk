@@ -342,6 +342,7 @@ define_ops! {
     (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, opc_bn254_complex_add, op_bn254_complex_add),
     (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, opc_bn254_complex_sub, op_bn254_complex_sub),
     (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, opc_bn254_complex_mul, op_bn254_complex_mul),
+    (Halt, "halt", Internal, INTERNAL_COST, 0xff, 144, opc_halt, op_halt),
 }
 
 /* INTERNAL operations */
@@ -1762,5 +1763,19 @@ pub fn opc_fcall_get(ctx: &mut InstContext) {
         ctx.mem.free_input = ctx.fcall.result[ctx.fcall.result_got as usize];
     }
     ctx.fcall.result_got += 1;
+    ctx.flag = false;
+}
+
+/// Implements halt
+#[inline(always)]
+pub fn op_halt(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_halt() is not implemented");
+}
+
+/// InstContext-based wrapper over op_halt()
+#[inline(always)]
+pub fn opc_halt(ctx: &mut InstContext) {
+    ctx.error = true;
+    ctx.c = 0;
     ctx.flag = false;
 }

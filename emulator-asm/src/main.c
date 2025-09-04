@@ -121,6 +121,7 @@ uint64_t assembly_duration;
 
 extern uint64_t MEM_STEP;
 extern uint64_t MEM_END;
+extern uint64_t MEM_ERROR;
 extern uint64_t MEM_TRACE_ADDRESS;
 extern uint64_t MEM_CHUNK_ADDRESS;
 extern uint64_t MEM_CHUNK_START_STEP;
@@ -432,7 +433,7 @@ int main(int argc, char *argv[])
                         server_run();
 
                         response[0] = TYPE_MT_RESPONSE;
-                        response[1] = MEM_END ? 0 : 1;
+                        response[1] = (MEM_END && !MEM_ERROR) ? 0 : 1;
                         response[2] = trace_size;
                         response[3] = trace_used_size;
                         response[4] = 0;
@@ -2686,10 +2687,11 @@ void server_run (void)
         uint64_t duration = assembly_duration;
         uint64_t steps = MEM_STEP;
         uint64_t end = MEM_END;
+        uint64_t error = MEM_ERROR;
         uint64_t step_duration_ns = steps == 0 ? 0 : (duration * 1000) / steps;
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
-        printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, max steps=%lu, chunk size=%lu\n",
+        printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, error=%lu, max steps=%lu, chunk size=%lu\n",
             duration,
             realloc_counter,
             steps,
@@ -2700,12 +2702,17 @@ void server_run (void)
             final_trace_size,
             final_trace_size_percentage,
             end,
+            error,
             max_steps,
             chunk_size);
         if (gen_method == RomHistogram)
         {
             printf("Rom histogram size=%lu\n", histogram_size);
         }
+    }
+    if (MEM_ERROR)
+    {
+        printf("Emulation ended with error code %lu\n", MEM_ERROR);
     }
 
     // Log output
@@ -2735,7 +2742,7 @@ void server_run (void)
     {
         uint64_t * pOutput = (uint64_t *)trace_address;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-        pOutput[1] = 0; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+        pOutput[1] = MEM_ERROR; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
         pOutput[2] = trace_size; // MT allocated size [8]
         //assert(final_trace_size > 32);
         if (gen_method == RomHistogram)

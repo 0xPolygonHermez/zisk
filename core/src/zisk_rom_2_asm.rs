@@ -103,6 +103,7 @@ pub struct ZiskAsmContext {
     mem_step: String,
     mem_sp: String,
     mem_end: String,
+    mem_error: String,
     mem_trace_address: String,
     mem_chunk_address: String,
     mem_chunk_start_step: String,
@@ -150,6 +151,10 @@ impl ZiskAsmContext {
     }
     pub fn chunk_player_mem_reads_collect_main(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmChunkPlayerMemReadsCollectMain
+    }
+    pub fn jump_to_unaligned_pc(&self) -> bool {
+        //ctx.chunk_player_mem_reads_collect_main() || ctx.chunk_player_mt_collect_mem()
+        true
     }
 
     // Creates a comment with the specified prefix and sufix, i.e. with the requested syntax
@@ -404,6 +409,7 @@ impl ZiskRom2Asm {
         ctx.mem_step = format!("qword {}[MEM_STEP]", ctx.ptr);
         ctx.mem_sp = format!("qword {}[MEM_SP]", ctx.ptr);
         ctx.mem_end = format!("qword {}[MEM_END]", ctx.ptr);
+        ctx.mem_error = format!("qword {}[MEM_ERROR]", ctx.ptr);
         ctx.mem_trace_address = format!("qword {}[MEM_TRACE_ADDRESS]", ctx.ptr);
         ctx.mem_chunk_address = format!("qword {}[MEM_CHUNK_ADDRESS]", ctx.ptr);
         ctx.mem_chunk_start_step = format!("qword {}[MEM_CHUNK_START_STEP]", ctx.ptr);
@@ -422,6 +428,7 @@ impl ZiskRom2Asm {
         *code += ".comm MEM_STEP, 8, 8\n";
         *code += ".comm MEM_SP, 8, 8\n";
         *code += ".comm MEM_END, 8, 8\n";
+        *code += ".comm MEM_ERROR, 8, 8\n";
         *code += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
         *code += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
         *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
@@ -606,6 +613,7 @@ impl ZiskRom2Asm {
 
         *code += &format!("\n{}\n", ctx.comment_str("ASM memory initialization"));
         *code += &format!("\tmov {}, 0 {}\n", ctx.mem_end, ctx.comment_str("end = 0"));
+        *code += &format!("\tmov {}, 0 {}\n", ctx.mem_error, ctx.comment_str("error = 0"));
         if ctx.fast()
             || ctx.minimal_trace()
             || ctx.rom_histogram()
@@ -3298,7 +3306,7 @@ impl ZiskRom2Asm {
         // Init previous key to the first ROM entry
         let mut previous_key: u64 = ROM_ENTRY;
         for key in &rom.sorted_pc_list {
-            if ctx.chunk_player_mem_reads_collect_main() || ctx.chunk_player_mt_collect_mem() {
+            if ctx.jump_to_unaligned_pc() {
                 // When in chunk player mode, we need to resume the chunk at any address,
                 // including internal addresses not aligned to 4B.  We need to fill all the gaps
                 // between alligned addresses to make the distance between addresses constant and
@@ -5965,6 +5973,15 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::Halt => {
+                *code +=
+                    &format!("\tmov {}, 1 {}\n", ctx.mem_error, ctx.comment_str("halt: error = 1"));
+                ctx.c.is_constant = true;
+                ctx.c.constant_value = 0;
+                ctx.c.string_value = "0".to_string();
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_one = true;
+            }
         }
     }
 
@@ -6120,11 +6137,7 @@ impl ZiskRom2Asm {
             REG_ADDRESS,
             REG_ADDRESS,
             REG_PC,
-            if ctx.chunk_player_mem_reads_collect_main() || ctx.chunk_player_mt_collect_mem() {
-                8
-            } else {
-                2
-            },
+            if ctx.jump_to_unaligned_pc() { 8 } else { 2 },
             ctx.comment_str("address = map[pc]")
         );
         *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));

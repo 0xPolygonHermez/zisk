@@ -146,6 +146,9 @@ impl ZiskRom {
                 // vs. the offset as the index
             } else {
                 // pc is not aligned to a 4-byte boundary
+                if self.offset_rom_na_unstructions > pc {
+                    panic!("ZiskRom::get_instruction() pc=0x{:x} is out of range vs. offset_rom_na_instructions=0x{:x}", pc, self.offset_rom_na_unstructions);
+                }
                 let rom_index = (pc - self.offset_rom_na_unstructions) as usize;
                 if rom_index >= self.rom_na_instructions.len() {
                     panic!(

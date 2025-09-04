@@ -87,6 +87,10 @@ pub struct InstContext {
     /// End flag, set to true only by the last instruction to execute
     pub end: bool,
 
+    /// Error flag, set to true if an error occurs during execution, e.g. halt instruction due to
+    /// a 0x0000 instruction
+    pub error: bool,
+
     /// Registers
     pub regs: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
 
@@ -114,6 +118,7 @@ impl InstContext {
             pc: ROM_ENTRY,
             step: 0,
             end: false,
+            error: false,
             regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
             emulation_mode: EmulationMode::default(),
             precompiled: PrecompiledInstContext::default(),
