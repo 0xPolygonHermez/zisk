@@ -4,6 +4,7 @@ mod ecmul;
 mod ecpairing;
 mod ecrecover;
 mod secp256k1;
+mod secp256r1;
 mod sha256f_compress;
 mod utils;
 
@@ -18,6 +19,7 @@ pub use secp256k1::curve::{secp256k1_decompress, secp256k1_double_scalar_mul_wit
 pub use secp256k1::scalar::{
     secp256k1_fn_add, secp256k1_fn_inv, secp256k1_fn_mul, secp256k1_fn_neg, secp256k1_fn_sub,
 };
+pub use secp256r1::scalar::{secp256r1_fn_inv, secp256r1_fn_mul};
 pub use sha256f_compress::sha256f_compress;
 pub use utils::{
     exp_power_of_two, exp_power_of_two_self, from_be_bytes_to_u64_array, from_u64_array_to_be_bytes,

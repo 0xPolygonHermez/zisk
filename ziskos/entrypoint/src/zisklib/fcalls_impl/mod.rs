@@ -6,6 +6,7 @@ mod proxy;
 mod secp256k1_fn_inv;
 mod secp256k1_fp_inv;
 mod secp256k1_fp_sqrt;
+mod secp256r1_fn_inv;
 mod utils;
 
 pub use proxy::*;

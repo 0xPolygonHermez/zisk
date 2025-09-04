@@ -15,7 +15,6 @@ lazy_static! {
         16
     )
     .unwrap();
-
     pub static ref SECP256R1_A: BigInt = BigInt::parse_bytes(
         b"ffffffff00000001000000000000000000000000fffffffffffffffffffffffc",
         16

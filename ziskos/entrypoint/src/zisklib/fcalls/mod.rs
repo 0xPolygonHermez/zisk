@@ -9,6 +9,7 @@ pub const FCALL_BN254_FP_INV_ID: u16 = 6;
 pub const FCALL_BN254_FP2_INV_ID: u16 = 7;
 pub const FCALL_BN254_TWIST_ADD_LINE_COEFFS_ID: u16 = 8;
 pub const FCALL_BN254_TWIST_DBL_LINE_COEFFS_ID: u16 = 9;
+pub const FCALL_SECP256R1_FN_INV_ID: u16 = 10;
 
 mod bn254_fp;
 mod bn254_fp2;
@@ -17,6 +18,7 @@ mod msb_pos_256;
 mod secp256k1_fn_inv;
 mod secp256k1_fp_inv;
 mod secp256k1_fp_sqrt;
+mod secp256r1_fn_inv;
 
 pub use bn254_fp::*;
 pub use bn254_fp2::*;
@@ -25,3 +27,4 @@ pub use msb_pos_256::*;
 pub use secp256k1_fn_inv::*;
 pub use secp256k1_fp_inv::*;
 pub use secp256k1_fp_sqrt::*;
+pub use secp256r1_fn_inv::*;
