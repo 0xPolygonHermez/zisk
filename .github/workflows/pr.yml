@@ -7,7 +7,10 @@ on:
       - main
       - "pre-develop-[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:    
-  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   cargo-tests:
