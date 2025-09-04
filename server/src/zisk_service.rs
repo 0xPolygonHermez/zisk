@@ -482,7 +482,7 @@ impl ZiskService {
         self.proofman.mpi_broadcast(&mut bytes);
 
         // extract byte 0 to decide the option
-        let option = bytes.get(0).cloned();
+        let option = bytes.first().cloned();
         match option {
             Some(0) => {
                 info_file!("Received process 'VerifyConstraints' request");
