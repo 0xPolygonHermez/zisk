@@ -18,9 +18,18 @@ else
     RESET=""
 fi
 
-# Helper to ensure a command runs successfully
-# If it fails, it prints an error message and waits for user input
+# Ensure a command runs successfully echoing the command
 ensure() {
+    echo -e "${YELLOW}▶ Executing:${RESET} $*"
+    if ! "$@"; then
+        echo "${RED}❌ Error: command failed -> $*${RESET}" >&2
+        press_any_key
+        return 1
+    fi
+}
+
+# Ensure a command runs successfully without echoing the command
+ensure_no_echo() {
     if ! "$@"; then
         echo "${RED}❌ Error: command failed -> $*${RESET}" >&2
         press_any_key
@@ -143,26 +152,30 @@ is_gha() {
     [[ "$ZISK_GHA" == "1" ]]
 }
 
-# get_var_list: Returns the list of items (separated by commas) in the variable
-#
-# Parameters:
-#   $1 (var_name) — Name of the environment variable containing comma-separated values
-get_var_list() {
-    local var_name="$1"
-    local raw="${!var_name}"
+# get_var_list_to_array: fills a bash array with items from a comma-separated env var
+# Usage: get_var_list_to_array <dest_array_name> <ENV_VAR_NAME>
+get_var_list_to_array() {
+    local __dest="$1"
+    local __varname="$2"
+    local raw="${!__varname}"
+
+    # If empty or only whitespace, set empty array and return
+    if [[ -z "${raw//[[:space:]]/}" ]]; then
+        eval "$__dest=()"
+        return 0
+    fi
+
+    local -a __tmp=()
     local item
-
-    # if not defined or empty, return nothing
-    [[ -z "${raw//[[:space:]]/}" ]] && return 0
-
-    # separate by comma, trim spaces and emit each line
-    IFS=',' read -ra parts <<< "$raw"
-    for item in "${parts[@]}"; do
-        # remove surrounding whitespace
+    IFS=',' read -ra __parts <<< "$raw"
+    for item in "${__parts[@]}"; do
+        # trim surrounding whitespace
         item="${item#"${item%%[![:space:]]*}"}"
         item="${item%"${item##*[![:space:]]}"}"
-        printf '%s\n' "$item"
+        [[ -n "$item" ]] && __tmp+=("$item")
     done
+    # assign by name
+    eval "$__dest=(\"\${__tmp[@]}\")"
 }
 
 # verify_files_exist: Ensure that all specified files exist under a given base path
@@ -354,8 +367,9 @@ source "$PROFILE"
 ZISK_DIR="$HOME/.zisk"
 ZISK_BIN_DIR="$ZISK_DIR/bin"
 WORKSPACE_DIR="${HOME}/workspace"
-OUTPUT_DIR="/output"
+OUTPUT_DIR="${HOME}/output"
 
 # Ensure directories exists
-ensure mkdir -p "${WORKSPACE_DIR}"
-ensure mkdir -p "$(get_zisk_repo_dir)"
+ensure_no_echo mkdir -p "${WORKSPACE_DIR}"
+ensure_no_echo mkdir -p "$(get_zisk_repo_dir)"
+ensure_no_echo mkdir -p "${OUTPUT_DIR}"

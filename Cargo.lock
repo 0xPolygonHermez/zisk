@@ -265,7 +265,7 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "asm-runner"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -412,7 +412,7 @@ checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 
 [[package]]
 name = "cargo-zisk"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "asm-runner",
@@ -515,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "circuit"
-version = "0.11.0"
+version = "0.12.0"
 
 [[package]]
 name = "clang-sys"
@@ -530,9 +530,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.46"
+version = "4.5.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c5e4fcf9c21d2e544ca1ee9d8552de13019a42aa7dbf32747fa7aaf1df76e57"
+checksum = "7eac00902d9d136acd712710d71823fb8ac8004ca445a89e73a41d45aa712931"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -540,9 +540,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.46"
+version = "4.5.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fecb53a0e6fcfb055f686001bc2e2592fa527efaf38dbe81a6a9563562e57d41"
+checksum = "2ad9bbf750e73b5884fb8a211a9424a1906c1e156724260fdae972f31d70e1d6"
 dependencies = [
  "anstream",
  "anstyle",
@@ -552,9 +552,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.5.45"
+version = "4.5.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14cb31bb0a7d536caef2639baa7fad459e15c3144efefa6dbd1c84562c4739f6"
+checksum = "bbfd7eae0b0f1a6e63d4b13c9c478de77c2eb546fba158ad50b4203dc24b9f9c"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -788,7 +788,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "fields",
  "num-bigint",
@@ -804,7 +804,7 @@ checksum = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
 
 [[package]]
 name = "data-bus"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "zisk-common",
  "zisk-core",
@@ -1035,7 +1035,7 @@ dependencies = [
 
 [[package]]
 name = "executor"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "asm-runner",
  "crossbeam",
@@ -1078,7 +1078,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "num-bigint",
  "paste",
@@ -1755,7 +1755,7 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "lib-c"
-version = "0.11.0"
+version = "0.12.0"
 
 [[package]]
 name = "libc"
@@ -1877,7 +1877,7 @@ dependencies = [
 
 [[package]]
 name = "mem-common"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1897,7 +1897,7 @@ dependencies = [
 
 [[package]]
 name = "mem-planner-cpp"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "mem-common",
  "proofman-common",
@@ -2189,7 +2189,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "pil-std-lib"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "colored",
  "fields",
@@ -2323,7 +2323,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-arith-eq"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "ark-bn254",
  "ark-ff",
@@ -2360,7 +2360,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-keccakf"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "circuit",
  "clap",
@@ -2383,7 +2383,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-sha256f"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "fields",
  "generic-array",
@@ -2403,7 +2403,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-common"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "fields",
  "zisk-core",
@@ -2411,7 +2411,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-helpers"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "ark-bn254",
  "ark-ff",
@@ -2446,7 +2446,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "blake3",
  "bytemuck",
@@ -2478,7 +2478,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "crossbeam-channel",
  "env",
@@ -2501,7 +2501,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "fields",
  "proofman-common",
@@ -2513,7 +2513,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2524,7 +2524,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2533,7 +2533,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "colored",
  "fields",
@@ -2544,7 +2544,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "bytemuck",
  "fields",
@@ -2835,14 +2835,14 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "elf",
 ]
 
 [[package]]
 name = "rom-setup"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -3069,7 +3069,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "asm-runner",
@@ -3152,7 +3152,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
 name = "sm-arith"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "fields",
  "num-bigint",
@@ -3173,7 +3173,7 @@ dependencies = [
 
 [[package]]
 name = "sm-binary"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "fields",
  "num-bigint",
@@ -3193,7 +3193,7 @@ dependencies = [
 
 [[package]]
 name = "sm-frequent-ops"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "clap",
  "fields",
@@ -3213,7 +3213,7 @@ dependencies = [
 
 [[package]]
 name = "sm-main"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "asm-runner",
  "fields",
@@ -3234,7 +3234,7 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "fields",
  "mem-common",
@@ -3256,7 +3256,7 @@ dependencies = [
 
 [[package]]
 name = "sm-rom"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "asm-runner",
  "fields",
@@ -3475,9 +3475,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.42"
+version = "0.3.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ca967379f9d8eb8058d86ed467d81d03e81acd45757e4ca341c24affbe8e8e3"
+checksum = "83bde6f1ec10e72d583d91623c939f623002284ef622b87de38cfd546cbf2031"
 dependencies = [
  "deranged",
  "libc",
@@ -3491,15 +3491,15 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9108bb380861b07264b950ded55a44a14a4adc68b9f5efd85aafc3aa4d40a68"
+checksum = "40868e7c1d2f0b8d73e4a8c7f0ff63af4f6d19be117e90bd73eb1d62cf831c6b"
 
 [[package]]
 name = "time-macros"
-version = "0.2.23"
+version = "0.2.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7182799245a7264ce590b349d90338f1c1affad93d2639aed5f8f69c090b334c"
+checksum = "30cfb0125f12d9c277f35663a0a33f8c30190f4e4574868a330595412d34ebf3"
 dependencies = [
  "num-conv",
  "time-core",
@@ -3766,7 +3766,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4378,7 +4378,7 @@ checksum = "052283831dbae3d879dc7f51f3d92703a316ca49f91540417d38591826127814"
 [[package]]
 name = "witness"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#2bbefe03d35475b0add85d8579c140b38aed021b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.12.0#2bbefe03d35475b0add85d8579c140b38aed021b"
 dependencies = [
  "colored",
  "fields",
@@ -4521,7 +4521,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-common"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "fields",
  "libc",
@@ -4539,7 +4539,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-core"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "elf",
  "fields",
@@ -4560,7 +4560,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-pil"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "proofman",
  "proofman-common",
@@ -4572,7 +4572,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-witness"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "data-bus",
  "env_logger",
@@ -4603,7 +4603,7 @@ dependencies = [
 
 [[package]]
 name = "ziskclib"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "generic-array",
  "sha2",
@@ -4612,7 +4612,7 @@ dependencies = [
 
 [[package]]
 name = "ziskemu"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "clap",
  "criterion",
@@ -4631,7 +4631,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "cfg-if",
  "getrandom 0.2.16",
