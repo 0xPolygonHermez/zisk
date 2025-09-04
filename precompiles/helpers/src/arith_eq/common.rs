@@ -1,6 +1,7 @@
 use ark_bn254::Fq as Bn254Field;
 use ark_ff::PrimeField;
 use ark_secp256k1::Fq as Secp256k1Field;
+use ark_secp256r1::Fq as Secp256r1Field;
 use num_bigint::{BigInt, Sign};
 use num_traits::Zero;
 
@@ -106,6 +107,17 @@ impl FieldToBigInt for Secp256k1Field {
 }
 
 impl FieldToBigInt for Bn254Field {
+    fn to_bigint(&self) -> BigInt {
+        let mut result = BigInt::zero();
+        for &word in self.into_bigint().0.iter().rev() {
+            result <<= 64;
+            result += word;
+        }
+        result
+    }
+}
+
+impl FieldToBigInt for Secp256r1Field {
     fn to_bigint(&self) -> BigInt {
         let mut result = BigInt::zero();
         for &word in self.into_bigint().0.iter().rev() {
