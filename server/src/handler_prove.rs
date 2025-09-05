@@ -66,7 +66,7 @@ impl ZiskServiceProveHandler {
 
                 let result = proofman
                     .generate_proof_from_lib(
-                        ProvePhaseInputs::Full(ProofInfo::new(Some(request_input), 1, vec![0])),
+                        ProvePhaseInputs::Full(ProofInfo::new(Some(request_input), 1, vec![0], 0)),
                         ProofOptions::new(
                             false,
                             request.aggregation,

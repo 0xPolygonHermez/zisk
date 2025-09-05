@@ -6,6 +6,7 @@ use consensus_common::JobId;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::AggProofs;
+use proofman::ContributionsInfo;
 use proofman::{ProofInfo, ProofMan};
 use proofman_common::ProofOptions;
 use std::path::PathBuf;
@@ -101,7 +102,7 @@ impl ProofGenerator {
         let job_id = job.lock().await.job_id.clone();
 
         tokio::spawn(async move {
-            let result = Self::compute_phase1_task(job_id.clone(), job, proofman).await;
+            let result = Self::compute_contribution_task(job_id.clone(), job, proofman).await;
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Challenge {
@@ -111,7 +112,7 @@ impl ProofGenerator {
                     });
                 }
                 Err(error) => {
-                    error!("Phase 1 computation failed for job {}: {}", job_id, error);
+                    error!("Contribution computation failed for job {}: {}", job_id, error);
                     let _ = tx.send(ComputationResult::Challenge {
                         job_id,
                         success: false,
@@ -122,20 +123,20 @@ impl ProofGenerator {
         })
     }
 
-    pub async fn compute_phase1_task(
+    pub async fn compute_contribution_task(
         job_id: JobId,
         job: Arc<Mutex<JobContext>>,
         proofman: Arc<ProofMan<Goldilocks>>,
-    ) -> Result<Vec<u64>> {
-        info!("Computing Phase 1 for job {}", job_id);
+    ) -> Result<Vec<ContributionsInfo>> {
+        info!("Computing Contribution for job {}", job_id);
 
         // Prepare parameters
         let job = job.lock().await;
-        println!("Allocation: {:?}", job.allocation);
         let proof_info = ProofInfo::new(
             Some(job.block.input_path.clone()),
             job.total_compute_units as usize,
             job.allocation.clone(),
+            job.rank_id as usize,
         );
         let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
 
@@ -154,12 +155,14 @@ impl ProofGenerator {
         // Handle the result immediately without holding it across await
         let challenge = match proofman.generate_proof_from_lib(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Contributions(challenge)) => {
-                info!("Phase 1 computation successful for job {}", job_id);
+                info!("Contribution computation successful for job {}", job_id);
                 challenge
             }
             Ok(_) => {
-                error!("Error during Phase 1 computation for job {}", job_id);
-                return Err(anyhow::anyhow!("Unexpected result type during Phase 1 computation"));
+                error!("Error during Contribution computation for job {}", job_id);
+                return Err(anyhow::anyhow!(
+                    "Unexpected result type during Contribution computation"
+                ));
             }
             Err(err) => {
                 error!("Failed to generate proof for job {}: {:?}", job_id, err);
@@ -167,29 +170,32 @@ impl ProofGenerator {
             }
         };
 
-        println!("Phase 1 challenge: {:?}", challenge);
-
-        Ok(challenge.to_vec())
+        Ok(challenge)
     }
 
     pub async fn prove(
         &self,
         job: Arc<Mutex<JobContext>>,
-        challenges: Vec<Vec<u64>>,
+        challenges: Vec<ContributionsInfo>,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let proofman = self.proofman.clone();
 
-        // TODO!!!!!!! Challenges must arrive in Vec<[u64;10]>
-        let challenges: Vec<[u64; 10]> = challenges
-            .into_iter()
-            .map(|v| v.try_into().expect("Each challenge must have exactly 10 elements"))
-            .collect();
+        // TODO! Check that each Vec<u64> has exactly 10 elements
+        // Chunk into slices of 10
+        // Flatten all the Vec<u64> into a single iterator of u64, then chunk into arrays of 10
+        // let challenges: Vec<[u64; 10]> = challenges
+        //     .into_iter()
+        //     .flatten() // This flattens Vec<Vec<u64>> into an iterator of u64
+        //     .collect::<Vec<u64>>() // Collect into a single Vec<u64>
+        //     .chunks_exact(10) // Now we can chunk the flattened data
+        //     .map(|chunk| chunk.try_into().expect("Chunk must have length 10"))
+        //     .collect();
 
         let job_id = job.lock().await.job_id.clone();
 
         tokio::spawn(async move {
-            let result = Self::execute_phase2(job, proofman, challenges).await;
+            let result = Self::execute_prove_task(job, proofman, challenges).await;
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Proofs {
@@ -199,7 +205,7 @@ impl ProofGenerator {
                     });
                 }
                 Err(error) => {
-                    error!("Phase 2 computation failed for job {}: {}", job_id, error);
+                    error!("Prove computation failed for job {}: {}", job_id, error);
                     let _ = tx.send(ComputationResult::Proofs {
                         job_id,
                         success: false,
@@ -210,17 +216,24 @@ impl ProofGenerator {
         })
     }
 
-    pub async fn execute_phase2(
+    pub async fn execute_prove_task(
         job: Arc<Mutex<JobContext>>,
         proofman: Arc<ProofMan<Goldilocks>>,
-        challenges: Vec<[u64; 10]>,
+        challenges: Vec<ContributionsInfo>,
     ) -> Result<Vec<AggProofs>> {
         let job = job.lock().await;
         let job_id = job.job_id.clone();
 
-        info!("Computing Phase 2 for job {}", job_id);
+        info!("Computing Prove for job {}", job_id);
 
         // Prepare parameters
+
+        //TODO! Fix airgroup_id, now is harcoded
+        // let contributions_info = challenges
+        //     .into_iter()
+        //     .map(|challenge| ContributionsInfo { challenge, airgroup_id: 0, worker_index: job.rank_id })
+        //     .collect::<Vec<ContributionsInfo>>();
+
         let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
 
         let options = ProofOptions {
@@ -238,20 +251,18 @@ impl ProofGenerator {
         // Handle the result immediately without holding it across await
         let proof = match proofman.generate_proof_from_lib(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Internal(proof)) => {
-                info!("Phase 2 computation successful for job {}", job_id);
+                info!("Prove computation successful for job {}", job_id);
                 proof
             }
             Ok(_) => {
-                error!("Error during Phase 2 computation for job {}", job_id);
-                return Err(anyhow::anyhow!("Unexpected result type during Phase 2 computation"));
+                error!("Error during Prove computation for job {}", job_id);
+                return Err(anyhow::anyhow!("Unexpected result type during Prove computation"));
             }
             Err(err) => {
                 error!("Failed to generate proof for job {}: {:?}", job_id, err);
                 return Err(anyhow::anyhow!("Failed to generate proof"));
             }
         };
-
-        info!("Phase 2 computation completed for job {}", job.job_id);
 
         Ok(proof)
     }
@@ -267,7 +278,7 @@ impl ProofGenerator {
         let job_id = job.lock().await.job_id.clone();
 
         tokio::spawn(async move {
-            let result = Self::execute_aggregation(job, proofman, agg_params).await;
+            let result = Self::execute_aggregation_task(job, proofman, agg_params).await;
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::AggProof {
@@ -277,7 +288,7 @@ impl ProofGenerator {
                     });
                 }
                 Err(error) => {
-                    error!("Phase 2 computation failed for job {}: {}", job_id, error);
+                    error!("Prove computation failed for job {}: {}", job_id, error);
                     let _ = tx.send(ComputationResult::AggProof {
                         job_id,
                         success: false,
@@ -288,7 +299,7 @@ impl ProofGenerator {
         })
     }
 
-    pub async fn execute_aggregation(
+    pub async fn execute_aggregation_task(
         job: Arc<Mutex<JobContext>>,
         proofman: Arc<ProofMan<Goldilocks>>,
         agg_params: AggregationParams,
@@ -301,7 +312,11 @@ impl ProofGenerator {
         let agg_proofs: Vec<AggProofs> = agg_params
             .agg_proofs
             .iter()
-            .map(|v| AggProofs { airgroup_id: v.airgroup_id, proof: v.values.clone() })
+            .map(|v| AggProofs {
+                airgroup_id: v.airgroup_id,
+                proof: v.values.clone(),
+                worker_indexes: vec![v.worker_idx as usize],
+            })
             .collect();
 
         let options = ProofOptions {
@@ -324,6 +339,7 @@ impl ProofGenerator {
         );
 
         info!("Aggregation computation successful for job {}", job_id);
-        Ok(proof)
+
+        Ok(Some(proof.unwrap()[0].proof.clone()))
     }
 }

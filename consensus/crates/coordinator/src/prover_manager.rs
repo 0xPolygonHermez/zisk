@@ -7,6 +7,7 @@ use consensus_grpc_api::{
     coordinator_message, execute_task_request, prover_message, Challenges, CoordinatorMessage,
     ExecuteTaskResponse, Proof, ProofList, ProverMessage, TaskType,
 };
+use proofman::ContributionsInfo;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info, warn};
@@ -236,11 +237,11 @@ impl ProverManager {
             .map(|prover_id| provers.get(prover_id).map_or(0, |p| p.num_nodes))
             .sum::<u32>();
 
-        for (rank, prover_id) in selected_provers.iter().enumerate() {
+        for (rank_id, prover_id) in selected_provers.iter().enumerate() {
             let prover = provers.get_mut(prover_id).unwrap();
 
             // Convert range to ProverAllocation vector
-            let range = &partitions[rank];
+            let range = &partitions[rank_id];
             let prover_allocation = range.clone();
 
             let table_id_start = table_id_acc;
@@ -256,7 +257,7 @@ impl ProverManager {
                             consensus_grpc_api::ContributionParams {
                                 block_id: block_id.clone().into(),
                                 input_path: input_path.clone(),
-                                rank_id: rank as u32,
+                                rank_id: rank_id as u32,
                                 total_provers: provers_len,
                                 prover_allocation,
                                 job_compute_units: required_compute_capacity.compute_units,
@@ -436,6 +437,7 @@ impl ProverManager {
                     .map(|proof| AggProofData {
                         airgroup_id: proof.airgroup_id,
                         values: proof.values,
+                        worker_idx: proof.worker_idx,
                     })
                     .collect();
                 JobResultData::AggProofs(agg_proofs)
@@ -484,16 +486,6 @@ impl ProverManager {
                     },
                 )?;
             }
-            // job.state = JobState::Completed;
-
-            // // Get the assigned provers before releasing the lock
-            // let assigned_provers = job.provers.clone();
-            // drop(jobs); // Release jobs lock early
-
-            // // Reset prover statuses back to Idle
-            // self.mark_provers_with_state(&assigned_provers, ProverState::Idle).await?;
-
-            // info!("Completed job {} and freed {} provers", job_id, assigned_provers.len());
         } else {
             // Some Phase2 results failed
             let failed_provers: Vec<ProverId> = phase2_results
@@ -529,123 +521,40 @@ impl ProverManager {
         execute_task_response: ExecuteTaskResponse,
     ) -> Result<()> {
         info!("Handling aggregation result for job {}", job_id);
-        // let mut jobs = self.jobs.write().await;
-        // let job = jobs
-        //     .get_mut(job_id)
-        //     .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
-        // let prover_id = ProverId::from(execute_task_response.prover_id);
+        let mut jobs = self.jobs.write().await;
+        let job = jobs
+            .get_mut(job_id)
+            .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
-        // // Store Phase2 result
-        // let phase2_results = job.results.entry(JobPhase::Phase2).or_default();
+        if execute_task_response.success {
+            job.state = JobState::Completed;
 
-        // // Check if we already have a result from this prover
-        // if phase2_results.contains_key(&prover_id) {
-        //     warn!("Received duplicate Phase2 result from prover {} for job {}", prover_id, job_id);
-        //     return Err(Error::InvalidRequest(format!(
-        //         "Duplicate Phase2 result from prover {prover_id} for job {job_id}"
-        //     )));
-        // }
+            // Get the assigned provers before releasing the lock
+            let assigned_provers = job.provers.clone();
 
-        // let data = match execute_task_response.result_data {
-        //     Some(consensus_grpc_api::execute_task_response::ResultData::Proofs(proof_list)) => {
-        //         let agg_proofs: Vec<AggProofData> = proof_list
-        //             .proofs
-        //             .into_iter()
-        //             .map(|proof| AggProofData {
-        //                 airgroup_id: proof.airgroup_id,
-        //                 values: proof.values,
-        //             })
-        //             .collect();
-        //         JobResultData::AggProofs(agg_proofs)
-        //     }
-        //     _ => {
-        //         return Err(Error::InvalidRequest(
-        //             "Expected Proofs result data for Phase2".to_string(),
-        //         ));
-        //     }
-        // };
+            // Reset prover statuses back to Idle
+            self.mark_provers_with_state(&assigned_provers, ProverState::Idle).await?;
 
-        // phase2_results
-        //     .insert(prover_id.clone(), JobResult { success: execute_task_response.success, data });
+            info!("Completed job {} and freed {} provers", job_id, assigned_provers.len());
+        } else {
+            // Some Phase2 results failed
+            match execute_task_response.result_data {
+                Some(consensus_grpc_api::execute_task_response::ResultData::FinalProof(_)) => {}
+                _ => {
+                    return Err(Error::InvalidRequest(
+                        "Expected Proofs result data for Phase2".to_string(),
+                    ));
+                }
+            }
 
-        // info!("Stored Phase2 result for prover {prover_id} in job {job_id}.");
+            warn!("Aggregation failed in job {}", job_id);
+            let reason = "Aggregation failed".to_string();
 
-        // // Check if we have results from all assigned provers
-        // if phase2_results.len() < job.provers.len() {
-        //     info!(
-        //         "Phase2 progress for job {}: {}/{} provers completed",
-        //         job_id,
-        //         phase2_results.len(),
-        //         job.provers.len()
-        //     );
-        //     return Ok(());
-        // }
+            self.fail_job(&job.job_id, reason).await?;
+        }
 
-        // // Check if all Phase2 results are successful
-        // let all_successful = phase2_results.values().all(|result| result.success);
-
-        // if all_successful {
-        //     let agg_proofs: Vec<Vec<AggProofData>> = phase2_results
-        //         .values()
-        //         .map(|results| match &results.data {
-        //             JobResultData::AggProofs(values) => values.clone(),
-        //             _ => unreachable!("Expected AggProofs data in Phase2 results"),
-        //         })
-        //         .collect();
-
-        //     job.agg_proofs = Some(agg_proofs.clone());
-        //     job.state = JobState::Running(JobPhase::PhaseAggregation);
-
-        //     // Get the assigned provers and release the jobs lock
-        //     let assigned_provers = job.provers.clone();
-        //     let job_id = job.job_id.clone();
-        //     drop(jobs); // Release jobs lock early
-
-        //     // Start Phase2 for all provers
-        //     if let Err(e) = self.start_phase3(&job_id, &assigned_provers, agg_proofs).await {
-        //         error!("Failed to start Phase2 for job {}: {}", job_id, e);
-        //         self.fail_job(&job_id, format!("Failed to start Phase2: {e}")).await.map_err(
-        //             |e| {
-        //                 error!("Failed to mark job {} as failed: {}", job_id, e);
-        //                 e
-        //             },
-        //         )?;
-        //     }
-        //     // job.state = JobState::Completed;
-
-        //     // // Get the assigned provers before releasing the lock
-        //     // let assigned_provers = job.provers.clone();
-        //     // drop(jobs); // Release jobs lock early
-
-        //     // // Reset prover statuses back to Idle
-        //     // self.mark_provers_with_state(&assigned_provers, ProverState::Idle).await?;
-
-        //     // info!("Completed job {} and freed {} provers", job_id, assigned_provers.len());
-        // } else {
-        //     // Some Phase2 results failed
-        //     let failed_provers: Vec<ProverId> = phase2_results
-        //         .iter()
-        //         .filter_map(
-        //             |(prover_id, result)| {
-        //                 if !result.success {
-        //                     Some(prover_id.clone())
-        //                 } else {
-        //                     None
-        //                 }
-        //             },
-        //         )
-        //         .collect();
-
-        //     warn!("Phase2 failed for provers {:?} in job {}", failed_provers, job_id);
-        //     let reason = format!("Phase2 failed for provers: {failed_provers:?}");
-
-        //     // Release jobs lock before calling fail_job
-        //     let job_id_clone = job.job_id.clone();
-        //     drop(jobs);
-
-        //     self.fail_job(&job_id_clone, reason).await?;
-        // }
+        drop(jobs);
 
         Ok(())
     }
@@ -691,8 +600,20 @@ impl ProverManager {
 
         let data = match execute_task_response.result_data {
             Some(consensus_grpc_api::execute_task_response::ResultData::Challenges(challenges)) => {
-                assert!(!challenges.values.is_empty());
-                JobResultData::Challenges(challenges.values)
+                assert!(!challenges.challenges.is_empty());
+
+                let mut cont = Vec::new();
+                for challenge in challenges.challenges {
+                    cont.push(ContributionsInfo {
+                        worker_index: challenge.worker_index,
+                        airgroup_id: challenge.airgroup_id as usize,
+                        challenge: challenge
+                            .challenge
+                            .try_into()
+                            .expect("Challenge length mismatch"),
+                    });
+                }
+                JobResultData::Challenges(cont)
             }
             _ => {
                 return Err(Error::InvalidRequest(
@@ -721,7 +642,7 @@ impl ProverManager {
         let all_successful = phase1_results.values().all(|result| result.success);
 
         if all_successful {
-            let challenges: Vec<Vec<u64>> = phase1_results
+            let challenges: Vec<Vec<ContributionsInfo>> = phase1_results
                 .values()
                 .map(|results| match &results.data {
                     JobResultData::Challenges(values) => values.clone(),
@@ -729,7 +650,9 @@ impl ProverManager {
                 })
                 .collect();
 
+            let challenges: Vec<ContributionsInfo> = challenges.into_iter().flatten().collect();
             job.challenges = Some(challenges.clone());
+
             job.state = JobState::Running(JobPhase::Prove);
 
             // Get the assigned provers and release the jobs lock
@@ -783,10 +706,21 @@ impl ProverManager {
         &self,
         job_id: &JobId,
         assigned_provers: &[ProverId],
-        challenges: Vec<Vec<u64>>,
+        challenges: Vec<ContributionsInfo>,
     ) -> Result<()> {
         // Update prover statuses and send Phase2 messages
         let mut provers = self.provers.write().await;
+
+        let mut ch = Vec::new();
+
+        for challenge in challenges {
+            ch.push(Challenges {
+                worker_index: challenge.worker_index,
+                airgroup_id: challenge.airgroup_id as u32,
+                challenge: challenge.challenge.to_vec(),
+            })
+        }
+
         for prover_id in assigned_provers {
             if let Some(prover) = provers.get_mut(prover_id) {
                 // Prover should still be in Working status from Phase1
@@ -801,11 +735,7 @@ impl ProverManager {
                                 job_id: job_id.clone().into(),
                                 task_type: consensus_grpc_api::TaskType::Prove as i32,
                                 params: Some(execute_task_request::Params::ProveParams(
-                                    consensus_grpc_api::ProveParams {
-                                        challenges: Some(Challenges {
-                                            values: challenges[0].clone(),
-                                        }),
-                                    },
+                                    consensus_grpc_api::ProveParams { challenges: ch.clone() },
                                 )),
                             },
                         )),
@@ -902,7 +832,11 @@ impl ProverManager {
                 let proofs: Vec<Proof> = proofs
                     .clone() // This clone must be removed when using more than one prover
                     .into_iter()
-                    .map(|p| Proof { airgroup_id: p.airgroup_id, values: p.values })
+                    .map(|p| Proof {
+                        airgroup_id: p.airgroup_id,
+                        values: p.values,
+                        worker_idx: p.worker_idx,
+                    })
                     .collect();
 
                 // Create the Phase2 message (use TaskType::Proof)

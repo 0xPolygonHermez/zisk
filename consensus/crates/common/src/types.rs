@@ -1,3 +1,4 @@
+use proofman::ContributionsInfo;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, ops::Range, path::PathBuf};
 
@@ -157,7 +158,7 @@ pub struct Job {
     pub provers: Vec<ProverId>,
     pub partitions: Vec<Vec<u32>>,
     pub results: HashMap<JobPhase, HashMap<ProverId, JobResult>>,
-    pub challenges: Option<Vec<Vec<u64>>>,
+    pub challenges: Option<Vec<ContributionsInfo>>,
 }
 
 #[derive(Debug, Clone)]
@@ -171,13 +172,14 @@ pub enum JobState {
 
 #[derive(Debug, Clone)]
 pub struct AggProofData {
+    pub worker_idx: u32,
     pub airgroup_id: u64,
     pub values: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
 pub enum JobResultData {
-    Challenges(Vec<u64>),
+    Challenges(Vec<ContributionsInfo>),
     AggProofs(Vec<AggProofData>),
 }
 

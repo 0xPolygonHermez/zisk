@@ -203,7 +203,7 @@ message ContributionParams {
 // }
 
 message ProveParams {
-  Challenges challenges = 1;
+  repeated Challenges challenges = 1;
 }
 
 message AggParams {
@@ -283,7 +283,7 @@ message ExecuteTaskResponse {
   bool success = 4;
   string error_message = 5; // Optional error message if success is false
   oneof result_data {
-    Challenges challenges = 6;
+    ChallengesList challenges = 6;
     ProofList proofs = 7;
     FinalProof final_proof = 8;
   }
@@ -294,16 +294,24 @@ message ProofList {
 }
 
 message Proof {
-  uint64 airgroup_id = 1;
-  repeated uint64 values = 2;
+  uint32 worker_idx = 1;
+  uint64 airgroup_id = 2;
+  repeated uint64 values = 3;
 }
 
 message FinalProof {
   repeated uint64 values = 1;
 }
 
+message ChallengesList {
+  repeated Challenges challenges = 1;
+
+}
+
 message Challenges {
-  repeated uint64 values = 1;
+  uint32 worker_index = 1;
+  uint32 airgroup_id = 2;
+  repeated uint64 challenge = 3;
 }
 
 message JobCancelled {

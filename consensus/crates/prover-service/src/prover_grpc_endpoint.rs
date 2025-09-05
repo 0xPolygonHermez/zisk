@@ -4,7 +4,7 @@ use consensus_common::{BlockId, JobId};
 use consensus_grpc_api::execute_task_response::ResultData;
 use consensus_grpc_api::*;
 use consensus_prover::{prover_service::ComputationResult, ProverService, ProverServiceConfig};
-use proofman::AggProofs;
+use proofman::{AggProofs, ContributionsInfo};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
@@ -175,7 +175,7 @@ impl ProverGrpcEndpoint {
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<Vec<u64>>,
+        result: Result<Vec<ContributionsInfo>>,
         message_sender: &mpsc::UnboundedSender<ProverMessage>,
     ) -> Result<()> {
         if let Some(handle) = self.prover_service.take_current_computation() {
@@ -193,13 +193,22 @@ impl ProverGrpcEndpoint {
             }
         };
 
+        let mut ch = Vec::new();
+        for cont in result_data {
+            ch.push(Challenges {
+                worker_index: cont.worker_index,
+                airgroup_id: cont.airgroup_id as u32,
+                challenge: cont.challenge.to_vec(),
+            });
+        }
+
         let message = ProverMessage {
             payload: Some(prover_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
                 prover_id: self.config_endpoint.prover.prover_id.as_string(),
                 job_id: job_id.as_string(),
                 task_type: TaskType::PartialContribution as i32,
                 success,
-                result_data: Some(ResultData::Challenges(Challenges { values: result_data })),
+                result_data: Some(ResultData::Challenges(ChallengesList { challenges: ch })),
                 error_message,
             })),
         };
@@ -224,8 +233,13 @@ impl ProverGrpcEndpoint {
             Ok(data) => {
                 assert!(success);
                 (
+                    // TODO! Fix me, at this point we have to send all woker indexes that has contributed to the aggregated proof(s) sent
                     data.into_iter()
-                        .map(|v| Proof { airgroup_id: v.airgroup_id, values: v.proof })
+                        .map(|v| Proof {
+                            airgroup_id: v.airgroup_id,
+                            values: v.proof,
+                            worker_idx: v.worker_indexes[0] as u32,
+                        })
                         .collect(),
                     String::new(),
                 )
@@ -435,7 +449,6 @@ impl ProverGrpcEndpoint {
             "Phase 2 received without current job context"
         );
 
-        println!("Received Phase 2 request: {:?}", request);
         let job = self.prover_service.get_current_job().clone().unwrap().clone();
         let job_id = job.lock().await.job_id.clone();
         assert_eq!(job_id.as_string(), request.job_id, "Job ID mismatch in Phase 2");
@@ -450,12 +463,17 @@ impl ProverGrpcEndpoint {
             }
         };
 
-        let challenges: Vec<_> =
-            prove_params.challenges.into_iter().map(|challenge| challenge.values).collect();
+        let mut cont = Vec::new();
+        for ch in prove_params.challenges {
+            cont.push(ContributionsInfo {
+                worker_index: ch.worker_index,
+                airgroup_id: ch.airgroup_id as usize,
+                challenge: ch.challenge.try_into().expect("Challenge must have length 10"),
+            });
+        }
 
         let tx = computation_tx.clone();
-        self.prover_service
-            .set_current_computation(self.prover_service.prove(job, challenges, tx).await);
+        self.prover_service.set_current_computation(self.prover_service.prove(job, cont, tx).await);
 
         Ok(())
     }
@@ -472,6 +490,7 @@ impl ProverGrpcEndpoint {
 
         let job = self.prover_service.get_current_job().clone().unwrap().clone();
         let job_id = job.lock().await.job_id.clone();
+
         assert_eq!(job_id.as_string(), request.job_id, "Job ID mismatch in Aggregate");
 
         info!("Starting Aggregate for job {}", job_id);
@@ -490,7 +509,11 @@ impl ProverGrpcEndpoint {
                 .unwrap()
                 .proofs
                 .into_iter()
-                .map(|p| AggProofData { airgroup_id: p.airgroup_id, values: p.values })
+                .map(|p| AggProofData {
+                    worker_idx: p.worker_idx,
+                    airgroup_id: p.airgroup_id,
+                    values: p.values,
+                })
                 .collect(),
             last_proof: agg_params.last_proof,
             final_proof: agg_params.final_proof,

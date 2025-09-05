@@ -22,12 +22,20 @@ impl From<GrpcComputeCapacity> for ComputeCapacity {
 
 impl From<AggProofData> for GrpcProof {
     fn from(row_data: AggProofData) -> Self {
-        GrpcProof { airgroup_id: row_data.airgroup_id, values: row_data.values }
+        GrpcProof {
+            airgroup_id: row_data.airgroup_id,
+            values: row_data.values,
+            worker_idx: row_data.worker_idx,
+        }
     }
 }
 
 impl From<GrpcProof> for AggProofData {
     fn from(grpc_row_data: GrpcProof) -> Self {
-        AggProofData { airgroup_id: grpc_row_data.airgroup_id, values: grpc_row_data.values }
+        AggProofData {
+            airgroup_id: grpc_row_data.airgroup_id,
+            values: grpc_row_data.values,
+            worker_idx: grpc_row_data.worker_idx,
+        }
     }
 }

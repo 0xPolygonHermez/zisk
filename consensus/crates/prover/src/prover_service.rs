@@ -1,7 +1,7 @@
 use anyhow::Result;
 use consensus_common::{AggregationParams, BlockContext, JobPhase, ProverState};
 use consensus_common::{ComputeCapacity, JobId, ProverId};
-use proofman::AggProofs;
+use proofman::{AggProofs, ContributionsInfo};
 use proofman_common::{DebugInfo, ParamsGPU};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -14,7 +14,7 @@ use crate::proof_generator::ProofGenerator;
 /// Result from computation tasks
 #[derive(Debug)]
 pub enum ComputationResult {
-    Challenge { job_id: JobId, success: bool, result: Result<Vec<u64>> },
+    Challenge { job_id: JobId, success: bool, result: Result<Vec<ContributionsInfo>> },
     Proofs { job_id: JobId, success: bool, result: Result<Vec<AggProofs>> },
     AggProof { job_id: JobId, success: bool, result: Result<Option<Vec<u64>>> },
 }
@@ -227,7 +227,7 @@ impl ProverService {
     pub async fn prove(
         &self,
         job: Arc<Mutex<JobContext>>,
-        challenges: Vec<Vec<u64>>,
+        challenges: Vec<ContributionsInfo>,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         self.proof_generator.prove(job, challenges, tx).await
