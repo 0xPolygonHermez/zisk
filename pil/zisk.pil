@@ -33,6 +33,7 @@ const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
 airgroup Zisk {
     set_range_check_tables_virtual(); // Enable virtual tables for range checks
     set_max_virtual_bits(21); // Set the maximum bits for virtual tables
+    set_max_num_virtual_tables(2); // Set the maximum number of virtual tables
 
     // Main Program
     Main(N: 2**22);

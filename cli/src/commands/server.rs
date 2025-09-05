@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::{path::PathBuf, process};
 use zisk_common::init_tracing;
-use zisk_pil::VIRTUAL_TABLE_AIR_IDS;
+use zisk_pil::{VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS};
 
 use crate::commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field};
 use crate::ux::print_banner;
@@ -216,7 +216,8 @@ impl ZiskServer {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        gpu_params.with_single_instance((0, VIRTUAL_TABLE_AIR_IDS[0]));
+        gpu_params.with_single_instance((0, VIRTUAL_TABLE_0_AIR_IDS[0]));
+        gpu_params.with_single_instance((0, VIRTUAL_TABLE_1_AIR_IDS[0]));
 
         let config = ServerConfig::new(
             self.port,
