@@ -6,7 +6,9 @@ on:
       - develop
       - main
       - "pre-develop-[0-9]+.[0-9]+.[0-9]+"
-  workflow_dispatch:    
+    paths-ignore:
+      - 'book/**'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
@@ -49,11 +51,11 @@ jobs:
     container:
       image: ubuntu:22.04
       options:
-        --shm-size=32g  
-        -v /home/gha/cache-setup:/output:rw
+        --shm-size=32g
+        -v /home/gha/cache-setup:/github/home/output:rw
     defaults:
       run:
-        shell: bash        
+        shell: bash
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
@@ -78,7 +80,7 @@ jobs:
       - name: Build setup
         env:
           USE_CACHE_SETUP: "1"
-        run: |     
+        run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_setup.sh
 
@@ -97,6 +99,7 @@ jobs:
 
       - name: Prove Ethereum block
         env:
+          DISABLE_ROM_SETUP: "1"
           BLOCK_INPUTS_DISTRIBUTED: "21429020_5_0.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
@@ -108,7 +111,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        shell: bash    
+        shell: bash
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
@@ -124,7 +127,7 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_deps.sh
-          
+
       - name: Build ZisK
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
@@ -141,7 +144,7 @@ jobs:
     timeout-minutes: 60
     defaults:
       run:
-        shell: bash        
+        shell: bash
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
@@ -161,7 +164,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 0xPolygonHermez/zisk-testvectors
-          path: zisk-testvectors 
+          path: zisk-testvectors
 
       - name: Install dependencies
         run: |
