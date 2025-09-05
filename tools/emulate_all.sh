@@ -22,12 +22,14 @@ LIST=0
 BEGIN=0
 END=0
 DEBUG=0
+SKIP_DIFF=0
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -l|--list) LIST=1 ;;
         -b|--begin) BEGIN=$2; shift; ;;
         -e|--end) END=$2; shift; ;;
         -d|--debug) DEBUG=1 ;;
+        -s|--skip-diff) SKIP_DIFF=1 ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -96,6 +98,11 @@ do
 
     # Execute it and save output
     ./target/debug/ziskemu -e $ELF_FILE -i $INPUT_FILE 2>&1|tee output
+
+    if [ $SKIP_DIFF -eq 1 ]; then
+        echo "Skipping diff as requested"
+        continue
+    fi
 
     # Compare output vs reference
     REFERENCE_FILE=${ELF_FILE%%my.elf}../ref/Reference-sail_c_simulator.signature
