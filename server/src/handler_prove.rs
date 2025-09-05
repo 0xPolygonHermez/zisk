@@ -96,7 +96,7 @@ impl ZiskServiceProveHandler {
                         )>()
                         .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
                         .expect("Failed to downcast execution result");
-
+                    proofman.set_barrier();
                     let elapsed = elapsed.as_secs_f64();
                     tracing::info!("");
                     tracing::info!(
@@ -181,5 +181,23 @@ impl ZiskServiceProveHandler {
             }),
             Some(handle),
         )
+    }
+    pub fn process_handle(request: ZiskProveRequest, proofman: Arc<ProofMan<Goldilocks>>) {
+        proofman
+            .generate_proof_from_lib(
+                Some(request.input),
+                ProofOptions::new(
+                    false,
+                    request.aggregation,
+                    request.final_snark,
+                    request.verify_proofs,
+                    request.minimal_memory,
+                    false,
+                    request.folder.clone(),
+                ),
+            )
+            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))
+            .expect("Failed to generate proof");
+        proofman.set_barrier();
     }
 }

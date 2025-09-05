@@ -340,22 +340,28 @@ impl ZiskService {
     }
 
     pub fn run(&mut self) -> std::io::Result<()> {
-        let listener = TcpListener::bind(("127.0.0.1", self.config.port))?;
+        if self.proofman.get_rank() == Some(0) || self.proofman.get_rank().is_none() {
+            let listener = TcpListener::bind(("127.0.0.1", self.config.port))?;
+            Self::print_waiting_message(&self.config);
 
-        Self::print_waiting_message(&self.config);
-
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    let config = Arc::clone(&self.config);
-                    if let Ok(should_shutdown) = self.handle_client(stream, config) {
-                        if should_shutdown {
-                            info_file!("{}", "Shutdown signal received. Exiting.");
-                            break;
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => {
+                        let config = Arc::clone(&self.config);
+                        if let Ok(should_shutdown) = self.handle_client(stream, config) {
+                            if should_shutdown {
+                                info_file!("{}", "Shutdown signal received. Exiting.");
+                                break;
+                            }
                         }
                     }
+                    Err(e) => error!("Connection failed: {}", e),
                 }
-                Err(e) => error!("Connection failed: {}", e),
+            }
+        } else {
+            // Other MPI ranks just wait for rank 0 instructions
+            loop {
+                self.receive_request()?;
             }
         }
 
@@ -424,6 +430,13 @@ impl ZiskService {
                 ZiskServiceShutdownHandler::handle(&config, payload, self.asm_services.as_ref())
             }
             ZiskRequest::VerifyConstraints { payload } => {
+                let mut bytes = Vec::new();
+                bytes.push(0u8); // option 0 for verify constraints
+                let serialized: Vec<u8> =
+                    serde_json::to_vec(&payload).expect("Failed to serialize payload");
+                bytes.extend_from_slice(&serialized);
+                self.proofman.mpi_broadcast(&mut bytes);
+
                 ZiskServiceVerifyConstraintsHandler::handle(
                     config.clone(),
                     payload,
@@ -433,16 +446,23 @@ impl ZiskService {
                     self.config.debug_info.clone(),
                 )
             }
+            ZiskRequest::Prove { payload } => {
+                let mut bytes = Vec::new();
+                bytes.push(1u8); // option 1 for prove
+                let serialized: Vec<u8> =
+                    serde_json::to_vec(&payload).expect("Failed to serialize payload");
+                bytes.extend_from_slice(&serialized);
+                self.proofman.mpi_broadcast(&mut bytes);
 
-            ZiskRequest::Prove { payload } => ZiskServiceProveHandler::handle(
-                config.clone(),
-                payload,
-                self.witness_lib.clone(),
-                self.proofman.clone(),
-                self.is_busy.clone(),
-            ),
+                ZiskServiceProveHandler::handle(
+                    config.clone(),
+                    payload,
+                    self.witness_lib.clone(),
+                    self.proofman.clone(),
+                    self.is_busy.clone(),
+                )
+            }
         };
-
         if let Some(handle) = handle {
             self.pending_handles.push(handle);
         }
@@ -455,5 +475,42 @@ impl ZiskService {
         let json = serde_json::to_string(response)?;
         stream.write_all(json.as_bytes())?;
         stream.flush()
+    }
+
+    fn receive_request(&self) -> std::io::Result<()> {
+        let mut bytes: Vec<u8> = Vec::new();
+        self.proofman.mpi_broadcast(&mut bytes);
+
+        // extract byte 0 to decide the option
+        let option = bytes.first().cloned();
+        match option {
+            Some(0) => {
+                info_file!("Received process 'VerifyConstraints' request");
+                // Deserialize the rest of bytes into ZiskVerifyConstraintsRequest
+                let payload: ZiskVerifyConstraintsRequest =
+                    serde_json::from_slice(&bytes[1..]).expect("Failed to deserialize payload");
+                ZiskServiceVerifyConstraintsHandler::process_handle(
+                    payload,
+                    self.proofman.clone(),
+                    self.config.debug_info.clone(),
+                );
+            }
+            Some(1) => {
+                info_file!("Received process 'Prove' request");
+                // Prove request
+                // Deserialize the rest of bytes into ZiskProveRequest
+                let payload: ZiskProveRequest =
+                    serde_json::from_slice(&bytes[1..]).expect("Failed to deserialize payload");
+                ZiskServiceProveHandler::process_handle(payload, self.proofman.clone());
+            }
+            _ => {
+                info_file!(
+                    "Rank {} received unknown request: {:?}",
+                    self.proofman.get_rank().unwrap_or(0),
+                    option
+                );
+            }
+        }
+        Ok(())
     }
 }
