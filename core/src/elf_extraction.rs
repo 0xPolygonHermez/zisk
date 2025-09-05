@@ -74,8 +74,7 @@ pub fn collect_elf_payload(elf_path: &Path) -> Result<ElfPayload, Box<dyn Error>
             // Handle different section types
             let data = if sh.sh_type == SHT_PROGBITS {
                 let (raw, _) = elf.section_data(&sh)?;
-                let data = raw.to_vec();
-                data
+                raw.to_vec()
             } else if sh.sh_type == SHT_NOBITS {
                 // BSS sections - uninitialized data, should be zero-filled
                 // Create a zero-filled vector of the appropriate size
