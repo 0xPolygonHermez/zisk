@@ -127,5 +127,6 @@ impl ZiskServiceVerifyConstraintsHandler {
             .verify_proof_constraints_from_lib(Some(request.input), &debug_info, false)
             .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
             .expect("Failed to generate proof");
+        proofman.set_barrier();
     }
 }

@@ -198,5 +198,6 @@ impl ZiskServiceProveHandler {
             )
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))
             .expect("Failed to generate proof");
+        proofman.set_barrier();
     }
 }

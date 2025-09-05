@@ -511,7 +511,6 @@ impl ZiskService {
                 );
             }
         }
-        self.proofman.set_barrier();
         Ok(())
     }
 }
