@@ -73,9 +73,9 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
             }
             let inst = code[code_index];
             if inst == 0 {
-                // Both 16 bits instructions are zero, so this is a 32-bits nop
+                // Both 16 bits instructions are zero, so this is a halt with error
                 code_index += 1;
-                insts.push(RiscvInstruction::nop(0));
+                insts.push(RiscvInstruction::halt(0));
             } else {
                 // The first 16 bits are zero, but the second 16 bits are not zero, so this is a
                 // 16-bits invalid instruction, so we must HALT
