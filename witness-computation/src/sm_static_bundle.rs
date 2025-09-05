@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{hash::Hash, sync::Arc};
 
 use data_bus::{DataBus, DataBusTrait};
 use executor::SMBundle;
@@ -11,6 +11,7 @@ use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
+use zisk_pil::ZISK_AIRGROUP_ID;
 use std::collections::HashMap;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan,
@@ -32,40 +33,54 @@ const KECCAK_SM_ID: usize = 5;
 const SHA256_SM_ID: usize = 6;
 const ARITH_EQ_SM_ID: usize = NUM_SM - 1;
 
+pub enum StateMachines<F: PrimeField64> {
+    RomSM(Arc<RomSM>),
+    MemSM(Arc<Mem<F>>),
+    BinarySM(Arc<BinarySM<F>>),
+    ArithSM(Arc<ArithSM<F>>),
+    KeccakfManager(Arc<KeccakfManager<F>>),
+    Sha256fManager(Arc<Sha256fManager<F>>),
+    ArithEqManager(Arc<ArithEqManager<F>>),
+    Custom(Arc<dyn zisk_common::ComponentBuilder<F>>),
+}
+
+impl<F: PrimeField64> StateMachines<F> {
+    fn build_planner(&self) -> Box<dyn zisk_common::Planner> {
+        match self {
+            StateMachines::RomSM(sm) => <RomSM as ComponentBuilder<F>>::build_planner(sm),
+            StateMachines::MemSM(sm) => (**sm).build_planner(),
+            StateMachines::BinarySM(sm) => (**sm).build_planner(),
+            StateMachines::ArithSM(sm) => (**sm).build_planner(),
+            StateMachines::KeccakfManager(sm) => (**sm).build_planner(),
+            StateMachines::Sha256fManager(sm) => (**sm).build_planner(),
+            StateMachines::ArithEqManager(sm) => (**sm).build_planner(),
+            StateMachines::Custom(sm) => sm.build_planner(),
+        }
+    }
+
+    fn configure_instances(&self, pctx: &ProofCtx<F>, plans: &[Plan]) {
+        match self {
+            StateMachines::RomSM(sm) => <RomSM as ComponentBuilder<F>>::configure_instances(sm, pctx, plans),
+            StateMachines::MemSM(sm) => (**sm).configure_instances(pctx, plans),
+            StateMachines::BinarySM(sm) => (**sm).configure_instances(pctx, plans),
+            StateMachines::ArithSM(sm) => (**sm).configure_instances(pctx, plans),
+            StateMachines::KeccakfManager(sm) => (**sm).configure_instances(pctx, plans),
+            StateMachines::Sha256fManager(sm) => (**sm).configure_instances(pctx, plans),
+            StateMachines::ArithEqManager(sm) => (**sm).configure_instances(pctx, plans),
+            StateMachines::Custom(sm) => sm.configure_instances(pctx, plans),
+        }
+    }
+}
+
 pub struct StaticSMBundle<F: PrimeField64> {
     process_only_operation_bus: bool,
-    mem_sm: Arc<Mem<F>>,
-    rom_sm: Arc<RomSM>,
-    binary_sm: Arc<BinarySM<F>>,
-    arith_sm: Arc<ArithSM<F>>,
-    keccakf_sm: Arc<KeccakfManager<F>>,
-    sha256f_sm: Arc<Sha256fManager<F>>,
-    arith_eq_sm: Arc<ArithEqManager<F>>,
+    sm: HashMap<(usize, usize), StateMachines<F>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        process_only_operation_bus: bool,
-        mem_sm: Arc<Mem<F>>,
-        rom_sm: Arc<RomSM>,
-        binary_sm: Arc<BinarySM<F>>,
-        arith_sm: Arc<ArithSM<F>>,
-        keccakf_sm: Arc<KeccakfManager<F>>,
-        sha256f_sm: Arc<Sha256fManager<F>>,
-        arith_eq_sm: Arc<ArithEqManager<F>>,
-    ) -> Self {
-        Self {
-            process_only_operation_bus,
-            // main_sm,
-            mem_sm,
-            rom_sm,
-            binary_sm,
-            arith_sm,
-            keccakf_sm,
-            sha256f_sm,
-            arith_eq_sm,
-        }
+    pub fn new(process_only_operation_bus: bool, sm: Vec<(usize, usize, StateMachines<F>)>) -> Self {
+        Self { process_only_operation_bus, sm:HashMap::from_iter(sm.into_iter().map(|(airgroup_id, air_id, sm)| ((airgroup_id, air_id), sm))) }
     }
 }
 
@@ -73,31 +88,39 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
     fn plan_sec(&self, vec_counters: NestedDeviceMetricsList) -> Vec<Vec<Plan>> {
         assert_eq!(vec_counters.len(), NUM_SM_WITHOUT_MAIN);
 
+        let mut plans = Vec::new();
         let mut it = vec_counters.into_iter();
+        for (_, sm) in self.sm.iter() {
+            plans.push(sm.build_planner().plan(it.next().unwrap()));
+        }
 
-        vec![
-            self.mem_sm.build_planner().plan(it.next().unwrap()),
-            <RomSM as ComponentBuilder<F>>::build_planner(&*self.rom_sm).plan(it.next().unwrap()),
-            self.binary_sm.build_planner().plan(it.next().unwrap()),
-            <ArithSM<F> as ComponentBuilder<F>>::build_planner(&*self.arith_sm)
-                .plan(it.next().unwrap()),
-            self.keccakf_sm.build_planner().plan(it.next().unwrap()),
-            self.sha256f_sm.build_planner().plan(it.next().unwrap()),
-            self.arith_eq_sm.build_planner().plan(it.next().unwrap()),
-        ]
+        plans
     }
 
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Vec<Plan>]) {
-        self.mem_sm.configure_instances(pctx, &plannings[MEM_SM_ID - 1]);
-        self.rom_sm.configure_instances(pctx, &plannings[ROM_SM_ID - 1]);
-        self.binary_sm.configure_instances(pctx, &plannings[BINARY_SM_ID - 1]);
-        self.arith_sm.configure_instances(pctx, &plannings[ARITH_SM_ID - 1]);
-        self.keccakf_sm.configure_instances(pctx, &plannings[KECCAK_SM_ID - 1]);
-        self.sha256f_sm.configure_instances(pctx, &plannings[SHA256_SM_ID - 1]);
-        self.arith_eq_sm.configure_instances(pctx, &plannings[ARITH_EQ_SM_ID - 1]);
+        for (sm, plans) in self.sm.iter().zip(plannings.iter()) {
+            sm.configure_instances(pctx, plans);
+        }
     }
 
     fn build_instance(&self, idx: usize, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
+        let airgroup_id = ictx.plan.airgroup_id;
+        let air_id = ictx.plan.air_id;
+
+        if airgroup_id != ZISK_AIRGROUP_ID {
+            panic!("Unsupported AIR group ID: {}", airgroup_id);
+        }
+
+        match air_id {
+            MEM_SM_ID[0] => {
+
+            },
+
+        }
+
+
+
+
         assert!(idx < NUM_SM_WITHOUT_MAIN);
 
         match idx + 1 {

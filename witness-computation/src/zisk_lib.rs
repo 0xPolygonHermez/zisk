@@ -4,21 +4,23 @@
 //! This module leverages `WitnessLibrary` to orchestrate the setup of state machines,
 //! program conversion, and execution pipelines to generate required witnesses.
 
-use crate::StaticSMBundle;
+use crate::{StateMachines, StaticSMBundle};
 use executor::{/*DynSMBundle,*/ ZiskExecutor};
 use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
-use precomp_arith_eq::ArithEqManager;
-use precomp_keccakf::KeccakfManager;
-use precomp_sha256f::Sha256fManager;
 use proofman::register_std;
-use sm_arith::ArithSM;
-use sm_binary::BinarySM;
-use sm_mem::Mem;
-use sm_rom::RomSM;
 use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_core::Riscv2zisk;
+
+use precomp_arith_eq::ArithEqManager;
+use precomp_keccakf::KeccakfManager;
+use precomp_sha256f::Sha256fManager;
+use sm_arith::ArithSM;
+use sm_binary::BinarySM;
+use sm_main::MainSM;
+use sm_mem::Mem;
+use sm_rom::RomSM;
 
 const DEFAULT_CHUNK_SIZE_BITS: u64 = 18;
 
@@ -115,14 +117,16 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         let sm_bundle = StaticSMBundle::new(
             self.asm_path.is_some(),
-            mem_sm.clone(),
-            rom_sm.clone(),
-            binary_sm.clone(),
-            arith_sm.clone(),
-            // The precompiles state machines
-            keccakf_sm.clone(),
-            sha256f_sm.clone(),
-            arith_eq_sm.clone(),
+            vec![
+                (ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], StateMachines::RomSM(rom_sm.clone())),
+                StateMachines::MemSM(mem_sm.clone()),
+                StateMachines::BinarySM(binary_sm.clone()),
+                StateMachines::ArithSM(arith_sm.clone()),
+                // The precompiles state machines
+                StateMachines::KeccakfManager(keccakf_sm.clone()),
+                StateMachines::Sha256fManager(sha256f_sm.clone()),
+                StateMachines::ArithEqManager(arith_eq_sm.clone()),
+            ],
         );
 
         // Step 5: Create the executor and register the secondary state machines
