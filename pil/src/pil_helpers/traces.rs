@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "33422bf82fa678d232fdaa684a15cbe264a47eedabcf7aad4d178a0a6fea76ed";
+pub const PILOUT_HASH: &str = "a6a131a9ae069944924c885c390e46d4e7212349c0cd5352b567b1922d7ed2e2";
 
 //AIRGROUP CONSTANTS
 
@@ -50,7 +50,9 @@ pub const KECCAKF_AIR_IDS: &[usize] = &[11];
 
 pub const SHA_256_F_AIR_IDS: &[usize] = &[12];
 
-pub const VIRTUAL_TABLE_AIR_IDS: &[usize] = &[13];
+pub const VIRTUAL_TABLE_0_AIR_IDS: &[usize] = &[13];
+
+pub const VIRTUAL_TABLE_1_AIR_IDS: &[usize] = &[14];
 
 
 //PUBLICS
@@ -198,13 +200,21 @@ trace!(Sha256fTrace<F> {
  a: [F; 32], e: [F; 32], w: [F; 32], new_a_carry_bits: F, new_e_carry_bits: F, new_w_carry_bits: F, step_addr: F, in_use_clk_0: F, in_use: F,
 },  0, 12, 262144 );
 
-trace!(VirtualTableFixed<F> {
- UID: [F; 75], column: [F; 184], __L1__: F,
+trace!(VirtualTable0Fixed<F> {
+ UID: [F; 32], column: [F; 32], __L1__: F,
 },  0, 13, 2097152 );
 
-trace!(VirtualTableTrace<F> {
- multiplicity: [F; 75],
+trace!(VirtualTable0Trace<F> {
+ multiplicity: [F; 32],
 },  0, 13, 2097152 );
+
+trace!(VirtualTable1Fixed<F> {
+ UID: [F; 43], column: [F; 152], __L1__: F,
+},  0, 14, 2097152 );
+
+trace!(VirtualTable1Trace<F> {
+ multiplicity: [F; 43],
+},  0, 14, 2097152 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -278,6 +288,10 @@ values!(Sha256fAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(VirtualTableAirGroupValues<F> {
+values!(VirtualTable0AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(VirtualTable1AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
