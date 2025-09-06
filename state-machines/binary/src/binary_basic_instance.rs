@@ -59,6 +59,18 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
 
         Self { binary_basic_sm, ictx, with_adds, collect_info }
     }
+
+    pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector {
+        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
+            self.collect_info[&chunk_id];
+        BinaryBasicCollector::new(
+            num_ops as usize,
+            num_freq_ops as usize,
+            collect_skipper,
+            self.with_adds,
+            force_execute_to_end,
+        )
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
@@ -126,5 +138,9 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
             self.with_adds,
             force_execute_to_end,
         )))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

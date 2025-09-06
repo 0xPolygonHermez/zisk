@@ -1,11 +1,13 @@
 use crate::NestedDeviceMetricsList;
-use data_bus::{DataBus, DataBusTrait};
+use crate::StaticDataBusCollect;
+use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::collections::HashMap;
-use zisk_common::{BusDevice, BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan};
+use zisk_common::{BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan};
 
-pub type DataBusCollectorCollection = Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>>;
+// pub type DataBusCollectorCollection = Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>>;
+pub type DataBusCollectorCollection = Vec<Option<StaticDataBusCollect<u64>>>;
 pub trait SMBundle<F: PrimeField64>: Send + Sync {
     /// Plans the secondary state machines by generating plans from the counted metrics.
     ///
@@ -46,6 +48,7 @@ pub trait SMBundle<F: PrimeField64>: Send + Sync {
     #[allow(clippy::borrowed_box)]
     fn build_data_bus_collectors(
         &self,
+        pctx: &ProofCtx<F>,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
         chunks_to_execute: Vec<Vec<usize>>,
     ) -> DataBusCollectorCollection;

@@ -257,6 +257,33 @@ impl MemModuleCollector {
             }
         }
     }
+
+    pub fn skip_mem_collector(&self, addr: u32, bytes: u8) -> bool {
+        let unaligned_double =
+            !MemHelpers::is_aligned(addr, bytes) && MemHelpers::is_double(addr, bytes);
+        let addr_w = MemHelpers::get_addr_w(addr);
+
+        if !unaligned_double
+            && (addr_w > self.mem_check_point.to_addr
+                || addr_w < self.min_addr
+                || addr_w < self.mem_check_point.from_addr)
+        {
+            return true;
+        }
+
+        if unaligned_double
+            && (addr_w > self.mem_check_point.to_addr
+                || addr_w < self.min_addr
+                || addr_w < self.mem_check_point.from_addr)
+            && ((addr_w + 1) > self.mem_check_point.to_addr
+                || (addr_w + 1) < self.min_addr
+                || (addr_w + 1) < self.mem_check_point.from_addr)
+        {
+            return true;
+        }
+
+        false
+    }
 }
 
 impl BusDevice<u64> for MemModuleCollector {
@@ -267,6 +294,10 @@ impl BusDevice<u64> for MemModuleCollector {
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
     ) -> bool {
         debug_assert!(*bus_id == MEM_BUS_ID);
+
+        if self.count == 0 {
+            return false;
+        }
 
         self.bus_data_to_input(data);
 

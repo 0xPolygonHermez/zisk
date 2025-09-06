@@ -60,6 +60,18 @@ impl<F: PrimeField64> KeccakfInstance<F> {
 
         Self { keccakf_sm, collect_info, ictx }
     }
+
+    pub fn build_keccakf_collector(&self, chunk_id: ChunkId) -> KeccakfCollector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            KeccakfTrace::<F>::AIR_ID,
+            "KeccakfInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
+        KeccakfCollector::new(num_ops, collect_skipper)
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
@@ -114,6 +126,10 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
 
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(KeccakfCollector::new(num_ops, collect_skipper)))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

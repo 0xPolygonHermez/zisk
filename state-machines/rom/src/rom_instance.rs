@@ -83,6 +83,18 @@ impl RomInstance {
     pub fn is_asm_execution(&self) -> bool {
         self.handle_rh.lock().unwrap().is_some() || self.asm_result.lock().unwrap().is_some()
     }
+
+    pub fn build_rom_collector(&self, _chunk_id: ChunkId) -> Option<RomCollector> {
+        if self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some() {
+            return None;
+        }
+
+        Some(RomCollector::new(
+            self.counter_stats.lock().unwrap().is_some(),
+            self.bios_inst_count.lock().unwrap().clone(),
+            self.prog_inst_count.lock().unwrap().clone(),
+        ))
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for RomInstance {
@@ -202,6 +214,10 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
             self.bios_inst_count.lock().unwrap().clone(),
             self.prog_inst_count.lock().unwrap().clone(),
         )))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

@@ -64,6 +64,18 @@ impl<F: PrimeField64> ArithEqInstance<F> {
 
         Self { arith_eq_sm, collect_info, ictx }
     }
+
+    pub fn build_arith_eq_collector(&self, chunk_id: ChunkId) -> ArithEqCollector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            ArithEqTrace::<F>::AIR_ID,
+            "ArithEqInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
+        ArithEqCollector::new(num_ops, collect_skipper)
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
@@ -111,6 +123,10 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(ArithEqCollector::new(num_ops, collect_skipper)))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

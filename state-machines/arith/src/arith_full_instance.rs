@@ -59,6 +59,12 @@ impl<F: PrimeField64> ArithFullInstance<F> {
 
         Self { arith_full_sm, collect_info, ictx }
     }
+
+    pub fn build_arith_collector(&self, chunk_id: ChunkId) -> ArithInstanceCollector {
+        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
+            self.collect_info[&chunk_id];
+        ArithInstanceCollector::new(num_ops, num_freq_ops, collect_skipper, force_execute_to_end)
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
@@ -124,6 +130,10 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
             collect_skipper,
             force_execute_to_end,
         )))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

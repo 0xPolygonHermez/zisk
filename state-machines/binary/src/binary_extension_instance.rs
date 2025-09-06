@@ -57,6 +57,24 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
 
         Self { binary_extension_sm, collect_info, ictx }
     }
+
+    pub fn build_binary_extension_collector(&self, chunk_id: ChunkId) -> BinaryExtensionCollector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            BinaryExtensionTrace::<F>::AIR_ID,
+            "BinaryExtensionInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
+            self.collect_info[&chunk_id];
+        BinaryExtensionCollector::new(
+            num_ops as usize,
+            num_freq_ops as usize,
+            collect_skipper,
+            force_execute_to_end,
+        )
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
@@ -123,5 +141,9 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
             collect_skipper,
             force_execute_to_end,
         )))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

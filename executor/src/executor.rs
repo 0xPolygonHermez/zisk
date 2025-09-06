@@ -959,7 +959,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         // Create data buses for each chunk
         let data_buses = self
             .sm_bundle
-            .build_data_bus_collectors(&secn_instances, chunks_to_execute)
+            .build_data_bus_collectors(&pctx, &secn_instances, chunks_to_execute)
             .into_iter()
             .map(|db| Arc::new(Mutex::new(db)))
             .collect::<Vec<_>>();

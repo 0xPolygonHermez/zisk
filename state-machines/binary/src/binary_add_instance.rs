@@ -55,6 +55,23 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
 
         Self { binary_add_sm, collect_info, ictx }
     }
+
+    pub fn build_binary_add_collector(&self, chunk_id: ChunkId) -> BinaryAddCollector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            BinaryAddTrace::<F>::AIR_ID,
+            "BinaryAddInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
+            self.collect_info[&chunk_id];
+        BinaryAddCollector::new(
+            num_ops as usize,
+            num_freq_ops as usize,
+            collect_skipper,
+            force_execute_to_end,
+        )
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
@@ -127,5 +144,9 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
             collect_skipper,
             force_execute_to_end,
         )))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
