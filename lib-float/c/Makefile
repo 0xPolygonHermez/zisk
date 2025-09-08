@@ -42,6 +42,8 @@ zisk:
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_mul.c $(ZISK_INC) -o build/f32_mul.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_div.c $(ZISK_INC) -o build/f64_div.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_div.c $(ZISK_INC) -o build/f32_div.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_sqrt.c $(ZISK_INC) -o build/f64_sqrt.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_sqrt.c $(ZISK_INC) -o build/f32_sqrt.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_addMagsF64.c $(ZISK_INC) -o build/s_addMagsF64.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_addMagsF32.c $(ZISK_INC) -o build/s_addMagsF32.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_subMagsF64.c $(ZISK_INC) -o build/s_subMagsF64.o
@@ -61,6 +63,8 @@ zisk:
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_mul64To128M.c $(ZISK_INC) -o build/s_mul64To128M.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_approxRecip32_1.c $(ZISK_INC) -o build/s_approxRecip32_1.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_approxRecip_1Ks.c $(ZISK_INC) -o build/s_approxRecip_1Ks.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_approxRecipSqrt32_1.c $(ZISK_INC) -o build/s_approxRecipSqrt32_1.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_approxRecipSqrt_1Ks.c $(ZISK_INC) -o build/s_approxRecipSqrt_1Ks.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_shortShiftRightJam64.c $(ZISK_INC) -o build/s_shortShiftRightJam64.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/8086/s_propagateNaNF64UI.c $(ZISK_INC) -o build/s_propagateNaNF64UI.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/8086/s_propagateNaNF32UI.c $(ZISK_INC) -o build/s_propagateNaNF32UI.o
@@ -75,6 +79,8 @@ zisk:
 		build/f32_mul.o\
 		build/f64_div.o\
 		build/f32_div.o\
+		build/f64_sqrt.o\
+		build/f32_sqrt.o\
 		build/s_addMagsF64.o\
 		build/s_addMagsF32.o\
 		build/s_subMagsF64.o\
@@ -94,6 +100,8 @@ zisk:
 		build/s_mul64To128M.o\
 		build/s_approxRecip32_1.o\
 		build/s_approxRecip_1Ks.o\
+		build/s_approxRecipSqrt32_1.o\
+		build/s_approxRecipSqrt_1Ks.o\
 		build/s_shortShiftRightJam64.o\
 		build/s_propagateNaNF64UI.o\
 		build/s_propagateNaNF32UI.o\
