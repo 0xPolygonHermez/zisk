@@ -1038,7 +1038,7 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.inst_ctx.sp as i64;
                 }
                 addr += self.ctx.inst_ctx.a as i64;
-                debug_assert!(addr >= 0);
+                debug_assert!(addr >= 0, "addr is negative: addr={}", addr);
                 let addr = addr as u64;
 
                 // Get it from memory

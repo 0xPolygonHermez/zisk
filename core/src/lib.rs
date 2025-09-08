@@ -54,7 +54,6 @@
 pub mod elf2rom;
 pub mod elf_extraction;
 pub mod fcall;
-pub mod float;
 pub mod helpers;
 pub mod inst_context;
 pub mod mem;
@@ -72,7 +71,6 @@ pub mod zisk_rom_2_asm;
 
 pub use elf2rom::*;
 pub use fcall::*;
-pub use float::*;
 pub use helpers::*;
 pub use inst_context::*;
 pub use mem::*;

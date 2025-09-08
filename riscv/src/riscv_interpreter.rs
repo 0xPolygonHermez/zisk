@@ -204,7 +204,7 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                     panic!("Invalid F funct3={:?} inst=0x{inst:x} at index={code_index}", i.funct3);
                 }
             } else {
-                panic!("Invalid i.t={} atsdfsd  index={}", i.t, code_index);
+                panic!("Invalid i.t={} at index={}", i.t, code_index);
             }
             insts.push(i);
         }

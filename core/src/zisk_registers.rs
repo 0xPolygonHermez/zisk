@@ -125,7 +125,8 @@ pub const REGS_IN_MAIN: usize = REGS_IN_MAIN_TO - REGS_IN_MAIN_FROM + 1;
 pub const REGS_IN_MAIN_TOTAL_NUMBER: usize = 32; // Total number of registers in main, including the zero register
 
 // Float registers memory address definitions
-pub const FREG_FIRST: u64 = SYS_ADDR + 40 * 8;
+pub const FREG_OFFSET: u64 = 40;
+pub const FREG_FIRST: u64 = SYS_ADDR + FREG_OFFSET * 8;
 
 pub const FREG_F0: u64 = FREG_FIRST;
 pub const FREG_F1: u64 = FREG_FIRST + 8;
@@ -161,7 +162,39 @@ pub const FREG_F30: u64 = FREG_FIRST + 30_u64 * 8;
 pub const FREG_F31: u64 = FREG_FIRST + 31_u64 * 8;
 
 pub const FREG_CSR: u64 = FREG_FIRST + 32_u64 * 8; // Floating-point control and status register (fcsr)
+pub const FREG_INST: u64 = FREG_FIRST + 33_u64 * 8; // Floating-point instruction register (finst)
+pub const FREG_RA: u64 = FREG_FIRST + 34_u64 * 8; // Floating-point return address register (fra)
 
-pub const FREG_LAST: u64 = FREG_CSR;
+pub const FREG_X1: u64 = FREG_FIRST + 35_u64 * 8; // Floating-point register x1
+pub const FREG_X2: u64 = FREG_FIRST + 36_u64 * 8; // Floating-point register x2
+pub const FREG_X3: u64 = FREG_FIRST + 37_u64 * 8; // Floating-point register x3
+pub const FREG_X4: u64 = FREG_FIRST + 38_u64 * 8; // Floating-point register x4
+pub const FREG_X5: u64 = FREG_FIRST + 39_u64 * 8; // Floating-point register x5
+pub const FREG_X6: u64 = FREG_FIRST + 40_u64 * 8; // Floating-point register x6
+pub const FREG_X7: u64 = FREG_FIRST + 41_u64 * 8; // Floating-point register x7
+pub const FREG_X8: u64 = FREG_FIRST + 42_u64 * 8; // Floating-point register x8
+pub const FREG_X9: u64 = FREG_FIRST + 43_u64 * 8; // Floating-point register x9
+pub const FREG_X10: u64 = FREG_FIRST + 44_u64 * 8; // Floating-point register x10
+pub const FREG_X11: u64 = FREG_FIRST + 45_u64 * 8; // Floating-point register x11
+pub const FREG_X12: u64 = FREG_FIRST + 46_u64 * 8; // Floating-point register x12
+pub const FREG_X13: u64 = FREG_FIRST + 47_u64 * 8; // Floating-point register x13
+pub const FREG_X14: u64 = FREG_FIRST + 48_u64 * 8; // Floating-point register x14
+pub const FREG_X15: u64 = FREG_FIRST + 49_u64 * 8; // Floating-point register x15
+pub const FREG_X16: u64 = FREG_FIRST + 50_u64 * 8; // Floating-point register x16
+pub const FREG_X17: u64 = FREG_FIRST + 51_u64 * 8; // Floating-point register x17
+pub const FREG_X18: u64 = FREG_FIRST + 52_u64 * 8; // Floating-point register x18
+pub const FREG_X19: u64 = FREG_FIRST + 53_u64 * 8; // Floating-point register x19
+pub const FREG_X20: u64 = FREG_FIRST + 54_u64 * 8; // Floating-point register x20
+pub const FREG_X21: u64 = FREG_FIRST + 55_u64 * 8; // Floating-point register x21
+pub const FREG_X22: u64 = FREG_FIRST + 56_u64 * 8; // Floating-point register x22
+pub const FREG_X23: u64 = FREG_FIRST + 57_u64 * 8; // Floating-point register x23
+pub const FREG_X24: u64 = FREG_FIRST + 58_u64 * 8; // Floating-point register x24
+pub const FREG_X25: u64 = FREG_FIRST + 59_u64 * 8; // Floating-point register x25
+pub const FREG_X26: u64 = FREG_FIRST + 60_u64 * 8; // Floating-point register x26
+pub const FREG_X27: u64 = FREG_FIRST + 61_u64 * 8; // Floating-point register x27
+pub const FREG_X28: u64 = FREG_FIRST + 62_u64 * 8; // Floating-point register x28
+pub const FREG_X29: u64 = FREG_FIRST + 63_u64 * 8; // Floating-point register x29
+pub const FREG_X30: u64 = FREG_FIRST + 64_u64 * 8; // Floating-point register x30
+pub const FREG_X31: u64 = FREG_FIRST + 65_u64 * 8; // Floating-point register x31
 
 pub const FREGS_NUMBER: usize = 33; // Total number of float registers, including fcsr

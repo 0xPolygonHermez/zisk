@@ -20,8 +20,8 @@ use std::{
 use tiny_keccak::keccakf;
 
 use crate::{
-    fadd_d, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation,
-    M64, REG_A0, SYS_ADDR,
+    sha256f, EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64,
+    REG_A0, SYS_ADDR,
 };
 
 use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c, Fcall, FcallContext};
