@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "a6a131a9ae069944924c885c390e46d4e7212349c0cd5352b567b1922d7ed2e2";
+pub const PILOUT_HASH: &str = "5752d97e4978ade2f1b4911bccfe1b33fe41970c174429999595b99277934dea";
 
 //AIRGROUP CONSTANTS
 
@@ -201,19 +201,19 @@ trace!(Sha256fTrace<F> {
 },  0, 12, 262144 );
 
 trace!(VirtualTable0Fixed<F> {
- UID: [F; 32], column: [F; 32], __L1__: F,
+ UID: [F; 39], column: [F; 67], __L1__: F,
 },  0, 13, 2097152 );
 
 trace!(VirtualTable0Trace<F> {
- multiplicity: [F; 32],
+ multiplicity: [F; 39],
 },  0, 13, 2097152 );
 
 trace!(VirtualTable1Fixed<F> {
- UID: [F; 43], column: [F; 152], __L1__: F,
+ UID: [F; 36], column: [F; 116], __L1__: F,
 },  0, 14, 2097152 );
 
 trace!(VirtualTable1Trace<F> {
- multiplicity: [F; 43],
+ multiplicity: [F; 36],
 },  0, 14, 2097152 );
 
 trace!(RomRomTrace<F> {

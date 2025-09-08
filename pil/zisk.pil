@@ -31,9 +31,14 @@ const int BINARY_BASIC_FROPS_TABLE_ID = 5011;
 const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
 
 airgroup Zisk {
+    // Virtual Tables Configuration
     set_range_check_tables_virtual(); // Enable virtual tables for range checks
-    set_max_virtual_bits(21); // Set the maximum bits for virtual tables
+    set_max_num_rows_virtual(1 << 21); // Set the maximum rows for virtual tables
     set_max_num_virtual_tables(2); // Set the maximum number of virtual tables
+    set_group_virtual_tables(table_ids: [MEM_ALIGN_ROM_ID, ARITH_TABLE_ID, ARITH_RANGE_TABLE_ID, // Set groups for virtual tables
+                                         BINARY_EXTENSION_TABLE_ID, ARITH_EQ_LT_TABLE_ID, KECCAKF_TABLE_ID]);
+    set_group_virtual_tables(table_ids: [BINARY_TABLE_ID, ARITH_FROPS_TABLE_ID, BINARY_BASIC_FROPS_TABLE_ID,
+                                         BINARY_EXTENSION_FROPS_TABLE_ID]);
 
     // Main Program
     Main(N: 2**22);
