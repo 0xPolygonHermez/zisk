@@ -22,8 +22,8 @@ impl Rvd {
             },
             7 => { // Opcode 7
                 match (inst >> 12) & 0x7 {
-                    2 => ("R", "flw"),
-                    3 => ("R", "fld"),
+                    2 => ("I", "flw"),
+                    3 => ("I", "fld"),
                     _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 7 inst=0x{inst:x}"),
                 }
             },
