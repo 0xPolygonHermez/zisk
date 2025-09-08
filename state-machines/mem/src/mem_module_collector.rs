@@ -258,9 +258,7 @@ impl MemModuleCollector {
         }
     }
 
-    pub fn skip_mem_collector(&self, addr: u32, bytes: u8) -> bool {
-        let unaligned_double =
-            !MemHelpers::is_aligned(addr, bytes) && MemHelpers::is_double(addr, bytes);
+    pub fn skip_mem_collector(&self, addr: u32, unaligned_double: bool) -> bool {
         let addr_w = MemHelpers::get_addr_w(addr);
 
         if !unaligned_double
@@ -287,6 +285,7 @@ impl MemModuleCollector {
 }
 
 impl BusDevice<u64> for MemModuleCollector {
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
