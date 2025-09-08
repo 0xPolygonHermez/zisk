@@ -9,7 +9,7 @@ repository.workspace = true
 [dependencies]
 consensus-config = { workspace = true }
 consensus-comm = { workspace = true }
-consensus-common = { path = "../common" }
+consensus-common = { workspace = true }
 
 tonic = { workspace = true }
 tonic-prost = { workspace = true }

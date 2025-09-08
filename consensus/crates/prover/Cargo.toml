@@ -18,7 +18,7 @@ zisk-common = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 asm-runner = { workspace = true }
-consensus-common = { path = "../common" }
+consensus-common = { workspace = true }
 fields = { workspace = true }
 witness = { workspace = true }
 
@@ -27,3 +27,4 @@ tracing = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 libloading = { workspace = true }
+borsh = { workspace = true }

@@ -152,6 +152,14 @@ impl ProverService {
         })
     }
 
+    pub fn local_rank(&self) -> i32 {
+        self.proof_generator.local_rank()
+    }
+
+    pub async fn receive_mpi_request(&self) -> Result<()> {
+        self.proof_generator.receive_mpi_request().await
+    }
+
     pub fn get_state(&self) -> &ProverState {
         &self.state
     }
@@ -221,6 +229,7 @@ impl ProverService {
         job: Arc<Mutex<JobContext>>,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
+        self.proof_generator.partial_contribution_broadcast(job.clone()).await;
         self.proof_generator.partial_contribution(job, tx).await
     }
 
@@ -230,6 +239,7 @@ impl ProverService {
         challenges: Vec<ContributionsInfo>,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
+        self.proof_generator.prove_broadcast(job.clone(), challenges.clone()).await;
         self.proof_generator.prove(job, challenges, tx).await
     }
 

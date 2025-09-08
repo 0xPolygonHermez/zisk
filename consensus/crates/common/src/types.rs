@@ -1,9 +1,10 @@
+use borsh::{BorshDeserialize, BorshSerialize};
 use proofman::ContributionsInfo;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, ops::Range, path::PathBuf};
 
 /// Job ID wrapper for type safety
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize)]
 pub struct JobId(String);
 
 impl Default for JobId {
@@ -195,11 +196,25 @@ pub struct BlockContext {
     pub input_path: PathBuf,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[repr(u8)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, BorshSerialize, BorshDeserialize)]
 pub enum JobPhase {
     Contributions,
     Prove,
     Aggregate,
+}
+
+impl TryFrom<u8> for JobPhase {
+    type Error = anyhow::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(JobPhase::Contributions),
+            1 => Ok(JobPhase::Prove),
+            2 => Ok(JobPhase::Aggregate),
+            _ => Err(anyhow::anyhow!("Invalid JobPhase byte: {}", value)),
+        }
+    }
 }
 
 impl JobPhase {
@@ -217,6 +232,7 @@ pub struct ProverAllocationDto {
     pub range: Range<u32>,
 }
 
+#[derive(Debug, Clone)]
 pub struct AggregationParams {
     pub agg_proofs: Vec<AggProofData>,
     pub last_proof: bool,

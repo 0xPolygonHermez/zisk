@@ -283,6 +283,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     #[allow(clippy::type_complexity)]
     fn execute_with_assembly(
         &self,
+        pctx: &ProofCtx<F>,
         input_data_path: Option<PathBuf>,
         _caller_stats_id: u64,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<JoinHandle<AsmRunnerMO>>)
@@ -361,8 +362,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         let stats = Arc::clone(&self.stats);
 
-        // Run the assembly ROM Histogram runner with the provided input data path only if the world rank is 0
-        let handle_rh = (self.world_rank == 0).then(|| {
+        // Run the ROM histogram only on partition 0 as it is always computed by this partition
+        let has_rom_sm = pctx.dctx_is_first_partition();
+
+        let handle_rh = (has_rom_sm).then(|| {
             let asm_shmem_rh = self.asm_shmem_rh.clone();
             let unlock_mapped_memory = self.unlock_mapped_memory;
             std::thread::spawn(move || {
@@ -391,7 +394,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.execution_result.lock().unwrap().executed_steps = steps;
 
         // If the world rank is 0, wait for the ROM Histogram thread to finish and set the handler
-        if self.world_rank == 0 {
+        if has_rom_sm {
             self.rom_sm.as_ref().unwrap().set_asm_runner_handler(
                 handle_rh.expect("Error during Assembly ROM Histogram thread execution"),
             );
@@ -701,10 +704,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 {
                     // If this is the ROM instance, we need to add it to the proof context
                     // with the rank 0.
-                    pctx.add_instance_assign_partition(
+                    pctx.add_instance_assign_first_partition(
                         plan.airgroup_id,
                         plan.air_id,
-                        0,
                         plan.n_threads_witness,
                     )
                 } else {
@@ -1236,6 +1238,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         let (min_traces, main_count, secn_count, handle_mo) = if self.asm_runner_path.is_some() {
             // If we are executing in assembly mode
             self.execute_with_assembly(
+                &pctx,
                 input_data_path,
                 #[cfg(feature = "stats")]
                 parent_stats_id,

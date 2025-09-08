@@ -15,7 +15,7 @@ consensus-coordinator = { workspace = true }
 consensus-grpc-api = { workspace = true }
 consensus-config = { workspace = true }
 consensus-comm = { workspace = true }
-consensus-common = { path = "../common" }
+consensus-common = { workspace = true }
 witness = { workspace = true }
 
 tonic = { workspace = true }

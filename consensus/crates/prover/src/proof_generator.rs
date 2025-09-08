@@ -3,10 +3,12 @@ use asm_runner::AsmRunnerOptions;
 use asm_runner::AsmServices;
 use consensus_common::AggregationParams;
 use consensus_common::JobId;
+use consensus_common::JobPhase;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::AggProofs;
 use proofman::ContributionsInfo;
+use proofman::ProvePhaseInputs;
 use proofman::{ProofInfo, ProofMan};
 use proofman_common::ProofOptions;
 use std::path::PathBuf;
@@ -25,6 +27,7 @@ pub struct ProofGenerator {
     // to ensure that the witness library is dropped before the proofman.
     witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
     proofman: Arc<ProofMan<Goldilocks>>,
+    local_rank: i32,
     asm_services: Option<AsmServices>,
 }
 
@@ -89,7 +92,50 @@ impl ProofGenerator {
 
         let witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync> = Arc::from(witness_lib);
 
-        Ok(Self { witness_lib, proofman: Arc::new(proofman), asm_services })
+        Ok(Self { witness_lib, proofman: Arc::new(proofman), local_rank, asm_services })
+    }
+
+    pub fn local_rank(&self) -> i32 {
+        self.local_rank
+    }
+
+    fn get_proof_options_partial_contribution() -> ProofOptions {
+        ProofOptions {
+            verify_constraints: false,
+            aggregation: false,
+            final_snark: false,
+            verify_proofs: true,
+            save_proofs: true,
+            test_mode: false,
+            output_dir_path: PathBuf::from("."),
+            minimal_memory: true,
+        }
+    }
+
+    fn get_proof_options_prove() -> ProofOptions {
+        ProofOptions {
+            verify_constraints: false,
+            aggregation: true,
+            final_snark: false,
+            verify_proofs: false,
+            save_proofs: false,
+            test_mode: false,
+            output_dir_path: PathBuf::default(),
+            minimal_memory: false,
+        }
+    }
+
+    fn get_proof_options_aggregation(agg_params: &AggregationParams) -> ProofOptions {
+        ProofOptions {
+            verify_constraints: agg_params.verify_constraints,
+            aggregation: agg_params.aggregation,
+            final_snark: agg_params.final_snark,
+            verify_proofs: agg_params.verify_proofs,
+            save_proofs: agg_params.save_proofs,
+            test_mode: agg_params.test_mode,
+            output_dir_path: agg_params.output_dir_path.clone(),
+            minimal_memory: agg_params.minimal_memory,
+        }
     }
 
     pub async fn partial_contribution(
@@ -99,10 +145,26 @@ impl ProofGenerator {
     ) -> JoinHandle<()> {
         let proofman = self.proofman.clone();
 
-        let job_id = job.lock().await.job_id.clone();
-
         tokio::spawn(async move {
-            let result = Self::compute_contribution_task(job_id.clone(), job, proofman).await;
+            let job = job.lock().await;
+            let job_id = job.job_id.clone();
+
+            info!("Computing Contribution for job {}", job_id);
+
+            let proof_info = ProofInfo::new(
+                Some(job.block.input_path.clone()),
+                job.total_compute_units as usize,
+                job.allocation.clone(),
+                job.rank_id as usize,
+            );
+            let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
+
+            let options = Self::get_proof_options_partial_contribution();
+
+            let result =
+                Self::execute_contribution_task(job_id.clone(), proofman, phase_inputs, options)
+                    .await;
+
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Challenge {
@@ -123,33 +185,12 @@ impl ProofGenerator {
         })
     }
 
-    pub async fn compute_contribution_task(
+    pub async fn execute_contribution_task(
         job_id: JobId,
-        job: Arc<Mutex<JobContext>>,
         proofman: Arc<ProofMan<Goldilocks>>,
+        phase_inputs: ProvePhaseInputs,
+        options: ProofOptions,
     ) -> Result<Vec<ContributionsInfo>> {
-        info!("Computing Contribution for job {}", job_id);
-
-        // Prepare parameters
-        let job = job.lock().await;
-        let proof_info = ProofInfo::new(
-            Some(job.block.input_path.clone()),
-            job.total_compute_units as usize,
-            job.allocation.clone(),
-            job.rank_id as usize,
-        );
-        let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
-
-        let options = ProofOptions {
-            verify_constraints: false,
-            aggregation: false,
-            final_snark: false,
-            verify_proofs: true,
-            save_proofs: true,
-            test_mode: false,
-            output_dir_path: PathBuf::from("."),
-            minimal_memory: true,
-        };
         let phase = proofman::ProvePhase::Contributions;
 
         // Handle the result immediately without holding it across await
@@ -181,21 +222,18 @@ impl ProofGenerator {
     ) -> JoinHandle<()> {
         let proofman = self.proofman.clone();
 
-        // TODO! Check that each Vec<u64> has exactly 10 elements
-        // Chunk into slices of 10
-        // Flatten all the Vec<u64> into a single iterator of u64, then chunk into arrays of 10
-        // let challenges: Vec<[u64; 10]> = challenges
-        //     .into_iter()
-        //     .flatten() // This flattens Vec<Vec<u64>> into an iterator of u64
-        //     .collect::<Vec<u64>>() // Collect into a single Vec<u64>
-        //     .chunks_exact(10) // Now we can chunk the flattened data
-        //     .map(|chunk| chunk.try_into().expect("Chunk must have length 10"))
-        //     .collect();
-
-        let job_id = job.lock().await.job_id.clone();
-
         tokio::spawn(async move {
-            let result = Self::execute_prove_task(job, proofman, challenges).await;
+            let job = job.lock().await;
+            let job_id = job.job_id.clone();
+
+            info!("Computing Prove for job {}", job_id);
+
+            let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
+
+            let options = Self::get_proof_options_prove();
+
+            let result =
+                Self::execute_prove_task(job_id.clone(), proofman, phase_inputs, options).await;
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Proofs {
@@ -217,39 +255,16 @@ impl ProofGenerator {
     }
 
     pub async fn execute_prove_task(
-        job: Arc<Mutex<JobContext>>,
+        job_id: JobId,
         proofman: Arc<ProofMan<Goldilocks>>,
-        challenges: Vec<ContributionsInfo>,
+        phase_inputs: ProvePhaseInputs,
+        options: ProofOptions,
     ) -> Result<Vec<AggProofs>> {
-        let job = job.lock().await;
-        let job_id = job.job_id.clone();
-
-        info!("Computing Prove for job {}", job_id);
-
-        // Prepare parameters
-
-        //TODO! Fix airgroup_id, now is harcoded
-        // let contributions_info = challenges
-        //     .into_iter()
-        //     .map(|challenge| ContributionsInfo { challenge, airgroup_id: 0, worker_index: job.rank_id })
-        //     .collect::<Vec<ContributionsInfo>>();
-
-        let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
-
-        let options = ProofOptions {
-            verify_constraints: false,
-            aggregation: true,
-            final_snark: false,
-            verify_proofs: false,
-            save_proofs: false,
-            test_mode: false,
-            output_dir_path: PathBuf::default(),
-            minimal_memory: false,
-        };
-        let phase = proofman::ProvePhase::Internal;
-
-        // Handle the result immediately without holding it across await
-        let proof = match proofman.generate_proof_from_lib(phase_inputs, options, phase) {
+        let proof = match proofman.generate_proof_from_lib(
+            phase_inputs,
+            options,
+            proofman::ProvePhase::Internal,
+        ) {
             Ok(proofman::ProvePhaseResult::Internal(proof)) => {
                 info!("Prove computation successful for job {}", job_id);
                 proof
@@ -275,10 +290,34 @@ impl ProofGenerator {
     ) -> JoinHandle<()> {
         let proofman = self.proofman.clone();
 
-        let job_id = job.lock().await.job_id.clone();
-
         tokio::spawn(async move {
-            let result = Self::execute_aggregation_task(job, proofman, agg_params).await;
+            let job = job.lock().await;
+            let job_id = job.job_id.clone();
+
+            info!("Computing Aggregation for job {}", job_id);
+
+            let agg_proofs: Vec<AggProofs> = agg_params
+                .agg_proofs
+                .iter()
+                .map(|v| AggProofs {
+                    airgroup_id: v.airgroup_id,
+                    proof: v.values.clone(),
+                    worker_indexes: vec![v.worker_idx as usize],
+                })
+                .collect();
+
+            let options = Self::get_proof_options_aggregation(&agg_params);
+
+            let result = Self::execute_aggregation_task(
+                job_id.clone(),
+                proofman.clone(),
+                agg_proofs,
+                agg_params.last_proof,
+                agg_params.final_proof,
+                options,
+            )
+            .await;
+
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::AggProof {
@@ -300,46 +339,91 @@ impl ProofGenerator {
     }
 
     pub async fn execute_aggregation_task(
-        job: Arc<Mutex<JobContext>>,
+        job_id: JobId,
         proofman: Arc<ProofMan<Goldilocks>>,
-        agg_params: AggregationParams,
+        agg_proofs: Vec<AggProofs>,
+        last_proof: bool,
+        final_proof: bool,
+        options: ProofOptions,
     ) -> Result<Option<Vec<u64>>> {
-        let job = job.lock().await;
-        let job_id = job.job_id.clone();
-
-        info!("Computing Aggregation for job {}", job_id);
-
-        let agg_proofs: Vec<AggProofs> = agg_params
-            .agg_proofs
-            .iter()
-            .map(|v| AggProofs {
-                airgroup_id: v.airgroup_id,
-                proof: v.values.clone(),
-                worker_indexes: vec![v.worker_idx as usize],
-            })
-            .collect();
-
-        let options = ProofOptions {
-            verify_constraints: agg_params.verify_constraints,
-            aggregation: agg_params.aggregation,
-            final_snark: agg_params.final_snark,
-            verify_proofs: agg_params.verify_proofs,
-            save_proofs: agg_params.save_proofs,
-            test_mode: agg_params.test_mode,
-            output_dir_path: agg_params.output_dir_path,
-            minimal_memory: agg_params.minimal_memory,
-        };
-
-        // Handle the result immediately without holding it across await
-        let proof = proofman.receive_aggregated_proofs(
-            agg_proofs,
-            agg_params.last_proof,
-            agg_params.final_proof,
-            &options,
-        );
+        let proof =
+            proofman.receive_aggregated_proofs(agg_proofs, last_proof, final_proof, &options);
 
         info!("Aggregation computation successful for job {}", job_id);
 
         Ok(Some(proof.unwrap()[0].proof.clone()))
+    }
+
+    pub async fn partial_contribution_broadcast(&self, job: Arc<Mutex<JobContext>>) {
+        let job = job.lock().await;
+        let job_id = job.job_id.clone();
+
+        let proof_info = ProofInfo::new(
+            Some(job.block.input_path.clone()),
+            job.total_compute_units as usize,
+            job.allocation.clone(),
+            job.rank_id as usize,
+        );
+        let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
+
+        let options = Self::get_proof_options_partial_contribution();
+
+        let mut serialized =
+            borsh::to_vec(&(JobPhase::Contributions, job_id, phase_inputs, options)).unwrap();
+
+        self.proofman.mpi_broadcast(&mut serialized);
+    }
+
+    pub async fn prove_broadcast(
+        &self,
+        job: Arc<Mutex<JobContext>>,
+        challenges: Vec<ContributionsInfo>,
+    ) {
+        let job = job.lock().await;
+        let job_id = job.job_id.clone();
+
+        let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
+
+        let options = Self::get_proof_options_prove();
+
+        let mut serialized =
+            borsh::to_vec(&(JobPhase::Prove, job_id, phase_inputs, options)).unwrap();
+
+        self.proofman.mpi_broadcast(&mut serialized);
+    }
+
+    pub async fn receive_mpi_request(&self) -> Result<()> {
+        let mut bytes: Vec<u8> = Vec::new();
+
+        self.proofman.mpi_broadcast(&mut bytes);
+
+        // extract byte 0 to decide the option
+        let phase = borsh::from_slice(&bytes[0..1]).unwrap();
+
+        match phase {
+            JobPhase::Contributions => {
+                let (job_id, phase_inputs, options): (JobId, ProvePhaseInputs, ProofOptions) =
+                    borsh::from_slice(&bytes[1..]).unwrap();
+
+                Self::execute_contribution_task(
+                    job_id,
+                    self.proofman.clone(),
+                    phase_inputs,
+                    options,
+                )
+                .await?;
+            }
+            JobPhase::Prove => {
+                let (job_id, phase_inputs, options): (JobId, ProvePhaseInputs, ProofOptions) =
+                    borsh::from_slice(&bytes[1..]).unwrap();
+
+                Self::execute_prove_task(job_id, self.proofman.clone(), phase_inputs, options)
+                    .await?;
+            }
+            JobPhase::Aggregate => {
+                unreachable!("Aggregate phase is not supported in MPI broadcast");
+            }
+        }
+        Ok(())
     }
 }

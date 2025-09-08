@@ -36,29 +36,35 @@ impl ProverGrpcEndpoint {
     pub async fn run(&mut self) -> Result<()> {
         info!("Starting prover client {}", self.config_endpoint.prover.prover_id);
 
+        let rank = self.prover_service.local_rank();
         loop {
-            match self.prover_service.get_state() {
-                ProverState::Disconnected => {
-                    if let Err(e) = self.connect_and_run().await {
-                        error!("Connection failed: {}", e);
+            if rank == 0 {
+                match self.prover_service.get_state() {
+                    ProverState::Disconnected => {
+                        if let Err(e) = self.connect_and_run().await {
+                            error!("Connection failed: {}", e);
+                            tokio::time::sleep(Duration::from_secs(
+                                self.config_endpoint.connection.reconnect_interval_seconds,
+                            ))
+                            .await;
+                        }
+                    }
+                    ProverState::Error => {
+                        error!("Prover in error state, attempting to reconnect");
+                        self.prover_service.set_state(ProverState::Disconnected);
                         tokio::time::sleep(Duration::from_secs(
                             self.config_endpoint.connection.reconnect_interval_seconds,
                         ))
                         .await;
                     }
+                    _ => {
+                        // Should not reach here
+                        break;
+                    }
                 }
-                ProverState::Error => {
-                    error!("Prover in error state, attempting to reconnect");
-                    self.prover_service.set_state(ProverState::Disconnected);
-                    tokio::time::sleep(Duration::from_secs(
-                        self.config_endpoint.connection.reconnect_interval_seconds,
-                    ))
-                    .await;
-                }
-                _ => {
-                    // Should not reach here
-                    break;
-                }
+            } else {
+                // Non-rank 0 provers are executing inside a cluster and only receives MPI requests
+                self.prover_service.receive_mpi_request().await?;
             }
         }
 
@@ -353,6 +359,7 @@ impl ProverGrpcEndpoint {
                 coordinator_message::Payload::ExecuteTask(request) => {
                     match TaskType::try_from(request.task_type) {
                         Ok(TaskType::PartialContribution) => {
+                            // Convert request to an own type
                             self.partial_contribution(computation_tx, request).await;
                         }
                         Ok(TaskType::Prove) => {
