@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, ops::Range, path::PathBuf};
 
 /// Job ID wrapper for type safety
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize,
+)]
 pub struct JobId(String);
 
 impl Default for JobId {
