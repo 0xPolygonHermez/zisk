@@ -258,7 +258,8 @@ impl MemModuleCollector {
         }
     }
 
-    pub fn skip_mem_collector(&self, addr: u32, unaligned_double: bool) -> bool {
+    #[inline(always)]
+    pub fn skip_collector(&self, addr: u32, unaligned_double: bool) -> bool {
         let addr_w = MemHelpers::get_addr_w(addr);
 
         if !unaligned_double

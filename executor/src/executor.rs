@@ -23,7 +23,6 @@ use asm_runner::{
     write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory,
     MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, Task, TaskFactory,
 };
-use crossbeam::queue::SegQueue;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{create_pool, BufferPool, ProofCtx, SetupCtx};
@@ -142,7 +141,8 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
 
     /// Collectors by instance, storing statistics and collectors for each instance.
     #[allow(clippy::type_complexity)]
-    collectors_by_instance: Arc<RwLock<HashMap<usize, Vec<(usize, Box<dyn BusDevice<u64>>)>>>>,
+    collectors_by_instance:
+        Arc<RwLock<HashMap<usize, Vec<Option<(usize, Box<dyn BusDevice<u64>>)>>>>>,
 
     /// Statistics collected during the execution, including time taken for collection and witness computation.
     stats: Arc<Mutex<ExecutorStats>>,
@@ -849,7 +849,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let collectors_by_instance = {
             let mut guard = self.collectors_by_instance.write().unwrap();
 
-            guard.remove(&global_id).expect("Missing collectors for given global_id")
+            guard
+                .remove(&global_id)
+                .expect("Missing collectors for given global_id")
+                .into_iter()
+                .map(Option::unwrap) // All are guaranteed to be Some
+                .collect()
         };
 
         if let Some(air_instance) =
@@ -948,18 +953,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         let chunks_to_execute_clone = chunks_to_execute.clone();
 
-        // Pre-allocate lock-free queues for each global_id
-        #[allow(clippy::type_complexity)]
-        let collectors_queues: Vec<Arc<SegQueue<(usize, Box<dyn BusDevice<u64>>)>>> =
-            global_ids.iter().map(|_| Arc::new(SegQueue::new())).collect();
-
         let global_ids_map: HashMap<usize, usize> =
             global_ids.iter().enumerate().map(|(idx, &id)| (id, idx)).collect();
 
         // Create data buses for each chunk
         let data_buses = self
             .sm_bundle
-            .build_data_bus_collectors(&pctx, &secn_instances, chunks_to_execute)
+            .build_data_bus_collectors(&pctx, &secn_instances, &chunks_to_execute)
             .into_iter()
             .map(|db| Arc::new(Mutex::new(db)))
             .collect::<Vec<_>>();
@@ -981,7 +981,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 num_chunks: global_id_chunks[global_id].len(),
             };
 
-            self.collectors_by_instance.write().unwrap().insert(*global_id, Vec::new());
+            self.collectors_by_instance
+                .write()
+                .unwrap()
+                .insert(*global_id, (0..global_id_chunks[global_id].len()).map(|_| None).collect());
             self.witness_stats.lock().unwrap().insert(*global_id, stats);
         }
 
@@ -994,7 +997,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             let min_traces_lock = Arc::clone(&self.min_traces);
             let data_buses = data_buses.clone();
             let zisk_rom = self.zisk_rom.clone();
-            let collectors_queues = collectors_queues.clone();
             let n_chunks_left = n_chunks_left.clone();
             let global_ids_map = global_ids_map.clone();
             let global_id_chunks = global_id_chunks.clone();
@@ -1045,23 +1047,21 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                                     .get(&global_id)
                                     .expect("Global ID not found in map");
 
-                                collectors_queues[*global_id_idx]
-                                    .push((chunk_id, collector.unwrap()));
+                                let chunk_order = &global_id_chunks[&global_id];
+                                let position = chunk_order
+                                    .iter()
+                                    .position(|&id| id == chunk_id)
+                                    .expect("Chunk ID not found in order");
+
+                                collectors_by_instance
+                                    .write()
+                                    .unwrap()
+                                    .get_mut(&global_id)
+                                    .unwrap()[position] = Some((chunk_id, collector.unwrap()));
 
                                 if n_chunks_left[*global_id_idx].fetch_sub(1, Ordering::SeqCst) == 1
                                 {
-                                    let mut collectors = Vec::new();
-                                    while let Some((chunk_id, collector)) =
-                                        collectors_queues[*global_id_idx].pop()
-                                    {
-                                        collectors.push((chunk_id, collector));
-                                    }
-
-                                    // Sort collectors by chunk_id based on the order in global_id_chunks
-                                    let chunk_order = &global_id_chunks[&global_id];
-                                    collectors.sort_by_key(|(chunk_id, _)| {
-                                        chunk_order.iter().position(|&id| id == *chunk_id).unwrap()
-                                    });
+                                    pctx_clone.set_witness_ready(global_id, true);
 
                                     let collect_start_time = collect_start_times[*global_id_idx]
                                         .load()
@@ -1082,13 +1082,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                                     };
 
                                     witness_stats.lock().unwrap().insert(global_id, stats);
-
-                                    collectors_by_instance
-                                        .write()
-                                        .unwrap()
-                                        .insert(global_id, collectors);
-
-                                    pctx_clone.set_witness_ready(global_id, true);
                                 }
                             }
                         }
@@ -1290,6 +1283,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
 
+        timer_stop_and_log_info!(PLAN);
+
+        timer_start_info!(PLAN_MEM_CPP);
         // Add to executor stats
         #[cfg(feature = "stats")]
         self.stats.lock().unwrap().add_stat(
@@ -1349,7 +1345,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             );
         }
 
-        timer_stop_and_log_info!(PLAN);
+        timer_stop_and_log_info!(PLAN_MEM_CPP);
 
         #[cfg(feature = "stats")]
         let stats_id = self.stats.lock().unwrap().get_id();

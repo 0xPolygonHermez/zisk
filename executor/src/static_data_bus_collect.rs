@@ -17,9 +17,10 @@ use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollect
 use sm_mem::{MemAlignCollector, MemHelpers, MemModuleCollector};
 use sm_rom::RomCollector;
 use zisk_common::{
-    BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE, ROM_BUS_ID,
+    BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID, OP, OPERATION_BUS_ID, OP_TYPE,
+    ROM_BUS_ID,
 };
-use zisk_core::ZiskOperationType;
+use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///
@@ -121,7 +122,7 @@ impl StaticDataBusCollect<PayloadType> {
 
                 // Process mem collectors - inverted condition to avoid continue
                 for (_, mem_collector) in &mut self.mem_collector {
-                    if !mem_collector.skip_mem_collector(addr, unaligned_double) {
+                    if !mem_collector.skip_collector(addr, unaligned_double) {
                         mem_collector.process_data(&bus_id, payload, &mut self.pending_transfers);
                     }
                 }
@@ -141,20 +142,22 @@ impl StaticDataBusCollect<PayloadType> {
                 let op_type = payload[OP_TYPE] as u32;
                 match op_type {
                     op if op == ZiskOperationType::Binary as u32 => {
-                        for (_, binary_basic_collector) in &mut self.binary_basic_collector {
-                            binary_basic_collector.process_data(
-                                &bus_id,
-                                payload,
-                                &mut self.pending_transfers,
-                            );
-                        }
-
-                        for (_, binary_add_collector) in &mut self.binary_add_collector {
-                            binary_add_collector.process_data(
-                                &bus_id,
-                                payload,
-                                &mut self.pending_transfers,
-                            );
+                        if payload[OP] as u8 == ZiskOp::Add.code() {
+                            for (_, binary_add_collector) in &mut self.binary_add_collector {
+                                binary_add_collector.process_data(
+                                    &bus_id,
+                                    payload,
+                                    &mut self.pending_transfers,
+                                );
+                            }
+                        } else {
+                            for (_, binary_basic_collector) in &mut self.binary_basic_collector {
+                                binary_basic_collector.process_data(
+                                    &bus_id,
+                                    payload,
+                                    &mut self.pending_transfers,
+                                );
+                            }
                         }
                     }
                     op if op == ZiskOperationType::BinaryE as u32 => {

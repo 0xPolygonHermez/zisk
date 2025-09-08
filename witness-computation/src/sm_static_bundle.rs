@@ -22,6 +22,7 @@ use zisk_pil::{
 };
 
 use crate::StaticDataBus;
+use rayon::prelude::*;
 
 pub enum StateMachines<F: PrimeField64> {
     RomSM(Arc<RomSM>),
@@ -220,7 +221,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         let mut sha256f_counter = None;
         let mut arith_eq_counter = None;
 
-        for (_, sm) in &self.sm {
+        for sm in self.sm.values() {
             match sm {
                 StateMachines::MemSM(mem_sm) => {
                     mem_counter = Some(mem_sm.build_mem_counter());
@@ -263,17 +264,16 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         &self,
         pctx: &ProofCtx<F>,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
-        chunks_to_execute: Vec<Vec<usize>>,
+        chunks_to_execute: &[Vec<usize>],
     ) -> Vec<Option<StaticDataBusCollect<u64>>> {
         chunks_to_execute
-            .iter()
+            .par_iter()
             .enumerate()
             .map(|(chunk_id, global_idxs)| {
                 if global_idxs.is_empty() {
                     return None;
                 }
 
-                let mut used = false;
                 let mut binary_basic_collectors = Vec::new();
                 let mut binary_add_collectors = Vec::new();
                 let mut binary_extension_collectors = Vec::new();
@@ -297,7 +297,6 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                             let binary_basic_collector = binary_basic_instance
                                 .build_binary_basic_collector(ChunkId(chunk_id));
                             binary_basic_collectors.push((*global_idx, binary_basic_collector));
-                            used = true;
                         }
                         air_id if air_id == BINARY_ADD_AIR_IDS[0] => {
                             let binary_add_instance = secn_instance
@@ -307,7 +306,6 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                             let binary_add_collector =
                                 binary_add_instance.build_binary_add_collector(ChunkId(chunk_id));
                             binary_add_collectors.push((*global_idx, binary_add_collector));
-                            used = true;
                         }
                         air_id if air_id == BINARY_EXTENSION_AIR_IDS[0] => {
                             let binary_extension_instance = secn_instance
@@ -318,7 +316,6 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                                 .build_binary_extension_collector(ChunkId(chunk_id));
                             binary_extension_collectors
                                 .push((*global_idx, binary_extension_collector));
-                            used = true;
                         }
                         air_id
                             if air_id == MEM_AIR_IDS[0]
@@ -331,7 +328,6 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                                 .unwrap();
                             let mem_collector = mem_instance.build_mem_collector(ChunkId(chunk_id));
                             mem_collectors.push((*global_idx, mem_collector));
-                            used = true;
                         }
                         air_id if air_id == MEM_ALIGN_AIR_IDS[0] => {
                             let mem_align_instance = secn_instance
@@ -341,7 +337,6 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                             let mem_align_collector =
                                 mem_align_instance.build_mem_align_collector(ChunkId(chunk_id));
                             mem_align_collectors.push((*global_idx, mem_align_collector));
-                            used = true;
                         }
                         air_id if air_id == ARITH_AIR_IDS[0] => {
                             let arith_instance = secn_instance
@@ -351,7 +346,6 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                             let arith_collector =
                                 arith_instance.build_arith_collector(ChunkId(chunk_id));
                             arith_collectors.push((*global_idx, arith_collector));
-                            used = true;
                         }
                         air_id if air_id == KECCAKF_AIR_IDS[0] => {
                             let keccakf_instance = secn_instance
@@ -361,7 +355,6 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                             let keccakf_collector =
                                 keccakf_instance.build_keccakf_collector(ChunkId(chunk_id));
                             keccakf_collectors.push((*global_idx, keccakf_collector));
-                            used = true;
                         }
                         air_id if air_id == SHA_256_F_AIR_IDS[0] => {
                             let sha256f_instance = secn_instance
@@ -371,7 +364,6 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                             let sha256f_collector =
                                 sha256f_instance.build_sha256f_collector(ChunkId(chunk_id));
                             sha256f_collectors.push((*global_idx, sha256f_collector));
-                            used = true;
                         }
                         air_id if air_id == ARITH_EQ_AIR_IDS[0] => {
                             let arith_eq_instance = secn_instance
@@ -381,14 +373,12 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                             let arith_eq_collector =
                                 arith_eq_instance.build_arith_eq_collector(ChunkId(chunk_id));
                             arith_eq_collectors.push((*global_idx, arith_eq_collector));
-                            used = true;
                         }
                         air_id if air_id == ROM_AIR_IDS[0] => {
                             let rom_instance =
                                 secn_instance.as_any().downcast_ref::<RomInstance>().unwrap();
                             let rom_collector = rom_instance.build_rom_collector(ChunkId(chunk_id));
                             if let Some(collector) = rom_collector {
-                                used = true;
                                 rom_collectors.push((*global_idx, collector));
                             }
                         }
@@ -398,54 +388,49 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                     }
                 }
 
-                if used {
-                    let mut arith_eq_inputs_generator = None;
-                    let mut keccakf_inputs_generator = None;
-                    let mut sha256f_inputs_generator = None;
-                    let mut arith_inputs_generator = None;
-                    for (_, sm) in &self.sm {
-                        match sm {
-                            StateMachines::ArithSM(arith_sm) => {
-                                arith_inputs_generator =
-                                    Some(arith_sm.build_arith_input_generator());
-                            }
-                            StateMachines::KeccakfManager(keccak_sm) => {
-                                keccakf_inputs_generator =
-                                    Some(keccak_sm.build_keccakf_input_generator());
-                            }
-                            StateMachines::Sha256fManager(sha256_sm) => {
-                                sha256f_inputs_generator =
-                                    Some(sha256_sm.build_sha256f_input_generator());
-                            }
-                            StateMachines::ArithEqManager(arith_eq_sm) => {
-                                arith_eq_inputs_generator =
-                                    Some(arith_eq_sm.build_arith_eq_input_generator());
-                            }
-                            _ => {} // Handle other cases if needed
+                let mut arith_eq_inputs_generator = None;
+                let mut keccakf_inputs_generator = None;
+                let mut sha256f_inputs_generator = None;
+                let mut arith_inputs_generator = None;
+                for sm in self.sm.values() {
+                    match sm {
+                        StateMachines::ArithSM(arith_sm) => {
+                            arith_inputs_generator = Some(arith_sm.build_arith_input_generator());
                         }
+                        StateMachines::KeccakfManager(keccak_sm) => {
+                            keccakf_inputs_generator =
+                                Some(keccak_sm.build_keccakf_input_generator());
+                        }
+                        StateMachines::Sha256fManager(sha256_sm) => {
+                            sha256f_inputs_generator =
+                                Some(sha256_sm.build_sha256f_input_generator());
+                        }
+                        StateMachines::ArithEqManager(arith_eq_sm) => {
+                            arith_eq_inputs_generator =
+                                Some(arith_eq_sm.build_arith_eq_input_generator());
+                        }
+                        _ => {} // Handle other cases if needed
                     }
-
-                    let data_bus = StaticDataBusCollect::new(
-                        mem_collectors,
-                        mem_align_collectors,
-                        binary_basic_collectors,
-                        binary_add_collectors,
-                        binary_extension_collectors,
-                        arith_collectors,
-                        keccakf_collectors,
-                        sha256f_collectors,
-                        arith_eq_collectors,
-                        rom_collectors,
-                        arith_eq_inputs_generator.expect("ArithEq input generator not found"),
-                        keccakf_inputs_generator.expect("KeccakF input generator not found"),
-                        sha256f_inputs_generator.expect("SHA256F input generator not found"),
-                        arith_inputs_generator.expect("Arith input generator not found"),
-                    );
-
-                    Some(data_bus)
-                } else {
-                    None
                 }
+
+                let data_bus = StaticDataBusCollect::new(
+                    mem_collectors,
+                    mem_align_collectors,
+                    binary_basic_collectors,
+                    binary_add_collectors,
+                    binary_extension_collectors,
+                    arith_collectors,
+                    keccakf_collectors,
+                    sha256f_collectors,
+                    arith_eq_collectors,
+                    rom_collectors,
+                    arith_eq_inputs_generator.expect("ArithEq input generator not found"),
+                    keccakf_inputs_generator.expect("KeccakF input generator not found"),
+                    sha256f_inputs_generator.expect("SHA256F input generator not found"),
+                    arith_inputs_generator.expect("Arith input generator not found"),
+                );
+
+                Some(data_bus)
             })
             .collect()
     }

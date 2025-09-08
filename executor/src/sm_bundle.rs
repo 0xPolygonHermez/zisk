@@ -50,6 +50,6 @@ pub trait SMBundle<F: PrimeField64>: Send + Sync {
         &self,
         pctx: &ProofCtx<F>,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
-        chunks_to_execute: Vec<Vec<usize>>,
+        chunks_to_execute: &[Vec<usize>],
     ) -> DataBusCollectorCollection;
 }
