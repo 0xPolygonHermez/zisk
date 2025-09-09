@@ -1,9 +1,6 @@
+change-id = "ignore"
+
 [build]
-host = ["x86_64-unknown-linux-gnu"]
-target = [
-    "x86_64-unknown-linux-gnu",
-    "riscv64ima-zisk-zkvm-elf"
-]
 extended = true
 tools = ["cargo", "cargo-clippy", "clippy", "rustfmt"]
 cargo-native-static = true
@@ -14,4 +11,3 @@ download-ci-llvm = false
 [rust]
 lld = true
 llvm-tools = true
-

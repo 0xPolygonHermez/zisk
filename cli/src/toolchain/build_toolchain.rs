@@ -71,7 +71,16 @@ impl BuildToolchainCmd {
         Command::new("python3")
             .env("RUST_TARGET_PATH", &temp_dir)
             .env("CARGO_TARGET_RISCV64IMA_ZISK_ZKVM_ELF_RUSTFLAGS", "-Cpasses=lower-atomic")
-            .args(["x.py", "build", "--stage", "2", "compiler/rustc", "library"])
+            .args([
+                "x.py",
+                "build",
+                "--stage",
+                "2",
+                "compiler/rustc",
+                "library",
+                "--target",
+                &format!("riscv64ima-zisk-zkvm-elf,{}", get_target())
+            ])
             .current_dir(&rust_dir)
             .run()
             .with_context(|| "while building the Rust toolchain")?;
