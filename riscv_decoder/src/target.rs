@@ -13,8 +13,8 @@ pub enum Extension {
     RV32A,
     /// RV64A - 64-bit atomic instructions
     RV64A,
-    ///// Zicsr - Control and Status Register instructions
-    // Zicsr,
+    /// Zicsr - Control and Status Register instructions
+    Zicsr,
     // /// Zifencei - Instruction-fetch fence
     // Zifencei,
     // /// Zicntr - Counter extension (performance counters)
