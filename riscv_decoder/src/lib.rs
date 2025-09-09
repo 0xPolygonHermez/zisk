@@ -5,10 +5,13 @@ mod target;
 
 use crate::compressed_decoder::{is_compressed, CompressedInstruction};
 
+pub use standard_decoder::Error as StandardDecoderError;
 pub use standard_decoder::Instruction;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Standard error: {0}")]
+    Standard(StandardDecoderError),
     #[error("Tried to read past end of file")]
     ReadingPastEOF,
 }
@@ -75,8 +78,8 @@ impl InstructionDecoder {
     }
 
     /// Decode a single 32-bit instruction
-    fn decode_standard(_bits: u32) -> Result<Instruction, Error> {
-        todo!()
+    fn decode_standard(bits: u32) -> Result<Instruction, Error> {
+        standard_decoder::decode_standard_instruction(bits).map_err(Error::Standard)
     }
 
     /// Decode a single 16-bit compressed instruction
