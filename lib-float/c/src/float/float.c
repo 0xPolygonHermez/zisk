@@ -290,14 +290,26 @@ void zisk_float (void)
                 }
                 case 32 : {
                     switch ((inst >> 20) & 0x1F) {
-                        case 1 : //("R", "fcvt.s.d"),
+                        case 1 : { //("R", "fcvt.s.d"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            fregs[rd] = (uint64_t)f64_to_f32( (float64_t){fregs[rs1]} ).v;
+                            break;
+                        }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=32 inst=0x{inst:x}"),
                             break;
                     }
                 }
                 case 33 : {
                     switch ((inst >> 20) & 0x1F) {
-                        case 0 : //("R", "fcvt.d.s"),
+                        case 0 : { //("R", "fcvt.d.s"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            fregs[rd] = (uint64_t)f32_to_f64( (float32_t){fregs[rs1]} ).v;
+                            break;
+                        }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=33 inst=0x{inst:x}"),
                             break;
                     }

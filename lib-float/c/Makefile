@@ -100,6 +100,11 @@ all:
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/8086/s_propagateNaNF32UI.c $(ZISK_INC) -o build/s_propagateNaNF32UI.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/8086/softfloat_raiseFlags.c $(ZISK_INC) -o build/softfloat_raiseFlags.o
 
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/8086/s_commonNaNToF64UI.c $(ZISK_INC) -o build/s_commonNaNToF64UI.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/8086/s_commonNaNToF32UI.c $(ZISK_INC) -o build/s_commonNaNToF32UI.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/8086/s_f64UIToCommonNaN.c $(ZISK_INC) -o build/s_f64UIToCommonNaN.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/8086/s_f32UIToCommonNaN.c $(ZISK_INC) -o build/s_f32UIToCommonNaN.o
+
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_to_i32.c $(ZISK_INC) -o build/f32_to_i32.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_to_ui32.c $(ZISK_INC) -o build/f32_to_ui32.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_to_i64.c $(ZISK_INC) -o build/f32_to_i64.o
@@ -117,6 +122,9 @@ all:
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/ui32_to_f64.c $(ZISK_INC) -o build/ui32_to_f64.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/i64_to_f64.c $(ZISK_INC) -o build/i64_to_f64.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/ui64_to_f64.c $(ZISK_INC) -o build/ui64_to_f64.o
+
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_to_f32.c $(ZISK_INC) -o build/f64_to_f32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_to_f64.c $(ZISK_INC) -o build/f32_to_f64.o
 
 	riscv64-unknown-elf-ar rcs build/libziskfloat.a\
 		build/float.o\
@@ -179,6 +187,10 @@ all:
 		build/s_propagateNaNF64UI.o\
 		build/s_propagateNaNF32UI.o\
 		build/softfloat_raiseFlags.o\
+		build/s_commonNaNToF64UI.o\
+		build/s_commonNaNToF32UI.o\
+		build/s_f64UIToCommonNaN.o\
+		build/s_f32UIToCommonNaN.o\
 		build/f32_to_i32.o\
 		build/f32_to_ui32.o\
 		build/f32_to_i64.o\
@@ -194,7 +206,9 @@ all:
 		build/i32_to_f64.o\
 		build/ui32_to_f64.o\
 		build/i64_to_f64.o\
-		build/ui64_to_f64.o
+		build/ui64_to_f64.o\
+		build/f64_to_f32.o\
+		build/f32_to_f64.o
 
 	mkdir -p lib
 	cp build/libziskfloat.a lib/
