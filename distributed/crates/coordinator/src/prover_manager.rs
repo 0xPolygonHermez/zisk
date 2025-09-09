@@ -261,8 +261,6 @@ impl ProverManager {
                                 total_provers: provers_len,
                                 prover_allocation,
                                 job_compute_units: required_compute_capacity.compute_units,
-                                total_tables,
-                                table_id_start,
                             },
                         )),
                     },
@@ -599,7 +597,9 @@ impl ProverManager {
         let phase1_results = job.results.entry(JobPhase::Contributions).or_default();
 
         let data = match execute_task_response.result_data {
-            Some(distributed_grpc_api::execute_task_response::ResultData::Challenges(challenges)) => {
+            Some(distributed_grpc_api::execute_task_response::ResultData::Challenges(
+                challenges,
+            )) => {
                 assert!(!challenges.challenges.is_empty());
 
                 let mut cont = Vec::new();

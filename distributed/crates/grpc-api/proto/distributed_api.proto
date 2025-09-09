@@ -193,14 +193,7 @@ message ContributionParams {
   uint32 total_provers = 4;
   repeated uint32 prover_allocation = 5;
   uint32 job_compute_units = 6;
-  uint32 total_tables = 7;
-  uint32 table_id_start = 8;
 }
-
-// message ProverAllocation {
-//   uint32 range_start = 1;
-//   uint32 range_end = 2;
-// }
 
 message ProveParams {
   repeated Challenges challenges = 1;

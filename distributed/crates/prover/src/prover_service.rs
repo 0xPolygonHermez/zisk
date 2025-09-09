@@ -29,8 +29,6 @@ pub struct JobContext {
     pub allocation: Vec<u32>, // Prover allocation for this job, vector of all computed units assigned
     pub total_compute_units: u32, // Total compute units for the whole job
     pub phase: JobPhase,
-    pub total_tables: u32,
-    pub table_id_start: u32,
 }
 
 pub struct ProverServiceConfig {
@@ -203,8 +201,6 @@ impl ProverService {
         total_provers: u32,
         allocation: Vec<u32>,
         total_compute_units: u32,
-        total_tables: u32,
-        table_id_start: u32,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id,
@@ -214,8 +210,6 @@ impl ProverService {
             allocation,
             total_compute_units,
             phase: JobPhase::Contributions,
-            total_tables,
-            table_id_start,
         }));
         self.current_job = Some(current_job.clone());
 
