@@ -15,6 +15,9 @@ const uint64_t FREG_INST = FREG_FIRST + 33 * 8; // Floating-point instruction re
 static uint64_t myvalue = 0x3ff3333333333333; // 1.7
 uint64_t * fregs = (uint64_t *)FREG_F0;
 
+const uint64_t SIGN_BIT_MASK_64 = 0x8000000000000000;
+const uint64_t SIGN_BIT_MASK_32 = 0xFFFFFFFF80000000;
+
 //void zisk_float (uint64_t * fregs)
 void zisk_float (void)
 {
@@ -51,8 +54,24 @@ void zisk_float (void)
 
         case 67 : { // Opcode 67
             switch ((inst >> 25) & 0x3) {
-                case 0: //("R4", "fmadd.s"),
-                case 1: //=> ("R4", "fmadd.d"),
+                case 0: { //("R4", "fmadd.s"),
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rs3 = (inst >> 27) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
+                    break;
+                }
+                case 1: { //=> ("R4", "fmadd.d"),
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rs3 = (inst >> 27) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v;
+                    break;
+                }
                 default: //_ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 67 inst=0x{inst:x}"),
                     break;
             }
@@ -61,8 +80,24 @@ void zisk_float (void)
 
         case 71 : { // Opcode 71
             switch ((inst >> 25) & 0x3) {
-                case 0: //("R4", "fmsub.s"),
-                case 1: //=> ("R4", "fmsub.d"),
+                case 0: { //("R4", "fmsub.s"),
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rs3 = (inst >> 27) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2] ^ SIGN_BIT_MASK_32}, (float32_t){fregs[rs3]} ).v;
+                    break;
+                }
+                case 1: { //=> ("R4", "fmsub.d"),
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rs3 = (inst >> 27) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2] ^ SIGN_BIT_MASK_64}, (float64_t){fregs[rs3]} ).v;
+                    break;
+                }
                 default: //_ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 71 inst=0x{inst:x}"),
                     break;
             }
@@ -90,66 +125,66 @@ void zisk_float (void)
         case 83 : { // Opcode 83
             switch ((inst >> 25) & 0x7F) {
                 case 0 : { //("R", "fadd.s"),
-                    uint64_t rd = (inst >> 7) && 0x1F;
-                    uint64_t rs1 = (inst >> 15) && 0x1F;
-                    uint64_t rs2 = (inst >> 20) && 0x1F;
-                    uint64_t rm = (inst >> 12) && 0x7; // TODO: use rm
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
                     fregs[rd] = (uint64_t)f32_add( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     break;
                 }
                 case 1 : { //("R", "fadd.d"),
-                    uint64_t rd = (inst >> 7) && 0x1F;
-                    uint64_t rs1 = (inst >> 15) && 0x1F;
-                    uint64_t rs2 = (inst >> 20) && 0x1F;
-                    uint64_t rm = (inst >> 12) && 0x7; // TODO: use rm
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
                     fregs[rd] = (uint64_t)f64_add( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
                 case 4 : { //("R", "fsub.s"),
-                    uint64_t rd = (inst >> 7) && 0x1F;
-                    uint64_t rs1 = (inst >> 15) && 0x1F;
-                    uint64_t rs2 = (inst >> 20) && 0x1F;
-                    uint64_t rm = (inst >> 12) && 0x7; // TODO: use rm
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
                     fregs[rd] = (uint64_t)f32_sub( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     break;
                 }
                 case 5 : { //("R", "fsub.d"),
-                    uint64_t rd = (inst >> 7) && 0x1F;
-                    uint64_t rs1 = (inst >> 15) && 0x1F;
-                    uint64_t rs2 = (inst >> 20) && 0x1F;
-                    uint64_t rm = (inst >> 12) && 0x7; // TODO: use rm
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
                     fregs[rd] = (uint64_t)f64_sub( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
                 case 8 : { //("R", "fmul.s"),
-                    uint64_t rd = (inst >> 7) && 0x1F;
-                    uint64_t rs1 = (inst >> 15) && 0x1F;
-                    uint64_t rs2 = (inst >> 20) && 0x1F;
-                    uint64_t rm = (inst >> 12) && 0x7; // TODO: use rm
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
                     fregs[3] = (uint64_t)f32_mul( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     break;
                 }
                 case 9 : { //("R", "fmul.d"),
-                    uint64_t rd = (inst >> 7) && 0x1F;
-                    uint64_t rs1 = (inst >> 15) && 0x1F;
-                    uint64_t rs2 = (inst >> 20) && 0x1F;
-                    uint64_t rm = (inst >> 12) && 0x7; // TODO: use rm
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
                     fregs[3] = (uint64_t)f64_mul( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
                 case 12 : { //("R", "fdiv.s"),
-                    uint64_t rd = (inst >> 7) && 0x1F;
-                    uint64_t rs1 = (inst >> 15) && 0x1F;
-                    uint64_t rs2 = (inst >> 20) && 0x1F;
-                    uint64_t rm = (inst >> 12) && 0x7; // TODO: use rm
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
                     fregs[3] = (uint64_t)f32_div( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     break;
                 }
                 case 13 : { //("R", "fdiv.d"),
-                    uint64_t rd = (inst >> 7) && 0x1F;
-                    uint64_t rs1 = (inst >> 15) && 0x1F;
-                    uint64_t rs2 = (inst >> 20) && 0x1F;
-                    uint64_t rm = (inst >> 12) && 0x7; // TODO: use rm
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
                     fregs[3] = (uint64_t)f64_div( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
@@ -204,9 +239,9 @@ void zisk_float (void)
                 case 44 : {
                     switch ((inst >> 20) & 0x1F) {
                         case 0 : { //("R", "fsqrt.s"),
-                            uint64_t rd = (inst >> 7) && 0x1F;
-                            uint64_t rs1 = (inst >> 15) && 0x1F;
-                            uint64_t rm = (inst >> 12) && 0x7; // TODO: use rm
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
                             fregs[3] = (uint64_t)f32_sqrt( (float32_t){fregs[rs1]} ).v;
                             break;
                         }
@@ -217,9 +252,9 @@ void zisk_float (void)
                 case 45 : {
                     switch ((inst >> 20) & 0x1F) {
                         case 0 : { //("R", "fsqrt.d"),
-                            uint64_t rd = (inst >> 7) && 0x1F;
-                            uint64_t rs1 = (inst >> 15) && 0x1F;
-                            uint64_t rm = (inst >> 12) && 0x7; // TODO: use rm
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
                             fregs[3] = (uint64_t)f64_sqrt( (float64_t){fregs[rs1]} ).v;
                             break;
                         }

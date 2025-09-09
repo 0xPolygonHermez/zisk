@@ -40,16 +40,28 @@ zisk:
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_sub.c $(ZISK_INC) -o build/f32_sub.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_mul.c $(ZISK_INC) -o build/f64_mul.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_mul.c $(ZISK_INC) -o build/f32_mul.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_mulAdd.c $(ZISK_INC) -o build/f64_mulAdd.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_mulAdd.c $(ZISK_INC) -o build/f32_mulAdd.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_div.c $(ZISK_INC) -o build/f64_div.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_div.c $(ZISK_INC) -o build/f32_div.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_sqrt.c $(ZISK_INC) -o build/f64_sqrt.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_sqrt.c $(ZISK_INC) -o build/f32_sqrt.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_addM.c $(ZISK_INC) -o build/s_addM.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_subM.c $(ZISK_INC) -o build/s_subM.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_negXM.c $(ZISK_INC) -o build/s_negXM.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_addMagsF64.c $(ZISK_INC) -o build/s_addMagsF64.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_addMagsF32.c $(ZISK_INC) -o build/s_addMagsF32.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_subMagsF64.c $(ZISK_INC) -o build/s_subMagsF64.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_subMagsF32.c $(ZISK_INC) -o build/s_subMagsF32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_mulAddF64.c $(ZISK_INC) -o build/s_mulAddF64.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_mulAddF32.c $(ZISK_INC) -o build/s_mulAddF32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_shiftLeftM.c $(ZISK_INC) -o build/s_shiftLeftM.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_shortShiftLeftM.c $(ZISK_INC) -o build/s_shortShiftLeftM.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_shortShiftRightM.c $(ZISK_INC) -o build/s_shortShiftRightM.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_shortShiftRightJamM.c $(ZISK_INC) -o build/s_shortShiftRightJamM.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_shiftRightJam64.c $(ZISK_INC) -o build/s_shiftRightJam64.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_shiftRightJam32.c $(ZISK_INC) -o build/s_shiftRightJam32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_shiftRightJamM.c $(ZISK_INC) -o build/s_shiftRightJamM.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_roundPackToF64.c $(ZISK_INC) -o build/s_roundPackToF64.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_roundPackToF32.c $(ZISK_INC) -o build/s_roundPackToF32.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/softfloat_state.c $(ZISK_INC) -o build/softfloat_state.o
@@ -77,16 +89,28 @@ zisk:
 		build/f32_sub.o\
 		build/f64_mul.o\
 		build/f32_mul.o\
+		build/f64_mulAdd.o\
+		build/f32_mulAdd.o\
 		build/f64_div.o\
 		build/f32_div.o\
 		build/f64_sqrt.o\
 		build/f32_sqrt.o\
+		build/s_addM.o\
+		build/s_subM.o\
+		build/s_negXM.o\
 		build/s_addMagsF64.o\
 		build/s_addMagsF32.o\
 		build/s_subMagsF64.o\
 		build/s_subMagsF32.o\
+		build/s_mulAddF64.o\
+		build/s_mulAddF32.o\
+		build/s_shiftLeftM.o\
+		build/s_shortShiftLeftM.o\
+		build/s_shortShiftRightM.o\
+		build/s_shortShiftRightJamM.o\
 		build/s_shiftRightJam64.o\
 		build/s_shiftRightJam32.o\
+		build/s_shiftRightJamM.o\
 		build/s_roundPackToF64.o\
 		build/s_roundPackToF32.o\
 		build/softfloat_state.o\
