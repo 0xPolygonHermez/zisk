@@ -80,6 +80,10 @@ impl RomInstance {
         }
     }
 
+    pub fn skip_collector(&self) -> bool {
+        self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some()
+    }
+
     pub fn is_asm_execution(&self) -> bool {
         self.handle_rh.lock().unwrap().is_some() || self.asm_result.lock().unwrap().is_some()
     }

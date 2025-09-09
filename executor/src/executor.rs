@@ -29,7 +29,7 @@ use proofman_common::{create_pool, BufferPool, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::prelude::*;
 use rom_setup::gen_elf_hash;
-use sm_rom::RomSM;
+use sm_rom::{RomInstance, RomSM};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use witness::WitnessComponent;
 
@@ -1495,31 +1495,29 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
                     match secn_instance.instance_type() {
                         InstanceType::Instance => {
-                            if air_id == ROM_AIR_IDS[0] && self.asm_runner_path.is_some() {
-                                let stats = Stats {
-                                    airgroup_id,
-                                    air_id,
-                                    collect_start_time: Instant::now(),
-                                    collect_duration: 0,
-                                    witness_start_time: Instant::now(),
-                                    witness_duration: 0,
-                                    num_chunks: 0,
-                                };
-
-                                self.collectors_by_instance
-                                    .write()
-                                    .unwrap()
-                                    .insert(global_id, Vec::new());
-                                self.witness_stats.lock().unwrap().insert(global_id, stats);
-                            } else if !self
-                                .collectors_by_instance
-                                .read()
-                                .unwrap()
-                                .contains_key(&global_id)
+                            if !self.collectors_by_instance.read().unwrap().contains_key(&global_id)
                             {
-                                let mut secn_instances = HashMap::new();
-                                secn_instances.insert(global_id, secn_instance);
-                                self.witness_collect_instances(pctx.clone(), secn_instances);
+                                if air_id == ROM_AIR_IDS[0] && self.asm_runner_path.is_some() {
+                                    let stats = Stats {
+                                        airgroup_id,
+                                        air_id,
+                                        collect_start_time: Instant::now(),
+                                        collect_duration: 0,
+                                        witness_start_time: Instant::now(),
+                                        witness_duration: 0,
+                                        num_chunks: 0,
+                                    };
+
+                                    self.collectors_by_instance
+                                        .write()
+                                        .unwrap()
+                                        .insert(global_id, Vec::new());
+                                    self.witness_stats.lock().unwrap().insert(global_id, stats);
+                                } else {
+                                    let mut secn_instances = HashMap::new();
+                                    secn_instances.insert(global_id, secn_instance);
+                                    self.witness_collect_instances(pctx.clone(), secn_instances);
+                                }
                             }
                             self.witness_secn_instance(
                                 &pctx,
@@ -1587,11 +1585,34 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         let mut secn_instances = HashMap::new();
         for &global_id in global_ids {
-            let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
-            if MAIN_AIR_IDS.contains(&air_id)
-                || (air_id == ROM_AIR_IDS[0] && self.asm_runner_path.is_some())
-            {
+            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+            if MAIN_AIR_IDS.contains(&air_id) {
                 pctx.set_witness_ready(global_id, false);
+            } else if air_id == ROM_AIR_IDS[0] {
+                if self.asm_runner_path.is_some() {
+                    pctx.set_witness_ready(global_id, false);
+                } else {
+                    let secn_instance = &secn_instances_guard[&global_id];
+                    let rom_instance =
+                        secn_instance.as_any().downcast_ref::<RomInstance>().unwrap();
+                    if rom_instance.skip_collector() {
+                        let stats = Stats {
+                            airgroup_id,
+                            air_id,
+                            collect_start_time: Instant::now(),
+                            collect_duration: 0,
+                            witness_start_time: Instant::now(),
+                            witness_duration: 0,
+                            num_chunks: 0,
+                        };
+
+                        self.collectors_by_instance.write().unwrap().insert(global_id, Vec::new());
+                        self.witness_stats.lock().unwrap().insert(global_id, stats);
+                        pctx.set_witness_ready(global_id, true);
+                    } else {
+                        secn_instances.insert(global_id, secn_instance);
+                    }
+                }
             } else {
                 let secn_instance = &secn_instances_guard[&global_id];
 
