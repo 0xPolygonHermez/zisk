@@ -33,11 +33,11 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
         Opcode::OpImm => decode_op_imm_instruction(&encoded),
         Opcode::OpImm32 => decode_op_imm_32_instruction(&encoded),
         Opcode::Op => decode_op_instruction(&encoded),
+        Opcode::Op32 => decode_op_32_instruction(&encoded),
         Opcode::Auipc => todo!(),
         Opcode::Store => todo!(),
         Opcode::Amo => todo!(),
         Opcode::Lui => todo!(),
-        Opcode::Op32 => todo!(),
         Opcode::Branch => todo!(),
         Opcode::Jalr => todo!(),
         Opcode::Jal => todo!(),
@@ -437,6 +437,33 @@ fn decode_op_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Er
         (0b101, 0b000_0001) => Ok(Instruction::DIVU { rd, rs1, rs2 }),
         (0b110, 0b000_0001) => Ok(Instruction::REM { rd, rs1, rs2 }),
         (0b111, 0b000_0001) => Ok(Instruction::REMU { rd, rs1, rs2 }),
+
+        _ => Err(Error::InvalidFormat),
+    }
+}
+
+/// Decode OP-32 instructions (RV64I word register operations)
+///
+/// Uses standard R-type format (see InstructionFormat::R)  
+fn decode_op_32_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let rd = encoded.rd;
+    let rs1 = encoded.rs1;
+    let rs2 = encoded.rs2;
+
+    match (encoded.funct3, encoded.funct7) {
+        // Requires RV64I
+        (0b000, 0b000_0000) => Ok(Instruction::ADDW { rd, rs1, rs2 }),
+        (0b000, 0b010_0000) => Ok(Instruction::SUBW { rd, rs1, rs2 }),
+        (0b001, 0b000_0000) => Ok(Instruction::SLLW { rd, rs1, rs2 }),
+        (0b101, 0b000_0000) => Ok(Instruction::SRLW { rd, rs1, rs2 }),
+        (0b101, 0b010_0000) => Ok(Instruction::SRAW { rd, rs1, rs2 }),
+
+        // Requires RV64M
+        (0b000, 0b000_0001) => Ok(Instruction::MULW { rd, rs1, rs2 }),
+        (0b100, 0b000_0001) => Ok(Instruction::DIVW { rd, rs1, rs2 }),
+        (0b101, 0b000_0001) => Ok(Instruction::DIVUW { rd, rs1, rs2 }),
+        (0b110, 0b000_0001) => Ok(Instruction::REMW { rd, rs1, rs2 }),
+        (0b111, 0b000_0001) => Ok(Instruction::REMUW { rd, rs1, rs2 }),
 
         _ => Err(Error::InvalidFormat),
     }
