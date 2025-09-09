@@ -45,16 +45,15 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
     }
 }
 
-/// Bit masks for field extraction
-const MASK1: u32 = 0b1; // 1-bit mask
-const MASK3: u32 = 0b111; // 3-bit mask
-const MASK4: u32 = 0b1111; // 4-bit mask
-const MASK5: u32 = 0b1_1111; // 5-bit mask
-const MASK6: u32 = 0b11_1111; // 6-bit mask
-const MASK7: u32 = 0b111_1111; // 7-bit mask
-const MASK8: u32 = 0b1111_1111; // 8-bit mask
-const MASK10: u32 = 0b11_1111_1111; // 10-bit mask
-const MASK12: u32 = 0b1111_1111_1111; // 12-bit mask
+const MASK1: u32 = 0b1;
+const MASK3: u32 = 0b111;
+const MASK4: u32 = 0b1111;
+const MASK5: u32 = 0b1_1111;
+const MASK6: u32 = 0b11_1111;
+const MASK7: u32 = 0b111_1111;
+const MASK8: u32 = 0b1111_1111;
+const MASK10: u32 = 0b11_1111_1111;
+const MASK12: u32 = 0b1111_1111_1111;
 
 /// EncodedInstruction holds all of the possible parsed fields from a 32-bit RISC-V instruction
 ///
