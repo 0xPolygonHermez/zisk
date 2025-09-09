@@ -28,8 +28,8 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
         .ok_or(Error::UnsupportedInstruction { opcode_bits: encoded.opcode })?;
 
     match opcode {
-        Opcode::Load => todo!(),
-        Opcode::MiscMem => todo!(),
+        Opcode::Load => decode_load_instruction(&encoded),
+        Opcode::MiscMem => decode_fence_instruction(&encoded),
         Opcode::OpImm => todo!(),
         Opcode::Auipc => todo!(),
         Opcode::OpImm32 => todo!(),
@@ -263,5 +263,66 @@ impl EncodedInstruction {
             Opcode::Jal => Some(InstructionFormat::J),
             Opcode::Amo => Some(InstructionFormat::R), // A-type uses R-type format base
         }
+    }
+}
+
+/// Decode `LOAD` opcode instructions
+///
+/// Uses standard I-type format (see InstructionFormat::I)
+fn decode_load_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let rd = encoded.rd;
+    let rs1 = encoded.rs1;
+    let offset = encoded.i_immediate;
+
+    match encoded.funct3 {
+        0b000 => Ok(Instruction::LB { rd, rs1, offset }),
+        0b001 => Ok(Instruction::LH { rd, rs1, offset }),
+        0b010 => Ok(Instruction::LW { rd, rs1, offset }),
+        0b011 => {
+            // Requires RV64I
+            Ok(Instruction::LD { rd, rs1, offset })
+        }
+        0b100 => Ok(Instruction::LBU { rd, rs1, offset }),
+        0b101 => Ok(Instruction::LHU { rd, rs1, offset }),
+        0b110 => {
+            // Requires RV64I
+            Ok(Instruction::LWU { rd, rs1, offset })
+        }
+        _ => Err(Error::InvalidFormat),
+    }
+}
+
+/// Decode `FENCE` opcode instructions
+///
+/// Uses standard I-type format (see InstructionFormat::I)
+///
+/// The docs also note how fence specific information is encoded
+/// in the I-type.
+fn decode_fence_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let pred = encoded.pred;
+    let succ = encoded.succ;
+    let fm = encoded.fm;
+    // TODO: check funct12 -- possibly parse funct12 for readability
+    match encoded.funct3 {
+        0b000 => {
+            // rd and rs1 must be zero
+            if encoded.rd != 0 || encoded.rs1 != 0 {
+                return Err(Error::InvalidFormat);
+            }
+            if fm != 0 {
+                return Err(Error::InvalidFormat);
+            }
+            Ok(Instruction::FENCE { pred, succ })
+        }
+        0b001 => {
+            // rd and rs1 must be zero
+            if encoded.rd != 0 || encoded.rs1 != 0 {
+                return Err(Error::InvalidFormat);
+            }
+
+            // Requires `Zifencei`
+            Ok(Instruction::FENCE_I)
+        }
+        _ => Err(Error::InvalidFormat),
     }
 }
