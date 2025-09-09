@@ -30,7 +30,7 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
     match opcode {
         Opcode::Load => decode_load_instruction(&encoded),
         Opcode::MiscMem => decode_fence_instruction(&encoded),
-        Opcode::OpImm => todo!(),
+        Opcode::OpImm => decode_op_imm_instruction(&encoded),
         Opcode::Auipc => todo!(),
         Opcode::OpImm32 => todo!(),
         Opcode::Store => todo!(),
@@ -323,6 +323,53 @@ fn decode_fence_instruction(encoded: &EncodedInstruction) -> Result<Instruction,
             // Requires `Zifencei`
             Ok(Instruction::FENCE_I)
         }
+        _ => Err(Error::InvalidFormat),
+    }
+}
+
+/// Decode OP-IMM instructions
+///
+/// Uses standard I-type format (see InstructionFormat::I)
+///
+/// Note: RV32I uses 5-bit shamt while RV64I uses 6-bit shamt. We will assume RV64I is enabled.
+fn decode_op_imm_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let rd = encoded.rd;
+    let rs1 = encoded.rs1;
+    let imm = encoded.i_immediate;
+    // I-type doesn't use funct7, but we just re-use it to get top 7 bits
+    // We could just as well shift on the immediate
+    let funct7 = encoded.funct7;
+
+    let shamt = encoded.shamt64; // We assume RV64I, so we always use shamt64
+
+    // imm upper bits used for validation
+    let imm_hi6 = ((funct7 as u32 >> 1) & MASK6) as u8; // imm[11:6]
+
+    match encoded.funct3 {
+        0b000 => Ok(Instruction::ADDI { rd, rs1, imm }),
+        0b001 => {
+            // SLLI: check reserved upper immediate bits
+            // For RV64I, we need to check the high 6 bits.
+            if imm_hi6 != 0 {
+                return Err(Error::InvalidFormat);
+            }
+
+            Ok(Instruction::SLLI { rd, rs1, shamt })
+        }
+        0b010 => Ok(Instruction::SLTI { rd, rs1, imm }),
+        0b011 => Ok(Instruction::SLTIU { rd, rs1, imm }),
+        0b100 => Ok(Instruction::XORI { rd, rs1, imm }),
+        0b101 => {
+            // We assume RV64I, so we check the following bit sequences
+            // to determine whether we need to choose SRLI or SRAI
+            match imm_hi6 {
+                0b000000 => Ok(Instruction::SRLI { rd, rs1, shamt }),
+                0b010000 => Ok(Instruction::SRAI { rd, rs1, shamt }),
+                _ => Err(Error::InvalidFormat),
+            }
+        }
+        0b110 => Ok(Instruction::ORI { rd, rs1, imm }),
+        0b111 => Ok(Instruction::ANDI { rd, rs1, imm }),
         _ => Err(Error::InvalidFormat),
     }
 }
