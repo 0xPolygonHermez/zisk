@@ -534,7 +534,12 @@ void zisk_float (void)
                     switch ((inst >> 12) & 0x7) {
                         case 0 : {
                             switch ((inst >> 20) & 0x1F) {
-                                case 0 : //("R", "fmv.x.w"),
+                                case 0 : { //("R", "fmv.x.w"), copies fregs(rs1) to regs(rd)
+                                    uint64_t rd = (inst >> 7) & 0x1F;
+                                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                                    regs[rd] = fregs[rs1];
+                                    break;
+                                }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
                                     break;
                             }
@@ -554,7 +559,12 @@ void zisk_float (void)
                     switch ((inst >> 12) & 0x7) {
                         case 0 : {
                             switch ((inst >> 20) & 0x1F) {
-                                case 0 : //("R", "fmv.x.d"),
+                                case 0 : { //("R", "fmv.x.d"), copies fregs(rs1) to regs(rd)
+                                    uint64_t rd = (inst >> 7) & 0x1F;
+                                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                                    regs[rd] = fregs[rs1];
+                                    break;
+                                }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
                                     break;
                             }
@@ -588,7 +598,12 @@ void zisk_float (void)
                     switch ((inst >> 12) & 0x7) {
                         case 0 : {
                             switch ((inst >> 20) & 0x1F) {
-                                case 0 : //("I", "fmv.w.x"),
+                                case 0 : { //("R", "fmv.w.x"), copies regs(rs1) to fregs(rd)
+                                    uint64_t rd = (inst >> 7) & 0x1F;
+                                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                                    fregs[rd] = regs[rs1];
+                                    break;
+                                }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=120 funct3=0 inst=0x{inst:x}"),
                                     break;
                             }
@@ -601,7 +616,12 @@ void zisk_float (void)
                     switch ((inst >> 12) & 0x7) {
                         case 0 : {
                             switch ((inst >> 20) & 0x1F) {
-                                case 0 : //("I", "fmv.d.x"),
+                                case 0 : { //("R", "fmv.d.x"), copies regs(rs1) to fregs(rd)
+                                    uint64_t rd = (inst >> 7) & 0x1F;
+                                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                                    fregs[rd] = regs[rs1];
+                                    break;
+                                }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=121 funct3=0 inst=0x{inst:x}"),
                                     break;
                             }
