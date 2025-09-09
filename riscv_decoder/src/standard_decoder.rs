@@ -1,2 +1,4 @@
-/// TODO: placeholder instruction
-pub struct Instruction;
+mod error;
+mod instruction;
+
+pub use instruction::Instruction;
