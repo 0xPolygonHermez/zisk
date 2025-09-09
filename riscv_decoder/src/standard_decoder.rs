@@ -35,10 +35,10 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
         Opcode::Op => decode_op_instruction(&encoded),
         Opcode::Op32 => decode_op_32_instruction(&encoded),
         Opcode::Auipc => decode_auipc_instruction(&encoded),
-        Opcode::Store => todo!(),
+        Opcode::Store => decode_store_instruction(&encoded),
+        Opcode::Branch => decode_branch_instruction(&encoded),
         Opcode::Amo => todo!(),
         Opcode::Lui => todo!(),
-        Opcode::Branch => todo!(),
         Opcode::Jalr => todo!(),
         Opcode::Jal => todo!(),
         Opcode::System => todo!(),
@@ -476,4 +476,43 @@ fn decode_auipc_instruction(encoded: &EncodedInstruction) -> Result<Instruction,
     let rd = encoded.rd;
     let imm = encoded.u_immediate;
     Ok(Instruction::AUIPC { rd, imm })
+}
+
+/// Decode STORE instructions
+///
+/// Uses standard S-type format (see InstructionFormat::S)
+fn decode_store_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let rs1 = encoded.rs1;
+    let rs2 = encoded.rs2;
+    let offset = encoded.s_immediate;
+
+    match encoded.funct3 {
+        0b000 => Ok(Instruction::SB { rs1, rs2, offset }),
+        0b001 => Ok(Instruction::SH { rs1, rs2, offset }),
+        0b010 => Ok(Instruction::SW { rs1, rs2, offset }),
+        0b011 => {
+            // Requires RV64I
+            Ok(Instruction::SD { rs1, rs2, offset })
+        }
+        _ => Err(Error::InvalidFormat),
+    }
+}
+
+/// Decode BRANCH instructions
+///
+/// Uses standard B-type format (see InstructionFormat::B)
+fn decode_branch_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let rs1 = encoded.rs1;
+    let rs2 = encoded.rs2;
+    let offset = encoded.b_immediate;
+
+    match encoded.funct3 {
+        0b000 => Ok(Instruction::BEQ { rs1, rs2, offset }),
+        0b001 => Ok(Instruction::BNE { rs1, rs2, offset }),
+        0b100 => Ok(Instruction::BLT { rs1, rs2, offset }),
+        0b101 => Ok(Instruction::BGE { rs1, rs2, offset }),
+        0b110 => Ok(Instruction::BLTU { rs1, rs2, offset }),
+        0b111 => Ok(Instruction::BGEU { rs1, rs2, offset }),
+        _ => Err(Error::InvalidFormat),
+    }
 }
