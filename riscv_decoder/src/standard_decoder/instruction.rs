@@ -84,7 +84,7 @@ pub enum Instruction {
 
     // -- RV32M/RV64M Multiply Extension
     //
-    // All instructions in the `M` extension ar
+    // All instructions in the `M` extension are
     // the R-type
     MUL { rd: u8, rs1: u8, rs2: u8 },
     MULH { rd: u8, rs1: u8, rs2: u8 },
