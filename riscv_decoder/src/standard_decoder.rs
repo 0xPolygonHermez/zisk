@@ -32,10 +32,10 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
         Opcode::MiscMem => decode_fence_instruction(&encoded),
         Opcode::OpImm => decode_op_imm_instruction(&encoded),
         Opcode::OpImm32 => decode_op_imm_32_instruction(&encoded),
+        Opcode::Op => decode_op_instruction(&encoded),
         Opcode::Auipc => todo!(),
         Opcode::Store => todo!(),
         Opcode::Amo => todo!(),
-        Opcode::Op => todo!(),
         Opcode::Lui => todo!(),
         Opcode::Op32 => todo!(),
         Opcode::Branch => todo!(),
@@ -403,6 +403,41 @@ fn decode_op_imm_32_instruction(encoded: &EncodedInstruction) -> Result<Instruct
                 _ => Err(Error::InvalidFormat),
             }
         }
+        _ => Err(Error::InvalidFormat),
+    }
+}
+
+/// Decode OP instructions (register-register operations)
+///
+/// Uses standard R-type format (see InstructionFormat::R)
+fn decode_op_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let rd = encoded.rd;
+    let rs1 = encoded.rs1;
+    let rs2 = encoded.rs2;
+
+    match (encoded.funct3, encoded.funct7) {
+        // Base RV32I arithmetic
+        (0b000, 0b000_0000) => Ok(Instruction::ADD { rd, rs1, rs2 }),
+        (0b000, 0b010_0000) => Ok(Instruction::SUB { rd, rs1, rs2 }),
+        (0b001, 0b000_0000) => Ok(Instruction::SLL { rd, rs1, rs2 }),
+        (0b010, 0b000_0000) => Ok(Instruction::SLT { rd, rs1, rs2 }),
+        (0b011, 0b000_0000) => Ok(Instruction::SLTU { rd, rs1, rs2 }),
+        (0b100, 0b000_0000) => Ok(Instruction::XOR { rd, rs1, rs2 }),
+        (0b101, 0b000_0000) => Ok(Instruction::SRL { rd, rs1, rs2 }),
+        (0b101, 0b010_0000) => Ok(Instruction::SRA { rd, rs1, rs2 }),
+        (0b110, 0b000_0000) => Ok(Instruction::OR { rd, rs1, rs2 }),
+        (0b111, 0b000_0000) => Ok(Instruction::AND { rd, rs1, rs2 }),
+
+        // Requires RV32M
+        (0b000, 0b000_0001) => Ok(Instruction::MUL { rd, rs1, rs2 }),
+        (0b001, 0b000_0001) => Ok(Instruction::MULH { rd, rs1, rs2 }),
+        (0b010, 0b000_0001) => Ok(Instruction::MULHSU { rd, rs1, rs2 }),
+        (0b011, 0b000_0001) => Ok(Instruction::MULHU { rd, rs1, rs2 }),
+        (0b100, 0b000_0001) => Ok(Instruction::DIV { rd, rs1, rs2 }),
+        (0b101, 0b000_0001) => Ok(Instruction::DIVU { rd, rs1, rs2 }),
+        (0b110, 0b000_0001) => Ok(Instruction::REM { rd, rs1, rs2 }),
+        (0b111, 0b000_0001) => Ok(Instruction::REMU { rd, rs1, rs2 }),
+
         _ => Err(Error::InvalidFormat),
     }
 }
