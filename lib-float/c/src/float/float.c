@@ -15,10 +15,18 @@ const uint64_t FREG_INST = FREG_FIRST + 33 * 8; // Floating-point instruction re
 static uint64_t myvalue = 0x3ff3333333333333; // 1.7
 uint64_t * fregs = (uint64_t *)FREG_F0;
 
+// Negate a float by flipping its sign bit(s)
 const uint64_t SIGN_BIT_MASK_64 = 0x8000000000000000;
 const uint64_t SIGN_BIT_MASK_32 = 0xFFFFFFFF80000000;
+#define NEG64(x) ((x) ^ SIGN_BIT_MASK_64)
+#define NEG32(x) ((x) ^ SIGN_BIT_MASK_32)
 
-//void zisk_float (uint64_t * fregs)
+// 1.0 and 0.0 in IEEE 754 format
+const uint64_t F64_ONE = 0x3FF0000000000000;
+const uint64_t F32_ONE = 0x3F800000;
+const uint64_t F64_ZERO = 0x0000000000000000;
+const uint32_t F32_ZERO = 0x00000000;
+
 void zisk_float (void)
 {
     // uint64_t inst = *(uint64_t *)FREG_INST;
@@ -86,7 +94,7 @@ void zisk_float (void)
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
-                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2] ^ SIGN_BIT_MASK_32}, (float32_t){fregs[rs3]} ).v;
+                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){NEG32(fregs[rs2])}, (float32_t){fregs[rs3]} ).v;
                     break;
                 }
                 case 1: { //=> ("R4", "fmsub.d"),
@@ -95,7 +103,7 @@ void zisk_float (void)
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
-                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2] ^ SIGN_BIT_MASK_64}, (float64_t){fregs[rs3]} ).v;
+                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){NEG64(fregs[rs2])}, (float64_t){fregs[rs3]} ).v;
                     break;
                 }
                 default: //_ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 71 inst=0x{inst:x}"),
@@ -106,8 +114,24 @@ void zisk_float (void)
 
         case 75 : { // Opcode 75
             switch ((inst >> 25) & 0x3) {
-                case 0: //("R4", "fnmsub.s"),
-                case 1: //=> ("R4", "fnmsub.d"),
+                case 0: { //("R4", "fnmsub.s"),
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rs3 = (inst >> 27) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){NEG32(fregs[rs2])}, (float32_t){fregs[rs3]} ).v);
+                    break;
+                }
+                case 1: { //=> ("R4", "fnmsub.d"),
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rs3 = (inst >> 27) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    fregs[rd] = (uint64_t)NEG64(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){NEG64(fregs[rs2])}, (float64_t){fregs[rs3]} ).v);
+                    break;
+                }
                 default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 75 inst=0x{inst:x}"),
                     break;
             }
@@ -115,8 +139,24 @@ void zisk_float (void)
 
         case 79 : { // Opcode 79
             switch ((inst >> 25) & 0x3) {
-                case 0: //("R4", "fnmadd.s"),
-                case 1: //=> ("R4", "fnmadd.d"),
+                case 0: { //("R4", "fnmadd.s"),
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rs3 = (inst >> 27) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v);
+                    break;
+                }
+                case 1: { //=> ("R4", "fnmadd.d"),
+                    uint64_t rd = (inst >> 7) & 0x1F;
+                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                    uint64_t rs2 = (inst >> 20) & 0x1F;
+                    uint64_t rs3 = (inst >> 27) & 0x1F;
+                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    fregs[rd] = (uint64_t)NEG64(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){NEG64(fregs[rs2])}, (float64_t){fregs[rs3]} ).v);
+                    break;
+                }
                 default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 79 inst=0x{inst:x}"),
                     break;
             }
@@ -264,18 +304,54 @@ void zisk_float (void)
                 }
                 case 80 : {
                     switch ((inst >> 12) & 0x7) {
-                        case 2 : //("R", "feq.s"),
-                        case 1 : //("R", "flt.s"),
-                        case 0 : //("R", "fle.s"),
+                        case 2 : { //("R", "feq.s"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            fregs[3] = f32_eq( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? F32_ONE : F32_ZERO;
+                            break;
+                        }
+                        case 1 : { //("R", "flt.s"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            fregs[3] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? F32_ONE : F32_ZERO;
+                            break;
+                        }
+                        case 0 : { //("R", "fle.s"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            fregs[3] = f32_le( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? F32_ONE : F32_ZERO;
+                            break;
+                        }
                         default: // => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=80 inst=0x{inst:x}"),
                             break;
                     }
                 }
                 case 81 : {
                     switch ((inst >> 12) & 0x7) {
-                        case 2 : //("R", "feq.d"),
-                        case 1 : //("R", "flt.d"),
-                        case 0 : //("R", "fle.d"),
+                        case 2 : { //("R", "feq.d"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            fregs[3] = f64_eq( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? F64_ONE : F64_ZERO;
+                            break;
+                        }
+                        case 1 : { //("R", "flt.d"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            fregs[3] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? F64_ONE : F64_ZERO;
+                            break;
+                        }
+                        case 0 : { //("R", "fle.d"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            fregs[3] = f64_le( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? F64_ONE : F64_ZERO;
+                            break;
+                        }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=81 inst=0x{inst:x}"),
                             break;
                     }
