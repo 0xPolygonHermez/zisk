@@ -232,18 +232,72 @@ void zisk_float (void)
                 }
                 case 16 : {
                     switch ((inst >> 12) & 0x7) {
-                        case 0 : //("R", "fsgnj.s"),
-                        case 1 : //("R", "fsgnjn.s"),
-                        case 2 : //("R", "fsgnjx.s"),
+                        case 0 : { //("R", "fsgnj.s"), takes sign bit of rs2 and copies rs1 to rd
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            if (fregs[rs2] & SIGN_BIT_MASK_32)
+                                fregs[rd] = fregs[rs1] | SIGN_BIT_MASK_32;
+                            else
+                                fregs[rd] = fregs[rs1] & (~SIGN_BIT_MASK_32);
+                            break;
+                        }
+                        case 1 : { //("R", "fsgnjn.s"), negates sign bit of rs2 and copies rs1 to rd
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            if (fregs[rs2] & SIGN_BIT_MASK_32)
+                                fregs[rd] = fregs[rs1] & (~SIGN_BIT_MASK_32);
+                            else
+                                fregs[rd] = fregs[rs1] | SIGN_BIT_MASK_32;
+                            break;
+                        }
+                        case 2 : { //("R", "fsgnjx.s"), XORs sign bits of rs1 and rs2 and copies rs1 to rd
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            if (fregs[rs2] & SIGN_BIT_MASK_32)
+                                fregs[rd] = fregs[rs1] ^ SIGN_BIT_MASK_32;
+                            else
+                                fregs[rd] = fregs[rs1];
+                            break;
+                        }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=16 inst=0x{inst:x}"),
                             break;
                     }
                 }
                 case 17 : {
                     switch ((inst >> 12) & 0x7) {
-                        case 0 : //("R", "fsgnj.d"),
-                        case 1 : //("R", "fsgnjn.d"),
-                        case 2 : //("R", "fsgnjx.d"),
+                        case 0 : { //("R", "fsgnj.d"), takes sign bit of rs2 and copies rs1 to rd
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            if (fregs[rs2] & SIGN_BIT_MASK_64)
+                                fregs[rd] = fregs[rs1] | SIGN_BIT_MASK_64;
+                            else
+                                fregs[rd] = fregs[rs1] & (~SIGN_BIT_MASK_64);
+                            break;
+                        }
+                        case 1 : { //("R", "fsgnjn.d"), negates sign bit of rs2 and copies rs1 to rd
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            if (fregs[rs2] & SIGN_BIT_MASK_64)
+                                fregs[rd] = fregs[rs1] & (~SIGN_BIT_MASK_64);
+                            else
+                                fregs[rd] = fregs[rs1] | SIGN_BIT_MASK_64;
+                            break;
+                        }
+                        case 2 : { //("R", "fsgnjx.d"), XORs sign bits of rs1 and rs2 and copies rs1 to rd
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            if (fregs[rs2] & SIGN_BIT_MASK_64)
+                                fregs[rd] = fregs[rs1] ^ SIGN_BIT_MASK_64;
+                            else
+                                fregs[rd] = fregs[rs1];
+                            break;
+                        }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=17 inst=0x{inst:x}"),
                             break;
                     }
