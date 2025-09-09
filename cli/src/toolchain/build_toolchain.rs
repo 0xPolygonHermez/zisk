@@ -60,12 +60,9 @@ impl BuildToolchainCmd {
                 .with_context(|| format!("while creating directory {temp_dir:?}"))?;
         }
 
-        std::fs::File::create(temp_dir.join("riscv64ima-zisk-zkvm-elf.json"))
-            .with_context(|| {
-                format!(
-                    "while creating file {temp_dir:?}/riscv64ima-zisk-zkvm-elf.json"
-                )
-            })?;
+        std::fs::File::create(temp_dir.join("riscv64ima-zisk-zkvm-elf.json")).with_context(
+            || format!("while creating file {temp_dir:?}/riscv64ima-zisk-zkvm-elf.json"),
+        )?;
 
         // Build the toolchain.
         Command::new("python3")
@@ -79,7 +76,7 @@ impl BuildToolchainCmd {
                 "compiler/rustc",
                 "library",
                 "--target",
-                &format!("riscv64ima-zisk-zkvm-elf,{}", get_target())
+                &format!("riscv64ima-zisk-zkvm-elf,{}", get_target(),),
             ])
             .current_dir(&rust_dir)
             .run()
