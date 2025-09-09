@@ -4,6 +4,9 @@
 //#include <cstdint>
 //#include <cstring>
 #include "float/float.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // uint64_t TimeDiff(const struct timeval &startTime, const struct timeval &endTime)
 // {
@@ -74,3 +77,7 @@ int _zisk_main(int argc, char *argv[])
 
     return 0;
 }
+
+#ifdef __cplusplus
+} // extern "C"
+#endif

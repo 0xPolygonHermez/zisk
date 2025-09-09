@@ -7,13 +7,15 @@ extern "C" {
 #define uint64_t unsigned long long
 // System address where the floating-point registers are mapped
 const uint64_t SYS_ADDR = 0xa0000000;
+const uint64_t REG_FIRST = SYS_ADDR;
 const uint64_t FREG_OFFSET = 40;
 const uint64_t FREG_FIRST = SYS_ADDR + FREG_OFFSET * 8;
 const uint64_t FREG_F0 = FREG_FIRST;
 const uint64_t FREG_CSR = FREG_FIRST + 32 * 8; // Floating-point control and status register (fcsr)
 const uint64_t FREG_INST = FREG_FIRST + 33 * 8; // Floating-point instruction register (finst)
 static uint64_t myvalue = 0x3ff3333333333333; // 1.7
-uint64_t * fregs = (uint64_t *)FREG_F0;
+uint64_t * regs = (uint64_t *)REG_FIRST;
+uint64_t * fregs = (uint64_t *)FREG_FIRST;
 
 // Negate a float by flipping its sign bit(s)
 const uint64_t SIGN_BIT_MASK_64 = 0x8000000000000000;
@@ -248,16 +250,40 @@ void zisk_float (void)
                 }
                 case 20 : {
                     switch ((inst >> 12) & 0x7) {
-                        case 0 : //("R", "fmin.s"),
-                        case 1 : //("R", "fmax.s"),
+                        case 0 : { //("R", "fmin.s"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            fregs[3] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? fregs[rs1] : fregs[rs2];
+                            break;
+                        }
+                        case 1 : { //("R", "fmax.s"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            fregs[3] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? fregs[rs2] : fregs[rs1];
+                            break;
+                        }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=20 inst=0x{inst:x}"),
                             break;
                     }
                 }
                 case 21 : {
                     switch ((inst >> 12) & 0x7) {
-                        case 0 : //("R", "fmin.d"),
-                        case 1 : //("R", "fmax.d"),
+                        case 0 : { //("R", "fmin.d"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            fregs[3] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? fregs[rs1] : fregs[rs2];
+                            break;
+                        }
+                        case 1 : { //("R", "fmax.d"),
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rs2 = (inst >> 20) & 0x1F;
+                            fregs[3] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? fregs[rs2] : fregs[rs1];
+                            break;
+                        }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=21 inst=0x{inst:x}"),
                             break;
                     }
@@ -368,10 +394,10 @@ void zisk_float (void)
                 }
                 case 97 : {
                     switch ((inst >> 20) & 0x1F) {
-                        case 0 : //("R", "fcvt.w.d"),
-                        case 1 : //("R", "fcvt.wu.d"),
-                        case 2 : //("R", "fcvt.l.d"),
-                        case 3 : //("R", "fcvt.lu.d"),
+                        case 0 : //("R", "fcvt.w.d"), converts double(rs1) to int32_t(rd)
+                        case 1 : //("R", "fcvt.wu.d"), converts double(rs1) to uint32_t(rd)
+                        case 2 : //("R", "fcvt.l.d"), converts double(rs1) to int64_t(rd)
+                        case 3 : //("R", "fcvt.lu.d"), converts double(rs1) to uint64_t(rd)
                         default: // => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=97 inst=0x{inst:x}"),
                             break;
                     }
@@ -388,10 +414,10 @@ void zisk_float (void)
                 }
                 case 105 : {
                     switch ((inst >> 20) & 0x1F) {
-                        case 0 : //("R", "fcvt.d.w"),
-                        case 1 : //("R", "fcvt.d.wu"),
-                        case 2 : //("R", "fcvt.d.l"),
-                        case 3 : //("R", "fcvt.d.lu"),
+                        case 0 : //("R", "fcvt.d.w"), converts int32_t(rs1) to double(rd)
+                        case 1 : //("R", "fcvt.d.wu"), converts uint32_t(rs1) to double(rd)
+                        case 2 : //("R", "fcvt.d.l"), converts int64_t(rs1) to double(rd)
+                        case 3 : //("R", "fcvt.d.lu"), converts uint64_t(rs1) to double(rd)
                         default: // => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=105 inst=0x{inst:x}"),
                             break;
                     }
@@ -425,6 +451,20 @@ void zisk_float (void)
                                     break;
                             }
                         }
+                        /*
+                        Format of result of FCLASS instruction.
+                            rd bit  Meaning
+                            0       rs1 is -infinite
+                            1       rs1 is a negative normal number
+                            2       rs1 is a negative subnormal number
+                            3       rs1 is -0
+                            4       rs1 is +0
+                            5       rs1 is a positive subnormal number
+                            6       rs1 is a positive normal number
+                            7       rs1 is +infinite
+                            8       rs1 is a signaling NaN
+                            9       rs1 is a quiet NaN
+                        */
                         case 1 : {
                             switch ((inst >> 20) & 0x1F) {
                                 case 0 : //("R", "fclass.d"),
