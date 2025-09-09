@@ -32,6 +32,7 @@ members = [
     "precompiles/keccakf",
     "precompiles/sha256f",
     "lib-c",
+    "lib-float",
     "emulator-asm/asm-runner",
     "ziskclib",
     "common",
