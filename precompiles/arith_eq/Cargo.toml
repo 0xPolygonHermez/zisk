@@ -46,6 +46,7 @@ proofman-util = { workspace = true }
 witness = { workspace = true }
 pil-std-lib = { workspace = true }
 
+sm-mem = { workspace = true }
 fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }

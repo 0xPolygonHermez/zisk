@@ -1,5 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Bn254Complex;
+use sm_mem::MemCollectorInfo;
 use std::collections::VecDeque;
 use zisk_common::BusId;
 
@@ -33,4 +34,12 @@ pub fn generate_bn254_complex_add_mem_inputs(
         pending,
         &BN254_COMPLEX_ADD_MEM_CONFIG,
     );
+}
+
+pub fn skip_bn254_complex_add_mem_inputs(
+    addr_main: u32,
+    data: &[u64],
+    mem_collectors_info: &[MemCollectorInfo],
+) -> bool {
+    super::skip_mem_inputs(addr_main, data, &BN254_COMPLEX_ADD_MEM_CONFIG, mem_collectors_info)
 }

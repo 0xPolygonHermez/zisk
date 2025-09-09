@@ -1,4 +1,5 @@
 use precompiles_common::MemBusHelpers;
+use sm_mem::MemCollectorInfo;
 use std::collections::VecDeque;
 use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
 
@@ -69,4 +70,50 @@ pub fn generate_mem_inputs(
             )
         }
     }
+}
+
+pub fn skip_mem_inputs(
+    addr_main: u32,
+    data: &[u64],
+    config: &ArithEqMemInputConfig,
+    mem_collectors_info: &[MemCollectorInfo],
+) -> bool {
+    let params_count = config.read_params + config.write_params;
+
+    // Check indirect loads
+    for iparam in 0..config.indirect_params {
+        let addr = addr_main + iparam as u32 * 8;
+        for mem_collector in mem_collectors_info {
+            if !mem_collector.skip(addr) {
+                return false;
+            }
+        }
+    }
+
+    // Check all param addresses (writes only, like in your sha/keccak skip)
+    for iparam in 0..params_count {
+        let is_write = iparam >= config.read_params;
+        if !is_write {
+            continue; // skip reads, only check writes
+        }
+        let param_index = if config.rewrite_params && iparam >= config.read_params {
+            iparam - config.read_params
+        } else {
+            iparam
+        };
+        let param_addr = if config.indirect_params > 0 {
+            data[OPERATION_BUS_DATA_SIZE + param_index] as u32
+        } else {
+            addr_main + (param_index * 8 * config.chunks_per_param) as u32
+        };
+        for ichunk in 0..config.chunks_per_param {
+            let addr = param_addr + ichunk as u32 * 8;
+            for mem_collector in mem_collectors_info {
+                if !mem_collector.skip(addr) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
 }

@@ -313,7 +313,7 @@ mod tests_frops {
         let size = 10;
         let expected = vec![(
             CheckPoint::Multiple(vec![ChunkId(0)]),
-            [(ChunkId(0), (10, frops > 0, CollectSkipper::new(0)))]
+            [(ChunkId(0), (10, frops, frops > 0, CollectSkipper::new(0)))]
                 .into_iter()
                 .collect::<HashMap<_, _>>(),
         )];
@@ -338,19 +338,19 @@ mod tests_frops {
         let expected = vec![
             (
                 CheckPoint::Multiple(vec![ChunkId(0)]),
-                [(ChunkId(0), (10, false, CollectSkipper::new(0)))]
+                [(ChunkId(0), (10, frops, false, CollectSkipper::new(0)))]
                     .into_iter()
                     .collect::<HashMap<_, _>>(),
             ),
             (
                 CheckPoint::Multiple(vec![ChunkId(0)]),
-                [(ChunkId(0), (10, false, CollectSkipper::new(10)))]
+                [(ChunkId(0), (10, frops, false, CollectSkipper::new(10)))]
                     .into_iter()
                     .collect::<HashMap<_, _>>(),
             ),
             (
                 CheckPoint::Multiple(vec![ChunkId(0)]),
-                [(ChunkId(0), (5, frops > 0, CollectSkipper::new(20)))]
+                [(ChunkId(0), (5, frops, frops > 0, CollectSkipper::new(20)))]
                     .into_iter()
                     .collect::<HashMap<_, _>>(),
             ),
@@ -379,15 +379,15 @@ mod tests_frops {
         let mut expected = vec![
             (
                 CheckPoint::Multiple(vec![ChunkId(0)]),
-                [(ChunkId(0), (10, false, CollectSkipper::new(0)))]
+                [(ChunkId(0), (10, frops[0], false, CollectSkipper::new(0)))]
                     .into_iter()
                     .collect::<HashMap<_, _>>(),
             ),
             (
                 CheckPoint::Multiple(vec![ChunkId(0), ChunkId(1)]),
                 [
-                    (ChunkId(0), (5, frops[0] > 0, CollectSkipper::new(10))),
-                    (ChunkId(1), (5, frops[1] > 0, CollectSkipper::new(0))),
+                    (ChunkId(0), (5, frops[0], frops[0] > 0, CollectSkipper::new(10))),
+                    (ChunkId(1), (5, frops[1], frops[1] > 0, CollectSkipper::new(0))),
                 ]
                 .into_iter()
                 .collect::<HashMap<_, _>>(),

@@ -199,18 +199,18 @@ impl<F: PrimeField64> ArithFullSM<F> {
 
             // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do this!
             OperationBusData::from_values(
-                    opcode,
-                    ZiskOperationType::Binary as u64,
-                    aop.d[0]
-                        + CHUNK_SIZE * aop.d[1]
-                        + CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0)
-                        + CHUNK_SIZE.pow(3) * aop.d[3],
-                    aop.b[0]
-                        + CHUNK_SIZE * aop.b[1]
-                        + CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1)
-                        + CHUNK_SIZE.pow(3) * aop.b[3],
-                    pending,
-                );
+                opcode,
+                ZiskOperationType::Binary as u64,
+                aop.d[0]
+                    + CHUNK_SIZE * aop.d[1]
+                    + CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0)
+                    + CHUNK_SIZE.pow(3) * aop.d[3],
+                aop.b[0]
+                    + CHUNK_SIZE * aop.b[1]
+                    + CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1)
+                    + CHUNK_SIZE.pow(3) * aop.b[3],
+                pending,
+            );
         }
     }
 

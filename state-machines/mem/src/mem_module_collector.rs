@@ -4,6 +4,23 @@ use crate::{MemHelpers, MemInput, MemPreviousSegment};
 use mem_common::MemModuleCheckPoint;
 use zisk_common::{BusDevice, BusId, MemBusData, SegmentId, MEM_BUS_ID};
 
+pub struct MemCollectorInfo {
+    pub from_addr: u32,
+    pub to_addr: u32,
+    pub min_addr: u32,
+}
+
+impl MemCollectorInfo {
+    pub fn skip(&self, addr: u32) -> bool {
+        let addr_w = MemHelpers::get_addr_w(addr);
+
+        if addr_w > self.to_addr || addr_w < self.min_addr || addr_w < self.from_addr {
+            return true;
+        }
+        false
+    }
+}
+
 #[derive(Debug)]
 pub struct MemModuleCollector {
     /// Binary Basic state machine
@@ -282,6 +299,14 @@ impl MemModuleCollector {
         }
 
         false
+    }
+
+    pub fn get_mem_collector_info(&self) -> MemCollectorInfo {
+        MemCollectorInfo {
+            from_addr: self.mem_check_point.from_addr,
+            to_addr: self.mem_check_point.to_addr,
+            min_addr: self.min_addr,
+        }
     }
 }
 

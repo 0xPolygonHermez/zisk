@@ -1,5 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Secp256k1;
+use sm_mem::MemCollectorInfo;
 use std::collections::VecDeque;
 use zisk_common::BusId;
 
@@ -32,4 +33,12 @@ pub fn generate_secp256k1_dbl_mem_inputs(
         pending,
         &SECP256K1_DBL_MEM_CONFIG,
     );
+}
+
+pub fn skip_secp256k1_dbl_mem_inputs(
+    addr_main: u32,
+    data: &[u64],
+    mem_collectors_info: &[MemCollectorInfo],
+) -> bool {
+    super::skip_mem_inputs(addr_main, data, &SECP256K1_DBL_MEM_CONFIG, mem_collectors_info)
 }

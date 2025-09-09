@@ -1,6 +1,7 @@
 use tiny_keccak::keccakf;
 
 use precompiles_common::MemBusHelpers;
+use sm_mem::MemCollectorInfo;
 use std::collections::VecDeque;
 use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
 
@@ -61,4 +62,21 @@ pub fn generate_keccakf_mem_inputs(
             );
         }
     }
+}
+
+pub fn skip_keccakf_mem_inputs(addr_main: u32, mem_collectors_info: &[MemCollectorInfo]) -> bool {
+    let write_params = 1;
+    let chunks_per_param = 25;
+    for param_index in 0..write_params {
+        let param_addr = addr_main + (param_index * 8 * chunks_per_param) as u32;
+        for ichunk in 0..chunks_per_param {
+            let addr = param_addr + ichunk as u32 * 8;
+            for mem_collector in mem_collectors_info {
+                if !mem_collector.skip(addr) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
 }

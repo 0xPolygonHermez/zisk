@@ -14,7 +14,7 @@ use precomp_sha256f::Sha256fCounterInputGen;
 use sm_arith::ArithCounterInputGen;
 use sm_arith::ArithInstanceCollector;
 use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollector};
-use sm_mem::{MemAlignCollector, MemHelpers, MemModuleCollector};
+use sm_mem::{MemAlignCollector, MemCollectorInfo, MemHelpers, MemModuleCollector};
 use sm_rom::RomCollector;
 use zisk_common::{
     BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID, OP, OPERATION_BUS_ID, OP_TYPE,
@@ -60,6 +60,8 @@ pub struct StaticDataBusCollect<D> {
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>)>,
+
+    mem_collectors_info: Vec<MemCollectorInfo>,
 }
 
 impl StaticDataBusCollect<PayloadType> {
@@ -81,6 +83,9 @@ impl StaticDataBusCollect<PayloadType> {
         sha256f_inputs_generator: Sha256fCounterInputGen,
         arith_inputs_generator: ArithCounterInputGen,
     ) -> Self {
+        let mem_collectors_info: Vec<MemCollectorInfo> =
+            mem_collector.iter().map(|(_, collector)| collector.get_mem_collector_info()).collect();
+
         Self {
             mem_collector,
             mem_align_collector,
@@ -97,6 +102,7 @@ impl StaticDataBusCollect<PayloadType> {
             sha256f_inputs_generator,
             arith_inputs_generator,
             pending_transfers: VecDeque::with_capacity(64),
+            mem_collectors_info,
         }
     }
 
@@ -193,11 +199,18 @@ impl StaticDataBusCollect<PayloadType> {
                                 &mut self.pending_transfers,
                             );
                         }
-                        self.keccakf_inputs_generator.process_data(
+
+                        if !self.keccakf_inputs_generator.skip_data(
                             &bus_id,
                             payload,
-                            &mut self.pending_transfers,
-                        );
+                            &self.mem_collectors_info,
+                        ) {
+                            self.keccakf_inputs_generator.process_data(
+                                &bus_id,
+                                payload,
+                                &mut self.pending_transfers,
+                            );
+                        }
                     }
                     op if op == ZiskOperationType::Sha256 as u32 => {
                         for (_, sha256f_collector) in &mut self.sha256f_collector {
@@ -207,11 +220,18 @@ impl StaticDataBusCollect<PayloadType> {
                                 &mut self.pending_transfers,
                             );
                         }
-                        self.sha256f_inputs_generator.process_data(
+
+                        if !self.sha256f_inputs_generator.skip_data(
                             &bus_id,
                             payload,
-                            &mut self.pending_transfers,
-                        );
+                            &self.mem_collectors_info,
+                        ) {
+                            self.sha256f_inputs_generator.process_data(
+                                &bus_id,
+                                payload,
+                                &mut self.pending_transfers,
+                            );
+                        }
                     }
                     op if op == ZiskOperationType::ArithEq as u32 => {
                         for (_, arith_eq_collector) in &mut self.arith_eq_collector {
@@ -222,11 +242,17 @@ impl StaticDataBusCollect<PayloadType> {
                             );
                         }
 
-                        self.arith_eq_inputs_generator.process_data(
+                        if !self.arith_eq_inputs_generator.skip_data(
                             &bus_id,
                             payload,
-                            &mut self.pending_transfers,
-                        );
+                            &self.mem_collectors_info,
+                        ) {
+                            self.arith_eq_inputs_generator.process_data(
+                                &bus_id,
+                                payload,
+                                &mut self.pending_transfers,
+                            );
+                        }
                     }
                     _ => {}
                 }

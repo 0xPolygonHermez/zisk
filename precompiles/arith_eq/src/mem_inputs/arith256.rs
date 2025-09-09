@@ -1,5 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Arith256;
+use sm_mem::MemCollectorInfo;
 use std::collections::VecDeque;
 use zisk_common::BusId;
 
@@ -40,4 +41,12 @@ pub fn generate_arith256_mem_inputs(
         pending,
         &ARITH_256_MEM_CONFIG,
     );
+}
+
+pub fn skip_arith256_mem_inputs(
+    addr_main: u32,
+    data: &[u64],
+    mem_collectors_info: &[MemCollectorInfo],
+) -> bool {
+    super::skip_mem_inputs(addr_main, data, &ARITH_256_MEM_CONFIG, mem_collectors_info)
 }

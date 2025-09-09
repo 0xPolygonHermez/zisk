@@ -2363,6 +2363,7 @@ dependencies = [
  "rustfmt-wrapper",
  "serde",
  "serde_json",
+ "sm-mem",
  "tracing",
  "typenum",
  "witness",
@@ -2386,6 +2387,7 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
+ "sm-mem",
  "tiny-keccak",
  "tracing",
  "witness",
@@ -2408,6 +2410,7 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sha2",
+ "sm-mem",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -2419,6 +2422,7 @@ name = "precompiles-common"
 version = "0.12.0"
 dependencies = [
  "fields",
+ "zisk-common",
  "zisk-core",
 ]
 
