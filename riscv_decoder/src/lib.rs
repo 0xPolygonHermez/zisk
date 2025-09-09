@@ -1,10 +1,11 @@
 mod compressed_decoder;
+mod standard_decoder;
+
 mod target;
 
 use crate::compressed_decoder::{is_compressed, CompressedInstruction};
 
-/// TODO: placeholder instruction
-pub struct Instruction;
+pub use standard_decoder::Instruction;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -95,5 +96,5 @@ impl InstructionDecoder {
 /// added to the assembly file. However, one can force alignment in
 /// assembly or in a linker script by adding .align 2
 const fn code_alignment() -> usize {
-    compressed_decoder::IALIGN_BITS
+    compressed_decoder::IALIGN_BYTES
 }
