@@ -12,12 +12,37 @@ use crate::standard_decoder::opcode::{InstructionFormat, Opcode};
 
 /// Decode a u32 into a standard RISC-V instruction
 ///
+/// Returns an Error if the instruction is not recognized or malformed.
+///
 /// Note: The instruction should not be compressed.
 pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
+    // Handle special case: all zeros = illegal
+    if bits == 0 {
+        return Ok(Instruction::illegal());
+    }
+
     // Parse all instruction fields
     let encoded = EncodedInstruction::new(bits);
 
-    todo!()
+    let opcode = Opcode::from_bits(encoded.opcode)
+        .ok_or(Error::UnsupportedInstruction { opcode_bits: encoded.opcode })?;
+
+    match opcode {
+        Opcode::Load => todo!(),
+        Opcode::MiscMem => todo!(),
+        Opcode::OpImm => todo!(),
+        Opcode::Auipc => todo!(),
+        Opcode::OpImm32 => todo!(),
+        Opcode::Store => todo!(),
+        Opcode::Amo => todo!(),
+        Opcode::Op => todo!(),
+        Opcode::Lui => todo!(),
+        Opcode::Op32 => todo!(),
+        Opcode::Branch => todo!(),
+        Opcode::Jalr => todo!(),
+        Opcode::Jal => todo!(),
+        Opcode::System => todo!(),
+    }
 }
 
 /// Bit masks for field extraction
@@ -49,11 +74,8 @@ struct EncodedInstruction {
     /// Original 32-bit instruction word
     pub raw: u32,
 
-    /// Opcode field (bits [6:0]) as raw value
-    pub opcode_raw: u8,
-
-    /// Opcode as enum (if recognized)
-    pub opcode: Option<Opcode>,
+    /// Opcode field (bits [6:0])
+    pub opcode: u8,
 
     /// Destination register (bits [11:7])
     pub rd: u8,
@@ -117,7 +139,7 @@ impl EncodedInstruction {
     /// Parse all possible fields from a 32-bit instruction
     pub fn new(raw: u32) -> Self {
         // Opcode is always the first 7 bits
-        let opcode_raw = (raw & MASK7) as u8;
+        let opcode = (raw & MASK7) as u8;
         // `rd` is always the next 5 bits
         let rd = ((raw >> 7) & MASK5) as u8;
         // `funct3` is always the next 3 bits
@@ -128,8 +150,6 @@ impl EncodedInstruction {
         let rs2 = ((raw >> 20) & MASK5) as u8;
         // `funct7` is always the next 7 bits
         let funct7 = ((raw >> 25) & MASK7) as u8;
-
-        let opcode = Opcode::from_bits(opcode_raw);
 
         // Extract all possible immediate formats
         let i_immediate = Self::extract_i_immediate(raw);
@@ -151,7 +171,6 @@ impl EncodedInstruction {
 
         Self {
             raw,
-            opcode_raw,
             opcode,
             rd,
             funct3,
@@ -230,7 +249,7 @@ impl EncodedInstruction {
     /// TODO: so we can delete it and just have comments ontop of opcode for example
     /// TODO: This would mean we no longer need InstructionFormat struct
     pub fn format(&self) -> Option<InstructionFormat> {
-        match self.opcode? {
+        match Opcode::from_bits(self.opcode)? {
             Opcode::Op | Opcode::Op32 => Some(InstructionFormat::R),
             Opcode::Load
             | Opcode::OpImm
