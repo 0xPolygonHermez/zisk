@@ -5,6 +5,7 @@
 use crate::{uninit_array, BusId, PayloadType};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
+use std::collections::VecDeque;
 
 /// The unique bus ID for operation-related data communication.
 pub const OPERATION_BUS_ID: BusId = BusId(0);
@@ -195,8 +196,8 @@ impl OperationBusData<u64> {
     /// # Returns
     /// An array representing the operation data payload.
     #[inline(always)]
-    pub fn from_values(op: u8, op_type: PayloadType, a: u64, b: u64) -> OperationData<u64> {
-        [op as u64, op_type, a, b]
+    pub fn from_values(op: u8, op_type: PayloadType, a: u64, b: u64, pending: &mut VecDeque<(BusId, Vec<u64>)>) {
+        pending.push_back((OPERATION_BUS_ID, vec![op as u64, op_type, a, b]));
     }
 
     /// Creates operation data from a `ZiskInst` instruction and its context.

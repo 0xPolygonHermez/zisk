@@ -96,7 +96,7 @@ impl StaticDataBusCollect<PayloadType> {
             keccakf_inputs_generator,
             sha256f_inputs_generator,
             arith_inputs_generator,
-            pending_transfers: VecDeque::new(),
+            pending_transfers: VecDeque::with_capacity(64),
         }
     }
 

@@ -16,7 +16,7 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
-use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData, OPERATION_BUS_ID};
+use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::*;
 
@@ -198,9 +198,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
             };
 
             // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do this!
-            pending.push_back((
-                OPERATION_BUS_ID,
-                OperationBusData::from_values(
+            OperationBusData::from_values(
                     opcode,
                     ZiskOperationType::Binary as u64,
                     aop.d[0]
@@ -211,9 +209,8 @@ impl<F: PrimeField64> ArithFullSM<F> {
                         + CHUNK_SIZE * aop.b[1]
                         + CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1)
                         + CHUNK_SIZE.pow(3) * aop.b[3],
-                )
-                .to_vec(),
-            ));
+                    pending,
+                );
         }
     }
 

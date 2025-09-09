@@ -2,7 +2,7 @@ use tiny_keccak::keccakf;
 
 use precompiles_common::MemBusHelpers;
 use std::collections::VecDeque;
-use zisk_common::{BusId, MEM_BUS_ID, OPERATION_BUS_DATA_SIZE};
+use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
 
 #[derive(Debug)]
 pub struct KeccakfMemInputConfig {
@@ -52,16 +52,13 @@ pub fn generate_keccakf_mem_inputs(
             } else {
                 data[current_param_offset + ichunk]
             };
-            pending.push_back((
-                MEM_BUS_ID,
-                MemBusHelpers::mem_aligned_op(
-                    param_addr + ichunk as u32 * 8,
-                    step_main,
-                    chunk_data,
-                    is_write,
-                )
-                .to_vec(),
-            ));
+            MemBusHelpers::mem_aligned_op(
+                param_addr + ichunk as u32 * 8,
+                step_main,
+                chunk_data,
+                is_write,
+                pending,
+            );
         }
     }
 }

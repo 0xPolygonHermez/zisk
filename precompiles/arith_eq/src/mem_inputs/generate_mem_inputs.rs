@@ -1,6 +1,6 @@
 use precompiles_common::MemBusHelpers;
 use std::collections::VecDeque;
-use zisk_common::{BusId, MEM_BUS_ID, OPERATION_BUS_DATA_SIZE};
+use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
 
 #[derive(Debug)]
 pub struct ArithEqMemInputConfig {
@@ -23,15 +23,12 @@ pub fn generate_mem_inputs(
     let params_offset = OPERATION_BUS_DATA_SIZE + config.indirect_params;
 
     for iparam in 0..config.indirect_params {
-        pending.push_back((
-            MEM_BUS_ID,
-            MemBusHelpers::mem_aligned_load(
-                addr_main + iparam as u32 * 8,
-                step_main,
-                data[OPERATION_BUS_DATA_SIZE + iparam],
-            )
-            .to_vec(),
-        ));
+        MemBusHelpers::mem_aligned_load(
+            addr_main + iparam as u32 * 8,
+            step_main,
+            data[OPERATION_BUS_DATA_SIZE + iparam],
+            pending,
+        )
     }
     for iparam in 0..params_count {
         let param_index = if config.rewrite_params && iparam >= config.read_params {
@@ -63,16 +60,13 @@ pub fn generate_mem_inputs(
             } else {
                 data[current_param_offset + ichunk]
             };
-            pending.push_back((
-                MEM_BUS_ID,
-                MemBusHelpers::mem_aligned_op(
-                    param_addr + ichunk as u32 * 8,
-                    step_main,
-                    chunk_data,
-                    is_write,
-                )
-                .to_vec(),
-            ));
+            MemBusHelpers::mem_aligned_op(
+                param_addr + ichunk as u32 * 8,
+                step_main,
+                chunk_data,
+                is_write,
+                pending,
+            )
         }
     }
 }
