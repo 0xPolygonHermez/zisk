@@ -203,7 +203,7 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
-                    fregs[3] = (uint64_t)f32_mul( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
+                    fregs[rd] = (uint64_t)f32_mul( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     break;
                 }
                 case 9 : { //("R", "fmul.d"),
@@ -211,7 +211,7 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
-                    fregs[3] = (uint64_t)f64_mul( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
+                    fregs[rd] = (uint64_t)f64_mul( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
                 case 12 : { //("R", "fdiv.s"),
@@ -219,7 +219,7 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
-                    fregs[3] = (uint64_t)f32_div( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
+                    fregs[rd] = (uint64_t)f32_div( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     break;
                 }
                 case 13 : { //("R", "fdiv.d"),
@@ -227,7 +227,7 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
-                    fregs[3] = (uint64_t)f64_div( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
+                    fregs[rd] = (uint64_t)f64_div( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
                 case 16 : {
@@ -254,14 +254,14 @@ void zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            fregs[3] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? fregs[rs1] : fregs[rs2];
+                            fregs[rd] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? fregs[rs1] : fregs[rs2];
                             break;
                         }
                         case 1 : { //("R", "fmax.s"),
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            fregs[3] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? fregs[rs2] : fregs[rs1];
+                            fregs[rd] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? fregs[rs2] : fregs[rs1];
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=20 inst=0x{inst:x}"),
@@ -274,14 +274,14 @@ void zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            fregs[3] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? fregs[rs1] : fregs[rs2];
+                            fregs[rd] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? fregs[rs1] : fregs[rs2];
                             break;
                         }
                         case 1 : { //("R", "fmax.d"),
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            fregs[3] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? fregs[rs2] : fregs[rs1];
+                            fregs[rd] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? fregs[rs2] : fregs[rs1];
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=21 inst=0x{inst:x}"),
@@ -308,7 +308,7 @@ void zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
-                            fregs[3] = (uint64_t)f32_sqrt( (float32_t){fregs[rs1]} ).v;
+                            fregs[rd] = (uint64_t)f32_sqrt( (float32_t){fregs[rs1]} ).v;
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=44 inst=0x{inst:x}"),
@@ -321,7 +321,7 @@ void zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
-                            fregs[3] = (uint64_t)f64_sqrt( (float64_t){fregs[rs1]} ).v;
+                            fregs[rd] = (uint64_t)f64_sqrt( (float64_t){fregs[rs1]} ).v;
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=45 inst=0x{inst:x}"),
@@ -334,21 +334,21 @@ void zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            fregs[3] = f32_eq( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? F32_ONE : F32_ZERO;
+                            fregs[rd] = f32_eq( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? F32_ONE : F32_ZERO;
                             break;
                         }
                         case 1 : { //("R", "flt.s"),
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            fregs[3] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? F32_ONE : F32_ZERO;
+                            fregs[rd] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? F32_ONE : F32_ZERO;
                             break;
                         }
                         case 0 : { //("R", "fle.s"),
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            fregs[3] = f32_le( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? F32_ONE : F32_ZERO;
+                            fregs[rd] = f32_le( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? F32_ONE : F32_ZERO;
                             break;
                         }
                         default: // => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=80 inst=0x{inst:x}"),
@@ -361,21 +361,21 @@ void zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            fregs[3] = f64_eq( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? F64_ONE : F64_ZERO;
+                            fregs[rd] = f64_eq( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? F64_ONE : F64_ZERO;
                             break;
                         }
                         case 1 : { //("R", "flt.d"),
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            fregs[3] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? F64_ONE : F64_ZERO;
+                            fregs[rd] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? F64_ONE : F64_ZERO;
                             break;
                         }
                         case 0 : { //("R", "fle.d"),
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            fregs[3] = f64_le( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? F64_ONE : F64_ZERO;
+                            fregs[rd] = f64_le( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? F64_ONE : F64_ZERO;
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=81 inst=0x{inst:x}"),
@@ -384,40 +384,136 @@ void zisk_float (void)
                 }
                 case 96: {
                     switch ((inst >> 20) & 0x1F) {
-                        case 0 : //("R", "fcvt.w.s"),
-                        case 1 : //("R", "fcvt.wu.s"),
-                        case 2 : //("R", "fcvt.l.s"),
-                        case 3 : //("R", "fcvt.lu.s"),
+                        case 0 : { //("R", "fcvt.w.s"), converts float(rs1) to int32_t(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            regs[rd] = (uint64_t)f32_to_i32( (float32_t){fregs[rs1]}, rm, false );
+                            break;
+                        }
+                        case 1 : { //("R", "fcvt.wu.s"), converts float(rs1) to uint32_t(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            regs[rd] = (uint64_t)f32_to_ui32( (float32_t){fregs[rs1]}, rm, false );
+                            break;
+                        }
+                        case 2 : { //("R", "fcvt.l.s"), converts float(rs1) to int64_t(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            regs[rd] = (uint64_t)f32_to_i64( (float32_t){fregs[rs1]}, rm, false );
+                            break;
+                        }
+                        case 3 : { //("R", "fcvt.lu.s"), converts float(rs1) to uint64_t(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            regs[rd] = (uint64_t)f32_to_ui64( (float32_t){fregs[rs1]}, rm, false );
+                            break;
+                        }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=96 inst=0x{inst:x}"),
                             break;
                     }
                 }
                 case 97 : {
                     switch ((inst >> 20) & 0x1F) {
-                        case 0 : //("R", "fcvt.w.d"), converts double(rs1) to int32_t(rd)
-                        case 1 : //("R", "fcvt.wu.d"), converts double(rs1) to uint32_t(rd)
-                        case 2 : //("R", "fcvt.l.d"), converts double(rs1) to int64_t(rd)
-                        case 3 : //("R", "fcvt.lu.d"), converts double(rs1) to uint64_t(rd)
+                        case 0 : { //("R", "fcvt.w.d"), converts double(rs1) to int32_t(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            regs[rd] = (uint64_t)f64_to_i32( (float64_t){fregs[rs1]}, rm, false );
+                            break;
+                        }
+                        case 1 : { //("R", "fcvt.wu.d"), converts double(rs1) to uint32_t(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            regs[rd] = (uint64_t)f64_to_ui32( (float64_t){fregs[rs1]}, rm, false );
+                            break;
+                        }
+                        case 2 : { //("R", "fcvt.l.d"), converts double(rs1) to int64_t(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            regs[rd] = (uint64_t)f64_to_i64( (float64_t){fregs[rs1]}, rm, false );
+                            break;
+                        }
+                        case 3 : { //("R", "fcvt.lu.d"), converts double(rs1) to uint64_t(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            regs[rd] = (uint64_t)f64_to_ui64( (float64_t){fregs[rs1]}, rm, false );
+                            break;
+                        }
                         default: // => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=97 inst=0x{inst:x}"),
                             break;
                     }
                 }
                 case 104 : {
                     switch ((inst >> 20) & 0x1F) {
-                        case 0 : //("R", "fcvt.s.w"),
-                        case 1 : //("R", "fcvt.s.wu"),
-                        case 2 : //("R", "fcvt.s.l"),
-                        case 3 : //("R", "fcvt.s.lu"),
+                        case 0 : { //("R", "fcvt.s.w"), converts int32_t(rs1) to float(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            fregs[rd] = (uint64_t)i32_to_f32( (int32_t)(regs[rs1]) ).v;
+                            break;
+                        }
+                        case 1 : { //("R", "fcvt.s.wu"), converts uint32_t(rs1) to float(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            fregs[rd] = (uint64_t)ui32_to_f32( (uint32_t)(regs[rs1]) ).v;
+                            break;
+                        }
+                        case 2 : { //("R", "fcvt.s.l"), converts int64_t(rs1) to float(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            fregs[rd] = (uint64_t)i64_to_f32( (int64_t)(regs[rs1]) ).v;
+                            break;
+                        }
+                        case 3 : { //("R", "fcvt.s.lu"), converts uint64_t(rs1) to float(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            fregs[rd] = (uint64_t)ui64_to_f32( (uint64_t)(regs[rs1]) ).v;
+                            break;
+                        }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=104 inst=0x{inst:x}"),
                             break;
                     }
                 }
                 case 105 : {
                     switch ((inst >> 20) & 0x1F) {
-                        case 0 : //("R", "fcvt.d.w"), converts int32_t(rs1) to double(rd)
-                        case 1 : //("R", "fcvt.d.wu"), converts uint32_t(rs1) to double(rd)
-                        case 2 : //("R", "fcvt.d.l"), converts int64_t(rs1) to double(rd)
-                        case 3 : //("R", "fcvt.d.lu"), converts uint64_t(rs1) to double(rd)
+                        case 0 : { //("R", "fcvt.d.w"), converts int32_t(rs1) to double(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            fregs[rd] = (uint64_t)i32_to_f64( (int32_t)(regs[rs1]) ).v;
+                            break;
+                        }
+                        case 1 : { //("R", "fcvt.d.wu"), converts uint32_t(rs1) to double(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            fregs[rd] = (uint64_t)ui32_to_f64( (uint32_t)(regs[rs1]) ).v;
+                            break;
+                        }
+                        case 2 : { //("R", "fcvt.d.l"), converts int64_t(rs1) to double(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            fregs[rd] = (uint64_t)i64_to_f64( (int64_t)(regs[rs1]) ).v;
+                            break;
+                        }
+                        case 3 : { //("R", "fcvt.d.lu"), converts uint64_t(rs1) to double(rd)
+                            uint64_t rd = (inst >> 7) & 0x1F;
+                            uint64_t rs1 = (inst >> 15) & 0x1F;
+                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            fregs[rd] = (uint64_t)ui64_to_f64( (uint64_t)(regs[rs1]) ).v;
+                            break;
+                        }
                         default: // => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=105 inst=0x{inst:x}"),
                             break;
                     }

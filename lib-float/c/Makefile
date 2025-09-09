@@ -11,7 +11,7 @@ ZISK_INC = -I ./SoftFloat-3e/source/include -I ./SoftFloat-3e/build/Linux-x86_64
 ZISK_CFLAGS = -march=rv64ima -mabi=lp64 -ffreestanding -nostdlib -nostartfiles -mcmodel=medany
 ZISK_ASM_CFLAGS = -march=rv64ima -mabi=lp64
 
-all:
+zisk_gcc:
 	mkdir -p build
 	gcc $(CFLAGS) -c src/float/float.c $(INC) -o build/float.o
 	gcc $(CFLAGS) -c SoftFloat-3e/source/f64_add.c $(INC) -o build/f64_add.o
@@ -31,9 +31,11 @@ all:
 	
 	gcc $(CFLAGS) src/main.cpp -lc build/libziskfloat.a -o build/ziskfloat -lgmp -lstdc++ -lgmpxx
 
-zisk:
+all:
 	mkdir -p build
+
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c src/float/float.c $(ZISK_INC) -o build/float.o
+
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_add.c $(ZISK_INC) -o build/f64_add.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_add.c $(ZISK_INC) -o build/f32_add.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_sub.c $(ZISK_INC) -o build/f64_sub.o
@@ -52,6 +54,7 @@ zisk:
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_lt.c $(ZISK_INC) -o build/f32_lt.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_le.c $(ZISK_INC) -o build/f64_le.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_le.c $(ZISK_INC) -o build/f32_le.o
+
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_addM.c $(ZISK_INC) -o build/s_addM.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_subM.c $(ZISK_INC) -o build/s_subM.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_negXM.c $(ZISK_INC) -o build/s_negXM.o
@@ -70,6 +73,14 @@ zisk:
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_shiftRightJamM.c $(ZISK_INC) -o build/s_shiftRightJamM.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_roundPackToF64.c $(ZISK_INC) -o build/s_roundPackToF64.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_roundPackToF32.c $(ZISK_INC) -o build/s_roundPackToF32.o
+
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_roundToUI64.c $(ZISK_INC) -o build/s_roundMoUI64.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_roundToI64.c $(ZISK_INC) -o build/s_roundMoI64.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_roundToUI32.c $(ZISK_INC) -o build/s_roundMoUI32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_roundToI32.c $(ZISK_INC) -o build/s_roundMoI32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_roundMToUI64.c $(ZISK_INC) -o build/s_roundMToUI64.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_roundMToI64.c $(ZISK_INC) -o build/s_roundMToI64.o
+
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/softfloat_state.c $(ZISK_INC) -o build/softfloat_state.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_normRoundPackToF64.c $(ZISK_INC) -o build/s_normRoundPackToF64.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_normRoundPackToF32.c $(ZISK_INC) -o build/s_normRoundPackToF32.o
@@ -84,9 +95,29 @@ zisk:
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_approxRecipSqrt32_1.c $(ZISK_INC) -o build/s_approxRecipSqrt32_1.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_approxRecipSqrt_1Ks.c $(ZISK_INC) -o build/s_approxRecipSqrt_1Ks.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/s_shortShiftRightJam64.c $(ZISK_INC) -o build/s_shortShiftRightJam64.o
+
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/8086/s_propagateNaNF64UI.c $(ZISK_INC) -o build/s_propagateNaNF64UI.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/8086/s_propagateNaNF32UI.c $(ZISK_INC) -o build/s_propagateNaNF32UI.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/8086/softfloat_raiseFlags.c $(ZISK_INC) -o build/softfloat_raiseFlags.o
+
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_to_i32.c $(ZISK_INC) -o build/f32_to_i32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_to_ui32.c $(ZISK_INC) -o build/f32_to_ui32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_to_i64.c $(ZISK_INC) -o build/f32_to_i64.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_to_ui64.c $(ZISK_INC) -o build/f32_to_ui64.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_to_i32.c $(ZISK_INC) -o build/f64_to_i32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_to_ui32.c $(ZISK_INC) -o build/f64_to_ui32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_to_i64.c $(ZISK_INC) -o build/f64_to_i64.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_to_ui64.c $(ZISK_INC) -o build/f64_to_ui64.o
+
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/i32_to_f32.c $(ZISK_INC) -o build/i32_to_f32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/ui32_to_f32.c $(ZISK_INC) -o build/ui32_to_f32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/i64_to_f32.c $(ZISK_INC) -o build/i64_to_f32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/ui64_to_f32.c $(ZISK_INC) -o build/ui64_to_f32.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/i32_to_f64.c $(ZISK_INC) -o build/i32_to_f64.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/ui32_to_f64.c $(ZISK_INC) -o build/ui32_to_f64.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/i64_to_f64.c $(ZISK_INC) -o build/i64_to_f64.o
+	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/ui64_to_f64.c $(ZISK_INC) -o build/ui64_to_f64.o
+
 	riscv64-unknown-elf-ar rcs build/libziskfloat.a\
 		build/float.o\
 		build/f64_add.o\
@@ -125,6 +156,12 @@ zisk:
 		build/s_shiftRightJamM.o\
 		build/s_roundPackToF64.o\
 		build/s_roundPackToF32.o\
+	 	build/s_roundMoUI64.o\
+		build/s_roundMoI64.o\
+	 	build/s_roundMoUI32.o\
+		build/s_roundMoI32.o\
+		build/s_roundMToUI64.o\
+	 	build/s_roundMToI64.o\
 		build/softfloat_state.o\
 		build/s_normRoundPackToF64.o\
 		build/s_normRoundPackToF32.o\
@@ -141,7 +178,24 @@ zisk:
 		build/s_shortShiftRightJam64.o\
 		build/s_propagateNaNF64UI.o\
 		build/s_propagateNaNF32UI.o\
-		build/softfloat_raiseFlags.o
+		build/softfloat_raiseFlags.o\
+		build/f32_to_i32.o\
+		build/f32_to_ui32.o\
+		build/f32_to_i64.o\
+		build/f32_to_ui64.o\
+		build/f64_to_i32.o\
+		build/f64_to_ui32.o\
+		build/f64_to_i64.o\
+		build/f64_to_ui64.o\
+		build/i32_to_f32.o\
+		build/ui32_to_f32.o\
+		build/i64_to_f32.o\
+		build/ui64_to_f32.o\
+		build/i32_to_f64.o\
+		build/ui32_to_f64.o\
+		build/i64_to_f64.o\
+		build/ui64_to_f64.o
+
 	mkdir -p lib
 	cp build/libziskfloat.a lib/
 
