@@ -1,0 +1,24 @@
+[package]
+name = "distributed-grpc-api"
+description = "gRPC API layer for Distributed Network"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+distributed-config = { workspace = true }
+distributed-comm = { workspace = true }
+distributed-common = { workspace = true }
+
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }

@@ -37,14 +37,14 @@ members = [
     "common",
     "tools/circuit",
     "server",
-    "consensus/crates/grpc-api",
-    "consensus/crates/prover",
-    "consensus/crates/prover-service",
-    "consensus/crates/comm",
-    "consensus/crates/config",
-    "consensus/crates/coordinator",
-    "consensus/crates/coordinator-service",
-    "consensus/crates/common",
+    "distributed/crates/grpc-api",
+    "distributed/crates/prover",
+    "distributed/crates/prover-service",
+    "distributed/crates/comm",
+    "distributed/crates/config",
+    "distributed/crates/coordinator",
+    "distributed/crates/coordinator-service",
+    "distributed/crates/common",
 ]
 
 resolver = "2"
@@ -90,15 +90,15 @@ ziskclib = { path = "ziskclib" }
 ziskos = { path = "ziskos/entrypoint" }
 circuit = { path = "tools/circuit" }
 
-# Consensus crates
-consensus-grpc-api = { path = "consensus/crates/grpc-api" }
-consensus-prover = { path = "consensus/crates/prover" }
-consensus-prover-service = { path = "consensus/crates/prover-service" }
-consensus-comm = { path = "consensus/crates/comm" }
-consensus-common = { path = "consensus/crates/common" }
-consensus-config = { path = "consensus/crates/config" }
-consensus-coordinator = { path = "consensus/crates/coordinator" }
-consensus-coordinator-service = { path = "consensus/crates/coordinator-service" }
+# Distributed crates
+distributed-grpc-api = { path = "distributed/crates/grpc-api" }
+distributed-prover = { path = "distributed/crates/prover" }
+distributed-prover-service = { path = "distributed/crates/prover-service" }
+distributed-comm = { path = "distributed/crates/comm" }
+distributed-common = { path = "distributed/crates/common" }
+distributed-config = { path = "distributed/crates/config" }
+distributed-coordinator = { path = "distributed/crates/coordinator" }
+distributed-coordinator-service = { path = "distributed/crates/coordinator-service" }
 
 # Proofman
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.12.0" }
