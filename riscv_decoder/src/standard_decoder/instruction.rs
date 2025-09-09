@@ -277,7 +277,7 @@ impl Instruction {
     /// Check if this is a NOP instruction
     ///
     /// TODO: NOP is a special instance of what the spec calls hint instructions.
-    /// TODO: Add the other hint instructions.
+    /// TODO: Add the other hint instructions. See section 2.9 and 4.4 in the specs for these.
     pub fn is_nop(&self) -> bool {
         matches!(self, Instruction::ADDI { rd: 0, rs1: 0, imm: 0 })
     }
