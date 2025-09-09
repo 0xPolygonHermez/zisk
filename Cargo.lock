@@ -2841,6 +2841,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "riscv_decoder"
+version = "0.12.0"
+dependencies = [
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "rom-setup"
 version = "0.12.0"
 dependencies = [

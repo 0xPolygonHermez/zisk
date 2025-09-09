@@ -1,0 +1,12 @@
+[package]
+name = "riscv_decoder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+keywords.workspace = true
+repository.workspace = true
+categories.workspace = true
+description = "Modular RISC-V instruction decoder"
+
+[dependencies]
+thiserror = "1.0"
