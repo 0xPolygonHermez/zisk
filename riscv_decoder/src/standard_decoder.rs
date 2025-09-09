@@ -34,7 +34,7 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
         Opcode::OpImm32 => decode_op_imm_32_instruction(&encoded),
         Opcode::Op => decode_op_instruction(&encoded),
         Opcode::Op32 => decode_op_32_instruction(&encoded),
-        Opcode::Auipc => todo!(),
+        Opcode::Auipc => decode_auipc_instruction(&encoded),
         Opcode::Store => todo!(),
         Opcode::Amo => todo!(),
         Opcode::Lui => todo!(),
@@ -467,4 +467,13 @@ fn decode_op_32_instruction(encoded: &EncodedInstruction) -> Result<Instruction,
 
         _ => Err(Error::InvalidFormat),
     }
+}
+
+/// Decode AUIPC instruction
+///
+/// Uses standard U-type format (see InstructionFormat::U)
+fn decode_auipc_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let rd = encoded.rd;
+    let imm = encoded.u_immediate;
+    Ok(Instruction::AUIPC { rd, imm })
 }
