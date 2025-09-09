@@ -37,10 +37,10 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
         Opcode::Auipc => decode_auipc_instruction(&encoded),
         Opcode::Store => decode_store_instruction(&encoded),
         Opcode::Branch => decode_branch_instruction(&encoded),
+        Opcode::Jal => decode_jal_instruction(&encoded),
         Opcode::Amo => todo!(),
         Opcode::Lui => todo!(),
         Opcode::Jalr => todo!(),
-        Opcode::Jal => todo!(),
         Opcode::System => todo!(),
     }
 }
@@ -515,4 +515,13 @@ fn decode_branch_instruction(encoded: &EncodedInstruction) -> Result<Instruction
         0b111 => Ok(Instruction::BGEU { rs1, rs2, offset }),
         _ => Err(Error::InvalidFormat),
     }
+}
+
+/// Decode JAL instruction
+///
+/// Uses standard J-type format (see InstructionFormat::J)
+fn decode_jal_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let rd = encoded.rd;
+    let offset = encoded.j_immediate;
+    Ok(Instruction::JAL { rd, offset })
 }
