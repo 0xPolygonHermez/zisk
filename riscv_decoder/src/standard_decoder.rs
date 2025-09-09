@@ -31,8 +31,8 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
         Opcode::Load => decode_load_instruction(&encoded),
         Opcode::MiscMem => decode_fence_instruction(&encoded),
         Opcode::OpImm => decode_op_imm_instruction(&encoded),
+        Opcode::OpImm32 => decode_op_imm_32_instruction(&encoded),
         Opcode::Auipc => todo!(),
-        Opcode::OpImm32 => todo!(),
         Opcode::Store => todo!(),
         Opcode::Amo => todo!(),
         Opcode::Op => todo!(),
@@ -369,6 +369,40 @@ fn decode_op_imm_instruction(encoded: &EncodedInstruction) -> Result<Instruction
         }
         0b110 => Ok(Instruction::ORI { rd, rs1, imm }),
         0b111 => Ok(Instruction::ANDI { rd, rs1, imm }),
+        _ => Err(Error::InvalidFormat),
+    }
+}
+
+/// Decode OP-IMM-32 instructions (RV64I word immediate operations)
+///
+/// Uses standard I-type format (see InstructionFormat::I)
+///
+/// Note: All instructions in this function assume RV64I
+///
+/// Note: Even though these instructions are defined for RV64I,
+/// for the shift related instructions, we only use a 5-bit `shamt`
+/// because it is operating on a 32-bit word.
+fn decode_op_imm_32_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    match encoded.funct3 {
+        0b000 => {
+            Ok(Instruction::ADDIW { rd: encoded.rd, rs1: encoded.rs1, imm: encoded.i_immediate })
+        }
+        0b001 => {
+            if encoded.funct7 == 0 {
+                let shamt = encoded.shamt32;
+                Ok(Instruction::SLLIW { rd: encoded.rd, rs1: encoded.rs1, shamt })
+            } else {
+                Err(Error::InvalidFormat)
+            }
+        }
+        0b101 => {
+            let shamt = encoded.shamt32;
+            match encoded.funct7 {
+                0b0000000 => Ok(Instruction::SRLIW { rd: encoded.rd, rs1: encoded.rs1, shamt }),
+                0b0100000 => Ok(Instruction::SRAIW { rd: encoded.rd, rs1: encoded.rs1, shamt }),
+                _ => Err(Error::InvalidFormat),
+            }
+        }
         _ => Err(Error::InvalidFormat),
     }
 }
