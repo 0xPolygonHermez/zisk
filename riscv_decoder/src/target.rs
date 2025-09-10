@@ -1,5 +1,6 @@
 /// Extension outlines the extensions supported by this decoder
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum Extension {
     /// RV32I - Base integer instruction set
     RV32I,
