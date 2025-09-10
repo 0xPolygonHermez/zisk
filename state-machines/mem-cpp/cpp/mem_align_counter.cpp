@@ -129,8 +129,8 @@ void MemAlignCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData 
     total_counters.full_2 += full_2;
     total_counters.read_byte += read_byte;
     total_counters.write_byte += write_byte;
-
-    if ((full_2 + full_3 + full_5 + read_byte + write_byte) > 0) {
+    uint32_t total_counters_processed = full_2 + full_3 + full_5 + read_byte + write_byte;
+    if (total_counters_processed > 0) {
         counters.push_back({chunk_id, full_5, full_3, full_2, read_byte, write_byte});
     };
 }

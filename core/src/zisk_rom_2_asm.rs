@@ -63,6 +63,11 @@ const FCALL_RESULT_GOT: u64 = 69;
 
 const XMM_MAPPED_REGS: [u64; 16] = [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 
+const F_MEM_CLEAR_WRITE_BYTE: u64 = 1 << 37;
+const F_MEM_WRITE_SHIFT: u64 = 36;
+const F_MEM_WRITE: u64 = 1 << F_MEM_WRITE_SHIFT;
+const F_MEM_WIDTH_SHIFT: u64 = 32;
+
 #[derive(Default, Debug, Clone)]
 pub struct ZiskAsmRegister {
     is_constant: bool,   // register is a constant value known at compilation time
@@ -6478,14 +6483,14 @@ impl ZiskRom2Asm {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_ADDRESS,
-                (WIDTH << 32) | ctx.address_constant_value,
+                (WIDTH << F_MEM_WIDTH_SHIFT) | ctx.address_constant_value,
                 ctx.comment_str("aux = constant mem op")
             );
         } else {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_AUX,
-                WIDTH << 32,
+                WIDTH << F_MEM_WIDTH_SHIFT,
                 ctx.comment_str("aux = mem op mask")
             );
             *code += &format!(
@@ -6516,7 +6521,7 @@ impl ZiskRom2Asm {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_ADDRESS,
-                (WIDTH << 32) | ctx.address_constant_value,
+                (WIDTH << F_MEM_WIDTH_SHIFT) | ctx.address_constant_value,
                 ctx.comment_str("aux = constant mem op")
             );
         } else {
@@ -6524,7 +6529,7 @@ impl ZiskRom2Asm {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_AUX,
-                WIDTH << 32,
+                WIDTH << F_MEM_WIDTH_SHIFT,
                 ctx.comment_str("aux = mem op mask")
             );
             *code += &format!(
@@ -6558,7 +6563,7 @@ impl ZiskRom2Asm {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 reg_address,
-                (width << 32) + ctx.address_constant_value,
+                (width << F_MEM_WIDTH_SHIFT) + ctx.address_constant_value,
                 ctx.comment_str("aux = constant mem op")
             );
         } else {
@@ -6566,7 +6571,7 @@ impl ZiskRom2Asm {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_AUX,
-                width << 32,
+                width << F_MEM_WIDTH_SHIFT,
                 ctx.comment_str("aux = mem op mask")
             );
             *code += &format!(
@@ -6598,14 +6603,16 @@ impl ZiskRom2Asm {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_ADDRESS,
-                (WRITE << 36) + (WIDTH << 32) + ctx.address_constant_value,
+                (WRITE << F_MEM_WRITE_SHIFT)
+                    + (WIDTH << F_MEM_WIDTH_SHIFT)
+                    + ctx.address_constant_value,
                 ctx.comment_str("aux = constant mem op")
             );
         } else {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_AUX,
-                (WRITE << 36) + (WIDTH << 32),
+                (WRITE << F_MEM_WRITE_SHIFT) + (WIDTH << F_MEM_WIDTH_SHIFT),
                 ctx.comment_str("aux = mem op mask")
             );
             *code += &format!(
@@ -6630,7 +6637,7 @@ impl ZiskRom2Asm {
     }
 
     fn c_store_ind_mem_op(ctx: &mut ZiskAsmContext, code: &mut String, width: u64) {
-        // Dynamic trace value: if rest of bytes were zero, set flag on bit 37
+        // Dynamic trace value: if rest of bytes were zero, set flag on bit F_MEM_CLEAR_WRITE_BYTE
         // With this information, the mem_planner can use a specific state machine for
         // this kind of byte writes
         if width == 1 {
@@ -6643,14 +6650,14 @@ impl ZiskRom2Asm {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_ADDRESS,
-                (1u64 << 36) | (width << 32) | ctx.address_constant_value,
+                F_MEM_WRITE | (width << F_MEM_WIDTH_SHIFT) | ctx.address_constant_value,
                 ctx.comment_str("aux = constant mem op")
             );
         } else {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_AUX,
-                (1u64 << 36) | (width << 32),
+                F_MEM_WRITE | (width << F_MEM_WIDTH_SHIFT),
                 ctx.comment_str("aux = mem op mask")
             );
             *code += &format!(
@@ -6661,7 +6668,7 @@ impl ZiskRom2Asm {
             );
         }
 
-        // Dynamic trace value: if rest of bytes were zero, set flag on bit 37
+        // Dynamic trace value: if rest of bytes were zero, set flag on bit F_MEM_CLEAR_WRITE_BYTE
         if width == 1 {
             *code += &format!(
                 "\tshr {}, 8 {}\n",
@@ -6676,14 +6683,14 @@ impl ZiskRom2Asm {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_AUX,
-                1u64 << 37,
-                ctx.comment_str("aux = 1<<37")
+                F_MEM_CLEAR_WRITE_BYTE,
+                ctx.comment_str("aux = F_MEM_CLEAR_WRITE_BYTE")
             );
             *code += &format!(
                 "\tor {}, {} {}\n",
                 REG_ADDRESS,
                 REG_AUX,
-                ctx.comment_str("address |= 1<<37")
+                ctx.comment_str("address |= F_MEM_CLEAR_WRITE_BYTE")
             );
             *code += &format!("\npc_{}_rest_of_bytes_not_zero:\n", ctx.pc);
         }
@@ -6710,7 +6717,7 @@ impl ZiskRom2Asm {
         length: u64,
     ) {
         let write: u64 = if _write { 1 } else { 0 };
-        let mem_op_mask: u64 = (write << 36) | (width << 32);
+        let mem_op_mask: u64 = (write << F_MEM_WRITE_SHIFT) | (width << F_MEM_WIDTH_SHIFT);
 
         // Get a copy of the address register
         *code += &format!(
@@ -6886,7 +6893,7 @@ impl ZiskRom2Asm {
         load_size: u64,
     ) {
         // Calculate the mask
-        let mem_op_mask: u64 = (1u64 << 36) + (8u64 << 32);
+        let mem_op_mask: u64 = F_MEM_WRITE + (8u64 << F_MEM_WIDTH_SHIFT);
 
         // This index will be incremented as we insert data into mem_reads
         let mut mem_reads_index: u64 = 0;
@@ -7940,7 +7947,8 @@ impl ZiskRom2Asm {
         // Build the mask for this case
         const WIDTH: u64 = 8;
         const WRITE: u64 = 0;
-        let addr_step_mask: u64 = (WIDTH << 32) + (WRITE << 36) + (micro_step << 38);
+        let addr_step_mask: u64 =
+            (WIDTH << F_MEM_WIDTH_SHIFT) + (WRITE << F_MEM_WRITE_SHIFT) + (micro_step << 38);
 
         // Add mask to address
         *code += &format!(
@@ -8121,7 +8129,8 @@ impl ZiskRom2Asm {
         // Build the mask for this case
         const WRITE: u64 = 1;
         const MICRO_STEP: u64 = 3;
-        let addr_step_mask: u64 = (width << 32) + (WRITE << 36) + (MICRO_STEP << 40);
+        let addr_step_mask: u64 =
+            (width << F_MEM_WIDTH_SHIFT) + (WRITE << F_MEM_WRITE_SHIFT) + (MICRO_STEP << 40);
 
         // Add mask to address
         *code += &format!(
@@ -8230,7 +8239,8 @@ impl ZiskRom2Asm {
         // Build the mask for this case
         const WIDTH: u64 = 8;
         const MICRO_STEP: u64 = 2;
-        let addr_step_mask: u64 = (WIDTH << 32) + (write << 36) + (MICRO_STEP << 40);
+        let addr_step_mask: u64 =
+            (WIDTH << F_MEM_WIDTH_SHIFT) + (write << F_MEM_WRITE_SHIFT) + (MICRO_STEP << 40);
 
         // For every element
         for i in 0..buffer_size {
