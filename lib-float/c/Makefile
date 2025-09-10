@@ -11,26 +11,6 @@ ZISK_INC = -I ./SoftFloat-3e/source/include -I ./SoftFloat-3e/build/Linux-x86_64
 ZISK_CFLAGS = -march=rv64ima -mabi=lp64 -ffreestanding -nostdlib -nostartfiles -mcmodel=medany
 ZISK_ASM_CFLAGS = -march=rv64ima -mabi=lp64
 
-zisk_gcc:
-	mkdir -p build
-	gcc $(CFLAGS) -c src/float/float.c $(INC) -o build/float.o
-	gcc $(CFLAGS) -c SoftFloat-3e/source/f64_add.c $(INC) -o build/f64_add.o
-	gcc $(CFLAGS) -c SoftFloat-3e/source/s_addMagsF64.c $(INC) -o build/s_addMagsF64.o
-	gcc $(CFLAGS) -c SoftFloat-3e/source/s_subMagsF64.c $(INC) -o build/s_subMagsF64.o
-	gcc $(CFLAGS) -c SoftFloat-3e/source/s_shiftRightJam64.c $(INC) -o build/s_shiftRightJam64.o
-	gcc $(CFLAGS) -c SoftFloat-3e/source/s_roundPackToF64.c $(INC) -o build/s_roundPackToF64.o
-	gcc $(CFLAGS) -c SoftFloat-3e/source/softfloat_state.c $(INC) -o build/softfloat_state.o
-	gcc $(CFLAGS) -c SoftFloat-3e/source/s_normRoundPackToF64.c $(INC) -o build/s_normRoundPackToF64.o
-	gcc $(CFLAGS) -c SoftFloat-3e/source/s_countLeadingZeros64.c $(INC) -o build/s_countLeadingZeros64.o
-	gcc $(CFLAGS) -c SoftFloat-3e/source/s_countLeadingZeros8.c $(INC) -o build/s_countLeadingZeros8.o
-	gcc $(CFLAGS) -c SoftFloat-3e/source/8086/s_propagateNaNF64UI.c $(INC) -o build/s_propagateNaNF64UI.o
-	gcc $(CFLAGS) -c SoftFloat-3e/source/8086/softfloat_raiseFlags.c $(INC) -o build/softfloat_raiseFlags.o
-	ar rcs build/libziskfloat.a build/float.o build/f64_add.o build/s_addMagsF64.o build/s_subMagsF64.o build/s_shiftRightJam64.o build/s_propagateNaNF64UI.o build/s_roundPackToF64.o build/softfloat_raiseFlags.o build/softfloat_state.o build/s_normRoundPackToF64.o build/s_countLeadingZeros64.o build/s_countLeadingZeros8.o
-	mkdir -p lib
-	cp build/libziskfloat.a lib/
-	
-	gcc $(CFLAGS) src/main.cpp -lc build/libziskfloat.a -o build/ziskfloat -lgmp -lstdc++ -lgmpxx
-
 all:
 	mkdir -p build
 
@@ -228,3 +208,23 @@ ziskdump:
 clean:
 	rm -rf build
 	rm -rf lib
+
+zisk_gcc:
+	mkdir -p build
+	gcc $(CFLAGS) -c src/float/float.c $(INC) -o build/float.o
+	gcc $(CFLAGS) -c SoftFloat-3e/source/f64_add.c $(INC) -o build/f64_add.o
+	gcc $(CFLAGS) -c SoftFloat-3e/source/s_addMagsF64.c $(INC) -o build/s_addMagsF64.o
+	gcc $(CFLAGS) -c SoftFloat-3e/source/s_subMagsF64.c $(INC) -o build/s_subMagsF64.o
+	gcc $(CFLAGS) -c SoftFloat-3e/source/s_shiftRightJam64.c $(INC) -o build/s_shiftRightJam64.o
+	gcc $(CFLAGS) -c SoftFloat-3e/source/s_roundPackToF64.c $(INC) -o build/s_roundPackToF64.o
+	gcc $(CFLAGS) -c SoftFloat-3e/source/softfloat_state.c $(INC) -o build/softfloat_state.o
+	gcc $(CFLAGS) -c SoftFloat-3e/source/s_normRoundPackToF64.c $(INC) -o build/s_normRoundPackToF64.o
+	gcc $(CFLAGS) -c SoftFloat-3e/source/s_countLeadingZeros64.c $(INC) -o build/s_countLeadingZeros64.o
+	gcc $(CFLAGS) -c SoftFloat-3e/source/s_countLeadingZeros8.c $(INC) -o build/s_countLeadingZeros8.o
+	gcc $(CFLAGS) -c SoftFloat-3e/source/8086/s_propagateNaNF64UI.c $(INC) -o build/s_propagateNaNF64UI.o
+	gcc $(CFLAGS) -c SoftFloat-3e/source/8086/softfloat_raiseFlags.c $(INC) -o build/softfloat_raiseFlags.o
+	ar rcs build/libziskfloat.a build/float.o build/f64_add.o build/s_addMagsF64.o build/s_subMagsF64.o build/s_shiftRightJam64.o build/s_propagateNaNF64UI.o build/s_roundPackToF64.o build/softfloat_raiseFlags.o build/softfloat_state.o build/s_normRoundPackToF64.o build/s_countLeadingZeros64.o build/s_countLeadingZeros8.o
+	mkdir -p lib
+	cp build/libziskfloat.a lib/
+	
+	gcc $(CFLAGS) src/main.cpp -lc build/libziskfloat.a -o build/ziskfloat -lgmp -lstdc++ -lgmpxx

@@ -18,16 +18,34 @@ uint64_t * regs = (uint64_t *)REG_FIRST;
 uint64_t * fregs = (uint64_t *)FREG_FIRST;
 
 // Negate a float by flipping its sign bit(s)
-const uint64_t SIGN_BIT_MASK_64 = 0x8000000000000000;
-const uint64_t SIGN_BIT_MASK_32 = 0xFFFFFFFF80000000;
-#define NEG64(x) ((x) ^ SIGN_BIT_MASK_64)
-#define NEG32(x) ((x) ^ SIGN_BIT_MASK_32)
+const uint64_t F64_SIGN_BIT_MASK = 0x8000000000000000;
+const uint64_t F32_SIGN_BIT_MASK = 0xFFFFFFFF80000000;
+#define NEG64(x) ((x) ^ F64_SIGN_BIT_MASK)
+#define NEG32(x) ((x) ^ F32_SIGN_BIT_MASK)
+const uint64_t F64_EXPONENT_MASK = 0x7FF0000000000000;
+const uint64_t F32_EXPONENT_MASK = 0x7F800000;
+const uint64_t F64_MANTISSA_MASK = 0x000FFFFFFFFFFFFF;
+const uint64_t F32_MANTISSA_MASK = 0x007FFFFF;
+const uint64_t F64_QUIET_NAN_MASK = 0x0008000000000000;
+const uint64_t F32_QUIET_NAN_MASK = 0x00400000;
 
 // 1.0 and 0.0 in IEEE 754 format
 const uint64_t F64_ONE = 0x3FF0000000000000;
 const uint64_t F32_ONE = 0x3F800000;
 const uint64_t F64_ZERO = 0x0000000000000000;
 const uint32_t F32_ZERO = 0x00000000;
+
+// Plus and minus infinity in IEEE 754 format
+const uint64_t F64_MINUS_INFINITE = 0xFFF0000000000000;
+const uint64_t F64_PLUS_INFINITE = 0x7FF0000000000000;
+const uint32_t F32_MINUS_INFINITE = 0xFF800000;
+const uint32_t F32_PLUS_INFINITE = 0x7F800000;
+
+// Plus and minus zero in IEEE 754 format
+const uint64_t F64_MINUS_ZERO = 0x8000000000000000;
+const uint64_t F64_PLUS_ZERO = 0x0000000000000000;
+const uint32_t F32_MINUS_ZERO = 0x80000000;
+const uint32_t F32_PLUS_ZERO = 0x00000000;
 
 void zisk_float (void)
 {
@@ -236,28 +254,28 @@ void zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            if (fregs[rs2] & SIGN_BIT_MASK_32)
-                                fregs[rd] = fregs[rs1] | SIGN_BIT_MASK_32;
+                            if (fregs[rs2] & F32_SIGN_BIT_MASK)
+                                fregs[rd] = fregs[rs1] | F32_SIGN_BIT_MASK;
                             else
-                                fregs[rd] = fregs[rs1] & (~SIGN_BIT_MASK_32);
+                                fregs[rd] = fregs[rs1] & (~F32_SIGN_BIT_MASK);
                             break;
                         }
                         case 1 : { //("R", "fsgnjn.s"), negates sign bit of rs2 and copies rs1 to rd
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            if (fregs[rs2] & SIGN_BIT_MASK_32)
-                                fregs[rd] = fregs[rs1] & (~SIGN_BIT_MASK_32);
+                            if (fregs[rs2] & F32_SIGN_BIT_MASK)
+                                fregs[rd] = fregs[rs1] & (~F32_SIGN_BIT_MASK);
                             else
-                                fregs[rd] = fregs[rs1] | SIGN_BIT_MASK_32;
+                                fregs[rd] = fregs[rs1] | F32_SIGN_BIT_MASK;
                             break;
                         }
                         case 2 : { //("R", "fsgnjx.s"), XORs sign bits of rs1 and rs2 and copies rs1 to rd
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            if (fregs[rs2] & SIGN_BIT_MASK_32)
-                                fregs[rd] = fregs[rs1] ^ SIGN_BIT_MASK_32;
+                            if (fregs[rs2] & F32_SIGN_BIT_MASK)
+                                fregs[rd] = fregs[rs1] ^ F32_SIGN_BIT_MASK;
                             else
                                 fregs[rd] = fregs[rs1];
                             break;
@@ -272,28 +290,28 @@ void zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            if (fregs[rs2] & SIGN_BIT_MASK_64)
-                                fregs[rd] = fregs[rs1] | SIGN_BIT_MASK_64;
+                            if (fregs[rs2] & F64_SIGN_BIT_MASK)
+                                fregs[rd] = fregs[rs1] | F64_SIGN_BIT_MASK;
                             else
-                                fregs[rd] = fregs[rs1] & (~SIGN_BIT_MASK_64);
+                                fregs[rd] = fregs[rs1] & (~F64_SIGN_BIT_MASK);
                             break;
                         }
                         case 1 : { //("R", "fsgnjn.d"), negates sign bit of rs2 and copies rs1 to rd
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            if (fregs[rs2] & SIGN_BIT_MASK_64)
-                                fregs[rd] = fregs[rs1] & (~SIGN_BIT_MASK_64);
+                            if (fregs[rs2] & F64_SIGN_BIT_MASK)
+                                fregs[rd] = fregs[rs1] & (~F64_SIGN_BIT_MASK);
                             else
-                                fregs[rd] = fregs[rs1] | SIGN_BIT_MASK_64;
+                                fregs[rd] = fregs[rs1] | F64_SIGN_BIT_MASK;
                             break;
                         }
                         case 2 : { //("R", "fsgnjx.d"), XORs sign bits of rs1 and rs2 and copies rs1 to rd
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            if (fregs[rs2] & SIGN_BIT_MASK_64)
-                                fregs[rd] = fregs[rs1] ^ SIGN_BIT_MASK_64;
+                            if (fregs[rs2] & F64_SIGN_BIT_MASK)
+                                fregs[rd] = fregs[rs1] ^ F64_SIGN_BIT_MASK;
                             else
                                 fregs[rd] = fregs[rs1];
                             break;
@@ -600,7 +618,40 @@ void zisk_float (void)
                         }
                         case 1 : {
                             switch ((inst >> 20) & 0x1F) {
-                                case 0 : //("R", "fclass.s"),
+                                case 0 : { //("R", "fclass.s"),
+                                    uint64_t rd = (inst >> 7) & 0x1F;
+                                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                                    regs[rd] = 0;
+                                    if (fregs[rs1] == F32_MINUS_INFINITE)
+                                        regs[rd] |= (1 << 0);
+                                    else if (fregs[rs1] == F32_PLUS_INFINITE)
+                                        regs[rd] |= (1 << 7);
+                                    else if (fregs[rs1] == F32_MINUS_ZERO)
+                                        regs[rd] |= (1 << 3);
+                                    else if (fregs[rs1] == F32_PLUS_ZERO)
+                                        regs[rd] |= (1 << 4);
+                                    else if ( (fregs[rs1] & F32_EXPONENT_MASK) != 0 && (fregs[rs1] & F32_EXPONENT_MASK) != F32_EXPONENT_MASK ) // not zero or inf or NaN
+                                    {
+                                        if (fregs[rs1] & F32_SIGN_BIT_MASK)
+                                            regs[rd] |= (1 << 1); // negative normal
+                                        else
+                                            regs[rd] |= (1 << 6); // positive normal
+                                    }
+                                    else if ( (fregs[rs1] & F32_EXPONENT_MASK) == 0 && (fregs[rs1] & F32_MANTISSA_MASK) != 0 ) // subnormal
+                                    {
+                                        if (fregs[rs1] & F32_SIGN_BIT_MASK)
+                                            regs[rd] |= (1 << 2); // negative subnormal
+                                        else
+                                            regs[rd] |= (1 << 5); // positive subnormal
+                                    }
+                                    else if ( ((fregs[rs1] & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && ((fregs[rs1] & F32_QUIET_NAN_MASK) == 0) )
+                                        regs[rd] |= (1 << 8); // signaling NaN
+                                    else if ( ((fregs[rs1] & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && ((fregs[rs1] & F32_QUIET_NAN_MASK) != 0) )
+                                        regs[rd] |= (1 << 9); // quiet NaN
+                                    else
+                                        ; // should not happen
+                                    break;
+                                }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
                                     break;
                             }
@@ -639,7 +690,40 @@ void zisk_float (void)
                         */
                         case 1 : {
                             switch ((inst >> 20) & 0x1F) {
-                                case 0 : //("R", "fclass.d"),
+                                case 0 : { //("R", "fclass.d"),
+                                    uint64_t rd = (inst >> 7) & 0x1F;
+                                    uint64_t rs1 = (inst >> 15) & 0x1F;
+                                    regs[rd] = 0;
+                                    if (fregs[rs1] == F64_MINUS_INFINITE)
+                                        regs[rd] |= (1 << 0);
+                                    else if (fregs[rs1] == F64_PLUS_INFINITE)
+                                        regs[rd] |= (1 << 7);
+                                    else if (fregs[rs1] == F64_MINUS_ZERO)
+                                        regs[rd] |= (1 << 3);
+                                    else if (fregs[rs1] == F64_PLUS_ZERO)
+                                        regs[rd] |= (1 << 4);
+                                    else if ( (fregs[rs1] & F64_EXPONENT_MASK) != 0 && (fregs[rs1] & F64_EXPONENT_MASK) != F64_EXPONENT_MASK ) // not zero or inf or NaN
+                                    {
+                                        if (fregs[rs1] & F64_SIGN_BIT_MASK)
+                                            regs[rd] |= (1 << 1); // negative normal
+                                        else
+                                            regs[rd] |= (1 << 6); // positive normal
+                                    }
+                                    else if ( (fregs[rs1] & F64_EXPONENT_MASK) == 0 && (fregs[rs1] & F64_MANTISSA_MASK) != 0 ) // subnormal
+                                    {
+                                        if (fregs[rs1] & F64_SIGN_BIT_MASK)
+                                            regs[rd] |= (1 << 2); // negative subnormal
+                                        else
+                                            regs[rd] |= (1 << 5); // positive subnormal
+                                    }
+                                    else if ( ((fregs[rs1] & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && ((fregs[rs1] & F64_QUIET_NAN_MASK) == 0) )
+                                        regs[rd] |= (1 << 8); // signaling NaN
+                                    else if ( ((fregs[rs1] & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && ((fregs[rs1] & F64_QUIET_NAN_MASK) != 0) )
+                                        regs[rd] |= (1 << 9); // quiet NaN
+                                    else
+                                        ; // should not happen
+                                    break;
+                                }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=113 funct3=0 inst=0x{inst:x}"),
                                     break;
                             }
