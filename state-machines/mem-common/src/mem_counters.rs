@@ -9,23 +9,9 @@ use std::{
 };
 use zisk_common::ChunkId;
 
-use crate::MemHelpers;
+use crate::{MemAlignCounters, MemHelpers};
 use std::fmt;
 use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
-
-// inside a chunk no more than 2^32 access by one address
-
-#[derive(Default, Clone, Copy)]
-pub struct MemAlignCounters {
-    // full - 2 rows (non-aligned 1 address read)
-    pub full_2: u32,
-    // full - 3 rows (non-aligned 1 address write, 2 address read)
-    pub full_3: u32,
-    // full - 5 rows (non-aligned 2 address write)
-    pub full_5: u32,
-    pub read_byte: u32,
-    pub write_byte: u32,
-}
 
 #[derive(Default)]
 pub struct MemCounters {
@@ -56,11 +42,6 @@ impl fmt::Debug for MemCounters {
     }
 }
 
-impl MemAlignCounters {
-    pub fn to_array(&self) -> [u32; 5] {
-        [self.full_5, self.full_3, self.full_2, self.read_byte, self.write_byte]
-    }
-}
 impl MemCounters {
     pub fn new() -> Self {
         Self {

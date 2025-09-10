@@ -2,8 +2,8 @@ use std::mem;
 
 use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions};
 use fields::PrimeField64;
+use mem_common::MemHelpers;
 use riscv::RiscVRegisters;
-use sm_mem::MemHelpers;
 use zisk_common::{
     OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID,
 };

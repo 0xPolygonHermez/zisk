@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{MemCounters, MemCountersCursor, MemPlanCalculator};
-use mem_common::{MemModuleCheckPoint, MemModuleSegmentCheckPoint};
+use crate::{MemCountersCursor, MemPlanCalculator};
+use mem_common::{MemCounters, MemModuleCheckPoint, MemModuleSegmentCheckPoint};
 use std::cmp::min;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 pub struct MemModulePlanner {

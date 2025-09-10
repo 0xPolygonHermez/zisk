@@ -6585,14 +6585,14 @@ impl ZiskRom2Asm {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_ADDRESS,
-                (WRITE << 48) + (WIDTH << 32) + ctx.address_constant_value,
+                (WRITE << 36) + (WIDTH << 32) + ctx.address_constant_value,
                 ctx.comment_str("aux = constant mem op")
             );
         } else {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_AUX,
-                (WRITE << 48) + (WIDTH << 32),
+                (WRITE << 36) + (WIDTH << 32),
                 ctx.comment_str("aux = mem op mask")
             );
             *code += &format!(
@@ -6617,19 +6617,27 @@ impl ZiskRom2Asm {
     }
 
     fn c_store_ind_mem_op(ctx: &mut ZiskAsmContext, code: &mut String, width: u64) {
-        // Calculate the trace value on top of the address
+        // Dynamic trace value: if rest of bytes were zero, set flag on bit 37
+        // With this information, the mem_planner can use a specific state machine for
+        // this kind of byte writes
+        if width == 1 {
+            *code += &format!("\tmov {}, {} {}\n", REG_VALUE, REG_C, ctx.comment_str("value = c"));
+        }
+
+        // Calculate the fixed trace value adding write (bit 36) and width (bits 32-35) on top of
+        // the address
         if ctx.address_is_constant {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_ADDRESS,
-                (1u64 << 48) | (width << 32) | ctx.address_constant_value,
+                (1u64 << 36) | (width << 32) | ctx.address_constant_value,
                 ctx.comment_str("aux = constant mem op")
             );
         } else {
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
                 REG_AUX,
-                (1u64 << 48) | (width << 32),
+                (1u64 << 36) | (width << 32),
                 ctx.comment_str("aux = mem op mask")
             );
             *code += &format!(
@@ -6638,6 +6646,33 @@ impl ZiskRom2Asm {
                 REG_AUX,
                 ctx.comment_str("address |= mem op mask")
             );
+        }
+
+        // Dynamic trace value: if rest of bytes were zero, set flag on bit 37
+        if width == 1 {
+            *code += &format!(
+                "\tshr {}, 8 {}\n",
+                REG_VALUE,
+                ctx.comment_str("value & 0xFFFFFF00 == 0 ?")
+            );
+            *code += &format!(
+                "\tjnz pc_{}_rest_of_bytes_not_zero {}\n",
+                ctx.pc,
+                ctx.comment_str("aux & 0xFFFFFF00 != 0 ?")
+            );
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_AUX,
+                1u64 << 37,
+                ctx.comment_str("aux = 1<<37")
+            );
+            *code += &format!(
+                "\tor {}, {} {}\n",
+                REG_ADDRESS,
+                REG_AUX,
+                ctx.comment_str("address |= 1<<37")
+            );
+            *code += &format!("\npc_{}_rest_of_bytes_not_zero:\n", ctx.pc);
         }
 
         // Copy read data into mem_reads_address and increment it
@@ -6662,7 +6697,7 @@ impl ZiskRom2Asm {
         length: u64,
     ) {
         let write: u64 = if _write { 1 } else { 0 };
-        let mem_op_mask: u64 = (write << 48) | (width << 32);
+        let mem_op_mask: u64 = (write << 36) | (width << 32);
 
         // Get a copy of the address register
         *code += &format!(
@@ -6838,7 +6873,7 @@ impl ZiskRom2Asm {
         load_size: u64,
     ) {
         // Calculate the mask
-        let mem_op_mask: u64 = (1u64 << 48) + (8u64 << 32);
+        let mem_op_mask: u64 = (1u64 << 36) + (8u64 << 32);
 
         // This index will be incremented as we insert data into mem_reads
         let mut mem_reads_index: u64 = 0;

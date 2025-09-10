@@ -4,6 +4,7 @@ use zisk_common::{CheckPoint, ChunkId, Plan, SegmentId};
 
 pub fn save_plans(plans: &[Plan], filename: &str) {
     let path = env::var("BUS_DATA_DIR").unwrap_or("tmp/bus_data".to_string());
+    std::fs::create_dir_all(&path).unwrap();
 
     let mut content = String::new();
     for plan in plans {

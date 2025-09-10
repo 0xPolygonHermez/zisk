@@ -6,14 +6,14 @@
 
 MemCountAndPlan::MemCountAndPlan() {
     context = std::make_shared<MemContext>();
-
+    sem_init(&sem_mem_align_created, 0, 0);
 #ifdef MEM_STATS_ACTIVE
     mem_stats = new MemStats();
 #endif
 }
 
 MemCountAndPlan::~MemCountAndPlan() {
-
+    
     // Call clear
     clear();
 
@@ -81,6 +81,9 @@ void MemCountAndPlan::execute(void) {
     parallel_execute = std::make_unique<std::thread>(&MemCountAndPlan::detach_execute, this);
 }
 
+void MemCountAndPlan::detach_execute_mem_align_counter() {
+    mem_align_counter->execute();
+}   
 void MemCountAndPlan::count_phase() {
 
 #ifdef MEM_STATS_ACTIVE
@@ -96,11 +99,18 @@ void MemCountAndPlan::count_phase() {
     for (int i = 0; i < MAX_THREADS; ++i) {
         threads.emplace_back([this, i](){count_workers[i]->execute();});
     }
-    threads.emplace_back([this](){ mem_align_counter->execute();});
+    // threads.emplace_back([this](){ mem_align_counter->execute();});
+    mem_align_execute = std::make_unique<std::thread>(&MemCountAndPlan::detach_execute_mem_align_counter, this);
+    sem_post(&sem_mem_align_created);
 
     for (auto& t : threads) {
         t.join();
     }
+    // No wait for mem_align_counter here, wait in detach_execute
+    if (mem_align_execute && mem_align_execute->joinable()) {
+        mem_align_execute->join();
+    }
+
     uint64_t max_tot_wait_us = 0;
     uint64_t tot_wait_us = 0;
     uint32_t max_used_slots = 0;
@@ -113,11 +123,6 @@ void MemCountAndPlan::count_phase() {
             max_used_slots = count_workers[index]->get_used_slots();
         }
     }
-    // printf("MemCountAndPlan wait_avg(ms): %ld max_wait(ms): %ld ms threads: %d max_used_slots: %04.2f%%\n", 
-    //         (tot_wait_us >> THREAD_BITS)/1000, 
-    //         max_tot_wait_us/1000, 
-    //         1 << THREAD_BITS,
-    //         max_used_slots * 100.0 / ADDR_SLOTS);
     t_count_us = (uint32_t) (get_usec() - init);
 
 #ifdef MEM_STATS_ACTIVE
@@ -159,22 +164,11 @@ void MemCountAndPlan::plan_phase() {
     }
     t_plan_us = (uint32_t) (get_usec() - init);
 
-    // printf("RAM segments: %ld\n", segments[RAM_ID].size());
-    // segments[RAM_ID].debug();
-
     segments[ROM_ID].clear();
     rom_data_planner->collect_segments(segments[ROM_ID]);
-    // printf("ROM segments: %ld\n", segments[ROM_ID].size());
-    // segments[ROM_ID].debug();
-    // printf("ROM segments END\n");
 
     segments[INPUT_ID].clear();
     input_data_planner->collect_segments(segments[INPUT_ID]);
-    // printf("INPUT segments: %ld\n", segments[INPUT_ID].size());
-    // segments[INPUT_ID].debug();
-    
-    // printf("MEM_ALIGN segments\n");
-    // mem_align_counter->debug();
 
 #ifdef MEM_STATS_ACTIVE
     // Add stats for plan phase
@@ -222,7 +216,7 @@ void MemCountAndPlan::stats() {
     printf("plan_phase: %04.2f ms\n", t_plan_us / 1000.0);
 }
 
-MemCountAndPlan *create_mem_count_and_plan(void) {
+MemCountAndPlan *create_mem_count_and_plan(void) { 
     MemCountAndPlan *mcp = new MemCountAndPlan();
     mcp->prepare();
     return mcp;
@@ -273,6 +267,11 @@ void set_completed_mem_count_and_plan(MemCountAndPlan *mcp)
     mcp->set_completed();
 }
 
+void wait_mem_align_counters(MemCountAndPlan *mcp)
+{
+    mcp->wait_mem_align_counters();
+}
+
 void wait_mem_count_and_plan(MemCountAndPlan *mcp)
 {
     mcp->wait();
@@ -290,22 +289,41 @@ const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t
     return segment->get_chunks();
 }
 
-const MemAlignCheckPoint *get_mem_align_check_points(MemCountAndPlan *mcp, uint32_t &count)
+const MemAlignChunkCounters *get_mem_align_counters(MemCountAndPlan *mcp, uint32_t &count)
 {
     count = mcp->mem_align_counter->size();
     if (count == 0) {
         return nullptr;
     }
-    return mcp->mem_align_counter->get_checkpoints();
+    return mcp->mem_align_counter->get_counters();
+}
+
+const MemAlignChunkCounters *get_mem_align_total_counters(MemCountAndPlan *mcp)
+{
+    return mcp->mem_align_counter->get_total_counters();
+}
+
+void MemCountAndPlan::wait_mem_align_counters() {
+    while (sem_wait(&sem_mem_align_created) < 0) {
+        if (errno != EINTR) {
+            throw std::runtime_error("MemContext::wait_mem_align_counters: sem_wait error");
+        }
+    }
+
+    try {
+        if (mem_align_execute && mem_align_execute->joinable()) {
+            mem_align_execute->join();
+        }       
+    } catch (const std::exception &e) {
+        printf("Exception mem_align_execute in wait: %s\n", e.what());
+    }
 }
 
 void MemCountAndPlan::wait() {
     try {
         parallel_execute->join();
-        // delete parallel_execute;
-        // parallel_execute = nullptr;
     } catch (const std::exception &e) {
-        printf("Exception in wait: %s\n", e.what());
+        printf("Exception parallel_execute wait: %s\n", e.what());
     }
 }
 
@@ -318,11 +336,12 @@ void MemCountAndPlan::detach_execute() {
 }
 
 
-uint64_t get_mem_stats_len(MemCountAndPlan * mcp)
+uint64_t get_mem_stats_len(MemCountAndPlan *mcp)
 {
 #ifdef MEM_STATS_ACTIVE
     return mcp->mem_stats->stats.size();
 #else
+    (void)mcp; // To avoid unused parameter warning
     return 0; // If MEM_STATS_ACTIVE is not defined, return 0
 #endif // MEM_STATS_ACTIVE
 }
@@ -332,6 +351,7 @@ uint64_t get_mem_stats_ptr(MemCountAndPlan * mcp)
 #ifdef MEM_STATS_ACTIVE
     return (uint64_t)mcp->mem_stats->stats.data();
 #else
+    (void)mcp; // To avoid unused parameter warning
     return 0; // If MEM_STATS_ACTIVE is not defined, return 0
 #endif // MEM_STATS_ACTIVE
 }
