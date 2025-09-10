@@ -40,7 +40,7 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
         Opcode::Jal => decode_jal_instruction(&encoded),
         Opcode::Jalr => decode_jalr_instruction(&encoded),
         Opcode::Lui => decode_lui_instruction(&encoded),
-        Opcode::Amo => todo!(),
+        Opcode::Amo => decode_amo_instruction(&encoded),
         Opcode::System => todo!(),
     }
 }
@@ -546,4 +546,45 @@ fn decode_lui_instruction(encoded: &EncodedInstruction) -> Result<Instruction, E
     let rd = encoded.rd;
     let imm = encoded.u_immediate;
     Ok(Instruction::LUI { rd, imm })
+}
+
+/// Decode AMO (atomic) instructions
+///
+/// Uses standard R-type format (see InstructionFormat::R)
+fn decode_amo_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let rd = encoded.rd;
+    let rs1 = encoded.rs1;
+    let rs2 = encoded.rs2;
+    let aq = encoded.aq;
+    let rl = encoded.rl;
+
+    match (encoded.funct3, encoded.funct5) {
+        // Requires RV32A -- Word atomic operations
+        (0b010, 0b00010) => Ok(Instruction::LR_W { rd, rs1, aq, rl }),
+        (0b010, 0b00011) => Ok(Instruction::SC_W { rd, rs1, rs2, aq, rl }),
+        (0b010, 0b00001) => Ok(Instruction::AMOSWAP_W { rd, rs1, rs2, aq, rl }),
+        (0b010, 0b00000) => Ok(Instruction::AMOADD_W { rd, rs1, rs2, aq, rl }),
+        (0b010, 0b00100) => Ok(Instruction::AMOXOR_W { rd, rs1, rs2, aq, rl }),
+        (0b010, 0b01100) => Ok(Instruction::AMOAND_W { rd, rs1, rs2, aq, rl }),
+        (0b010, 0b01000) => Ok(Instruction::AMOOR_W { rd, rs1, rs2, aq, rl }),
+        (0b010, 0b10000) => Ok(Instruction::AMOMIN_W { rd, rs1, rs2, aq, rl }),
+        (0b010, 0b10100) => Ok(Instruction::AMOMAX_W { rd, rs1, rs2, aq, rl }),
+        (0b010, 0b11000) => Ok(Instruction::AMOMINU_W { rd, rs1, rs2, aq, rl }),
+        (0b010, 0b11100) => Ok(Instruction::AMOMAXU_W { rd, rs1, rs2, aq, rl }),
+
+        // Requires RV64A Doubleword atomic operations
+        (0b011, 0b00010) => Ok(Instruction::LR_D { rd, rs1, aq, rl }),
+        (0b011, 0b00011) => Ok(Instruction::SC_D { rd, rs1, rs2, aq, rl }),
+        (0b011, 0b00001) => Ok(Instruction::AMOSWAP_D { rd, rs1, rs2, aq, rl }),
+        (0b011, 0b00000) => Ok(Instruction::AMOADD_D { rd, rs1, rs2, aq, rl }),
+        (0b011, 0b00100) => Ok(Instruction::AMOXOR_D { rd, rs1, rs2, aq, rl }),
+        (0b011, 0b01100) => Ok(Instruction::AMOAND_D { rd, rs1, rs2, aq, rl }),
+        (0b011, 0b01000) => Ok(Instruction::AMOOR_D { rd, rs1, rs2, aq, rl }),
+        (0b011, 0b10000) => Ok(Instruction::AMOMIN_D { rd, rs1, rs2, aq, rl }),
+        (0b011, 0b10100) => Ok(Instruction::AMOMAX_D { rd, rs1, rs2, aq, rl }),
+        (0b011, 0b11000) => Ok(Instruction::AMOMINU_D { rd, rs1, rs2, aq, rl }),
+        (0b011, 0b11100) => Ok(Instruction::AMOMAXU_D { rd, rs1, rs2, aq, rl }),
+
+        _ => Err(Error::InvalidFormat),
+    }
 }
