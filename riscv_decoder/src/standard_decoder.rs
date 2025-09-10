@@ -39,7 +39,7 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
         Opcode::Branch => decode_branch_instruction(&encoded),
         Opcode::Jal => decode_jal_instruction(&encoded),
         Opcode::Jalr => decode_jalr_instruction(&encoded),
-        Opcode::Lui => todo!(),
+        Opcode::Lui => decode_lui_instruction(&encoded),
         Opcode::Amo => todo!(),
         Opcode::System => todo!(),
     }
@@ -537,4 +537,13 @@ fn decode_jalr_instruction(encoded: &EncodedInstruction) -> Result<Instruction, 
     let rs1 = encoded.rs1;
     let offset = encoded.i_immediate;
     Ok(Instruction::JALR { rd, rs1, offset })
+}
+
+/// Decode LUI instruction
+///
+/// Uses standard U-type format (see InstructionFormat::U)
+fn decode_lui_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let rd = encoded.rd;
+    let imm = encoded.u_immediate;
+    Ok(Instruction::LUI { rd, imm })
 }
