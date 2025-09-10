@@ -77,6 +77,20 @@ impl RiscvInstruction {
         self.inst == "addi" && self.rd == 0 && self.rs1 == 0 && self.imm == 0
     }
 
+    /// Creates a HALT instruction
+    pub fn halt(rvinst: u32) -> Self {
+        Self {
+            rvinst,
+            t: "I".to_string(),
+            inst: "halt".to_string(),
+            rd: 0,
+            rs1: 0,
+            rs2: 0,
+            imm: 0,
+            ..Default::default()
+        }
+    }
+
     /// Creates a human-readable string containing RISCV data fields that are non-zero
     pub fn to_text(&self) -> String {
         let mut s = String::new();

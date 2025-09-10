@@ -27,6 +27,7 @@ use std::{
 use zisk_common::ExecutorStatsEvent;
 use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
 use zisk_pil::VIRTUAL_TABLE_AIR_IDS;
+use zstd::stream::write::Encoder;
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -123,8 +124,11 @@ pub struct ZiskProve {
     #[clap(short = 'c', long)]
     pub chunk_size_bits: Option<u64>,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
+
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskProve {
@@ -295,6 +299,7 @@ impl ZiskProve {
             Some(mpi_context.local_rank),
             self.port,
             self.unlock_mapped_memory,
+            self.shared_tables,
         )
         .expect("Failed to initialize witness library");
 
@@ -370,11 +375,31 @@ impl ZiskProve {
                 let log_path = self.output_dir.join("result.json");
                 ProofLog::write_json_log(&log_path, &logs)
                     .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
-                // Save the vadcop final proof
+
+                // Save the uncompressed vadcop final proof
                 let output_file_path = self.output_dir.join("vadcop_final_proof.bin");
-                // write a Vec<u64> to a bin file stored in output_file_path
+                let vadcop_proof = vadcop_final_proof.unwrap();
                 let mut file = File::create(output_file_path)?;
-                file.write_all(cast_slice(&vadcop_final_proof.unwrap()))?;
+                file.write_all(cast_slice(&vadcop_proof))?;
+
+                // Save the compressed vadcop final proof using zstd (fastest compression level)
+                let compressed_output_path =
+                    self.output_dir.join("vadcop_final_proof.compressed.bin");
+                let compressed_file = File::create(&compressed_output_path)?;
+                let mut encoder = Encoder::new(compressed_file, 1)?;
+                encoder.write_all(cast_slice(&vadcop_proof))?;
+                encoder.finish()?;
+
+                let original_size = vadcop_proof.len() * 8;
+                let compressed_size = std::fs::metadata(&compressed_output_path)?.len();
+                let compression_ratio = compressed_size as f64 / original_size as f64;
+
+                println!("Vadcop final proof saved:");
+                println!("  Original: {} bytes", original_size);
+                println!(
+                    "  Compressed: {} bytes (ratio: {:.2}x)",
+                    compressed_size, compression_ratio
+                );
             }
 
             // Store the stats in stats.json

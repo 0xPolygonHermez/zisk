@@ -12,6 +12,7 @@ use std::thread::JoinHandle;
 use std::{fs::File, path::PathBuf};
 use witness::WitnessLibrary;
 use zisk_common::{ExecutorStats, ProofLog};
+use zstd::stream::write::Encoder;
 
 use crate::{
     ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode, ZiskService,
@@ -95,7 +96,7 @@ impl ZiskServiceProveHandler {
                         )>()
                         .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
                         .expect("Failed to downcast execution result");
-
+                    proofman.set_barrier();
                     let elapsed = elapsed.as_secs_f64();
                     tracing::info!("");
                     tracing::info!(
@@ -127,14 +128,37 @@ impl ZiskServiceProveHandler {
                         ProofLog::write_json_log(&log_path, &logs)
                             .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))
                             .expect("Failed to generate proof");
-                        // Save the vadcop final proof
-                        let proof_path = request
+                        // Save the uncompressed vadcop final proof
+                        let output_file_path = request
                             .folder
                             .join(format!("{}-vadcop_final_proof.bin", request.prefix));
-                        // write a Vec<u64> to a bin file stored in output_file_path
-                        let mut file = File::create(proof_path).expect("Error while creating file");
-                        file.write_all(cast_slice(&vadcop_final_proof.unwrap()))
-                            .expect("Error while writing to file");
+
+                        let vadcop_proof = vadcop_final_proof.unwrap();
+                        let proof_data = cast_slice(&vadcop_proof);
+                        let mut file =
+                            File::create(&output_file_path).expect("Error while creating file");
+                        file.write_all(proof_data).expect("Error while writing to file");
+
+                        // Save the compressed vadcop final proof using zstd (fastest compression level)
+                        let compressed_output_path = request
+                            .folder
+                            .join(format!("{}-vadcop_final_proof.compressed.bin", request.prefix));
+                        let compressed_file = File::create(&compressed_output_path).unwrap();
+                        let mut encoder = Encoder::new(compressed_file, 1).unwrap();
+                        encoder.write_all(proof_data).unwrap();
+                        encoder.finish().unwrap();
+
+                        let original_size = vadcop_proof.len() * 8;
+                        let compressed_size =
+                            std::fs::metadata(&compressed_output_path).unwrap().len();
+                        let compression_ratio = compressed_size as f64 / original_size as f64;
+
+                        println!("Vadcop final proof saved:");
+                        println!("  Original: {} bytes", original_size);
+                        println!(
+                            "  Compressed: {} bytes (ratio: {:.2}x)",
+                            compressed_size, compression_ratio
+                        );
                     }
                 }
                 is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -157,5 +181,23 @@ impl ZiskServiceProveHandler {
             }),
             Some(handle),
         )
+    }
+    pub fn process_handle(request: ZiskProveRequest, proofman: Arc<ProofMan<Goldilocks>>) {
+        proofman
+            .generate_proof_from_lib(
+                Some(request.input),
+                ProofOptions::new(
+                    false,
+                    request.aggregation,
+                    request.final_snark,
+                    request.verify_proofs,
+                    request.minimal_memory,
+                    false,
+                    request.folder.clone(),
+                ),
+            )
+            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))
+            .expect("Failed to generate proof");
+        proofman.set_barrier();
     }
 }

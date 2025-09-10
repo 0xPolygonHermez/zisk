@@ -31,6 +31,7 @@ colored = { workspace = true }
 fields = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
+proofman-verifier = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
@@ -38,6 +39,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 libloading = { workspace = true }
 
+zstd = "0.13"
 bytemuck = "1.23.1"
 clap = { version = "4.5.7", features = ["derive", "env"] }
 dirs = "6"
@@ -62,6 +64,7 @@ default = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
 gpu = []
 stats = []
+verify = ["fields/verify"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }
