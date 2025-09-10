@@ -3,7 +3,7 @@ use async_stream::stream;
 use distributed_comm::CommManager;
 use distributed_common::{ComputeCapacity, ProverId};
 use distributed_config::Config;
-use distributed_coordinator::Coordinator;
+use crate::Coordinator;
 use distributed_grpc_api::{distributed_api_server::*, *};
 
 use chrono::{DateTime, Utc};

@@ -1,9 +1,8 @@
-mod handler_prove_block;
-mod handler_server;
-mod service;
-
 use anyhow::Result;
 use clap::Parser;
+
+mod handler_prove_block;
+mod handler_server;
 
 #[derive(Parser, Debug)]
 #[command(name = "consensus-server")]

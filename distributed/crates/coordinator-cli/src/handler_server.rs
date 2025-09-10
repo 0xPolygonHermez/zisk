@@ -1,7 +1,6 @@
-use crate::service::ConsensusService;
 use anyhow::Result;
 use distributed_config::Config;
-use distributed_coordinator::shutdown::create_shutdown_signal;
+use distributed_coordinator::{shutdown::create_shutdown_signal, ConsensusService};
 use distributed_grpc_api::distributed_api_server::DistributedApiServer;
 use std::net::TcpListener;
 use tonic::transport::Server;

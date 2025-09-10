@@ -11,6 +11,7 @@ proofman = { workspace = true }
 distributed-grpc-api = { workspace = true }
 distributed-config = { workspace = true }
 distributed-common = { workspace = true }
+distributed-comm = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -21,5 +22,11 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 futures = { workspace = true }
+tonic = { workspace = true }
+prost-types = { workspace = true }
+
 signal-hook = { version = "0.3" }
 signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
+
+futures-util = "0.3"
+async-stream = "0.3"

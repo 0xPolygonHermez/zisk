@@ -1121,47 +1121,40 @@ name = "distributed-coordinator"
 version = "0.11.0"
 dependencies = [
  "anyhow",
+ "async-stream",
  "chrono",
+ "distributed-comm",
  "distributed-common",
  "distributed-config",
  "distributed-grpc-api",
  "futures",
+ "futures-util",
  "proofman",
+ "prost-types",
  "serde",
  "serde_json",
  "signal-hook",
  "signal-hook-tokio",
  "thiserror 2.0.16",
  "tokio",
+ "tonic",
  "tracing",
  "uuid",
 ]
 
 [[package]]
-name = "distributed-coordinator-service"
+name = "distributed-coordinator-cli"
 version = "0.11.0"
 dependencies = [
  "anyhow",
- "async-stream",
- "chrono",
  "clap",
- "distributed-comm",
  "distributed-common",
  "distributed-config",
  "distributed-coordinator",
  "distributed-grpc-api",
- "futures-util",
- "prost",
- "prost-types",
- "serde",
- "serde_json",
  "tokio",
- "tokio-stream",
  "tonic",
- "tonic-prost",
- "tonic-prost-build",
  "tracing",
- "uuid",
  "witness",
 ]
 
