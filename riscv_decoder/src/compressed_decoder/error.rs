@@ -13,6 +13,6 @@ pub enum Error {
     #[error("Instruction not supported on target configuration")]
     UnsupportedOnTarget,
 
-    #[error("Not a compressed instruction (bits [1:0] = 11)")]
-    NotCompressed,
+    #[error("Opcode not supported by target. Opcode field is {opcode_bits}")]
+    UnsupportedOpcode { opcode_bits: u8 },
 }

@@ -1,7 +1,10 @@
 mod error;
 mod instruction;
+mod opcode;
 
-use crate::{compressed_decoder::instruction::Instruction, Error};
+use crate::compressed_decoder::opcode::Opcode;
+pub use error::Error;
+pub use instruction::Instruction;
 
 /// IALIGN_BITS refers to the instruction alignment constraint in bits.
 ///
@@ -23,15 +26,27 @@ pub fn is_compressed(bits: u16) -> bool {
     (bits & MASK2) != 0x3
 }
 
-pub struct CompressedInstruction;
+/// Decode a 16-bit compressed RISC-V instruction
+pub fn decode_compressed_instruction(bits: u16) -> Result<Instruction, Error> {
+    let encoded = EncodedInstruction::new(bits);
 
-impl From<CompressedInstruction> for crate::Instruction {
-    fn from(value: CompressedInstruction) -> Self {
-        todo!()
+    let opcode = Opcode::from_bits(encoded.opcode)
+        .ok_or(Error::UnsupportedOpcode { opcode_bits: encoded.opcode })?;
+
+    match opcode {
+        Opcode::Quadrant0 => todo!(),
+        Opcode::Quadrant1 => todo!(),
+        Opcode::Quadrant2 => todo!(),
     }
 }
 
-/// Decode a 16-bit compressed RISC-V instruction
-pub fn decode_compressed_instruction(bits: u16) -> Result<Instruction, Error> {
-    todo!()
+// TODO:
+pub struct EncodedInstruction {
+    opcode: u8,
+}
+
+impl EncodedInstruction {
+    pub fn new(bits: u16) -> Self {
+        todo!()
+    }
 }
