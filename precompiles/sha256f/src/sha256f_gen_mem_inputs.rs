@@ -97,7 +97,6 @@ pub fn skip_sha256f_mem_inputs(
     let read_params = 2;
     let write_params = 1;
     let chunks_per_param = [4usize, 8, 4];
-    let params_count = read_params + write_params;
 
     for iparam in 0..indirect_params {
         let addr = addr_main + iparam as u32 * 8;
@@ -108,13 +107,11 @@ pub fn skip_sha256f_mem_inputs(
         }
     }
 
-    for (iparam, &chunks) in
-        chunks_per_param.iter().enumerate().take(params_count).skip(read_params)
-    {
-        let param_index = iparam - read_params;
+    for (iparam, &chunks) in chunks_per_param.iter().enumerate().take(read_params + write_params) {
+        let is_write = iparam >= read_params;
+        let param_index = if is_write { iparam - read_params } else { iparam };
         let param_addr = data[OPERATION_BUS_DATA_SIZE + param_index] as u32;
 
-        // For writes, current_param_offset is: chunks * param_index
         for ichunk in 0..chunks {
             let addr = param_addr + ichunk as u32 * 8;
             for mem_collector in mem_collectors_info {

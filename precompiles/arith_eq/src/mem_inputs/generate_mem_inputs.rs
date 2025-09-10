@@ -90,12 +90,7 @@ pub fn skip_mem_inputs(
         }
     }
 
-    // Check all param addresses (writes only, like in your sha/keccak skip)
     for iparam in 0..params_count {
-        let is_write = iparam >= config.read_params;
-        if !is_write {
-            continue; // skip reads, only check writes
-        }
         let param_index = if config.rewrite_params && iparam >= config.read_params {
             iparam - config.read_params
         } else {
