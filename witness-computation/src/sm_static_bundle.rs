@@ -4,6 +4,7 @@ use data_bus::{DataBus, DataBusTrait};
 use executor::SMBundle;
 use fields::PrimeField64;
 use precomp_arith_eq::ArithEqManager;
+use precomp_arith_eq_384::ArithEq384Manager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
 use proofman_common::ProofCtx;
@@ -20,7 +21,7 @@ use executor::NestedDeviceMetricsList;
 
 use crate::StaticDataBus;
 
-const NUM_SM: usize = 8;
+const NUM_SM: usize = 9;
 const NUM_SM_WITHOUT_MAIN: usize = NUM_SM - 1;
 
 const _MAIN_SM_ID: usize = 0;
@@ -30,7 +31,8 @@ const BINARY_SM_ID: usize = 3;
 const ARITH_SM_ID: usize = 4;
 const KECCAK_SM_ID: usize = 5;
 const SHA256_SM_ID: usize = 6;
-const ARITH_EQ_SM_ID: usize = NUM_SM - 1;
+const ARITH_EQ_SM_ID: usize = 7;
+const ARITH_EQ_384_SM_ID: usize = NUM_SM - 1;
 
 pub struct StaticSMBundle<F: PrimeField64> {
     process_only_operation_bus: bool,
@@ -41,6 +43,7 @@ pub struct StaticSMBundle<F: PrimeField64> {
     keccakf_sm: Arc<KeccakfManager<F>>,
     sha256f_sm: Arc<Sha256fManager<F>>,
     arith_eq_sm: Arc<ArithEqManager<F>>,
+    arith_eq_384_sm: Arc<ArithEq384Manager<F>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
@@ -54,6 +57,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         keccakf_sm: Arc<KeccakfManager<F>>,
         sha256f_sm: Arc<Sha256fManager<F>>,
         arith_eq_sm: Arc<ArithEqManager<F>>,
+        arith_eq_384_sm: Arc<ArithEq384Manager<F>>,
     ) -> Self {
         Self {
             process_only_operation_bus,
@@ -65,6 +69,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             keccakf_sm,
             sha256f_sm,
             arith_eq_sm,
+            arith_eq_384_sm,
         }
     }
 }
@@ -84,6 +89,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
             self.keccakf_sm.build_planner().plan(it.next().unwrap()),
             self.sha256f_sm.build_planner().plan(it.next().unwrap()),
             self.arith_eq_sm.build_planner().plan(it.next().unwrap()),
+            self.arith_eq_384_sm.build_planner().plan(it.next().unwrap()),
         ]
     }
 
@@ -95,6 +101,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         self.keccakf_sm.configure_instances(pctx, &plannings[KECCAK_SM_ID - 1]);
         self.sha256f_sm.configure_instances(pctx, &plannings[SHA256_SM_ID - 1]);
         self.arith_eq_sm.configure_instances(pctx, &plannings[ARITH_EQ_SM_ID - 1]);
+        self.arith_eq_384_sm.configure_instances(pctx, &plannings[ARITH_EQ_384_SM_ID - 1]);
     }
 
     fn build_instance(&self, idx: usize, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
@@ -108,6 +115,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
             KECCAK_SM_ID => self.keccakf_sm.build_instance(ictx),
             SHA256_SM_ID => self.sha256f_sm.build_instance(ictx),
             ARITH_EQ_SM_ID => self.arith_eq_sm.build_instance(ictx),
+            ARITH_EQ_384_SM_ID => self.arith_eq_384_sm.build_instance(ictx),
             _ => unreachable!(),
         }
     }
@@ -123,6 +131,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
             self.keccakf_sm.build_keccakf_counter(),
             self.sha256f_sm.build_sha256f_counter(),
             self.arith_eq_sm.build_arith_eq_counter(),
+            self.arith_eq_384_sm.build_arith_eq_384_counter(),
         )
     }
 
@@ -177,6 +186,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                     add_generator!(keccakf_sm, KeccakfManager<F>);
                     add_generator!(sha256f_sm, Sha256fManager<F>);
                     add_generator!(arith_eq_sm, ArithEqManager<F>);
+                    add_generator!(arith_eq_384_sm, ArithEq384Manager<F>);
 
                     Some(data_bus)
                 } else {

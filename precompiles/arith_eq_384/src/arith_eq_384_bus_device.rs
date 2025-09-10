@@ -185,7 +185,7 @@ impl BusDevice<u64> for ArithEq384CounterInputGen {
             }
 
             _ => {
-                panic!("ArithEq384CounterInputGen: Unsupported data length {}", data.len(),);
+                panic!("ArithEq384CounterInputGen: Unsupported data length {}", data.len());
             }
         }
 

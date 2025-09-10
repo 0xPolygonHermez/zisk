@@ -12,8 +12,10 @@ pub const OPERATION_BUS_ID: BusId = BusId(0);
 /// The size of the operation data payload.
 pub const OPERATION_BUS_DATA_SIZE: usize = 4; // op,op_type,a,b
 
-// worst case: 4 x 256 + 2 addr = 4 * 4 + 2 = 18 (secp256k1_add, arith_256_mod)
-// arith_256: 3 x 256 + 2 addr = 3 * 4 + 2 = 14
+// worst case:
+// arith_256:     3 x 256 + 2 addr = 3 * 4 + 2 = 14
+// arith_256_mod: 4 x 256 + 2 addr = 4 * 4 + 2 = 18
+// secp256k1_add: 4 x 256 + 2 addr = 4 * 4 + 2 = 18
 // secp256k1_dbl: 2 x 256 + 1 addr = 2 * 4 + 1 = 9
 // TODO: optimize and send only one value 64 upto 32-bits addr
 
@@ -61,6 +63,9 @@ pub const OPERATION_BUS_BLS12_381_COMPLEX_SUB_DATA_SIZE: usize =
     OPERATION_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_384_BITS_SIZE;
 pub const OPERATION_BUS_BLS12_381_COMPLEX_MUL_DATA_SIZE: usize =
     OPERATION_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_384_BITS_SIZE;
+
+// 4 bus_data + 5 addr + 4 x 384 = 4 + 5 + 4 * 6 = 33
+pub const MAX_OPERATION_DATA_SIZE: usize = OPERATION_BUS_ARITH_384_MOD_DATA_SIZE;
 
 /// Index of the operation value in the operation data payload.
 pub const OP: usize = 0;
@@ -116,8 +121,6 @@ pub enum ExtOperationData<D> {
     OperationBls12_381ComplexSubData(OperationBls12_381ComplexSubData<D>),
     OperationBls12_381ComplexMulData(OperationBls12_381ComplexMulData<D>),
 }
-
-pub const MAX_OPERATION_DATA_SIZE: usize = 29; // 5 + 25 for keccak
 
 const KECCAK_OP: u8 = ZiskOp::Keccak.code();
 const SHA256_OP: u8 = ZiskOp::Sha256.code();

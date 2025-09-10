@@ -9,6 +9,7 @@ use executor::{/*DynSMBundle,*/ ZiskExecutor};
 use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
+use precomp_arith_eq_384::ArithEq384Manager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
 use proofman::register_std;
@@ -102,6 +103,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let keccakf_sm = KeccakfManager::new(wcm.get_sctx(), std.clone());
         let sha256f_sm = Sha256fManager::new(std.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
+        let arith_eq_384_sm = ArithEq384Manager::new(std.clone());
 
         // let sm_bundle = DynSMBundle::new(vec![
         //     mem_sm.clone(),
@@ -111,6 +113,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         //     keccakf_sm.clone(),
         //     sha256f_sm.clone(),
         //     arith_eq_sm.clone(),
+        //     arith_eq_384_sm.clone(),
         // ]);
 
         let sm_bundle = StaticSMBundle::new(
@@ -123,6 +126,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             keccakf_sm.clone(),
             sha256f_sm.clone(),
             arith_eq_sm.clone(),
+            arith_eq_384_sm.clone(),
         );
 
         // Step 5: Create the executor and register the secondary state machines
