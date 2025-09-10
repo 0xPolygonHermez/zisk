@@ -14,15 +14,15 @@ _start:
     call _zisk_main
     
     # Handle return from main
-    csrr t0, marchid
-    li   t1, 0xFFFEEEE
-    beq  t0, t1, 1f
+    # csrr t0, 0xf12
+    # li   t1, 0xFFFEEEE
+    # beq  t0, t1, 1f
     
     # QEmu exit for regular simulation
-    li t0, 0x100000
-    li t1, 0x5555  
-    sw t1, 0(t0)
-    j 2f
+    # li t0, 0x100000
+    # li t1, 0x5555  
+    # sw t1, 0(t0)
+    # j 2f
     
 1: # ZisK specific exit
     li a7, 93      # exit system call number
