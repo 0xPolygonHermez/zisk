@@ -14,9 +14,10 @@ use zisk_pil::{
 use mem_common::save_plans;
 
 use crate::{
-    MemAlignPlanner, MemCounters, MemModulePlanner, MemModulePlannerConfig, INPUT_DATA_W_ADDR_INIT,
-    RAM_W_ADDR_INIT, ROM_DATA_W_ADDR_INIT,
+    MemModulePlanner, MemModulePlannerConfig, INPUT_DATA_W_ADDR_INIT, ROM_DATA_W_ADDR_INIT,
 };
+
+use mem_common::{MemAlignPlanner, MemCounters, RAM_W_ADDR_INIT};
 
 #[cfg(feature = "save_mem_counters")]
 use crate::MemAlignCounters;
@@ -55,6 +56,21 @@ impl From<SerializableMemCounters> for MemCounters {
 pub trait MemPlanCalculator {
     fn plan(&mut self);
     fn collect_plans(&mut self) -> Vec<Plan>;
+}
+
+#[derive(Default)]
+pub struct DummyMemPlanner {}
+
+impl DummyMemPlanner {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Planner for DummyMemPlanner {
+    fn plan(&self, _metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
+        vec![]
+    }
 }
 
 #[derive(Default)]
@@ -269,6 +285,7 @@ impl MemPlanner {
 
     pub fn generate_plans(&self, metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         // convert generic information to specific information
+        println!("MemPlanner: generate_plans() with {} metrics", metrics.len());
         let mut counters: Vec<(ChunkId, &MemCounters)> = metrics
             .iter()
             .map(|(chunk_id, metric)| {
@@ -324,7 +341,6 @@ impl MemPlanner {
             },
             counters.clone(),
         )));
-        // let mut mem_align_planner = Arc::new(Mutex::new(MemAlignPlanner::new(counters.clone())));
         let mut mem_align_planner = MemAlignPlanner::new(counters.clone());
 
         let planners = vec![
@@ -343,11 +359,11 @@ impl MemPlanner {
         plans.append(&mut mem_planner.lock().unwrap().collect_plans());
         plans.append(&mut rom_data_planner.lock().unwrap().collect_plans());
         plans.append(&mut input_data_planner.lock().unwrap().collect_plans());
-        // plans.append(&mut mem_align_planner.lock().unwrap().collect_plans());
         plans.append(&mut mem_align_planner.collect_plans());
 
         #[cfg(any(feature = "save_mem_plans", feature = "save_mem_bus_data"))]
         save_plans(&plans, "plans.txt");
+        println!("Generated {} memory plans", plans.len());
         plans
     }
 }

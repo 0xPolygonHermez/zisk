@@ -23,6 +23,7 @@ riscv = { workspace = true }
 data-bus = { workspace = true }
 rayon = { workspace = true }
 sm-mem = { workspace = true }
+mem-common = { workspace = true }
 
 fields = { workspace=true }
 clap = { version = "4.5.9", features = ["derive", "env"] }

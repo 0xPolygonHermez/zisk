@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use crate::{MemInput, MemModule, MemPreviousSegment, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
+use crate::{MemInput, MemModule, MemPreviousSegment};
 use fields::PrimeField64;
+use mem_common::{MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 #[cfg(feature = "debug_mem")]

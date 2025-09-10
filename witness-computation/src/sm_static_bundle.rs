@@ -76,7 +76,11 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         let mut it = vec_counters.into_iter();
 
         vec![
-            self.mem_sm.build_planner().plan(it.next().unwrap()),
+            if self.process_only_operation_bus {
+                self.mem_sm.build_dummy_planner().plan(it.next().unwrap())
+            } else {
+                self.mem_sm.build_planner().plan(it.next().unwrap())
+            },
             <RomSM as ComponentBuilder<F>>::build_planner(&*self.rom_sm).plan(it.next().unwrap()),
             self.binary_sm.build_planner().plan(it.next().unwrap()),
             <ArithSM<F> as ComponentBuilder<F>>::build_planner(&*self.arith_sm)
@@ -117,7 +121,11 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
     ) -> impl DataBusTrait<u64, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static {
         StaticDataBus::new(
             self.process_only_operation_bus,
-            self.mem_sm.build_mem_counter(),
+            if self.process_only_operation_bus {
+                None
+            } else {
+                Some(self.mem_sm.build_mem_counter())
+            },
             self.binary_sm.build_binary_counter(),
             self.arith_sm.build_arith_counter(),
             self.keccakf_sm.build_keccakf_counter(),

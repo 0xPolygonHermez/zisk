@@ -1,10 +1,8 @@
 use core::panic;
-use std::cmp::min;
-use std::env;
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{MemAlignInstanceCounter, MemCounters, MemPlanCalculator};
-use mem_common::MemAlignCheckPoint;
+use crate::{MemAlignCheckPoint, MemAlignCounters};
+use crate::{MemAlignInstanceCounter, MemCounters};
 use zisk_common::{ChunkId, Plan};
 use zisk_pil::{
     MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,
@@ -81,6 +79,44 @@ impl<'a> MemAlignPlanner<'a> {
             full,
         }
     }
+    fn check_pendings(&self, pendings: &[u32; 5]) {
+        if pendings.iter().any(|&x| x > 0) {
+            println!(
+                "[ReadByte] Instances:{}/{} Rows:{}/{} used:({:?})",
+                self.read_byte.get_instances_available(),
+                self.read_byte.get_instances(),
+                self.read_byte.rows_available,
+                self.read_byte.num_rows,
+                self.read_byte.get_used()
+            );
+            println!(
+                "[WriteByte] Instances:{}/{} Rows:{}/{} used:({:?})",
+                self.write_byte.get_instances_available(),
+                self.write_byte.get_instances(),
+                self.write_byte.rows_available,
+                self.write_byte.num_rows,
+                self.write_byte.get_used()
+            );
+            println!(
+                "[Byte] Instances:{}/{} Rows:{}/{} used:({:?})",
+                self.byte.get_instances_available(),
+                self.byte.get_instances(),
+                self.byte.rows_available,
+                self.byte.num_rows,
+                self.byte.get_used()
+            );
+            println!(
+                "[Full] Instances:{}/{} Rows:{}/{} used:({:?})",
+                self.full.get_instances_available(),
+                self.full.get_instances(),
+                self.full.rows_available,
+                self.full.num_rows,
+                self.full.get_used()
+            );
+            println!("[Pending] (F5,F3,F2,RB,WB) {pendings:?}");
+            panic!("Some counters are pending");
+        }
+    }
     pub fn align_plan(&mut self) {
         if self.counters.is_empty() {
             panic!("MemPlanner::plan() No metrics found");
@@ -92,51 +128,42 @@ impl<'a> MemAlignPlanner<'a> {
         for index in 0..count {
             let chunk_id = self.counters[index].0;
             let totals = self.counters[index].1.to_array();
-            let mut pendings = totals;
-            self.read_byte.add_to_instance(chunk_id, &totals, &mut pendings);
-            self.write_byte.add_to_instance(chunk_id, &totals, &mut pendings);
-            self.byte.add_to_instance(chunk_id, &totals, &mut pendings);
-            self.full.add_to_instance(chunk_id, &totals, &mut pendings);
-            if pendings.iter().any(|&x| x > 0) {
-                println!(
-                    "[ReadByte] Instances:{}/{} Rows:{}/{} used:({:?})",
-                    self.read_byte.get_instances_available(),
-                    self.read_byte.get_instances(),
-                    self.read_byte.rows_available,
-                    self.read_byte.num_rows,
-                    self.read_byte.get_used()
-                );
-                println!(
-                    "[WriteByte] Instances:{}/{} Rows:{}/{} used:({:?})",
-                    self.write_byte.get_instances_available(),
-                    self.write_byte.get_instances(),
-                    self.write_byte.rows_available,
-                    self.write_byte.num_rows,
-                    self.write_byte.get_used()
-                );
-                println!(
-                    "[Byte] Instances:{}/{} Rows:{}/{} used:({:?})",
-                    self.byte.get_instances_available(),
-                    self.byte.get_instances(),
-                    self.byte.rows_available,
-                    self.byte.num_rows,
-                    self.byte.get_used()
-                );
-                println!(
-                    "[Full] Instances:{}/{} Rows:{}/{} used:({:?})",
-                    self.full.get_instances_available(),
-                    self.full.get_instances(),
-                    self.full.rows_available,
-                    self.full.num_rows,
-                    self.full.get_used()
-                );
-                println!("[Pending] (F5,F3,F2,RB,WB) {pendings:?}");
-                panic!("Some counters are pending");
-            }
+            self.align_plan_add_chunk(chunk_id, &totals);
         }
         self.close_instances();
         self.drain_all_plans();
     }
+    fn align_plan_add_chunk(&mut self, chunk_id: ChunkId, totals: &[u32; 5]) {
+        let mut pendings = *totals;
+        self.read_byte.add_to_instance(chunk_id, totals, &mut pendings);
+        self.write_byte.add_to_instance(chunk_id, totals, &mut pendings);
+        self.byte.add_to_instance(chunk_id, totals, &mut pendings);
+        self.full.add_to_instance(chunk_id, totals, &mut pendings);
+        self.check_pendings(&pendings);
+    }
+    pub fn align_plan_from_counters(
+        &mut self,
+        full_rows: u32,
+        read_byte: u32,
+        write_byte: u32,
+        counters: &[MemAlignCounters],
+    ) {
+        if counters.is_empty() {
+            panic!("MemPlanner::plan() No metrics found");
+        }
+
+        let count = counters.len();
+        self.calculate_strategy_from_totals(full_rows, read_byte, write_byte);
+
+        for counter in counters.iter().take(count) {
+            let chunk_id = counter.chunk_id;
+            let totals = counter.to_array();
+            self.align_plan_add_chunk(ChunkId(chunk_id as usize), &totals);
+        }
+        self.close_instances();
+        self.drain_all_plans();
+    }
+
     fn close_instances(&mut self) {
         self.read_byte.close_instance();
         self.write_byte.close_instance();
@@ -157,7 +184,7 @@ impl<'a> MemAlignPlanner<'a> {
         self.plans.append(&mut self.byte.plans);
         self.plans.append(&mut self.full.plans);
     }
-    fn calculate_strategy(&mut self) {
+    fn calculate_totals(&mut self) -> (u32, u32, u32) {
         let mut read_byte = 0;
         let mut write_byte = 0;
         let mut full_rows = 0;
@@ -169,7 +196,9 @@ impl<'a> MemAlignPlanner<'a> {
             read_byte += counter.1.mem_align_counters.read_byte;
             write_byte += counter.1.mem_align_counters.write_byte;
         }
-
+        (full_rows, read_byte, write_byte)
+    }
+    fn calculate_strategy_from_totals(&mut self, full_rows: u32, read_byte: u32, write_byte: u32) {
         let read_byte_instance_cost = MEM_ALIGN_READ_BYTE_BCOLS * self.read_byte.num_rows;
         let write_byte_instance_cost = MEM_ALIGN_WRITE_BYTE_BCOLS * self.write_byte.num_rows;
         let byte_instance_cost = MEM_ALIGN_BYTE_BCOLS * self.byte.num_rows;
@@ -193,7 +222,7 @@ impl<'a> MemAlignPlanner<'a> {
         let full_free_rows = max_full_free_rows.saturating_sub(fragmentation_rows);
 
         let full_free_byte = full_free_rows / ROWS_WRITE_BYTE;
-        let strategy =
+        let _strategy =
             if (ROWS_READ_BYTE * p_read_byte + ROWS_WRITE_BYTE * p_write_byte) <= full_free_rows {
                 /* nothing, no need extra instances use free space on full mem_align */
                 "+0"
@@ -231,26 +260,19 @@ impl<'a> MemAlignPlanner<'a> {
                 write_byte_instances += 1;
                 "+read_byte +write_byte"
             };
-        println!("MEM_ALIGN_STRATEGY: {strategy} F:({full_instances},{full_free_rows},{full_free_byte}) B:({byte_instances}) RB:({read_byte_instances},{p_read_byte}) WB:({write_byte_instances},{p_write_byte})");
         self.byte.set_instances(byte_instances);
         self.read_byte.set_instances(read_byte_instances);
         self.write_byte.set_instances(write_byte_instances);
         self.full.set_instances(full_instances);
     }
-    pub fn save_counters(&self, filename: &str) {
-        let path = env::var("BUS_DATA_DIR").unwrap_or("tmp/bus_data".to_string());
-        std::fs::create_dir_all(&path).unwrap();
-
-        let mut content = String::new();
-        for counter in self.counters.iter() {}
+    fn calculate_strategy(&mut self) {
+        let (full_rows, read_byte, write_byte) = self.calculate_totals();
+        self.calculate_strategy_from_totals(full_rows, read_byte, write_byte);
     }
-}
-
-impl MemPlanCalculator for MemAlignPlanner<'_> {
-    fn plan(&mut self) {
+    pub fn plan(&mut self) {
         self.align_plan();
     }
-    fn collect_plans(&mut self) -> Vec<Plan> {
+    pub fn collect_plans(&mut self) -> Vec<Plan> {
         std::mem::take(&mut self.plans)
     }
 }

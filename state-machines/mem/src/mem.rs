@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use crate::{
-    InputDataSM, MemAlignByteInstance, MemAlignByteSM, MemAlignInstance, MemAlignReadByteInstance,
-    MemAlignSM, MemAlignWriteByteInstance, MemCounters, MemModuleInstance, MemPlanner, MemSM,
-    RomDataSM,
+    DummyMemPlanner, InputDataSM, MemAlignByteInstance, MemAlignByteSM, MemAlignInstance,
+    MemAlignReadByteInstance, MemAlignSM, MemAlignWriteByteInstance, MemModuleInstance, MemPlanner,
+    MemSM, RomDataSM,
 };
 use fields::PrimeField64;
+use mem_common::MemCounters;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
 use zisk_common::{BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, Plan, Planner};
@@ -36,6 +37,11 @@ impl<F: PrimeField64> Mem<F> {
 
     pub fn build_mem_counter(&self) -> MemCounters {
         MemCounters::new()
+    }
+
+    // This method is used to create a dummy planner when using count-and-plan in C++
+    pub fn build_dummy_planner(&self) -> Box<dyn Planner> {
+        Box::new(DummyMemPlanner::new())
     }
 }
 
