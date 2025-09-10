@@ -47,6 +47,61 @@ const uint64_t F64_PLUS_ZERO = 0x0000000000000000;
 const uint32_t F32_MINUS_ZERO = 0x80000000;
 const uint32_t F32_PLUS_ZERO = 0x00000000;
 
+void set_rounding_mode (uint64_t rm)
+{
+    /*
+    RISC-V spec:
+
+    Rounding Mode Mnemonic Meaning
+    ------------- -------- ---------------------------------------------------------
+    000           RNE      Round to Nearest, ties to Even
+    001           RTZ      Round towards Zero
+    010           RDN      Round Down (towards -infinite)
+    011           RUP      Round Up (towards +infinite)
+    100           RMM      Round to Nearest, ties to Max Magnitude
+    101                    Reserved for future use.
+    110                    Reserved for future use.
+    111           DYN      In instruction’s rm field, selects dynamic rounding mode;
+                           In Rounding Mode register, reserved.
+    
+    SoftFloat library rounding mode enum:
+
+    enum {
+        softfloat_round_near_even   = 0,
+        softfloat_round_minMag      = 1,
+        softfloat_round_min         = 2,
+        softfloat_round_max         = 3,
+        softfloat_round_near_maxMag = 4,
+        softfloat_round_odd         = 6
+    };
+
+    The mapping is direct but we want to ignore invalid values (5, 6, 7).
+    */
+
+    switch (rm & 0x7)
+    {
+        case 0: // RNE
+            softfloat_roundingMode = softfloat_round_near_even;
+            break;
+        case 1: // RTZ
+            softfloat_roundingMode = softfloat_round_minMag;
+            break;
+        case 2: // RDN
+            softfloat_roundingMode = softfloat_round_min;
+            break;
+        case 3: // RUP
+            softfloat_roundingMode = softfloat_round_max;
+            break;
+        case 4: // RMM
+            softfloat_roundingMode = softfloat_round_near_maxMag;
+            break;
+        case 7: // DYN - should not be used in fcsr
+        default:
+            // Invalid rounding mode, do nothing
+            break;
+    }
+}
+
 void zisk_float (void)
 {
     // uint64_t inst = *(uint64_t *)FREG_INST;
@@ -63,6 +118,9 @@ void zisk_float (void)
     uint64_t inst = *(uint64_t *)FREG_INST;
     switch (inst & 0x7F)
     {
+        // The instructions flw/fld/fsw/fsd are handled in the main emulator loop, since they don't
+        // require any floating-point operations; they just load/store from/to memory binary data.
+
         // case 7 : { // Opcode 7
         //     switch ((inst >> 12) & 0x7) {
         //         case 2: //("R", "flw"),
@@ -87,7 +145,8 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
                     break;
                 }
@@ -96,7 +155,8 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v;
                     break;
                 }
@@ -113,7 +173,8 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){NEG32(fregs[rs2])}, (float32_t){fregs[rs3]} ).v;
                     break;
                 }
@@ -122,7 +183,8 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){NEG64(fregs[rs2])}, (float64_t){fregs[rs3]} ).v;
                     break;
                 }
@@ -139,7 +201,8 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){NEG32(fregs[rs2])}, (float32_t){fregs[rs3]} ).v);
                     break;
                 }
@@ -148,7 +211,8 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)NEG64(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){NEG64(fregs[rs2])}, (float64_t){fregs[rs3]} ).v);
                     break;
                 }
@@ -164,7 +228,8 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v);
                     break;
                 }
@@ -173,7 +238,8 @@ void zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)NEG64(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){NEG64(fregs[rs2])}, (float64_t){fregs[rs3]} ).v);
                     break;
                 }
@@ -188,7 +254,8 @@ void zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f32_add( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     break;
                 }
@@ -196,7 +263,8 @@ void zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f64_add( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
@@ -204,7 +272,8 @@ void zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f32_sub( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     break;
                 }
@@ -212,7 +281,8 @@ void zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f64_sub( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
@@ -220,7 +290,8 @@ void zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f32_mul( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     break;
                 }
@@ -228,7 +299,8 @@ void zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f64_mul( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
@@ -236,7 +308,8 @@ void zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f32_div( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     break;
                 }
@@ -244,7 +317,8 @@ void zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f64_div( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
@@ -365,7 +439,8 @@ void zisk_float (void)
                         case 1 : { //("R", "fcvt.s.d"),
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)f64_to_f32( (float64_t){fregs[rs1]} ).v;
                             break;
                         }
@@ -378,7 +453,8 @@ void zisk_float (void)
                         case 0 : { //("R", "fcvt.d.s"),
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)f32_to_f64( (float32_t){fregs[rs1]} ).v;
                             break;
                         }
@@ -391,7 +467,8 @@ void zisk_float (void)
                         case 0 : { //("R", "fsqrt.s"),
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)f32_sqrt( (float32_t){fregs[rs1]} ).v;
                             break;
                         }
@@ -404,7 +481,8 @@ void zisk_float (void)
                         case 0 : { //("R", "fsqrt.d"),
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)f64_sqrt( (float64_t){fregs[rs1]} ).v;
                             break;
                         }
@@ -471,28 +549,32 @@ void zisk_float (void)
                         case 0 : { //("R", "fcvt.w.s"), converts float(rs1) to int32_t(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             regs[rd] = (uint64_t)f32_to_i32( (float32_t){fregs[rs1]}, rm, false );
                             break;
                         }
                         case 1 : { //("R", "fcvt.wu.s"), converts float(rs1) to uint32_t(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             regs[rd] = (uint64_t)f32_to_ui32( (float32_t){fregs[rs1]}, rm, false );
                             break;
                         }
                         case 2 : { //("R", "fcvt.l.s"), converts float(rs1) to int64_t(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             regs[rd] = (uint64_t)f32_to_i64( (float32_t){fregs[rs1]}, rm, false );
                             break;
                         }
                         case 3 : { //("R", "fcvt.lu.s"), converts float(rs1) to uint64_t(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             regs[rd] = (uint64_t)f32_to_ui64( (float32_t){fregs[rs1]}, rm, false );
                             break;
                         }
@@ -505,28 +587,32 @@ void zisk_float (void)
                         case 0 : { //("R", "fcvt.w.d"), converts double(rs1) to int32_t(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             regs[rd] = (uint64_t)f64_to_i32( (float64_t){fregs[rs1]}, rm, false );
                             break;
                         }
                         case 1 : { //("R", "fcvt.wu.d"), converts double(rs1) to uint32_t(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             regs[rd] = (uint64_t)f64_to_ui32( (float64_t){fregs[rs1]}, rm, false );
                             break;
                         }
                         case 2 : { //("R", "fcvt.l.d"), converts double(rs1) to int64_t(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             regs[rd] = (uint64_t)f64_to_i64( (float64_t){fregs[rs1]}, rm, false );
                             break;
                         }
                         case 3 : { //("R", "fcvt.lu.d"), converts double(rs1) to uint64_t(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             regs[rd] = (uint64_t)f64_to_ui64( (float64_t){fregs[rs1]}, rm, false );
                             break;
                         }
@@ -539,28 +625,32 @@ void zisk_float (void)
                         case 0 : { //("R", "fcvt.s.w"), converts int32_t(rs1) to float(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)i32_to_f32( (int32_t)(regs[rs1]) ).v;
                             break;
                         }
                         case 1 : { //("R", "fcvt.s.wu"), converts uint32_t(rs1) to float(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)ui32_to_f32( (uint32_t)(regs[rs1]) ).v;
                             break;
                         }
                         case 2 : { //("R", "fcvt.s.l"), converts int64_t(rs1) to float(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)i64_to_f32( (int64_t)(regs[rs1]) ).v;
                             break;
                         }
                         case 3 : { //("R", "fcvt.s.lu"), converts uint64_t(rs1) to float(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)ui64_to_f32( (uint64_t)(regs[rs1]) ).v;
                             break;
                         }
@@ -573,28 +663,32 @@ void zisk_float (void)
                         case 0 : { //("R", "fcvt.d.w"), converts int32_t(rs1) to double(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)i32_to_f64( (int32_t)(regs[rs1]) ).v;
                             break;
                         }
                         case 1 : { //("R", "fcvt.d.wu"), converts uint32_t(rs1) to double(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)ui32_to_f64( (uint32_t)(regs[rs1]) ).v;
                             break;
                         }
                         case 2 : { //("R", "fcvt.d.l"), converts int64_t(rs1) to double(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)i64_to_f64( (int64_t)(regs[rs1]) ).v;
                             break;
                         }
                         case 3 : { //("R", "fcvt.d.lu"), converts uint64_t(rs1) to double(rd)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7; // TODO: use rm
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)ui64_to_f64( (uint64_t)(regs[rs1]) ).v;
                             break;
                         }
@@ -616,6 +710,20 @@ void zisk_float (void)
                                     break;
                             }
                         }
+                        /*
+                        Format of result of FCLASS instruction.
+                            rd bit  Meaning
+                            0       rs1 is -infinite
+                            1       rs1 is a negative normal number
+                            2       rs1 is a negative subnormal number
+                            3       rs1 is -0
+                            4       rs1 is +0
+                            5       rs1 is a positive subnormal number
+                            6       rs1 is a positive normal number
+                            7       rs1 is +infinite
+                            8       rs1 is a signaling NaN
+                            9       rs1 is a quiet NaN
+                        */
                         case 1 : {
                             switch ((inst >> 20) & 0x1F) {
                                 case 0 : { //("R", "fclass.s"),
