@@ -8,6 +8,6 @@ pub enum Error {
     #[error("Invalid instruction format")]
     InvalidFormat,
 
-    #[error("Instruction not supported by target. Opcode field is {opcode_bits}")]
-    UnsupportedInstruction { opcode_bits: u8 },
+    #[error("Opcode not supported. Opcode field is {opcode_bits}")]
+    UnsupportedOpcode { opcode_bits: u8 },
 }

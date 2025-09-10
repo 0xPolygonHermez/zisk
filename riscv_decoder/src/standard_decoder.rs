@@ -26,7 +26,7 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
 
     // Check if parsed opcode is valid
     let opcode = Opcode::from_bits(encoded.opcode)
-        .ok_or(Error::UnsupportedInstruction { opcode_bits: encoded.opcode })?;
+        .ok_or(Error::UnsupportedOpcode { opcode_bits: encoded.opcode })?;
 
     match opcode {
         Opcode::Load => decode_load_instruction(&encoded),
