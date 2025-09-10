@@ -3,7 +3,7 @@ mod standard_decoder;
 
 mod target;
 
-use crate::compressed_decoder::{is_compressed, CompressedInstruction};
+use crate::compressed_decoder::{is_compressed, Instruction as CompressedInstruction};
 
 pub use standard_decoder::Error as StandardDecoderError;
 pub use standard_decoder::Instruction;
