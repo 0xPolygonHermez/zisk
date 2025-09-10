@@ -41,7 +41,7 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
         Opcode::Jalr => decode_jalr_instruction(&encoded),
         Opcode::Lui => decode_lui_instruction(&encoded),
         Opcode::Amo => decode_amo_instruction(&encoded),
-        Opcode::System => todo!(),
+        Opcode::System => decode_system_instruction(&encoded),
     }
 }
 
@@ -585,6 +585,50 @@ fn decode_amo_instruction(encoded: &EncodedInstruction) -> Result<Instruction, E
         (0b011, 0b11000) => Ok(Instruction::AMOMINU_D { rd, rs1, rs2, aq, rl }),
         (0b011, 0b11100) => Ok(Instruction::AMOMAXU_D { rd, rs1, rs2, aq, rl }),
 
+        _ => Err(Error::InvalidFormat),
+    }
+}
+
+/// Decode SYSTEM instructions
+///
+/// Uses standard I-type format (see InstructionFormat::I)
+fn decode_system_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    let rd = encoded.rd;
+    let rs1 = encoded.rs1;
+    let csr = encoded.csr;
+    let uimm = encoded.rs1; // For CSR immediate instructions, rs1 field contains immediate
+
+    match encoded.funct3 {
+        0b000 => {
+            // ECALL/EBREAK distinguished by I-type immediate field
+            match encoded.i_immediate {
+                0 => {
+                    if rd != 0 || rs1 != 0 {
+                        return Err(Error::InvalidFormat);
+                    }
+                    Ok(Instruction::ECALL)
+                }
+                1 => {
+                    if rd != 0 || rs1 != 0 {
+                        return Err(Error::InvalidFormat);
+                    }
+                    Ok(Instruction::EBREAK)
+                }
+                _ => Err(Error::InvalidFormat),
+            }
+        }
+        0b001 | 0b010 | 0b011 | 0b101 | 0b110 | 0b111 => {
+            // Requires Zicsr
+            match encoded.funct3 {
+                0b001 => Ok(Instruction::CSRRW { rd, rs1, csr }),
+                0b010 => Ok(Instruction::CSRRS { rd, rs1, csr }),
+                0b011 => Ok(Instruction::CSRRC { rd, rs1, csr }),
+                0b101 => Ok(Instruction::CSRRWI { rd, uimm, csr }),
+                0b110 => Ok(Instruction::CSRRSI { rd, uimm, csr }),
+                0b111 => Ok(Instruction::CSRRCI { rd, uimm, csr }),
+                _ => unreachable!("`funct3` should be encoded with 3 bits"),
+            }
+        }
         _ => Err(Error::InvalidFormat),
     }
 }
