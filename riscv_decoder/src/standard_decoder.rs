@@ -38,9 +38,9 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
         Opcode::Store => decode_store_instruction(&encoded),
         Opcode::Branch => decode_branch_instruction(&encoded),
         Opcode::Jal => decode_jal_instruction(&encoded),
-        Opcode::Amo => todo!(),
+        Opcode::Jalr => decode_jalr_instruction(&encoded),
         Opcode::Lui => todo!(),
-        Opcode::Jalr => todo!(),
+        Opcode::Amo => todo!(),
         Opcode::System => todo!(),
     }
 }
@@ -524,4 +524,17 @@ fn decode_jal_instruction(encoded: &EncodedInstruction) -> Result<Instruction, E
     let rd = encoded.rd;
     let offset = encoded.j_immediate;
     Ok(Instruction::JAL { rd, offset })
+}
+
+/// Decode JALR instruction
+///
+/// Uses standard I-type format (see InstructionFormat::I)  
+fn decode_jalr_instruction(encoded: &EncodedInstruction) -> Result<Instruction, Error> {
+    if encoded.funct3 != 0 {
+        return Err(Error::InvalidFormat);
+    }
+    let rd = encoded.rd;
+    let rs1 = encoded.rs1;
+    let offset = encoded.i_immediate;
+    Ok(Instruction::JALR { rd, rs1, offset })
 }
