@@ -92,7 +92,6 @@ impl ProverGrpcEndpoint {
                 payload: Some(prover_message::Payload::Reconnect(ProverReconnectRequest {
                     prover_id: self.config_endpoint.prover.prover_id.as_string(),
                     compute_capacity: Some(self.config_endpoint.prover.compute_capacity.into()),
-                    num_nodes: self.config_endpoint.prover.num_nodes,
                     last_known_job_id: job.lock().await.job_id.as_string(),
                 })),
             }
@@ -101,7 +100,6 @@ impl ProverGrpcEndpoint {
                 payload: Some(prover_message::Payload::Register(ProverRegisterRequest {
                     prover_id: self.config_endpoint.prover.prover_id.as_string(),
                     compute_capacity: Some(self.config_endpoint.prover.compute_capacity.into()),
-                    num_nodes: 1,
                 })),
             }
         };

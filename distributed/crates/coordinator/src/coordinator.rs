@@ -1,181 +1,48 @@
-use chrono::{DateTime, Utc};
 use distributed_common::{
     AggProofData, BlockContext, BlockId, ComputeCapacity, Error, Job, JobId, JobPhase, JobResult,
     JobResultData, JobState, ProverId, ProverState, Result,
 };
+use distributed_config::ProverManagerConfig;
 use distributed_grpc_api::{
     coordinator_message, execute_task_request, prover_message, Challenges, CoordinatorMessage,
     ExecuteTaskResponse, Proof, ProofList, ProverMessage, TaskType,
 };
 use proofman::ContributionsInfo;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info, warn};
 
-/// Information about a connected prover - business logic only, no transport layer
-#[derive(Debug)]
-pub struct ProverConnection {
-    pub prover_id: ProverId,
-    pub state: ProverState,
-    pub compute_capacity: ComputeCapacity,
-    pub num_nodes: u32,
-    pub connected_at: DateTime<Utc>,
-    pub last_heartbeat: DateTime<Utc>,
-    pub message_sender: mpsc::Sender<CoordinatorMessage>,
-}
-
-/// Configuration for the coordinator functionality
-#[derive(Debug, Clone)]
-pub struct ProverManagerConfig {
-    pub max_provers_per_job: u32,
-    pub max_total_provers: u32,
-    pub max_concurrent_connections: u32,
-    pub message_buffer_size: u32,
-    pub phase1_timeout_seconds: u64,
-    pub phase2_timeout_seconds: u64,
-}
-
-impl ProverManagerConfig {
-    /// Create from distributed_config::CoordinatorConfig
-    pub fn from_config(config: &distributed_config::ProverManagerConfig) -> Self {
-        Self {
-            max_provers_per_job: config.max_provers_per_job,
-            max_total_provers: config.max_total_provers,
-            max_concurrent_connections: config.max_concurrent_connections,
-            message_buffer_size: config.message_buffer_size,
-            phase1_timeout_seconds: config.phase1_timeout_seconds,
-            phase2_timeout_seconds: config.phase2_timeout_seconds,
-        }
-    }
-}
-
-impl Default for ProverManagerConfig {
-    fn default() -> Self {
-        Self {
-            max_provers_per_job: 10,
-            max_total_provers: 1000, // Default limit of 1000 total provers
-            max_concurrent_connections: 500, // Default limit of 500 concurrent connections
-            message_buffer_size: 1000, // Default bounded channel size
-            phase1_timeout_seconds: 300, // 5 minutes
-            phase2_timeout_seconds: 600, // 10 minutes
-        }
-    }
-}
+use crate::ProversPool;
 
 /// Prover manager for handling multiple provers
-#[derive(Debug)]
-pub struct ProverManager {
-    provers: Arc<RwLock<HashMap<ProverId, ProverConnection>>>,
-    jobs: Arc<RwLock<HashMap<JobId, Job>>>,
+pub struct Coordinator {
+    provers_pool: ProversPool,
+    jobs: RwLock<HashMap<JobId, Job>>,
     config: ProverManagerConfig,
 }
 
-impl ProverManager {
+impl Coordinator {
     pub fn new(config: ProverManagerConfig) -> Self {
         Self {
-            provers: Arc::new(RwLock::new(HashMap::new())),
-            jobs: Arc::new(RwLock::new(HashMap::new())),
+            provers_pool: ProversPool::new(config.clone()),
+            jobs: RwLock::new(HashMap::new()),
             config,
         }
     }
 
-    pub async fn num_provers(&self) -> usize {
-        self.provers.read().await.len()
-    }
-
-    pub async fn compute_capacity(&self) -> ComputeCapacity {
-        let provers = self.provers.read().await;
-        let total_capacity: u32 = provers.values().map(|p| p.compute_capacity.compute_units).sum();
-        ComputeCapacity { compute_units: total_capacity }
-    }
-
-    pub async fn get_available_compute_capacity(&self) -> ComputeCapacity {
-        let total_capacity: u32 = self
-            .provers
-            .read()
-            .await
-            .values()
-            .filter(|p| matches!(p.state, ProverState::Idle))
-            .map(|p| p.compute_capacity.compute_units)
-            .sum();
-        ComputeCapacity { compute_units: total_capacity }
-    }
-
-    /// Get the coordinator configuration
-    pub fn config(&self) -> &ProverManagerConfig {
-        &self.config
-    }
-
-    /// Register a new prover connection - business logic only
+    /// Register a new prover connection
     pub async fn register_prover(
         &self,
         prover_id: ProverId,
         compute_capacity: impl Into<ComputeCapacity>,
-        num_nodes: u32,
         message_sender: mpsc::Sender<CoordinatorMessage>,
     ) -> Result<ProverId> {
-        // Check if we've reached the maximum number of total provers
-        let num_provers = self.num_provers().await;
-        if num_provers >= self.config.max_total_provers as usize {
-            return Err(Error::InvalidRequest(format!(
-                "Maximum number of provers reached: {}/{}",
-                num_provers, self.config.max_total_provers
-            )));
-        }
-
-        let now = Utc::now();
-        let connection = ProverConnection {
-            prover_id: prover_id.clone(),
-            compute_capacity: compute_capacity.into(),
-            num_nodes,
-            state: ProverState::Idle,
-            connected_at: now,
-            last_heartbeat: now,
-            message_sender,
-        };
-
-        self.provers.write().await.insert(prover_id.clone(), connection);
-
-        info!("Registered prover: {} (total: {})", prover_id, self.num_provers().await);
-
-        Ok(prover_id)
+        self.provers_pool.register_prover(prover_id, compute_capacity, message_sender).await
     }
 
-    async fn mark_provers_with_state(
-        &self,
-        prover_ids: &[ProverId],
-        state: ProverState,
-    ) -> Result<()> {
-        let mut provers = self.provers.write().await;
-        for prover_id in prover_ids {
-            if let Some(prover) = provers.get_mut(prover_id) {
-                prover.state = state.clone();
-            } else {
-                return Err(Error::InvalidRequest(format!("Prover {prover_id} not found")));
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Remove a prover connection
-    pub async fn disconnect_prover(&self, prover_id: &ProverId) -> Result<()> {
-        let mut provers = self.provers.write().await;
-        match provers.remove(prover_id) {
-            Some(prover) => {
-                info!(
-                    "Removed prover: {} (remaining: {}, was in state: {:?})",
-                    prover_id,
-                    provers.len(),
-                    prover.state
-                );
-                // TODO: Handle job reassignment if prover was working ?
-            }
-            None => {
-                warn!("Attempted to remove prover {prover_id} but it was not found");
-            }
-        }
-        Ok(())
+    /// Remove an existing prover connection
+    pub async fn unregister_prover(&self, prover_id: &ProverId) -> Result<()> {
+        self.provers_pool.unregister_prover(prover_id).await
     }
 
     /// Start a proof job with the specified request
@@ -185,28 +52,14 @@ impl ProverManager {
         required_compute_capacity: ComputeCapacity,
         input_path: String,
     ) -> Result<JobId> {
-        let available_compute_capacity = self.get_available_compute_capacity().await;
-
-        if required_compute_capacity.compute_units == 0 {
-            return Err(Error::InvalidRequest(
-                "Compute capacity must be greater than 0".to_string(),
-            ));
-        }
-
-        if required_compute_capacity > available_compute_capacity {
-            return Err(Error::InvalidRequest(format!(
-                "Not enough compute capacity available: need {required_compute_capacity}, have {available_compute_capacity}",
-            )));
-        }
+        // Select only the required number of provers (not all of them)
+        let (selected_provers, partitions) =
+            self.provers_pool.partition_and_allocate_by_capacity(required_compute_capacity).await?;
 
         info!(
             "Starting proof for block {} using {} with input path: {}",
             block_id, required_compute_capacity, input_path
         );
-
-        // Select only the required number of provers (not all of them)
-        let (selected_provers, partitions) =
-            self.partition_and_allocate_by_capacity(required_compute_capacity).await;
 
         // Create job
         let job_id = JobId::new();
@@ -228,24 +81,12 @@ impl ProverManager {
         self.jobs.write().await.insert(job_id.clone(), job);
 
         // Send messages to selected provers
-        let mut provers = self.provers.write().await;
         let provers_len = selected_provers.len() as u32;
-        let mut table_id_acc = 0;
-
-        let total_tables = selected_provers
-            .iter()
-            .map(|prover_id| provers.get(prover_id).map_or(0, |p| p.num_nodes))
-            .sum::<u32>();
 
         for (rank_id, prover_id) in selected_provers.iter().enumerate() {
-            let prover = provers.get_mut(prover_id).unwrap();
-
             // Convert range to ProverAllocation vector
             let range = &partitions[rank_id];
             let prover_allocation = range.clone();
-
-            let table_id_start = table_id_acc;
-            table_id_acc += prover.num_nodes;
 
             let message = CoordinatorMessage {
                 payload: Some(coordinator_message::Payload::ExecuteTask(
@@ -268,24 +109,11 @@ impl ProverManager {
             };
 
             // Send message through the prover's channel (bounded channels require async send)
-            match prover.message_sender.try_send(message) {
-                Ok(()) => {
-                    prover.state = ProverState::Computing(JobPhase::Contributions);
-                }
-                Err(mpsc::error::TrySendError::Full(_)) => {
-                    // TODO: Handle backpressure - maybe queue for retry or mark prover as slow
-                    // TODO: Make unbounded channel
-                    return Err(Error::Internal(format!(
-                        "Message buffer full for prover {prover_id}, dropping message"
-                    )));
-                }
-                Err(mpsc::error::TrySendError::Closed(_)) => {
-                    // TODO: Handle closed channel - maybe reassign job
-                    return Err(Error::Internal(format!(
-                        "Channel closed for prover {prover_id}, dropping message"
-                    )));
-                }
-            }
+            self.provers_pool.send_message(prover_id, message).await?;
+
+            self.provers_pool
+                .mark_prover_with_state(prover_id, ProverState::Computing(JobPhase::Contributions))
+                .await?;
         }
 
         info!(
@@ -303,9 +131,7 @@ impl ProverManager {
         message: ProverMessage,
     ) -> Result<()> {
         // Update last heartbeat
-        if let Some(prover) = self.provers.write().await.get_mut(prover_id) {
-            prover.last_heartbeat = Utc::now();
-        }
+        self.provers_pool.update_last_heartbeat(prover_id).await?;
 
         // Handle specific message types
         if let Some(payload) = message.payload {
@@ -532,7 +358,7 @@ impl ProverManager {
             let assigned_provers = job.provers.clone();
 
             // Reset prover statuses back to Idle
-            self.mark_provers_with_state(&assigned_provers, ProverState::Idle).await?;
+            self.provers_pool.mark_provers_with_state(&assigned_provers, ProverState::Idle).await?;
 
             info!("Completed job {} and freed {} provers", job_id, assigned_provers.len());
         } else {
@@ -567,7 +393,7 @@ impl ProverManager {
         job.state = JobState::Failed;
 
         // Reset prover statuses back to Idle
-        self.mark_provers_with_state(&job.provers, ProverState::Idle).await?;
+        self.provers_pool.mark_provers_with_state(&job.provers, ProverState::Idle).await?;
 
         error!(
             "Failed job {} (reason: {}) and freed {} provers",
@@ -709,8 +535,6 @@ impl ProverManager {
         challenges: Vec<ContributionsInfo>,
     ) -> Result<()> {
         // Update prover statuses and send Phase2 messages
-        let mut provers = self.provers.write().await;
-
         let mut ch = Vec::new();
 
         for challenge in challenges {
@@ -722,10 +546,12 @@ impl ProverManager {
         }
 
         for prover_id in assigned_provers {
-            if let Some(prover) = provers.get_mut(prover_id) {
+            if let Some(prover_state) = self.provers_pool.prover_state(prover_id).await {
                 // Prover should still be in Working status from Phase1
-                if prover.state == ProverState::Computing(JobPhase::Contributions) {
-                    prover.state = ProverState::Computing(JobPhase::Prove);
+                if prover_state == ProverState::Computing(JobPhase::Contributions) {
+                    self.provers_pool
+                        .mark_prover_with_state(prover_id, ProverState::Computing(JobPhase::Prove))
+                        .await?;
 
                     // Create the Phase2 message (use TaskType::Proof)
                     let message = CoordinatorMessage {
@@ -742,26 +568,7 @@ impl ProverManager {
                     };
 
                     // Send Phase2 message
-                    match prover.message_sender.try_send(message) {
-                        Ok(()) => {
-                            info!("Sent ProvePhase2 message to prover {}", prover_id);
-                        }
-                        Err(mpsc::error::TrySendError::Full(_)) => {
-                            warn!(
-                                "Message buffer full for prover {}, dropping Phase2 message",
-                                prover_id
-                            );
-                            return Err(Error::InvalidRequest(format!(
-                                "Failed to send Phase2 message to prover {prover_id}: buffer full"
-                            )));
-                        }
-                        Err(mpsc::error::TrySendError::Closed(_)) => {
-                            error!("Channel closed for prover {}", prover_id);
-                            return Err(Error::InvalidRequest(format!(
-                                "Failed to send Phase2 message to prover {prover_id}: channel closed"
-                            )));
-                        }
-                    }
+                    self.provers_pool.send_message(prover_id, message).await?;
                 } else {
                     warn!("Prover {} is not in working state for job {}", prover_id, job_id);
                     return Err(Error::InvalidRequest(format!(
@@ -792,10 +599,9 @@ impl ProverManager {
         // proofs: Vec<Vec<AggProofData>>,
     ) -> Result<()> {
         // Update prover statuses and send Phase3 messages
-        let mut provers = self.provers.write().await;
 
         // For the sake of simplicity, we use now only the first prover to aggregate the proofs
-        let agg_prover = self.select_agg_prover(&provers);
+        let agg_prover = self.provers_pool.select_agg_prover().await;
 
         let jobs = self.jobs.read().await;
         let agg_proofs = jobs.get(job_id).unwrap().results.get(&JobPhase::Prove).unwrap();
@@ -819,15 +625,17 @@ impl ProverManager {
         println!("Starting aggregation with {} proofs", proofs.len());
 
         for prover_id in agg_prover {
-            if let Some(prover) = provers.get_mut(&prover_id) {
+            if let Some(prover_state) = self.provers_pool.prover_state(&prover_id).await {
                 // Prover should still be in Working status from Phase2
-                if prover.state != ProverState::Computing(JobPhase::Prove) {
+                if prover_state != ProverState::Computing(JobPhase::Prove) {
                     warn!("Prover {} is not in working state for job {}", prover_id, job_id);
                     return Err(Error::InvalidRequest(format!(
                         "Prover {prover_id} is not in computing state for job {job_id}",
                     )));
                 }
-                prover.state = ProverState::Computing(JobPhase::Aggregate);
+                self.provers_pool
+                    .mark_prover_with_state(&prover_id, ProverState::Computing(JobPhase::Aggregate))
+                    .await?;
 
                 let proofs: Vec<Proof> = proofs
                     .clone() // This clone must be removed when using more than one prover
@@ -866,26 +674,7 @@ impl ProverManager {
                 };
 
                 // Send Phase2 message
-                match prover.message_sender.try_send(message) {
-                    Ok(()) => {
-                        info!("Sent ProveAggregate message to prover {}", prover_id);
-                    }
-                    Err(mpsc::error::TrySendError::Full(_)) => {
-                        warn!(
-                            "Message buffer full for prover {}, dropping ProveAggregate message",
-                            prover_id
-                        );
-                        return Err(Error::InvalidRequest(format!(
-                            "Failed to send ProveAggregate message to prover {prover_id}: buffer full"
-                        )));
-                    }
-                    Err(mpsc::error::TrySendError::Closed(_)) => {
-                        error!("Channel closed for prover {}", prover_id);
-                        return Err(Error::InvalidRequest(format!(
-                            "Failed to send ProveAggregate message to prover {prover_id}: channel closed"
-                        )));
-                    }
-                }
+                self.provers_pool.send_message(&prover_id, message).await?;
             } else {
                 warn!("Prover {} not found when starting ProveAggregate", prover_id);
                 return Err(Error::InvalidRequest(format!(
@@ -902,136 +691,16 @@ impl ProverManager {
         Ok(())
     }
 
-    fn select_agg_prover(
-        &self,
-        available_provers: &HashMap<ProverId, ProverConnection>,
-    ) -> Vec<ProverId> {
-        // For the sake of simplicity, we use now only the first prover to aggregate the proofs
-        vec![available_provers.iter().next().unwrap().0.clone()]
+    // TODO! remove these functions ????
+    pub async fn num_provers(&self) -> usize {
+        self.provers_pool.num_provers().await
     }
 
-    // async fn partition_and_allocate_by_capacity(
-    //     &self,
-    //     required_compute_capacity: ComputeCapacity,
-    // ) -> (Vec<ProverId>, Vec<Range<u32>>) {
-    //     let mut selected_provers = Vec::new();
-    //     let mut partitions = Vec::new();
-    //     let mut accumulated = 0;
+    pub async fn compute_capacity(&self) -> ComputeCapacity {
+        self.provers_pool.compute_capacity().await
+    }
 
-    //     for (prover_id, prover_connection) in self.provers.write().await.iter() {
-    //         selected_provers.push(prover_id.clone());
-
-    //         // Compute new partition as a range
-    //         let range_start = accumulated;
-    //         let remaining_needed = required_compute_capacity.compute_units - accumulated;
-    //         let prover_allocation =
-    //             std::cmp::min(remaining_needed, prover_connection.compute_capacity.compute_units);
-    //             println!("Prover {} capacity: {}", prover_id, prover_connection.compute_capacity.compute_units);
-    //         let range_end = accumulated + prover_allocation;
-    //         let prover_range = range_start..range_end;
-
-    //         partitions.push(prover_range);
-
-    //         accumulated += prover_allocation;
-
-    //         if accumulated >= required_compute_capacity.compute_units {
-    //             break;
-    //         }
-    //     }
-
-    //     println!("Selected provers: {:?}", selected_provers);
-    //     println!("Partitions: {:?}", partitions);
-
-    //     (selected_provers, partitions)
-    // }
-
-    async fn partition_and_allocate_by_capacity(
-        &self,
-        required_compute_capacity: ComputeCapacity,
-    ) -> (Vec<ProverId>, Vec<Vec<u32>>) {
-        let mut selected_provers = Vec::new();
-        let mut prover_capacities = Vec::new();
-        let mut total_capacity = 0;
-
-        // Step 1: Select provers that can cover the required compute capacity
-        for (prover_id, prover_connection) in self.provers.write().await.iter() {
-            if matches!(prover_connection.state, ProverState::Idle) {
-                selected_provers.push(prover_id.clone());
-                prover_capacities.push(prover_connection.compute_capacity.compute_units);
-                total_capacity += prover_connection.compute_capacity.compute_units;
-
-                println!(
-                    "Prover {} capacity: {}",
-                    prover_id, prover_connection.compute_capacity.compute_units
-                );
-
-                // Stop when we have enough capacity
-                if total_capacity >= required_compute_capacity.compute_units {
-                    break;
-                }
-            }
-        }
-
-        if selected_provers.is_empty() || total_capacity < required_compute_capacity.compute_units {
-            return (vec![], vec![]);
-        }
-
-        // Step 2: Assign partitions using round-robin
-        let num_provers = selected_provers.len();
-        let total_units = required_compute_capacity.compute_units;
-        let mut prover_allocations = vec![Vec::new(); num_provers];
-
-        // Round-robin assignment of compute units
-        for unit in 0..total_units {
-            let prover_idx = (unit as usize) % num_provers;
-
-            // Check if this prover still has capacity
-            if prover_allocations[prover_idx].len() < prover_capacities[prover_idx] as usize {
-                prover_allocations[prover_idx].push(unit);
-            } else {
-                // If this prover is at capacity, find the next available prover
-                let mut found = false;
-                for offset in 1..num_provers {
-                    let next_idx = (prover_idx + offset) % num_provers;
-                    if prover_allocations[next_idx].len() < prover_capacities[next_idx] as usize {
-                        prover_allocations[next_idx].push(unit);
-                        found = true;
-                        break;
-                    }
-                }
-
-                if !found {
-                    warn!("Could not assign compute unit {} to any prover", unit);
-                    break;
-                }
-            }
-        }
-
-        // // Step 3: Convert allocations to ranges (for protobuf compatibility)
-        // let mut partitions = Vec::new();
-        // for (i, allocation) in prover_allocations.iter().enumerate() {
-        //     if allocation.is_empty() {
-        //         partitions.push(0..0); // Empty range
-        //     } else {
-        //         // Create a range that represents the allocated units
-        //         // Note: This creates non-contiguous ranges for round-robin
-        //         let min_unit = *allocation.iter().min().unwrap();
-        //         let max_unit = *allocation.iter().max().unwrap();
-        //         partitions.push(min_unit..(max_unit + 1));
-
-        //         println!(
-        //             "Prover {} ({}) gets {} units: {:?}",
-        //             selected_provers[i],
-        //             prover_capacities[i],
-        //             allocation.len(),
-        //             allocation
-        //         );
-        //     }
-        // }
-
-        println!("Selected provers: {:?}", selected_provers);
-        println!("Round-robin partitions: {:?}", prover_allocations);
-
-        (selected_provers, prover_allocations)
+    pub async fn config(&self) -> ProverManagerConfig {
+        self.config.clone()
     }
 }

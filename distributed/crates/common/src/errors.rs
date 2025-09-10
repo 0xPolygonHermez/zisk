@@ -17,7 +17,7 @@ pub enum Error {
     InvalidInput(String),
 
     #[error("Communication error: {0}")]
-    Comm(#[source] anyhow::Error),
+    Comm(String),
 
     #[error("Network error: {0}")]
     Network(String),
@@ -33,4 +33,7 @@ pub enum Error {
 
     #[error("Internal server error: {0}")]
     Internal(String),
+
+    #[error("Insufficient resources available")]
+    InsufficientResources(),
 }

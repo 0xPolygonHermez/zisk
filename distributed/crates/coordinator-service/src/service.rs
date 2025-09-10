@@ -3,7 +3,7 @@ use async_stream::stream;
 use distributed_comm::CommManager;
 use distributed_common::{ComputeCapacity, ProverId};
 use distributed_config::Config;
-use distributed_coordinator::{ProverManager, ProverManagerConfig};
+use distributed_coordinator::Coordinator;
 use distributed_grpc_api::{distributed_api_server::*, *};
 
 use chrono::{DateTime, Utc};
@@ -17,13 +17,12 @@ use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info, instrument};
 
 /// Represents the runtime state of the service
-#[derive(Debug)]
 pub struct ConsensusService {
     pub _config: Config,
     pub start_time_utc: DateTime<Utc>,
     pub comm_manager: Arc<CommManager>,
     pub active_connections: Arc<AtomicU32>,
-    pub prover_manager: Arc<ProverManager>,
+    pub prover_manager: Arc<Coordinator>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -46,8 +45,7 @@ impl ConsensusService {
         let comm_manager = Arc::new(CommManager::new(config.comm.clone()).await?);
 
         // Create ProverManager with configuration from config
-        let prover_manager_config = ProverManagerConfig::from_config(&config.prover_manager);
-        let prover_manager = Arc::new(ProverManager::new(prover_manager_config));
+        let prover_manager = Arc::new(Coordinator::new(config.prover_manager.clone()));
 
         Ok(Self {
             _config: config,
@@ -83,38 +81,28 @@ impl ConsensusService {
 
     /// Handle registration directly in stream context (static version to avoid lifetime issues)
     async fn handle_stream_registration(
-        prover_manager: &ProverManager,
+        prover_manager: &Coordinator,
         req: ProverRegisterRequest,
         msg_sender: mpsc::Sender<CoordinatorMessage>,
     ) -> Result<ProverId, Status> {
         let compute_capacity = req.compute_capacity.unwrap_or_default();
 
         prover_manager
-            .register_prover(
-                ProverId::from(req.prover_id),
-                compute_capacity,
-                req.num_nodes,
-                msg_sender,
-            )
+            .register_prover(ProverId::from(req.prover_id), compute_capacity, msg_sender)
             .await
             .map_err(|e| Status::internal(format!("Registration failed: {e}")))
     }
 
     /// Handle reconnection directly in stream context (static version to avoid lifetime issues)
     async fn handle_stream_reconnection(
-        prover_manager: &Arc<ProverManager>,
+        prover_manager: &Arc<Coordinator>,
         req: ProverReconnectRequest,
         msg_sender: mpsc::Sender<CoordinatorMessage>,
     ) -> Result<ProverId, Status> {
         let compute_capacity = req.compute_capacity.unwrap_or_default();
 
         prover_manager
-            .register_prover(
-                ProverId::from(req.prover_id),
-                compute_capacity,
-                req.num_nodes,
-                msg_sender,
-            )
+            .register_prover(ProverId::from(req.prover_id), compute_capacity, msg_sender)
             .await
             .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))
     }
@@ -333,7 +321,8 @@ impl DistributedApi for ConsensusService {
         request: Request<Streaming<ProverMessage>>,
     ) -> Result<Response<Self::ProverStreamStream>, Status> {
         // Check connection limits first
-        let max_connections = self.prover_manager.config().max_concurrent_connections as usize;
+        let max_connections =
+            self.prover_manager.config().await.max_concurrent_connections as usize;
 
         if self.active_connections.load(Ordering::SeqCst) >= max_connections as u32 {
             return Err(Status::resource_exhausted(format!(
@@ -354,7 +343,7 @@ impl DistributedApi for ConsensusService {
             active_connections.fetch_add(1, Ordering::SeqCst);
 
             // Create BOUNDED channel for outbound messages to this prover (for backpressure)
-            let buffer_size = prover_manager.config().message_buffer_size as usize;
+            let buffer_size = prover_manager.config().await.message_buffer_size as usize;
             let (outbound_sender, mut outbound_receiver) = mpsc::channel::<CoordinatorMessage>(buffer_size);
 
             // Clean registration handling - wait for prover to introduce itself
@@ -477,7 +466,7 @@ impl DistributedApi for ConsensusService {
             info!("Active connections after cleanup: {}", active_connections.load(Ordering::SeqCst));
 
             // Perform async cleanup
-            if let Err(e) = prover_manager.disconnect_prover(&prover_id).await {
+            if let Err(e) = prover_manager.unregister_prover(&prover_id).await {
                 error!("Failed to handle disconnect for prover {}: {}", prover_id, e);
             }
         });
