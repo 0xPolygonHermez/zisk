@@ -534,13 +534,13 @@ impl Rvd {
                 match (inst >> 13) & 0x7 {
                     // Check bits 15 to 13 = funct3
                     0x0 => ("CIW", "c.addi4spn"), // Mapped to addi: addi rd′, x2, nzuimm[9:2]
-                    0x1 => ("CL", "c.fld"),       // Unmapped, i.e. not supported
+                    0x1 => ("CL", "c.fld"),       // Mapped to ld: ld rd′, offset(rs1′)
                     0x2 => ("CL", "c.lw"),        // Mapped to lw: lw rd′, offset(rs1′)
                     0x3 => ("CL", "c.ld"),        // Mapped to ld: ld rd′, offset(rs1′)
                     0x4 => {
                         panic!("Rvd::get_type_and_name() reserved instruction inst=0x{inst:x}")
                     }
-                    0x5 => ("CS", "c.fsd"), // Unmapped, i.e. not supported
+                    0x5 => ("CS", "c.fsd"), // Mapped to sd: sd rs2′, offset(rs1′)
                     0x6 => ("CS", "c.sw"),  // Mapped to sw: sw rs2′,offset(rs1′)
                     0x7 => ("CS", "c.sd"),  // Mapped to sd: sd rs2′, offset(rs1′)
                     _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
@@ -597,7 +597,7 @@ impl Rvd {
                 match (inst >> 13) & 0x7 {
                     // Check bits 15 to 13 = funct3
                     0x0 => ("CI", "c.slli"), // Mapped to slli: slli rd, rd, shamt[5:0]
-                    0x1 => ("CI", "c.fldsp"), // Unmapped, i.e. not supported
+                    0x1 => ("CI", "c.fldsp"), // Mapped to ld: ld rd, offset(x2), rd!=0
                     // Would map to fld: fld rd, offset(x2), x2=sp, offset*8
                     0x2 => ("CI", "c.lwsp"), // Mapped to lw: lw rd, offset(x2)
                     0x3 => ("CI", "c.ldsp"), // Mapped to ld: ld rd, offset(x2), rd!=0
@@ -630,7 +630,7 @@ impl Rvd {
                             ),
                         }
                     }
-                    0x5 => ("CSS", "c.fsdsp"), // Unmapped, i.e. not supported
+                    0x5 => ("CSS", "c.fsdsp"), // Mapped to sd: sd rs2, offset(x2)
                     0x6 => ("CSS", "c.swsp"),  // Mapped to sw: sw rs2, offset(x2)
                     0x7 => ("CSS", "c.sdsp"),  // Mapped to sd: sd rs2, offset(x2)
                     _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),

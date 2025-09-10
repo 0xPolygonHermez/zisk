@@ -5,8 +5,8 @@
 use riscv::{riscv_interpreter, RiscvInstruction};
 
 use crate::{
-    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, INPUT_ADDR, OUTPUT_ADDR, ROM_ENTRY,
-    ROM_EXIT, SYS_ADDR,
+    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, FLOAT_LIB_ADDR, FREG_INST, FREG_RA,
+    FREG_X0, INPUT_ADDR, OUTPUT_ADDR, ROM_ENTRY, ROM_EXIT, SYS_ADDR,
 };
 
 use std::collections::HashMap;
@@ -40,6 +40,8 @@ const CAUSE_EXIT: u64 = 93;
 const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
 const MTVEC: u64 = CSR_ADDR + 0x305;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
+const FLOAT_HANDLER_ADDR: u64 = 0x1008;
+const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 32; // 31 regs + jump to zisk_float
 
 /// Context to store the list of converted ZisK instructions, including their program address and a
 /// map to store the instructions
@@ -234,6 +236,12 @@ impl Riscv2ZiskContext<'_> {
             // C.I.6.Privileged & System Instructions
             "c.ebreak" => self.nop(riscv_instruction, 2),
 
+            // C.D: Double-Precision Floating-Point:
+            "c.fld" => self.load_op(riscv_instruction, "copyb", 8, 2),
+            "c.fsd" => self.store_op(riscv_instruction, "copyb", 8, 2),
+            "c.fldsp" => self.load_op(riscv_instruction, "copyb", 8, 2),
+            "c.fsdsp" => self.store_op(riscv_instruction, "copyb", 8, 2),
+
             // C. Other
             "c.nop" => self.nop(riscv_instruction, 2),
 
@@ -241,55 +249,55 @@ impl Riscv2ZiskContext<'_> {
             /////////////////////////////////////
             "flw" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
             "fsw" => self.store_op(riscv_instruction, "signextend_w", 4, 4),
-            "fadd.s" => self.create_register_op(riscv_instruction, "fadd.d", 4), // single mapped to double
-            "fsub.s" => self.create_register_op(riscv_instruction, "fsub.d", 4), // single mapped to double
-            "fmul.s" => self.create_register_op(riscv_instruction, "fmul.d", 4), // single mapped to double
-            "fdiv.s" => self.create_register_op(riscv_instruction, "fdiv.d", 4), // single mapped to double
-            "fsqrt.s" => self.create_register_op(riscv_instruction, "fsqrt.d", 4), // single mapped to double
-            "fmax.s" => self.create_register_op(riscv_instruction, "fmax.d", 4), // single mapped to double
-            "fmin.s" => self.create_register_op(riscv_instruction, "fmin.d", 4), // single mapped to double
-            "feq.s" => self.create_register_op(riscv_instruction, "feq.d", 4), // single mapped to double
-            "fle.s" => self.create_register_op(riscv_instruction, "fle.d", 4), // single mapped to double
-            "flt.s" => self.create_register_op(riscv_instruction, "flt.d", 4), // single mapped to double
-            "fclass.s" => self.create_register_op(riscv_instruction, "fclass.d", 4), // single mapped to double
-            "fcvt.s.w" => self.create_register_op(riscv_instruction, "fcvt.d.w", 4), // single mapped to double
-            "fcvt.s.wu" => self.create_register_op(riscv_instruction, "fcvt.d.wu", 4), // single mapped to double
-            "fcvt.w.s" => self.create_register_op(riscv_instruction, "fcvt.w.d", 4), // single mapped to double
-            "fcvt.wu.s" => self.create_register_op(riscv_instruction, "fcvt.wu.d", 4), // single mapped to double
-            "fsgnj.s" => self.create_register_op(riscv_instruction, "fsgnj.d", 4), // single mapped to double
-            "fsgnjn.s" => self.create_register_op(riscv_instruction, "fsgnjn.d", 4), // single mapped to double
-            "fsgnjx.s" => self.create_register_op(riscv_instruction, "fsgnjx.d", 4), // single mapped to double
-            "fmadd.s" => self.create_register_op(riscv_instruction, "fadd.d", 4), // single mapped to double
-            "fmsub.s" => self.create_register_op(riscv_instruction, "fsub.d", 4), // single mapped to double
-            "fnmadd.s" => self.create_register_op(riscv_instruction, "fadd.d", 4), // single mapped to double
-            "fnmsub.s" => self.create_register_op(riscv_instruction, "fsub.d", 4), // single mapped to double
-            "fmv.w.x" => self.create_register_op(riscv_instruction, "fadd.d", 4), // single mapped to double
-            "fmv.x.w" => self.create_register_op(riscv_instruction, "fadd.d", 4), // single mapped to double
+            "fadd.s" => self.float(riscv_instruction, "fadd.d", 4),
+            "fsub.s" => self.float(riscv_instruction, "fsub.d", 4),
+            "fmul.s" => self.float(riscv_instruction, "fmul.d", 4),
+            "fdiv.s" => self.float(riscv_instruction, "fdiv.d", 4),
+            "fsqrt.s" => self.float(riscv_instruction, "fsqrt.d", 4),
+            "fmax.s" => self.float(riscv_instruction, "fmax.d", 4),
+            "fmin.s" => self.float(riscv_instruction, "fmin.d", 4),
+            "feq.s" => self.float(riscv_instruction, "feq.d", 4),
+            "fle.s" => self.float(riscv_instruction, "fle.d", 4),
+            "flt.s" => self.float(riscv_instruction, "flt.d", 4),
+            "fclass.s" => self.float(riscv_instruction, "fclass.d", 4),
+            "fcvt.s.w" => self.float(riscv_instruction, "fcvt.d.w", 4),
+            "fcvt.s.wu" => self.float(riscv_instruction, "fcvt.d.wu", 4),
+            "fcvt.w.s" => self.float(riscv_instruction, "fcvt.w.d", 4),
+            "fcvt.wu.s" => self.float(riscv_instruction, "fcvt.wu.d", 4),
+            "fsgnj.s" => self.float(riscv_instruction, "fsgnj.d", 4),
+            "fsgnjn.s" => self.float(riscv_instruction, "fsgnjn.d", 4),
+            "fsgnjx.s" => self.float(riscv_instruction, "fsgnjx.d", 4),
+            "fmadd.s" => self.float(riscv_instruction, "fmadd.d", 4),
+            "fmsub.s" => self.float(riscv_instruction, "fmsub.d", 4),
+            "fnmadd.s" => self.float(riscv_instruction, "fnmadd.d", 4),
+            "fnmsub.s" => self.float(riscv_instruction, "fnmsub.d", 4),
+            "fmv.w.x" => self.float(riscv_instruction, "fmv.w.x", 4), // TODO: implement natively
+            "fmv.x.w" => self.float(riscv_instruction, "fmv.x.w", 4), // TODO: implement natively
 
             // D: Double-Precision Floating-Point
             /////////////////////////////////////
             "fld" => self.load_op(riscv_instruction, "copyb", 8, 4),
             "fsd" => self.store_op(riscv_instruction, "copyb", 8, 4),
-            "fadd.d" => self.create_register_op(riscv_instruction, "fadd.d", 4),
-            "fsub.d" => self.create_register_op(riscv_instruction, "fsub.d", 4),
-            "fmul.d" => self.create_register_op(riscv_instruction, "fmul.d", 4),
-            "fdiv.d" => self.create_register_op(riscv_instruction, "fdiv.d", 4),
-            "fsqrt.d" => self.create_register_op(riscv_instruction, "fsqrt.d", 4),
-            "fmax.d" => self.create_register_op(riscv_instruction, "fmax.d", 4),
-            "fmin.d" => self.create_register_op(riscv_instruction, "fmin.d", 4),
-            "feq.d" => self.create_register_op(riscv_instruction, "feq.d", 4),
-            "fle.d" => self.create_register_op(riscv_instruction, "fle.d", 4),
-            "flt.d" => self.create_register_op(riscv_instruction, "flt.d", 4),
-            "fclass.d" => self.create_register_op(riscv_instruction, "fclass.d", 4),
-            "fcvt.d.s" => self.create_register_op(riscv_instruction, "fcvt.d.s", 4),
-            "fcvt.d.w" => self.create_register_op(riscv_instruction, "fcvt.d.w", 4),
-            "fcvt.d.wu" => self.create_register_op(riscv_instruction, "fcvt.d.wu", 4),
-            "fcvt.s.d" => self.create_register_op(riscv_instruction, "fcvt.s.d", 4),
-            "fcvt.w.d" => self.create_register_op(riscv_instruction, "fcvt.w.d", 4),
-            "fcvt.wu.d" => self.create_register_op(riscv_instruction, "fcvt.wu.d", 4),
-            "fsgnj.d" => self.create_register_op(riscv_instruction, "fsgnj.d", 4),
-            "fsgnjn.d" => self.create_register_op(riscv_instruction, "fsgnjn.d", 4),
-            "fsgnjx.d" => self.create_register_op(riscv_instruction, "fsgnjx.d", 4),
+            "fadd.d" => self.float(riscv_instruction, "fadd.d", 4),
+            "fsub.d" => self.float(riscv_instruction, "fsub.d", 4),
+            "fmul.d" => self.float(riscv_instruction, "fmul.d", 4),
+            "fdiv.d" => self.float(riscv_instruction, "fdiv.d", 4),
+            "fsqrt.d" => self.float(riscv_instruction, "fsqrt.d", 4),
+            "fmax.d" => self.float(riscv_instruction, "fmax.d", 4),
+            "fmin.d" => self.float(riscv_instruction, "fmin.d", 4),
+            "feq.d" => self.float(riscv_instruction, "feq.d", 4),
+            "fle.d" => self.float(riscv_instruction, "fle.d", 4),
+            "flt.d" => self.float(riscv_instruction, "flt.d", 4),
+            "fclass.d" => self.float(riscv_instruction, "fclass.d", 4),
+            "fcvt.d.s" => self.float(riscv_instruction, "fcvt.d.s", 4),
+            "fcvt.d.w" => self.float(riscv_instruction, "fcvt.d.w", 4),
+            "fcvt.d.wu" => self.float(riscv_instruction, "fcvt.d.wu", 4),
+            "fcvt.s.d" => self.float(riscv_instruction, "fcvt.s.d", 4),
+            "fcvt.w.d" => self.float(riscv_instruction, "fcvt.w.d", 4),
+            "fcvt.wu.d" => self.float(riscv_instruction, "fcvt.wu.d", 4),
+            "fsgnj.d" => self.float(riscv_instruction, "fsgnj.d", 4),
+            "fsgnjn.d" => self.float(riscv_instruction, "fsgnjn.d", 4),
+            "fsgnjx.d" => self.float(riscv_instruction, "fsgnjx.d", 4),
 
             _ => panic!(
                 "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
@@ -550,7 +558,12 @@ impl Riscv2ZiskContext<'_> {
         zib.ind_width(w);
         zib.src_b("ind", i.imm as u64, false);
         zib.op(op).unwrap();
-        let reg_offset: i64 = if i.inst == "fld" || i.inst == "flw" { 40 } else { 0 };
+        let reg_offset: i64 =
+            if i.inst == "fld" || i.inst == "flw" || i.inst == "c.fld" || i.inst == "c.fldsp" {
+                40
+            } else {
+                0
+            };
         zib.store("reg", i.rd as i64 + reg_offset, false, false);
         zib.j(inst_size as i32, inst_size as i32);
         zib.verbose(&format!("{} r{}+{}, 0x{:x}(r{})", i.inst, i.rd, reg_offset, i.imm, i.rs1));
@@ -566,7 +579,12 @@ impl Riscv2ZiskContext<'_> {
     /// and stores the result in memory
     pub fn store_op(&mut self, i: &RiscvInstruction, op: &str, w: u64, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let reg_offset: u64 = if i.inst == "fsd" || i.inst == "fsw" { 40 } else { 0 };
+        let reg_offset: u64 =
+            if i.inst == "fsd" || i.inst == "fsw" || i.inst == "c.fsd" || i.inst == "c.fsdsp" {
+                40
+            } else {
+                0
+            };
         let mut zib = ZiskInstBuilder::new(self.s);
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("reg", i.rs2 as u64 + reg_offset, false);
@@ -1508,6 +1526,43 @@ impl Riscv2ZiskContext<'_> {
             }
         }
     }
+
+    /// Implements a float or double function, for both 16-bit and 32-bit instruction sizes.
+    /// Implemented via integger operations
+    pub fn float(&mut self, i: &RiscvInstruction, op: &str, inst_size: u64) {
+        assert!(inst_size == 2 || inst_size == 4);
+        // Copy the raw RISC-V instruction to the FREG_INST register
+        {
+            let mut zib = ZiskInstBuilder::new(self.s);
+            zib.src_a("imm", 0, false);
+            zib.src_b("imm", i.rvinst as u64, false);
+            zib.op("copyb").unwrap();
+            zib.store("reg", FREG_INST as i64, false, false);
+            zib.j(1, 1);
+            zib.verbose(&format!("float store inst {} inst=0x{:x}", op, i.rvinst));
+            zib.build();
+            self.insts.insert(self.s, zib);
+            self.s += 1;
+        }
+
+        // Copy the return address to the FREG_RA register, then jump to the float handler code
+        {
+            let mut zib = ZiskInstBuilder::new(self.s);
+            let ra = self.s + inst_size - 1;
+            zib.src_a("imm", 0, false);
+            zib.src_b("imm", ra, false);
+            zib.op("copyb").unwrap();
+            zib.store("reg", FREG_INST as i64, false, false);
+            zib.j(
+                FLOAT_HANDLER_ADDR as i32 - self.s as i32,
+                FLOAT_HANDLER_ADDR as i32 - self.s as i32,
+            ); // Jump to float handler
+            zib.verbose(&format!("float store ra {} inst=0x{:x} ra=0x{:x}", op, i.rvinst, ra));
+            zib.build();
+            self.insts.insert(self.s, zib);
+            self.s += inst_size - 1;
+        }
+    }
 } // impl Riscv2ZiskContext
 
 /// Converts a buffer with RISC-V data into a vector of Zisk instructions, using the
@@ -1901,7 +1956,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
 }
 
 /// Add the end jump program section to the rom instruction set.
-pub fn add_end_jmp(rom: &mut ZiskRom) {
+pub fn add_end_and_lib(rom: &mut ZiskRom) {
     //print!("add_entry_exit_jmp() rom.next_init_inst_addr={}\n", rom.next_init_inst_addr);
 
     // :0000 we jump to the third instruction, leaving room for the end instruction
@@ -1910,7 +1965,7 @@ pub fn add_end_jmp(rom: &mut ZiskRom) {
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
     zib.op("copyb").unwrap();
-    zib.j(8, 8);
+    zib.j(4 * 65, 4 * 66);
     zib.verbose("Jump over end instruction");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
@@ -1927,6 +1982,64 @@ pub fn add_end_jmp(rom: &mut ZiskRom) {
     zib.end();
     zib.j(0, 0);
     zib.verbose("end");
+    zib.build();
+    rom.insts.insert(rom.next_init_inst_addr, zib);
+    rom.next_init_inst_addr += 4;
+
+    // Float handler
+    // RISC-V float instructions are handled here
+    // The instruction to be handled is in register FREG_INST
+    // The return address is in register FREG_RA
+    // We must save integer registers before calling the zisk_float function
+    assert!(rom.next_init_inst_addr == FLOAT_HANDLER_ADDR);
+    for i in 1..32 {
+        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+        zib.src_a("imm", 0, false);
+        zib.src_b("reg", i, false);
+        zib.op("copyb").unwrap();
+        zib.store("mem", FREG_X0 as i64 + (i * 8) as i64, false, false);
+        zib.j(4, 4);
+        zib.verbose(&format!("Float: save r{i} into freg_x{i}"));
+        zib.build();
+        rom.insts.insert(rom.next_init_inst_addr, zib);
+        rom.next_init_inst_addr += 4;
+    }
+
+    // Jump back to the zisk_float function address
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", 0, false);
+    zib.src_b("imm", FLOAT_LIB_ADDR, false);
+    zib.op("copyb").unwrap();
+    zib.set_pc();
+    zib.j(0, 4);
+    zib.verbose("Float: jump to FLOAT_LIB_ADDR");
+    zib.build();
+    rom.insts.insert(rom.next_init_inst_addr, zib);
+    rom.next_init_inst_addr += 4;
+
+    // We must retrieve integer registers after calling the zisk_float function
+    assert!(rom.next_init_inst_addr == FLOAT_HANDLER_RETURN_ADDR);
+    for i in 1..32 {
+        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+        zib.src_a("imm", 0, false);
+        zib.src_b("mem", FREG_X0 + (i * 8), false);
+        zib.op("copyb").unwrap();
+        zib.store("reg", i as i64, false, false);
+        zib.j(4, 4);
+        zib.verbose(&format!("Float: restore r{i} from freg_x{i}"));
+        zib.build();
+        rom.insts.insert(rom.next_init_inst_addr, zib);
+        rom.next_init_inst_addr += 4;
+    }
+
+    // Jump back to the address previously stored in FREG_RA
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", 0, false);
+    zib.src_b("mem", FREG_RA, false);
+    zib.op("copyb").unwrap();
+    zib.set_pc();
+    zib.j(0, 4);
+    zib.verbose("Float: jump to FREG_RA");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;

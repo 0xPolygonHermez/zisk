@@ -1,7 +1,7 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
 use crate::{
-    add_end_jmp,
+    add_end_and_lib,
     elf_extraction::{collect_elf_payload, merge_adjacent_ro_sections},
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
     AsmGenerationMethod, RoData, ZiskInst, ZiskRom, ZiskRom2Asm, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
@@ -18,7 +18,7 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
     // Add the end instruction, jumping over it
-    add_end_jmp(&mut rom);
+    add_end_and_lib(&mut rom);
 
     // 1. Add executable code sections
     for section in &payload.exec {
