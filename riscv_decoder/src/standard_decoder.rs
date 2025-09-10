@@ -24,6 +24,7 @@ pub fn decode_standard_instruction(bits: u32) -> Result<Instruction, Error> {
     // Parse all instruction fields
     let encoded = EncodedInstruction::new(bits);
 
+    // Check if parsed opcode is valid
     let opcode = Opcode::from_bits(encoded.opcode)
         .ok_or(Error::UnsupportedInstruction { opcode_bits: encoded.opcode })?;
 
