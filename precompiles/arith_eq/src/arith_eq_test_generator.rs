@@ -17,11 +17,11 @@ fn main() {
 
     let mut code = String::new();
     code += "#![no_main]\n";
+    code += "#![cfg(all(target_os = \"zkvm\", target_vendor = \"zisk\"))]\n";
     code += "ziskos::entrypoint!(main);\n\n";
     code += "use ziskos::{\n";
     code += "\tarith256::*, arith256_mod::*, bn254_complex_add::*, bn254_complex_mul::*, bn254_complex_sub::*,\n";
-    code +=
-        "\tbn254_curve_add::*, bn254_curve_dbl::*, complex256::*, point256::*, secp256k1_add::*,\n";
+    code += "\tbn254_curve_add::*, bn254_curve_dbl::*, complex::*, point::*, secp256k1_add::*,\n";
     code += "\tsecp256k1_dbl::*,\n";
     code += "};\n\n";
     code += "fn main() {\n";

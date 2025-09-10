@@ -1,6 +1,6 @@
 use tiny_keccak::{Hasher, Keccak};
 
-use crate::point256::SyscallPoint256;
+use crate::point::SyscallPoint256;
 
 use super::{
     secp256k1::{

@@ -194,6 +194,12 @@ impl ZiskAsmContext {
                 | ZiskOp::Bn254ComplexAdd
                 | ZiskOp::Bn254ComplexSub
                 | ZiskOp::Bn254ComplexMul
+                | ZiskOp::Arith384Mod
+                | ZiskOp::Bls12_381CurveAdd
+                | ZiskOp::Bls12_381CurveDbl
+                | ZiskOp::Bls12_381ComplexAdd
+                | ZiskOp::Bls12_381ComplexSub
+                | ZiskOp::Bls12_381ComplexMul
         )
     }
 }
@@ -493,6 +499,12 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_bn254_complex_add\n";
         *code += ".extern opcode_bn254_complex_sub\n";
         *code += ".extern opcode_bn254_complex_mul\n";
+        *code += ".extern opcode_arith384_mod\n";
+        *code += ".extern opcode_bls12_381_curve_add\n";
+        *code += ".extern opcode_bls12_381_curve_dbl\n";
+        *code += ".extern opcode_bls12_381_complex_add\n";
+        *code += ".extern opcode_bls12_381_complex_sub\n";
+        *code += ".extern opcode_bls12_381_complex_mul\n";
         *code += ".extern chunk_done\n";
         *code += ".extern print_fcall_ctx\n";
         *code += ".extern print_pc\n";
@@ -4928,14 +4940,13 @@ impl ZiskRom2Asm {
                                 REG_ACTIVE_CHUNK,
                                 ctx.comment_str("active_chunk == 1 ?")
                             );
-                            *code += &format!("\tjnz pc_{:x}_secp256k1add_active_chunk\n", ctx.pc);
-                            *code +=
-                                &format!("\tjmp pc_{:x}_secp256k1add_active_chunk_done\n", ctx.pc);
-                            *code += &format!("pc_{:x}_secp256k1add_active_chunk:\n", ctx.pc);
+                            *code += &format!("\tjnz pc_{:x}_sha256_active_chunk\n", ctx.pc);
+                            *code += &format!("\tjmp pc_{:x}_sha256_active_chunk_done\n", ctx.pc);
+                            *code += &format!("pc_{:x}_sha256_active_chunk:\n", ctx.pc);
                         }
                         Self::precompiled_save_mem_reads(ctx, code, 2, 2, [4, 8].to_vec());
                         if ctx.zip() {
-                            *code += &format!("pc_{:x}_secp256k1add_active_chunk_done:\n", ctx.pc);
+                            *code += &format!("pc_{:x}_sha256_active_chunk_done:\n", ctx.pc);
                         }
                     }
 
@@ -5058,7 +5069,7 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the secp256k1_add function
+                    // Call the arith256 function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                     *code += "\tcall _opcode_arith256\n";
@@ -5114,7 +5125,7 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the secp256k1_add function
+                    // Call the arith256_mod function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                     *code += "\tcall _opcode_arith256_mod\n";
@@ -5982,6 +5993,13 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_one = true;
             }
+            // TODO!!!
+            ZiskOp::Arith384Mod => unimplemented!(),
+            ZiskOp::Bls12_381CurveAdd => unimplemented!(),
+            ZiskOp::Bls12_381CurveDbl => unimplemented!(),
+            ZiskOp::Bls12_381ComplexAdd => unimplemented!(),
+            ZiskOp::Bls12_381ComplexSub => unimplemented!(),
+            ZiskOp::Bls12_381ComplexMul => unimplemented!(),
         }
     }
 

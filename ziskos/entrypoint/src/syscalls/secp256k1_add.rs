@@ -6,7 +6,7 @@ use crate::ziskos_syscall;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use core::arch::asm;
 
-use super::point256::SyscallPoint256;
+use super::point::SyscallPoint256;
 
 #[derive(Debug)]
 #[repr(C)]

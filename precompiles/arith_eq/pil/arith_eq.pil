@@ -51,11 +51,9 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
 
     const int CHUNKS = CLOCKS;
     const int CBC = 2;
-    const int EQ_CHUNKS = CHUNKS * 2;
     const int CHUNK_BITS = 16;
     const int CHUNK_SIZE = 2**CHUNK_BITS;
     const int CHUNK_MAX = CHUNK_SIZE - 1;
-    col fixed CHUNK_ID = [0..(CHUNKS-1)]...;
 
     const expr CLK[CLOCKS];
     for (int i = 0; i < CLOCKS; ++i) {
@@ -89,8 +87,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     const expr sel_any_arith256 = sel_arith256 + sel_arith256_mod;
     const expr sel_secp256k1 = sel_secp256k1_add + sel_secp256k1_dbl;
     const expr sel_bn254_curve = sel_bn254_curve_add + sel_bn254_curve_dbl;
-    const expr sel_bn254_complex = sel_bn254_complex_add + sel_bn254_complex_sub +
-                                   sel_bn254_complex_mul;
+    const expr sel_bn254_complex = sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul;
     const expr sel_check_diff = sel_secp256k1_add + sel_bn254_curve_add;
     const expr sel_check_x_lt_prime = sel_arith256_mod + sel_secp256k1 +
                                       sel_bn254_curve + sel_bn254_complex;
@@ -106,13 +103,9 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
                                     sel_bn254_complex_sub, sel_bn254_complex_sub,
                                     sel_bn254_complex_mul, sel_bn254_complex_mul];
 
-    // constraint to set (x1,y1) = (x2,y2) in secp256k1_dbl
-    sel_secp256k1_dbl * (x1 - x2) === 0;
-    sel_secp256k1_dbl * (y1 - y2) === 0;
-
-    // constraint to set (x1,y1) = (x2,y2) in bn254_curve_dbl
-    sel_bn254_curve_dbl * (x1 - x2) === 0;
-    sel_bn254_curve_dbl * (y1 - y2) === 0;
+    // constraint to set (x1,y1) = (x2,y2)
+    (sel_secp256k1_dbl + sel_bn254_curve_dbl) * (x1 - x2) === 0;
+    (sel_secp256k1_dbl + sel_bn254_curve_dbl) * (y1 - y2) === 0;
 
     const expr chunk_cols[7] = [x1, y1, x2, y2, x3, y3, s];
     const expr qs[QS] = [q0, q1, q2];
@@ -406,11 +399,16 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     // 6 indirect  64 bits  = 6 * 1 =  6 reads 64 bits
     //                     TOTAL    = 30 memory accesses
 
-    //                 READ           WRITE      INDIRECT
-    // secp256k1_add   x1,y1,x2,y2    x3,y3      (x1,y1)(x2,y2)
-    // secp256k1_dbl   x1,y2          x3,y3      (x1,y1)
-    // arith256        x1,y1,x2       x3,y3      x1,y1,x2,x3,y3
-    // arith256_mod    x1,y1,x2,y2    x3         x1,y1,x2,y2,x3
+    //                   READ         WRITE      INDIRECT
+    // arith256          x1,y1,x2     x3,y3      x1,y1,x2,x3,y3
+    // arith256_mod      x1,y1,x2,y2  x3         x1,y1,x2,y2,x3
+    // secp256k1_add     x1,y1,x2,y2  x3,y3      x1,y1,x2,y2
+    // secp256k1_dbl     x1,y2        x3,y3      x1,y1
+    // bn254_curve_add   x1,y1,x2,y2  x3,y3      x1,y1,x2,y2
+    // bn254_curve_dbl   x1,y2        x3,y3      x1,y1
+    // bn254_complex_add x1,y1,x2,y2  x3,y3      x1,y1,x2,y2
+    // bn254_complex_sub x1,y1,x2,y2  x3,y3      x1,y1,x2,y2
+    // bn254_complex_mul x1,y1,x2,y2  x3,y3      x1,y1,x2,y2
 
     const int ADDR_OP = MAIN_STEP + 1;
     const int ADDR_X1 = ADDR_OP + 1;
@@ -446,86 +444,62 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     // 14  STEP     | R | ADDR_OP + 32  ADDR_IND_4  use_ind_4 | ADDR_OP + 40  ADDR_IND_5  use_ind_5
     // 15  ---       ----------     -------                 ----------      ---------
 
-    const expr use_x2 = sel_arith256 + sel_arith256_mod + sel_secp256k1_add + sel_bn254_curve_add
-                      + sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul;
-    const expr use_y2 = sel_arith256_mod + sel_secp256k1_add + sel_bn254_curve_add
-                      + sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul;
-    const expr use_y3 = sel_arith256 + sel_secp256k1_add + sel_secp256k1_dbl + sel_bn254_curve_add
-                      + sel_bn254_curve_dbl + sel_bn254_complex_add + sel_bn254_complex_sub
-                      + sel_bn254_complex_mul;
+    const expr use_x2 = sel_arith256 + sel_arith256_mod + sel_secp256k1_add + sel_bn254_curve_add +
+                        sel_bn254_complex;
+    const expr use_y2 = sel_arith256_mod + sel_secp256k1_add + sel_bn254_curve_add + sel_bn254_complex;
+    const expr use_y3 = sel_arith256 + sel_secp256k1_add + sel_secp256k1_dbl + sel_bn254_curve_add +
+                        sel_bn254_curve_dbl + sel_bn254_complex;
 
-    // [secp256k1_dbl] ADDR_X1 === ADDR_OP,
-    //                 ADDR_Y1 === ADDR_OP + 32
+    // [any_arith256]    ADDR_X1 === ADDR_IND_0
     //
-    // [secp256k1_add] ADDR_X1 === ADDR_IND_0,
-    //                 ADDR_Y1 === ADDR_IND_0 + 32
+    // [secp256k1_add]   ADDR_X1 === ADDR_IND_0,
+    //                   ADDR_Y1 === ADDR_IND_0 + 32
+    //                   ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
     //
-    // [secp256k1]     ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
+    // [secp256k1_dbl]   ADDR_X1 === ADDR_OP,
+    //                   ADDR_Y1 === ADDR_OP + 32
+    //                   ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
     //
-    // [any_arith256]  ADDR_X1 === ADDR_IND_0
-
-    const expr use_ind_0 = sel_any_arith256 + sel_secp256k1_add + sel_bn254_curve_add +
-                           sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul;
-
-    sel_secp256k1_dbl * clock_eq(step_addr, ADDR_X1, ADDR_OP) === 0;
-    sel_secp256k1_dbl * clock_eq(step_addr, ADDR_Y1, ADDR_OP, 32) === 0;
-
-    sel_secp256k1_add * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
-    sel_secp256k1_add * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 32) === 0;
-
-    sel_secp256k1 * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
-    sel_secp256k1 * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
-
-    sel_bn254_curve_dbl * clock_eq(step_addr, ADDR_X1, ADDR_OP) === 0;
-    sel_bn254_curve_dbl * clock_eq(step_addr, ADDR_Y1, ADDR_OP, 32) === 0;
-
-    sel_bn254_curve_add * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
-    sel_bn254_curve_add * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 32) === 0;
-
-    sel_bn254_curve * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
-    sel_bn254_curve * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
-
-    sel_bn254_complex_add * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
-    sel_bn254_complex_add * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 32) === 0;
-    sel_bn254_complex_add * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
-    sel_bn254_complex_add * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
-
-    sel_bn254_complex_sub * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
-    sel_bn254_complex_sub * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 32) === 0;
-    sel_bn254_complex_sub * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
-    sel_bn254_complex_sub * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
-
-    sel_bn254_complex_mul * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
-    sel_bn254_complex_mul * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 32) === 0;
-    sel_bn254_complex_mul * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
-    sel_bn254_complex_mul * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
-
-    sel_any_arith256 * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
-
-    // [secp256k1_add] ADDR_X2 === ADDR_IND_1
-    //                 ADDR_Y2 === ADDR_IND_1 + 32
+    // [bn254_curve_add] ADDR_X1 === ADDR_IND_0,
+    //                   ADDR_Y1 === ADDR_IND_0 + 32
+    //                   ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
     //
-    // [any_arith256]  ADDR_Y1 === ADDR_IND_1
+    // [bn254_curve_dbl] ADDR_X1 === ADDR_OP,
+    //                   ADDR_Y1 === ADDR_OP + 32
+    //                   ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
+    //
+    // [bn254_complex]   ADDR_X1 === ADDR_IND_0
+    //                   ADDR_Y1 === ADDR_IND_0 + 32
+    //                   ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
 
-    const expr use_ind_1 = sel_any_arith256 + sel_secp256k1_add + sel_bn254_curve_add +
-                           sel_bn254_complex_add + sel_bn254_complex_sub + sel_bn254_complex_mul;
+    const expr use_ind_0 = sel_any_arith256 + sel_secp256k1_add + sel_bn254_curve_add + sel_bn254_complex;
 
-    sel_secp256k1_add * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
-    sel_secp256k1_add * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
+    (sel_any_arith256 + sel_secp256k1_add + sel_bn254_curve_add + sel_bn254_complex) * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
+    (sel_secp256k1_add + sel_bn254_curve_add + sel_bn254_complex) * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 32) === 0;
 
-    sel_bn254_curve_add * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
-    sel_bn254_curve_add * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
+    (sel_secp256k1_dbl + sel_bn254_curve_dbl) * clock_eq(step_addr, ADDR_X1, ADDR_OP) === 0;
+    (sel_secp256k1_dbl + sel_bn254_curve_dbl) * clock_eq(step_addr, ADDR_Y1, ADDR_OP, 32) === 0;
 
-    sel_bn254_complex_add * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
-    sel_bn254_complex_add * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
+    (sel_secp256k1 + sel_bn254_curve + sel_bn254_complex) * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
+    (sel_secp256k1 + sel_bn254_curve + sel_bn254_complex) * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
 
-    sel_bn254_complex_sub * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
-    sel_bn254_complex_sub * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
+    // [any_arith256]    ADDR_Y1 === ADDR_IND_1
+    //
+    // [secp256k1_add]   ADDR_X2 === ADDR_IND_1
+    //                   ADDR_Y2 === ADDR_IND_1 + 32
+    //
+    // [bn254_curve_add] ADDR_X2 === ADDR_IND_1
+    //                   ADDR_Y2 === ADDR_IND_1 + 32
+    //
+    // [bn254_complex]   ADDR_X2 === ADDR_IND_1
+    //                   ADDR_Y2 === ADDR_IND_1 + 32
 
-    sel_bn254_complex_mul * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
-    sel_bn254_complex_mul * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
+    const expr use_ind_1 = sel_any_arith256 + sel_secp256k1_add + sel_bn254_curve_add + sel_bn254_complex;
 
     sel_any_arith256 * clock_eq(step_addr, ADDR_Y1, ADDR_IND_1) === 0;
+
+    (sel_secp256k1_add + sel_bn254_curve_add + sel_bn254_complex) * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
+    (sel_secp256k1_add + sel_bn254_curve_add + sel_bn254_complex) * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
 
     // [any_arith256]  ADDR_X2 === ADDR_IND_2
 

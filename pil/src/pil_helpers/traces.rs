@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "33422bf82fa678d232fdaa684a15cbe264a47eedabcf7aad4d178a0a6fea76ed";
+pub const PILOUT_HASH: &str = "1824c50bd476961aa2850858cf4e92db0a86d1941e380a0f4120ccbb5119da06";
 
 //AIRGROUP CONSTANTS
 
@@ -46,11 +46,13 @@ pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[9];
 
 pub const ARITH_EQ_AIR_IDS: &[usize] = &[10];
 
-pub const KECCAKF_AIR_IDS: &[usize] = &[11];
+pub const ARITH_EQ_384_AIR_IDS: &[usize] = &[11];
 
-pub const SHA_256_F_AIR_IDS: &[usize] = &[12];
+pub const KECCAKF_AIR_IDS: &[usize] = &[12];
 
-pub const VIRTUAL_TABLE_AIR_IDS: &[usize] = &[13];
+pub const SHA_256_F_AIR_IDS: &[usize] = &[13];
+
+pub const VIRTUAL_TABLE_0_AIR_IDS: &[usize] = &[14];
 
 
 //PUBLICS
@@ -175,36 +177,44 @@ trace!(BinaryExtensionTrace<F> {
 },  0, 9, 4194304 );
 
 trace!(ArithEqFixed<F> {
- CLK_0: F, CHUNK_ID: F, __L1__: F,
+ CLK_0: F, __L1__: F,
 },  0, 10, 1048576 );
 
 trace!(ArithEqTrace<F> {
  x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 9], sel_op_clk0: [F; 9], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
 },  0, 10, 1048576 );
 
+trace!(ArithEq384Fixed<F> {
+ CLK_0: F, __L1__: F,
+},  0, 11, 1048576 );
+
+trace!(ArithEq384Trace<F> {
+ x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 6], sel_op_clk0: [F; 6], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
+},  0, 11, 1048576 );
+
 trace!(KeccakfFixed<F> {
  L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
-},  0, 11, 2097152 );
+},  0, 12, 2097152 );
 
 trace!(KeccakfTrace<F> {
  free_in_a: [F; 9], free_in_b: [F; 9], free_in_c: [F; 9], free_in_d: [F; 9], bit: [F; 4], val: [F; 4], step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 11, 2097152 );
+},  0, 12, 2097152 );
 
 trace!(Sha256fFixed<F> {
  CLK_0: F, __L1__: F,
-},  0, 12, 262144 );
+},  0, 13, 262144 );
 
 trace!(Sha256fTrace<F> {
  a: [F; 32], e: [F; 32], w: [F; 32], new_a_carry_bits: F, new_e_carry_bits: F, new_w_carry_bits: F, step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 12, 262144 );
+},  0, 13, 262144 );
 
-trace!(VirtualTableFixed<F> {
+trace!(VirtualTable0Fixed<F> {
  UID: [F; 75], column: [F; 184], __L1__: F,
-},  0, 13, 2097152 );
+},  0, 14, 2097152 );
 
-trace!(VirtualTableTrace<F> {
+trace!(VirtualTable0Trace<F> {
  multiplicity: [F; 75],
-},  0, 13, 2097152 );
+},  0, 14, 2097152 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -270,6 +280,10 @@ values!(ArithEqAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
+values!(ArithEq384AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
 values!(KeccakfAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
@@ -278,6 +292,6 @@ values!(Sha256fAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(VirtualTableAirGroupValues<F> {
+values!(VirtualTable0AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });

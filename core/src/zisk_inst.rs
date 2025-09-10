@@ -85,6 +85,7 @@ pub enum ZiskOperationType {
     FcallParam,
     Fcall,
     FcallGet,
+    ArithEq384,
 }
 
 pub const NONE_OP_TYPE_ID: u32 = 0;

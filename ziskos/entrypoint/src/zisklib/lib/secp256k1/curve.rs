@@ -1,6 +1,6 @@
 use crate::{
     fcall_msb_pos_256,
-    point256::SyscallPoint256,
+    point::SyscallPoint256,
     secp256k1_add::{syscall_secp256k1_add, SyscallSecp256k1AddParams},
     secp256k1_dbl::syscall_secp256k1_dbl,
 };
