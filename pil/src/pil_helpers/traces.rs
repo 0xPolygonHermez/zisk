@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "26ecf931e37b68f7fb766b4f34888593dc900dceae3463a8a3a9bb5fa68f5db7";
+pub const PILOUT_HASH: &str = "701d42f01df29c8de6483dca9f910b5e74aaf3f7cd5d9121cc5a6dbe6b55a7fa";
 
 //AIRGROUP CONSTANTS
 
@@ -50,7 +50,14 @@ pub const BINARY_ADD_AIR_IDS: &[usize] = &[11];
 
 pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[12];
 
-pub const VIRTUAL_TABLE_0_AIR_IDS: &[usize] = &[13];
+pub const ARITH_EQ_AIR_IDS: &[usize] = &[13];
+
+pub const KECCAKF_AIR_IDS: &[usize] = &[14];
+
+pub const SHA_256_F_AIR_IDS: &[usize] = &[15];
+
+pub const VIRTUAL_TABLE_0_AIR_IDS: &[usize] = &[16];
+
 
 //PUBLICS
 use serde::Deserialize;

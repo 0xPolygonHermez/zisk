@@ -46,18 +46,6 @@ impl Default for MemPlanner {
 /// # Safety
 /// Many methods interact with raw pointers and FFI bindings to C++ code. It is assumed that the underlying
 /// memory is valid for the duration of the `MemPlanner` instance, and that the C++ side upholds its invariants.
-///
-/// # Example
-/// ```rust
-/// let planner = MemPlanner::new();
-/// planner.execute();
-/// planner.add_chunk(len, data_ptr);
-/// planner.add_chunk(len, data_ptr);
-/// planner.set_completed();
-/// let mut mem_align_plans = planner.wait_mem_align_plans();
-/// planner.wait();
-/// let all_plans = planner.collect_plans(&mut mem_align_plans);
-/// ```
 impl MemPlanner {
     /// Creates and prepares the planner
     pub fn new() -> Self {

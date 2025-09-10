@@ -285,7 +285,6 @@ impl MemPlanner {
 
     pub fn generate_plans(&self, metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         // convert generic information to specific information
-        println!("MemPlanner: generate_plans() with {} metrics", metrics.len());
         let mut counters: Vec<(ChunkId, &MemCounters)> = metrics
             .iter()
             .map(|(chunk_id, metric)| {
@@ -363,7 +362,6 @@ impl MemPlanner {
 
         #[cfg(any(feature = "save_mem_plans", feature = "save_mem_bus_data"))]
         save_plans(&plans, "plans.txt");
-        println!("Generated {} memory plans", plans.len());
         plans
     }
 }
