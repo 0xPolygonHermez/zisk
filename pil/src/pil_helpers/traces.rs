@@ -50,14 +50,7 @@ pub const BINARY_ADD_AIR_IDS: &[usize] = &[11];
 
 pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[12];
 
-pub const ARITH_EQ_AIR_IDS: &[usize] = &[13];
-
-pub const KECCAKF_AIR_IDS: &[usize] = &[14];
-
-pub const SHA_256_F_AIR_IDS: &[usize] = &[15];
-
-pub const VIRTUAL_TABLE_AIR_IDS: &[usize] = &[16];
-
+pub const VIRTUAL_TABLE_0_AIR_IDS: &[usize] = &[13];
 
 //PUBLICS
 use serde::Deserialize;
@@ -228,11 +221,11 @@ trace!(Sha256fTrace<F> {
  a: [F; 32], e: [F; 32], w: [F; 32], new_a_carry_bits: F, new_e_carry_bits: F, new_w_carry_bits: F, step_addr: F, in_use_clk_0: F, in_use: F,
 },  0, 15, 262144 );
 
-trace!(VirtualTableFixed<F> {
+trace!(VirtualTable0Fixed<F> {
  UID: [F; 75], column: [F; 184], __L1__: F,
 },  0, 16, 2097152 );
 
-trace!(VirtualTableTrace<F> {
+trace!(VirtualTable0Trace<F> {
  multiplicity: [F; 75],
 },  0, 16, 2097152 );
 
@@ -332,6 +325,6 @@ values!(Sha256fAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(VirtualTableAirGroupValues<F> {
+values!(VirtualTable0AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
