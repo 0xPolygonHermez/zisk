@@ -1,3 +1,8 @@
+mod error;
+mod instruction;
+
+use crate::{compressed_decoder::instruction::Instruction, Error};
+
 /// IALIGN_BITS refers to the instruction alignment constraint in bits.
 ///
 /// This number is always either 16 or 32. It is 16 when the compressed
@@ -24,4 +29,9 @@ impl From<CompressedInstruction> for crate::Instruction {
     fn from(value: CompressedInstruction) -> Self {
         todo!()
     }
+}
+
+/// Decode a 16-bit compressed RISC-V instruction
+pub fn decode_compressed_instruction(bits: u16) -> Result<Instruction, Error> {
+    todo!()
 }
