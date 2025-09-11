@@ -101,15 +101,14 @@ void MemCountAndPlan::count_phase() {
     }
     // threads.emplace_back([this](){ mem_align_counter->execute();});
     mem_align_execute = std::make_unique<std::thread>(&MemCountAndPlan::detach_execute_mem_align_counter, this);
-    sem_post(&sem_mem_align_created);
+    if (sem_post(&sem_mem_align_created) != 0) {
+        perror("sem_post");
+    }
 
     for (auto& t : threads) {
         t.join();
     }
-    // No wait for mem_align_counter here, wait in detach_execute
-    if (mem_align_execute && mem_align_execute->joinable()) {
-        mem_align_execute->join();
-    }
+
 
     uint64_t max_tot_wait_us = 0;
     uint64_t tot_wait_us = 0;
@@ -123,6 +122,9 @@ void MemCountAndPlan::count_phase() {
             max_used_slots = count_workers[index]->get_used_slots();
         }
     }
+
+    wait_mem_align_counters();
+
     t_count_us = (uint32_t) (get_usec() - init);
 
 #ifdef MEM_STATS_ACTIVE
@@ -313,10 +315,11 @@ void MemCountAndPlan::wait_mem_align_counters() {
     try {
         if (mem_align_execute && mem_align_execute->joinable()) {
             mem_align_execute->join();
-        }       
+        }
     } catch (const std::exception &e) {
         printf("Exception mem_align_execute in wait: %s\n", e.what());
     }
+    sem_post(&sem_mem_align_created);   
 }
 
 void MemCountAndPlan::wait() {
