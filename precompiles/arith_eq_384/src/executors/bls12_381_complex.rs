@@ -19,12 +19,12 @@ lazy_static! {
         16
     )
     .unwrap();
-    pub static ref BLS12_381_COMPLEX_ADD_Q1_OFFSET: BigInt = BigInt::from(1) << 4;
-    pub static ref BLS12_381_COMPLEX_ADD_Q2_OFFSET: BigInt = BigInt::from(1) << 4;
-    pub static ref BLS12_381_COMPLEX_SUB_Q1_OFFSET: BigInt = BigInt::from(1) << 4;
-    pub static ref BLS12_381_COMPLEX_SUB_Q2_OFFSET: BigInt = BigInt::from(1) << 4;
-    pub static ref BLS12_381_COMPLEX_MUL_Q1_OFFSET: BigInt = BigInt::from(1) << 388;
-    pub static ref BLS12_381_COMPLEX_MUL_Q2_OFFSET: BigInt = BigInt::from(1) << 4;
+    pub static ref BLS12_381_COMPLEX_ADD_Q1_OFFSET: BigInt = BigInt::from(1);
+    pub static ref BLS12_381_COMPLEX_ADD_Q2_OFFSET: BigInt = BigInt::from(1);
+    pub static ref BLS12_381_COMPLEX_SUB_Q1_OFFSET: BigInt = BigInt::from(1);
+    pub static ref BLS12_381_COMPLEX_SUB_Q2_OFFSET: BigInt = BigInt::from(1);
+    pub static ref BLS12_381_COMPLEX_MUL_Q1_OFFSET: BigInt = BigInt::from(1) << 382;
+    pub static ref BLS12_381_COMPLEX_MUL_Q2_OFFSET: BigInt = BigInt::from(1);
 }
 
 #[derive(Clone)]

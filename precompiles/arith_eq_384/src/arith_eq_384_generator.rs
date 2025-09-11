@@ -48,7 +48,7 @@ fn main() {
         "s*x2-s*x1-y2+y1-p*q0+p*offset",
         &[
             ("p", "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"),
-            ("offset", "0x10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+            ("offset", "0x400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
         ],
     );
 
@@ -69,7 +69,7 @@ fn main() {
         "2*s*y1-3*x1*x1+p*q0-p*offset",
         &[
             ("p", "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"),
-            ("offset", "0x20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+            ("offset", "0x800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
         ],
     );
 
@@ -86,7 +86,7 @@ fn main() {
         "s*s-x1-x2-x3-p*q1+p*offset",
         &[
             ("p", "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"),
-            ("offset", "0x20"),
+            ("offset", "0x4"),
         ],
     );
 
@@ -103,7 +103,7 @@ fn main() {
         "s*x1-s*x3-y1-y3+p*q2-p*offset",
         &[
             ("p", "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"),
-            ("offset", "0x10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+            ("offset", "0x400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
         ],
     );
 
@@ -124,7 +124,7 @@ fn main() {
         "x1+x2-x3-p*q1+p*offset",
         &[
             ("p", "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"),
-            ("offset", "0x10"),
+            ("offset", "0x1"),
         ],
     );
 
@@ -145,7 +145,7 @@ fn main() {
         "y1+y2-y3-p*q2+p*offset",
         &[
             ("p", "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"),
-            ("offset", "0x10"),
+            ("offset", "0x1"),
         ],
     );
 
@@ -166,7 +166,7 @@ fn main() {
         "x1-x2-x3+p*q1-p*offset",
         &[
             ("p", "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"),
-            ("offset", "0x10"),
+            ("offset", "0x1"),
         ],
     );
 
@@ -187,7 +187,7 @@ fn main() {
         "y1-y2-y3+p*q2-p*offset",
         &[
             ("p", "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"),
-            ("offset", "0x10"),
+            ("offset", "0x1"),
         ],
     );
 
@@ -208,7 +208,7 @@ fn main() {
         "x1*x2-y1*y2-x3+p*q1-p*offset",
         &[
             ("p", "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"),
-            ("offset", "0x10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+            ("offset", "0x400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
         ],
     );
 
@@ -229,7 +229,7 @@ fn main() {
         "y1*x2+x1*y2-y3-p*q2+p*offset",
         &[
             ("p", "0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab"),
-            ("offset", "0x10"),
+            ("offset", "0x1"),
         ],
     );
 

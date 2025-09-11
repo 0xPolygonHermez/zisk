@@ -16,7 +16,7 @@ pub fn generate_bn254_curve_dbl_mem_inputs(
     data: &[u64],
     only_counters: bool,
 ) -> Vec<(BusId, Vec<u64>)> {
-    // op,op_type,a,b,addr[2],...
+    // op,op_type,a,b,...
     let p1: &[u64; 8] = &data[4..12].try_into().unwrap();
     let mut p3 = [0u64; 8];
 

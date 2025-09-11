@@ -19,10 +19,10 @@ lazy_static! {
         16
     )
     .unwrap();
-    pub static ref BLS12_381_CURVE_ADD_Q0_OFFSET: BigInt = BigInt::from(1) << 388;
-    pub static ref BLS12_381_CURVE_DBL_Q0_OFFSET: BigInt = BigInt::from(1) << 389;
-    pub static ref BLS12_381_CURVE_Q1_OFFSET: BigInt = BigInt::from(1) << 5;
-    pub static ref BLS12_381_CURVE_Q2_OFFSET: BigInt = BigInt::from(1) << 388;
+    pub static ref BLS12_381_CURVE_ADD_Q0_OFFSET: BigInt = BigInt::from(1) << 382; //BigInt::from(1) << 388;
+    pub static ref BLS12_381_CURVE_DBL_Q0_OFFSET: BigInt = BigInt::from(1) << 383;
+    pub static ref BLS12_381_CURVE_Q1_OFFSET: BigInt = BigInt::from(1) << 2;
+    pub static ref BLS12_381_CURVE_Q2_OFFSET: BigInt = BigInt::from(1) << 382;
 }
 
 pub struct Bls12_381Curve {}
@@ -45,7 +45,7 @@ impl Bls12_381Curve {
         Self::prepare(true, p1, p1, Some(p3));
     }
 
-    fn point_from_8x64(p: &[u64; ARITH_EQ_384_U64S_DOUBLE]) -> (Bls12_381Field, Bls12_381Field) {
+    fn point_from_u64s(p: &[u64; ARITH_EQ_384_U64S_DOUBLE]) -> (Bls12_381Field, Bls12_381Field) {
         (
             Bls12_381Field::from(ark_ff::BigInt::<6>(p[0..6].try_into().unwrap())),
             Bls12_381Field::from(ark_ff::BigInt::<6>(p[6..12].try_into().unwrap())),
@@ -58,8 +58,8 @@ impl Bls12_381Curve {
         p2: &[u64; ARITH_EQ_384_U64S_DOUBLE],
         p3: Option<&mut [u64; ARITH_EQ_384_U64S_DOUBLE]>,
     ) -> Option<ArithEq384Data> {
-        let (x1, y1) = Self::point_from_8x64(p1);
-        let (x2, y2) = if is_dbl { (x1, y1) } else { Self::point_from_8x64(p2) };
+        let (x1, y1) = Self::point_from_u64s(p1);
+        let (x2, y2) = if is_dbl { (x1, y1) } else { Self::point_from_u64s(p2) };
 
         let s = if is_dbl {
             (Bls12_381Field::from(3u64) * x1 * x1) / (y1 + y1)
@@ -162,7 +162,8 @@ impl Bls12_381Curve {
                 }
                 debug_assert!(
                     0 == if icol == COLS - 1 { value } else { value % 0x10000 },
-                    "Bls12_381Curve residue eq{ieq} ({index}) #:{value} cin:{cin}"
+                    "Bls12_381Curve residue eq{ieq} (#{index}) eq={} cin={cin} value={value}",
+                    data.eq[index][ieq]
                 );
             }
         }

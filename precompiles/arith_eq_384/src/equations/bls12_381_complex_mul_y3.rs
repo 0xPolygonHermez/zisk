@@ -3,8 +3,8 @@
 // equation: y1*x2+x1*y2-y3-p*q2+p*offset
 //
 // p: 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB
-// offset: 0x10
-// (p*offset): 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB0
+// offset: 0x1
+// (p*offset): 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB
 //
 // chunks:24
 // chunk_bits:16
@@ -24,13 +24,13 @@ impl Bls12_381ComplexMulY3 {
         q2: &[i64; 24],
     ) -> i64 {
         match icol {
-            0 => y1[0] * x2[0] + x1[0] * y2[0] - y3[0] - 0xAAAB * q2[0] + 0xAAB0,
+            0 => y1[0] * x2[0] + x1[0] * y2[0] - y3[0] - 0xAAAB * q2[0] + 0xAAAB,
             1 => {
                 y1[1] * x2[0] + y1[0] * x2[1] + x1[1] * y2[0] + x1[0] * y2[1]
                     - y3[1]
                     - 0xFFFF * q2[0]
                     - 0xAAAB * q2[1]
-                    + 0xFFFA
+                    + 0xFFFF
             }
             2 => {
                 y1[2] * x2[0]
@@ -59,7 +59,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[1]
                     - 0xFFFF * q2[2]
                     - 0xAAAB * q2[3]
-                    + 0x9FEF
+                    + 0xB9FE
             }
             4 => {
                 y1[4] * x2[0]
@@ -78,7 +78,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[2]
                     - 0xFFFF * q2[3]
                     - 0xAAAB * q2[4]
-                    + 0xFFFB
+                    + 0xFFFF
             }
             5 => {
                 y1[5] * x2[0]
@@ -100,7 +100,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[3]
                     - 0xFFFF * q2[4]
                     - 0xAAAB * q2[5]
-                    + 0x153F
+                    + 0xB153
             }
             6 => {
                 y1[6] * x2[0]
@@ -125,7 +125,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[4]
                     - 0xFFFF * q2[5]
                     - 0xAAAB * q2[6]
-                    + 0xFFEB
+                    + 0xFFFE
             }
             7 => {
                 y1[7] * x2[0]
@@ -153,7 +153,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[5]
                     - 0xFFFF * q2[6]
                     - 0xAAAB * q2[7]
-                    + 0xEABF
+                    + 0x1EAB
             }
             8 => {
                 y1[8] * x2[0]
@@ -184,7 +184,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[6]
                     - 0xFFFF * q2[7]
                     - 0xAAAB * q2[8]
-                    + 0x6241
+                    + 0xF624
             }
             9 => {
                 y1[9] * x2[0]
@@ -218,7 +218,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[7]
                     - 0xFFFF * q2[8]
                     - 0xAAAB * q2[9]
-                    + 0x6B0F
+                    + 0xF6B0
             }
             10 => {
                 y1[10] * x2[0]
@@ -255,7 +255,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[8]
                     - 0xFFFF * q2[9]
                     - 0xAAAB * q2[10]
-                    + 0x2A0F
+                    + 0xD2A0
             }
             11 => {
                 y1[11] * x2[0]
@@ -295,7 +295,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[9]
                     - 0xFFFF * q2[10]
                     - 0xAAAB * q2[11]
-                    + 0x730D
+                    + 0x6730
             }
             12 => {
                 y1[12] * x2[0]
@@ -338,7 +338,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[10]
                     - 0xFFFF * q2[11]
                     - 0xAAAB * q2[12]
-                    + 0x2BF6
+                    + 0x12BF
             }
             13 => {
                 y1[13] * x2[0]
@@ -384,7 +384,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[11]
                     - 0xFFFF * q2[12]
                     - 0xAAAB * q2[13]
-                    + 0x3851
+                    + 0xF385
             }
             14 => {
                 y1[14] * x2[0]
@@ -433,7 +433,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[12]
                     - 0xFFFF * q2[13]
                     - 0xAAAB * q2[14]
-                    + 0xB84F
+                    + 0x4B84
             }
             15 => {
                 y1[15] * x2[0]
@@ -485,7 +485,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[13]
                     - 0xFFFF * q2[14]
                     - 0xAAAB * q2[15]
-                    + 0x4774
+                    + 0x6477
             }
             16 => {
                 y1[16] * x2[0]
@@ -540,7 +540,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[14]
                     - 0xFFFF * q2[15]
                     - 0xAAAB * q2[16]
-                    + 0xCD76
+                    + 0xACD7
             }
             17 => {
                 y1[17] * x2[0]
@@ -598,7 +598,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[15]
                     - 0xFFFF * q2[16]
                     - 0xAAAB * q2[17]
-                    + 0x34BA
+                    + 0x434B
             }
             18 => {
                 y1[18] * x2[0]
@@ -659,7 +659,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[16]
                     - 0xFFFF * q2[17]
                     - 0xAAAB * q2[18]
-                    + 0x7B64
+                    + 0xA7B6
             }
             19 => {
                 y1[19] * x2[0]
@@ -723,7 +723,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[17]
                     - 0xFFFF * q2[18]
                     - 0xAAAB * q2[19]
-                    + 0xB1BA
+                    + 0x4B1B
             }
             20 => {
                 y1[20] * x2[0]
@@ -790,7 +790,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[18]
                     - 0xFFFF * q2[19]
                     - 0xAAAB * q2[20]
-                    + 0x69A4
+                    + 0xE69A
             }
             21 => {
                 y1[21] * x2[0]
@@ -860,7 +860,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[19]
                     - 0xFFFF * q2[20]
                     - 0xAAAB * q2[21]
-                    + 0x97FE
+                    + 0x397F
             }
             22 => {
                 y1[22] * x2[0]
@@ -933,7 +933,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[20]
                     - 0xFFFF * q2[21]
                     - 0xAAAB * q2[22]
-                    + 0x1EA3
+                    + 0x11EA
             }
             23 => {
                 y1[23] * x2[0]
@@ -1009,7 +1009,7 @@ impl Bls12_381ComplexMulY3 {
                     - 0xFFFF * q2[21]
                     - 0xFFFF * q2[22]
                     - 0xAAAB * q2[23]
-                    + 0xA011
+                    + 0x1A01
             }
             24 => {
                 y1[23] * x2[1]
@@ -1081,7 +1081,6 @@ impl Bls12_381ComplexMulY3 {
                     - 0xB9FE * q2[21]
                     - 0xFFFF * q2[22]
                     - 0xFFFF * q2[23]
-                    + 0x1
             }
             25 => {
                 y1[23] * x2[2]

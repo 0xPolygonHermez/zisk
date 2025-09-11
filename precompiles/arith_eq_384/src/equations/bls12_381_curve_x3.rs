@@ -3,8 +3,8 @@
 // equation: s*s-x1-x2-x3-p*q1+p*offset
 //
 // p: 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB
-// offset: 0x20
-// (p*offset): 0x340223D472FFCD3496374F6C869759AEC8EE9709E70A257ECE61A541ED61EC483D57FFFD62A7FFFF73FDFFFFFFFF55560
+// offset: 0x4
+// (p*offset): 0x680447A8E5FF9A692C6E9ED90D2EB35D91DD2E13CE144AFD9CC34A83DAC3D8907AAFFFFAC54FFFFEE7FBFFFFFFFEAAAC
 //
 // chunks:24
 // chunk_bits:16
@@ -23,10 +23,10 @@ impl Bls12_381CurveX3 {
         q1: &[i64; 24],
     ) -> i64 {
         match icol {
-            0 => s[0] * s[0] - x1[0] - x2[0] - x3[0] - 0xAAAB * q1[0] + 0x5560,
+            0 => s[0] * s[0] - x1[0] - x2[0] - x3[0] - 0xAAAB * q1[0] + 0xAAAC,
             1 => {
                 s[1] * s[0] + s[0] * s[1] - x1[1] - x2[1] - x3[1] - 0xFFFF * q1[0] - 0xAAAB * q1[1]
-                    + 0xFFF5
+                    + 0xFFFE
             }
             2 => {
                 s[2] * s[0] + s[1] * s[1] + s[0] * s[2]
@@ -47,7 +47,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[1]
                     - 0xFFFF * q1[2]
                     - 0xAAAB * q1[3]
-                    + 0x3FDF
+                    + 0xE7FB
             }
             4 => {
                 s[4] * s[0] + s[3] * s[1] + s[2] * s[2] + s[1] * s[3] + s[0] * s[4]
@@ -59,7 +59,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[2]
                     - 0xFFFF * q1[3]
                     - 0xAAAB * q1[4]
-                    + 0xFFF7
+                    + 0xFFFE
             }
             5 => {
                 s[5] * s[0] + s[4] * s[1] + s[3] * s[2] + s[2] * s[3] + s[1] * s[4] + s[0] * s[5]
@@ -72,7 +72,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[3]
                     - 0xFFFF * q1[4]
                     - 0xAAAB * q1[5]
-                    + 0x2A7F
+                    + 0xC54F
             }
             6 => {
                 s[6] * s[0]
@@ -92,7 +92,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[4]
                     - 0xFFFF * q1[5]
                     - 0xAAAB * q1[6]
-                    + 0xFFD6
+                    + 0xFFFA
             }
             7 => {
                 s[7] * s[0]
@@ -114,7 +114,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[5]
                     - 0xFFFF * q1[6]
                     - 0xAAAB * q1[7]
-                    + 0xD57F
+                    + 0x7AAF
             }
             8 => {
                 s[8] * s[0]
@@ -138,7 +138,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[6]
                     - 0xFFFF * q1[7]
                     - 0xAAAB * q1[8]
-                    + 0xC483
+                    + 0xD890
             }
             9 => {
                 s[9] * s[0]
@@ -164,7 +164,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[7]
                     - 0xFFFF * q1[8]
                     - 0xAAAB * q1[9]
-                    + 0xD61E
+                    + 0xDAC3
             }
             10 => {
                 s[10] * s[0]
@@ -192,7 +192,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[8]
                     - 0xFFFF * q1[9]
                     - 0xAAAB * q1[10]
-                    + 0x541E
+                    + 0x4A83
             }
             11 => {
                 s[11] * s[0]
@@ -222,7 +222,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[9]
                     - 0xFFFF * q1[10]
                     - 0xAAAB * q1[11]
-                    + 0xE61A
+                    + 0x9CC3
             }
             12 => {
                 s[12] * s[0]
@@ -254,7 +254,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[10]
                     - 0xFFFF * q1[11]
                     - 0xAAAB * q1[12]
-                    + 0x57EC
+                    + 0x4AFD
             }
             13 => {
                 s[13] * s[0]
@@ -288,7 +288,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[11]
                     - 0xFFFF * q1[12]
                     - 0xAAAB * q1[13]
-                    + 0x70A2
+                    + 0xCE14
             }
             14 => {
                 s[14] * s[0]
@@ -324,7 +324,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[12]
                     - 0xFFFF * q1[13]
                     - 0xAAAB * q1[14]
-                    + 0x709E
+                    + 0x2E13
             }
             15 => {
                 s[15] * s[0]
@@ -362,7 +362,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[13]
                     - 0xFFFF * q1[14]
                     - 0xAAAB * q1[15]
-                    + 0x8EE9
+                    + 0x91DD
             }
             16 => {
                 s[16] * s[0]
@@ -402,7 +402,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[14]
                     - 0xFFFF * q1[15]
                     - 0xAAAB * q1[16]
-                    + 0x9AEC
+                    + 0xB35D
             }
             17 => {
                 s[17] * s[0]
@@ -444,7 +444,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[15]
                     - 0xFFFF * q1[16]
                     - 0xAAAB * q1[17]
-                    + 0x6975
+                    + 0xD2E
             }
             18 => {
                 s[18] * s[0]
@@ -488,7 +488,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[16]
                     - 0xFFFF * q1[17]
                     - 0xAAAB * q1[18]
-                    + 0xF6C8
+                    + 0x9ED9
             }
             19 => {
                 s[19] * s[0]
@@ -534,7 +534,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[17]
                     - 0xFFFF * q1[18]
                     - 0xAAAB * q1[19]
-                    + 0x6374
+                    + 0x2C6E
             }
             20 => {
                 s[20] * s[0]
@@ -582,7 +582,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[18]
                     - 0xFFFF * q1[19]
                     - 0xAAAB * q1[20]
-                    + 0xD349
+                    + 0x9A69
             }
             21 => {
                 s[21] * s[0]
@@ -632,7 +632,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[19]
                     - 0xFFFF * q1[20]
                     - 0xAAAB * q1[21]
-                    + 0x2FFC
+                    + 0xE5FF
             }
             22 => {
                 s[22] * s[0]
@@ -684,7 +684,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[20]
                     - 0xFFFF * q1[21]
                     - 0xAAAB * q1[22]
-                    + 0x3D47
+                    + 0x47A8
             }
             23 => {
                 s[23] * s[0]
@@ -738,7 +738,7 @@ impl Bls12_381CurveX3 {
                     - 0xFFFF * q1[21]
                     - 0xFFFF * q1[22]
                     - 0xAAAB * q1[23]
-                    + 0x4022
+                    + 0x6804
             }
             24 => {
                 s[23] * s[1]
@@ -787,7 +787,6 @@ impl Bls12_381CurveX3 {
                     - 0xB9FE * q1[21]
                     - 0xFFFF * q1[22]
                     - 0xFFFF * q1[23]
-                    + 0x3
             }
             25 => {
                 s[23] * s[2]

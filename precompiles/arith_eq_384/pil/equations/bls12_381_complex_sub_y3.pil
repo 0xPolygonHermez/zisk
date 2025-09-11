@@ -3,8 +3,8 @@
 // equation: y1-y2-y3+p*q2-p*offset
 //
 // p: 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB
-// offset: 0x10
-// (p*offset): 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB0
+// offset: 0x1
+// (p*offset): 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB
 //
 // chunks:24
 // chunk_bits:16
@@ -19,14 +19,14 @@ eq_bls12_381_complex_sub_y3_chunks[ 0] =   y1                          //   y1[0
                                          - y2                          // - y2[0]
                                          - y3                          // - y3[0]
                                          + 0xAAAB * q2                 // + p[0] * q2[0]
-                                         - 0xAAB0;                     // - (p*offset)[0]
+                                         - 0xAAAB;                     // - (p*offset)[0]
 
 eq_bls12_381_complex_sub_y3_chunks[ 1] =   y1'                         //   y1[1]
                                          - y2'                         // - y2[1]
                                          - y3'                         // - y3[1]
                                          + 0xFFFF * q2                 // + p[1] * q2[0]
                                          + 0xAAAB * q2'                // + p[0] * q2[1]
-                                         - 0xFFFA;                     // - (p*offset)[1]
+                                         - 0xFFFF;                     // - (p*offset)[1]
 
 // clock #1
 
@@ -45,7 +45,7 @@ eq_bls12_381_complex_sub_y3_chunks[ 3] =   y1'2                        //   y1[3
                                          + 0xFFFF * q2                 // + p[2] * q2[1]
                                          + 0xFFFF * q2'                // + p[1] * q2[2]
                                          + 0xAAAB * q2'2               // + p[0] * q2[3]
-                                         - 0x9FEF;                     // - (p*offset)[3]
+                                         - 0xB9FE;                     // - (p*offset)[3]
 
 // clock #2
 
@@ -57,7 +57,7 @@ eq_bls12_381_complex_sub_y3_chunks[ 4] =   y1'2                        //   y1[4
                                          + 0xFFFF * q2                 // + p[2] * q2[2]
                                          + 0xFFFF * q2'                // + p[1] * q2[3]
                                          + 0xAAAB * q2'2               // + p[0] * q2[4]
-                                         - 0xFFFB;                     // - (p*offset)[4]
+                                         - 0xFFFF;                     // - (p*offset)[4]
 
 eq_bls12_381_complex_sub_y3_chunks[ 5] =   y1'3                        //   y1[5]
                                          - y2'3                        // - y2[5]
@@ -68,7 +68,7 @@ eq_bls12_381_complex_sub_y3_chunks[ 5] =   y1'3                        //   y1[5
                                          + 0xFFFF * q2'                // + p[2] * q2[3]
                                          + 0xFFFF * q2'2               // + p[1] * q2[4]
                                          + 0xAAAB * q2'3               // + p[0] * q2[5]
-                                         - 0x153F;                     // - (p*offset)[5]
+                                         - 0xB153;                     // - (p*offset)[5]
 
 // clock #3
 
@@ -82,7 +82,7 @@ eq_bls12_381_complex_sub_y3_chunks[ 6] =   y1'3                        //   y1[6
                                          + 0xFFFF * q2'                // + p[2] * q2[4]
                                          + 0xFFFF * q2'2               // + p[1] * q2[5]
                                          + 0xAAAB * q2'3               // + p[0] * q2[6]
-                                         - 0xFFEB;                     // - (p*offset)[6]
+                                         - 0xFFFE;                     // - (p*offset)[6]
 
 eq_bls12_381_complex_sub_y3_chunks[ 7] =   y1'4                        //   y1[7]
                                          - y2'4                        // - y2[7]
@@ -95,7 +95,7 @@ eq_bls12_381_complex_sub_y3_chunks[ 7] =   y1'4                        //   y1[7
                                          + 0xFFFF * q2'2               // + p[2] * q2[5]
                                          + 0xFFFF * q2'3               // + p[1] * q2[6]
                                          + 0xAAAB * q2'4               // + p[0] * q2[7]
-                                         - 0xEABF;                     // - (p*offset)[7]
+                                         - 0x1EAB;                     // - (p*offset)[7]
 
 // clock #4
 
@@ -111,7 +111,7 @@ eq_bls12_381_complex_sub_y3_chunks[ 8] =   y1'4                        //   y1[8
                                          + 0xFFFF * q2'2               // + p[2] * q2[6]
                                          + 0xFFFF * q2'3               // + p[1] * q2[7]
                                          + 0xAAAB * q2'4               // + p[0] * q2[8]
-                                         - 0x6241;                     // - (p*offset)[8]
+                                         - 0xF624;                     // - (p*offset)[8]
 
 eq_bls12_381_complex_sub_y3_chunks[ 9] =   y1'5                        //   y1[9]
                                          - y2'5                        // - y2[9]
@@ -126,7 +126,7 @@ eq_bls12_381_complex_sub_y3_chunks[ 9] =   y1'5                        //   y1[9
                                          + 0xFFFF * q2'3               // + p[2] * q2[7]
                                          + 0xFFFF * q2'4               // + p[1] * q2[8]
                                          + 0xAAAB * q2'5               // + p[0] * q2[9]
-                                         - 0x6B0F;                     // - (p*offset)[9]
+                                         - 0xF6B0;                     // - (p*offset)[9]
 
 // clock #5
 
@@ -144,7 +144,7 @@ eq_bls12_381_complex_sub_y3_chunks[10] =   y1'5                        //   y1[1
                                          + 0xFFFF * q2'3               // + p[2] * q2[8]
                                          + 0xFFFF * q2'4               // + p[1] * q2[9]
                                          + 0xAAAB * q2'5               // + p[0] * q2[10]
-                                         - 0x2A0F;                     // - (p*offset)[10]
+                                         - 0xD2A0;                     // - (p*offset)[10]
 
 eq_bls12_381_complex_sub_y3_chunks[11] =   y1'6                        //   y1[11]
                                          - y2'6                        // - y2[11]
@@ -161,7 +161,7 @@ eq_bls12_381_complex_sub_y3_chunks[11] =   y1'6                        //   y1[1
                                          + 0xFFFF * q2'4               // + p[2] * q2[9]
                                          + 0xFFFF * q2'5               // + p[1] * q2[10]
                                          + 0xAAAB * q2'6               // + p[0] * q2[11]
-                                         - 0x730D;                     // - (p*offset)[11]
+                                         - 0x6730;                     // - (p*offset)[11]
 
 // clock #6
 
@@ -181,7 +181,7 @@ eq_bls12_381_complex_sub_y3_chunks[12] =   y1'6                        //   y1[1
                                          + 0xFFFF * q2'4               // + p[2] * q2[10]
                                          + 0xFFFF * q2'5               // + p[1] * q2[11]
                                          + 0xAAAB * q2'6               // + p[0] * q2[12]
-                                         - 0x2BF6;                     // - (p*offset)[12]
+                                         - 0x12BF;                     // - (p*offset)[12]
 
 eq_bls12_381_complex_sub_y3_chunks[13] =   y1'7                        //   y1[13]
                                          - y2'7                        // - y2[13]
@@ -200,7 +200,7 @@ eq_bls12_381_complex_sub_y3_chunks[13] =   y1'7                        //   y1[1
                                          + 0xFFFF * q2'5               // + p[2] * q2[11]
                                          + 0xFFFF * q2'6               // + p[1] * q2[12]
                                          + 0xAAAB * q2'7               // + p[0] * q2[13]
-                                         - 0x3851;                     // - (p*offset)[13]
+                                         - 0xF385;                     // - (p*offset)[13]
 
 // clock #7
 
@@ -222,7 +222,7 @@ eq_bls12_381_complex_sub_y3_chunks[14] =   y1'7                        //   y1[1
                                          + 0xFFFF * q2'5               // + p[2] * q2[12]
                                          + 0xFFFF * q2'6               // + p[1] * q2[13]
                                          + 0xAAAB * q2'7               // + p[0] * q2[14]
-                                         - 0xB84F;                     // - (p*offset)[14]
+                                         - 0x4B84;                     // - (p*offset)[14]
 
 eq_bls12_381_complex_sub_y3_chunks[15] =   y1'8                        //   y1[15]
                                          - y2'8                        // - y2[15]
@@ -243,7 +243,7 @@ eq_bls12_381_complex_sub_y3_chunks[15] =   y1'8                        //   y1[1
                                          + 0xFFFF * q2'6               // + p[2] * q2[13]
                                          + 0xFFFF * q2'7               // + p[1] * q2[14]
                                          + 0xAAAB * q2'8               // + p[0] * q2[15]
-                                         - 0x4774;                     // - (p*offset)[15]
+                                         - 0x6477;                     // - (p*offset)[15]
 
 // clock #8
 
@@ -267,7 +267,7 @@ eq_bls12_381_complex_sub_y3_chunks[16] =   y1'8                        //   y1[1
                                          + 0xFFFF * q2'6               // + p[2] * q2[14]
                                          + 0xFFFF * q2'7               // + p[1] * q2[15]
                                          + 0xAAAB * q2'8               // + p[0] * q2[16]
-                                         - 0xCD76;                     // - (p*offset)[16]
+                                         - 0xACD7;                     // - (p*offset)[16]
 
 eq_bls12_381_complex_sub_y3_chunks[17] =   y1'9                        //   y1[17]
                                          - y2'9                        // - y2[17]
@@ -290,7 +290,7 @@ eq_bls12_381_complex_sub_y3_chunks[17] =   y1'9                        //   y1[1
                                          + 0xFFFF * q2'7               // + p[2] * q2[15]
                                          + 0xFFFF * q2'8               // + p[1] * q2[16]
                                          + 0xAAAB * q2'9               // + p[0] * q2[17]
-                                         - 0x34BA;                     // - (p*offset)[17]
+                                         - 0x434B;                     // - (p*offset)[17]
 
 // clock #9
 
@@ -316,7 +316,7 @@ eq_bls12_381_complex_sub_y3_chunks[18] =   y1'9                        //   y1[1
                                          + 0xFFFF * q2'7               // + p[2] * q2[16]
                                          + 0xFFFF * q2'8               // + p[1] * q2[17]
                                          + 0xAAAB * q2'9               // + p[0] * q2[18]
-                                         - 0x7B64;                     // - (p*offset)[18]
+                                         - 0xA7B6;                     // - (p*offset)[18]
 
 eq_bls12_381_complex_sub_y3_chunks[19] =   y1'10                       //   y1[19]
                                          - y2'10                       // - y2[19]
@@ -341,7 +341,7 @@ eq_bls12_381_complex_sub_y3_chunks[19] =   y1'10                       //   y1[1
                                          + 0xFFFF * q2'8               // + p[2] * q2[17]
                                          + 0xFFFF * q2'9               // + p[1] * q2[18]
                                          + 0xAAAB * q2'10              // + p[0] * q2[19]
-                                         - 0xB1BA;                     // - (p*offset)[19]
+                                         - 0x4B1B;                     // - (p*offset)[19]
 
 // clock #10
 
@@ -369,7 +369,7 @@ eq_bls12_381_complex_sub_y3_chunks[20] =   y1'10                       //   y1[2
                                          + 0xFFFF * q2'8               // + p[2] * q2[18]
                                          + 0xFFFF * q2'9               // + p[1] * q2[19]
                                          + 0xAAAB * q2'10              // + p[0] * q2[20]
-                                         - 0x69A4;                     // - (p*offset)[20]
+                                         - 0xE69A;                     // - (p*offset)[20]
 
 eq_bls12_381_complex_sub_y3_chunks[21] =   y1'11                       //   y1[21]
                                          - y2'11                       // - y2[21]
@@ -396,7 +396,7 @@ eq_bls12_381_complex_sub_y3_chunks[21] =   y1'11                       //   y1[2
                                          + 0xFFFF * q2'9               // + p[2] * q2[19]
                                          + 0xFFFF * q2'10              // + p[1] * q2[20]
                                          + 0xAAAB * q2'11              // + p[0] * q2[21]
-                                         - 0x97FE;                     // - (p*offset)[21]
+                                         - 0x397F;                     // - (p*offset)[21]
 
 // clock #11
 
@@ -426,7 +426,7 @@ eq_bls12_381_complex_sub_y3_chunks[22] =   y1'11                       //   y1[2
                                          + 0xFFFF * q2'9               // + p[2] * q2[20]
                                          + 0xFFFF * q2'10              // + p[1] * q2[21]
                                          + 0xAAAB * q2'11              // + p[0] * q2[22]
-                                         - 0x1EA3;                     // - (p*offset)[22]
+                                         - 0x11EA;                     // - (p*offset)[22]
 
 eq_bls12_381_complex_sub_y3_chunks[23] =   y1'12                       //   y1[23]
                                          - y2'12                       // - y2[23]
@@ -455,7 +455,7 @@ eq_bls12_381_complex_sub_y3_chunks[23] =   y1'12                       //   y1[2
                                          + 0xFFFF * q2'10              // + p[2] * q2[21]
                                          + 0xFFFF * q2'11              // + p[1] * q2[22]
                                          + 0xAAAB * q2'12              // + p[0] * q2[23]
-                                         - 0xA011;                     // - (p*offset)[23]
+                                         - 0x1A01;                     // - (p*offset)[23]
 
 // clock #12
 
@@ -481,8 +481,7 @@ eq_bls12_381_complex_sub_y3_chunks[24] =   0x1A01 * 11'q2              //   p[23
                                          + 0xFFFF * q2'8               // + p[4] * q2[20]
                                          + 0xB9FE * q2'9               // + p[3] * q2[21]
                                          + 0xFFFF * q2'10              // + p[2] * q2[22]
-                                         + 0xFFFF * q2'11              // + p[1] * q2[23]
-                                         - 0x1;                        // - (p*offset)[24]
+                                         + 0xFFFF * q2'11;             // + p[1] * q2[23]
 
 eq_bls12_381_complex_sub_y3_chunks[25] =   0x1A01 * 10'q2              //   p[23] * q2[2]
                                          + 0x11EA * 9'q2               // + p[22] * q2[3]

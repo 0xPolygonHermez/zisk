@@ -3,8 +3,8 @@
 // equation: x1-x2-x3+p*q1-p*offset
 //
 // p: 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB
-// offset: 0x10
-// (p*offset): 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB0
+// offset: 0x1
+// (p*offset): 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB
 //
 // chunks:24
 // chunk_bits:16
@@ -22,8 +22,8 @@ impl Bls12_381ComplexSubX3 {
         q1: &[i64; 24],
     ) -> i64 {
         match icol {
-            0 => x1[0] - x2[0] - x3[0] + 0xAAAB * q1[0] - 0xAAB0,
-            1 => x1[1] - x2[1] - x3[1] + 0xFFFF * q1[0] + 0xAAAB * q1[1] - 0xFFFA,
+            0 => x1[0] - x2[0] - x3[0] + 0xAAAB * q1[0] - 0xAAAB,
+            1 => x1[1] - x2[1] - x3[1] + 0xFFFF * q1[0] + 0xAAAB * q1[1] - 0xFFFF,
             2 => x1[2] - x2[2] - x3[2] + 0xFFFF * q1[0] + 0xFFFF * q1[1] + 0xAAAB * q1[2] - 0xFFFF,
             3 => {
                 x1[3] - x2[3] - x3[3]
@@ -31,7 +31,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[1]
                     + 0xFFFF * q1[2]
                     + 0xAAAB * q1[3]
-                    - 0x9FEF
+                    - 0xB9FE
             }
             4 => {
                 x1[4] - x2[4] - x3[4]
@@ -40,7 +40,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[2]
                     + 0xFFFF * q1[3]
                     + 0xAAAB * q1[4]
-                    - 0xFFFB
+                    - 0xFFFF
             }
             5 => {
                 x1[5] - x2[5] - x3[5]
@@ -50,7 +50,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[3]
                     + 0xFFFF * q1[4]
                     + 0xAAAB * q1[5]
-                    - 0x153F
+                    - 0xB153
             }
             6 => {
                 x1[6] - x2[6] - x3[6]
@@ -61,7 +61,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[4]
                     + 0xFFFF * q1[5]
                     + 0xAAAB * q1[6]
-                    - 0xFFEB
+                    - 0xFFFE
             }
             7 => {
                 x1[7] - x2[7] - x3[7]
@@ -73,7 +73,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[5]
                     + 0xFFFF * q1[6]
                     + 0xAAAB * q1[7]
-                    - 0xEABF
+                    - 0x1EAB
             }
             8 => {
                 x1[8] - x2[8] - x3[8]
@@ -86,7 +86,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[6]
                     + 0xFFFF * q1[7]
                     + 0xAAAB * q1[8]
-                    - 0x6241
+                    - 0xF624
             }
             9 => {
                 x1[9] - x2[9] - x3[9]
@@ -100,7 +100,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[7]
                     + 0xFFFF * q1[8]
                     + 0xAAAB * q1[9]
-                    - 0x6B0F
+                    - 0xF6B0
             }
             10 => {
                 x1[10] - x2[10] - x3[10]
@@ -115,7 +115,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[8]
                     + 0xFFFF * q1[9]
                     + 0xAAAB * q1[10]
-                    - 0x2A0F
+                    - 0xD2A0
             }
             11 => {
                 x1[11] - x2[11] - x3[11]
@@ -131,7 +131,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[9]
                     + 0xFFFF * q1[10]
                     + 0xAAAB * q1[11]
-                    - 0x730D
+                    - 0x6730
             }
             12 => {
                 x1[12] - x2[12] - x3[12]
@@ -148,7 +148,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[10]
                     + 0xFFFF * q1[11]
                     + 0xAAAB * q1[12]
-                    - 0x2BF6
+                    - 0x12BF
             }
             13 => {
                 x1[13] - x2[13] - x3[13]
@@ -166,7 +166,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[11]
                     + 0xFFFF * q1[12]
                     + 0xAAAB * q1[13]
-                    - 0x3851
+                    - 0xF385
             }
             14 => {
                 x1[14] - x2[14] - x3[14]
@@ -185,7 +185,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[12]
                     + 0xFFFF * q1[13]
                     + 0xAAAB * q1[14]
-                    - 0xB84F
+                    - 0x4B84
             }
             15 => {
                 x1[15] - x2[15] - x3[15]
@@ -205,7 +205,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[13]
                     + 0xFFFF * q1[14]
                     + 0xAAAB * q1[15]
-                    - 0x4774
+                    - 0x6477
             }
             16 => {
                 x1[16] - x2[16] - x3[16]
@@ -226,7 +226,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[14]
                     + 0xFFFF * q1[15]
                     + 0xAAAB * q1[16]
-                    - 0xCD76
+                    - 0xACD7
             }
             17 => {
                 x1[17] - x2[17] - x3[17]
@@ -248,7 +248,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[15]
                     + 0xFFFF * q1[16]
                     + 0xAAAB * q1[17]
-                    - 0x34BA
+                    - 0x434B
             }
             18 => {
                 x1[18] - x2[18] - x3[18]
@@ -271,7 +271,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[16]
                     + 0xFFFF * q1[17]
                     + 0xAAAB * q1[18]
-                    - 0x7B64
+                    - 0xA7B6
             }
             19 => {
                 x1[19] - x2[19] - x3[19]
@@ -295,7 +295,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[17]
                     + 0xFFFF * q1[18]
                     + 0xAAAB * q1[19]
-                    - 0xB1BA
+                    - 0x4B1B
             }
             20 => {
                 x1[20] - x2[20] - x3[20]
@@ -320,7 +320,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[18]
                     + 0xFFFF * q1[19]
                     + 0xAAAB * q1[20]
-                    - 0x69A4
+                    - 0xE69A
             }
             21 => {
                 x1[21] - x2[21] - x3[21]
@@ -346,7 +346,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[19]
                     + 0xFFFF * q1[20]
                     + 0xAAAB * q1[21]
-                    - 0x97FE
+                    - 0x397F
             }
             22 => {
                 x1[22] - x2[22] - x3[22]
@@ -373,7 +373,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[20]
                     + 0xFFFF * q1[21]
                     + 0xAAAB * q1[22]
-                    - 0x1EA3
+                    - 0x11EA
             }
             23 => {
                 x1[23] - x2[23] - x3[23]
@@ -401,7 +401,7 @@ impl Bls12_381ComplexSubX3 {
                     + 0xFFFF * q1[21]
                     + 0xFFFF * q1[22]
                     + 0xAAAB * q1[23]
-                    - 0xA011
+                    - 0x1A01
             }
             24 => {
                 0x1A01 * q1[1]
@@ -427,7 +427,6 @@ impl Bls12_381ComplexSubX3 {
                     + 0xB9FE * q1[21]
                     + 0xFFFF * q1[22]
                     + 0xFFFF * q1[23]
-                    - 0x1
             }
             25 => {
                 0x1A01 * q1[2]

@@ -8,7 +8,7 @@ pub const BLS12_381_COMPLEX_MUL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemIn
     rewrite_params: true,
     read_params: 2,
     write_params: 1,
-    chunks_per_param: 8,
+    chunks_per_param: ARITH_EQ_384_U64S_DOUBLE,
 };
 
 pub fn generate_bls12_381_complex_mul_mem_inputs(
@@ -17,8 +17,7 @@ pub fn generate_bls12_381_complex_mul_mem_inputs(
     data: &[u64],
     only_counters: bool,
 ) -> Vec<(BusId, Vec<u64>)> {
-    // op,op_type,a,b,addr[2],...
-    let mut pos_offset: usize = 6;
+    let mut pos_offset: usize = 6; // op,op_type,a,b,addr[2],...
     let f1: &[u64; ARITH_EQ_384_U64S_DOUBLE] =
         &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S_DOUBLE)].try_into().unwrap();
     pos_offset += ARITH_EQ_384_U64S_DOUBLE;

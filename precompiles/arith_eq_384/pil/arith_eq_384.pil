@@ -103,7 +103,7 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
     const expr arith384_mod_clk0 = sel_op_clk0[0];
     const expr bls12_381_curve_add_clk0 = sel_op_clk0[1];
     const expr bls12_381_curve_dbl_clk0 = sel_op_clk0[2];
-    const expr bls12_381_curve_clk0 = sel_op_clk0[1] + sel_op_clk0[2];
+    const expr bls12_381_curve_clk0 = bls12_381_curve_add_clk0 + bls12_381_curve_dbl_clk0;
     const expr bls12_381_complex_add_clk0 = sel_op_clk0[3];
     const expr bls12_381_complex_sub_clk0 = sel_op_clk0[4];
     const expr bls12_381_complex_mul_clk0 = sel_op_clk0[5];
@@ -321,13 +321,13 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
     lookup_assumes(ARITH_EQ_LT_TABLE_ID, [2 * 'y3_lt * (1 - CLK_0) + y3_lt, delta_y3], sel: sel_check_y_lt_prime);
 
     col witness carry[MAX_CEQS][CBC];
-
     for (int i = 0; i < MAX_CEQS; ++i) {
+        // Initial carry must be 0
         carry[i][0] * CLK_0 === 0;
         for (int j = 0; j < CBC; ++j) {
             range_check(min: CARRY_MIN, max: CARRY_MAX, expression: carry[i][j]);
             if (j == CBC - 1) {
-                // in last clock (CLK_0') carry belongs to next operation cycle
+                // in the last clock the equation should be satisfied and carry must be 0
                 eq[i][j] + carry[i][j] === (1 - LAST_CLK) * carry[i][0]' * CHUNK_SIZE;
             } else {
                 eq[i][j] + carry[i][j] === carry[i][j+1] * CHUNK_SIZE;
@@ -415,24 +415,24 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
     // [arith384_mod]        ADDR_X1 === ADDR_IND_0
     //
     // [bls12_381_curve_add] ADDR_X1 === ADDR_IND_0,
-    //                       ADDR_Y1 === ADDR_IND_0 + 32
+    //                       ADDR_Y1 === ADDR_IND_0 + 48
     //                       ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
     //
     // [bls12_381_curve_dbl] ADDR_X1 === ADDR_OP,
-    //                       ADDR_Y1 === ADDR_OP + 32
+    //                       ADDR_Y1 === ADDR_OP + 48
     //                       ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
     //
     // [bls12_381_complex]   ADDR_X1 === ADDR_IND_0
-    //                       ADDR_Y1 === ADDR_IND_0 + 32
+    //                       ADDR_Y1 === ADDR_IND_0 + 48
     //                       ADDR_X3 === ADDR_X1, ADDR_Y3 === ADDR_Y1
 
     const expr use_ind_0 = sel_arith384_mod + sel_bls12_381_curve_add + sel_bls12_381_complex;
 
     (sel_arith384_mod + sel_bls12_381_curve_add + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
-    (sel_bls12_381_curve_add + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 32) === 0;
+    (sel_bls12_381_curve_add + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 48) === 0;
 
     sel_bls12_381_curve_dbl * clock_eq(step_addr, ADDR_X1, ADDR_OP) === 0;
-    sel_bls12_381_curve_dbl * clock_eq(step_addr, ADDR_Y1, ADDR_OP, 32) === 0;
+    sel_bls12_381_curve_dbl * clock_eq(step_addr, ADDR_Y1, ADDR_OP, 48) === 0;
 
     (sel_bls12_381_curve + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
     (sel_bls12_381_curve + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
@@ -440,17 +440,17 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
     // [arith384_mod]        ADDR_Y1 === ADDR_IND_1
     //
     // [bls12_381_curve_add] ADDR_X2 === ADDR_IND_1
-    //                       ADDR_Y2 === ADDR_IND_1 + 32
+    //                       ADDR_Y2 === ADDR_IND_1 + 48
     //
     // [bls12_381_complex]   ADDR_X2 === ADDR_IND_1
-    //                       ADDR_Y2 === ADDR_IND_1 + 32
+    //                       ADDR_Y2 === ADDR_IND_1 + 48
 
     const expr use_ind_1 = sel_arith384_mod + sel_bls12_381_curve_add + sel_bls12_381_complex;
 
     sel_arith384_mod * clock_eq(step_addr, ADDR_Y1, ADDR_IND_1) === 0;
 
     (sel_bls12_381_curve_add + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
-    (sel_bls12_381_curve_add + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
+    (sel_bls12_381_curve_add + sel_bls12_381_complex) * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 48) === 0;
 
     // [arith384_mod]  ADDR_X2 === ADDR_IND_2
 
@@ -557,7 +557,7 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
     lookup_proves(operation_bus_id, [bus_op, step_addr'(MAIN_STEP), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk0);
 
     // selclk0 is the clock 0 for dedicated to one operation
-    function expr_group_by_cbc(const expr selclk0, const expr chunks[], const int index ): const expr {
+    function expr_group_by_cbc(const expr selclk0, const expr chunks[], const int index): const expr {
         expr res = 0;
         int iclock = 0;
         for (int i = 0; i < length(chunks); ++i) {
@@ -569,7 +569,7 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
         return res;
     }
 
-    function map_chunks_to_m32(const expr cl, int index = 0, int start = 0, int end = 0, int delta_index = 4 ): const expr {
+    function map_chunks_to_m32(const expr cl, int index = 0, int start = 0, int end = 0, int delta_index = 4): const expr {
         expr res = 0;
         for (int iclock = start; iclock <= end; ++iclock) {
             res += air.CLK[iclock]*(index_on_clock(cl, index, iclock) + air.CHUNK_SIZE * index_on_clock(cl, index + 1, iclock));
