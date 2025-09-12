@@ -133,8 +133,8 @@ public:
             uint32_t chunk_size = chunk.chunk_size;
 //            uint32_t j = chunk_size - 1;
 //            printf("CHUNK[%4d] 0:[%08X %d %c] ... %d:[%08X %d %c]\n", chunk_id,
-//                data[0].addr, data[0].flags & 0xFFFF, data[0].flags & 0x10000 ? 'R':'W', j,
-//                data[j].addr, data[j].flags & 0xFFFF, data[j].flags & 0x10000 ? 'R':'W');
+//                data[0].addr, data[0].flags & 0xFFFF, data[0].flags & MEM_WRITE_FLAG ? 'R':'W', j,
+//                data[j].addr, data[j].flags & 0xFFFF, data[j].flags & MEM_WRITE_FLAG ? 'R':'W');
             add_chunk_mem_count_and_plan(cp, data, chunk_size);
             ++chunk_id;
         }

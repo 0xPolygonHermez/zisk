@@ -94,7 +94,11 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         // This matches the order from StaticDataBus::into_devices and build_data_bus_counters
 
         if let Some(mem_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0])) {
-            plans.push(mem_sm.build_planner().plan(it.next().unwrap()));
+            if self.process_only_operation_bus {
+                plans.push(mem_sm.build_dummy_planner().plan(it.next().unwrap()));
+            } else {
+                plans.push(mem_sm.build_planner().plan(it.next().unwrap()));
+            }
         }
 
         // Rom state machine
@@ -224,7 +228,9 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         for sm in self.sm.values() {
             match sm {
                 StateMachines::MemSM(mem_sm) => {
-                    mem_counter = Some(mem_sm.build_mem_counter());
+                    if !self.process_only_operation_bus {
+                        mem_counter = Some(mem_sm.build_mem_counter());
+                    }
                 }
                 StateMachines::BinarySM(binary_sm) => {
                     binary_counter = Some(binary_sm.build_binary_counter());
@@ -247,7 +253,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
 
         StaticDataBus::new(
             self.process_only_operation_bus,
-            mem_counter.expect("Mem counter not found"),
+            mem_counter,
             binary_counter.expect("Binary counter not found"),
             arith_counter.expect("Arith counter not found"),
             keccakf_counter.expect("Keccakf counter not found"),

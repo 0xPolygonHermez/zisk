@@ -94,6 +94,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
         #[cfg(feature = "debug_mem_align")]
         let num_rows = self.num_computed_rows.lock().unwrap();
+
         match (input.is_write, offset + width > CHUNK_NUM) {
             (false, false) => {
                 /*  RV with offset=2, width=4

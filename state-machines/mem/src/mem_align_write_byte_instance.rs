@@ -1,4 +1,4 @@
-use crate::{MemAlignCollector, MemAlignSM};
+use crate::{mem_align_byte_sm::MemAlignByteSM, MemAlignCollector};
 use mem_common::MemAlignCheckPoint;
 
 use fields::PrimeField64;
@@ -7,34 +7,31 @@ use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
+use zisk_pil::{MemAlignWriteByteTrace, MemAlignWriteByteTraceRow};
 
-pub struct MemAlignInstance<F: PrimeField64> {
+pub struct MemAlignWriteByteInstance<F: PrimeField64> {
     /// Instance context
     ictx: InstanceCtx,
 
     /// Checkpoint data for this memory align instance.
     checkpoint: HashMap<ChunkId, MemAlignCheckPoint>,
 
-    mem_align_sm: Arc<MemAlignSM<F>>,
+    mem_align_byte_sm: Arc<MemAlignByteSM<F>>,
 }
 
-impl<F: PrimeField64> MemAlignInstance<F> {
-    pub fn new(mem_align_sm: Arc<MemAlignSM<F>>, mut ictx: InstanceCtx) -> Self {
+impl<F: PrimeField64> MemAlignWriteByteInstance<F> {
+    pub fn new(mem_align_sm: Arc<MemAlignByteSM<F>>, mut ictx: InstanceCtx) -> Self {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let checkpoint = *meta
             .downcast::<HashMap<ChunkId, MemAlignCheckPoint>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        Self { ictx, checkpoint, mem_align_sm }
-    }
-
-    pub fn build_mem_align_collector(&self, chunk_id: ChunkId) -> MemAlignCollector {
-        MemAlignCollector::new(&self.checkpoint[&chunk_id])
+        Self { ictx, checkpoint, mem_align_byte_sm: mem_align_sm }
     }
 }
 
-impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
+impl<F: PrimeField64> Instance<F> for MemAlignWriteByteInstance<F> {
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,
@@ -53,7 +50,14 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
                 collector.inputs
             })
             .collect();
-        Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize, trace_buffer))
+        Some(
+            self.mem_align_byte_sm
+                .compute_witness::<MemAlignWriteByteTrace<F>, MemAlignWriteByteTraceRow<F>>(
+                    &inputs,
+                    total_rows as usize,
+                    trace_buffer,
+                ),
+        )
     }
 
     fn check_point(&self) -> &CheckPoint {
@@ -73,9 +77,5 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(MemAlignCollector::new(&self.checkpoint[&chunk_id])))
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }

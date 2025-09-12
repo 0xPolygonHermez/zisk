@@ -1,10 +1,8 @@
 #![cfg(test)]
 use std::{collections::VecDeque, sync::Arc};
 
-use crate::{
-    MemCounters, MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator, MEMORY_LOAD_OP,
-    MEMORY_STORE_OP,
-};
+use crate::{MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator};
+use mem_common::{MemCounters, MEMORY_LOAD_OP, MEMORY_STORE_OP};
 use zisk_common::{BusDevice, ChunkId, Plan, MEM_BUS_ID};
 
 fn generate_test_plans(

@@ -26,8 +26,12 @@ void MemContext::clear () {
 const MemChunk *MemContext::get_chunk(uint32_t thread_id, uint32_t chunk_id, int64_t &elapsed_us) {
     uint64_t t_ini = get_usec();
 
-    //printf("MemContext::get_chunk: thread_id=%d, chunk_id=%d\n", thread_id, chunk_id);
-    sem_wait(&semaphores[thread_id]);
+    // semaphore used for synchronization, means that a new chunk data is available
+    while (sem_wait(&semaphores[thread_id]) < 0) {
+        if (errno != EINTR) {
+            throw std::runtime_error("MemContext::get_chunk: sem_wait error");
+        }
+    }
 
     if (chunk_id < chunks_count.load(std::memory_order_acquire)) {
         #ifdef COUNT_CHUNK_STATS

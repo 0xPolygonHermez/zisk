@@ -2,8 +2,8 @@ use std::mem;
 
 use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions};
 use fields::PrimeField64;
+use mem_common::MemHelpers;
 use riscv::RiscVRegisters;
-use sm_mem::MemHelpers;
 use zisk_common::{
     OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID,
 };
@@ -1020,7 +1020,7 @@ impl<'a> Emu<'a> {
                 // get it from memory
                 self.ctx.inst_ctx.mem.write(addr, val, 8);
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_write(addr, 8);
+                    self.ctx.stats.on_memory_write(addr, 8, val);
                 }
             }
             STORE_IND => {
@@ -1044,7 +1044,7 @@ impl<'a> Emu<'a> {
                 // Get it from memory
                 self.ctx.inst_ctx.mem.write(addr, val, instruction.ind_width);
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_write(addr, instruction.ind_width);
+                    self.ctx.stats.on_memory_write(addr, instruction.ind_width, val);
                 }
             }
             _ => panic!(
