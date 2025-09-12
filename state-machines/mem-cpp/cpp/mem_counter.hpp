@@ -24,15 +24,15 @@
 #include "tools.hpp"
 #include "mem_stats.hpp"
 
-#ifdef USE_ADDR_COUNT_TABLE
+#define ST_BITS_OFFSET 30
+#define ST_BITS_ST_MASK (0xFFFFFFFF << ST_BITS_OFFSET)
+#define ST_BITS_COUNTER_MASK (0xFFFFFFFF >> (32 - ST_BITS_OFFSET))
+
 struct AddrCount {
     uint32_t pos;
     uint32_t count;
 };
 #define ADDR_TABLE_ELEMENT_SIZE sizeof(AddrCount)
-#else
-#define ADDR_TABLE_ELEMENT_SIZE sizeof(uint32_t)
-#endif
 class MemCounter {
 private:
     const uint32_t id;
@@ -40,11 +40,7 @@ private:
     int count;
     int addr_count;
 
-    #ifdef USE_ADDR_COUNT_TABLE
     AddrCount *addr_count_table;
-    #else
-    uint32_t *addr_table;
-    #endif
     uint32_t *addr_slots;
     uint32_t current_chunk;
     uint32_t free_slot;
@@ -81,12 +77,18 @@ public:
     inline uint32_t get_next_block(uint32_t pos);
     inline uint32_t get_initial_pos(uint32_t pos) const;
     inline uint32_t get_pos_value(uint32_t pos) const;
+    inline uint32_t get_pos_count(uint32_t pos) const;
     inline uint32_t get_queue_full_times() const;
     inline uint32_t get_next_pos(uint32_t pos) const;
     inline uint32_t get_addr_table(uint32_t index) const;
     inline uint32_t get_count_table(uint32_t index) const;
     inline uint32_t get_next_slot_pos();
-    void count_aligned(uint32_t addr, uint32_t chunk_id, uint32_t count);
+    inline void update_addr_count(uint32_t &count, bool is_aligned, bool is_write, bool is_ram);
+    inline uint32_t init_addr_count(bool is_aligned, bool is_write, bool is_ram);
+    void incr_counter(uint32_t addr, uint32_t chunk_id, bool is_aligned, bool is_write);
+    inline uint32_t incr_st_counter_aligned(uint32_t count, bool is_write);
+    inline uint32_t incr_st_counter_unaligned(uint32_t count, bool is_write);
+
     
     uint32_t get_elapsed_ms() {
         return elapsed_ms;
@@ -105,6 +107,11 @@ public:
 uint32_t MemCounter::get_pos_value(uint32_t pos) const {
     return addr_slots[pos];
 }
+
+uint32_t MemCounter::get_pos_count(uint32_t pos) const {    
+    return (addr_slots[pos] & ST_BITS_COUNTER_MASK) + ((addr_slots[pos] & ST_BITS_ST_MASK) ? 1:0);
+}
+
 
 uint32_t MemCounter::get_count() {
     return addr_count;
@@ -174,12 +181,10 @@ uint32_t MemCounter::get_addr_table(uint32_t index) const {
 }
 
 uint32_t MemCounter::get_count_table(uint32_t index) const {
-    // return count_table[index];
-    #ifdef USE_ADDR_COUNT_TABLE
-    return addr_count_table[index].count;
-    #else
-    return addr_table[index];
-    #endif
+    if (addr_count_table[index].pos == 0) {
+        return 0;
+    }    
+    return addr_count_table[index].count + get_pos_count(addr_count_table[index].pos + 1);
 }
 
 uint32_t MemCounter::get_next_slot_pos() {

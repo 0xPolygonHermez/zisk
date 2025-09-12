@@ -3,7 +3,7 @@ use crate::{
     MEM_STEP_BASE, RAM_W_ADDR_INIT,
 };
 use zisk_common::ChunkId;
-use zisk_core::RAM_ADDR;
+use zisk_core::{RAM_ADDR, RAM_SIZE};
 pub struct MemHelpers {
     chunk_size_steps: u64,
 }
@@ -28,6 +28,10 @@ impl MemHelpers {
     #[inline(always)]
     pub fn static_mem_step_to_chunk(step: u64, chunk_size: u64) -> ChunkId {
         ChunkId(((step - MEM_STEP_BASE) / (chunk_size * MEM_STEPS_BY_MAIN_STEP)) as usize)
+    }
+    #[inline(always)]
+    pub fn mem_step_to_main_step(step: u64) -> u64 {
+        (step - MEM_STEP_BASE) / MEM_STEPS_BY_MAIN_STEP
     }
     #[inline(always)]
     pub fn first_chunk_mem_step(&self, chunk: ChunkId) -> u64 {
@@ -68,6 +72,10 @@ impl MemHelpers {
     #[inline(always)]
     pub fn is_double(addr: u32, bytes: u8) -> bool {
         (addr & MEM_ADDR_ALIGN_MASK) + bytes as u32 > 8
+    }
+    #[inline(always)]
+    pub fn is_dual(addr: u32) -> bool {
+        addr as u64 >= RAM_ADDR && addr as u64 <= (RAM_ADDR + RAM_SIZE)
     }
     #[inline(always)]
     pub fn is_write(op: u8) -> bool {

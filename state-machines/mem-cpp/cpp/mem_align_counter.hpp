@@ -23,11 +23,10 @@ private:
     std::shared_ptr<MemContext> context;
     std::vector<MemAlignChunkCounters> counters;
     MemAlignChunkCounters total_counters;
-    uint32_t rows;    
     uint32_t elapsed_ms;
 public:
     uint64_t total_usleep;
-    MemAlignCounter (uint32_t rows, std::shared_ptr<MemContext> context);
+    MemAlignCounter (std::shared_ptr<MemContext> context);
     void execute ();
     void execute_chunk (uint32_t chunk_id, const MemCountersBusData *chunk_data, uint32_t chunk_size);
     uint32_t size() {

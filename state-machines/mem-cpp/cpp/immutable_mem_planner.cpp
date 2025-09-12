@@ -62,7 +62,7 @@ void ImmutableMemPlanner::execute(const std::vector<MemCounter *> &workers) {
                 uint32_t cpos = workers[i]->get_initial_pos(pos);
                 while (cpos != 0) {
                     uint32_t chunk_id = workers[i]->get_pos_value(cpos);
-                    uint32_t count = workers[i]->get_pos_value(cpos+1);
+                    uint32_t count = workers[i]->get_pos_count(cpos+1);
                     add_to_current_segment(chunk_id, addr, count);
                     if (cpos == pos) break;
                     cpos = workers[i]->get_next_pos(cpos+1);

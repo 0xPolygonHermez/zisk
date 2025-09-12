@@ -60,7 +60,7 @@ void MemCountAndPlan::prepare() {
         count_workers[i]->mem_stats = mem_stats;
 #endif // MEM_STATS_ACTIVE
     }
-    mem_align_counter = std::make_unique<MemAlignCounter>(MEM_ALIGN_ROWS, context);
+    mem_align_counter = std::make_unique<MemAlignCounter>(context);
     plan_workers.clear();
     plan_workers.reserve(MAX_MEM_PLANNERS);
     rom_data_planner = std::make_unique<ImmutableMemPlanner>(ROM_ROWS, ROM_ADDR, 128);
@@ -108,7 +108,6 @@ void MemCountAndPlan::count_phase() {
     for (auto& t : threads) {
         t.join();
     }
-
 
     uint64_t max_tot_wait_us = 0;
     uint64_t tot_wait_us = 0;

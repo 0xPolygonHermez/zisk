@@ -41,8 +41,8 @@ airgroup Zisk {
     Main(N: 2**22);
     Rom(N: 2**21);
 
-    // Standard Operations
-    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1);
+    // Memory
+    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
     Mem(N: 2**21, base_address: 0x8000_0000, immutable: 1) alias RomData;
     Mem(N: 2**21, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
 
@@ -51,9 +51,9 @@ airgroup Zisk {
     MemAlignByte(N: 2**22, read: 1, write: 0) alias MemAlignReadByte;
     MemAlignByte(N: 2**22, read: 0, write: 1) alias MemAlignWriteByte;
     virtual MemAlignRom();
-
     virtual DualByte();
 
+    // Standard operations
     Arith(N: 2**21);
     virtual ArithTable();
     virtual ArithRangeTable();

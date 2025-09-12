@@ -7,6 +7,10 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
+[[bin]]
+name = "mem_debug_cli"
+path = "src/mem_debug_cli.rs"
+
 [dependencies]
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
@@ -22,6 +26,7 @@ fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
+clap = { version = "4", features = ["derive"] }
 
 num-traits = "0.2"
 

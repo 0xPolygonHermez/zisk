@@ -13,6 +13,16 @@ use crate::{MemAlignCounters, MemHelpers};
 use std::fmt;
 use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
 
+const ST_BITS_OFFSET: u32 = 30;
+const ST_INI: u8 = 0;
+const ST_READ: u8 = 1;
+const ST_WRITE: u8 = ST_READ + 1;
+
+const ST_INI_TO_READ: u32 = (ST_READ as u32) << ST_BITS_OFFSET;
+const ST_INI_TO_WRITE: u32 = (ST_WRITE as u32) << ST_BITS_OFFSET;
+const ST_READ_TO_WRITE: u32 = ((ST_WRITE - ST_READ) as u32) << ST_BITS_OFFSET;
+const ST_X_TO_INI_MASK: u32 = 0xFFFF_FFFF >> (32 - ST_BITS_OFFSET);
+
 #[derive(Default)]
 pub struct MemCounters {
     pub addr: HashMap<u32, u32>,
@@ -56,10 +66,13 @@ impl MemCounters {
     }
     pub fn close(&mut self) {
         // address must be ordered
-        let mut addr_vector: Vec<(u32, u32)> = std::mem::take(&mut self.addr).into_iter().collect();
+        let mut addr_vector: Vec<(u32, u32)> = std::mem::take(&mut self.addr)
+            .into_par_iter()
+            .map(|(k, counter)| (k, Self::close_st_counter(counter)))
+            .collect();
         addr_vector.par_sort_by_key(|(key, _)| *key);
 
-        // Divideix el vector original en tres parts
+        // Divide the original vector into three parts
         let point = addr_vector.partition_point(|x| x.0 < (0xA000_0000 / 8));
         self.addr_sorted[2] = addr_vector.split_off(point);
 
@@ -69,16 +82,121 @@ impl MemCounters {
         self.addr_sorted[0] = addr_vector;
     }
     #[inline(always)]
+    fn incr_st_counter_aligned(count: u32, is_write: bool) -> u32 {
+        match (count >> ST_BITS_OFFSET) as u8 {
+            ST_INI => {
+                if is_write {
+                    // this write could be compacted on dual operation write-read
+                    // don't increase the count, just change the state
+                    count + ST_INI_TO_WRITE
+                } else {
+                    // this read could be compacted on dual operation read-read
+                    // don't increase the count, just change the state
+                    count + ST_INI_TO_READ
+                }
+            }
+            ST_READ => {
+                if is_write {
+                    // this write means that the previous read cannot be compacted, increase
+                    // the counter by this previous read and change state to write with
+                    // hope that this write could be compacted on dual operation write-read
+                    (count & ST_X_TO_INI_MASK) + 1 + ST_INI_TO_WRITE
+                } else {
+                    // this read was compacted on dual operation read-read
+                    // increase the count for this dual operation and reset the state
+                    (count & ST_X_TO_INI_MASK) + 1
+                }
+            }
+            ST_WRITE => {
+                if is_write {
+                    // this write means that the previous write cannot be compacted, increase
+                    // the counter by this previous write and continue in same state
+                    // hope that this write could be compacted on dual operation write-read
+                    count + 1
+                } else {
+                    // this read was compacted on dual operation read-read
+                    // increase the count for this dual operation and reset the state
+                    (count & ST_X_TO_INI_MASK) + 1
+                }
+            }
+            _ => {
+                panic!("incr_st_counter_aligned::Invalid count state 0x{count:08X}")
+            }
+        }
+    }
+    #[inline(always)]
+    fn incr_st_counter_unaligned(count: u32, is_write: bool) -> u32 {
+        // in this case the operation are:
+        //  - is_write = false => READ
+        //  - is_write = true  => READ + WRITE
+        match (count >> ST_BITS_OFFSET) as u8 {
+            ST_INI => {
+                if is_write {
+                    // [read + write], the first read operation cannot be compacted, increase the
+                    // counter by first read, and change state to write by second write.
+                    count + 1 + ST_INI_TO_WRITE
+                } else {
+                    // this read could be compacted on dual operation read-read
+                    // don't increase the count, just change the state
+                    count + ST_INI_TO_READ
+                }
+            }
+            ST_READ => {
+                if is_write {
+                    // [read + write], means that the previous read could be compacted, increase
+                    // the counter by this read-read operation, change state to write by second write.
+                    count + 1 + ST_READ_TO_WRITE
+                } else {
+                    // this read was compacted on dual operation read-read
+                    // increase the count for this dual operation and reset the state
+                    (count & ST_X_TO_INI_MASK) + 1
+                }
+            }
+            ST_WRITE => {
+                if is_write {
+                    // [read + write], this write means that the previous write cannot be compacted,
+                    // increase the counter by this previous write and continue in same state
+                    // hope that this write could be compacted on dual operation write-read
+                    count + 1
+                } else {
+                    // this read was compacted on dual operation read-read
+                    // increase the count for this dual operation and reset the state
+                    (count & ST_X_TO_INI_MASK) + 1
+                }
+            }
+            _ => {
+                panic!("incr_st_counter_unaligned::Invalid count state 0x{count:08X}")
+            }
+        }
+    }
+    fn close_st_counter(count: u32) -> u32 {
+        match (count >> ST_BITS_OFFSET) as u8 {
+            ST_INI => count,
+            ST_READ | ST_WRITE => (count & ST_X_TO_INI_MASK) + 1,
+            _ => panic!("Invalid count state"),
+        }
+    }
     fn mem_measure(&mut self, data: &[u64]) {
         let addr = MemBusData::get_addr(data);
-        let addr_w = MemHelpers::get_addr_w(addr);
         let bytes = MemBusData::get_bytes(data);
+        let addr_w = MemHelpers::get_addr_w(addr);
+        let is_dual = MemHelpers::is_dual(addr);
 
         if MemHelpers::is_aligned(addr, bytes) {
-            self.addr.entry(addr_w).and_modify(|count| *count += 1).or_insert(1);
+            if is_dual {
+                let is_write = MemHelpers::is_write(MemBusData::get_op(data));
+                self.addr
+                    .entry(addr_w)
+                    .and_modify(|count| {
+                        *count = Self::incr_st_counter_aligned(*count, is_write);
+                    })
+                    .or_insert(if is_write { ST_INI_TO_WRITE } else { ST_INI_TO_READ });
+            } else {
+                self.addr.entry(addr_w).and_modify(|count| *count += 1).or_insert(1);
+            }
         } else {
-            let op = MemBusData::get_op(data);
-            let is_write = MemHelpers::is_write(op);
+            let is_write = MemHelpers::is_write(MemBusData::get_op(data));
+            let addr_count = if MemHelpers::is_double(addr, bytes) { 2 } else { 1 };
             let is_full = bytes != 1
                 || if is_write {
                     if (MemBusData::get_value(data) & 0xFFFF_FFFF_FFFF_FF00) == 0 {
@@ -94,20 +212,26 @@ impl MemCounters {
 
             let ops_by_addr = if is_write { 2 } else { 1 };
 
-            self.addr
-                .entry(addr_w)
-                .and_modify(|count| *count += ops_by_addr)
-                .or_insert(ops_by_addr);
-
-            let mem_align_op_rows = if MemHelpers::is_double(addr, bytes) {
-                self.addr
-                    .entry(addr_w + 1)
-                    .and_modify(|count| *count += ops_by_addr)
-                    .or_insert(ops_by_addr);
-                1 + 2 * ops_by_addr
+            if is_dual {
+                let initial_value = if is_write { ST_INI_TO_READ + 1 } else { ST_INI_TO_READ };
+                for index in 0..addr_count {
+                    self.addr
+                        .entry(addr_w + index)
+                        .and_modify(|count| {
+                            *count = Self::incr_st_counter_unaligned(*count, is_write)
+                        })
+                        .or_insert(initial_value);
+                }
             } else {
-                1 + ops_by_addr
-            };
+                for index in 0..addr_count {
+                    self.addr
+                        .entry(addr_w + index)
+                        .and_modify(|count| *count += ops_by_addr)
+                        .or_insert(ops_by_addr);
+                }
+            }
+
+            let mem_align_op_rows = 1 + addr_count * ops_by_addr;
 
             if is_full {
                 match mem_align_op_rows {
@@ -119,12 +243,14 @@ impl MemCounters {
             }
         }
     }
+
     #[cfg(feature = "save_mem_bus_data")]
     #[allow(dead_code)]
     pub fn save_to_file(&mut self, chunk_id: ChunkId, data: &[u64]) {
         if self.file.is_none() {
             let path = env::var("BUS_DATA_DIR").unwrap_or("tmp/bus_data".to_string());
-            self.file = Some(File::create(format!("{path}/mem_{chunk_id:04}.bin")).unwrap());
+            self.file =
+                Some(File::create(format!("{path}/mem_{:04}.bin", usize::from(chunk_id))).unwrap());
         }
         let bytes = unsafe {
             slice::from_raw_parts(data.as_ptr() as *const u8, MEM_BUS_DATA_SIZE * size_of::<u64>())
@@ -137,8 +263,10 @@ impl MemCounters {
     pub fn save_to_compact_file(&mut self, chunk_id: ChunkId, data: &[u64]) {
         if self.file.is_none() {
             let path = env::var("BUS_DATA_DIR").unwrap_or("tmp/bus_data".to_string());
-            self.file =
-                Some(File::create(format!("{path}/mem_count_data_{chunk_id:04}.bin")).unwrap());
+            self.file = Some(
+                File::create(format!("{path}/mem_count_data_{:04}.bin", usize::from(chunk_id)))
+                    .unwrap(),
+            );
         }
         let values: [u32; 2] = [
             MemBusData::get_addr(data),
@@ -154,7 +282,7 @@ impl MemCounters {
     pub fn load_from_file(
         chunk_id: ChunkId,
     ) -> Result<Vec<[u64; MEM_BUS_DATA_SIZE]>, std::io::Error> {
-        let mut file = File::open(format!("tmp/bus_data/mem_{chunk_id:04}.bin"))?;
+        let mut file = File::open(format!("tmp/bus_data/mem_{:04}.bin", usize::from(chunk_id)))?;
         const BUS_DATA_BYTES: usize = MEM_BUS_DATA_SIZE * size_of::<u64>();
         let count = file.metadata().unwrap().len() as usize / BUS_DATA_BYTES;
         let mut buffer = [0u8; BUS_DATA_BYTES];
@@ -206,7 +334,7 @@ impl BusDevice<u64> for MemCounters {
         {
             // TODO: dynamic chunk_size
             let chunk_id =
-                MemHelpers::static_mem_step_to_chunk(MemBusData::get_step(data), 1 << 20);
+                MemHelpers::static_mem_step_to_chunk(MemBusData::get_step(data), 1 << 18);
             // self.save_to_compact_file(chunk_id, data);
             self.save_to_file(chunk_id, data);
         }
