@@ -12,7 +12,7 @@ use distributed_common::{
     StartProofRequestDto, StartProofResponseDto, StatusInfoDto, SystemStatusDto,
 };
 
-use distributed_config::Config;
+use crate::config::Config;
 use proofman::ContributionsInfo;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;

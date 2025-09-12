@@ -7,7 +7,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-distributed-config = { workspace = true }
 distributed-common = { workspace = true }
 
 tonic = { workspace = true }

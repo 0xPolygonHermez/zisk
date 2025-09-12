@@ -1093,16 +1093,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "distributed-config"
-version = "0.11.0"
-dependencies = [
- "anyhow",
- "chrono",
- "config",
- "serde",
-]
-
-[[package]]
 name = "distributed-coordinator"
 version = "0.11.0"
 dependencies = [
@@ -1110,8 +1100,8 @@ dependencies = [
  "async-stream",
  "chrono",
  "clap",
+ "config",
  "distributed-common",
- "distributed-config",
  "distributed-grpc-api",
  "futures",
  "futures-util",
@@ -1135,7 +1125,6 @@ version = "0.11.0"
 dependencies = [
  "chrono",
  "distributed-common",
- "distributed-config",
  "prost",
  "prost-types",
  "serde",

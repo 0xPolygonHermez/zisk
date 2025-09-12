@@ -1,6 +1,5 @@
 use async_stream::stream;
 use distributed_common::{CoordinatorMessageDto, JobId, ProverId};
-use distributed_config::Config;
 use distributed_grpc_api::{distributed_api_server::*, *};
 use futures_util::{Stream, StreamExt};
 use std::sync::atomic::Ordering;
@@ -9,6 +8,7 @@ use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
 
+use crate::config::Config;
 use crate::coordinator_service::MessageSender;
 use crate::CoordinatorService;
 

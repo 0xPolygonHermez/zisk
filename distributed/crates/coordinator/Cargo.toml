@@ -13,7 +13,6 @@ path = "src/cli/main.rs"
 [dependencies]
 proofman = { workspace = true }
 distributed-grpc-api = { workspace = true }
-distributed-config = { workspace = true }
 distributed-common = { workspace = true }
 
 serde = { workspace = true }
@@ -27,6 +26,7 @@ uuid = { workspace = true }
 futures = { workspace = true }
 tonic = { workspace = true }
 prost-types = { workspace = true }
+config = { workspace = true }
 
 signal-hook = { version = "0.3" }
 signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }

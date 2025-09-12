@@ -1,6 +1,5 @@
 use anyhow::Result;
-use distributed_config::Config;
-use distributed_coordinator::{create_shutdown_signal, CoordinatorServiceGrpc};
+use distributed_coordinator::{create_shutdown_signal, Config, CoordinatorServiceGrpc};
 use distributed_grpc_api::distributed_api_server::DistributedApiServer;
 use std::net::TcpListener;
 use tonic::transport::Server;
