@@ -9,17 +9,17 @@ use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{ArithEq384Trace, ArithEq384TraceRow};
 
 use crate::{
-    executors, Arith384ModInput, ArithEq384Input, Bls12_381ComplexAddInput,
-    Bls12_381ComplexMulInput, Bls12_381ComplexSubInput, Bls12_381CurveAddInput,
-    Bls12_381CurveDblInput, ARITH_EQ_384_OP_NUM, ARITH_EQ_384_ROWS_BY_OP, BLS12_381_PRIME_CHUNKS,
-    SEL_OP_ARITH384_MOD, SEL_OP_BLS12_381_COMPLEX_ADD, SEL_OP_BLS12_381_COMPLEX_MUL,
-    SEL_OP_BLS12_381_COMPLEX_SUB, SEL_OP_BLS12_381_CURVE_ADD, SEL_OP_BLS12_381_CURVE_DBL,
+    arith_eq_384_constants::*, executors, Arith384ModInput, ArithEq384Input,
+    Bls12_381ComplexAddInput, Bls12_381ComplexMulInput, Bls12_381ComplexSubInput,
+    Bls12_381CurveAddInput, Bls12_381CurveDblInput,
 };
 
 /// The `ArithEq384SM` struct encapsulates the logic of the ArithEq384 State Machine.
 pub struct ArithEq384SM<F: PrimeField64> {
     /// Number of available arith384s in the trace.
     pub num_available_ops: usize,
+
+    num_non_usable_rows: usize,
 
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
@@ -51,11 +51,11 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     /// A new `ArithEq384SM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_ops = ArithEq384Trace::<usize>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP;
-        let p2_22 = 1 << 22;
-        let q_hsc_range_id = std.get_range_id(0, p2_22 - 1, None);
-        let chunk_range_id = std.get_range_id(0, 0xFFFF, None);
-        let carry_range_id = std.get_range_id(-(p2_22 - 1), p2_22, None);
+        let num_available_ops = ArithEq384Trace::<usize>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1;
+        let num_non_usable_rows = ArithEq384Trace::<usize>::NUM_ROWS % ARITH_EQ_384_ROWS_BY_OP;
+        let q_hsc_range_id = std.get_range_id(0, ARITH_EQ_384_Q_HSC_MAX, None);
+        let chunk_range_id = std.get_range_id(0, ARITH_EQ_384_CHUNK_MAX as i64, None);
+        let carry_range_id = std.get_range_id(ARITH_EQ_384_CARRY_MIN, ARITH_EQ_384_CARRY_MAX, None);
 
         // Get the table ID
         let table_id = std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID);
@@ -63,6 +63,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         Arc::new(Self {
             std,
             num_available_ops,
+            num_non_usable_rows,
             q_hsc_range_id,
             chunk_range_id,
             carry_range_id,
@@ -358,8 +359,20 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     ) -> AirInstance<F> {
         let mut trace = ArithEq384Trace::<F>::new_from_vec(trace_buffer);
         let num_rows = trace.num_rows();
+        let num_available_ops = self.num_available_ops;
+
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
-        let num_rows_needed = total_inputs * ARITH_EQ_384_ROWS_BY_OP;
+        let num_rows_filled = total_inputs * ARITH_EQ_384_ROWS_BY_OP;
+        let num_rows_needed = if total_inputs < num_available_ops {
+            total_inputs * ARITH_EQ_384_ROWS_BY_OP
+        } else if total_inputs == num_available_ops {
+            num_rows
+        } else {
+            panic!(
+                "Exceeded available ArithEq384 inputs: requested {}, but only {} are available.",
+                total_inputs, num_available_ops
+            );
+        };
 
         tracing::info!(
             "··· Creating ArithEq384 instance [{} / {} rows filled {:.2}%]",
@@ -406,14 +419,23 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             }
         });
 
-        let padding_ops = (self.num_available_ops - index) as u64;
-        self.std.range_check(self.q_hsc_range_id, 0, 3 * padding_ops);
-        self.std.range_check(self.chunk_range_id, 0, 157 * padding_ops);
-        self.std.range_check(self.carry_range_id, 0, 96 * padding_ops);
+        let num_non_usable_rows = self.num_non_usable_rows;
+        let padding_ops = (num_available_ops - index) as u64;
+        let q_hsc_range_mult = 3 * padding_ops; // 3 q_cols by each ARITH_EQ_384_ROWS_BY_OP
+        let chunk_range_mult = (7 * ARITH_EQ_384_ROWS_BY_OP as u64
+            + 3 * (ARITH_EQ_384_ROWS_BY_OP - 1) as u64)
+            * padding_ops
+            + 7 * (ARITH_EQ_384_ROWS_BY_OP + num_non_usable_rows) as u64
+            + 3 * (ARITH_EQ_384_ROWS_BY_OP + num_non_usable_rows) as u64; // 7 chunk_cols + 3 q_cols
+        let carry_range_mult = (6 * ARITH_EQ_384_ROWS_BY_OP as u64) * padding_ops
+            + 6 * (ARITH_EQ_384_ROWS_BY_OP + num_non_usable_rows) as u64; // 6 carry_cols
+        self.std.range_check(self.q_hsc_range_id, 0, q_hsc_range_mult);
+        self.std.range_check(self.chunk_range_id, 0, chunk_range_mult);
+        self.std.range_check(self.carry_range_id, 0, carry_range_mult);
 
         let padding_row = ArithEq384TraceRow::<F> { ..Default::default() };
 
-        trace.row_slice_mut()[num_rows_needed..num_rows]
+        trace.row_slice_mut()[num_rows_filled..num_rows]
             .par_iter_mut()
             .for_each(|slot| *slot = padding_row);
 

@@ -30,8 +30,14 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
     const int BLS12_381_PRIME = 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB;
 
     const int CLOCKS = 24;
-    col fixed CLK_0 = [1, 0:(CLOCKS-1)]...;
-    const expr LAST_CLK = CLK_0';
+    // Ensure that the ARITH_EQ_384 can fit in N rows
+    if (N < CLOCKS) {
+        error(`N must be at least ${CLOCKS}`);
+    }
+
+    const int NUM_ARITH_EQ_384 = N / CLOCKS - 1; // The -1 is because CLOCKS is not a divisor of N
+    col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_ARITH_EQ_384, 0...];
+    const expr LAST_CLK = (CLOCKS-1)'CLK_0;
 
     const int CHUNKS = CLOCKS;
     const int CBC = 2;
@@ -116,7 +122,8 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
         sel_op[i] * (1 - sel_op[i]) === 0;
 
         // selector latch
-        (1 - CLK_0) * (sel_op[i] - 'sel_op[i]) === 0;
+        expr sel_op_active = clock_set(start: 1, end: 20);
+        sel_op_active * (sel_op[i] - 'sel_op[i]) === 0;
 
         // only one selector could be enabled
         sum_sel_op = sum_sel_op + sel_op[i];
@@ -485,7 +492,6 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
 
     const expr main_step = clock_map(step_addr, MAIN_STEP, start: 0, end: 20);
 
-
     const expr mem_is_write = CLK[12] + CLK[13] + CLK[14] + CLK[15] + CLK[16] + CLK[17];
 
     const expr mem_value[2][2];
@@ -519,16 +525,16 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
     mem_sel[0] = clock_set(in_use, start: 0,  end: 5) +
                  clock_set(use_x2, start: 6,  end: 11) +
                  clock_set(in_use, start: 12, end: 17) +
-                 clock_set(use_ind_0, 12) +
-                 clock_set(use_ind_2, 13) +
-                 clock_set(use_ind_4, 14);
+                 clock_set(use_ind_0, 18) +
+                 clock_set(use_ind_2, 19) +
+                 clock_set(use_ind_4, 20);
 
     mem_sel[1] = clock_set(in_use, start: 0,  end: 5) +
                  clock_set(use_y2, start: 6,  end: 11) +
                  clock_set(use_y3, start: 12, end: 17) +
-                 clock_set(use_ind_1, 12) +
-                 clock_set(use_ind_3, 13) +
-                 clock_set(use_ind_5, 14);
+                 clock_set(use_ind_1, 18) +
+                 clock_set(use_ind_3, 19) +
+                 clock_set(use_ind_5, 20);
 
 
     precompiled_mem_op(
@@ -603,7 +609,7 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
         return res;
     }
 
-    function clock_set(const expr cl, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
+    function clock_set(const expr cl = 1, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
         expr res = 0;
         if (end == -1) {
             end = start;

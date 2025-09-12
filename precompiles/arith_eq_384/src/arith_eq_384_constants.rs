@@ -9,6 +9,11 @@ pub const ARITH_EQ_384_ROWS_BY_OP: usize = 24;
 pub const ARITH_EQ_384_CHUNKS: usize = ARITH_EQ_384_ROWS_BY_OP;
 pub const ARITH_EQ_384_CHUNKS_DOUBLE: usize = ARITH_EQ_384_CHUNKS * 2;
 pub const ARITH_EQ_384_CHUNK_BITS: usize = ARITH_EQ_384_BITS / ARITH_EQ_384_CHUNKS;
+pub const ARITH_EQ_384_CHUNK_SIZE: usize = 1 << ARITH_EQ_384_CHUNK_BITS;
+pub const ARITH_EQ_384_CHUNK_MAX: usize = ARITH_EQ_384_CHUNK_SIZE - 1;
+pub const ARITH_EQ_384_Q_HSC_MAX: i64 = (1 << 22) - 1;
+pub const ARITH_EQ_384_CARRY_MIN: i64 = -((1 << 22) - 1);
+pub const ARITH_EQ_384_CARRY_MAX: i64 = 1 << 22;
 pub const ARITH_EQ_384_OP_NUM: usize = 6;
 pub const ARITH_EQ_384_MAX_CEQS: usize = 3;
 
