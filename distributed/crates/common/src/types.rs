@@ -166,11 +166,9 @@ pub struct Job {
 
 #[derive(Debug, Clone)]
 pub enum JobState {
-    Idle,
     Running(JobPhase),
     Completed,
     Failed,
-    Cancelled,
 }
 
 #[derive(Debug, Clone)]

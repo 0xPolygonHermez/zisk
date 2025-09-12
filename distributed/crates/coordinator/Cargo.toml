@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "coordinator"
+path = "src/cli/main.rs"
+
 [dependencies]
 proofman = { workspace = true }
 distributed-grpc-api = { workspace = true }
@@ -29,3 +33,6 @@ signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
 
 futures-util = "0.3"
 async-stream = "0.3"
+
+witness = { workspace = true }
+clap = { workspace = true }

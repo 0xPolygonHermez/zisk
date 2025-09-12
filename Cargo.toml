@@ -42,7 +42,6 @@ members = [
     "distributed/crates/prover-service",
     "distributed/crates/config",
     "distributed/crates/coordinator",
-    "distributed/crates/coordinator-cli",
     "distributed/crates/common",
 ]
 
@@ -96,7 +95,6 @@ distributed-prover-service = { path = "distributed/crates/prover-service" }
 distributed-common = { path = "distributed/crates/common" }
 distributed-config = { path = "distributed/crates/config" }
 distributed-coordinator = { path = "distributed/crates/coordinator" }
-distributed-coordinator-service = { path = "distributed/crates/coordinator-cli" }
 
 # Proofman
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-0.12.0" }

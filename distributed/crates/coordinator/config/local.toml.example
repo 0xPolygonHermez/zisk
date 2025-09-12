@@ -9,6 +9,3 @@ port = 8081
 
 [logging]
 level = "trace"
-
-[comm]
-max_peers = 5

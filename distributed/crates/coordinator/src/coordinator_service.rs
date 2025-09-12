@@ -3,7 +3,10 @@ use chrono::{DateTime, Utc};
 use distributed_common::JobId;
 use distributed_common::{ComputeCapacity, ProverId};
 use distributed_config::Config;
-use distributed_grpc_api::CoordinatorMessage;
+use distributed_grpc_api::{
+    CoordinatorMessage, ExecuteTaskResponse, HeartbeatAck, ProverError, ProverReconnectRequest,
+    ProverRegisterRequest,
+};
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -19,11 +22,10 @@ use crate::Coordinator;
 
 /// Represents the runtime state of the service
 pub struct CoordinatorService {
-    pub config: Config,
-    pub start_time_utc: DateTime<Utc>,
-
-    pub active_connections: Arc<AtomicU32>,
-    pub coordinator: Arc<Coordinator>,
+    config: Config,
+    start_time_utc: DateTime<Utc>,
+    active_connections: Arc<AtomicU32>,
+    coordinator: Arc<Coordinator>,
 }
 
 impl CoordinatorService {
@@ -50,10 +52,6 @@ impl CoordinatorService {
 
     pub fn max_concurrent_connections(&self) -> u32 {
         self.config.coordinator.max_concurrent_connections
-    }
-
-    pub fn coordinator(&self) -> Arc<Coordinator> {
-        self.coordinator.clone()
     }
 
     pub fn status_info(&self) -> StatusInfoDto {
@@ -148,11 +146,11 @@ impl CoordinatorService {
 
     /// Handle registration directly in stream context (static version to avoid lifetime issues)
     pub async fn handle_stream_registration(
-        prover_manager: &Coordinator,
+        &self,
         req: ProverRegisterRequestDto,
-        msg_sender: mpsc::Sender<CoordinatorMessage>,
+        msg_sender: mpsc::UnboundedSender<CoordinatorMessage>,
     ) -> Result<ProverId, Status> {
-        prover_manager
+        self.coordinator
             .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
             .await
             .map_err(|e| Status::internal(format!("Registration failed: {e}")))
@@ -160,13 +158,73 @@ impl CoordinatorService {
 
     /// Handle reconnection directly in stream context (static version to avoid lifetime issues)
     pub async fn handle_stream_reconnection(
-        prover_manager: &Arc<Coordinator>,
+        &self,
         req: ProverReconnectRequestDto,
-        msg_sender: mpsc::Sender<CoordinatorMessage>,
+        msg_sender: mpsc::UnboundedSender<CoordinatorMessage>,
     ) -> Result<ProverId, Status> {
-        prover_manager
+        self.coordinator
             .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
             .await
             .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))
+    }
+
+    /// Unregister a prover by its ID
+    pub async fn unregister_prover(&self, prover_id: &ProverId) -> Result<()> {
+        Ok(self.coordinator.unregister_prover(prover_id).await?)
+    }
+
+    pub async fn handle_stream_heartbeat_ack(
+        &self,
+        prover_id: &ProverId,
+        message: HeartbeatAck,
+    ) -> Result<()> {
+        self.coordinator
+            .handle_stream_heartbeat_ack(prover_id, message)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+
+    pub async fn handle_stream_error(
+        &self,
+        prover_id: &ProverId,
+        message: ProverError,
+    ) -> Result<()> {
+        self.coordinator
+            .handle_stream_error(prover_id, message)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+
+    pub async fn handle_stream_register(
+        &self,
+        prover_id: &ProverId,
+        message: ProverRegisterRequest,
+    ) -> Result<()> {
+        self.coordinator
+            .handle_stream_register(prover_id, message)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+
+    pub async fn handle_stream_reconnect(
+        &self,
+        prover_id: &ProverId,
+        message: ProverReconnectRequest,
+    ) -> Result<()> {
+        self.coordinator
+            .handle_stream_reconnect(prover_id, message)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+
+    pub async fn handle_stream_execute_task_response(
+        &self,
+        prover_id: &ProverId,
+        message: ExecuteTaskResponse,
+    ) -> Result<()> {
+        self.coordinator
+            .handle_stream_execute_task_response(prover_id, message)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))
     }
 }

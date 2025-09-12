@@ -11,7 +11,6 @@ crates/
 ├── consensus-server/     # Main binary orchestrating the application
 ├── consensus-core/       # Core business logic and shared functionality
 ├── consensus-api/        # HTTP API layer with REST endpoints
-├── consensus-comm/       # P2P communication layer
 ├── consensus-config/     # Configuration management
 └── consensus-client/     # Command-line client
 ```

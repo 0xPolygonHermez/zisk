@@ -7,7 +7,6 @@ pub type Result<T> = std::result::Result<T, anyhow::Error>;
 pub struct Config {
     pub server: ServerConfig,
     pub logging: LoggingConfig,
-    pub comm: CommConfig,
     pub coordinator: CoordinatorConfig,
 }
 
@@ -49,7 +48,6 @@ pub struct CoordinatorConfig {
     pub max_provers_per_job: u32,
     pub max_total_provers: u32,
     pub max_concurrent_connections: u32,
-    pub message_buffer_size: u32,
     pub phase1_timeout_seconds: u64,
     pub phase2_timeout_seconds: u64,
 }
@@ -68,14 +66,9 @@ impl Config {
             .set_default("logging.level", "info")?
             .set_default("logging.format", "pretty")?
             .set_default("logging.file_output", false)?
-            .set_default("comm.max_peers", 100)?
-            .set_default("comm.discovery_interval_seconds", 30)?
-            .set_default("comm.heartbeat_interval_seconds", 10)?
-            .set_default("comm.connection_timeout_seconds", 30)?
             .set_default("coordinator.max_provers_per_job", 10)?
             .set_default("coordinator.max_total_provers", 1000)?
             .set_default("coordinator.max_concurrent_connections", 500)?
-            .set_default("coordinator.message_buffer_size", 1000)?
             .set_default("coordinator.phase1_timeout_seconds", 300)?
             .set_default("coordinator.phase2_timeout_seconds", 600)?;
 

@@ -1,13 +1,14 @@
 mod coordinator;
 mod coordinator_service;
 mod coordinator_service_grpc;
+mod dto;
 mod prover_connection;
 mod provers_pool;
-pub mod shutdown;
-mod dto;
+mod shutdown;
 
-pub use coordinator::*;
-pub use coordinator_service::*;
+use coordinator::*;
+use coordinator_service::*;
 pub use coordinator_service_grpc::*;
-pub use prover_connection::*;
-pub use provers_pool::*;
+use prover_connection::*;
+use provers_pool::*;
+pub use shutdown::*;

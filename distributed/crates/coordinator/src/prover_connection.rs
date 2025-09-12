@@ -10,7 +10,7 @@ pub struct ProverConnection {
     pub compute_capacity: ComputeCapacity,
     connected_at: DateTime<Utc>,
     last_heartbeat: DateTime<Utc>,
-    pub message_sender: mpsc::Sender<CoordinatorMessage>,
+    pub message_sender: mpsc::UnboundedSender<CoordinatorMessage>,
 }
 
 impl ProverConnection {
@@ -18,7 +18,7 @@ impl ProverConnection {
     pub fn new(
         prover_id: ProverId,
         compute_capacity: ComputeCapacity,
-        message_sender: mpsc::Sender<CoordinatorMessage>,
+        message_sender: mpsc::UnboundedSender<CoordinatorMessage>,
     ) -> Self {
         let now = Utc::now();
         Self {

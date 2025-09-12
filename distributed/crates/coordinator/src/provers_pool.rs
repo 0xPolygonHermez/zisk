@@ -31,15 +31,11 @@ impl ProversPool {
         ComputeCapacity { compute_units: total_capacity }
     }
 
-    pub fn max_total_provers(&self) -> usize {
-        self.config.max_total_provers as usize
-    }
-
     pub async fn register_prover(
         &self,
         prover_id: ProverId,
         compute_capacity: impl Into<ComputeCapacity>,
-        message_sender: mpsc::Sender<CoordinatorMessage>,
+        message_sender: mpsc::UnboundedSender<CoordinatorMessage>,
     ) -> Result<ProverId> {
         let connection =
             ProverConnection::new(prover_id.clone(), compute_capacity.into(), message_sender);
@@ -104,7 +100,7 @@ impl ProversPool {
         message: CoordinatorMessage,
     ) -> Result<()> {
         if let Some(prover) = self.provers.read().await.get(prover_id) {
-            prover.message_sender.try_send(message).map_err(|e| {
+            prover.message_sender.send(message).map_err(|e| {
                 let msg = format!("Failed to send message to prover {prover_id}: {}", e);
                 warn!("{}", msg);
                 Error::Comm(msg)
@@ -125,14 +121,6 @@ impl ProversPool {
             warn!("{}", msg);
             Err(Error::InvalidRequest(msg))
         }
-    }
-
-    pub async fn first_prover(&self) -> Option<ProverId> {
-        self.provers.read().await.keys().next().cloned()
-    }
-
-    pub fn config(&self) -> &CoordinatorConfig {
-        &self.config
     }
 
     pub async fn partition_and_allocate_by_capacity(
