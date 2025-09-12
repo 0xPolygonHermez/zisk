@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use proofman::ContributionsInfo;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, ops::Range, path::PathBuf};
+use std::{collections::HashMap, fmt::Display, ops::Range, path::PathBuf};
 
 /// Job ID wrapper for type safety
 #[derive(
@@ -138,6 +138,19 @@ pub enum ProverState {
     Idle,
     Computing(JobPhase),
     Error,
+}
+
+impl Display for ProverState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let state_str = match self {
+            ProverState::Disconnected => "Disconnected",
+            ProverState::Connecting => "Connecting",
+            ProverState::Idle => "Idle",
+            ProverState::Computing(phase) => return write!(f, "Computing({})", phase.as_string()),
+            ProverState::Error => "Error",
+        };
+        write!(f, "{}", state_str)
+    }
 }
 
 /// Compute capacity for provers

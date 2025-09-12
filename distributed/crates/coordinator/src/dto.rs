@@ -542,18 +542,12 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
 }
 
 pub struct HeartbeatAckDto {
-    pub timestamp: DateTime<Utc>,
     pub prover_id: ProverId,
 }
 
 impl From<distributed_grpc_api::HeartbeatAck> for HeartbeatAckDto {
     fn from(message: distributed_grpc_api::HeartbeatAck) -> Self {
-        let ts = message.timestamp.unwrap();
-
-        let timestamp = chrono::DateTime::<Utc>::from_timestamp(ts.seconds, ts.nanos as u32)
-            .expect("invalid timestamp");
-
-        HeartbeatAckDto { timestamp, prover_id: ProverId::from(message.prover_id) }
+        HeartbeatAckDto { prover_id: ProverId::from(message.prover_id) }
     }
 }
 
@@ -561,7 +555,6 @@ pub struct ProverErrorDto {
     pub prover_id: ProverId,
     pub job_id: JobId,
     pub error_message: String,
-    pub error_type: String,
 }
 
 impl From<ProverError> for ProverErrorDto {
@@ -570,7 +563,6 @@ impl From<ProverError> for ProverErrorDto {
             prover_id: ProverId::from(error.prover_id),
             job_id: JobId::from(error.job_id),
             error_message: error.error_message,
-            error_type: error.error_type,
         }
     }
 }

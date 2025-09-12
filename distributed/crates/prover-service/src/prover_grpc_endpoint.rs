@@ -327,7 +327,6 @@ impl ProverGrpcEndpoint {
     ) -> Result<()> {
         let message = ProverMessage {
             payload: Some(prover_message::Payload::HeartbeatAck(HeartbeatAck {
-                timestamp: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
                 prover_id: self.config_endpoint.prover.prover_id.as_string(),
             })),
         };

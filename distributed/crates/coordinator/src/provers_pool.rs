@@ -36,8 +36,7 @@ impl ProversPool {
         compute_capacity: impl Into<ComputeCapacity>,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Result<ProverId> {
-        let connection =
-            ProverConnection::new(prover_id.clone(), compute_capacity.into(), msg_sender);
+        let connection = ProverConnection::new(compute_capacity.into(), msg_sender);
 
         // Check if we've reached the maximum number of total provers
         let num_provers = self.num_provers().await;
