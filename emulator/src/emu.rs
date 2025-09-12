@@ -13,9 +13,9 @@ use data_bus::DataBusTrait;
 use zisk_common::{EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
-    EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_FIRST, OUTPUT_ADDR,
-    ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM,
-    STORE_NONE, STORE_REG,
+    EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
+    FREG_RA, FREG_X0, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
+    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -1833,6 +1833,7 @@ impl<'a> Emu<'a> {
             );
             self.print_regs();
             self.print_float_regs();
+            self.print_float_saved_regs();
             println!();
         }
 
@@ -2469,8 +2470,21 @@ impl<'a> Emu<'a> {
     pub fn print_float_regs(&self) {
         print!("Emu::print_float_regs(): ");
         for i in 0..31 {
-            let r = self.ctx.inst_ctx.mem.read(FREG_FIRST + i * 8, 8);
+            let r = self.ctx.inst_ctx.mem.read(FREG_F0 + i * 8, 8);
             print!("f{i}={r}={r:x} ");
+        }
+        let r = self.ctx.inst_ctx.mem.read(FREG_INST, 8);
+        print!("finst={r}={r:x} ");
+        let r = self.ctx.inst_ctx.mem.read(FREG_RA, 8);
+        print!("fra={r}={r:x} ");
+        println!();
+    }
+
+    pub fn print_float_saved_regs(&self) {
+        print!("Emu::print_float_saved_regs(): ");
+        for i in 0..31 {
+            let r = self.ctx.inst_ctx.mem.read(FREG_X0 + i * 8, 8);
+            print!("fx{i}={r}={r:x} ");
         }
         println!();
     }

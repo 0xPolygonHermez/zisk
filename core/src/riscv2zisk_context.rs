@@ -5,8 +5,8 @@
 use riscv::{riscv_interpreter, RiscvInstruction};
 
 use crate::{
-    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, FLOAT_LIB_ADDR, FREG_INST, FREG_RA,
-    FREG_X0, INPUT_ADDR, OUTPUT_ADDR, ROM_ENTRY, ROM_EXIT, SYS_ADDR,
+    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, FLOAT_LIB_ADDR, FLOAT_LIB_SP,
+    FREG_INST, FREG_RA, FREG_X0, INPUT_ADDR, OUTPUT_ADDR, ROM_ENTRY, ROM_EXIT, SYS_ADDR,
 };
 
 use std::collections::HashMap;
@@ -41,7 +41,7 @@ const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
 const MTVEC: u64 = CSR_ADDR + 0x305;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 const FLOAT_HANDLER_ADDR: u64 = 0x1008;
-const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 32; // 31 regs + jump to zisk_float
+const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs + set sp + set ra + jump to zisk_float
 
 /// Context to store the list of converted ZisK instructions, including their program address and a
 /// map to store the instructions
@@ -501,7 +501,7 @@ impl Riscv2ZiskContext<'_> {
         zib.src_b("reg", i.rs2 as u64 + reg_offset, false);
         zib.op(op).unwrap();
         zib.store("reg", i.rd as i64 + reg_offset as i64, false, false);
-        zib.j(inst_size as i32, inst_size as i32);
+        zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rd, i.rs1, i.rs2));
         zib.build();
         self.insts.insert(self.s, zib);
@@ -522,9 +522,9 @@ impl Riscv2ZiskContext<'_> {
         zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rs1, i.rs2, i.imm));
         zib.op(op).unwrap();
         if neg {
-            zib.j(inst_size as i32, i.imm);
+            zib.j(inst_size as i64, i.imm as i64);
         } else {
-            zib.j(i.imm, inst_size as i32);
+            zib.j(i.imm as i64, inst_size as i64);
         }
         zib.build();
         self.insts.insert(self.s, zib);
@@ -539,7 +539,7 @@ impl Riscv2ZiskContext<'_> {
         zib.src_a("imm", 0, false);
         zib.src_b("imm", 0, false);
         zib.op("flag").unwrap();
-        zib.j(inst_size as i32, inst_size as i32);
+        zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&i.inst.to_string());
         zib.build();
         self.insts.insert(self.s, zib);
@@ -565,7 +565,7 @@ impl Riscv2ZiskContext<'_> {
                 0
             };
         zib.store("reg", i.rd as i64 + reg_offset, false, false);
-        zib.j(inst_size as i32, inst_size as i32);
+        zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}+{}, 0x{:x}(r{})", i.inst, i.rd, reg_offset, i.imm, i.rs1));
         zib.build();
         self.insts.insert(self.s, zib);
@@ -591,7 +591,7 @@ impl Riscv2ZiskContext<'_> {
         zib.op(op).unwrap();
         zib.ind_width(w);
         zib.store("ind", i.imm as i64, false, false);
-        zib.j(inst_size as i32, inst_size as i32);
+        zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}+{}, 0x{:x}(r{})", i.inst, i.rs2, reg_offset, i.imm, i.rs1));
         zib.build();
         self.insts.insert(self.s, zib);
@@ -610,7 +610,7 @@ impl Riscv2ZiskContext<'_> {
         zib.src_b("imm", i.imm as u64, false);
         zib.op(op).unwrap();
         zib.store("reg", i.rd as i64, false, false);
-        zib.j(inst_size as i32, inst_size as i32);
+        zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
         zib.build();
         self.insts.insert(self.s, zib);
@@ -636,7 +636,7 @@ impl Riscv2ZiskContext<'_> {
             zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
         }
         zib.store("reg", i.rd as i64, false, false);
-        zib.j(inst_size as i32, inst_size as i32);
+        zib.j(inst_size as i64, inst_size as i64);
         zib.build();
         self.insts.insert(self.s, zib);
         self.s += inst_size;
@@ -651,7 +651,7 @@ impl Riscv2ZiskContext<'_> {
         zib.src_b("imm", 0, false);
         zib.op("flag").unwrap();
         zib.store_ra("reg", i.rd as i64, false);
-        zib.j(4, i.imm);
+        zib.j(4, i.imm as i64);
         zib.verbose(&format!("auipc r{}, 0x{:x}", i.rd, i.imm));
         zib.build();
         self.insts.insert(self.s, zib);
@@ -757,7 +757,7 @@ impl Riscv2ZiskContext<'_> {
         zib.src_b("imm", i.imm as u64, false);
         zib.op("copyb").unwrap();
         zib.store("reg", i.rd as i64, false, false);
-        zib.j(inst_size as i32, inst_size as i32);
+        zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("lui r{}, 0x{:x}", i.rd, i.imm));
         zib.build();
         self.insts.insert(self.s, zib);
@@ -776,7 +776,7 @@ impl Riscv2ZiskContext<'_> {
             zib.op("and").unwrap();
             zib.set_pc();
             zib.store_ra("reg", i.rd as i64, false);
-            zib.j(i.imm, inst_size as i32);
+            zib.j(i.imm as i64, inst_size as i64);
             zib.verbose(&format!("jalr r{}, r{}, 0x{:x}", i.rd, i.rs1, i.imm));
             zib.build();
             self.insts.insert(self.s, zib);
@@ -800,7 +800,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("and").unwrap();
                 zib.set_pc();
                 zib.store_ra("reg", i.rd as i64, false);
-                zib.j(0, inst_size as i32 - 1);
+                zib.j(0, inst_size as i64 - 1);
                 zib.verbose(&format!("jalr r{}, r{}, 0x{:x} ; 2/2", i.rd, i.rs1, i.imm));
                 zib.build();
                 self.insts.insert(self.s, zib);
@@ -819,7 +819,7 @@ impl Riscv2ZiskContext<'_> {
         zib.src_b("imm", 0, false);
         zib.op("flag").unwrap();
         zib.store_ra("reg", i.rd as i64, false);
-        zib.j(i.imm, inst_size as i32);
+        zib.j(i.imm as i64, inst_size as i64);
         zib.verbose(&format!("jal r{}, 0x{:x}", i.rd, i.imm));
         zib.build();
         self.insts.insert(self.s, zib);
@@ -1537,7 +1537,7 @@ impl Riscv2ZiskContext<'_> {
             zib.src_a("imm", 0, false);
             zib.src_b("imm", i.rvinst as u64, false);
             zib.op("copyb").unwrap();
-            zib.store("reg", FREG_INST as i64, false, false);
+            zib.store("mem", FREG_INST as i64, false, false);
             zib.j(1, 1);
             zib.verbose(&format!("float store inst {} inst=0x{:x}", op, i.rvinst));
             zib.build();
@@ -1552,10 +1552,10 @@ impl Riscv2ZiskContext<'_> {
             zib.src_a("imm", 0, false);
             zib.src_b("imm", ra, false);
             zib.op("copyb").unwrap();
-            zib.store("reg", FREG_INST as i64, false, false);
+            zib.store("mem", FREG_RA as i64, false, false);
             zib.j(
-                FLOAT_HANDLER_ADDR as i32 - self.s as i32,
-                FLOAT_HANDLER_ADDR as i32 - self.s as i32,
+                FLOAT_HANDLER_ADDR as i64 - self.s as i64,
+                FLOAT_HANDLER_ADDR as i64 - self.s as i64,
             ); // Jump to float handler
             zib.verbose(&format!("float store ra {} inst=0x{:x} ra=0x{:x}", op, i.rvinst, ra));
             zib.build();
@@ -1965,8 +1965,8 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
     zib.op("copyb").unwrap();
-    zib.j(4 * 65, 4 * 66);
-    zib.verbose("Jump over end instruction");
+    zib.j(4 * 68, 4 * 68);
+    zib.verbose("Jump over end instruction and float handler");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -2005,6 +2005,32 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
         rom.next_init_inst_addr += 4;
     }
 
+    // Set sp to the top of the float library stack
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", 0, false);
+    zib.src_b("imm", FLOAT_LIB_SP, false);
+    zib.op("copyb").unwrap();
+    zib.store("reg", 2, false, false);
+    zib.j(4, 4);
+    zib.verbose(&format!("Float: save FLOAT_LIB_SP={FLOAT_LIB_SP:x} into reg[2]"));
+    zib.build();
+    rom.insts.insert(rom.next_init_inst_addr, zib);
+    rom.next_init_inst_addr += 4;
+
+    // Set the return address to the FLOAT_HANDLER_RETURN_ADDR
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", 0, false);
+    zib.src_b("imm", FLOAT_HANDLER_RETURN_ADDR, false);
+    zib.op("copyb").unwrap();
+    zib.store("reg", 1, false, false);
+    zib.j(4, 4);
+    zib.verbose(&format!(
+        "Float: save FLOAT_HANDLER_RETURN_ADDR={FLOAT_HANDLER_RETURN_ADDR:x} into reg[1]"
+    ));
+    zib.build();
+    rom.insts.insert(rom.next_init_inst_addr, zib);
+    rom.next_init_inst_addr += 4;
+
     // Jump back to the zisk_float function address
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
@@ -2012,7 +2038,7 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.op("copyb").unwrap();
     zib.set_pc();
     zib.j(0, 4);
-    zib.verbose("Float: jump to FLOAT_LIB_ADDR");
+    zib.verbose(&format!("Float: jump to FLOAT_LIB_ADDR={FLOAT_LIB_ADDR:x}"));
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;

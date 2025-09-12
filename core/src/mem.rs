@@ -113,7 +113,9 @@ pub const ROM_ADDR: u64 = 0x80000000;
 /// Maximum program ROM instruction address
 pub const ROM_ADDR_MAX: u64 = (ROM_ADDR + 0x08000000) - 1; // 128M
 /// First float library ROM instruction address
-pub const FLOAT_LIB_ADDR: u64 = ROM_ADDR + 0x08000000 - 0x100000; // 1M before ROM_ADDR_MAX
+pub const FLOAT_LIB_ADDR: u64 = ROM_ADDR + 0x08000000 - 0x100000; // 1M before ROM_ADDR_MAX = 0x87F00000
+/// Float library stack pointer address
+pub const FLOAT_LIB_SP: u64 = 0xa0030000 - 16;
 /// Zisk architecture ID
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 /// UART memory address; single bytes written here will be copied to the standard output

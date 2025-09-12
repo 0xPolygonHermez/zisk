@@ -1,6 +1,6 @@
 OUTPUT_FORMAT("elf64-littleriscv")
 OUTPUT_ARCH("riscv")
-ENTRY(_zisk_float)
+ENTRY(_start)
 
 MEMORY {
   rom   (xa) : ORIGIN = 0x87F00000, LENGTH = 0x100000

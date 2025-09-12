@@ -65,7 +65,7 @@ void set_rounding_mode (uint64_t rm)
     }
 }
 
-void zisk_float (void)
+void _zisk_float (void)
 {
     uint64_t inst = *(uint64_t *)FREG_INST;
     switch (inst & 0x7F)

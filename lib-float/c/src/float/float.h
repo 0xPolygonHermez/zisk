@@ -51,7 +51,7 @@ const uint64_t F32_ONE = 0x3F800000;
 const uint64_t F64_ZERO = 0x0000000000000000;
 const uint32_t F32_ZERO = 0x00000000;
 
-void zisk_float (void);
+void _zisk_float (void);
 
 #ifdef __cplusplus
 } // extern "C"

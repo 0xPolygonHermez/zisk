@@ -11,7 +11,7 @@ int _zisk_main(int argc, char *argv[])
     fregs[2] = F64_ONE;
     uint64_t inst = 0x022081D3; // fadd.d f1, f2, f3
     *(uint64_t *)FREG_INST = inst;
-    zisk_float();
+    _zisk_float();
     return 0;
 }
 
