@@ -1,10 +1,12 @@
-use distributed_common::{ComputeCapacity, Error, ProverId, ProverState, Result};
+use distributed_common::{
+    ComputeCapacity, CoordinatorMessageDto, Error, ProverId, ProverState, Result,
+};
 use distributed_config::CoordinatorConfig;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-use crate::{coordinator_service::MessageSender, dto::CoordinatorMessageDto, ProverConnection};
+use crate::{coordinator_service::MessageSender, ProverConnection};
 
 pub struct ProversPool {
     /// Map of prover_id to ProverConnection

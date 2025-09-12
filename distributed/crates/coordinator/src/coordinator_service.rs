@@ -1,30 +1,25 @@
-use crate::dto::{
-    AggParamsDto, ChallengesDto, ContributionParamsDto, CoordinatorMessageDto,
-    ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto,
-    ExecuteTaskResponseResultDataDto, HeartbeatAckDto, JobStatusDto, JobsListDto, MetricsDto,
-    ProofDto, ProveParamsDto, ProverErrorDto, ProverReconnectRequestDto, ProverRegisterRequestDto,
-    ProversListDto, StartProofRequestDto, StartProofResponseDto, StatusInfoDto, SystemStatusDto,
-};
 use crate::ProversPool;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use distributed_common::JobId;
 use distributed_common::{
-    AggProofData, BlockContext, BlockId, Error, Job, JobPhase, JobResult, JobResultData, JobState,
-    ProverState,
+    AggParamsDto, AggProofData, BlockContext, BlockId, ChallengesDto, ComputeCapacity,
+    ContributionParamsDto, CoordinatorMessageDto, Error, ExecuteTaskRequestDto,
+    ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
+    HeartbeatAckDto, Job, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
+    JobsListDto, MetricsDto, ProofDto, ProveParamsDto, ProverErrorDto, ProverId,
+    ProverReconnectRequestDto, ProverRegisterRequestDto, ProverState, ProversListDto,
+    StartProofRequestDto, StartProofResponseDto, StatusInfoDto, SystemStatusDto,
 };
-use distributed_common::{ComputeCapacity, ProverId};
+
 use distributed_config::Config;
 use proofman::ContributionsInfo;
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use tokio::sync::RwLock;
 use tonic::Status;
-use tracing::warn;
-use tracing::{error, info, instrument};
+use tracing::{error, info, instrument, warn};
 
 pub trait MessageSender {
     fn send(&self, msg: CoordinatorMessageDto) -> Result<()>;

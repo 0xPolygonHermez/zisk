@@ -1,5 +1,5 @@
 use async_stream::stream;
-use distributed_common::{JobId, ProverId};
+use distributed_common::{CoordinatorMessageDto, JobId, ProverId};
 use distributed_config::Config;
 use distributed_grpc_api::{distributed_api_server::*, *};
 use futures_util::{Stream, StreamExt};
@@ -10,7 +10,6 @@ use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
 
 use crate::coordinator_service::MessageSender;
-use crate::dto::CoordinatorMessageDto;
 use crate::CoordinatorService;
 
 pub struct GrpcMessageSender {
