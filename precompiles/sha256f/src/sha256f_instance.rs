@@ -43,6 +43,20 @@ impl<F: PrimeField64> Sha256fInstance<F> {
     pub fn new(sha256f_sm: Arc<Sha256fSM<F>>, ictx: InstanceCtx) -> Self {
         Self { sha256f_sm, ictx }
     }
+
+    pub fn build_sha256f_collector(&self, chunk_id: ChunkId) -> Sha256fCollector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            Sha256fTrace::<F>::AIR_ID,
+            "Sha256fInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let meta = self.ictx.plan.meta.as_ref().unwrap();
+        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
+        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        Sha256fCollector::new(num_ops, collect_skipper)
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
@@ -100,6 +114,10 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
         let (num_ops, collect_skipper) = collect_info[&chunk_id];
         Some(Box::new(Sha256fCollector::new(num_ops, collect_skipper)))
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct Sha256fCollector {
@@ -125,7 +143,11 @@ impl Sha256fCollector {
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
     pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+        Self {
+            inputs: Vec::with_capacity(num_operations as usize),
+            num_operations,
+            collect_skipper,
+        }
     }
 }
 

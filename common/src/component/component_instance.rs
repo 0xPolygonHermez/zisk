@@ -5,6 +5,7 @@
 use crate::{BusDevice, CheckPoint, ChunkId, PayloadType};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use std::any::Any;
 
 /// Represents the type of an instance, either a standalone instance or a table.
 #[derive(Debug, PartialEq)]
@@ -19,7 +20,7 @@ pub enum InstanceType {
 /// The `Instance` trait defines the interface for any computation instance used in proof systems.
 ///
 /// It provides methods to compute witnesses, retrieve checkpoints, and specify instance types.
-pub trait Instance<F: PrimeField64>: Send + Sync {
+pub trait Instance<F: PrimeField64>: Any + Send + Sync {
     /// Computes the witness for the instance based on the proof context.
     ///
     /// # Arguments
@@ -72,6 +73,12 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
     /// * `_pctx` - The proof context, unused in this implementation.
     /// * `_sctx` - The setup context, unused in this implementation.
     fn debug(&self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {}
+
+    /// Provides access to the underlying Any trait for downcasting.
+    ///
+    /// # Returns
+    /// A reference to self as `&dyn Any`.
+    fn as_any(&self) -> &dyn Any;
 
     fn reset(&self) {}
 }
@@ -165,6 +172,10 @@ macro_rules! table_instance {
 
             fn reset(&self) {
                 self.table_sm.reset_calculated();
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
             }
         }
 
@@ -288,6 +299,10 @@ macro_rules! table_instance_array {
             fn reset(&self) {
                 self.table_sm.reset_calculated();
             }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
         }
 
         impl BusDevice<u64> for $InstanceName {
@@ -367,6 +382,10 @@ macro_rules! instance {
 
             fn instance_type(&self) -> InstanceType {
                 InstanceType::Instance
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
             }
         }
 

@@ -1,5 +1,7 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Bn254Complex;
+use sm_mem::MemCollectorInfo;
+use std::collections::VecDeque;
 use zisk_common::BusId;
 
 pub const BN254_COMPLEX_SUB_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
@@ -15,7 +17,8 @@ pub fn generate_bn254_complex_sub_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-) -> Vec<(BusId, Vec<u64>)> {
+    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+) {
     // op,op_type,a,b,addr[2],...
     let f1: &[u64; 8] = &data[6..14].try_into().unwrap();
     let f2: &[u64; 8] = &data[14..22].try_into().unwrap();
@@ -28,6 +31,15 @@ pub fn generate_bn254_complex_sub_mem_inputs(
         data,
         Some(&f3),
         only_counters,
+        pending,
         &BN254_COMPLEX_SUB_MEM_CONFIG,
-    )
+    );
+}
+
+pub fn skip_bn254_complex_sub_mem_inputs(
+    addr_main: u32,
+    data: &[u64],
+    mem_collectors_info: &[MemCollectorInfo],
+) -> bool {
+    super::skip_mem_inputs(addr_main, data, &BN254_COMPLEX_SUB_MEM_CONFIG, mem_collectors_info)
 }

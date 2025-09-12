@@ -28,6 +28,10 @@ impl<F: PrimeField64> MemAlignInstance<F> {
 
         Self { ictx, checkpoint, mem_align_sm }
     }
+
+    pub fn build_mem_align_collector(&self, chunk_id: ChunkId) -> MemAlignCollector {
+        MemAlignCollector::new(&self.checkpoint[&chunk_id])
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
@@ -69,5 +73,9 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(MemAlignCollector::new(&self.checkpoint[&chunk_id])))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

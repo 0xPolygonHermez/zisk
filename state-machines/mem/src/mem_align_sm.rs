@@ -121,8 +121,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneRead, offset, width);
 
                 // Update the row multiplicity of the operation
-                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
-                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
+                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 let mut read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -234,8 +233,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneWrite, offset, width);
 
                 // Update the row multiplicity of the operation
-                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
-                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
+                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 // Compute the write value
                 let value_write = {
@@ -403,8 +401,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoReads, offset, width);
 
                 // Update the row multiplicity of the operation
-                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
-                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
+                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 let mut first_read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -593,8 +590,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoWrites, offset, width);
 
                 // Update the row multiplicity of the operation
-                let rows = MemAlignRomSM::get_rows(next_pc, op_size);
-                self.std.inc_virtual_rows_same_mul(self.table_id, &rows, 1);
+                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 // RWVWR
                 let mut first_read_row = MemAlignTraceRow::<F> {

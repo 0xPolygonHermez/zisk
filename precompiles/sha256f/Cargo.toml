@@ -12,6 +12,7 @@ zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
 precompiles-common = { workspace = true }
+sm-mem = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }

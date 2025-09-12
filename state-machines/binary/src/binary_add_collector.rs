@@ -33,14 +33,15 @@ impl BinaryAddCollector {
     /// A new `BinaryAddCollector` instance initialized with the provided parameters.
     pub fn new(
         num_operations: usize,
+        num_freq_ops: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
     ) -> Self {
         Self {
-            inputs: Vec::new(),
+            inputs: Vec::with_capacity(num_operations),
             num_operations,
             collect_skipper,
-            frops_inputs: Vec::new(),
+            frops_inputs: Vec::with_capacity(num_freq_ops),
             force_execute_to_end,
         }
     }

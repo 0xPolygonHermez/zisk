@@ -4,12 +4,13 @@
 
 use std::{collections::VecDeque, ops::Add};
 
+use sm_mem::MemCollectorInfo;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 
-use crate::generate_keccakf_mem_inputs;
+use crate::{generate_keccakf_mem_inputs, skip_keccakf_mem_inputs};
 
 /// The `KeccakfCounter` struct represents a counter that monitors and measures
 /// keccakf-related operations on the data bus.
@@ -46,6 +47,21 @@ impl KeccakfCounterInputGen {
     /// Returns the count of instructions for the specified operation type.
     pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
         (op_type == ZiskOperationType::Keccak).then_some(self.counter.inst_count)
+    }
+
+    pub fn skip_data(
+        &self,
+        bus_id: &BusId,
+        data: &[u64],
+        mem_collectors_info: &[MemCollectorInfo],
+    ) -> bool {
+        if *bus_id != OPERATION_BUS_ID || data[OP_TYPE] as u32 != ZiskOperationType::Keccak as u32 {
+            return false;
+        }
+
+        let addr_main = data[B] as u32;
+
+        skip_keccakf_mem_inputs(addr_main, mem_collectors_info)
     }
 }
 
@@ -120,7 +136,7 @@ impl BusDevice<u64> for KeccakfCounterInputGen {
             self.measure(data);
         }
 
-        pending.extend(generate_keccakf_mem_inputs(addr_main, step_main, data, only_counters));
+        generate_keccakf_mem_inputs(addr_main, step_main, data, only_counters, pending);
 
         true
     }
