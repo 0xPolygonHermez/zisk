@@ -16,6 +16,7 @@ sm-arith = { workspace = true }
 sm-binary = { workspace = true }
 sm-main = { workspace = true }
 sm-mem = { workspace = true }
+mem-common = { workspace = true }
 sm-rom = { workspace = true }
 sm-frequent-ops = { workspace = true }
 data-bus = { workspace = true }

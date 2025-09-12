@@ -5,7 +5,9 @@ require "rom/pil/rom.pil"
 require "main/pil/main.pil"
 require "mem/pil/mem.pil"
 require "mem/pil/mem_align.pil"
+require "mem/pil/mem_align_byte.pil"
 require "mem/pil/mem_align_rom.pil"
+require "mem/pil/dual_byte.pil"
 require "frequent-ops/pil/frequent_ops.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
@@ -45,7 +47,12 @@ airgroup Zisk {
     Mem(N: 2**21, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
 
     MemAlign(N: 2**22, use_predefined_ranges: 0);
+    MemAlignByte(N: 2**22, read: 1, write: 1);
+    MemAlignByte(N: 2**22, read: 1, write: 0) alias MemAlignReadByte;
+    MemAlignByte(N: 2**22, read: 0, write: 1) alias MemAlignWriteByte;
     virtual MemAlignRom();
+
+    virtual DualByte();
 
     Arith(N: 2**21);
     virtual ArithTable();

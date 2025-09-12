@@ -5,13 +5,13 @@
 use std::collections::VecDeque;
 
 use data_bus::DataBusTrait;
+use mem_common::MemCounters;
 use precomp_arith_eq::ArithEqCounterInputGen;
 use precomp_keccakf::KeccakfCounterInputGen;
 use precomp_sha256f::Sha256fCounterInputGen;
 use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
 use sm_main::MainCounter;
-use sm_mem::MemCounters;
 use zisk_common::{BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
 use zisk_core::{
     ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID,
@@ -33,7 +33,7 @@ pub struct StaticDataBus<D> {
 
     /// List of devices connected to the bus.
     pub main_counter: MainCounter,
-    pub mem_counter: MemCounters,
+    pub mem_counter: Option<MemCounters>,
     pub binary_counter: BinaryCounter,
     pub arith_counter: ArithCounterInputGen,
     pub keccakf_counter: KeccakfCounterInputGen,
@@ -49,7 +49,7 @@ impl StaticDataBus<PayloadType> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         process_only_operation_bus: bool,
-        mem_counter: MemCounters,
+        mem_counter: Option<MemCounters>,
         binary_counter: BinaryCounter,
         arith_counter: ArithCounterInputGen,
         keccakf_counter: KeccakfCounterInputGen,
@@ -85,14 +85,12 @@ impl StaticDataBus<PayloadType> {
             MEM_BUS_ID => {
                 let mut _continue = true;
                 if !self.process_only_operation_bus {
-                    // If we are not processing only operation bus, we process memory bus data.
-                    _continue &= self.mem_counter.process_data(
-                        &bus_id,
-                        payload,
-                        &mut self.pending_transfers,
-                    );
+                    if let Some(mem_counter) = self.mem_counter.as_mut() {
+                        // If we are not processing only operation bus, we process memory bus data.
+                        _continue &=
+                            mem_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
+                    }
                 }
-
                 _continue
             }
             OPERATION_BUS_ID => match payload[1] as u32 {
@@ -137,7 +135,9 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
 
     fn on_close(&mut self) {
         self.main_counter.on_close();
-        self.mem_counter.on_close();
+        if let Some(mem_counter) = self.mem_counter.as_mut() {
+            mem_counter.on_close();
+        }
         self.binary_counter.on_close();
         self.arith_counter.on_close();
         self.keccakf_counter.on_close();
@@ -168,7 +168,14 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
         #[allow(clippy::type_complexity)]
         let counters: Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> = vec![
             (None, Some(Box::new(main_counter))),
-            (None, Some(Box::new(mem_counter))),
+            (
+                None,
+                if self.process_only_operation_bus {
+                    None
+                } else {
+                    Some(Box::new(mem_counter.unwrap()))
+                },
+            ),
             (None, None),
             (None, Some(Box::new(binary_counter))),
             (None, Some(Box::new(arith_counter))),

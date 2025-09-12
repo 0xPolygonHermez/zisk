@@ -1,0 +1,13 @@
+require "std_lookup.pil"
+
+const int DUAL_BYTE_TABLE_ID = 88;
+
+airtemplate DualByte(int N = 2**16) {
+
+    col fixed BYTE_A = [0:256..255:256]...;
+    col fixed BYTE_B = [0..255]...;
+
+    col witness multiplicity;
+
+    lookup_proves(DUAL_BYTE_TABLE_ID, mul: multiplicity, expressions: [BYTE_A, BYTE_B]);
+}

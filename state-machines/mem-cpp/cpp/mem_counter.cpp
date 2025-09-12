@@ -64,10 +64,11 @@ void MemCounter::execute() {
 
         uint32_t chunk_id = 1;
 #ifdef MEM_CONTEXT_SEM
-        while ((chunk = context->get_chunk(id, chunk_id, elapsed_us)) != nullptr) {
+        while ((chunk = context->get_chunk(id, chunk_id, elapsed_us)) != nullptr)
 #else
-        while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr) {
+        while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr)
 #endif
+        {
             #ifdef COUNT_CHUNK_STATS
             wait_chunks_us[chunk_id] = elapsed_us;
             auto start_execute_us = get_usec();
@@ -99,7 +100,7 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
     current_chunk = chunk_id;
 
     for (const MemCountersBusData *chunk_eod = chunk_data + chunk_size; chunk_eod != chunk_data; chunk_data++) {
-        const uint8_t bytes = chunk_data->flags & 0xFF;
+        const uint8_t bytes = chunk_data->flags & 0x0F;
         const uint32_t addr = chunk_data->addr;
         switch (bytes) {
             case 1: // byte
@@ -122,11 +123,17 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
             const uint32_t aligned_addr = addr & 0xFFFFFFF8;
 
             if ((aligned_addr & ADDR_MASK) == addr_mask) {
-                const int ops = 1 + (chunk_data->flags >> 16);
+                const int ops = 1 + ((chunk_data->flags & 0x10) >> 4);
+                #ifdef DEBUG_MEM
+                assert((ops == 1 || ops == 2) && "Invalid ops values (first address match)");
+                #endif
                 count_aligned(aligned_addr, chunk_id, ops);
             }
             else if ((bytes + (addr & 0x07)) > 8 && ((aligned_addr + 8) & ADDR_MASK) == addr_mask) {
-                const int ops = 1 + (chunk_data->flags >> 16);
+                const int ops = 1 + ((chunk_data->flags & 0x10) >> 4);
+                #ifdef DEBUG_MEM
+                assert((ops == 1 || ops == 2) && "Invalid ops values (second address match)");
+                #endif
                 count_aligned(aligned_addr + 8 , chunk_id, ops);
             }
         }

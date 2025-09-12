@@ -20,6 +20,7 @@
 #include <mutex>
 #include <atomic>
 #include <memory>
+#include <semaphore.h>
 
 #include "mem_types.hpp"
 #include "mem_config.hpp"
@@ -49,6 +50,8 @@ private:
     std::unique_ptr<ImmutableMemPlanner> input_data_planner;
     std::vector<MemPlanner> plan_workers;
     std::unique_ptr<std::thread> parallel_execute;
+    std::unique_ptr<std::thread> mem_align_execute;
+    sem_t sem_mem_align_created;
     uint64_t t_init_us;
     uint64_t t_count_us;
     uint64_t t_prepare_us;
@@ -70,10 +73,12 @@ public:
     void add_chunk(MemCountersBusData *chunk_data, uint32_t chunk_size);
     void detach_execute();
     void execute(void);
+    void detach_execute_mem_align_counter();
     void count_phase();
     void plan_phase();
     void stats();
     void wait(); 
+    void wait_mem_align_counters(); 
 
     void set_completed() {
         context->set_completed();
