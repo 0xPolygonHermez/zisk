@@ -5,7 +5,7 @@ use crate::{
 };
 use distributed_common::{AggProofData, ComputeCapacity};
 
-/// Conversions between consensus-common types and gRPC types
+/// Conversions between coordinator-common types and gRPC types
 /// This module handles the translation layer between our domain types
 /// and the generated gRPC protobuf types.
 impl From<ComputeCapacity> for GrpcComputeCapacity {

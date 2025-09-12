@@ -1,17 +1,17 @@
 [service]
-name = "consensus-network"
+name = "coordinator-network"
 environment = "production"
 
 [server]
 host = "0.0.0.0"
-port = 8080
+port = 50051
 # shutdown_timeout_seconds = 60
 
 [logging]
 level = "info"
 format = "json"
 file_output = true
-file_path = "/var/log/consensus-network/server.log"
+file_path = "/var/log/coordinator-network/server.log"
 
 [comm]
 max_peers = 100

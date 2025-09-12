@@ -5,15 +5,15 @@ mod handler_prove_block;
 mod handler_server;
 
 #[derive(Parser, Debug)]
-#[command(name = "consensus-server")]
-#[command(about = "A Consensus Network gRPC Server")]
-struct ConsensusServerArgs {
+#[command(name = "coordinator-server")]
+#[command(about = "A Coordinator Network gRPC Server")]
+struct CoordinatorServerArgs {
     #[command(subcommand)]
-    pub command: ConsensusServerCommands,
+    pub command: CoordinatorServerCommands,
 }
 
 #[derive(Parser, Debug)]
-enum ConsensusServerCommands {
+enum CoordinatorServerCommands {
     /// Start the gRPC server (default mode)
     Server {
         /// Port to bind the gRPC server to
@@ -40,17 +40,17 @@ enum ConsensusServerCommands {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Parse command line arguments
-    let args = ConsensusServerArgs::parse();
+    let args = CoordinatorServerArgs::parse();
 
     // Initialize tracing
     distributed_common::tracing::init()?;
 
     match args.command {
-        ConsensusServerCommands::Server { port } => {
+        CoordinatorServerCommands::Server { port } => {
             // Server mode
             handler_server::handle(port).await
         }
-        ConsensusServerCommands::ProveBlock { url, input, compute_capacity } => {
+        CoordinatorServerCommands::ProveBlock { url, input, compute_capacity } => {
             // Initialize basic tracing for the prove-block command
             handler_prove_block::handle(url, input, compute_capacity as u32).await
         }

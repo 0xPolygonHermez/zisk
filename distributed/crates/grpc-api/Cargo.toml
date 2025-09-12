@@ -8,7 +8,6 @@ repository.workspace = true
 
 [dependencies]
 distributed-config = { workspace = true }
-distributed-comm = { workspace = true }
 distributed-common = { workspace = true }
 
 tonic = { workspace = true }

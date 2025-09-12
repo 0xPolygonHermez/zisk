@@ -40,7 +40,6 @@ members = [
     "distributed/crates/grpc-api",
     "distributed/crates/prover",
     "distributed/crates/prover-service",
-    "distributed/crates/comm",
     "distributed/crates/config",
     "distributed/crates/coordinator",
     "distributed/crates/coordinator-cli",
@@ -94,7 +93,6 @@ circuit = { path = "tools/circuit" }
 distributed-grpc-api = { path = "distributed/crates/grpc-api" }
 distributed-prover = { path = "distributed/crates/prover" }
 distributed-prover-service = { path = "distributed/crates/prover-service" }
-distributed-comm = { path = "distributed/crates/comm" }
 distributed-common = { path = "distributed/crates/common" }
 distributed-config = { path = "distributed/crates/config" }
 distributed-coordinator = { path = "distributed/crates/coordinator" }

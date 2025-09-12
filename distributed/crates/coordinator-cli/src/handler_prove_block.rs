@@ -6,7 +6,7 @@ use tracing::{error, info};
 /// Handle the prove-block subcommand - makes RPC request to coordinator
 pub async fn handle(server_url: String, input_path: String, compute_capacity: u32) -> Result<()> {
     // Connect to the gRPC server
-    info!("Connecting to Consensus Network gRPC service on {}", server_url);
+    info!("Connecting to Coordinator Network gRPC service on {}", server_url);
 
     let channel = Channel::from_shared(server_url)?.connect().await?;
     let mut client = DistributedApiClient::new(channel);

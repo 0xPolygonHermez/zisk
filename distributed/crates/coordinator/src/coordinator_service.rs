@@ -1,262 +1,109 @@
 use anyhow::Result;
-use async_stream::stream;
-use distributed_comm::CommManager;
+use chrono::{DateTime, Utc};
+use distributed_common::JobId;
 use distributed_common::{ComputeCapacity, ProverId};
 use distributed_config::Config;
-use crate::Coordinator;
-use distributed_grpc_api::{distributed_api_server::*, *};
-
-use chrono::{DateTime, Utc};
-use futures_util::{Stream, StreamExt};
-use serde::{Deserialize, Serialize};
+use distributed_grpc_api::CoordinatorMessage;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use std::{pin::Pin, sync::Arc, time::SystemTime};
+use std::sync::Arc;
 use tokio::sync::mpsc;
-use tonic::{Request, Response, Status, Streaming};
+use tonic::Status;
 use tracing::{error, info, instrument};
 
+use crate::dto::{
+    JobStatusDto, JobsListDto, MetricsDto, ProverReconnectRequestDto, ProverRegisterRequestDto,
+    ProversListDto, StartProofRequestDto, StartProofResponseDto, StatusInfoDto, SystemStatusDto,
+};
+use crate::Coordinator;
+
 /// Represents the runtime state of the service
-pub struct ConsensusService {
-    pub _config: Config,
+pub struct CoordinatorService {
+    pub config: Config,
     pub start_time_utc: DateTime<Utc>,
-    pub comm_manager: Arc<CommManager>,
+
     pub active_connections: Arc<AtomicU32>,
-    pub prover_manager: Arc<Coordinator>,
+    pub coordinator: Arc<Coordinator>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ServiceInfo {
-    pub name: String,
-    pub version: String,
-    pub build_time: String,
-    pub commit_hash: String,
-    pub environment: String,
-    pub api_version: String,
-}
-
-impl ConsensusService {
+impl CoordinatorService {
     #[instrument(skip(config))]
     pub async fn new(config: Config) -> distributed_common::Result<Self> {
         info!("Initializing service state");
 
         let start_time_utc = Utc::now();
 
-        let comm_manager = Arc::new(CommManager::new(config.comm.clone()).await?);
-
         // Create ProverManager with configuration from config
-        let prover_manager = Arc::new(Coordinator::new(config.prover_manager.clone()));
+        let coordinator = Arc::new(Coordinator::new(config.coordinator.clone()));
 
         Ok(Self {
-            _config: config,
+            config,
             start_time_utc,
-            comm_manager,
             active_connections: Arc::new(AtomicU32::new(0)),
-            prover_manager,
+            coordinator,
         })
     }
 
-    /// Check if the request comes from localhost/127.0.0.1
-    fn is_local_request(&self, request: &Request<impl std::fmt::Debug>) -> bool {
-        if let Some(remote_addr) = request.remote_addr() {
-            let ip = remote_addr.ip();
-            ip.is_loopback() || ip.to_string() == "127.0.0.1" || ip.to_string() == "::1"
-        } else {
-            false
-        }
+    pub fn active_connections(&self) -> Arc<AtomicU32> {
+        self.active_connections.clone()
     }
 
-    /// Validate admin request access
-    fn validate_admin_request<T: std::fmt::Debug>(
-        &self,
-        request: &Request<T>,
-    ) -> Result<(), Status> {
-        if !self.is_local_request(request) {
-            return Err(Status::permission_denied(
-                "Admin endpoints are restricted to localhost access only",
-            ));
-        }
-        Ok(())
+    pub fn max_concurrent_connections(&self) -> u32 {
+        self.config.coordinator.max_concurrent_connections
     }
 
-    /// Handle registration directly in stream context (static version to avoid lifetime issues)
-    async fn handle_stream_registration(
-        prover_manager: &Coordinator,
-        req: ProverRegisterRequest,
-        msg_sender: mpsc::Sender<CoordinatorMessage>,
-    ) -> Result<ProverId, Status> {
-        let compute_capacity = req.compute_capacity.unwrap_or_default();
-
-        prover_manager
-            .register_prover(ProverId::from(req.prover_id), compute_capacity, msg_sender)
-            .await
-            .map_err(|e| Status::internal(format!("Registration failed: {e}")))
+    pub fn coordinator(&self) -> Arc<Coordinator> {
+        self.coordinator.clone()
     }
 
-    /// Handle reconnection directly in stream context (static version to avoid lifetime issues)
-    async fn handle_stream_reconnection(
-        prover_manager: &Arc<Coordinator>,
-        req: ProverReconnectRequest,
-        msg_sender: mpsc::Sender<CoordinatorMessage>,
-    ) -> Result<ProverId, Status> {
-        let compute_capacity = req.compute_capacity.unwrap_or_default();
-
-        prover_manager
-            .register_prover(ProverId::from(req.prover_id), compute_capacity, msg_sender)
-            .await
-            .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))
-    }
-}
-
-/// gRPC Service layer - handles transport and delegates to DistributedService
-#[tonic::async_trait]
-impl DistributedApi for ConsensusService {
-    type ProverStreamStream =
-        Pin<Box<dyn Stream<Item = Result<CoordinatorMessage, Status>> + Send>>;
-
-    async fn status_info(
-        &self,
-        request: Request<StatusInfoRequest>,
-    ) -> Result<Response<StatusInfoResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
+    pub fn status_info(&self) -> StatusInfoDto {
         let uptime_seconds = (Utc::now() - self.start_time_utc).num_seconds() as u64;
 
         let metrics =
-            Metrics { active_connections: self.active_connections.load(Ordering::SeqCst) };
+            MetricsDto { active_connections: self.active_connections.load(Ordering::SeqCst) };
 
-        let response = StatusInfoResponse {
-            service_name: "Consensus Service".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
+        StatusInfoDto::new(
+            "Distributed Prover Service".to_string(),
+            env!("CARGO_PKG_VERSION").to_string(),
             uptime_seconds,
-            start_time: Some(SystemTime::from(self.start_time_utc).into()),
-            metrics: Some(metrics),
-        };
-
-        Ok(Response::new(response))
+            self.start_time_utc,
+            metrics,
+        )
     }
 
-    async fn health_check(
-        &self,
-        _request: Request<HealthCheckRequest>,
-    ) -> Result<Response<HealthCheckResponse>, Status> {
-        let response = HealthCheckResponse {};
-
-        Ok(Response::new(response))
-    }
-
-    async fn jobs_list(
-        &self,
-        request: Request<JobsListRequest>,
-    ) -> Result<Response<JobsListResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
+    pub fn jobs_list(&self) -> JobsListDto {
         // TODO: Implement actual job retrieval from database
-        let all_jobs: distributed_common::Result<Vec<distributed_grpc_api::JobStatus>> = Ok(vec![]);
-
-        let response = match all_jobs {
-            Ok(jobs) => {
-                let job_statuses: Vec<distributed_grpc_api::JobStatus> = jobs;
-                let jobs_list = JobsList { jobs: job_statuses };
-                JobsListResponse { result: Some(jobs_list_response::Result::JobsList(jobs_list)) }
-            }
-            Err(_e) => {
-                let error_response = ErrorResponse {
-                    code: "INTERNAL_ERROR".to_string(),
-                    message: "Failed to retrieve jobs".to_string(),
-                };
-                JobsListResponse { result: Some(jobs_list_response::Result::Error(error_response)) }
-            }
-        };
-
-        Ok(Response::new(response))
+        JobsListDto { jobs: Vec::new() }
     }
 
-    async fn provers_list(
-        &self,
-        request: Request<ProversListRequest>,
-    ) -> Result<Response<ProversListResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
+    pub fn provers_list(&self) -> ProversListDto {
         // TODO: Implement actual prover retrieval from database
-        let all_provers: distributed_common::Result<Vec<distributed_grpc_api::ProverStatus>> =
-            Ok(vec![]);
-
-        let response = match all_provers {
-            Ok(provers) => {
-                let prover_statuses: Vec<distributed_grpc_api::ProverStatus> = provers;
-                let provers_list = ProversList { provers: prover_statuses };
-                ProversListResponse {
-                    result: Some(provers_list_response::Result::ProversList(provers_list)),
-                }
-            }
-            Err(_e) => {
-                let error_response = ErrorResponse {
-                    code: "INTERNAL_ERROR".to_string(),
-                    message: "Failed to retrieve provers".to_string(),
-                };
-                ProversListResponse {
-                    result: Some(provers_list_response::Result::Error(error_response)),
-                }
-            }
-        };
-
-        Ok(Response::new(response))
+        ProversListDto { provers: Vec::new() }
     }
 
-    async fn job_status(
-        &self,
-        request: Request<JobStatusRequest>,
-    ) -> Result<Response<JobStatusResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
-        let req = request.into_inner();
-
+    pub fn job_status(&self, job_id: &JobId) -> JobStatusDto {
         // TODO: Implement actual job retrieval from database
-        let job: distributed_common::Result<Option<distributed_grpc_api::JobStatus>> = Ok(None);
-
-        let response = match job {
-            Ok(Some(job)) => {
-                JobStatusResponse { result: Some(job_status_response::Result::Job(job)) }
-            }
-            Ok(None) => {
-                let error_response = ErrorResponse {
-                    code: "JOB_NOT_FOUND".to_string(),
-                    message: format!("Job {} not found", req.job_id),
-                };
-                JobStatusResponse {
-                    result: Some(job_status_response::Result::Error(error_response)),
-                }
-            }
-            Err(_e) => {
-                let error_response = ErrorResponse {
-                    code: "INTERNAL_ERROR".to_string(),
-                    message: "Failed to retrieve job status".to_string(),
-                };
-                JobStatusResponse {
-                    result: Some(job_status_response::Result::Error(error_response)),
-                }
-            }
-        };
-
-        Ok(Response::new(response))
+        JobStatusDto {
+            job_id: job_id.to_string(),
+            block_id: "block123".to_string(),
+            phase: "proving".to_string(),
+            status: "in_progress".to_string(),
+            assigned_provers: vec!["prover1".to_string(), "prover2".to_string()],
+            start_time: Utc::now().timestamp() as u64,
+            duration_ms: 5000,
+        }
     }
 
-    async fn system_status(
-        &self,
-        request: Request<SystemStatusRequest>,
-    ) -> Result<Response<SystemStatusResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
+    pub async fn handle_system_status(&self) -> SystemStatusDto {
         // Get actual system status from ProverManager
-        let total_provers = self.prover_manager.num_provers().await;
-        let total_capacity = self.prover_manager.compute_capacity().await;
-        let idle_provers = self.prover_manager.num_provers().await;
+        let total_provers = self.coordinator.num_provers().await;
+        let compute_capacity = self.coordinator.compute_capacity().await;
+        let idle_provers = self.coordinator.num_provers().await;
         let busy_provers = total_provers.saturating_sub(idle_provers);
 
-        let system_status = distributed_grpc_api::SystemStatus {
+        SystemStatusDto {
             total_provers: total_provers as u32,
-            compute_capacity: total_capacity.compute_units,
+            compute_capacity,
             idle_provers: idle_provers as u32,
             busy_provers: busy_provers as u32,
             active_jobs: 0,                // TODO: Implement actual job counting
@@ -268,209 +115,58 @@ impl DistributedApi for ConsensusService {
             } else {
                 0.0
             },
-        };
-
-        let response = SystemStatusResponse {
-            result: Some(system_status_response::Result::Status(system_status)),
-        };
-
-        Ok(Response::new(response))
+        }
     }
 
-    async fn start_proof(
+    pub async fn start_proof(
         &self,
-        request: Request<StartProofRequest>,
-    ) -> Result<Response<StartProofResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
-        let req = request.into_inner();
-
-        // Assign job through ProverManager - messages are sent directly
-        let response = match self
-            .prover_manager
+        request: StartProofRequestDto,
+    ) -> Result<StartProofResponseDto> {
+        let result = self
+            .coordinator
             .start_proof(
-                req.block_id,
-                ComputeCapacity { compute_units: req.compute_units },
-                req.input_path,
+                request.block_id,
+                ComputeCapacity { compute_units: request.compute_units },
+                request.input_path,
             )
-            .await
-        {
+            .await;
+
+        match result {
             Ok(job_id) => {
                 let job_id_str: String = job_id.into();
                 info!("Successfully started proof job: {}", job_id_str);
-                StartProofResponse { result: Some(start_proof_response::Result::JobId(job_id_str)) }
+                Ok(StartProofResponseDto { job_id: job_id_str })
             }
             Err(e) => {
                 error!("Failed to start proof job: {}", e);
-                let error_response = ErrorResponse {
-                    code: "PROOF_START_FAILED".to_string(),
-                    message: format!("Failed to start proof: {e}"),
-                };
-                StartProofResponse {
-                    result: Some(start_proof_response::Result::Error(error_response)),
-                }
-            }
-        };
+                let error_response = format!("Failed to start proof: {e}");
 
-        Ok(Response::new(response))
+                Err(anyhow::anyhow!(error_response))
+            }
+        }
     }
 
-    /// Bidirectional stream for prover communication
-    async fn prover_stream(
-        &self,
-        request: Request<Streaming<ProverMessage>>,
-    ) -> Result<Response<Self::ProverStreamStream>, Status> {
-        // Check connection limits first
-        let max_connections =
-            self.prover_manager.config().await.max_concurrent_connections as usize;
+    /// Handle registration directly in stream context (static version to avoid lifetime issues)
+    pub async fn handle_stream_registration(
+        prover_manager: &Coordinator,
+        req: ProverRegisterRequestDto,
+        msg_sender: mpsc::Sender<CoordinatorMessage>,
+    ) -> Result<ProverId, Status> {
+        prover_manager
+            .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
+            .await
+            .map_err(|e| Status::internal(format!("Registration failed: {e}")))
+    }
 
-        if self.active_connections.load(Ordering::SeqCst) >= max_connections as u32 {
-            return Err(Status::resource_exhausted(format!(
-                "Maximum concurrent connections reached: {}/{}",
-                self.active_connections.load(Ordering::SeqCst),
-                max_connections
-            )));
-        }
-
-        // Clone Arc references to avoid lifetime issues
-
-        let mut in_stream = request.into_inner();
-
-        let active_connections = self.active_connections.clone();
-        let prover_manager = self.prover_manager.clone();
-        let response_stream = Box::pin(stream! {
-            // Increment connection counter
-            active_connections.fetch_add(1, Ordering::SeqCst);
-
-            // Create BOUNDED channel for outbound messages to this prover (for backpressure)
-            let buffer_size = prover_manager.config().await.message_buffer_size as usize;
-            let (outbound_sender, mut outbound_receiver) = mpsc::channel::<CoordinatorMessage>(buffer_size);
-
-            // Clean registration handling - wait for prover to introduce itself
-            let prover_id = match in_stream.next().await {
-                Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Register(req)) })) => {
-                    match Self::handle_stream_registration(&prover_manager, req, outbound_sender).await {
-                        Ok(prover_id) => {
-                            // Send success response
-                            yield Ok(CoordinatorMessage {
-                                payload: Some(coordinator_message::Payload::RegisterResponse(
-                                    ProverRegisterResponse {
-                                        prover_id: prover_id.as_string(),
-                                        accepted: true,
-                                        message: "Registration successful".to_string(),
-                                        registered_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
-                                    }
-                                ))
-                            });
-                            prover_id
-                        }
-                        Err(status) => {
-                            active_connections.fetch_sub(1, Ordering::SeqCst);
-                            yield Err(status);
-                            return;
-                        }
-                    }
-                }
-                Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Reconnect(req)) })) => {
-                    match Self::handle_stream_reconnection(&prover_manager, req, outbound_sender).await {
-                        Ok(prover_id) => {
-                            // Send success response
-                            yield Ok(CoordinatorMessage {
-                                payload: Some(coordinator_message::Payload::RegisterResponse(
-                                    ProverRegisterResponse {
-                                        prover_id: prover_id.as_string(),
-                                        accepted: true,
-                                        message: "Reconnection successful".to_string(),
-                                        registered_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
-                                    }
-                                ))
-                            });
-                            prover_id
-                        }
-                        Err(status) => {
-                            // Cleanup and return error
-                            active_connections.fetch_sub(1, Ordering::SeqCst);
-                            yield Err(status);
-                            return;
-                        }
-                    }
-                }
-                Some(Ok(_)) => {
-                    // First message was not registration or reconnection
-                    active_connections.fetch_sub(1, Ordering::SeqCst);
-                    yield Err(Status::invalid_argument("First message must be registration or reconnection"));
-                    return;
-                }
-                Some(Err(e)) => {
-                    error!("Error receiving first message: {e}");
-                    active_connections.fetch_sub(1, Ordering::SeqCst);
-                    yield Err(e);
-                    return;
-                }
-                None => {
-                    error!("Stream closed without registration");
-                    active_connections.fetch_sub(1, Ordering::SeqCst);
-                    yield Err(Status::aborted("Connection closed during handshake"));
-                    return;
-                }
-            };
-
-            info!("Prover {} registered successfully, starting message loop", prover_id);
-
-            // Now handle the rest of the stream with tokio::select!
-            loop {
-                tokio::select! {
-                    // Handle incoming messages from prover
-                    incoming_result = in_stream.next() => {
-                        match incoming_result {
-                            Some(Ok(message)) => {
-                                // Handle messages directly through the prover manager (no business logic routing needed)
-                                if let Err(e) = prover_manager.handle_prover_message(&prover_id, message).await {
-                                    error!("Error handling prover message: {}", e);
-                                    yield Err(Status::internal(format!("Error handling message: {e}")));
-                                    break; // Break to clean up
-                                }
-                            }
-                            Some(Err(e)) => {
-                                error!("Error receiving message from prover {prover_id}: {e}");
-                                yield Err(e);
-                                break; // Break to clean up
-                            }
-                            None => {
-                                info!("Prover {} stream ended", prover_id);
-                                break; // Break out of the loop, ending the stream naturally
-                            }
-                        }
-                    }
-                    // Handle outgoing messages to prover (with bounded channel)
-                    outbound_result = outbound_receiver.recv() => {
-                        match outbound_result {
-                            Some(message) => {
-                                yield Ok(message);
-                            }
-                            None => {
-                                // Channel closed, likely service shutdown
-                                info!("Outbound channel closed for prover {}", prover_id);
-                                break; // Break out of the loop, ending the stream naturally
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Stream cleanup - this runs when the loop breaks
-            info!("Cleaning up prover {} connection", prover_id);
-
-            // Decrement connection counter
-            active_connections.fetch_sub(1, Ordering::SeqCst);
-            info!("Active connections after cleanup: {}", active_connections.load(Ordering::SeqCst));
-
-            // Perform async cleanup
-            if let Err(e) = prover_manager.unregister_prover(&prover_id).await {
-                error!("Failed to handle disconnect for prover {}: {}", prover_id, e);
-            }
-        });
-
-        Ok(Response::new(response_stream))
+    /// Handle reconnection directly in stream context (static version to avoid lifetime issues)
+    pub async fn handle_stream_reconnection(
+        prover_manager: &Arc<Coordinator>,
+        req: ProverReconnectRequestDto,
+        msg_sender: mpsc::Sender<CoordinatorMessage>,
+    ) -> Result<ProverId, Status> {
+        prover_manager
+            .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
+            .await
+            .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))
     }
 }

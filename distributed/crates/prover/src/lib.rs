@@ -1,6 +1,6 @@
-//! # Consensus Client Library
+//! # Coordinator Client Library
 //!
-//! This library provides the core functionality for a consensus network prover client.
+//! This library provides the core functionality for a coordinator network prover client.
 //! It includes configuration management, proof generation, gRPC communication,
 //! and prover service management.
 pub mod config;

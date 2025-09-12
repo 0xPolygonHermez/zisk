@@ -2,7 +2,7 @@ use distributed_common::{
     AggProofData, BlockContext, BlockId, ComputeCapacity, Error, Job, JobId, JobPhase, JobResult,
     JobResultData, JobState, ProverId, ProverState, Result,
 };
-use distributed_config::ProverManagerConfig;
+use distributed_config::CoordinatorConfig;
 use distributed_grpc_api::{
     coordinator_message, execute_task_request, prover_message, Challenges, CoordinatorMessage,
     ExecuteTaskResponse, Proof, ProofList, ProverMessage, TaskType,
@@ -18,11 +18,11 @@ use crate::ProversPool;
 pub struct Coordinator {
     provers_pool: ProversPool,
     jobs: RwLock<HashMap<JobId, Job>>,
-    config: ProverManagerConfig,
+    config: CoordinatorConfig,
 }
 
 impl Coordinator {
-    pub fn new(config: ProverManagerConfig) -> Self {
+    pub fn new(config: CoordinatorConfig) -> Self {
         Self {
             provers_pool: ProversPool::new(config.clone()),
             jobs: RwLock::new(HashMap::new()),
@@ -700,7 +700,7 @@ impl Coordinator {
         self.provers_pool.compute_capacity().await
     }
 
-    pub async fn config(&self) -> ProverManagerConfig {
+    pub async fn config(&self) -> CoordinatorConfig {
         self.config.clone()
     }
 }

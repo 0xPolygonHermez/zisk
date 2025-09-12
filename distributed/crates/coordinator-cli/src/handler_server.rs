@@ -1,6 +1,6 @@
 use anyhow::Result;
 use distributed_config::Config;
-use distributed_coordinator::{shutdown::create_shutdown_signal, ConsensusService};
+use distributed_coordinator::{shutdown::create_shutdown_signal, CoordinatorServiceGrpc};
 use distributed_grpc_api::distributed_api_server::DistributedApiServer;
 use std::net::TcpListener;
 use tonic::transport::Server;
@@ -11,11 +11,8 @@ pub async fn handle(port_override: Option<u16>) -> Result<()> {
     // Load configuration
     let config = Config::load()?;
 
-    // Create consensus service
-    let consensus_service = ConsensusService::new(config.clone()).await?;
-
-    // Get a reference to the communication manager for shutdown
-    let comm_manager = consensus_service.comm_manager.clone();
+    // Create coordinator service
+    let coordinator_service = CoordinatorServiceGrpc::new(config.clone()).await?;
 
     // Use command line port if provided, otherwise use config port
     let grpc_port = port_override.unwrap_or(config.server.port);
@@ -40,12 +37,12 @@ pub async fn handle(port_override: Option<u16>) -> Result<()> {
     let shutdown_signal = create_shutdown_signal();
 
     // Start the gRPC server with graceful shutdown
-    info!("Starting Consensus Network gRPC service on {addr}");
+    info!("Starting Coordinator Network gRPC service on {addr}");
 
     // Run the gRPC server with shutdown signal
     tokio::select! {
         result = Server::builder()
-            .add_service(DistributedApiServer::new(consensus_service))
+            .add_service(DistributedApiServer::new(coordinator_service))
             .serve(grpc_addr) => {
             match result {
                 Ok(_) => {
@@ -60,12 +57,6 @@ pub async fn handle(port_override: Option<u16>) -> Result<()> {
         _ = shutdown_signal => {
             info!("Shutdown signal received, stopping gRPC server");
         }
-    }
-
-    // Cleanup service state
-    info!("Shutting down Consensus Network gRPC service on {addr}");
-    if let Err(e) = comm_manager.shutdown().await {
-        error!("Error during shutdown: {}", e);
     }
 
     Ok(())

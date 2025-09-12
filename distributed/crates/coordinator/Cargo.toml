@@ -11,7 +11,6 @@ proofman = { workspace = true }
 distributed-grpc-api = { workspace = true }
 distributed-config = { workspace = true }
 distributed-common = { workspace = true }
-distributed-comm = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

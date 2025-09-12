@@ -1,5 +1,5 @@
 [service]
-name = "consensus-network"
+name = "distributed-network"
 environment = "development"
 
 [server]
@@ -10,9 +10,3 @@ port = 50051
 level = "debug"
 format = "pretty"
 file_output = false
-
-[comm]
-max_peers = 10
-discovery_interval_seconds = 30
-heartbeat_interval_seconds = 5
-

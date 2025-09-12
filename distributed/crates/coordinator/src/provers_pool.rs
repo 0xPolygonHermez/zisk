@@ -1,5 +1,5 @@
 use distributed_common::{ComputeCapacity, Error, ProverId, ProverState, Result};
-use distributed_config::ProverManagerConfig;
+use distributed_config::CoordinatorConfig;
 use distributed_grpc_api::CoordinatorMessage;
 use std::collections::HashMap;
 use tokio::sync::{mpsc, RwLock};
@@ -12,12 +12,12 @@ pub struct ProversPool {
     pub provers: RwLock<HashMap<ProverId, ProverConnection>>,
 
     /// Configuration for the Provers Pool
-    config: ProverManagerConfig,
+    config: CoordinatorConfig,
 }
 
 impl ProversPool {
     /// Create a new ProversPool
-    pub fn new(config: ProverManagerConfig) -> Self {
+    pub fn new(config: CoordinatorConfig) -> Self {
         Self { provers: RwLock::new(HashMap::new()), config }
     }
 
@@ -131,7 +131,7 @@ impl ProversPool {
         self.provers.read().await.keys().next().cloned()
     }
 
-    pub fn config(&self) -> &ProverManagerConfig {
+    pub fn config(&self) -> &CoordinatorConfig {
         &self.config
     }
 

@@ -5,20 +5,10 @@ pub type Result<T> = std::result::Result<T, anyhow::Error>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    pub service: ServiceConfig,
     pub server: ServerConfig,
     pub logging: LoggingConfig,
     pub comm: CommConfig,
-    pub prover_manager: ProverManagerConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServiceConfig {
-    pub name: String,
-    pub version: String,
-    pub build_time: String,
-    pub commit_hash: String,
-    pub environment: String,
+    pub coordinator: CoordinatorConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,7 +45,7 @@ pub struct CommConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProverManagerConfig {
+pub struct CoordinatorConfig {
     pub max_provers_per_job: u32,
     pub max_total_provers: u32,
     pub max_concurrent_connections: u32,
@@ -67,7 +57,7 @@ pub struct ProverManagerConfig {
 impl Config {
     pub fn load() -> Result<Self> {
         let mut builder = config::Config::builder()
-            .set_default("service.name", "consensus-network")?
+            .set_default("service.name", "coordinator-network")?
             .set_default("service.version", env!("CARGO_PKG_VERSION"))?
             .set_default("service.build_time", build_time())?
             .set_default("service.commit_hash", commit_hash())?
@@ -82,12 +72,12 @@ impl Config {
             .set_default("comm.discovery_interval_seconds", 30)?
             .set_default("comm.heartbeat_interval_seconds", 10)?
             .set_default("comm.connection_timeout_seconds", 30)?
-            .set_default("prover_manager.max_provers_per_job", 10)?
-            .set_default("prover_manager.max_total_provers", 1000)?
-            .set_default("prover_manager.max_concurrent_connections", 500)?
-            .set_default("prover_manager.message_buffer_size", 1000)?
-            .set_default("prover_manager.phase1_timeout_seconds", 300)?
-            .set_default("prover_manager.phase2_timeout_seconds", 600)?;
+            .set_default("coordinator.max_provers_per_job", 10)?
+            .set_default("coordinator.max_total_provers", 1000)?
+            .set_default("coordinator.max_concurrent_connections", 500)?
+            .set_default("coordinator.message_buffer_size", 1000)?
+            .set_default("coordinator.phase1_timeout_seconds", 300)?
+            .set_default("coordinator.phase2_timeout_seconds", 600)?;
 
         // Load from config file if it exists
         if let Ok(config_path) = env::var("CONFIG_PATH") {
@@ -124,7 +114,6 @@ mod tests {
     #[test]
     fn test_config_defaults() {
         let config = Config::load().unwrap();
-        assert_eq!(config.service.name, "consensus-network");
         assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.server.port, 8080);
     }

@@ -1077,20 +1077,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "distributed-comm"
-version = "0.11.0"
-dependencies = [
- "anyhow",
- "chrono",
- "distributed-config",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "distributed-common"
 version = "0.1.0"
 dependencies = [
@@ -1123,7 +1109,6 @@ dependencies = [
  "anyhow",
  "async-stream",
  "chrono",
- "distributed-comm",
  "distributed-common",
  "distributed-config",
  "distributed-grpc-api",
@@ -1163,7 +1148,6 @@ name = "distributed-grpc-api"
 version = "0.11.0"
 dependencies = [
  "chrono",
- "distributed-comm",
  "distributed-common",
  "distributed-config",
  "prost",
