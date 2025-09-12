@@ -9,7 +9,27 @@ use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
 
+use crate::coordinator_service::MessageSender;
+use crate::dto::CoordinatorMessageDto;
 use crate::CoordinatorService;
+
+pub struct GrpcMessageSender {
+    sender: mpsc::UnboundedSender<CoordinatorMessage>,
+}
+
+impl GrpcMessageSender {
+    pub fn new(sender: mpsc::UnboundedSender<CoordinatorMessage>) -> Self {
+        Self { sender }
+    }
+}
+
+impl MessageSender for GrpcMessageSender {
+    fn send(&self, msg: CoordinatorMessageDto) -> anyhow::Result<()> {
+        let message: CoordinatorMessage = msg.into();
+
+        self.sender.send(message).map_err(|e| anyhow::anyhow!("Failed to send message: {}", e))
+    }
+}
 
 /// gRPC Service layer - handles transport and delegates to DistributedService
 pub struct CoordinatorServiceGrpc {
@@ -50,20 +70,22 @@ impl CoordinatorServiceGrpc {
         message: ProverMessage,
     ) -> anyhow::Result<()> {
         match message.payload.unwrap() {
-            prover_message::Payload::HeartbeatAck(update) => {
-                coordinator.handle_stream_heartbeat_ack(prover_id, update).await
+            prover_message::Payload::HeartbeatAck(heartbeat_ack) => {
+                coordinator.handle_stream_heartbeat_ack(prover_id, heartbeat_ack.into()).await
             }
-            prover_message::Payload::Error(result) => {
-                coordinator.handle_stream_error(prover_id, result).await
+            prover_message::Payload::Error(prover_error) => {
+                coordinator.handle_stream_error(prover_id, prover_error.into()).await
             }
-            prover_message::Payload::Register(result) => {
-                coordinator.handle_stream_register(prover_id, result).await
+            prover_message::Payload::Register(prover_register_req) => {
+                coordinator.handle_stream_register(prover_id, prover_register_req.into()).await
             }
-            prover_message::Payload::Reconnect(result) => {
-                coordinator.handle_stream_reconnect(prover_id, result).await
+            prover_message::Payload::Reconnect(prover_reconnect_req) => {
+                coordinator.handle_stream_reconnect(prover_id, prover_reconnect_req.into()).await
             }
-            prover_message::Payload::ExecuteTaskResponse(result) => {
-                coordinator.handle_stream_execute_task_response(prover_id, result).await
+            prover_message::Payload::ExecuteTaskResponse(execute_task_response) => {
+                coordinator
+                    .handle_stream_execute_task_response(prover_id, execute_task_response.into())
+                    .await
             }
         }
     }
@@ -175,10 +197,12 @@ impl DistributedApi for CoordinatorServiceGrpc {
             // Create BOUNDED channel for outbound messages to this prover (for backpressure)
             let (outbound_sender, mut outbound_receiver) = mpsc::unbounded_channel::<CoordinatorMessage>();
 
+            let grpc_message_sender = Box::new(GrpcMessageSender::new(outbound_sender));
+
             // Clean registration handling - wait for prover to introduce itself
             let prover_id = match in_stream.next().await {
                 Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Register(req)) })) => {
-                    match coordinator_service.handle_stream_registration(req.into(), outbound_sender).await {
+                    match coordinator_service.handle_stream_registration(req.into(), grpc_message_sender).await {
                         Ok(prover_id) => {
                             // Send success response
                             yield Ok(CoordinatorMessage {
@@ -201,7 +225,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
                     }
                 }
                 Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Reconnect(req)) })) => {
-                    match coordinator_service.handle_stream_reconnection(req.into(), outbound_sender).await {
+                    match coordinator_service.handle_stream_reconnection(req.into(), grpc_message_sender).await {
                         Ok(prover_id) => {
                             // Send success response
                             yield Ok(CoordinatorMessage {

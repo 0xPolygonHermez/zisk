@@ -1,11 +1,10 @@
 use distributed_common::{ComputeCapacity, Error, ProverId, ProverState, Result};
 use distributed_config::CoordinatorConfig;
-use distributed_grpc_api::CoordinatorMessage;
 use std::collections::HashMap;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-use crate::ProverConnection;
+use crate::{coordinator_service::MessageSender, dto::CoordinatorMessageDto, ProverConnection};
 
 pub struct ProversPool {
     /// Map of prover_id to ProverConnection
@@ -35,10 +34,10 @@ impl ProversPool {
         &self,
         prover_id: ProverId,
         compute_capacity: impl Into<ComputeCapacity>,
-        message_sender: mpsc::UnboundedSender<CoordinatorMessage>,
+        msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Result<ProverId> {
         let connection =
-            ProverConnection::new(prover_id.clone(), compute_capacity.into(), message_sender);
+            ProverConnection::new(prover_id.clone(), compute_capacity.into(), msg_sender);
 
         // Check if we've reached the maximum number of total provers
         let num_provers = self.num_provers().await;
@@ -97,10 +96,10 @@ impl ProversPool {
     pub async fn send_message(
         &self,
         prover_id: &ProverId,
-        message: CoordinatorMessage,
+        message: CoordinatorMessageDto,
     ) -> Result<()> {
         if let Some(prover) = self.provers.read().await.get(prover_id) {
-            prover.message_sender.send(message).map_err(|e| {
+            prover.msg_sender.send(message).map_err(|e| {
                 let msg = format!("Failed to send message to prover {prover_id}: {}", e);
                 warn!("{}", msg);
                 Error::Comm(msg)

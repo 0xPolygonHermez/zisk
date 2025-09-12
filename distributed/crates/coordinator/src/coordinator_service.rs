@@ -3,22 +3,22 @@ use chrono::{DateTime, Utc};
 use distributed_common::JobId;
 use distributed_common::{ComputeCapacity, ProverId};
 use distributed_config::Config;
-use distributed_grpc_api::{
-    CoordinatorMessage, ExecuteTaskResponse, HeartbeatAck, ProverError, ProverReconnectRequest,
-    ProverRegisterRequest,
-};
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tonic::Status;
 use tracing::{error, info, instrument};
 
 use crate::dto::{
-    JobStatusDto, JobsListDto, MetricsDto, ProverReconnectRequestDto, ProverRegisterRequestDto,
+    CoordinatorMessageDto, ExecuteTaskResponseDto, HeartbeatAckDto, JobStatusDto, JobsListDto,
+    MetricsDto, ProverErrorDto, ProverReconnectRequestDto, ProverRegisterRequestDto,
     ProversListDto, StartProofRequestDto, StartProofResponseDto, StatusInfoDto, SystemStatusDto,
 };
 use crate::Coordinator;
+
+pub trait MessageSender {
+    fn send(&self, msg: CoordinatorMessageDto) -> Result<()>;
+}
 
 /// Represents the runtime state of the service
 pub struct CoordinatorService {
@@ -148,7 +148,7 @@ impl CoordinatorService {
     pub async fn handle_stream_registration(
         &self,
         req: ProverRegisterRequestDto,
-        msg_sender: mpsc::UnboundedSender<CoordinatorMessage>,
+        msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Result<ProverId, Status> {
         self.coordinator
             .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
@@ -160,7 +160,7 @@ impl CoordinatorService {
     pub async fn handle_stream_reconnection(
         &self,
         req: ProverReconnectRequestDto,
-        msg_sender: mpsc::UnboundedSender<CoordinatorMessage>,
+        msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Result<ProverId, Status> {
         self.coordinator
             .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
@@ -176,54 +176,47 @@ impl CoordinatorService {
     pub async fn handle_stream_heartbeat_ack(
         &self,
         prover_id: &ProverId,
-        message: HeartbeatAck,
+        message: HeartbeatAckDto,
     ) -> Result<()> {
-        self.coordinator
-            .handle_stream_heartbeat_ack(prover_id, message)
-            .await
-            .map_err(|e| anyhow::anyhow!(e))
+        assert_eq!(prover_id, &message.prover_id);
+        self.coordinator.handle_stream_heartbeat_ack(message).await.map_err(|e| anyhow::anyhow!(e))
     }
 
     pub async fn handle_stream_error(
         &self,
         prover_id: &ProverId,
-        message: ProverError,
+        message: ProverErrorDto,
     ) -> Result<()> {
-        self.coordinator
-            .handle_stream_error(prover_id, message)
-            .await
-            .map_err(|e| anyhow::anyhow!(e))
+        assert_eq!(prover_id, &message.prover_id);
+        self.coordinator.handle_stream_error(message).await.map_err(|e| anyhow::anyhow!(e))
     }
 
     pub async fn handle_stream_register(
         &self,
         prover_id: &ProverId,
-        message: ProverRegisterRequest,
+        message: ProverRegisterRequestDto,
     ) -> Result<()> {
-        self.coordinator
-            .handle_stream_register(prover_id, message)
-            .await
-            .map_err(|e| anyhow::anyhow!(e))
+        assert_eq!(prover_id.as_string(), message.prover_id);
+        self.coordinator.handle_stream_register(message).await.map_err(|e| anyhow::anyhow!(e))
     }
 
     pub async fn handle_stream_reconnect(
         &self,
         prover_id: &ProverId,
-        message: ProverReconnectRequest,
+        message: ProverReconnectRequestDto,
     ) -> Result<()> {
-        self.coordinator
-            .handle_stream_reconnect(prover_id, message)
-            .await
-            .map_err(|e| anyhow::anyhow!(e))
+        assert_eq!(prover_id.as_string(), message.prover_id);
+        self.coordinator.handle_stream_reconnect(message).await.map_err(|e| anyhow::anyhow!(e))
     }
 
     pub async fn handle_stream_execute_task_response(
         &self,
         prover_id: &ProverId,
-        message: ExecuteTaskResponse,
+        message: ExecuteTaskResponseDto,
     ) -> Result<()> {
+        assert_eq!(prover_id, &message.prover_id);
         self.coordinator
-            .handle_stream_execute_task_response(prover_id, message)
+            .handle_stream_execute_task_response(message)
             .await
             .map_err(|e| anyhow::anyhow!(e))
     }

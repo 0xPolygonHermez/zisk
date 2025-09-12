@@ -3,17 +3,21 @@ use distributed_common::{
     JobResultData, JobState, ProverId, ProverState, Result,
 };
 use distributed_config::CoordinatorConfig;
-use distributed_grpc_api::{
-    coordinator_message, execute_task_request, Challenges, CoordinatorMessage, ExecuteTaskResponse,
-    HeartbeatAck, Proof, ProofList, ProverError, ProverReconnectRequest, ProverRegisterRequest,
-    TaskType,
-};
 use proofman::ContributionsInfo;
 use std::{collections::HashMap, path::PathBuf};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
-use crate::ProversPool;
+use crate::{
+    coordinator_service::MessageSender,
+    dto::{
+        AggParamsDto, ChallengesDto, ContributionParamsDto, CoordinatorMessageDto,
+        ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto,
+        ExecuteTaskResponseResultDataDto, HeartbeatAckDto, ProofDto, ProveParamsDto,
+        ProverErrorDto, ProverReconnectRequestDto, ProverRegisterRequestDto,
+    },
+    ProversPool,
+};
 
 /// Prover manager for handling multiple provers
 pub struct Coordinator {
@@ -36,9 +40,9 @@ impl Coordinator {
         &self,
         prover_id: ProverId,
         compute_capacity: impl Into<ComputeCapacity>,
-        message_sender: mpsc::UnboundedSender<CoordinatorMessage>,
+        msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Result<ProverId> {
-        self.provers_pool.register_prover(prover_id, compute_capacity, message_sender).await
+        self.provers_pool.register_prover(prover_id, compute_capacity, msg_sender).await
     }
 
     /// Remove an existing prover connection
@@ -62,24 +66,21 @@ impl Coordinator {
         let provers_len = job.provers.len() as u32;
 
         for (rank_id, prover_id) in job.provers.iter().enumerate() {
-            let request = distributed_grpc_api::ExecuteTaskRequest {
+            let req = ExecuteTaskRequestDto {
                 prover_id: prover_id.clone().into(),
                 job_id: job_id.clone().into(),
-                task_type: distributed_grpc_api::TaskType::PartialContribution as i32,
-                params: Some(execute_task_request::Params::ContributionParams(
-                    distributed_grpc_api::ContributionParams {
-                        block_id: block_id.clone().into(),
-                        input_path: job.block.input_path.display().to_string(),
-                        rank_id: rank_id as u32,
-                        total_provers: provers_len,
-                        prover_allocation: job.partitions[rank_id].clone(),
-                        job_compute_units: required_compute_capacity.compute_units,
-                    },
-                )),
+                params: ExecuteTaskRequestTypeDto::ContributionParams(ContributionParamsDto {
+                    block_id: block_id.clone().into(),
+                    input_path: job.block.input_path.display().to_string(),
+                    rank_id: rank_id as u32,
+                    total_provers: provers_len,
+                    prover_allocation: job.partitions[rank_id].clone(),
+                    job_compute_units: required_compute_capacity,
+                }),
             };
-            let message = CoordinatorMessage {
-                payload: Some(coordinator_message::Payload::ExecuteTask(request)),
-            };
+            let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
+            let message = req.into();
+
             self.provers_pool.send_message(prover_id, message).await?;
 
             self.provers_pool
@@ -166,59 +167,47 @@ impl Coordinator {
     /// STREAM HANDLERS
     /// ----------------------------------------------------------------------
 
-    pub async fn handle_stream_heartbeat_ack(
-        &self,
-        prover_id: &ProverId,
-        _message: HeartbeatAck,
-    ) -> Result<()> {
+    pub async fn handle_stream_heartbeat_ack(&self, message: HeartbeatAckDto) -> Result<()> {
         // Update last heartbeat
-        self.provers_pool.update_last_heartbeat(prover_id).await?;
+        self.provers_pool.update_last_heartbeat(&ProverId::from(message.prover_id)).await?;
 
         Ok(())
     }
 
-    pub async fn handle_stream_error(
-        &self,
-        prover_id: &ProverId,
-        message: ProverError,
-    ) -> Result<()> {
+    pub async fn handle_stream_error(&self, message: ProverErrorDto) -> Result<()> {
+        let prover_id = ProverId::from(message.prover_id);
+
         // Update last heartbeat
-        self.provers_pool.update_last_heartbeat(prover_id).await?;
+        self.provers_pool.update_last_heartbeat(&prover_id).await?;
 
         error!("Prover {} error: {}", prover_id, message.error_message);
 
         // If the error includes a job_id, we should fail that job
-        if !message.job_id.is_empty() {
-            let job_id = JobId::from(message.job_id.clone());
+        let job_id = JobId::from(message.job_id.clone());
 
-            self.fail_job(&job_id, message.error_message.clone()).await.map_err(|e| {
-                error!("Failed to mark job {} as failed after prover error: {}", job_id, e);
-                e
-            })?;
-        }
+        self.fail_job(&job_id, message.error_message.clone()).await.map_err(|e| {
+            error!("Failed to mark job {} as failed after prover error: {}", job_id, e);
+            e
+        })?;
 
         Ok(())
     }
 
-    pub async fn handle_stream_register(
-        &self,
-        prover_id: &ProverId,
-        _message: ProverRegisterRequest,
-    ) -> Result<()> {
+    pub async fn handle_stream_register(&self, message: ProverRegisterRequestDto) -> Result<()> {
+        let prover_id = ProverId::from(message.prover_id);
+
         // Update last heartbeat
-        self.provers_pool.update_last_heartbeat(prover_id).await?;
+        self.provers_pool.update_last_heartbeat(&prover_id).await?;
 
         // TODO: Handle prover registration if needed
         Ok(())
     }
 
-    pub async fn handle_stream_reconnect(
-        &self,
-        prover_id: &ProverId,
-        _message: ProverReconnectRequest,
-    ) -> Result<()> {
+    pub async fn handle_stream_reconnect(&self, message: ProverReconnectRequestDto) -> Result<()> {
+        let prover_id = ProverId::from(message.prover_id);
+
         // Update last heartbeat
-        self.provers_pool.update_last_heartbeat(prover_id).await?;
+        self.provers_pool.update_last_heartbeat(&prover_id).await?;
 
         // TODO: Handle prover reconnection if needed
         Ok(())
@@ -226,13 +215,14 @@ impl Coordinator {
 
     pub async fn handle_stream_execute_task_response(
         &self,
-        prover_id: &ProverId,
-        message: ExecuteTaskResponse,
+        response: ExecuteTaskResponseDto,
     ) -> Result<()> {
-        // Update last heartbeat
-        self.provers_pool.update_last_heartbeat(prover_id).await?;
+        let prover_id = ProverId::from(response.prover_id.clone());
 
-        let job_id = JobId::from(message.job_id.clone());
+        // Update last heartbeat
+        self.provers_pool.update_last_heartbeat(&prover_id).await?;
+
+        let job_id = JobId::from(response.job_id.clone());
 
         // Check if job exists
         if !self.running_jobs.read().await.contains_key(&job_id) {
@@ -243,7 +233,7 @@ impl Coordinator {
             return Err(Error::InvalidRequest(format!("Job {job_id} not found")));
         }
 
-        if !message.success {
+        if !response.success {
             self.fail_job(&job_id, "Final proof generation failed".to_string()).await.map_err(
                 |e| {
                     error!("Failed to mark job {} as failed: {}", job_id, e);
@@ -253,39 +243,34 @@ impl Coordinator {
 
             return Err(Error::Service(format!(
                 "Prover {} failed to execute task for job {}: {}",
-                prover_id, message.job_id, message.error_message
+                prover_id,
+                response.job_id,
+                response.error_message.unwrap()
             )));
         }
 
         info!("Execute task result success from prover {} (job_id: {})", prover_id, job_id);
 
-        match TaskType::try_from(message.task_type) {
-            Ok(TaskType::PartialContribution) => {
-                self.handle_phase1_result(message).await.map_err(|e| {
+        match response.result_data {
+            ExecuteTaskResponseResultDataDto::Challenges(_) => {
+                self.handle_phase1_result(response).await.map_err(|e| {
                     error!("Failed to handle Phase1 result: {}", e);
                     e
                 })
             }
-            Ok(TaskType::Prove) => {
+            ExecuteTaskResponseResultDataDto::Proofs(_) => {
                 // Handle Phase2 completion - wait for all provers to complete
-                self.handle_phase2_result(&job_id, message).await.map_err(|e| {
+                self.handle_phase2_result(response).await.map_err(|e| {
                     error!("Failed to handle Phase2 result for job {}: {}", job_id, e);
                     e
                 })
             }
-            Ok(TaskType::Aggregate) => {
-                // Handle Phase2 completion - wait for all provers to complete
-                self.handle_agregate_result(&job_id, message).await.map_err(|e| {
+            ExecuteTaskResponseResultDataDto::FinalProof(_) => {
+                // Handle Aggregation completion - wait for all provers to complete
+                self.handle_agregate_result(response).await.map_err(|e| {
                     error!("Failed to handle Aggregation result for job {}: {}", job_id, e);
                     e
                 })
-            }
-            Err(_) => {
-                warn!("Received TaskResult with unknown task_type (raw: {}) for job {} from prover {}", message.task_type, job_id, prover_id);
-                return Err(Error::InvalidRequest(format!(
-                    "Unknown task_type {} in ExecuteTaskResponse for job {}",
-                    message.task_type, job_id
-                )));
             }
         }
         // Store the Phase1 result and check if we can proceed to Phase2
@@ -294,7 +279,7 @@ impl Coordinator {
     /// Handle Phase1 result and check if we can proceed to Phase2
     pub async fn handle_phase1_result(
         &self,
-        execute_task_response: ExecuteTaskResponse,
+        execute_task_response: ExecuteTaskResponseDto,
     ) -> Result<()> {
         let job_id = JobId::from(execute_task_response.job_id.clone());
 
@@ -309,13 +294,11 @@ impl Coordinator {
         let phase1_results = job.results.entry(JobPhase::Contributions).or_default();
 
         let data = match execute_task_response.result_data {
-            Some(distributed_grpc_api::execute_task_response::ResultData::Challenges(
-                challenges,
-            )) => {
-                assert!(!challenges.challenges.is_empty());
+            ExecuteTaskResponseResultDataDto::Challenges(challenges) => {
+                assert!(!challenges.is_empty());
 
                 let mut cont = Vec::new();
-                for challenge in challenges.challenges {
+                for challenge in challenges {
                     cont.push(ContributionsInfo {
                         worker_index: challenge.worker_index,
                         airgroup_id: challenge.airgroup_id as usize,
@@ -424,7 +407,7 @@ impl Coordinator {
         let mut ch = Vec::new();
 
         for challenge in challenges {
-            ch.push(Challenges {
+            ch.push(ChallengesDto {
                 worker_index: challenge.worker_index,
                 airgroup_id: challenge.airgroup_id as u32,
                 challenge: challenge.challenge.to_vec(),
@@ -439,19 +422,15 @@ impl Coordinator {
                         .mark_prover_with_state(prover_id, ProverState::Computing(JobPhase::Prove))
                         .await?;
 
-                    // Create the Phase2 message (use TaskType::Proof)
-                    let message = CoordinatorMessage {
-                        payload: Some(coordinator_message::Payload::ExecuteTask(
-                            distributed_grpc_api::ExecuteTaskRequest {
-                                prover_id: prover_id.clone().into(),
-                                job_id: job_id.clone().into(),
-                                task_type: distributed_grpc_api::TaskType::Prove as i32,
-                                params: Some(execute_task_request::Params::ProveParams(
-                                    distributed_grpc_api::ProveParams { challenges: ch.clone() },
-                                )),
-                            },
-                        )),
+                    let req = ExecuteTaskRequestDto {
+                        prover_id: prover_id.clone().into(),
+                        job_id: job_id.clone().into(),
+                        params: ExecuteTaskRequestTypeDto::ProveParams(ProveParamsDto {
+                            challenges: ch.clone(),
+                        }),
                     };
+                    let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
+                    let message = req.into();
 
                     // Send Phase2 message
                     self.provers_pool.send_message(prover_id, message).await?;
@@ -480,12 +459,12 @@ impl Coordinator {
     /// Handle Phase2 result and check if the job is complete
     async fn handle_phase2_result(
         &self,
-        job_id: &JobId,
-        execute_task_response: ExecuteTaskResponse,
+        execute_task_response: ExecuteTaskResponseDto,
     ) -> Result<()> {
+        let job_id = execute_task_response.job_id.clone();
         let mut jobs = self.running_jobs.write().await;
         let job = jobs
-            .get_mut(job_id)
+            .get_mut(&job_id)
             .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
         let prover_id = ProverId::from(execute_task_response.prover_id);
@@ -502,9 +481,8 @@ impl Coordinator {
         }
 
         let data = match execute_task_response.result_data {
-            Some(distributed_grpc_api::execute_task_response::ResultData::Proofs(proof_list)) => {
+            ExecuteTaskResponseResultDataDto::Proofs(proof_list) => {
                 let agg_proofs: Vec<AggProofData> = proof_list
-                    .proofs
                     .into_iter()
                     .map(|proof| AggProofData {
                         airgroup_id: proof.airgroup_id,
@@ -632,41 +610,36 @@ impl Coordinator {
                     .mark_prover_with_state(&prover_id, ProverState::Computing(JobPhase::Aggregate))
                     .await?;
 
-                let proofs: Vec<Proof> = proofs
+                let proofs: Vec<ProofDto> = proofs
                     .clone() // This clone must be removed when using more than one prover
                     .into_iter()
-                    .map(|p| Proof {
+                    .map(|p| ProofDto {
                         airgroup_id: p.airgroup_id,
                         values: p.values,
                         worker_idx: p.worker_idx,
                     })
                     .collect();
 
-                // Create the Phase2 message (use TaskType::Proof)
-                let message = CoordinatorMessage {
-                    payload: Some(coordinator_message::Payload::ExecuteTask(
-                        distributed_grpc_api::ExecuteTaskRequest {
-                            prover_id: prover_id.clone().into(),
-                            job_id: job_id.clone().into(),
-                            task_type: distributed_grpc_api::TaskType::Aggregate as i32,
-                            params: Some(execute_task_request::Params::AggParams(
-                                distributed_grpc_api::AggParams {
-                                    agg_proofs: Some(ProofList { proofs }),
-                                    last_proof: true,
-                                    final_proof: true,
-                                    verify_constraints: true,
-                                    aggregation: true,
-                                    final_snark: false,
-                                    verify_proofs: true,
-                                    save_proofs: false,
-                                    test_mode: false,
-                                    output_dir_path: "".to_string(),
-                                    minimal_memory: false,
-                                },
-                            )),
-                        },
-                    )),
+                let req = ExecuteTaskRequestDto {
+                    prover_id: prover_id.clone().into(),
+                    job_id: job_id.clone().into(),
+                    params: ExecuteTaskRequestTypeDto::AggParams(AggParamsDto {
+                        agg_proofs: proofs,
+                        last_proof: true,
+                        final_proof: true,
+                        verify_constraints: true,
+                        aggregation: true,
+                        final_snark: false,
+                        verify_proofs: true,
+                        save_proofs: false,
+                        test_mode: false,
+                        output_dir_path: "".to_string(),
+                        minimal_memory: false,
+                    }),
                 };
+
+                let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
+                let message = req.into();
 
                 // Send Phase2 message
                 self.provers_pool.send_message(&prover_id, message).await?;
@@ -689,15 +662,25 @@ impl Coordinator {
     /// Handle Phase2 result and check if the job is complete
     async fn handle_agregate_result(
         &self,
-        job_id: &JobId,
-        execute_task_response: ExecuteTaskResponse,
+        execute_task_response: ExecuteTaskResponseDto,
     ) -> Result<()> {
+        let job_id = execute_task_response.job_id.clone();
+
         info!("Handling aggregation result for job {}", job_id);
 
         let mut jobs = self.running_jobs.write().await;
         let job = jobs
-            .get_mut(job_id)
+            .get_mut(&job_id)
             .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
+
+        let _result = match execute_task_response.result_data {
+            ExecuteTaskResponseResultDataDto::FinalProof(final_proof) => final_proof,
+            _ => {
+                return Err(Error::InvalidRequest(
+                    "Expected Proofs result data for Phase2".to_string(),
+                ));
+            }
+        };
 
         if execute_task_response.success {
             job.state = JobState::Completed;
@@ -711,15 +694,6 @@ impl Coordinator {
             info!("Completed job {} and freed {} provers", job_id, assigned_provers.len());
         } else {
             // Some Phase2 results failed
-            match execute_task_response.result_data {
-                Some(distributed_grpc_api::execute_task_response::ResultData::FinalProof(_)) => {}
-                _ => {
-                    return Err(Error::InvalidRequest(
-                        "Expected Proofs result data for Phase2".to_string(),
-                    ));
-                }
-            }
-
             warn!("Aggregation failed in job {}", job_id);
             let reason = "Aggregation failed".to_string();
 

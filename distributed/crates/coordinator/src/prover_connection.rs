@@ -1,7 +1,7 @@
+use crate::coordinator_service::MessageSender;
+
 use chrono::{DateTime, Utc};
 use distributed_common::{ComputeCapacity, ProverId, ProverState};
-use distributed_grpc_api::CoordinatorMessage;
-use tokio::sync::mpsc;
 
 /// Information about a connected prover client
 pub struct ProverConnection {
@@ -10,7 +10,7 @@ pub struct ProverConnection {
     pub compute_capacity: ComputeCapacity,
     connected_at: DateTime<Utc>,
     last_heartbeat: DateTime<Utc>,
-    pub message_sender: mpsc::UnboundedSender<CoordinatorMessage>,
+    pub msg_sender: Box<dyn MessageSender + Send + Sync>,
 }
 
 impl ProverConnection {
@@ -18,7 +18,7 @@ impl ProverConnection {
     pub fn new(
         prover_id: ProverId,
         compute_capacity: ComputeCapacity,
-        message_sender: mpsc::UnboundedSender<CoordinatorMessage>,
+        msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Self {
         let now = Utc::now();
         Self {
@@ -27,7 +27,7 @@ impl ProverConnection {
             compute_capacity,
             connected_at: now,
             last_heartbeat: now,
-            message_sender,
+            msg_sender,
         }
     }
 
