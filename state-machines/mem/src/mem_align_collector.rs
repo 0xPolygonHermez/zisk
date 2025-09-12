@@ -19,8 +19,13 @@ pub struct MemAlignCollector {
 
 impl MemAlignCollector {
     pub fn new(mem_align_checkpoint: &MemAlignCheckPoint) -> Self {
+        let total_inputs = mem_align_checkpoint.full_2.count()
+            + mem_align_checkpoint.full_3.count()
+            + mem_align_checkpoint.full_5.count()
+            + mem_align_checkpoint.read_byte.count()
+            + mem_align_checkpoint.write_byte.count();
         Self {
-            inputs: Vec::new(),
+            inputs: Vec::with_capacity(total_inputs as usize),
             air_id: mem_align_checkpoint.air_id,
             chunk_id: mem_align_checkpoint.chunk_id,
             full_5: mem_align_checkpoint.full_5,

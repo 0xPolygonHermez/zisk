@@ -1043,6 +1043,7 @@ dependencies = [
  "data-bus",
  "fields",
  "itertools 0.14.0",
+ "mem-common",
  "mem-planner-cpp",
  "pil-std-lib",
  "precomp-arith-eq",

@@ -18,6 +18,7 @@ zisk-common = { workspace = true }
 data-bus = { workspace = true }
 asm-runner = { workspace = true }
 mem-planner-cpp = { workspace = true }
+mem-common = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }

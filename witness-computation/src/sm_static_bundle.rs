@@ -11,14 +11,18 @@ use precomp_sha256f::{Sha256fInstance, Sha256fManager};
 use proofman_common::ProofCtx;
 use sm_arith::{ArithFullInstance, ArithSM};
 use sm_binary::{BinaryAddInstance, BinaryBasicInstance, BinaryExtensionInstance, BinarySM};
-use sm_mem::{Mem, MemAlignInstance, MemModuleInstance};
+use sm_mem::{
+    Mem, MemAlignByteInstance, MemAlignInstance, MemAlignReadByteInstance,
+    MemAlignWriteByteInstance, MemModuleInstance,
+};
 use sm_rom::{RomInstance, RomSM};
 use std::collections::HashMap;
 use zisk_common::{BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan};
 use zisk_pil::{
     ARITH_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
-    INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, ROM_AIR_IDS,
-    ROM_DATA_AIR_IDS, SHA_256_F_AIR_IDS, ZISK_AIRGROUP_ID,
+    INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS,
+    MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
+    SHA_256_F_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 use crate::StaticDataBus;
@@ -36,10 +40,16 @@ pub enum StateMachines<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> StateMachines<F> {
-    fn build_planner(&self) -> Box<dyn zisk_common::Planner> {
+    fn build_planner(&self, process_only_operation_bus: bool) -> Box<dyn zisk_common::Planner> {
         match self {
             StateMachines::RomSM(sm) => <RomSM as ComponentBuilder<F>>::build_planner(sm),
-            StateMachines::MemSM(sm) => (**sm).build_planner(),
+            StateMachines::MemSM(sm) => {
+                if process_only_operation_bus {
+                    (**sm).build_dummy_planner()
+                } else {
+                    (**sm).build_planner()
+                }
+            }
             StateMachines::BinarySM(sm) => (**sm).build_planner(),
             StateMachines::ArithSM(sm) => (**sm).build_planner(),
             StateMachines::KeccakfManager(sm) => (**sm).build_planner(),
@@ -94,41 +104,51 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         // This matches the order from StaticDataBus::into_devices and build_data_bus_counters
 
         if let Some(mem_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0])) {
-            if self.process_only_operation_bus {
-                plans.push(mem_sm.build_dummy_planner().plan(it.next().unwrap()));
-            } else {
-                plans.push(mem_sm.build_planner().plan(it.next().unwrap()));
-            }
+            plans.push(
+                mem_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
+            );
         }
 
         // Rom state machine
         if let Some(rom_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])) {
-            plans.push(rom_sm.build_planner().plan(it.next().unwrap()));
+            plans.push(
+                rom_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
+            );
         }
 
         // Binary counter
         if let Some(binary_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0])) {
-            plans.push(binary_sm.build_planner().plan(it.next().unwrap()));
+            plans.push(
+                binary_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
+            );
         }
 
         // Arith counter
         if let Some(arith_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0])) {
-            plans.push(arith_sm.build_planner().plan(it.next().unwrap()));
+            plans.push(
+                arith_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
+            );
         }
 
         // Keccakf counter
         if let Some(keccakf_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, KECCAKF_AIR_IDS[0])) {
-            plans.push(keccakf_sm.build_planner().plan(it.next().unwrap()));
+            plans.push(
+                keccakf_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
+            );
         }
 
         // Sha256f counter
         if let Some(sha256f_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, SHA_256_F_AIR_IDS[0])) {
-            plans.push(sha256f_sm.build_planner().plan(it.next().unwrap()));
+            plans.push(
+                sha256f_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
+            );
         }
 
         // ArithEq counter
         if let Some(arith_eq_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, ARITH_EQ_AIR_IDS[0])) {
-            plans.push(arith_eq_sm.build_planner().plan(it.next().unwrap()));
+            plans.push(
+                arith_eq_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
+            );
         }
 
         plans
@@ -342,6 +362,33 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                                 .unwrap();
                             let mem_align_collector =
                                 mem_align_instance.build_mem_align_collector(ChunkId(chunk_id));
+                            mem_align_collectors.push((*global_idx, mem_align_collector));
+                        }
+                        air_id if air_id == MEM_ALIGN_BYTE_AIR_IDS[0] => {
+                            let mem_align_byte_instance = secn_instance
+                                .as_any()
+                                .downcast_ref::<MemAlignByteInstance<F>>()
+                                .unwrap();
+                            let mem_align_collector = mem_align_byte_instance
+                                .build_mem_align_byte_collector(ChunkId(chunk_id));
+                            mem_align_collectors.push((*global_idx, mem_align_collector));
+                        }
+                        air_id if air_id == MEM_ALIGN_READ_BYTE_AIR_IDS[0] => {
+                            let mem_align_read_byte_instance = secn_instance
+                                .as_any()
+                                .downcast_ref::<MemAlignReadByteInstance<F>>()
+                                .unwrap();
+                            let mem_align_collector = mem_align_read_byte_instance
+                                .build_mem_align_read_byte_collector(ChunkId(chunk_id));
+                            mem_align_collectors.push((*global_idx, mem_align_collector));
+                        }
+                        air_id if air_id == MEM_ALIGN_WRITE_BYTE_AIR_IDS[0] => {
+                            let mem_align_write_byte_instance = secn_instance
+                                .as_any()
+                                .downcast_ref::<MemAlignWriteByteInstance<F>>()
+                                .unwrap();
+                            let mem_align_collector = mem_align_write_byte_instance
+                                .build_mem_align_write_byte_collector(ChunkId(chunk_id));
                             mem_align_collectors.push((*global_idx, mem_align_collector));
                         }
                         air_id if air_id == ARITH_AIR_IDS[0] => {

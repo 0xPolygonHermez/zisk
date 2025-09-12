@@ -5,6 +5,7 @@
 use std::collections::VecDeque;
 
 use data_bus::DataBusTrait;
+use mem_common::MemHelpers;
 use precomp_arith_eq::ArithEqCollector;
 use precomp_arith_eq::ArithEqCounterInputGen;
 use precomp_keccakf::KeccakfCollector;
@@ -14,7 +15,7 @@ use precomp_sha256f::Sha256fCounterInputGen;
 use sm_arith::ArithCounterInputGen;
 use sm_arith::ArithInstanceCollector;
 use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollector};
-use sm_mem::{MemAlignCollector, MemCollectorInfo, MemHelpers, MemModuleCollector};
+use sm_mem::{MemAlignCollector, MemCollectorInfo, MemModuleCollector};
 use sm_rom::RomCollector;
 use zisk_common::{
     BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID, OP, OPERATION_BUS_ID, OP_TYPE,
@@ -124,13 +125,10 @@ impl StaticDataBusCollect<PayloadType> {
                 let addr = MemBusData::get_addr(payload);
                 let bytes = MemBusData::get_bytes(payload);
                 let is_unaligned = !MemHelpers::is_aligned(addr, bytes);
-                let unaligned_double = is_unaligned && MemHelpers::is_double(addr, bytes);
 
                 // Process mem collectors - inverted condition to avoid continue
                 for (_, mem_collector) in &mut self.mem_collector {
-                    if !mem_collector.skip_collector(addr, unaligned_double) {
-                        mem_collector.process_data(&bus_id, payload, &mut self.pending_transfers);
-                    }
+                    mem_collector.process_data(&bus_id, payload, &mut self.pending_transfers);
                 }
 
                 // Only process align collectors if needed

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
-use crate::{MemHelpers, MemInput, MemPreviousSegment};
-use mem_common::MemModuleCheckPoint;
+use crate::{MemInput, MemPreviousSegment};
+use mem_common::{MemHelpers, MemModuleCheckPoint};
 use zisk_common::{BusDevice, BusId, MemBusData, SegmentId, MEM_BUS_ID};
 
 pub struct MemCollectorInfo {
@@ -275,32 +275,6 @@ impl MemModuleCollector {
         }
     }
 
-    #[inline(always)]
-    pub fn skip_collector(&self, addr: u32, unaligned_double: bool) -> bool {
-        let addr_w = MemHelpers::get_addr_w(addr);
-
-        if !unaligned_double
-            && (addr_w > self.mem_check_point.to_addr
-                || addr_w < self.min_addr
-                || addr_w < self.mem_check_point.from_addr)
-        {
-            return true;
-        }
-
-        if unaligned_double
-            && (addr_w > self.mem_check_point.to_addr
-                || addr_w < self.min_addr
-                || addr_w < self.mem_check_point.from_addr)
-            && ((addr_w + 1) > self.mem_check_point.to_addr
-                || (addr_w + 1) < self.min_addr
-                || (addr_w + 1) < self.mem_check_point.from_addr)
-        {
-            return true;
-        }
-
-        false
-    }
-
     pub fn get_mem_collector_info(&self) -> MemCollectorInfo {
         MemCollectorInfo {
             from_addr: self.mem_check_point.from_addr,
@@ -322,6 +296,32 @@ impl BusDevice<u64> for MemModuleCollector {
 
         if self.count == 0 {
             return false;
+        }
+
+        let addr = MemBusData::get_addr(data);
+        let bytes = MemBusData::get_bytes(data);
+        let is_unaligned = !MemHelpers::is_aligned(addr, bytes);
+        let unaligned_double = is_unaligned && MemHelpers::is_double(addr, bytes);
+
+        let addr_w = MemHelpers::get_addr_w(addr);
+
+        if !unaligned_double
+            && (addr_w > self.mem_check_point.to_addr
+                || addr_w < self.min_addr
+                || addr_w < self.mem_check_point.from_addr)
+        {
+            return true;
+        }
+
+        if unaligned_double
+            && (addr_w > self.mem_check_point.to_addr
+                || addr_w < self.min_addr
+                || addr_w < self.mem_check_point.from_addr)
+            && ((addr_w + 1) > self.mem_check_point.to_addr
+                || (addr_w + 1) < self.min_addr
+                || (addr_w + 1) < self.mem_check_point.from_addr)
+        {
+            return true;
         }
 
         self.bus_data_to_input(data);

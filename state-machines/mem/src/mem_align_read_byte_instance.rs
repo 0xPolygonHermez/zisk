@@ -29,6 +29,10 @@ impl<F: PrimeField64> MemAlignReadByteInstance<F> {
 
         Self { ictx, checkpoint, mem_align_byte_sm: mem_align_sm }
     }
+
+    pub fn build_mem_align_read_byte_collector(&self, chunk_id: ChunkId) -> MemAlignCollector {
+        MemAlignCollector::new(&self.checkpoint[&chunk_id])
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
@@ -66,6 +70,10 @@ impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
 
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 
     /// Builds an input collector for the instance.
