@@ -36,18 +36,18 @@ pub struct CoordinatorService {
 
 impl CoordinatorService {
     #[instrument(skip(config))]
-    pub fn new(config: Config) -> distributed_common::Result<Self> {
+    pub fn new(config: Config) -> Self {
         info!("Initializing service state");
 
         let start_time_utc = Utc::now();
 
-        Ok(Self {
+        Self {
             config,
             start_time_utc,
             active_connections: AtomicU32::new(0),
             provers_pool: ProversPool::new(),
             jobs: RwLock::new(HashMap::new()),
-        })
+        }
     }
 
     // Check connection limits for streaming connections and acquire a connection slot

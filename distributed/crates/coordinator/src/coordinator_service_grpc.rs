@@ -39,9 +39,7 @@ pub struct CoordinatorServiceGrpc {
 
 impl CoordinatorServiceGrpc {
     pub async fn new(config: Config) -> Result<Self> {
-        let coordinator_service = Arc::new(CoordinatorService::new(config)?);
-
-        Ok(Self { coordinator_service })
+        Ok(Self { coordinator_service: Arc::new(CoordinatorService::new(config)) })
     }
 
     /// Check if the request comes from localhost/127.0.0.1
