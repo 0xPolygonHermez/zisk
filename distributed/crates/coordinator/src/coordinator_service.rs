@@ -15,7 +15,6 @@ use distributed_common::{
 use crate::config::Config;
 use proofman::ContributionsInfo;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use tokio::sync::RwLock;
 use tonic::Status;
@@ -29,7 +28,7 @@ pub trait MessageSender {
 pub struct CoordinatorService {
     config: Config,
     start_time_utc: DateTime<Utc>,
-    active_connections: Arc<AtomicU32>,
+    active_connections: AtomicU32,
 
     provers_pool: ProversPool,
     jobs: RwLock<HashMap<JobId, Job>>,
@@ -37,29 +36,47 @@ pub struct CoordinatorService {
 
 impl CoordinatorService {
     #[instrument(skip(config))]
-    pub async fn new(config: Config) -> distributed_common::Result<Self> {
+    pub fn new(config: Config) -> distributed_common::Result<Self> {
         info!("Initializing service state");
 
         let start_time_utc = Utc::now();
 
-        // Create ProverManager with configuration from config
-        let coordinator_config = config.coordinator.clone();
-
         Ok(Self {
             config,
             start_time_utc,
-            active_connections: Arc::new(AtomicU32::new(0)),
-            provers_pool: ProversPool::new(coordinator_config),
+            active_connections: AtomicU32::new(0),
+            provers_pool: ProversPool::new(),
             jobs: RwLock::new(HashMap::new()),
         })
     }
 
-    pub fn active_connections(&self) -> Arc<AtomicU32> {
-        self.active_connections.clone()
+    // Check connection limits for streaming connections and acquire a connection slot
+    fn acquire_connection(&self) -> Result<()> {
+        let max_connections = self.config.coordinator.max_total_provers as usize;
+
+        let current_connections = self.active_connections.load(Ordering::SeqCst);
+        if current_connections >= max_connections as u32 {
+            return Err(Error::Service(format!(
+                "Maximum concurrent connections reached: {}/{}",
+                current_connections, max_connections
+            ))
+            .into());
+        }
+
+        // Increment connection counter
+        self.active_connections.fetch_add(1, Ordering::SeqCst);
+
+        Ok(())
     }
 
-    pub fn max_concurrent_connections(&self) -> u32 {
-        self.config.coordinator.max_concurrent_connections
+    pub fn release_connection(&self) -> Result<()> {
+        let current = self.active_connections.load(Ordering::SeqCst);
+        if current == 0 {
+            return Err(Error::Service("No active connections to release".to_string()).into());
+        }
+
+        self.active_connections.fetch_sub(1, Ordering::SeqCst);
+        Ok(())
     }
 
     pub fn status_info(&self) -> StatusInfoDto {
@@ -229,28 +246,46 @@ impl CoordinatorService {
         Ok(())
     }
 
-    /// Handle registration directly in stream context (static version to avoid lifetime issues)
+    /// Handle registration directly in stream context
     pub async fn handle_stream_registration(
         &self,
         req: ProverRegisterRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Result<ProverId, Status> {
+        // TODO: Check if prover_id is known and only then acquire connection
+        self.acquire_connection().map_err(|e| {
+            Status::resource_exhausted(format!("Connection limit reached: {}", e.to_string()))
+        })?;
+
         self.provers_pool
             .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
             .await
-            .map_err(|e| Status::internal(format!("Registration failed: {e}")))
+            .map_err(|e| {
+                // Release connection on registration failure
+                let _ = self.release_connection();
+                Status::internal(format!("Registration failed: {e}"))
+            })
     }
 
-    /// Handle reconnection directly in stream context (static version to avoid lifetime issues)
+    /// Handle reconnection directly in stream context
     pub async fn handle_stream_reconnection(
         &self,
         req: ProverReconnectRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Result<ProverId, Status> {
+        // TODO: Check if prover_id is known and only then acquire connection
+        self.acquire_connection().map_err(|e| {
+            Status::resource_exhausted(format!("Connection limit reached: {}", e.to_string()))
+        })?;
+
         self.provers_pool
             .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
             .await
-            .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))
+            .map_err(|e| {
+                // Release connection on registration failure
+                let _ = self.release_connection();
+                Status::internal(format!("Reconnection failed: {e}"))
+            })
     }
 
     /// Unregister a prover by its ID
@@ -258,26 +293,14 @@ impl CoordinatorService {
         Ok(self.provers_pool.unregister_prover(prover_id).await?)
     }
 
-    pub async fn handle_stream_heartbeat_ack(
-        &self,
-        prover_id: &ProverId,
-        message: HeartbeatAckDto,
-    ) -> Result<()> {
-        assert_eq!(prover_id, &message.prover_id);
-
+    pub async fn handle_stream_heartbeat_ack(&self, message: HeartbeatAckDto) -> Result<()> {
         self.provers_pool
             .update_last_heartbeat(&ProverId::from(message.prover_id))
             .await
             .map_err(|e| anyhow::anyhow!(e))
     }
 
-    pub async fn handle_stream_error(
-        &self,
-        prover_id: &ProverId,
-        message: ProverErrorDto,
-    ) -> Result<()> {
-        assert_eq!(prover_id, &message.prover_id);
-
+    pub async fn handle_stream_error(&self, message: ProverErrorDto) -> Result<()> {
         let prover_id = ProverId::from(message.prover_id);
 
         // Update last heartbeat
@@ -296,13 +319,7 @@ impl CoordinatorService {
         Ok(())
     }
 
-    pub async fn handle_stream_register(
-        &self,
-        prover_id: &ProverId,
-        message: ProverRegisterRequestDto,
-    ) -> Result<()> {
-        assert_eq!(prover_id, &message.prover_id);
-
+    pub async fn handle_stream_register(&self, message: ProverRegisterRequestDto) -> Result<()> {
         let prover_id = ProverId::from(message.prover_id);
 
         // Update last heartbeat
@@ -312,13 +329,7 @@ impl CoordinatorService {
         Ok(())
     }
 
-    pub async fn handle_stream_reconnect(
-        &self,
-        prover_id: &ProverId,
-        message: ProverReconnectRequestDto,
-    ) -> Result<()> {
-        assert_eq!(prover_id, &message.prover_id);
-
+    pub async fn handle_stream_reconnect(&self, message: ProverReconnectRequestDto) -> Result<()> {
         let prover_id = ProverId::from(message.prover_id);
 
         // Update last heartbeat
@@ -330,11 +341,8 @@ impl CoordinatorService {
 
     pub async fn handle_stream_execute_task_response(
         &self,
-        prover_id: &ProverId,
         message: ExecuteTaskResponseDto,
     ) -> Result<()> {
-        assert_eq!(prover_id, &message.prover_id);
-
         let prover_id = ProverId::from(message.prover_id.clone());
 
         // Update last heartbeat

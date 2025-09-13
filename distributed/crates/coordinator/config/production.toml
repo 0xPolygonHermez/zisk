@@ -16,6 +16,5 @@ file_path = "/var/log/coordinator-network/server.log"
 [coordinator]
 max_provers_per_job = 20          # Maximum provers per single proof job
 max_total_provers = 5000          # Maximum total registered provers
-max_concurrent_connections = 2000 # Maximum concurrent gRPC connections
 phase1_timeout_seconds = 600      # 10 minutes for phase 1
 phase2_timeout_seconds = 1200     # 20 minutes for phase 2

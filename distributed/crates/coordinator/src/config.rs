@@ -36,18 +36,9 @@ pub enum LogFormat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommConfig {
-    pub max_peers: usize,
-    pub discovery_interval_seconds: u64,
-    pub heartbeat_interval_seconds: u64,
-    pub connection_timeout_seconds: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoordinatorConfig {
     pub max_provers_per_job: u32,
     pub max_total_provers: u32,
-    pub max_concurrent_connections: u32,
     pub phase1_timeout_seconds: u64,
     pub phase2_timeout_seconds: u64,
 }
@@ -68,7 +59,6 @@ impl Config {
             .set_default("logging.file_output", false)?
             .set_default("coordinator.max_provers_per_job", 10)?
             .set_default("coordinator.max_total_provers", 1000)?
-            .set_default("coordinator.max_concurrent_connections", 500)?
             .set_default("coordinator.phase1_timeout_seconds", 300)?
             .set_default("coordinator.phase2_timeout_seconds", 600)?;
 

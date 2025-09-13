@@ -1,4 +1,3 @@
-use crate::config::CoordinatorConfig;
 use distributed_common::{
     ComputeCapacity, CoordinatorMessageDto, Error, ProverId, ProverState, Result,
 };
@@ -11,15 +10,12 @@ use crate::{coordinator_service::MessageSender, ProverConnection};
 pub struct ProversPool {
     /// Map of prover_id to ProverConnection
     pub provers: RwLock<HashMap<ProverId, ProverConnection>>,
-
-    /// Configuration for the Provers Pool
-    config: CoordinatorConfig,
 }
 
 impl ProversPool {
     /// Create a new ProversPool
-    pub fn new(config: CoordinatorConfig) -> Self {
-        Self { provers: RwLock::new(HashMap::new()), config }
+    pub fn new() -> Self {
+        Self { provers: RwLock::new(HashMap::new()) }
     }
 
     pub async fn num_provers(&self) -> usize {
@@ -40,18 +36,9 @@ impl ProversPool {
     ) -> Result<ProverId> {
         let connection = ProverConnection::new(compute_capacity.into(), msg_sender);
 
-        // Check if we've reached the maximum number of total provers
-        let num_provers = self.num_provers().await;
-        if num_provers >= self.config.max_total_provers as usize {
-            return Err(Error::InvalidRequest(format!(
-                "Maximum number of provers reached: {}/{}",
-                num_provers, self.config.max_total_provers
-            )));
-        }
-
         self.provers.write().await.insert(prover_id.clone(), connection);
 
-        info!("Registered prover: {} (total: {})", prover_id, num_provers + 1);
+        info!("Registered prover: {} (total: {})", prover_id, self.num_provers().await);
 
         Ok(prover_id)
     }

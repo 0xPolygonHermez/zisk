@@ -1,8 +1,8 @@
+use anyhow::Result;
 use async_stream::stream;
 use distributed_common::{CoordinatorMessageDto, JobId, ProverId};
 use distributed_grpc_api::{distributed_api_server::*, *};
 use futures_util::{Stream, StreamExt};
-use std::sync::atomic::Ordering;
 use std::{pin::Pin, sync::Arc};
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
@@ -12,32 +12,36 @@ use crate::config::Config;
 use crate::coordinator_service::MessageSender;
 use crate::CoordinatorService;
 
-pub struct GrpcMessageSender {
-    sender: mpsc::UnboundedSender<CoordinatorMessage>,
-}
+/// Wrapper around mpsc::UnboundedSender to implement MessageSender trait for gRPC
+/// and decouple gRPC stream from CoordinatorService
+pub struct GrpcMessageSender(mpsc::UnboundedSender<CoordinatorMessage>);
 
 impl GrpcMessageSender {
     pub fn new(sender: mpsc::UnboundedSender<CoordinatorMessage>) -> Self {
-        Self { sender }
+        Self(sender)
     }
 }
 
 impl MessageSender for GrpcMessageSender {
-    fn send(&self, msg: CoordinatorMessageDto) -> anyhow::Result<()> {
-        let message: CoordinatorMessage = msg.into();
-
-        self.sender.send(message).map_err(|e| anyhow::anyhow!("Failed to send message: {}", e))
+    fn send(&self, msg: CoordinatorMessageDto) -> Result<()> {
+        self.0.send(msg.into())?;
+        Ok(())
     }
 }
 
-/// gRPC Service layer - handles transport and delegates to DistributedService
+/// gRPC transport layer implementation for the distributed proof coordination system.
+///
+/// This struct serves as the gRPC adapter that bridges external network communication
+/// with the core coordinator business logic.
 pub struct CoordinatorServiceGrpc {
     coordinator_service: Arc<CoordinatorService>,
 }
 
 impl CoordinatorServiceGrpc {
-    pub async fn new(config: Config) -> distributed_common::Result<Self> {
-        Ok(Self { coordinator_service: Arc::new(CoordinatorService::new(config).await?) })
+    pub async fn new(config: Config) -> Result<Self> {
+        let coordinator_service = Arc::new(CoordinatorService::new(config)?);
+
+        Ok(Self { coordinator_service })
     }
 
     /// Check if the request comes from localhost/127.0.0.1
@@ -63,30 +67,61 @@ impl CoordinatorServiceGrpc {
         Ok(())
     }
 
+    fn validate_same_prover_id(prover_id: &ProverId, request_prover_id: &str) -> Result<()> {
+        anyhow::ensure!(
+            prover_id.as_string() == request_prover_id,
+            "Prover ID mismatch: expected {}, got {}",
+            prover_id.as_string(),
+            request_prover_id
+        );
+        Ok(())
+    }
+
     async fn handle_stream_message(
         coordinator: &CoordinatorService,
         prover_id: &ProverId,
         message: ProverMessage,
-    ) -> anyhow::Result<()> {
-        match message.payload.unwrap() {
-            prover_message::Payload::HeartbeatAck(heartbeat_ack) => {
-                coordinator.handle_stream_heartbeat_ack(prover_id, heartbeat_ack.into()).await
-            }
-            prover_message::Payload::Error(prover_error) => {
-                coordinator.handle_stream_error(prover_id, prover_error.into()).await
-            }
-            prover_message::Payload::Register(prover_register_req) => {
-                coordinator.handle_stream_register(prover_id, prover_register_req.into()).await
-            }
-            prover_message::Payload::Reconnect(prover_reconnect_req) => {
-                coordinator.handle_stream_reconnect(prover_id, prover_reconnect_req.into()).await
-            }
-            prover_message::Payload::ExecuteTaskResponse(execute_task_response) => {
-                coordinator
-                    .handle_stream_execute_task_response(prover_id, execute_task_response.into())
-                    .await
+    ) -> Result<()> {
+        match message.payload {
+            Some(payload) => match payload {
+                prover_message::Payload::HeartbeatAck(heartbeat_ack) => {
+                    Self::validate_same_prover_id(prover_id, &heartbeat_ack.prover_id)?;
+                    coordinator.handle_stream_heartbeat_ack(heartbeat_ack.into()).await
+                }
+                prover_message::Payload::Error(prover_error) => {
+                    Self::validate_same_prover_id(prover_id, &prover_error.prover_id)?;
+                    coordinator.handle_stream_error(prover_error.into()).await
+                }
+                prover_message::Payload::Register(prover_register_req) => {
+                    Self::validate_same_prover_id(prover_id, &prover_register_req.prover_id)?;
+                    coordinator.handle_stream_register(prover_register_req.into()).await
+                }
+                prover_message::Payload::Reconnect(prover_reconnect_req) => {
+                    Self::validate_same_prover_id(prover_id, &prover_reconnect_req.prover_id)?;
+                    coordinator.handle_stream_reconnect(prover_reconnect_req.into()).await
+                }
+                prover_message::Payload::ExecuteTaskResponse(execute_task_response) => {
+                    Self::validate_same_prover_id(prover_id, &execute_task_response.prover_id)?;
+                    coordinator
+                        .handle_stream_execute_task_response(execute_task_response.into())
+                        .await
+                }
+            },
+            None => {
+                Err(anyhow::anyhow!("Received message with no payload from prover {}", prover_id))
             }
         }
+    }
+
+    fn connection_default_response(prover_id: &ProverId) -> Result<CoordinatorMessage, Status> {
+        Ok(CoordinatorMessage {
+            payload: Some(coordinator_message::Payload::RegisterResponse(ProverRegisterResponse {
+                prover_id: prover_id.as_string(),
+                accepted: true,
+                message: "Registration successful".to_string(),
+                registered_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
+            })),
+        })
     }
 }
 
@@ -100,6 +135,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
         request: Request<StatusInfoRequest>,
     ) -> Result<Response<StatusInfoResponse>, Status> {
         self.validate_admin_request(&request)?;
+
         let status_info = self.coordinator_service.status_info();
 
         Ok(Response::new(status_info.into()))
@@ -140,7 +176,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
     ) -> Result<Response<JobStatusResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let job_id = JobId::from(request.get_ref().job_id.clone());
+        let job_id = JobId::from(request.into_inner().job_id);
         let job_status = self.coordinator_service.job_status(&job_id);
 
         Ok(Response::new(job_status.into()))
@@ -153,6 +189,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
         self.validate_admin_request(&request)?;
 
         let system_status = self.coordinator_service.handle_system_status().await;
+
         Ok(Response::new(system_status.into()))
     }
 
@@ -163,85 +200,51 @@ impl DistributedApi for CoordinatorServiceGrpc {
         self.validate_admin_request(&request)?;
 
         let start_proof_request_dto = request.into_inner().into();
+        let result = self.coordinator_service.start_proof(start_proof_request_dto).await;
 
-        match self.coordinator_service.start_proof(start_proof_request_dto).await {
-            Ok(response_dto) => Ok(Response::new(response_dto.into())),
-            Err(e) => Err(Status::internal(format!("Failed to start proof: {}", e))),
-        }
+        result
+            .map(|response_dto| Response::new(response_dto.into()))
+            .map_err(|e| Status::internal(format!("Failed to start proof: {}", e)))
     }
 
-    /// Bidirectional stream for prover communication
+    /// Bidirectional stream for communication between coordinator and provers.
+    /// This handles stream messages defined in the .proto file.
     async fn prover_stream(
         &self,
         request: Request<Streaming<ProverMessage>>,
     ) -> Result<Response<Self::ProverStreamStream>, Status> {
-        // Check connection limits first
-        let max_connections = self.coordinator_service.max_concurrent_connections() as usize;
-        let active_connections = self.coordinator_service.active_connections();
-
-        if active_connections.load(Ordering::SeqCst) >= max_connections as u32 {
-            return Err(Status::resource_exhausted(format!(
-                "Maximum concurrent connections reached: {}/{}",
-                active_connections.load(Ordering::SeqCst),
-                max_connections
-            )));
-        }
-
-        let mut in_stream = request.into_inner();
         let coordinator_service = self.coordinator_service.clone();
+        let mut in_stream = request.into_inner();
+
         let response_stream = Box::pin(stream! {
-            // Increment connection counter
-            active_connections.fetch_add(1, Ordering::SeqCst);
-
-            // Create BOUNDED channel for outbound messages to this prover (for backpressure)
-            let (outbound_sender, mut outbound_receiver) = mpsc::unbounded_channel::<CoordinatorMessage>();
-
-            let grpc_message_sender = Box::new(GrpcMessageSender::new(outbound_sender));
+            // Create a channel for outbound messages to this prover (for backpressure)
+            // The sender will be held by GrpcMessageSender and used by CoordinatorService
+            let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<CoordinatorMessage>();
+            let grpc_msg_tx = Box::new(GrpcMessageSender::new(outbound_tx));
 
             // Clean registration handling - wait for prover to introduce itself
             let prover_id = match in_stream.next().await {
                 Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Register(req)) })) => {
-                    match coordinator_service.handle_stream_registration(req.into(), grpc_message_sender).await {
+                    match coordinator_service.handle_stream_registration(req.into(), grpc_msg_tx).await {
                         Ok(prover_id) => {
                             // Send success response
-                            yield Ok(CoordinatorMessage {
-                                payload: Some(coordinator_message::Payload::RegisterResponse(
-                                    ProverRegisterResponse {
-                                        prover_id: prover_id.as_string(),
-                                        accepted: true,
-                                        message: "Registration successful".to_string(),
-                                        registered_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
-                                    }
-                                ))
-                            });
+                            yield Self::connection_default_response(&prover_id);
                             prover_id
                         }
                         Err(status) => {
-                            active_connections.fetch_sub(1, Ordering::SeqCst);
                             yield Err(status);
                             return;
                         }
                     }
                 }
                 Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Reconnect(req)) })) => {
-                    match coordinator_service.handle_stream_reconnection(req.into(), grpc_message_sender).await {
+                    match coordinator_service.handle_stream_reconnection(req.into(), grpc_msg_tx).await {
                         Ok(prover_id) => {
                             // Send success response
-                            yield Ok(CoordinatorMessage {
-                                payload: Some(coordinator_message::Payload::RegisterResponse(
-                                    ProverRegisterResponse {
-                                        prover_id: prover_id.as_string(),
-                                        accepted: true,
-                                        message: "Reconnection successful".to_string(),
-                                        registered_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
-                                    }
-                                ))
-                            });
+                            yield Self::connection_default_response(&prover_id);
                             prover_id
                         }
                         Err(status) => {
-                            // Cleanup and return error
-                            active_connections.fetch_sub(1, Ordering::SeqCst);
                             yield Err(status);
                             return;
                         }
@@ -249,19 +252,16 @@ impl DistributedApi for CoordinatorServiceGrpc {
                 }
                 Some(Ok(_)) => {
                     // First message was not registration or reconnection
-                    active_connections.fetch_sub(1, Ordering::SeqCst);
                     yield Err(Status::invalid_argument("First message must be registration or reconnection"));
                     return;
                 }
                 Some(Err(e)) => {
                     error!("Error receiving first message: {e}");
-                    active_connections.fetch_sub(1, Ordering::SeqCst);
                     yield Err(e);
                     return;
                 }
                 None => {
                     error!("Stream closed without registration");
-                    active_connections.fetch_sub(1, Ordering::SeqCst);
                     yield Err(Status::aborted("Connection closed during handshake"));
                     return;
                 }
@@ -269,7 +269,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
 
             info!("Prover {} registered successfully, starting message loop", prover_id);
 
-            // Now handle the rest of the stream with tokio::select!
+            // Now handle the rest of the stream messages
             loop {
                 tokio::select! {
                     // Handle incoming messages from prover
@@ -279,22 +279,22 @@ impl DistributedApi for CoordinatorServiceGrpc {
                                 if let Err(e) = Self::handle_stream_message(&coordinator_service, &prover_id, message).await {
                                     error!("Error handling prover message: {}", e);
                                     yield Err(Status::internal(format!("Error handling message: {e}")));
-                                    break; // Break to clean up
+                                    break;
                                 }
                             }
                             Some(Err(e)) => {
                                 error!("Error receiving message from prover {prover_id}: {e}");
                                 yield Err(e);
-                                break; // Break to clean up
+                                break;
                             }
                             None => {
                                 info!("Prover {} stream ended", prover_id);
-                                break; // Break out of the loop, ending the stream naturally
+                                break;
                             }
                         }
                     }
-                    // Handle outgoing messages to prover (with bounded channel)
-                    outbound_result = outbound_receiver.recv() => {
+                    // Handle outgoing messages to prover
+                    outbound_result = outbound_rx.recv() => {
                         match outbound_result {
                             Some(message) => {
                                 yield Ok(message);
@@ -313,8 +313,9 @@ impl DistributedApi for CoordinatorServiceGrpc {
             info!("Cleaning up prover {} connection", prover_id);
 
             // Decrement connection counter
-            active_connections.fetch_sub(1, Ordering::SeqCst);
-            info!("Active connections after cleanup: {}", active_connections.load(Ordering::SeqCst));
+            if let Err(e) = coordinator_service.release_connection() {
+                error!("Failed to release connection: {}", e);
+            }
 
             // Perform async cleanup
             if let Err(e) = coordinator_service.unregister_prover(&prover_id).await {
