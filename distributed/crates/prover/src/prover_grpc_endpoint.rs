@@ -1,9 +1,9 @@
+use crate::{prover_service::ComputationResult, ProverService, ProverServiceConfig};
 use anyhow::{anyhow, Result};
 use distributed_common::{AggProofData, AggregationParams, BlockContext, ProverState};
 use distributed_common::{BlockId, JobId};
 use distributed_grpc_api::execute_task_response::ResultData;
 use distributed_grpc_api::*;
-use distributed_prover::{prover_service::ComputationResult, ProverService, ProverServiceConfig};
 use proofman::{AggProofs, ContributionsInfo};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;

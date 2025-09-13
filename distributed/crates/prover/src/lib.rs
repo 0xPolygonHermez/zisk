@@ -5,7 +5,9 @@
 //! and prover service management.
 pub mod config;
 pub mod proof_generator;
+pub mod prover_grpc_endpoint;
 pub mod prover_service;
 
 pub use proof_generator::ProofGenerator;
+pub use prover_grpc_endpoint::*;
 pub use prover_service::{JobContext, ProverService, ProverServiceConfig};

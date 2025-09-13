@@ -1143,35 +1143,15 @@ dependencies = [
  "anyhow",
  "asm-runner",
  "borsh",
- "distributed-common",
- "fields",
- "libloading",
- "proofman",
- "proofman-common",
- "serde",
- "tokio",
- "tracing",
- "vergen",
- "witness",
- "zisk-common",
-]
-
-[[package]]
-name = "distributed-prover-service"
-version = "0.11.0"
-dependencies = [
- "anyhow",
- "asm-runner",
  "cargo-zisk",
  "clap",
  "colored",
  "distributed-common",
- "distributed-coordinator",
  "distributed-grpc-api",
- "distributed-prover",
+ "fields",
+ "libloading",
  "proofman",
  "proofman-common",
- "prost-types",
  "rom-setup",
  "serde",
  "tokio",
@@ -1180,6 +1160,7 @@ dependencies = [
  "tonic",
  "tracing",
  "vergen",
+ "witness",
  "zisk-common",
 ]
 

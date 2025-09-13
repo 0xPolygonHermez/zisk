@@ -26,8 +26,8 @@ pub struct JobsListDto {
 }
 
 pub struct JobStatusDto {
-    pub job_id: String,
-    pub block_id: String,
+    pub job_id: JobId,
+    pub block_id: BlockId,
     pub phase: String,
     pub status: String,
     pub assigned_provers: Vec<String>,
@@ -40,9 +40,9 @@ pub struct ProversListDto {
 }
 
 pub struct ProverStatusDto {
-    pub prover_id: String,
+    pub prover_id: ProverId,
     pub state: String,
-    pub current_job_id: String,
+    pub current_job_id: JobId,
     pub allocated_capacity: ComputeCapacity,
     pub last_heartbeat: u64,
     pub jobs_completed: u32,
@@ -61,13 +61,13 @@ pub struct SystemStatusDto {
 }
 
 pub struct StartProofRequestDto {
-    pub block_id: String,
+    pub block_id: BlockId,
     pub compute_units: u32,
     pub input_path: String,
 }
 
 pub struct StartProofResponseDto {
-    pub job_id: String,
+    pub job_id: JobId,
 }
 
 pub struct MetricsDto {
@@ -75,12 +75,12 @@ pub struct MetricsDto {
 }
 
 pub struct ProverRegisterRequestDto {
-    pub prover_id: String,
+    pub prover_id: ProverId,
     pub compute_capacity: ComputeCapacity,
 }
 
 pub struct ProverReconnectRequestDto {
-    pub prover_id: String,
+    pub prover_id: ProverId,
     pub compute_capacity: ComputeCapacity,
 }
 
@@ -114,8 +114,8 @@ pub struct JobCancelledDto {
 }
 
 pub struct ExecuteTaskRequestDto {
-    pub prover_id: String,
-    pub job_id: String,
+    pub prover_id: ProverId,
+    pub job_id: JobId,
     pub params: ExecuteTaskRequestTypeDto,
 }
 

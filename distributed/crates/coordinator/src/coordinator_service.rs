@@ -90,8 +90,8 @@ impl CoordinatorService {
     pub fn job_status(&self, job_id: &JobId) -> JobStatusDto {
         // TODO: Implement actual job retrieval from database
         JobStatusDto {
-            job_id: job_id.to_string(),
-            block_id: "block123".to_string(),
+            job_id: job_id.clone(),
+            block_id: BlockId::from("block123".to_string()),
             phase: "proving".to_string(),
             status: "in_progress".to_string(),
             assigned_provers: vec!["prover1".to_string(), "prover2".to_string()],
@@ -171,7 +171,7 @@ impl CoordinatorService {
         self.jobs.write().await.insert(job_id.clone(), job);
 
         info!("Successfully started proof job: {}", job_id.as_string());
-        Ok(StartProofResponseDto { job_id: job_id.as_string() })
+        Ok(StartProofResponseDto { job_id })
     }
 
     pub async fn create_job(
@@ -301,7 +301,7 @@ impl CoordinatorService {
         prover_id: &ProverId,
         message: ProverRegisterRequestDto,
     ) -> Result<()> {
-        assert_eq!(prover_id.as_string(), message.prover_id);
+        assert_eq!(prover_id, &message.prover_id);
 
         let prover_id = ProverId::from(message.prover_id);
 
@@ -317,7 +317,7 @@ impl CoordinatorService {
         prover_id: &ProverId,
         message: ProverReconnectRequestDto,
     ) -> Result<()> {
-        assert_eq!(prover_id.as_string(), message.prover_id);
+        assert_eq!(prover_id, &message.prover_id);
 
         let prover_id = ProverId::from(message.prover_id);
 

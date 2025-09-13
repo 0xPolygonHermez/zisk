@@ -2,8 +2,10 @@ use anyhow::Result;
 use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
 use clap::Parser;
 use colored::Colorize;
-use distributed_client::{initialize_prover_config, ProverGrpcEndpoint};
-use distributed_prover::{config::ProverClientConfig, ProverServiceConfig};
+use distributed_prover::{
+    config::{initialize_prover_config, ProverClientConfig},
+    ProverGrpcEndpoint, ProverServiceConfig,
+};
 use std::path::PathBuf;
 use tracing::info;
 

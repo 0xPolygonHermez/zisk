@@ -39,7 +39,6 @@ members = [
     "server",
     "distributed/crates/grpc-api",
     "distributed/crates/prover",
-    "distributed/crates/prover-service",
     "distributed/crates/coordinator",
     "distributed/crates/common",
 ]
@@ -90,7 +89,6 @@ circuit = { path = "tools/circuit" }
 # Distributed crates
 distributed-grpc-api = { path = "distributed/crates/grpc-api" }
 distributed-prover = { path = "distributed/crates/prover" }
-distributed-prover-service = { path = "distributed/crates/prover-service" }
 distributed-common = { path = "distributed/crates/common" }
 distributed-coordinator = { path = "distributed/crates/coordinator" }
 

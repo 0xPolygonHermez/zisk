@@ -1,7 +1,7 @@
+use crate::config::CoordinatorConfig;
 use distributed_common::{
     ComputeCapacity, CoordinatorMessageDto, Error, ProverId, ProverState, Result,
 };
-use crate::config::CoordinatorConfig;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tracing::{info, warn};

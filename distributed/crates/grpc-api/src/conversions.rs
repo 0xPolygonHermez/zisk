@@ -9,15 +9,7 @@ use crate::{
     StartProofRequest, StartProofResponse, StatusInfoResponse, SystemStatus, SystemStatusResponse,
     TaskType,
 };
-use distributed_common::{
-    AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
-    CoordinatorMessageDto, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
-    ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, HeartbeatDto,
-    JobCancelledDto, JobId, JobStatusDto, JobsListDto, MetricsDto, ProofDto, ProveParamsDto,
-    ProverErrorDto, ProverId, ProverReconnectRequestDto, ProverRegisterRequestDto,
-    ProverRegisterResponseDto, ProverStatusDto, ProversListDto, ShutdownDto, StartProofRequestDto,
-    StartProofResponseDto, StatusInfoDto, SystemStatusDto,
-};
+use distributed_common::*;
 
 /// Conversions between coordinator-common types and gRPC types
 /// This module handles the translation layer between our domain types
@@ -81,8 +73,8 @@ impl From<JobsListDto> for JobsListResponse {
 impl From<JobStatusDto> for JobStatus {
     fn from(dto: JobStatusDto) -> Self {
         JobStatus {
-            job_id: dto.job_id,
-            block_id: dto.block_id,
+            job_id: dto.job_id.into(),
+            block_id: dto.block_id.into(),
             phase: dto.phase,
             status: dto.status,
             assigned_provers: dto.assigned_provers,
@@ -95,8 +87,8 @@ impl From<JobStatusDto> for JobStatus {
 impl From<JobStatusDto> for JobStatusResponse {
     fn from(dto: JobStatusDto) -> Self {
         let job_status = JobStatus {
-            job_id: dto.job_id,
-            block_id: dto.block_id,
+            job_id: dto.job_id.into(),
+            block_id: dto.block_id.into(),
             phase: dto.phase,
             status: dto.status,
             assigned_provers: dto.assigned_provers,
@@ -121,9 +113,9 @@ impl From<ProversListDto> for ProversListResponse {
 impl From<ProverStatusDto> for ProverStatus {
     fn from(dto: ProverStatusDto) -> Self {
         ProverStatus {
-            prover_id: dto.prover_id,
+            prover_id: dto.prover_id.into(),
             state: dto.state,
-            current_job_id: dto.current_job_id,
+            current_job_id: dto.current_job_id.into(),
             allocated_capacity: Some(dto.allocated_capacity.into()),
             last_heartbeat: dto.last_heartbeat,
             jobs_completed: dto.jobs_completed,
@@ -152,7 +144,7 @@ impl From<SystemStatusDto> for SystemStatusResponse {
 impl From<StartProofRequestDto> for StartProofRequest {
     fn from(dto: StartProofRequestDto) -> Self {
         StartProofRequest {
-            block_id: dto.block_id,
+            block_id: dto.block_id.into(),
             compute_units: dto.compute_units,
             input_path: dto.input_path,
         }
@@ -160,18 +152,18 @@ impl From<StartProofRequestDto> for StartProofRequest {
 }
 
 impl From<StartProofRequest> for StartProofRequestDto {
-    fn from(request: StartProofRequest) -> Self {
+    fn from(req: StartProofRequest) -> Self {
         StartProofRequestDto {
-            block_id: request.block_id,
-            compute_units: request.compute_units,
-            input_path: request.input_path,
+            block_id: req.block_id.into(),
+            compute_units: req.compute_units,
+            input_path: req.input_path,
         }
     }
 }
 
 impl From<StartProofResponseDto> for StartProofResponse {
     fn from(dto: StartProofResponseDto) -> Self {
-        StartProofResponse { result: Some(start_proof_response::Result::JobId(dto.job_id)) }
+        StartProofResponse { result: Some(start_proof_response::Result::JobId(dto.job_id.into())) }
     }
 }
 
@@ -182,22 +174,22 @@ impl From<MetricsDto> for Metrics {
 }
 
 impl From<ProverRegisterRequest> for ProverRegisterRequestDto {
-    fn from(request: ProverRegisterRequest) -> Self {
+    fn from(req: ProverRegisterRequest) -> Self {
         ProverRegisterRequestDto {
-            prover_id: request.prover_id,
+            prover_id: req.prover_id.into(),
             compute_capacity: ComputeCapacity {
-                compute_units: request.compute_capacity.unwrap().compute_units,
+                compute_units: req.compute_capacity.unwrap().compute_units,
             },
         }
     }
 }
 
 impl From<ProverReconnectRequest> for ProverReconnectRequestDto {
-    fn from(request: ProverReconnectRequest) -> Self {
+    fn from(req: ProverReconnectRequest) -> Self {
         ProverReconnectRequestDto {
-            prover_id: request.prover_id,
+            prover_id: req.prover_id.into(),
             compute_capacity: ComputeCapacity {
-                compute_units: request.compute_capacity.unwrap().compute_units,
+                compute_units: req.compute_capacity.unwrap().compute_units,
             },
         }
     }
@@ -278,8 +270,8 @@ impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
         };
 
         ExecuteTaskRequest {
-            prover_id: dto.prover_id,
-            job_id: dto.job_id,
+            prover_id: dto.prover_id.into(),
+            job_id: dto.job_id.into(),
             task_type: task_type as i32,
             params: Some(params),
         }
