@@ -14,8 +14,7 @@ use distributed_common::{
 use proofman::ContributionsInfo;
 use std::{collections::HashMap, path::PathBuf};
 use tokio::sync::RwLock;
-use tonic::Status;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 
 pub trait MessageSender {
     fn send(&self, msg: CoordinatorMessageDto) -> Result<()>;
@@ -219,8 +218,6 @@ impl CoordinatorService {
                     error!("Failed to send webhook notification: {}", e);
                 }
             });
-        } else {
-            debug!("No webhook URL configured, skipping notification");
         }
     }
 
@@ -325,24 +322,23 @@ impl CoordinatorService {
         &self,
         req: ProverRegisterRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> Result<ProverId, Status> {
+    ) -> (bool, String) {
         let max_connections = self.config.coordinator.max_total_provers as usize;
         if self.provers_pool.num_provers().await >= max_connections {
-            return Err(Status::resource_exhausted(format!(
-                "Maximum concurrent connections reached: {}/{}",
-                self.provers_pool.num_provers().await,
-                max_connections
-            )));
+            return (
+                false,
+                format!("Maximum concurrent connections reached: ({})", max_connections),
+            );
         }
 
-        let prover_id = ProverId::from(req.prover_id);
-
-        // TODO: Check if prover_id is already registered
-
-        self.provers_pool
-            .register_prover(prover_id, req.compute_capacity, msg_sender)
+        match self
+            .provers_pool
+            .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
             .await
-            .map_err(|e| Status::internal(format!("Registration failed: {e}")))
+        {
+            Ok(()) => (true, "Registration successful".to_string()),
+            Err(e) => (false, format!("Registration failed: {e}")),
+        }
     }
 
     /// Handle reconnection directly in stream context
@@ -350,15 +346,23 @@ impl CoordinatorService {
         &self,
         req: ProverReconnectRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> Result<ProverId, Status> {
-        let prover_id = ProverId::from(req.prover_id);
+    ) -> (bool, String) {
+        let max_connections = self.config.coordinator.max_total_provers as usize;
+        if self.provers_pool.num_provers().await >= max_connections {
+            return (
+                false,
+                format!("Maximum concurrent connections reached: ({})", max_connections),
+            );
+        }
 
-        // TODO: Check if prover_id is already registered
-
-        self.provers_pool
-            .register_prover(prover_id, req.compute_capacity, msg_sender)
+        match self
+            .provers_pool
+            .register_prover(req.prover_id, req.compute_capacity, msg_sender)
             .await
-            .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))
+        {
+            Ok(()) => (true, "Reconnection successful".to_string()),
+            Err(e) => (false, format!("Reconnection failed: {e}")),
+        }
     }
 
     /// Unregister a prover by its ID

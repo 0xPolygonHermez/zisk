@@ -349,8 +349,9 @@ impl ProverGrpcEndpoint {
                         info!("Registration accepted: {}", response.message);
                         self.prover_service.set_state(ProverState::Idle);
                     } else {
-                        error!("Registration rejected: {}", response.message);
                         self.prover_service.set_state(ProverState::Error);
+                        error!("Registration rejected: {}", response.message);
+                        std::process::exit(1);
                     }
                 }
                 coordinator_message::Payload::ExecuteTask(request) => {

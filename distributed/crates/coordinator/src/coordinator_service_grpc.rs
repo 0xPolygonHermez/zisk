@@ -111,13 +111,21 @@ impl CoordinatorServiceGrpc {
         }
     }
 
-    fn connection_default_response(prover_id: &ProverId) -> Result<CoordinatorMessage, Status> {
+    fn registration_response(
+        prover_id: &ProverId,
+        accepted: bool,
+        message: String,
+    ) -> Result<CoordinatorMessage, Status> {
         Ok(CoordinatorMessage {
             payload: Some(coordinator_message::Payload::RegisterResponse(ProverRegisterResponse {
                 prover_id: prover_id.as_string(),
-                accepted: true,
-                message: "Registration successful".to_string(),
-                registered_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
+                accepted,
+                message,
+                registered_at: if accepted {
+                    Some(prost_types::Timestamp::from(std::time::SystemTime::now()))
+                } else {
+                    None
+                },
             })),
         })
     }
@@ -225,29 +233,27 @@ impl DistributedApi for CoordinatorServiceGrpc {
             // Clean registration handling - wait for prover to introduce itself
             let prover_id = match in_stream.next().await {
                 Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Register(req)) })) => {
-                    match coordinator_service.handle_stream_registration(req.into(), grpc_msg_tx).await {
-                        Ok(prover_id) => {
-                            // Send success response
-                            yield Self::connection_default_response(&prover_id);
-                            prover_id
-                        }
-                        Err(status) => {
-                            yield Err(status);
-                            return;
-                        }
+                    let requested_prover_id = ProverId::from(req.prover_id.clone());
+                    let (accepted, message) = coordinator_service.handle_stream_registration(req.into(), grpc_msg_tx).await;
+
+                    if accepted {
+                        yield Self::registration_response(&requested_prover_id, accepted, message);
+                        requested_prover_id
+                    } else {
+                        yield Self::registration_response(&requested_prover_id, accepted, message);
+                        return;
                     }
                 }
                 Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Reconnect(req)) })) => {
-                    match coordinator_service.handle_stream_reconnection(req.into(), grpc_msg_tx).await {
-                        Ok(prover_id) => {
-                            // Send success response
-                            yield Self::connection_default_response(&prover_id);
-                            prover_id
-                        }
-                        Err(status) => {
-                            yield Err(status);
-                            return;
-                        }
+                    let requested_prover_id = ProverId::from(req.prover_id.clone());
+                    let (accepted, message) = coordinator_service.handle_stream_reconnection(req.into(), grpc_msg_tx).await;
+
+                    if accepted {
+                        yield Self::registration_response(&requested_prover_id, accepted, message);
+                        requested_prover_id
+                    } else {
+                        yield Self::registration_response(&requested_prover_id, accepted, message);
+                        return;
                     }
                 }
                 Some(Ok(_)) => {

@@ -67,14 +67,19 @@ impl ProversPool {
         prover_id: ProverId,
         compute_capacity: impl Into<ComputeCapacity>,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> Result<ProverId> {
+    ) -> Result<()> {
         let connection = ProverInfo::new(prover_id.clone(), compute_capacity.into(), msg_sender);
 
-        self.provers.write().await.insert(prover_id.clone(), connection);
-
-        info!("Registered prover: {} (total: {})", prover_id, self.num_provers().await);
-
-        Ok(prover_id)
+        // Check if prover_id is already registered
+        if self.provers.read().await.contains_key(&prover_id) {
+            let msg = format!("Prover ID {} is already registered", prover_id);
+            warn!("{}", msg);
+            Err(Error::InvalidRequest(msg))
+        } else {
+            self.provers.write().await.insert(prover_id.clone(), connection);
+            info!("Registered prover: {} (total: {})", prover_id, self.num_provers().await);
+            Ok(())
+        }
     }
 
     /// Unregister a prover
