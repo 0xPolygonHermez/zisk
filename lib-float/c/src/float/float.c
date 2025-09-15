@@ -14,6 +14,7 @@ extern "C" {
     } while (0)
 
 void set_rounding_mode (uint64_t rm);
+void update_rounding_mode (uint64_t * rm);
 
 void _zisk_float (void)
 {
@@ -478,7 +479,7 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
-                            set_rounding_mode(rm);
+                            update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f32_to_i32( (float32_t){fregs[rs1]}, rm, false );
                             break;
                         }
@@ -486,7 +487,7 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
-                            set_rounding_mode(rm);
+                            update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f32_to_ui32( (float32_t){fregs[rs1]}, rm, false );
                             break;
                         }
@@ -494,7 +495,7 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
-                            set_rounding_mode(rm);
+                            update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f32_to_i64( (float32_t){fregs[rs1]}, rm, false );
                             break;
                         }
@@ -502,7 +503,7 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
-                            set_rounding_mode(rm);
+                            update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f32_to_ui64( (float32_t){fregs[rs1]}, rm, false );
                             break;
                         }
@@ -518,7 +519,7 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
-                            set_rounding_mode(rm);
+                            update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f64_to_i32( (float64_t){fregs[rs1]}, rm, false );
                             break;
                         }
@@ -526,7 +527,7 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
-                            set_rounding_mode(rm);
+                            update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f64_to_ui32( (float64_t){fregs[rs1]}, rm, false );
                             break;
                         }
@@ -534,7 +535,7 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
-                            set_rounding_mode(rm);
+                            update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f64_to_i64( (float64_t){fregs[rs1]}, rm, false );
                             break;
                         }
@@ -542,7 +543,7 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
-                            set_rounding_mode(rm);
+                            update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f64_to_ui64( (float64_t){fregs[rs1]}, rm, false );
                             break;
                         }
@@ -839,6 +840,7 @@ void _zisk_float (void)
 
     // Update flags: copy flags from the library state register to fcsr
     fcsr = (fcsr & ~0x1F) | (softfloat_exceptionFlags & 0x1F);
+    //fcsr = (softfloat_exceptionFlags & 0x1F) | ((softfloat_roundingMode & 0x7) << 5);
 }
 
 void set_rounding_mode (uint64_t rm)
@@ -890,6 +892,29 @@ void set_rounding_mode (uint64_t rm)
             softfloat_roundingMode = softfloat_round_near_maxMag;
             break;
         case 7: // DYN - should not be used in fcsr
+        default:
+            // Invalid rounding mode, do nothing
+            break;
+    }
+}
+
+void update_rounding_mode (uint64_t * rm)
+{
+    switch (*rm & 0x7)
+    {
+        case 0: // RNE
+            break;
+        case 1: // RTZ
+            break;
+        case 2: // RDN
+            break;
+        case 3: // RUP
+            break;
+        case 4: // RMM
+            break;
+        case 7: // DYN - get falue from fcsr
+            //*rm = softfloat_roundingMode;
+            break;
         default:
             // Invalid rounding mode, do nothing
             break;
