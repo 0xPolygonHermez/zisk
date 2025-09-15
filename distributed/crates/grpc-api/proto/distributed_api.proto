@@ -21,7 +21,7 @@ service DistributedApi {
   rpc SystemStatus(SystemStatusRequest) returns (SystemStatusResponse);
   
   // Coordinator control
-  rpc StartProof(StartProofRequest) returns (StartProofResponse);
+  rpc LaunchProof(LaunchProofRequest) returns (LaunchProofResponse);
 }
 
 // Standardized error response
@@ -53,7 +53,7 @@ message JobStatusRequest {
 
 message SystemStatusRequest {}
 
-message StartProofRequest {
+message LaunchProofRequest {
   string block_id = 1;
   uint32 compute_units = 2;
   string input_path = 3;
@@ -123,7 +123,7 @@ message ProverInfo {
   string state = 2;
   ComputeCapacity compute_capacity = 3;
   google.protobuf.Timestamp connected_at = 4;
-  uint64 last_heartbeat = 5;
+  google.protobuf.Timestamp last_heartbeat = 5;
 }
 
 message SystemStatusResponse {
@@ -139,13 +139,9 @@ message SystemStatus {
   uint32 idle_provers = 3;
   uint32 busy_provers = 4;
   uint32 active_jobs = 5;
-  uint32 pending_jobs = 6;
-  uint32 completed_jobs_last_minute = 7;
-  double job_completion_rate = 8;
-  double prover_utilization = 9;
 }
 
-message StartProofResponse {
+message LaunchProofResponse {
   oneof result {
     string job_id = 1;
     ErrorResponse error = 2;

@@ -23,6 +23,19 @@ impl ProversPool {
         self.provers.read().await.len()
     }
 
+    pub async fn idle_provers(&self) -> usize {
+        self.provers.read().await.values().filter(|p| p.state == ProverState::Idle).count()
+    }
+
+    pub async fn busy_provers(&self) -> usize {
+        self.provers
+            .read()
+            .await
+            .values()
+            .filter(|p| matches!(p.state, ProverState::Computing(_)))
+            .count()
+    }
+
     pub async fn compute_capacity(&self) -> ComputeCapacity {
         let total_capacity: u32 =
             self.provers.read().await.values().map(|p| p.compute_capacity.compute_units).sum();
@@ -164,11 +177,6 @@ impl ProversPool {
                 selected_provers.push(prover_id.clone());
                 prover_capacities.push(prover_connection.compute_capacity.compute_units);
                 total_capacity += prover_connection.compute_capacity.compute_units;
-
-                println!(
-                    "Prover {} capacity: {}",
-                    prover_id, prover_connection.compute_capacity.compute_units
-                );
 
                 // Stop when we have enough capacity
                 if total_capacity >= required_compute_capacity.compute_units {

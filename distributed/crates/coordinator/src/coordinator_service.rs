@@ -7,15 +7,15 @@ use distributed_common::{
     ContributionParamsDto, CoordinatorMessageDto, Error, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
     HeartbeatAckDto, Job, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
-    JobsListDto, MetricsDto, ProofDto, ProveParamsDto, ProverErrorDto, ProverId,
-    ProverReconnectRequestDto, ProverRegisterRequestDto, ProverState, ProversListDto,
-    StartProofRequestDto, StartProofResponseDto, StatusInfoDto, SystemStatusDto,
+    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
+    ProveParamsDto, ProverErrorDto, ProverId, ProverReconnectRequestDto, ProverRegisterRequestDto,
+    ProverState, ProversListDto, StatusInfoDto, SystemStatusDto,
 };
 use proofman::ContributionsInfo;
 use std::{collections::HashMap, path::PathBuf};
 use tokio::sync::RwLock;
 use tonic::Status;
-use tracing::{error, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 pub trait MessageSender {
     fn send(&self, msg: CoordinatorMessageDto) -> Result<()>;
@@ -78,7 +78,7 @@ impl CoordinatorService {
                     Some(JobStatusDto {
                         job_id: job.job_id.clone(),
                         block_id: job.block.block_id.clone(),
-                        phase: phase.clone(),
+                        phase: Some(phase.clone()),
                         status: job.state.clone(),
                         assigned_provers: job.provers.clone(),
                         start_time: job.start_time.timestamp() as u64,
@@ -97,50 +97,56 @@ impl CoordinatorService {
         self.provers_pool.provers_list().await
     }
 
-    pub fn handle_job_status(&self, job_id: &JobId) -> JobStatusDto {
-        // TODO: Implement actual job retrieval from database
-        JobStatusDto {
-            job_id: job_id.clone(),
-            block_id: BlockId::from("block123".to_string()),
-            phase: JobPhase::Contributions,
-            status: JobState::Running(JobPhase::Contributions),
-            assigned_provers: vec![
-                ProverId::from("prover1".to_string()),
-                ProverId::from("prover2".to_string()),
-            ],
-            start_time: Utc::now().timestamp() as u64,
-            duration_ms: 5000,
-        }
+    pub async fn handle_job_status(&self, job_id: &JobId) -> Result<JobStatusDto> {
+        let job = self.jobs.read().await.get(job_id).cloned().ok_or_else(|| {
+            Error::InvalidRequest(format!("Job with ID {} not found", job_id.as_string()))
+        })?;
+
+        Ok(JobStatusDto {
+            job_id: job.job_id.clone(),
+            block_id: job.block.block_id.clone(),
+            status: job.state.clone(),
+            phase: if let JobState::Running(phase) = &job.state {
+                Some(phase.clone())
+            } else {
+                None
+            },
+            assigned_provers: job.provers.clone(),
+            start_time: job.start_time.timestamp() as u64,
+            duration_ms: job.duration_ms.unwrap_or(0),
+        })
     }
 
     pub async fn handle_system_status(&self) -> SystemStatusDto {
-        // Get actual system status from ProverManager
         let total_provers = self.provers_pool.num_provers().await;
-        let compute_capacity = self.provers_pool.compute_capacity().await;
-        let idle_provers = self.provers_pool.num_provers().await;
-        let busy_provers = total_provers.saturating_sub(idle_provers);
+        let busy_provers = self.provers_pool.busy_provers().await;
+        let active_jobs = self
+            .jobs
+            .read()
+            .await
+            .values()
+            .filter(|j| matches!(j.state, JobState::Running(_)))
+            .count();
 
         SystemStatusDto {
             total_provers: total_provers as u32,
-            compute_capacity,
-            idle_provers: idle_provers as u32,
+            compute_capacity: self.provers_pool.compute_capacity().await,
+            idle_provers: self.provers_pool.idle_provers().await as u32,
             busy_provers: busy_provers as u32,
-            active_jobs: 0,                // TODO: Implement actual job counting
-            pending_jobs: 0,               // TODO: Implement actual job counting
-            completed_jobs_last_minute: 0, // TODO: Implement actual metrics
-            job_completion_rate: 0.0,      // TODO: Implement actual metrics
-            prover_utilization: if total_provers > 0 {
-                (busy_provers as f64) / (total_provers as f64)
-            } else {
-                0.0
-            },
+            active_jobs: active_jobs as u32,
         }
     }
 
-    pub async fn start_proof(
+    pub fn pre_launch_proof(&self, _request: &LaunchProofRequestDto) {
+        debug!("Pre-launch hook called");
+    }
+
+    pub async fn launch_proof(
         &self,
-        request: StartProofRequestDto,
-    ) -> Result<StartProofResponseDto> {
+        request: LaunchProofRequestDto,
+    ) -> Result<LaunchProofResponseDto> {
+        self.pre_launch_proof(&request);
+
         let block_id = BlockId::from(request.block_id.clone());
         let required_compute_capacity = ComputeCapacity { compute_units: request.compute_units };
         let job = self.create_job(block_id, required_compute_capacity, request.input_path).await?;
@@ -184,7 +190,11 @@ impl CoordinatorService {
         self.jobs.write().await.insert(job_id.clone(), job);
 
         info!("Successfully started proof job: {}", job_id.as_string());
-        Ok(StartProofResponseDto { job_id })
+        Ok(LaunchProofResponseDto { job_id })
+    }
+
+    pub fn post_launch_proof(&self) {
+        debug!("Post-launch hook called");
     }
 
     pub async fn create_job(
@@ -833,6 +843,8 @@ impl CoordinatorService {
         }
 
         drop(jobs);
+
+        self.post_launch_proof();
 
         Ok(())
     }

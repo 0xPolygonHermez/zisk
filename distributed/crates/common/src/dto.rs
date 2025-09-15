@@ -28,8 +28,8 @@ pub struct JobsListDto {
 pub struct JobStatusDto {
     pub job_id: JobId,
     pub block_id: BlockId,
-    pub phase: JobPhase,
     pub status: JobState,
+    pub phase: Option<JobPhase>,
     pub assigned_provers: Vec<ProverId>,
     pub start_time: u64,
     pub duration_ms: u64,
@@ -53,19 +53,15 @@ pub struct SystemStatusDto {
     pub idle_provers: u32,
     pub busy_provers: u32,
     pub active_jobs: u32,
-    pub pending_jobs: u32,
-    pub completed_jobs_last_minute: u32,
-    pub job_completion_rate: f64,
-    pub prover_utilization: f64,
 }
 
-pub struct StartProofRequestDto {
+pub struct LaunchProofRequestDto {
     pub block_id: BlockId,
     pub compute_units: u32,
     pub input_path: String,
 }
 
-pub struct StartProofResponseDto {
+pub struct LaunchProofResponseDto {
     pub job_id: JobId,
 }
 

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use distributed_grpc_api::{distributed_api_client::DistributedApiClient, StartProofRequest};
+use distributed_grpc_api::{distributed_api_client::DistributedApiClient, LaunchProofRequest};
 use tonic::transport::Channel;
 use tracing::{error, info};
 
@@ -11,7 +11,7 @@ pub async fn handle(server_url: String, input_path: String, compute_capacity: u3
     let channel = Channel::from_shared(server_url)?.connect().await?;
     let mut client = DistributedApiClient::new(channel);
 
-    let start_proof_request = StartProofRequest {
+    let launch_proof_request = LaunchProofRequest {
         block_id: "0x1234567890abcdef".into(), // Placeholder block ID
         compute_units: compute_capacity,
         input_path,
@@ -19,16 +19,16 @@ pub async fn handle(server_url: String, input_path: String, compute_capacity: u3
 
     // Make the RPC call
     info!(
-        "Sending StartProof request for block id: {} with {} compute units",
-        start_proof_request.block_id, start_proof_request.compute_units
+        "Sending Launch request for block id: {} with {} compute units",
+        launch_proof_request.block_id, launch_proof_request.compute_units
     );
-    let response = client.start_proof(start_proof_request).await?;
+    let response = client.launch_proof(launch_proof_request).await?;
 
     match response.into_inner().result {
-        Some(distributed_grpc_api::start_proof_response::Result::JobId(job_id)) => {
+        Some(distributed_grpc_api::launch_proof_response::Result::JobId(job_id)) => {
             info!("Proof job started successfully with job_id: {}", job_id);
         }
-        Some(distributed_grpc_api::start_proof_response::Result::Error(error)) => {
+        Some(distributed_grpc_api::launch_proof_response::Result::Error(error)) => {
             error!("Proof job failed: {} - {}", error.code, error.message);
         }
         None => {

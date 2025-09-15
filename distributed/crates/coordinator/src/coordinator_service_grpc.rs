@@ -175,9 +175,11 @@ impl DistributedApi for CoordinatorServiceGrpc {
         self.validate_admin_request(&request)?;
 
         let job_id = JobId::from(request.into_inner().job_id);
-        let job_status = self.coordinator_service.handle_job_status(&job_id);
-
-        Ok(Response::new(job_status.into()))
+        self.coordinator_service
+            .handle_job_status(&job_id)
+            .await
+            .map(|status_dto| Response::new(status_dto.into()))
+            .map_err(|e| Status::internal(format!("Failed to get job status: {}", e)))
     }
 
     async fn system_status(
@@ -191,14 +193,14 @@ impl DistributedApi for CoordinatorServiceGrpc {
         Ok(Response::new(system_status.into()))
     }
 
-    async fn start_proof(
+    async fn launch_proof(
         &self,
-        request: Request<StartProofRequest>,
-    ) -> Result<Response<StartProofResponse>, Status> {
+        request: Request<LaunchProofRequest>,
+    ) -> Result<Response<LaunchProofResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let start_proof_request_dto = request.into_inner().into();
-        let result = self.coordinator_service.start_proof(start_proof_request_dto).await;
+        let launch_proof_request_dto = request.into_inner().into();
+        let result = self.coordinator_service.launch_proof(launch_proof_request_dto).await;
 
         result
             .map(|response_dto| Response::new(response_dto.into()))

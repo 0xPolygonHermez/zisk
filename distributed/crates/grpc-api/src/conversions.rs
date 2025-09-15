@@ -1,12 +1,13 @@
 use crate::{
     coordinator_message::Payload, execute_task_request, execute_task_response, job_status_response,
-    jobs_list_response, provers_list_response, start_proof_response, system_status_response,
+    jobs_list_response, launch_proof_response, provers_list_response, system_status_response,
     AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity, ContributionParams,
     CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck,
-    JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, Metrics, Proof,
-    ProofList, ProveParams, ProverError, ProverInfo, ProverReconnectRequest, ProverRegisterRequest,
-    ProverRegisterResponse, ProversList, ProversListResponse, Shutdown, StartProofRequest,
-    StartProofResponse, StatusInfoResponse, SystemStatus, SystemStatusResponse, TaskType,
+    JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, LaunchProofRequest,
+    LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, ProverError, ProverInfo,
+    ProverReconnectRequest, ProverRegisterRequest, ProverRegisterResponse, ProversList,
+    ProversListResponse, Shutdown, StatusInfoResponse, SystemStatus, SystemStatusResponse,
+    TaskType,
 };
 use distributed_common::*;
 
@@ -74,7 +75,7 @@ impl From<JobStatusDto> for JobStatus {
         JobStatus {
             job_id: dto.job_id.into(),
             block_id: dto.block_id.into(),
-            phase: dto.phase.to_string(),
+            phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
             status: dto.status.to_string(),
             assigned_provers: dto.assigned_provers.into_iter().map(|id| id.into()).collect(),
             start_time: dto.start_time,
@@ -88,7 +89,7 @@ impl From<JobStatusDto> for JobStatusResponse {
         let job_status = JobStatus {
             job_id: dto.job_id.into(),
             block_id: dto.block_id.into(),
-            phase: dto.phase.to_string(),
+            phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
             status: dto.status.to_string(),
             assigned_provers: dto.assigned_provers.into_iter().map(|id| id.into()).collect(),
             start_time: dto.start_time,
@@ -100,9 +101,9 @@ impl From<JobStatusDto> for JobStatusResponse {
 
 impl From<ProversListDto> for ProversListResponse {
     fn from(dto: ProversListDto) -> Self {
-        let prover_statuses: Vec<ProverInfo> =
+        let provers_info: Vec<ProverInfo> =
             dto.provers.into_iter().map(|prover| prover.into()).collect();
-        let provers_list = ProversList { provers: prover_statuses };
+        let provers_list = ProversList { provers: provers_info };
         ProversListResponse {
             result: Some(provers_list_response::Result::ProversList(provers_list)),
         }
@@ -115,11 +116,14 @@ impl From<ProverInfoDto> for ProverInfo {
             prover_id: dto.prover_id.into(),
             state: dto.state.to_string(),
             compute_capacity: Some(dto.compute_capacity.into()),
+            last_heartbeat: Some(prost_types::Timestamp {
+                seconds: dto.last_heartbeat.timestamp(),
+                nanos: dto.last_heartbeat.timestamp_subsec_nanos() as i32,
+            }),
             connected_at: Some(prost_types::Timestamp {
                 seconds: dto.connected_at.timestamp(),
                 nanos: dto.connected_at.timestamp_subsec_nanos() as i32,
             }),
-            last_heartbeat: dto.last_heartbeat.timestamp() as u64,
         }
     }
 }
@@ -132,19 +136,15 @@ impl From<SystemStatusDto> for SystemStatusResponse {
             idle_provers: dto.idle_provers,
             busy_provers: dto.busy_provers,
             active_jobs: dto.active_jobs,
-            pending_jobs: dto.pending_jobs,
-            completed_jobs_last_minute: dto.completed_jobs_last_minute,
-            job_completion_rate: dto.job_completion_rate,
-            prover_utilization: dto.prover_utilization,
         };
 
         SystemStatusResponse { result: Some(system_status_response::Result::Status(system_status)) }
     }
 }
 
-impl From<StartProofRequestDto> for StartProofRequest {
-    fn from(dto: StartProofRequestDto) -> Self {
-        StartProofRequest {
+impl From<LaunchProofRequestDto> for LaunchProofRequest {
+    fn from(dto: LaunchProofRequestDto) -> Self {
+        LaunchProofRequest {
             block_id: dto.block_id.into(),
             compute_units: dto.compute_units,
             input_path: dto.input_path,
@@ -152,9 +152,9 @@ impl From<StartProofRequestDto> for StartProofRequest {
     }
 }
 
-impl From<StartProofRequest> for StartProofRequestDto {
-    fn from(req: StartProofRequest) -> Self {
-        StartProofRequestDto {
+impl From<LaunchProofRequest> for LaunchProofRequestDto {
+    fn from(req: LaunchProofRequest) -> Self {
+        LaunchProofRequestDto {
             block_id: req.block_id.into(),
             compute_units: req.compute_units,
             input_path: req.input_path,
@@ -162,9 +162,11 @@ impl From<StartProofRequest> for StartProofRequestDto {
     }
 }
 
-impl From<StartProofResponseDto> for StartProofResponse {
-    fn from(dto: StartProofResponseDto) -> Self {
-        StartProofResponse { result: Some(start_proof_response::Result::JobId(dto.job_id.into())) }
+impl From<LaunchProofResponseDto> for LaunchProofResponse {
+    fn from(dto: LaunchProofResponseDto) -> Self {
+        LaunchProofResponse {
+            result: Some(launch_proof_response::Result::JobId(dto.job_id.into())),
+        }
     }
 }
 
