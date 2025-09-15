@@ -115,16 +115,15 @@ message ProversListResponse {
 }
 
 message ProversList {
-  repeated ProverStatus provers = 1;
+  repeated ProverInfo provers = 1;
 }
-
-message ProverStatus {
+    
+message ProverInfo {
   string prover_id = 1;
   string state = 2;
-  string current_job_id = 3;
-  ComputeCapacity allocated_capacity = 4;
+  ComputeCapacity compute_capacity = 3;
+  google.protobuf.Timestamp connected_at = 4;
   uint64 last_heartbeat = 5;
-  uint32 jobs_completed = 6;
 }
 
 message SystemStatusResponse {

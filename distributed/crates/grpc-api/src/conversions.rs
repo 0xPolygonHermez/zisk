@@ -4,10 +4,9 @@ use crate::{
     AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity, ContributionParams,
     CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck,
     JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, Metrics, Proof,
-    ProofList, ProveParams, ProverError, ProverReconnectRequest, ProverRegisterRequest,
-    ProverRegisterResponse, ProverStatus, ProversList, ProversListResponse, Shutdown,
-    StartProofRequest, StartProofResponse, StatusInfoResponse, SystemStatus, SystemStatusResponse,
-    TaskType,
+    ProofList, ProveParams, ProverError, ProverInfo, ProverReconnectRequest, ProverRegisterRequest,
+    ProverRegisterResponse, ProversList, ProversListResponse, Shutdown, StartProofRequest,
+    StartProofResponse, StatusInfoResponse, SystemStatus, SystemStatusResponse, TaskType,
 };
 use distributed_common::*;
 
@@ -77,7 +76,7 @@ impl From<JobStatusDto> for JobStatus {
             block_id: dto.block_id.into(),
             phase: dto.phase.to_string(),
             status: dto.status.to_string(),
-            assigned_provers: dto.assigned_provers,
+            assigned_provers: dto.assigned_provers.into_iter().map(|id| id.into()).collect(),
             start_time: dto.start_time,
             duration_ms: dto.duration_ms,
         }
@@ -91,7 +90,7 @@ impl From<JobStatusDto> for JobStatusResponse {
             block_id: dto.block_id.into(),
             phase: dto.phase.to_string(),
             status: dto.status.to_string(),
-            assigned_provers: dto.assigned_provers,
+            assigned_provers: dto.assigned_provers.into_iter().map(|id| id.into()).collect(),
             start_time: dto.start_time,
             duration_ms: dto.duration_ms,
         };
@@ -101,7 +100,7 @@ impl From<JobStatusDto> for JobStatusResponse {
 
 impl From<ProversListDto> for ProversListResponse {
     fn from(dto: ProversListDto) -> Self {
-        let prover_statuses: Vec<ProverStatus> =
+        let prover_statuses: Vec<ProverInfo> =
             dto.provers.into_iter().map(|prover| prover.into()).collect();
         let provers_list = ProversList { provers: prover_statuses };
         ProversListResponse {
@@ -110,15 +109,17 @@ impl From<ProversListDto> for ProversListResponse {
     }
 }
 
-impl From<ProverStatusDto> for ProverStatus {
-    fn from(dto: ProverStatusDto) -> Self {
-        ProverStatus {
+impl From<ProverInfoDto> for ProverInfo {
+    fn from(dto: ProverInfoDto) -> Self {
+        ProverInfo {
             prover_id: dto.prover_id.into(),
-            state: dto.state,
-            current_job_id: dto.current_job_id.into(),
-            allocated_capacity: Some(dto.allocated_capacity.into()),
-            last_heartbeat: dto.last_heartbeat,
-            jobs_completed: dto.jobs_completed,
+            state: dto.state.to_string(),
+            compute_capacity: Some(dto.compute_capacity.into()),
+            connected_at: Some(prost_types::Timestamp {
+                seconds: dto.connected_at.timestamp(),
+                nanos: dto.connected_at.timestamp_subsec_nanos() as i32,
+            }),
+            last_heartbeat: dto.last_heartbeat.timestamp() as u64,
         }
     }
 }

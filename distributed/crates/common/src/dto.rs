@@ -1,4 +1,4 @@
-use crate::{BlockId, ComputeCapacity, JobId, JobPhase, JobState, ProverId};
+use crate::{BlockId, ComputeCapacity, JobId, JobPhase, JobState, ProverId, ProverState};
 use chrono::{DateTime, Utc};
 
 pub struct StatusInfoDto {
@@ -30,22 +30,21 @@ pub struct JobStatusDto {
     pub block_id: BlockId,
     pub phase: JobPhase,
     pub status: JobState,
-    pub assigned_provers: Vec<String>,
+    pub assigned_provers: Vec<ProverId>,
     pub start_time: u64,
     pub duration_ms: u64,
 }
 
 pub struct ProversListDto {
-    pub provers: Vec<ProverStatusDto>,
+    pub provers: Vec<ProverInfoDto>,
 }
 
-pub struct ProverStatusDto {
+pub struct ProverInfoDto {
     pub prover_id: ProverId,
-    pub state: String,
-    pub current_job_id: JobId,
-    pub allocated_capacity: ComputeCapacity,
-    pub last_heartbeat: u64,
-    pub jobs_completed: u32,
+    pub state: ProverState,
+    pub compute_capacity: ComputeCapacity,
+    pub connected_at: DateTime<Utc>,
+    pub last_heartbeat: DateTime<Utc>,
 }
 
 pub struct SystemStatusDto {

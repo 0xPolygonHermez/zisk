@@ -163,7 +163,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
     ) -> Result<Response<ProversListResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let provers_list = self.coordinator_service.handle_provers_list();
+        let provers_list = self.coordinator_service.handle_provers_list().await;
 
         Ok(Response::new(provers_list.into()))
     }

@@ -1,5 +1,6 @@
 use distributed_common::{
-    ComputeCapacity, CoordinatorMessageDto, Error, ProverId, ProverState, Result,
+    ComputeCapacity, CoordinatorMessageDto, Error, ProverId, ProverInfoDto, ProverState,
+    ProversListDto, Result,
 };
 use std::collections::HashMap;
 use tokio::sync::RwLock;
@@ -28,6 +29,24 @@ impl ProversPool {
         ComputeCapacity { compute_units: total_capacity }
     }
 
+    pub async fn provers_list(&self) -> ProversListDto {
+        let provers = self
+            .provers
+            .read()
+            .await
+            .iter()
+            .map(|(_, prover_info)| ProverInfoDto {
+                prover_id: prover_info.prover_id.clone(),
+                state: prover_info.state.clone(),
+                compute_capacity: prover_info.compute_capacity,
+                connected_at: prover_info.connected_at,
+                last_heartbeat: prover_info.last_heartbeat,
+            })
+            .collect();
+
+        ProversListDto { provers }
+    }
+
     /// Register a new prover
     pub async fn register_prover(
         &self,
@@ -35,7 +54,7 @@ impl ProversPool {
         compute_capacity: impl Into<ComputeCapacity>,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Result<ProverId> {
-        let connection = ProverInfo::new(compute_capacity.into(), msg_sender);
+        let connection = ProverInfo::new(prover_id.clone(), compute_capacity.into(), msg_sender);
 
         self.provers.write().await.insert(prover_id.clone(), connection);
 

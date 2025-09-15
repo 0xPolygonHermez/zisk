@@ -1,4 +1,5 @@
 use borsh::{BorshDeserialize, BorshSerialize};
+use chrono::{DateTime, Utc};
 use proofman::ContributionsInfo;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -173,6 +174,8 @@ impl std::fmt::Display for ComputeCapacity {
 #[derive(Debug, Clone)]
 pub struct Job {
     pub job_id: JobId,
+    pub start_time: DateTime<Utc>,
+    pub duration_ms: Option<u64>,
     pub state: JobState,
     pub block: BlockContext,
     pub compute_units: u32,

@@ -66,15 +66,35 @@ impl CoordinatorService {
         )
     }
 
-    /// List all running jobs where job_state is Running(...)
+    /// List all running jobs only
     pub async fn handle_jobs_list(&self) -> JobsListDto {
-        // TODO: Implement actual job retrieval from database
-        JobsListDto { jobs: Vec::new() }
+        let jobs = self
+            .jobs
+            .read()
+            .await
+            .values()
+            .filter_map(|job| {
+                if let JobState::Running(phase) = &job.state {
+                    Some(JobStatusDto {
+                        job_id: job.job_id.clone(),
+                        block_id: job.block.block_id.clone(),
+                        phase: phase.clone(),
+                        status: job.state.clone(),
+                        assigned_provers: job.provers.clone(),
+                        start_time: job.start_time.timestamp() as u64,
+                        duration_ms: job.duration_ms.unwrap_or(0),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        JobsListDto { jobs }
     }
 
-    pub fn handle_provers_list(&self) -> ProversListDto {
-        // TODO: Implement actual prover retrieval from database
-        ProversListDto { provers: Vec::new() }
+    pub async fn handle_provers_list(&self) -> ProversListDto {
+        self.provers_pool.provers_list().await
     }
 
     pub fn handle_job_status(&self, job_id: &JobId) -> JobStatusDto {
@@ -84,7 +104,10 @@ impl CoordinatorService {
             block_id: BlockId::from("block123".to_string()),
             phase: JobPhase::Contributions,
             status: JobState::Running(JobPhase::Contributions),
-            assigned_provers: vec!["prover1".to_string(), "prover2".to_string()],
+            assigned_provers: vec![
+                ProverId::from("prover1".to_string()),
+                ProverId::from("prover2".to_string()),
+            ],
             start_time: Utc::now().timestamp() as u64,
             duration_ms: 5000,
         }
@@ -184,6 +207,8 @@ impl CoordinatorService {
 
         Ok(Job {
             job_id: job_id.clone(),
+            start_time: Utc::now(),
+            duration_ms: None,
             state: JobState::Running(JobPhase::Contributions),
             block: BlockContext {
                 block_id: block_id.clone(),
