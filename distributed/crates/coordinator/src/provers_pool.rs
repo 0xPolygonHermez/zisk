@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-use crate::{coordinator_service::MessageSender, ProverConnection};
+use crate::{coordinator_service::MessageSender, ProverInfo};
 
 pub struct ProversPool {
     /// Map of prover_id to ProverConnection
-    pub provers: RwLock<HashMap<ProverId, ProverConnection>>,
+    pub provers: RwLock<HashMap<ProverId, ProverInfo>>,
 }
 
 impl ProversPool {
@@ -28,19 +28,29 @@ impl ProversPool {
         ComputeCapacity { compute_units: total_capacity }
     }
 
+    /// Register a new prover
     pub async fn register_prover(
         &self,
         prover_id: ProverId,
         compute_capacity: impl Into<ComputeCapacity>,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Result<ProverId> {
-        let connection = ProverConnection::new(compute_capacity.into(), msg_sender);
+        let connection = ProverInfo::new(compute_capacity.into(), msg_sender);
 
         self.provers.write().await.insert(prover_id.clone(), connection);
 
         info!("Registered prover: {} (total: {})", prover_id, self.num_provers().await);
 
         Ok(prover_id)
+    }
+
+    /// Unregister a prover
+    pub async fn unregister_prover(&self, prover_id: &ProverId) -> Result<()> {
+        self.provers.write().await.remove(prover_id).map(|_| ()).ok_or_else(|| {
+            let msg = format!("Prover {prover_id} not found for removal");
+            warn!("{}", msg);
+            Error::InvalidRequest(msg)
+        })
     }
 
     pub async fn prover_state(&self, prover_id: &ProverId) -> Option<ProverState> {
@@ -70,15 +80,6 @@ impl ProversPool {
         }
 
         Ok(())
-    }
-
-    /// Remove a prover connection
-    pub async fn unregister_prover(&self, prover_id: &ProverId) -> Result<()> {
-        self.provers.write().await.remove(prover_id).map(|_| ()).ok_or_else(|| {
-            let msg = format!("Prover {prover_id} not found for removal");
-            warn!("{}", msg);
-            Error::InvalidRequest(msg)
-        })
     }
 
     pub async fn send_message(
@@ -122,7 +123,7 @@ impl ProversPool {
 
         let provers = self.provers.write().await;
 
-        let available_provers: Vec<(&ProverId, &ProverConnection)> =
+        let available_provers: Vec<(&ProverId, &ProverInfo)> =
             provers.iter().filter(|(_, p)| matches!(p.state, ProverState::Idle)).collect();
 
         let available_capacity: u32 =

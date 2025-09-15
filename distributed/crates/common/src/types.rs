@@ -1,7 +1,12 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use proofman::ContributionsInfo;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Display, ops::Range, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display},
+    ops::Range,
+    path::PathBuf,
+};
 
 /// Job ID wrapper for type safety
 #[derive(
@@ -146,7 +151,7 @@ impl Display for ProverState {
             ProverState::Disconnected => "Disconnected",
             ProverState::Connecting => "Connecting",
             ProverState::Idle => "Idle",
-            ProverState::Computing(phase) => return write!(f, "Computing({})", phase.as_string()),
+            ProverState::Computing(phase) => return write!(f, "Computing({})", phase),
             ProverState::Error => "Error",
         };
         write!(f, "{}", state_str)
@@ -182,6 +187,16 @@ pub enum JobState {
     Running(JobPhase),
     Completed,
     Failed,
+}
+
+impl fmt::Display for JobState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JobState::Running(phase) => write!(f, "Running ({:?})", phase),
+            JobState::Completed => write!(f, "Completed"),
+            JobState::Failed => write!(f, "Failed"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -230,12 +245,12 @@ impl TryFrom<u8> for JobPhase {
     }
 }
 
-impl JobPhase {
-    pub fn as_string(&self) -> String {
+impl fmt::Display for JobPhase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            JobPhase::Contributions => "Contributions".to_string(),
-            JobPhase::Prove => "Prove".to_string(),
-            JobPhase::Aggregate => "Aggregate".to_string(),
+            JobPhase::Contributions => write!(f, "Contributions"),
+            JobPhase::Prove => write!(f, "Prove"),
+            JobPhase::Aggregate => write!(f, "Aggregate"),
         }
     }
 }

@@ -134,7 +134,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
     ) -> Result<Response<StatusInfoResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let status_info = self.coordinator_service.status_info();
+        let status_info = self.coordinator_service.handle_status_info().await;
 
         Ok(Response::new(status_info.into()))
     }
@@ -152,7 +152,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
     ) -> Result<Response<JobsListResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let jobs_list = self.coordinator_service.jobs_list();
+        let jobs_list = self.coordinator_service.handle_jobs_list().await;
 
         Ok(Response::new(jobs_list.into()))
     }
@@ -163,7 +163,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
     ) -> Result<Response<ProversListResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let provers_list = self.coordinator_service.provers_list();
+        let provers_list = self.coordinator_service.handle_provers_list();
 
         Ok(Response::new(provers_list.into()))
     }
@@ -175,7 +175,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
         self.validate_admin_request(&request)?;
 
         let job_id = JobId::from(request.into_inner().job_id);
-        let job_status = self.coordinator_service.job_status(&job_id);
+        let job_status = self.coordinator_service.handle_job_status(&job_id);
 
         Ok(Response::new(job_status.into()))
     }
@@ -309,11 +309,6 @@ impl DistributedApi for CoordinatorServiceGrpc {
 
             // Stream cleanup - this runs when the loop breaks
             info!("Cleaning up prover {} connection", prover_id);
-
-            // Decrement connection counter
-            if let Err(e) = coordinator_service.release_connection() {
-                error!("Failed to release connection: {}", e);
-            }
 
             // Perform async cleanup
             if let Err(e) = coordinator_service.unregister_prover(&prover_id).await {

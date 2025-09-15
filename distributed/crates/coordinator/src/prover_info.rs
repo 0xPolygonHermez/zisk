@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use distributed_common::{ComputeCapacity, ProverState};
 
 /// Information about a connected prover client
-pub struct ProverConnection {
+pub struct ProverInfo {
     pub state: ProverState,
     pub compute_capacity: ComputeCapacity,
     connected_at: DateTime<Utc>,
@@ -14,7 +14,7 @@ pub struct ProverConnection {
     pub msg_sender: Box<dyn MessageSender + Send + Sync>,
 }
 
-impl ProverConnection {
+impl ProverInfo {
     /// Create a new ProverConnection2
     pub fn new(
         compute_capacity: ComputeCapacity,
@@ -35,7 +35,7 @@ impl ProverConnection {
     }
 }
 
-impl Display for ProverConnection {
+impl Display for ProverInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

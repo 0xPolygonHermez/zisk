@@ -1,4 +1,4 @@
-use crate::ProversPool;
+use crate::{config::Config, ProversPool};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -11,10 +11,7 @@ use distributed_common::{
     ProverReconnectRequestDto, ProverRegisterRequestDto, ProverState, ProversListDto,
     StartProofRequestDto, StartProofResponseDto, StatusInfoDto, SystemStatusDto,
 };
-
-use crate::config::Config;
 use proofman::ContributionsInfo;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::{collections::HashMap, path::PathBuf};
 use tokio::sync::RwLock;
 use tonic::Status;
@@ -26,11 +23,16 @@ pub trait MessageSender {
 
 /// Represents the runtime state of the service
 pub struct CoordinatorService {
+    /// Config data including Server, Logging and Coordinator settings
     config: Config,
-    start_time_utc: DateTime<Utc>,
-    active_connections: AtomicU32,
 
+    /// DateTime when the service was started
+    start_time_utc: DateTime<Utc>,
+
+    /// Pool of streaming connections
     provers_pool: ProversPool,
+
+    /// Hashmap of jobs
     jobs: RwLock<HashMap<JobId, Job>>,
 }
 
@@ -44,46 +46,16 @@ impl CoordinatorService {
         Self {
             config,
             start_time_utc,
-            active_connections: AtomicU32::new(0),
             provers_pool: ProversPool::new(),
             jobs: RwLock::new(HashMap::new()),
         }
     }
 
-    // Check connection limits for streaming connections and acquire a connection slot
-    fn acquire_connection(&self) -> Result<()> {
-        let max_connections = self.config.coordinator.max_total_provers as usize;
-
-        let current_connections = self.active_connections.load(Ordering::SeqCst);
-        if current_connections >= max_connections as u32 {
-            return Err(Error::Service(format!(
-                "Maximum concurrent connections reached: {}/{}",
-                current_connections, max_connections
-            ))
-            .into());
-        }
-
-        // Increment connection counter
-        self.active_connections.fetch_add(1, Ordering::SeqCst);
-
-        Ok(())
-    }
-
-    pub fn release_connection(&self) -> Result<()> {
-        let current = self.active_connections.load(Ordering::SeqCst);
-        if current == 0 {
-            return Err(Error::Service("No active connections to release".to_string()).into());
-        }
-
-        self.active_connections.fetch_sub(1, Ordering::SeqCst);
-        Ok(())
-    }
-
-    pub fn status_info(&self) -> StatusInfoDto {
+    pub async fn handle_status_info(&self) -> StatusInfoDto {
         let uptime_seconds = (Utc::now() - self.start_time_utc).num_seconds() as u64;
 
         let metrics =
-            MetricsDto { active_connections: self.active_connections.load(Ordering::SeqCst) };
+            MetricsDto { active_connections: self.provers_pool.num_provers().await as u32 };
 
         StatusInfoDto::new(
             "Distributed Prover Service".to_string(),
@@ -94,23 +66,24 @@ impl CoordinatorService {
         )
     }
 
-    pub fn jobs_list(&self) -> JobsListDto {
+    /// List all running jobs where job_state is Running(...)
+    pub async fn handle_jobs_list(&self) -> JobsListDto {
         // TODO: Implement actual job retrieval from database
         JobsListDto { jobs: Vec::new() }
     }
 
-    pub fn provers_list(&self) -> ProversListDto {
+    pub fn handle_provers_list(&self) -> ProversListDto {
         // TODO: Implement actual prover retrieval from database
         ProversListDto { provers: Vec::new() }
     }
 
-    pub fn job_status(&self, job_id: &JobId) -> JobStatusDto {
+    pub fn handle_job_status(&self, job_id: &JobId) -> JobStatusDto {
         // TODO: Implement actual job retrieval from database
         JobStatusDto {
             job_id: job_id.clone(),
             block_id: BlockId::from("block123".to_string()),
-            phase: "proving".to_string(),
-            status: "in_progress".to_string(),
+            phase: JobPhase::Contributions,
+            status: JobState::Running(JobPhase::Contributions),
             assigned_provers: vec!["prover1".to_string(), "prover2".to_string()],
             start_time: Utc::now().timestamp() as u64,
             duration_ms: 5000,
@@ -252,19 +225,23 @@ impl CoordinatorService {
         req: ProverRegisterRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Result<ProverId, Status> {
-        // TODO: Check if prover_id is known and only then acquire connection
-        self.acquire_connection().map_err(|e| {
-            Status::resource_exhausted(format!("Connection limit reached: {}", e.to_string()))
-        })?;
+        let max_connections = self.config.coordinator.max_total_provers as usize;
+        if self.provers_pool.num_provers().await >= max_connections {
+            return Err(Status::resource_exhausted(format!(
+                "Maximum concurrent connections reached: {}/{}",
+                self.provers_pool.num_provers().await,
+                max_connections
+            )));
+        }
+
+        let prover_id = ProverId::from(req.prover_id);
+
+        // TODO: Check if prover_id is already registered
 
         self.provers_pool
-            .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
+            .register_prover(prover_id, req.compute_capacity, msg_sender)
             .await
-            .map_err(|e| {
-                // Release connection on registration failure
-                let _ = self.release_connection();
-                Status::internal(format!("Registration failed: {e}"))
-            })
+            .map_err(|e| Status::internal(format!("Registration failed: {e}")))
     }
 
     /// Handle reconnection directly in stream context
@@ -273,19 +250,14 @@ impl CoordinatorService {
         req: ProverReconnectRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Result<ProverId, Status> {
-        // TODO: Check if prover_id is known and only then acquire connection
-        self.acquire_connection().map_err(|e| {
-            Status::resource_exhausted(format!("Connection limit reached: {}", e.to_string()))
-        })?;
+        let prover_id = ProverId::from(req.prover_id);
+
+        // TODO: Check if prover_id is already registered
 
         self.provers_pool
-            .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
+            .register_prover(prover_id, req.compute_capacity, msg_sender)
             .await
-            .map_err(|e| {
-                // Release connection on registration failure
-                let _ = self.release_connection();
-                Status::internal(format!("Reconnection failed: {e}"))
-            })
+            .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))
     }
 
     /// Unregister a prover by its ID

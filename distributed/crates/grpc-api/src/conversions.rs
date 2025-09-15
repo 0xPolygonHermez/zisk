@@ -75,8 +75,8 @@ impl From<JobStatusDto> for JobStatus {
         JobStatus {
             job_id: dto.job_id.into(),
             block_id: dto.block_id.into(),
-            phase: dto.phase,
-            status: dto.status,
+            phase: dto.phase.to_string(),
+            status: dto.status.to_string(),
             assigned_provers: dto.assigned_provers,
             start_time: dto.start_time,
             duration_ms: dto.duration_ms,
@@ -89,8 +89,8 @@ impl From<JobStatusDto> for JobStatusResponse {
         let job_status = JobStatus {
             job_id: dto.job_id.into(),
             block_id: dto.block_id.into(),
-            phase: dto.phase,
-            status: dto.status,
+            phase: dto.phase.to_string(),
+            status: dto.status.to_string(),
             assigned_provers: dto.assigned_provers,
             start_time: dto.start_time,
             duration_ms: dto.duration_ms,
