@@ -20,10 +20,12 @@ SECTIONS
 
   . = ALIGN(8);
   PROVIDE(_global_pointer = .);
+  . = ALIGN(8);
   .rodata : { *(.rodata .rodata.*)} >rom AT>rom :rodata
 
   .data : { *(.data .data.* .sdata .sdata.*) } >ram AT>ram :data
 
+  . = ALIGN(8);
   .bss : {
     PROVIDE(_bss_start = .);
     *(.bss .bss.*);
@@ -37,5 +39,6 @@ SECTIONS
   PROVIDE(_kernel_heap_top = ORIGIN(ram) + LENGTH(ram));
   PROVIDE(_kernel_heap_size = _kernel_heap_top - _kernel_heap_bottom);
 
+  . = ALIGN(8);
   _end = .;
 }

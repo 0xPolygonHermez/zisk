@@ -17,9 +17,12 @@ const uint64_t FREG_FIRST = SYS_ADDR + FREG_OFFSET * 8;
 const uint64_t FREG_F0 = FREG_FIRST;
 const uint64_t FREG_CSR = FREG_FIRST + 32 * 8; // Floating-point control and status register (fcsr)
 const uint64_t FREG_INST = FREG_FIRST + 33 * 8; // Floating-point instruction register (finst)
+const uint64_t FREG_X0 = FREG_FIRST + 35 * 8; // Integer register backup for floating-point instructions (fX0)
+
+#define fregs ((volatile uint64_t *)FREG_F0)
+#define fregs_x ((volatile uint64_t *)FREG_X0)
+
 static uint64_t myvalue = 0x3ff3333333333333; // 1.7
-extern uint64_t * regs;
-extern uint64_t * fregs;
 
 // Negate a float by flipping its sign bit(s)
 const uint64_t F64_SIGN_BIT_MASK = 0x8000000000000000;

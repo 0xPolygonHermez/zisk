@@ -298,6 +298,10 @@ impl Riscv2ZiskContext<'_> {
             "fsgnj.d" => self.float(riscv_instruction, "fsgnj.d", 4),
             "fsgnjn.d" => self.float(riscv_instruction, "fsgnjn.d", 4),
             "fsgnjx.d" => self.float(riscv_instruction, "fsgnjx.d", 4),
+            "fmadd.d" => self.float(riscv_instruction, "fmadd.d", 4),
+            "fnmadd.d" => self.float(riscv_instruction, "fnmadd.d", 4),
+            "fmsub.d" => self.float(riscv_instruction, "fmsub.d", 4),
+            "fnmsub.d" => self.float(riscv_instruction, "fnmsub.d", 4),
 
             _ => panic!(
                 "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
@@ -1539,7 +1543,7 @@ impl Riscv2ZiskContext<'_> {
             zib.op("copyb").unwrap();
             zib.store("mem", FREG_INST as i64, false, false);
             zib.j(1, 1);
-            zib.verbose(&format!("float store inst {} inst=0x{:x}", op, i.rvinst));
+            zib.verbose(&format!("Float: store inst {} inst=0x{:x}", op, i.rvinst));
             zib.build();
             self.insts.insert(self.s, zib);
             self.s += 1;
@@ -1557,7 +1561,7 @@ impl Riscv2ZiskContext<'_> {
                 FLOAT_HANDLER_ADDR as i64 - self.s as i64,
                 FLOAT_HANDLER_ADDR as i64 - self.s as i64,
             ); // Jump to float handler
-            zib.verbose(&format!("float store ra {} inst=0x{:x} ra=0x{:x}", op, i.rvinst, ra));
+            zib.verbose(&format!("Float: store ra {} inst=0x{:x} ra=0x{:x}", op, i.rvinst, ra));
             zib.build();
             self.insts.insert(self.s, zib);
             self.s += inst_size - 1;
