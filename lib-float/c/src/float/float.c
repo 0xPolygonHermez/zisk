@@ -18,6 +18,10 @@ void update_rounding_mode (uint64_t * rm);
 
 void _zisk_float (void)
 {
+    // Before calling any softfloat function, set the rounding mode from the fcsr register
+    // into the softfloat_roundingMode variable.
+    softfloat_roundingMode = (fcsr >> 5) & 0x7;
+
     uint64_t inst = *(uint64_t *)FREG_INST;
     switch (inst & 0x7F)
     {
