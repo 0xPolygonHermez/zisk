@@ -22,7 +22,7 @@ impl From<ComputeCapacity> for GrpcComputeCapacity {
 
 impl From<GrpcComputeCapacity> for ComputeCapacity {
     fn from(grpc_capacity: GrpcComputeCapacity) -> Self {
-        ComputeCapacity { compute_units: grpc_capacity.compute_units }
+        ComputeCapacity::from(grpc_capacity.compute_units)
     }
 }
 
@@ -76,7 +76,7 @@ impl From<JobStatusDto> for JobStatus {
             job_id: dto.job_id.into(),
             block_id: dto.block_id.into(),
             phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
-            status: dto.status.to_string(),
+            state: dto.state.to_string(),
             assigned_provers: dto.assigned_provers.into_iter().map(|id| id.into()).collect(),
             start_time: dto.start_time,
             duration_ms: dto.duration_ms,
@@ -90,7 +90,7 @@ impl From<JobStatusDto> for JobStatusResponse {
             job_id: dto.job_id.into(),
             block_id: dto.block_id.into(),
             phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
-            status: dto.status.to_string(),
+            state: dto.state.to_string(),
             assigned_provers: dto.assigned_provers.into_iter().map(|id| id.into()).collect(),
             start_time: dto.start_time,
             duration_ms: dto.duration_ms,
@@ -180,9 +180,7 @@ impl From<ProverRegisterRequest> for ProverRegisterRequestDto {
     fn from(req: ProverRegisterRequest) -> Self {
         ProverRegisterRequestDto {
             prover_id: req.prover_id.into(),
-            compute_capacity: ComputeCapacity {
-                compute_units: req.compute_capacity.unwrap().compute_units,
-            },
+            compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
         }
     }
 }
@@ -191,9 +189,7 @@ impl From<ProverReconnectRequest> for ProverReconnectRequestDto {
     fn from(req: ProverReconnectRequest) -> Self {
         ProverReconnectRequestDto {
             prover_id: req.prover_id.into(),
-            compute_capacity: ComputeCapacity {
-                compute_units: req.compute_capacity.unwrap().compute_units,
-            },
+            compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
         }
     }
 }

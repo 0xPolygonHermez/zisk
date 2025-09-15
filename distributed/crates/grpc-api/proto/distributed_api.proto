@@ -101,7 +101,7 @@ message JobStatus {
   string job_id = 1;
   string block_id = 2;
   string phase = 3;
-  string status = 4;
+  string state = 4;
   repeated string assigned_provers = 5;
   uint64 start_time = 6;
   uint64 duration_ms = 7;

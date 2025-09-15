@@ -158,3 +158,4 @@ prost-types = "0.14"
 config = "0.15"
 toml = "0.9"
 borsh = { version = "1.5", features = ["derive"] }
+reqwest = { version = "0.12", features = ["stream", "json", "rustls-tls"], default-features = false }

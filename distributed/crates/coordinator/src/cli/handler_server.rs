@@ -6,9 +6,9 @@ use tonic::transport::Server;
 use tracing::{error, info};
 
 /// Handle the server mode (default behavior)
-pub async fn handle(port_override: Option<u16>) -> Result<()> {
+pub async fn handle(port_override: Option<u16>, webhook_url: Option<String>) -> Result<()> {
     // Load configuration
-    let config = Config::load()?;
+    let config = Config::load(port_override, webhook_url)?;
 
     // Create coordinator service
     let coordinator_service = CoordinatorServiceGrpc::new(config.clone()).await?;

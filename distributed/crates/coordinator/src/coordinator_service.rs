@@ -3,13 +3,13 @@ use crate::{config::Config, ProversPool};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use distributed_common::{
-    AggParamsDto, AggProofData, BlockContext, BlockId, ChallengesDto, ComputeCapacity,
-    ContributionParamsDto, CoordinatorMessageDto, Error, ExecuteTaskRequestDto,
-    ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
-    HeartbeatAckDto, Job, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
-    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
-    ProveParamsDto, ProverErrorDto, ProverId, ProverReconnectRequestDto, ProverRegisterRequestDto,
-    ProverState, ProversListDto, StatusInfoDto, SystemStatusDto,
+    AggParamsDto, AggProofData, BlockId, ChallengesDto, ComputeCapacity, ContributionParamsDto,
+    CoordinatorMessageDto, Error, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
+    ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, Job, JobId,
+    JobPhase, JobResult, JobResultData, JobState, JobStatusDto, JobsListDto, LaunchProofRequestDto,
+    LaunchProofResponseDto, MetricsDto, ProofDto, ProveParamsDto, ProverErrorDto, ProverId,
+    ProverReconnectRequestDto, ProverRegisterRequestDto, ProverState, ProversListDto,
+    StatusInfoDto, SystemStatusDto,
 };
 use proofman::ContributionsInfo;
 use std::{collections::HashMap, path::PathBuf};
@@ -39,8 +39,6 @@ pub struct CoordinatorService {
 impl CoordinatorService {
     #[instrument(skip(config))]
     pub fn new(config: Config) -> Self {
-        info!("Initializing service state");
-
         let start_time_utc = Utc::now();
 
         Self {
@@ -79,7 +77,7 @@ impl CoordinatorService {
                         job_id: job.job_id.clone(),
                         block_id: job.block.block_id.clone(),
                         phase: Some(phase.clone()),
-                        status: job.state.clone(),
+                        state: job.state.clone(),
                         assigned_provers: job.provers.clone(),
                         start_time: job.start_time.timestamp() as u64,
                         duration_ms: job.duration_ms.unwrap_or(0),
@@ -105,7 +103,7 @@ impl CoordinatorService {
         Ok(JobStatusDto {
             job_id: job.job_id.clone(),
             block_id: job.block.block_id.clone(),
-            status: job.state.clone(),
+            state: job.state.clone(),
             phase: if let JobState::Running(phase) = &job.state {
                 Some(phase.clone())
             } else {
@@ -137,26 +135,50 @@ impl CoordinatorService {
         }
     }
 
-    pub fn pre_launch_proof(&self, _request: &LaunchProofRequestDto) {
-        debug!("Pre-launch hook called");
+    /// Proof Generation
+    /// -------------------------------------------------------------------------------------
+    /// The `launch_proof` function is the entry point for creating and orchestrating a new
+    /// proof workflow.  
+    /// - `pre_launch_proof` runs beforehand for validation and setup.  
+    /// - `post_launch_proof` runs afterward for cleanup, logging, or extra processing.
+    /// -------------------------------------------------------------------------------------
+
+    pub fn pre_launch_proof(&self, request: &LaunchProofRequestDto) -> Result<()> {
+        // Check if compute_units is within allowed limits
+        if request.compute_units == 0 {
+            error!("Requested compute_units is 0, which is invalid.");
+            return Err(anyhow::anyhow!("compute_units must be greater than 0".to_string()));
+        }
+
+        // Check if we have enough capacity to compute the proof is already checked
+        // in create_job > partition_and_allocate_by_capacity
+
+        // Check if input_path file exists
+        let input_path = PathBuf::from(&request.input_path);
+        if !input_path.exists() {
+            error!("Input path does not exist: {}", request.input_path);
+            return Err(anyhow::anyhow!("Input path does not exist: {}", request.input_path));
+        }
+
+        Ok(())
     }
 
     pub async fn launch_proof(
         &self,
         request: LaunchProofRequestDto,
     ) -> Result<LaunchProofResponseDto> {
-        self.pre_launch_proof(&request);
+        self.pre_launch_proof(&request)?;
 
         let block_id = BlockId::from(request.block_id.clone());
-        let required_compute_capacity = ComputeCapacity { compute_units: request.compute_units };
-        let job = self.create_job(block_id, required_compute_capacity, request.input_path).await?;
+        let required_compute_capacity = ComputeCapacity::from(request.compute_units);
 
+        let job = self
+            .create_job(block_id.clone(), required_compute_capacity, request.input_path)
+            .await?;
         let job_id = job.job_id.clone();
-        let block_id = job.block.block_id.clone();
-
-        // Send messages to selected provers
         let provers_len = job.provers.len() as u32;
 
+        // Send messages to selected provers
         for (rank_id, prover_id) in job.provers.iter().enumerate() {
             let req = ExecuteTaskRequestDto {
                 prover_id: prover_id.clone().into(),
@@ -171,30 +193,88 @@ impl CoordinatorService {
                 }),
             };
             let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
-            let message = req.into();
 
-            self.provers_pool.send_message(prover_id, message).await?;
-
+            self.provers_pool.send_message(prover_id, req.into()).await?;
             self.provers_pool
                 .mark_prover_with_state(prover_id, ProverState::Computing(JobPhase::Contributions))
                 .await?;
         }
 
-        info!(
-            "Assigned new job {} to {} provers with input path: {}",
-            job_id,
-            provers_len,
-            job.block.input_path.display()
-        );
-
         self.jobs.write().await.insert(job_id.clone(), job);
 
-        info!("Successfully started proof job: {}", job_id.as_string());
+        info!("Successfully started new job {}", job_id);
+
         Ok(LaunchProofResponseDto { job_id })
     }
 
-    pub fn post_launch_proof(&self) {
-        debug!("Post-launch hook called");
+    pub fn post_launch_proof(&self, job_id: &JobId, success: bool) {
+        // Check if webhook URL is configured
+        if let Some(webhook_url) = &self.config.coordinator.webhook_url {
+            let webhook_url = webhook_url.clone();
+            let job_id = job_id.clone();
+
+            // Spawn a non-blocking task
+            tokio::spawn(async move {
+                if let Err(e) = Self::send_completion_webhook(webhook_url, job_id, success).await {
+                    error!("Failed to send webhook notification: {}", e);
+                }
+            });
+        } else {
+            debug!("No webhook URL configured, skipping notification");
+        }
+    }
+
+    async fn send_completion_webhook(
+        webhook_url: String,
+        job_id: JobId,
+        success: bool,
+    ) -> Result<()> {
+        let client = reqwest::Client::new();
+
+        // Formats the webhook URL based on the presence of a job ID placeholder:
+        // - If the URL contains `{$job_id}`, the placeholder is replaced with the actual job ID.
+        // - If no placeholder is found, the job ID is appended to the URL as a path segment.
+
+        let webhook_url = if webhook_url.contains("{$job_id}") {
+            webhook_url.replace("{$job_id}", &job_id.as_str())
+        } else {
+            format!("{}/{}", webhook_url, job_id.as_str())
+        };
+
+        let payload = serde_json::json!({
+            "job_id": job_id.as_string(),
+            "status": if success { "completed" } else { "failed" },
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+
+        let response = match client
+            .post(&webhook_url)
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(e) => {
+                // This handles connection errors, timeouts, DNS resolution failures, etc.
+                error!("Failed to send webhook request to {}: {}", webhook_url, e);
+                return Err(e.into());
+            }
+        };
+
+        if response.status().is_success() {
+            info!("Successfully sent webhook notification for job {} to {}", job_id, webhook_url);
+        } else {
+            warn!(
+                "Webhook returned non-success status {} for job {}: {}",
+                response.status(),
+                job_id,
+                response.text().await.unwrap_or_default()
+            );
+        }
+
+        Ok(())
     }
 
     pub async fn create_job(
@@ -206,30 +286,13 @@ impl CoordinatorService {
         let (selected_provers, partitions) =
             self.provers_pool.partition_and_allocate_by_capacity(required_compute_capacity).await?;
 
-        info!(
-            "Starting proof for block {} using {} with input path: {}",
-            block_id, required_compute_capacity, input_path
-        );
-
-        // Create job
-        let job_id = JobId::new();
-        let block_id = BlockId::from(block_id);
-
-        Ok(Job {
-            job_id: job_id.clone(),
-            start_time: Utc::now(),
-            duration_ms: None,
-            state: JobState::Running(JobPhase::Contributions),
-            block: BlockContext {
-                block_id: block_id.clone(),
-                input_path: PathBuf::from(input_path.clone()),
-            },
-            compute_units: required_compute_capacity.compute_units,
-            provers: selected_provers.clone(),
-            partitions: partitions.clone(),
-            results: HashMap::new(),
-            challenges: None,
-        })
+        Ok(Job::new(
+            block_id,
+            PathBuf::from(input_path),
+            required_compute_capacity,
+            selected_provers,
+            partitions,
+        ))
     }
 
     /// Mark a job as failed and reset prover statuses
@@ -250,6 +313,9 @@ impl CoordinatorService {
             reason,
             job.provers.len()
         );
+
+        // Add webhook notification for failed jobs
+        self.post_launch_proof(job_id, false);
 
         Ok(())
     }
@@ -844,7 +910,7 @@ impl CoordinatorService {
 
         drop(jobs);
 
-        self.post_launch_proof();
+        self.post_launch_proof(&job_id, execute_task_response.success);
 
         Ok(())
     }

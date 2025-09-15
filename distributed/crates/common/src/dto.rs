@@ -28,7 +28,7 @@ pub struct JobsListDto {
 pub struct JobStatusDto {
     pub job_id: JobId,
     pub block_id: BlockId,
-    pub status: JobState,
+    pub state: JobState,
     pub phase: Option<JobPhase>,
     pub assigned_provers: Vec<ProverId>,
     pub start_time: u64,

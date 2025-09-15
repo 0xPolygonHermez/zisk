@@ -1107,6 +1107,7 @@ dependencies = [
  "futures-util",
  "proofman",
  "prost-types",
+ "reqwest",
  "serde",
  "serde_json",
  "signal-hook",

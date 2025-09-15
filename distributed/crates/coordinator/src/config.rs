@@ -41,10 +41,11 @@ pub struct CoordinatorConfig {
     pub max_total_provers: u32,
     pub phase1_timeout_seconds: u64,
     pub phase2_timeout_seconds: u64,
+    pub webhook_url: Option<String>,
 }
 
 impl Config {
-    pub fn load() -> Result<Self> {
+    pub fn load(port: Option<u16>, webhook_url: Option<String>) -> Result<Self> {
         let mut builder = config::Config::builder()
             .set_default("service.name", "coordinator-network")?
             .set_default("service.version", env!("CARGO_PKG_VERSION"))?
@@ -77,7 +78,18 @@ impl Config {
             config::Environment::with_prefix("CONSENSUS").separator("_").try_parsing(true),
         );
 
+        // Override port if provided via function argument
+        if let Some(port) = port {
+            builder = builder.set_override("server.port", port)?;
+        }
+
+        // Override webhook_url if provided via function argument
+        if let Some(url) = webhook_url {
+            builder = builder.set_override("coordinator.webhook_url", url)?;
+        }
+
         let config = builder.build()?;
+
         Ok(config.try_deserialize()?)
     }
 }
@@ -96,7 +108,7 @@ mod tests {
 
     #[test]
     fn test_config_defaults() {
-        let config = Config::load().unwrap();
+        let config = Config::load(None, None).unwrap();
         assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.server.port, 8080);
     }

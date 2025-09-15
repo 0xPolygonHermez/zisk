@@ -165,6 +165,12 @@ pub struct ComputeCapacity {
     pub compute_units: u32,
 }
 
+impl From<u32> for ComputeCapacity {
+    fn from(units: u32) -> Self {
+        Self { compute_units: units }
+    }
+}
+
 impl std::fmt::Display for ComputeCapacity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} CU", self.compute_units)
@@ -178,11 +184,34 @@ pub struct Job {
     pub duration_ms: Option<u64>,
     pub state: JobState,
     pub block: BlockContext,
-    pub compute_units: u32,
+    pub compute_units: ComputeCapacity,
     pub provers: Vec<ProverId>,
     pub partitions: Vec<Vec<u32>>,
     pub results: HashMap<JobPhase, HashMap<ProverId, JobResult>>,
     pub challenges: Option<Vec<ContributionsInfo>>,
+}
+
+impl Job {
+    pub fn new(
+        block_id: BlockId,
+        input_path: PathBuf,
+        compute_units: ComputeCapacity,
+        selected_provers: Vec<ProverId>,
+        partitions: Vec<Vec<u32>>,
+    ) -> Self {
+        Self {
+            job_id: JobId::new(),
+            start_time: Utc::now(),
+            duration_ms: None,
+            state: JobState::Running(JobPhase::Contributions),
+            block: BlockContext { block_id, input_path },
+            compute_units,
+            provers: selected_provers,
+            partitions,
+            results: HashMap::new(),
+            challenges: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

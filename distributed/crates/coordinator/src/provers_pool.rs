@@ -39,7 +39,8 @@ impl ProversPool {
     pub async fn compute_capacity(&self) -> ComputeCapacity {
         let total_capacity: u32 =
             self.provers.read().await.values().map(|p| p.compute_capacity.compute_units).sum();
-        ComputeCapacity { compute_units: total_capacity }
+
+        ComputeCapacity::from(total_capacity)
     }
 
     pub async fn provers_list(&self) -> ProversListDto {
