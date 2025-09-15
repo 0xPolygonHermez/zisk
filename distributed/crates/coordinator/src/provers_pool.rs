@@ -82,6 +82,31 @@ impl ProversPool {
         }
     }
 
+    pub async fn reconnect_prover(
+        &self,
+        prover_id: ProverId,
+        compute_capacity: impl Into<ComputeCapacity>,
+        msg_sender: Box<dyn MessageSender + Send + Sync>,
+    ) -> Result<()> {
+        match self.provers.write().await.get_mut(&prover_id) {
+            Some(existing_prover) => {
+                existing_prover.state = ProverState::Idle;
+                existing_prover.compute_capacity = compute_capacity.into();
+                existing_prover.msg_sender = msg_sender;
+                existing_prover.update_last_heartbeat();
+
+                info!("Reconnected prover: {} (total: {})", prover_id, self.num_provers().await);
+                Ok(())
+            }
+            None => {
+                let msg =
+                    format!("Prover ID {} is not registered. Impossible to reconnect.", prover_id);
+                warn!("{}", msg);
+                Err(Error::InvalidRequest(msg))
+            }
+        }
+    }
+
     /// Unregister a prover
     pub async fn unregister_prover(&self, prover_id: &ProverId) -> Result<()> {
         self.provers.write().await.remove(prover_id).map(|_| ()).ok_or_else(|| {

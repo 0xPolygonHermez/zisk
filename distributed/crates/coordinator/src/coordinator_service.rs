@@ -347,17 +347,9 @@ impl CoordinatorService {
         req: ProverReconnectRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> (bool, String) {
-        let max_connections = self.config.coordinator.max_total_provers as usize;
-        if self.provers_pool.num_provers().await >= max_connections {
-            return (
-                false,
-                format!("Maximum concurrent connections reached: ({})", max_connections),
-            );
-        }
-
         match self
             .provers_pool
-            .register_prover(req.prover_id, req.compute_capacity, msg_sender)
+            .reconnect_prover(req.prover_id, req.compute_capacity, msg_sender)
             .await
         {
             Ok(()) => (true, "Reconnection successful".to_string()),
