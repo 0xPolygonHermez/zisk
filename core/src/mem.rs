@@ -120,6 +120,12 @@ pub const FLOAT_LIB_SP: u64 = 0xa0030000 - 16;
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 /// UART memory address; single bytes written here will be copied to the standard output
 pub const UART_ADDR: u64 = SYS_ADDR + 512;
+/// CSR memory address; contains control and status registers
+pub const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
+/// Machine trap-vector base-address register
+pub const MTVEC: u64 = CSR_ADDR + 0x305;
+/// Floating-point Control and Status Register
+pub const FCSR: u64 = CSR_ADDR + 0x003 * 8;
 
 /// Memory section data, including a buffer (a vector of bytes) and start and end program
 /// memory addresses.

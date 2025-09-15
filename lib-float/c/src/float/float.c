@@ -836,6 +836,9 @@ void _zisk_float (void)
             }
         }
     }
+
+    // Update flags: copy flags from the library state register to fcsr
+    fcsr = (fcsr & ~0x1F) | (softfloat_exceptionFlags & 0x1F);
 }
 
 void set_rounding_mode (uint64_t rm)

@@ -5,8 +5,8 @@
 use riscv::{riscv_interpreter, RiscvInstruction};
 
 use crate::{
-    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, FLOAT_LIB_ADDR, FLOAT_LIB_SP,
-    FREG_INST, FREG_RA, FREG_X0, INPUT_ADDR, OUTPUT_ADDR, ROM_ENTRY, ROM_EXIT, SYS_ADDR,
+    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, CSR_ADDR, FLOAT_LIB_ADDR, FLOAT_LIB_SP,
+    FREG_INST, FREG_RA, FREG_X0, INPUT_ADDR, MTVEC, OUTPUT_ADDR, ROM_ENTRY, ROM_EXIT,
 };
 
 use std::collections::HashMap;
@@ -37,8 +37,6 @@ const CSR_FCALL_PARAM_OFFSET_TO_WORDS: [u64; 16] =
     [1, 2, 4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 128, 256];
 
 const CAUSE_EXIT: u64 = 93;
-const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
-const MTVEC: u64 = CSR_ADDR + 0x305;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 const FLOAT_HANDLER_ADDR: u64 = 0x1008;
 const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs + set sp + set ra + jump to zisk_float

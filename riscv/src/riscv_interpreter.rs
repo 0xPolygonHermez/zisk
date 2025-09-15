@@ -99,6 +99,10 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
                 //     i.imm &= 0x3F;
                 //     i.funct7 = funct7;
                 // }
+                // If this is a CSR instruction, then the immediate is the CSR address index
+                if i.inst.starts_with("csr") {
+                    i.csr = i.imm as u32 * 8;
+                }
             }
             //  31 30 ... 26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
             // |   funct7      |  rs2    |  rs1    | funct3 |   rd    |       opcode       | R-type

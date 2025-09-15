@@ -161,7 +161,8 @@ pub const FREG_F29: u64 = FREG_FIRST + 29_u64 * 8;
 pub const FREG_F30: u64 = FREG_FIRST + 30_u64 * 8;
 pub const FREG_F31: u64 = FREG_FIRST + 31_u64 * 8;
 
-pub const FREG_CSR: u64 = FREG_FIRST + 32_u64 * 8; // Floating-point control and status register (fcsr)
+// TODO: delete the _INVALID version after testing
+pub const FREG_CSR_INVALID: u64 = FREG_FIRST + 32_u64 * 8; // Floating-point control and status register (fcsr)
 pub const FREG_INST: u64 = FREG_FIRST + 33_u64 * 8; // Floating-point instruction register (finst)
 pub const FREG_RA: u64 = FREG_FIRST + 34_u64 * 8; // Floating-point return address register (fra)
 
