@@ -1,3 +1,6 @@
+mod bls12_381_fp2_inv;
+mod bls12_381_fp_inv;
+mod bls12_381_fp_sqrt;
 mod bn254_fp;
 mod bn254_fp2;
 mod bn254_twist;
