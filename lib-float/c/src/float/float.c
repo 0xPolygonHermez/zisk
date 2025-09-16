@@ -484,7 +484,7 @@ void _zisk_float (void)
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
-                            fregs_x[rd] = (uint64_t)f32_to_i32( (float32_t){fregs[rs1]}, rm, false );
+                            fregs_x[rd] = (uint64_t)f32_to_i32( (float32_t){fregs[rs1]}, rm, true );
                             break;
                         }
                         case 1 : { //("R", "fcvt.wu.s"), converts float(rs1) to uint32_t(rd)
@@ -492,7 +492,7 @@ void _zisk_float (void)
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
-                            fregs_x[rd] = (uint64_t)f32_to_ui32( (float32_t){fregs[rs1]}, rm, false );
+                            fregs_x[rd] = (uint64_t)f32_to_ui32( (float32_t){fregs[rs1]}, rm, true );
                             break;
                         }
                         case 2 : { //("R", "fcvt.l.s"), converts float(rs1) to int64_t(rd)
@@ -500,7 +500,7 @@ void _zisk_float (void)
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
-                            fregs_x[rd] = (uint64_t)f32_to_i64( (float32_t){fregs[rs1]}, rm, false );
+                            fregs_x[rd] = (uint64_t)f32_to_i64( (float32_t){fregs[rs1]}, rm, true );
                             break;
                         }
                         case 3 : { //("R", "fcvt.lu.s"), converts float(rs1) to uint64_t(rd)
@@ -508,7 +508,7 @@ void _zisk_float (void)
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
-                            fregs_x[rd] = (uint64_t)f32_to_ui64( (float32_t){fregs[rs1]}, rm, false );
+                            fregs_x[rd] = (uint64_t)f32_to_ui64( (float32_t){fregs[rs1]}, rm, true );
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=96 inst=0x{inst:x}"),
@@ -524,7 +524,7 @@ void _zisk_float (void)
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
-                            fregs_x[rd] = (uint64_t)f64_to_i32( (float64_t){fregs[rs1]}, rm, false );
+                            fregs_x[rd] = (uint64_t)f64_to_i32( (float64_t){fregs[rs1]}, rm, true );
                             break;
                         }
                         case 1 : { //("R", "fcvt.wu.d"), converts double(rs1) to uint32_t(rd)
@@ -532,7 +532,7 @@ void _zisk_float (void)
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
-                            fregs_x[rd] = (uint64_t)f64_to_ui32( (float64_t){fregs[rs1]}, rm, false );
+                            fregs_x[rd] = (uint64_t)f64_to_ui32( (float64_t){fregs[rs1]}, rm, true );
                             break;
                         }
                         case 2 : { //("R", "fcvt.l.d"), converts double(rs1) to int64_t(rd)
@@ -540,7 +540,7 @@ void _zisk_float (void)
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
-                            fregs_x[rd] = (uint64_t)f64_to_i64( (float64_t){fregs[rs1]}, rm, false );
+                            fregs_x[rd] = (int64_t)f64_to_i64( (float64_t){fregs[rs1]}, rm, true );
                             break;
                         }
                         case 3 : { //("R", "fcvt.lu.d"), converts double(rs1) to uint64_t(rd)
@@ -548,7 +548,7 @@ void _zisk_float (void)
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
-                            fregs_x[rd] = (uint64_t)f64_to_ui64( (float64_t){fregs[rs1]}, rm, false );
+                            fregs_x[rd] = f64_to_ui64( (float64_t){fregs[rs1]}, rm, true );
                             break;
                         }
                         default: // => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=97 inst=0x{inst:x}"),
@@ -841,6 +841,16 @@ void _zisk_float (void)
             }
         }
     }
+    /*
+        softfloat_exceptionFlags:
+        enum {
+            softfloat_flag_inexact   =  1,
+            softfloat_flag_underflow =  2,
+            softfloat_flag_overflow  =  4,
+            softfloat_flag_infinite  =  8,
+            softfloat_flag_invalid   = 16
+        };
+    */
 
     // Update flags: copy flags from the library state register to fcsr
     fcsr = (fcsr & ~0x1F) | (softfloat_exceptionFlags & 0x1F);
@@ -916,8 +926,8 @@ void update_rounding_mode (uint64_t * rm)
             break;
         case 4: // RMM
             break;
-        case 7: // DYN - get falue from fcsr
-            //*rm = softfloat_roundingMode;
+        case 7: // DYN - get value from fcsr
+            *rm = softfloat_roundingMode;
             break;
         default:
             // Invalid rounding mode, do nothing

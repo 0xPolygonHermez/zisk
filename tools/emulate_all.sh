@@ -78,6 +78,7 @@ FAILED_COUNTER=0
 # Arrays to track results for final report
 declare -a TESTED_FILES
 declare -a TEST_RESULTS
+declare -a TEST_INDEXES
 for ELF_FILE in $ELF_FILES
 do
     # Increase file counter
@@ -111,6 +112,7 @@ do
         # Record result for final report
         TESTED_FILES+=("$ELF_FILE")
         TEST_RESULTS+=("PASSED")
+        TEST_INDEXES+=("$COUNTER")
     else
         FAILED_COUNTER=$((FAILED_COUNTER+1))
         echo "After processing file ${ELF_FILE} against reference ${REFERENCE_FILE} ..."
@@ -118,6 +120,7 @@ do
         # Record result for final report
         TESTED_FILES+=("$ELF_FILE")
         TEST_RESULTS+=("FAILED")
+        TEST_INDEXES+=("$COUNTER")
     fi
 done
 
@@ -136,9 +139,9 @@ if [ ${#TESTED_FILES[@]} -gt 0 ]; then
     echo "=================="
     for i in "${!TESTED_FILES[@]}"; do
         if [ "${TEST_RESULTS[$i]}" = "PASSED" ]; then
-            echo "✅ ${TESTED_FILES[$i]}"
+            echo "✅ ${TEST_INDEXES[$i]} ${TESTED_FILES[$i]}"
         else
-            echo "❌ ${TESTED_FILES[$i]}"
+            echo "❌ ${TEST_INDEXES[$i]} ${TESTED_FILES[$i]}"
         fi
     done
     echo ""
