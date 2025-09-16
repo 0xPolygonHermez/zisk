@@ -30,7 +30,7 @@ static uint64_t myvalue = 0x3ff3333333333333; // 1.7
 
 // Negate a float by flipping its sign bit(s)
 const uint64_t F64_SIGN_BIT_MASK = 0x8000000000000000;
-const uint64_t F32_SIGN_BIT_MASK = 0xFFFFFFFF80000000;
+const uint64_t F32_SIGN_BIT_MASK = 0x80000000;
 #define NEG64(x) ((x) ^ F64_SIGN_BIT_MASK)
 #define NEG32(x) ((x) ^ F32_SIGN_BIT_MASK)
 const uint64_t F64_EXPONENT_MASK = 0x7FF0000000000000;

@@ -50,7 +50,7 @@ void _zisk_float (void)
 
         case 67 : { // Opcode 67
             switch ((inst >> 25) & 0x3) {
-                case 0: { //("R4", "fmadd.s"),
+                case 0: { //("R4", "fmadd.s"), rd = (rs1 x rs2) + rs3
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -60,7 +60,7 @@ void _zisk_float (void)
                     fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
                     break;
                 }
-                case 1: { //=> ("R4", "fmadd.d"),
+                case 1: { //=> ("R4", "fmadd.d"), rd = (rs1 x rs2) + rs3
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -79,24 +79,24 @@ void _zisk_float (void)
 
         case 71 : { // Opcode 71
             switch ((inst >> 25) & 0x3) {
-                case 0: { //("R4", "fmsub.s"),
+                case 0: { //("R4", "fmsub.s"), rd = (rs1 x rs2) - rs3
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
-                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){NEG32(fregs[rs2])}, (float32_t){fregs[rs3]} ).v;
+                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){NEG32(fregs[rs3])} ).v;
                     break;
                 }
-                case 1: { //=> ("R4", "fmsub.d"),
+                case 1: { //=> ("R4", "fmsub.d"), rd = (rs1 x rs2) - rs3
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
-                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){NEG64(fregs[rs2])}, (float64_t){fregs[rs3]} ).v;
+                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){NEG64(fregs[rs3])} ).v;
                     break;
                 }
                 default: //_ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 71 inst=0x{inst:x}"),
@@ -108,24 +108,24 @@ void _zisk_float (void)
 
         case 75 : { // Opcode 75
             switch ((inst >> 25) & 0x3) {
-                case 0: { //("R4", "fnmsub.s"),
+                case 0: { //("R4", "fnmsub.s"), rd = -(rs1 x rs2) + rs3
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
-                    fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){NEG32(fregs[rs2])}, (float32_t){fregs[rs3]} ).v);
+                    fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){NEG32(fregs[rs3])} ).v);
                     break;
                 }
-                case 1: { //=> ("R4", "fnmsub.d"),
+                case 1: { //=> ("R4", "fnmsub.d"), rd = -(rs1 x rs2) + rs3
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
-                    fregs[rd] = (uint64_t)NEG64(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){NEG64(fregs[rs2])}, (float64_t){fregs[rs3]} ).v);
+                    fregs[rd] = (uint64_t)NEG64(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){NEG64(fregs[rs3])} ).v);
                     break;
                 }
                 default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 75 inst=0x{inst:x}"),
@@ -137,7 +137,7 @@ void _zisk_float (void)
 
         case 79 : { // Opcode 79
             switch ((inst >> 25) & 0x3) {
-                case 0: { //("R4", "fnmadd.s"),
+                case 0: { //("R4", "fnmadd.s"), rd = -(rs1 x rs2) - rs3
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -147,14 +147,14 @@ void _zisk_float (void)
                     fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v);
                     break;
                 }
-                case 1: { //=> ("R4", "fnmadd.d"),
+                case 1: { //=> ("R4", "fnmadd.d"), rd = -(rs1 x rs2) - rs3
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
-                    fregs[rd] = (uint64_t)NEG64(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){NEG64(fregs[rs2])}, (float64_t){fregs[rs3]} ).v);
+                    fregs[rd] = (uint64_t)NEG64(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v);
                     break;
                 }
                 default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 79 inst=0x{inst:x}"),
