@@ -4,7 +4,12 @@ use tonic::transport::Channel;
 use tracing::{error, info};
 
 /// Handle the prove-block subcommand - makes RPC request to coordinator
-pub async fn handle(server_url: String, input_path: String, compute_capacity: u32) -> Result<()> {
+pub async fn handle(
+    server_url: String,
+    input_path: String,
+    compute_capacity: u32,
+    simulated_node: Option<u32>,
+) -> Result<()> {
     // Connect to the gRPC server
     info!("Connecting to Coordinator Network gRPC service on {}", server_url);
 
@@ -15,6 +20,7 @@ pub async fn handle(server_url: String, input_path: String, compute_capacity: u3
         block_id: "0x1234567890abcdef".into(), // Placeholder block ID
         compute_units: compute_capacity,
         input_path,
+        simulated_node,
     };
 
     // Make the RPC call

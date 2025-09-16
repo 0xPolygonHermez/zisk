@@ -135,7 +135,6 @@ async fn main() -> Result<()> {
         cli.url,
         cli.prover_id,
         cli.compute_units,
-        None,
     )
     .await?;
 

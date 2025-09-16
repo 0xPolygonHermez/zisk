@@ -1,6 +1,7 @@
 mod config;
 mod coordinator_service;
 mod coordinator_service_grpc;
+mod hooks;
 mod prover_info;
 mod provers_pool;
 mod shutdown;

@@ -1,6 +1,6 @@
 use distributed_common::{
-    ComputeCapacity, CoordinatorMessageDto, Error, ProverId, ProverInfoDto, ProverState,
-    ProversListDto, Result,
+    ComputeCapacity, CoordinatorMessageDto, Error, JobExecutionMode, ProverId, ProverInfoDto,
+    ProverState, ProversListDto, Result,
 };
 use std::collections::HashMap;
 use tokio::sync::RwLock;
@@ -177,7 +177,16 @@ impl ProversPool {
     pub async fn partition_and_allocate_by_capacity(
         &self,
         required_compute_capacity: ComputeCapacity,
+        execution_mode: JobExecutionMode,
     ) -> Result<(Vec<ProverId>, Vec<Vec<u32>>)> {
+        if execution_mode.is_simulating() && self.num_provers().await != 1 {
+            warn!("Simulated mode enabled but there are multiple provers connected. Only the first prover will be used.");
+            return Err(Error::InvalidRequest(
+                "Simulated mode can only be used when there is exactly one prover connected"
+                    .to_string(),
+            ));
+        }
+
         if required_compute_capacity.compute_units == 0 {
             return Err(Error::InvalidRequest(
                 "Compute capacity must be greater than 0".to_string(),
@@ -186,8 +195,24 @@ impl ProversPool {
 
         let provers = self.provers.write().await;
 
-        let available_provers: Vec<(&ProverId, &ProverInfo)> =
-            provers.iter().filter(|(_, p)| matches!(p.state, ProverState::Idle)).collect();
+        let available_provers: Vec<(&ProverId, &ProverInfo)> = if execution_mode.is_simulating() {
+            // Copy the only available idle prover 'times' times
+            if let Some((prover_id, prover_info)) =
+                provers.iter().find(|(_, p)| matches!(p.state, ProverState::Idle))
+            {
+                let times = (required_compute_capacity.compute_units as f32
+                    / prover_info.compute_capacity.compute_units as f32)
+                    .ceil() as u32;
+
+                vec![(prover_id, prover_info); times as usize]
+            } else {
+                return Err(Error::InvalidRequest(
+                    "No provers available for allocation".to_string(),
+                ));
+            }
+        } else {
+            provers.iter().filter(|(_, p)| matches!(p.state, ProverState::Idle)).collect()
+        };
 
         let available_capacity: u32 =
             available_provers.iter().map(|(_, p)| p.compute_capacity.compute_units).sum();

@@ -4,7 +4,7 @@ use proofman::ContributionsInfo;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    fmt::{self, Display},
+    fmt::{self, Debug, Display},
     ops::Range,
     path::PathBuf,
 };
@@ -177,6 +177,44 @@ impl std::fmt::Display for ComputeCapacity {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobExecutionMode {
+    Standard,        // the normal mode
+    Simulating(u32), // simulation mode where we simulate N nodes but only use one prover
+}
+
+impl JobExecutionMode {
+    pub fn is_simulating(&self) -> bool {
+        matches!(self, JobExecutionMode::Simulating(_))
+    }
+}
+
+#[derive(Clone)]
+pub struct JobStats {
+    pub start_time: Option<DateTime<Utc>>,
+    pub end_time: Option<DateTime<Utc>>,
+}
+
+impl Display for JobStats {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let start_time = self.start_time.unwrap();
+        let end_time = self.end_time.unwrap();
+        let duration = end_time.signed_duration_since(start_time);
+
+        write!(f, "Duration: {}", duration)
+    }
+}
+
+impl Debug for JobStats {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let start_time = self.start_time.unwrap();
+        let end_time = self.end_time.unwrap();
+        let duration = end_time.signed_duration_since(start_time);
+
+        write!(f, "Duration: {}", duration)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Job {
     pub job_id: JobId,
@@ -188,7 +226,9 @@ pub struct Job {
     pub provers: Vec<ProverId>,
     pub partitions: Vec<Vec<u32>>,
     pub results: HashMap<JobPhase, HashMap<ProverId, JobResult>>,
+    pub stats: HashMap<JobPhase, JobStats>,
     pub challenges: Option<Vec<ContributionsInfo>>,
+    pub execution_mode: JobExecutionMode,
 }
 
 impl Job {
@@ -198,6 +238,7 @@ impl Job {
         compute_units: ComputeCapacity,
         selected_provers: Vec<ProverId>,
         partitions: Vec<Vec<u32>>,
+        execution_mode: JobExecutionMode,
     ) -> Self {
         Self {
             job_id: JobId::new(),
@@ -209,7 +250,30 @@ impl Job {
             provers: selected_provers,
             partitions,
             results: HashMap::new(),
+            stats: HashMap::new(),
             challenges: None,
+            execution_mode,
+        }
+    }
+
+    pub fn add_start_time(&mut self, job_phase: JobPhase) {
+        match self.stats.get_mut(&job_phase) {
+            Some(_) => {
+                unreachable!("Start time added twice for the same phase");
+            }
+            None => {
+                self.stats
+                    .insert(job_phase, JobStats { start_time: Some(Utc::now()), end_time: None });
+            }
+        }
+    }
+
+    pub fn add_end_time(&mut self, job_phase: JobPhase) {
+        match self.stats.get_mut(&job_phase) {
+            Some(existing_stats) => {
+                existing_stats.end_time = Some(Utc::now());
+            }
+            None => unreachable!("End time added without start time"),
         }
     }
 }

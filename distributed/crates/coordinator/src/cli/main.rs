@@ -48,6 +48,9 @@ enum CoordinatorServerCommands {
         /// Compute capacity needed to generate the block proof
         #[arg(long, help = "Compute capacity needed to generate the block proof")]
         compute_capacity: usize,
+
+        #[arg(long, help = "Simulated node ID")]
+        simulated_node: Option<u32>,
     },
 }
 
@@ -64,9 +67,9 @@ async fn main() -> Result<()> {
             // Server mode
             handler_server::handle(port, webhook_url).await
         }
-        CoordinatorServerCommands::ProveBlock { url, input, compute_capacity } => {
+        CoordinatorServerCommands::ProveBlock { url, input, compute_capacity, simulated_node } => {
             // Initialize basic tracing for the prove-block command
-            handler_prove_block::handle(url, input, compute_capacity as u32).await
+            handler_prove_block::handle(url, input, compute_capacity as u32, simulated_node).await
         }
     }
 }

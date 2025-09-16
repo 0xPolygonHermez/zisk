@@ -1,15 +1,15 @@
-use crate::{config::Config, ProversPool};
+use crate::{config::Config, hooks, ProversPool};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use distributed_common::{
     AggParamsDto, AggProofData, BlockId, ChallengesDto, ComputeCapacity, ContributionParamsDto,
     CoordinatorMessageDto, Error, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
-    ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, Job, JobId,
-    JobPhase, JobResult, JobResultData, JobState, JobStatusDto, JobsListDto, LaunchProofRequestDto,
-    LaunchProofResponseDto, MetricsDto, ProofDto, ProveParamsDto, ProverErrorDto, ProverId,
-    ProverReconnectRequestDto, ProverRegisterRequestDto, ProverState, ProversListDto,
-    StatusInfoDto, SystemStatusDto,
+    ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, Job,
+    JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
+    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
+    ProveParamsDto, ProverErrorDto, ProverId, ProverReconnectRequestDto, ProverRegisterRequestDto,
+    ProverState, ProversListDto, StatusInfoDto, SystemStatusDto,
 };
 use proofman::ContributionsInfo;
 use std::{collections::HashMap, path::PathBuf};
@@ -144,7 +144,7 @@ impl CoordinatorService {
 
     pub fn pre_launch_proof(&self, request: &LaunchProofRequestDto) -> Result<()> {
         // Check if compute_units is within allowed limits
-        if request.compute_units == 0 {
+        if request.compute_capacity == 0 {
             error!("Requested compute_units is 0, which is invalid.");
             return Err(anyhow::anyhow!("compute_units must be greater than 0".to_string()));
         }
@@ -169,16 +169,42 @@ impl CoordinatorService {
         self.pre_launch_proof(&request)?;
 
         let block_id = BlockId::from(request.block_id.clone());
-        let required_compute_capacity = ComputeCapacity::from(request.compute_units);
+        let required_compute_capacity = ComputeCapacity::from(request.compute_capacity);
 
-        let job = self
-            .create_job(block_id.clone(), required_compute_capacity, request.input_path)
+        let mut job = self
+            .create_job(
+                block_id.clone(),
+                required_compute_capacity,
+                request.input_path,
+                request.simulated_node,
+            )
             .await?;
         let job_id = job.job_id.clone();
         let provers_len = job.provers.len() as u32;
 
+        job.add_start_time(JobPhase::Contributions);
+
         // Send messages to selected provers
-        for (rank_id, prover_id) in job.provers.iter().enumerate() {
+        let selected_provers = match job.execution_mode {
+            JobExecutionMode::Simulating(simulated_node) => {
+                // If we are simulating the execution of N nodes but not actually running them we
+                // only use the first prover to simulate it is the N node.
+                if simulated_node as usize >= job.provers.len() {
+                    let msg = format!(
+                        "Simulated mode index ({simulated_node}) exceeds available provers ({}).",
+                        job.provers.len()
+                    );
+                    error!(msg);
+                    return Err(anyhow::anyhow!(Error::InvalidRequest(msg)));
+                }
+
+                warn!("Simulated mode enabled (node {}).", simulated_node);
+                &job.provers[0..1]
+            }
+            JobExecutionMode::Standard => &job.provers,
+        };
+
+        for (rank_id, prover_id) in selected_provers.iter().enumerate() {
             let req = ExecuteTaskRequestDto {
                 prover_id: prover_id.clone().into(),
                 job_id: job_id.clone().into(),
@@ -214,64 +240,11 @@ impl CoordinatorService {
 
             // Spawn a non-blocking task
             tokio::spawn(async move {
-                if let Err(e) = Self::send_completion_webhook(webhook_url, job_id, success).await {
+                if let Err(e) = hooks::send_completion_webhook(webhook_url, job_id, success).await {
                     error!("Failed to send webhook notification: {}", e);
                 }
             });
         }
-    }
-
-    async fn send_completion_webhook(
-        webhook_url: String,
-        job_id: JobId,
-        success: bool,
-    ) -> Result<()> {
-        let client = reqwest::Client::new();
-
-        // Formats the webhook URL based on the presence of a job ID placeholder:
-        // - If the URL contains `{$job_id}`, the placeholder is replaced with the actual job ID.
-        // - If no placeholder is found, the job ID is appended to the URL as a path segment.
-
-        let webhook_url = if webhook_url.contains("{$job_id}") {
-            webhook_url.replace("{$job_id}", &job_id.as_str())
-        } else {
-            format!("{}/{}", webhook_url, job_id.as_str())
-        };
-
-        let payload = serde_json::json!({
-            "job_id": job_id.as_string(),
-            "status": if success { "completed" } else { "failed" },
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-        });
-
-        let response = match client
-            .post(&webhook_url)
-            .header("Content-Type", "application/json")
-            .json(&payload)
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
-            .await
-        {
-            Ok(response) => response,
-            Err(e) => {
-                // This handles connection errors, timeouts, DNS resolution failures, etc.
-                error!("Failed to send webhook request to {}: {}", webhook_url, e);
-                return Err(e.into());
-            }
-        };
-
-        if response.status().is_success() {
-            info!("Successfully sent webhook notification for job {} to {}", job_id, webhook_url);
-        } else {
-            warn!(
-                "Webhook returned non-success status {} for job {}: {}",
-                response.status(),
-                job_id,
-                response.text().await.unwrap_or_default()
-            );
-        }
-
-        Ok(())
     }
 
     pub async fn create_job(
@@ -279,9 +252,22 @@ impl CoordinatorService {
         block_id: BlockId,
         required_compute_capacity: ComputeCapacity,
         input_path: String,
+        simulated_node: Option<u32>,
     ) -> Result<Job> {
-        let (selected_provers, partitions) =
-            self.provers_pool.partition_and_allocate_by_capacity(required_compute_capacity).await?;
+        let execution_mode = if let Some(node) = simulated_node {
+            JobExecutionMode::Simulating(node)
+        } else {
+            JobExecutionMode::Standard
+        };
+
+        let (selected_provers, mut partitions) = self
+            .provers_pool
+            .partition_and_allocate_by_capacity(required_compute_capacity, execution_mode)
+            .await?;
+
+        if let Some(simulated_node) = simulated_node {
+            partitions[0] = partitions[simulated_node as usize].clone();
+        }
 
         Ok(Job::new(
             block_id,
@@ -289,6 +275,7 @@ impl CoordinatorService {
             required_compute_capacity,
             selected_provers,
             partitions,
+            execution_mode,
         ))
     }
 
@@ -385,26 +372,6 @@ impl CoordinatorService {
             e
         })?;
 
-        Ok(())
-    }
-
-    pub async fn handle_stream_register(&self, message: ProverRegisterRequestDto) -> Result<()> {
-        let prover_id = ProverId::from(message.prover_id);
-
-        // Update last heartbeat
-        self.provers_pool.update_last_heartbeat(&prover_id).await?;
-
-        // TODO: Handle prover registration if needed
-        Ok(())
-    }
-
-    pub async fn handle_stream_reconnect(&self, message: ProverReconnectRequestDto) -> Result<()> {
-        let prover_id = ProverId::from(message.prover_id);
-
-        // Update last heartbeat
-        self.provers_pool.update_last_heartbeat(&prover_id).await?;
-
-        // TODO: Handle prover reconnection if needed
         Ok(())
     }
 
@@ -520,7 +487,9 @@ impl CoordinatorService {
         info!("Stored Phase1 result for prover {prover_id} in job {job_id}.");
 
         // Check if we have results from ALL assigned provers
-        if phase1_results.len() < job.provers.len() {
+        let simulating = job.execution_mode.is_simulating();
+
+        if !simulating && phase1_results.len() < job.provers.len() {
             info!(
                 "Phase1 progress for job {}: {}/{} provers completed",
                 job_id,
@@ -531,21 +500,38 @@ impl CoordinatorService {
         }
 
         // Check if all results are successful
-        let all_successful = phase1_results.values().all(|result| result.success);
+        let all_successful =
+            if simulating { true } else { phase1_results.values().all(|result| result.success) };
 
         if all_successful {
-            let challenges: Vec<Vec<ContributionsInfo>> = phase1_results
-                .values()
-                .map(|results| match &results.data {
-                    JobResultData::Challenges(values) => values.clone(),
+            let challenges: Vec<ContributionsInfo> = if simulating {
+                let first_challenges = match phase1_results.values().next().unwrap().data {
+                    JobResultData::Challenges(ref values) => values,
                     _ => unreachable!("Expected Challenges data in Phase1 results"),
-                })
-                .collect();
+                };
 
-            let challenges: Vec<ContributionsInfo> = challenges.into_iter().flatten().collect();
+                // In simulating mode repeat the same challenges for all provers
+                std::iter::repeat(first_challenges)
+                    .take(job.provers.len())
+                    .flatten()
+                    .cloned()
+                    .collect::<Vec<_>>()
+            } else {
+                let challenges: Vec<Vec<ContributionsInfo>> = phase1_results
+                    .values()
+                    .map(|results| match &results.data {
+                        JobResultData::Challenges(values) => values.clone(),
+                        _ => unreachable!("Expected Challenges data in Phase1 results"),
+                    })
+                    .collect();
+
+                challenges.into_iter().flatten().collect()
+            };
             job.challenges = Some(challenges.clone());
 
+            job.add_end_time(JobPhase::Contributions);
             job.state = JobState::Running(JobPhase::Prove);
+            job.add_start_time(JobPhase::Prove);
 
             // Get the assigned provers and release the jobs lock
             let assigned_provers = job.provers.clone();
@@ -611,7 +597,22 @@ impl CoordinatorService {
             })
         }
 
-        for prover_id in assigned_provers {
+        let execution_mode_node = {
+            let jobs = self.jobs.read().await;
+            jobs.get(job_id)
+                .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?
+                .execution_mode
+        };
+
+        // Send messages to selected provers
+        // If we are simulating the execution of N nodes but not actually running them
+        let selected_provers = if execution_mode_node.is_simulating() {
+            &assigned_provers[0..1]
+        } else {
+            &assigned_provers
+        };
+
+        for prover_id in selected_provers {
             if let Some(prover_state) = self.provers_pool.prover_state(prover_id).await {
                 // Prover should still be in Working status from Phase1
                 if prover_state == ProverState::Computing(JobPhase::Contributions) {
@@ -704,6 +705,28 @@ impl CoordinatorService {
             .insert(prover_id.clone(), JobResult { success: execute_task_response.success, data });
 
         info!("Stored Phase2 result for prover {prover_id} in job {job_id}.");
+
+        if job.execution_mode.is_simulating() {
+            job.add_end_time(JobPhase::Prove);
+            job.state = JobState::Completed;
+
+            println!("Job {} completed in simulated mode.", job_id);
+            println!("Job stats: {:?}", job.stats);
+
+            // Get the assigned provers before releasing the lock
+            let assigned_provers = job.provers.clone();
+
+            // Reset prover statuses back to Idle
+            self.provers_pool.mark_provers_with_state(&assigned_provers, ProverState::Idle).await?;
+
+            info!(
+                "Completed simulated job {} and freed {} provers",
+                job_id,
+                assigned_provers.len()
+            );
+
+            return Ok(());
+        }
 
         // Check if we have results from all assigned provers
         if phase2_results.len() < job.provers.len() {

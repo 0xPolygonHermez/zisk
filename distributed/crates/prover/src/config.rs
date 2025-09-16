@@ -114,7 +114,6 @@ impl ProverGrpcEndpointConfig {
         url: Option<String>,
         prover_id: Option<String>,
         compute_units: Option<u32>,
-        num_nodes: Option<u32>,
     ) {
         if let Some(url) = url {
             self.server.url = url;
@@ -126,10 +125,6 @@ impl ProverGrpcEndpointConfig {
 
         if let Some(compute_units) = compute_units {
             self.prover.compute_capacity.compute_units = compute_units;
-        }
-
-        if let Some(num_nodes) = num_nodes {
-            self.prover.num_nodes = num_nodes;
         }
     }
 
@@ -152,8 +147,6 @@ pub struct ProverConfig {
 
     /// Compute capacity configuration
     pub compute_capacity: ComputeCapacity,
-
-    pub num_nodes: u32,
 }
 
 /// Initialize and configure a prover client with the given configuration
@@ -165,7 +158,6 @@ pub async fn initialize_prover_config(
     url: Option<String>,
     prover_id: Option<String>,
     compute_units: Option<u32>,
-    num_nodes: Option<u32>,
 ) -> Result<(ProverGrpcEndpointConfig, ProverServiceConfig)> {
     // Validate ELF file
     if !prover_config.elf.exists() {
@@ -280,7 +272,7 @@ pub async fn initialize_prover_config(
     };
 
     // Apply CLI overrides if provided
-    grpc_config.apply_cli_overrides(url, prover_id, compute_units, num_nodes);
+    grpc_config.apply_cli_overrides(url, prover_id, compute_units);
 
     // Validate required fields
     if grpc_config.server.url.is_empty() {

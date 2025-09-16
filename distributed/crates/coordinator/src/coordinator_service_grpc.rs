@@ -90,13 +90,8 @@ impl CoordinatorServiceGrpc {
                     Self::validate_same_prover_id(prover_id, &prover_error.prover_id)?;
                     coordinator.handle_stream_error(prover_error.into()).await
                 }
-                prover_message::Payload::Register(prover_register_req) => {
-                    Self::validate_same_prover_id(prover_id, &prover_register_req.prover_id)?;
-                    coordinator.handle_stream_register(prover_register_req.into()).await
-                }
-                prover_message::Payload::Reconnect(prover_reconnect_req) => {
-                    Self::validate_same_prover_id(prover_id, &prover_reconnect_req.prover_id)?;
-                    coordinator.handle_stream_reconnect(prover_reconnect_req.into()).await
+                prover_message::Payload::Register(_) | prover_message::Payload::Reconnect(_) => {
+                    unreachable!("Register/Reconnect should be handled in the initial handshake");
                 }
                 prover_message::Payload::ExecuteTaskResponse(execute_task_response) => {
                     Self::validate_same_prover_id(prover_id, &execute_task_response.prover_id)?;
