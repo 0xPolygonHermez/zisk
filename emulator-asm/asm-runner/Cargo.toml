@@ -21,10 +21,10 @@ tracing = { workspace = true}
 rayon = { workspace = true}
 anyhow = { workspace = true}
 
-clap = { version = "4", features = ["derive"] }
+clap = { workspace = true }
 libc = "0.2"
 ureq = "3"
-thiserror = "2"
+thiserror = { workspace = true }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 named-sem = { workspace = true }

@@ -35,32 +35,15 @@ impl ZiskCheckSetup {
 
         let verbose_mode = VerboseMode::Debug;
 
-        #[cfg(distributed)]
-        {
-            match self.field {
-                Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
-                    get_proving_key(self.proving_key.as_ref()),
-                    self.aggregation,
-                    self.final_snark,
-                    verbose_mode,
-                    None,
-                )
-                .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
-            };
-        }
-
-        #[cfg(not(distributed))]
-        {
-            match self.field {
-                Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
-                    get_proving_key(self.proving_key.as_ref()),
-                    self.aggregation,
-                    self.final_snark,
-                    verbose_mode,
-                )
-                .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
-            };
-        }
+        match self.field {
+            Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
+                get_proving_key(self.proving_key.as_ref()),
+                self.aggregation,
+                self.final_snark,
+                verbose_mode,
+            )
+            .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
+        };
 
         Ok(())
     }

@@ -26,7 +26,7 @@ sm-mem = { workspace = true }
 mem-common = { workspace = true }
 
 fields = { workspace=true }
-clap = { version = "4.5.9", features = ["derive", "env"] }
+clap = { workspace = true }
 sysinfo = { workspace = true }
 
 [build-dependencies]
