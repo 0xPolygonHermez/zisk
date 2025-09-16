@@ -201,7 +201,7 @@ impl Display for JobStats {
         let end_time = self.end_time.unwrap();
         let duration = end_time.signed_duration_since(start_time);
 
-        write!(f, "Duration: {}", duration)
+        write!(f, "Duration: {}ms", duration.num_milliseconds())
     }
 }
 
@@ -211,7 +211,7 @@ impl Debug for JobStats {
         let end_time = self.end_time.unwrap();
         let duration = end_time.signed_duration_since(start_time);
 
-        write!(f, "Duration: {}", duration)
+        write!(f, "Duration: {}ms", duration.num_milliseconds())
     }
 }
 
