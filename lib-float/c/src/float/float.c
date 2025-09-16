@@ -115,7 +115,7 @@ void _zisk_float (void)
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
-                    fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){NEG32(fregs[rs3])} ).v);
+                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){NEG32(fregs[rs1])}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
                     break;
                 }
                 case 1: { //=> ("R4", "fnmsub.d"), rd = -(rs1 x rs2) + rs3
@@ -125,7 +125,7 @@ void _zisk_float (void)
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
-                    fregs[rd] = (uint64_t)NEG64(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){NEG64(fregs[rs3])} ).v);
+                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){NEG64(fregs[rs1])}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v;
                     break;
                 }
                 default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 75 inst=0x{inst:x}"),
