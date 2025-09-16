@@ -22,6 +22,9 @@ void _zisk_float (void)
     // into the softfloat_roundingMode variable.
     softfloat_roundingMode = (fcsr >> 5) & 0x7;
 
+    // Clear exception flags before operation
+    softfloat_exceptionFlags = 0;
+
     uint64_t inst = *(uint64_t *)FREG_INST;
     switch (inst & 0x7F)
     {
@@ -927,7 +930,7 @@ void update_rounding_mode (uint64_t * rm)
         case 4: // RMM
             break;
         case 7: // DYN - get value from fcsr
-            *rm = softfloat_roundingMode;
+            *rm = softfloat_roundingMode & 0x7;
             break;
         default:
             // Invalid rounding mode, do nothing
