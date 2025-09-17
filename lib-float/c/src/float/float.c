@@ -488,6 +488,25 @@ void _zisk_float (void)
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f32_to_i32( (float32_t){fregs[rs1]}, rm, true );
+
+                            // If the instruction was invalid, i.e. the input is NaN or the
+                            // conversion is out of range, we need to set the output according to
+                            // the RISC-V spec. See section 20.7, table 28.
+                            if (softfloat_exceptionFlags & softfloat_flag_invalid) {
+                                // If input is NaN, output is all 1's
+                                if (F32_IS_NAN(fregs[rs1]))
+                                    fregs_x[rd] = 0x7FFFFFFF;
+                                // If input is negative and out of range, output is 0
+                                else if (fregs[rs1] & F32_SIGN_BIT_MASK)
+                                    fregs_x[rd] = 0xFFFFFFFF80000000;
+                                // If input is positive and out of range, output is all 1's
+                                else
+                                    fregs_x[rd] = 0x7FFFFFFF;
+                            }
+                            // If result is negative, sign extend to 64 bits
+                            else if (fregs_x[rd] & F32_SIGN_BIT_MASK)
+                                fregs_x[rd] |= 0xFFFFFFFF00000000;
+
                             break;
                         }
                         case 1 : { //("R", "fcvt.wu.s"), converts float(rs1) to uint32_t(rd)
@@ -496,6 +515,25 @@ void _zisk_float (void)
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f32_to_ui32( (float32_t){fregs[rs1]}, rm, true );
+
+                            // If the instruction was invalid, i.e. the input is NaN or the
+                            // conversion is out of range, we need to set the output according to
+                            // the RISC-V spec. See section 20.7, table 28.
+                            if (softfloat_exceptionFlags & softfloat_flag_invalid) {
+                                // If input is NaN, output is all 1's
+                                if (F32_IS_NAN(fregs[rs1]))
+                                    fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
+                                // If input is negative and out of range, output is 0
+                                else if (fregs[rs1] & F32_SIGN_BIT_MASK)
+                                    fregs_x[rd] = 0;
+                                // If input is positive and out of range, output is all 1's
+                                else
+                                    fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
+                            }
+                            // If result is negative, sign extend to 64 bits
+                            else if (fregs_x[rd] & F32_SIGN_BIT_MASK)
+                                fregs_x[rd] |= 0xFFFFFFFF00000000;
+
                             break;
                         }
                         case 2 : { //("R", "fcvt.l.s"), converts float(rs1) to int64_t(rd)
@@ -504,6 +542,22 @@ void _zisk_float (void)
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f32_to_i64( (float32_t){fregs[rs1]}, rm, true );
+
+                            // If the instruction was invalid, i.e. the input is NaN or the
+                            // conversion is out of range, we need to set the output according to
+                            // the RISC-V spec. See section 20.7, table 28.
+                            if (softfloat_exceptionFlags & softfloat_flag_invalid) {
+                                // If input is NaN, output is all 1's
+                                if (F32_IS_NAN(fregs[rs1]))
+                                    fregs_x[rd] = 0x7FFFFFFFFFFFFFFF;
+                                // If input is negative and out of range, output is all 1's
+                                else if (fregs[rs1] & F32_SIGN_BIT_MASK)
+                                    fregs_x[rd] = 0x8000000000000000;
+                                // If input is positive and out of range, output is all 1's
+                                else
+                                    fregs_x[rd] = 0x7FFFFFFFFFFFFFFF;
+                            }
+                            
                             break;
                         }
                         case 3 : { //("R", "fcvt.lu.s"), converts float(rs1) to uint64_t(rd)
@@ -512,6 +566,22 @@ void _zisk_float (void)
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f32_to_ui64( (float32_t){fregs[rs1]}, rm, true );
+
+                            // If the instruction was invalid, i.e. the input is NaN or the
+                            // conversion is out of range, we need to set the output according to
+                            // the RISC-V spec. See section 20.7, table 28.
+                            if (softfloat_exceptionFlags & softfloat_flag_invalid) {
+                                // If input is NaN, output is all 1's
+                                if (F32_IS_NAN(fregs[rs1]))
+                                    fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
+                                // If input is negative and out of range, output is 0
+                                else if (fregs[rs1] & F32_SIGN_BIT_MASK)
+                                    fregs_x[rd] = 0;
+                                // If input is positive and out of range, output is all 1's
+                                else
+                                    fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
+                            }
+
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=96 inst=0x{inst:x}"),
@@ -528,6 +598,25 @@ void _zisk_float (void)
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f64_to_i32( (float64_t){fregs[rs1]}, rm, true );
+
+                            // If the instruction was invalid, i.e. the input is NaN or the
+                            // conversion is out of range, we need to set the output according to
+                            // the RISC-V spec. See section 20.7, table 28.
+                            if (softfloat_exceptionFlags & softfloat_flag_invalid) {
+                                // If input is NaN, output is all 1's
+                                if (F64_IS_NAN(fregs[rs1]))
+                                    fregs_x[rd] = 0x7FFFFFFF;
+                                // If input is negative and out of range, output is 0
+                                else if (fregs[rs1] & F64_SIGN_BIT_MASK)
+                                    fregs_x[rd] = 0xFFFFFFFF80000000;
+                                // If input is positive and out of range, output is all 1's
+                                else
+                                    fregs_x[rd] = 0x7FFFFFFF;
+                            }
+                            // If result is negative, sign extend to 64 bits
+                            else if (fregs_x[rd] & F32_SIGN_BIT_MASK)
+                                fregs_x[rd] |= 0xFFFFFFFF00000000;
+
                             break;
                         }
                         case 1 : { //("R", "fcvt.wu.d"), converts double(rs1) to uint32_t(rd)
@@ -536,6 +625,25 @@ void _zisk_float (void)
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
                             fregs_x[rd] = (uint64_t)f64_to_ui32( (float64_t){fregs[rs1]}, rm, true );
+
+                            // If the instruction was invalid, i.e. the input is NaN or the
+                            // conversion is out of range, we need to set the output according to
+                            // the RISC-V spec. See section 20.7, table 28.
+                            if (softfloat_exceptionFlags & softfloat_flag_invalid) {
+                                // If input is NaN, output is all 1's
+                                if (F64_IS_NAN(fregs[rs1]))
+                                    fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
+                                // If input is negative and out of range, output is 0
+                                else if (fregs[rs1] & F64_SIGN_BIT_MASK)
+                                    fregs_x[rd] = 0;
+                                // If input is positive and out of range, output is all 1's
+                                else
+                                    fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
+                            }
+                            // If result is negative, sign extend to 64 bits
+                            else if (fregs_x[rd] & F32_SIGN_BIT_MASK)
+                                fregs_x[rd] |= 0xFFFFFFFF00000000;
+
                             break;
                         }
                         case 2 : { //("R", "fcvt.l.d"), converts double(rs1) to int64_t(rd)
@@ -544,6 +652,22 @@ void _zisk_float (void)
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
                             fregs_x[rd] = (int64_t)f64_to_i64( (float64_t){fregs[rs1]}, rm, true );
+
+                            // If the instruction was invalid, i.e. the input is NaN or the
+                            // conversion is out of range, we need to set the output according to
+                            // the RISC-V spec. See section 20.7, table 28.
+                            if (softfloat_exceptionFlags & softfloat_flag_invalid) {
+                                // If input is NaN, output is all 1's
+                                if (F64_IS_NAN(fregs[rs1]))
+                                    fregs_x[rd] = 0x7FFFFFFFFFFFFFFF;
+                                // If input is negative and out of range, output is all 1's
+                                else if (fregs[rs1] & F64_SIGN_BIT_MASK)
+                                    fregs_x[rd] = 0x8000000000000000;
+                                // If input is positive and out of range, output is all 1's
+                                else
+                                    fregs_x[rd] = 0x7FFFFFFFFFFFFFFF;
+                            }
+
                             break;
                         }
                         case 3 : { //("R", "fcvt.lu.d"), converts double(rs1) to uint64_t(rd)
@@ -552,6 +676,22 @@ void _zisk_float (void)
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
                             fregs_x[rd] = f64_to_ui64( (float64_t){fregs[rs1]}, rm, true );
+
+                            // If the instruction was invalid, i.e. the input is NaN or the
+                            // conversion is out of range, we need to set the output according to
+                            // the RISC-V spec. See section 20.7, table 28.
+                            if (softfloat_exceptionFlags & softfloat_flag_invalid) {
+                                // If input is NaN, output is all 1's
+                                if (F64_IS_NAN(fregs[rs1]))
+                                    fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
+                                // If input is negative and out of range, output is 0
+                                else if (fregs[rs1] & F64_SIGN_BIT_MASK)
+                                    fregs_x[rd] = 0;
+                                // If input is positive and out of range, output is all 1's
+                                else
+                                    fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
+                            }
+
                             break;
                         }
                         default: // => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=97 inst=0x{inst:x}"),

@@ -28,17 +28,31 @@ const uint64_t FREG_CSR = CSR_ADDR + 3 * 8;
 
 static uint64_t myvalue = 0x3ff3333333333333; // 1.7
 
-// Negate a float by flipping its sign bit(s)
+// Sign, exponent and mantissa masks for single and double precision floats
 const uint64_t F64_SIGN_BIT_MASK = 0x8000000000000000;
 const uint64_t F32_SIGN_BIT_MASK = 0x80000000;
-#define NEG64(x) ((x) ^ F64_SIGN_BIT_MASK)
-#define NEG32(x) ((x) ^ F32_SIGN_BIT_MASK)
 const uint64_t F64_EXPONENT_MASK = 0x7FF0000000000000;
 const uint64_t F32_EXPONENT_MASK = 0x7F800000;
 const uint64_t F64_MANTISSA_MASK = 0x000FFFFFFFFFFFFF;
 const uint64_t F32_MANTISSA_MASK = 0x007FFFFF;
 const uint64_t F64_QUIET_NAN_MASK = 0x0008000000000000;
 const uint64_t F32_QUIET_NAN_MASK = 0x00400000;
+
+// Negate a float by flipping its sign bit(s)
+#define NEG64(x) ((x) ^ F64_SIGN_BIT_MASK)
+#define NEG32(x) ((x) ^ F32_SIGN_BIT_MASK)
+
+// Macro functions for extracting exponent, mantissa and checking for corner cases
+#define F32_EXPONENT(a) (((a) & F32_EXPONENT_MASK) >> 23)
+#define F32_MANTISSA(a) ((a) & F32_MANTISSA_MASK)
+#define F32_IS_NAN(a) (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK && ((a) & F32_MANTISSA_MASK) != 0)
+#define F32_IS_MINUS_INFINITE(a) (((a) & F32_SIGN_BIT_MASK) == F32_SIGN_BIT_MASK) && (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) == 0)
+
+// Macro functions for extracting exponent, mantissa and checking for corner cases
+#define F64_EXPONENT(a) (((a) & F64_EXPONENT_MASK) >> 52)
+#define F64_MANTISSA(a) ((a) & F64_MANTISSA_MASK)
+#define F64_IS_NAN(a) (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK && ((a) & F64_MANTISSA_MASK) != 0)
+#define F64_IS_MINUS_INFINITE(a) (((a) & F64_SIGN_BIT_MASK) == F64_SIGN_BIT_MASK) && (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_MANTISSA_MASK) == 0)
 
 // Plus and minus infinity in IEEE 754 format
 const uint64_t F64_MINUS_INFINITE = 0xFFF0000000000000;
