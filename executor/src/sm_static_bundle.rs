@@ -18,6 +18,7 @@ use sm_mem::{
 };
 use sm_rom::{RomInstance, RomSM};
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
 use zisk_common::{BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan};
 use zisk_pil::{
     ARITH_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS,
@@ -27,6 +28,7 @@ use zisk_pil::{
 };
 
 use crate::StaticDataBus;
+use pil_std_lib::Std;
 use rayon::prelude::*;
 
 type SMAirType = Vec<(usize, usize)>;
@@ -231,12 +233,15 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         pctx: &ProofCtx<F>,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
         chunks_to_execute: &[Vec<usize>],
-    ) -> Vec<Option<StaticDataBusCollect<u64>>> {
+        std: Arc<Std<F>>,
+        executed_chunks: &[AtomicBool],
+        execute: bool,
+    ) -> Vec<Option<StaticDataBusCollect<F, u64>>> {
         chunks_to_execute
             .par_iter()
             .enumerate()
             .map(|(chunk_id, global_idxs)| {
-                if global_idxs.is_empty() {
+                if global_idxs.is_empty() && !execute {
                     return None;
                 }
 
@@ -396,30 +401,41 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                 let mut keccakf_inputs_generator = None;
                 let mut sha256f_inputs_generator = None;
                 let mut arith_inputs_generator = None;
-                for (_, sm) in self.sm.values() {
-                    match sm {
-                        StateMachines::ArithSM(arith_sm) => {
-                            arith_inputs_generator = Some(arith_sm.build_arith_input_generator());
+                if !global_idxs.is_empty() && !execute {
+                    for (_, sm) in self.sm.values() {
+                        match sm {
+                            StateMachines::ArithSM(arith_sm) => {
+                                arith_inputs_generator =
+                                    Some(arith_sm.build_arith_input_generator());
+                            }
+                            StateMachines::KeccakfManager(keccak_sm) => {
+                                keccakf_inputs_generator =
+                                    Some(keccak_sm.build_keccakf_input_generator());
+                            }
+                            StateMachines::Sha256fManager(sha256_sm) => {
+                                sha256f_inputs_generator =
+                                    Some(sha256_sm.build_sha256f_input_generator());
+                            }
+                            StateMachines::ArithEqManager(arith_eq_sm) => {
+                                arith_eq_inputs_generator =
+                                    Some(arith_eq_sm.build_arith_eq_input_generator());
+                            }
+                            StateMachines::ArithEq384Manager(arith_eq_384_sm) => {
+                                arith_eq_384_inputs_generator =
+                                    Some(arith_eq_384_sm.build_arith_eq_384_input_generator());
+                            }
+                            _ => {} // Handle other cases if needed
                         }
-                        StateMachines::KeccakfManager(keccak_sm) => {
-                            keccakf_inputs_generator =
-                                Some(keccak_sm.build_keccakf_input_generator());
-                        }
-                        StateMachines::Sha256fManager(sha256_sm) => {
-                            sha256f_inputs_generator =
-                                Some(sha256_sm.build_sha256f_input_generator());
-                        }
-                        StateMachines::ArithEqManager(arith_eq_sm) => {
-                            arith_eq_inputs_generator =
-                                Some(arith_eq_sm.build_arith_eq_input_generator());
-                        }
-                        StateMachines::ArithEq384Manager(arith_eq_384_sm) => {
-                            arith_eq_384_inputs_generator =
-                                Some(arith_eq_384_sm.build_arith_eq_384_input_generator());
-                        }
-                        _ => {}
                     }
                 }
+
+                let calculate_frops =
+                    if executed_chunks[chunk_id].load(std::sync::atomic::Ordering::SeqCst) {
+                        false
+                    } else {
+                        executed_chunks[chunk_id].store(true, std::sync::atomic::Ordering::SeqCst);
+                        true
+                    };
 
                 let data_bus = StaticDataBusCollect::new(
                     mem_collectors,
@@ -433,11 +449,13 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     arith_eq_collectors,
                     arith_eq_384_collectors,
                     rom_collectors,
-                    arith_eq_inputs_generator.expect("ArithEq input generator not found"),
-                    arith_eq_384_inputs_generator.expect("ArithEq384 input generator not found"),
-                    keccakf_inputs_generator.expect("KeccakF input generator not found"),
-                    sha256f_inputs_generator.expect("SHA256F input generator not found"),
-                    arith_inputs_generator.expect("Arith input generator not found"),
+                    arith_eq_inputs_generator,
+                    arith_eq_384_inputs_generator,
+                    keccakf_inputs_generator,
+                    sha256f_inputs_generator,
+                    arith_inputs_generator,
+                    std.clone(),
+                    calculate_frops,
                 );
 
                 Some(data_bus)

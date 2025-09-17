@@ -96,7 +96,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let zisk_rom = Arc::new(zisk_rom);
 
         // Step 3: Initialize the secondary state machines
-        let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), self.shared_tables);
+        let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), self.shared_tables, vec![5010]);
         register_std(wcm, &std);
 
         let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());

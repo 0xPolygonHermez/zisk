@@ -4,7 +4,7 @@
 //! It manages collected inputs and interacts with the `ArithFullSM` to compute witnesses for
 //! execution plans.
 
-use crate::{ArithFrops, ArithFullSM};
+use crate::ArithFullSM;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{
@@ -13,8 +13,7 @@ use std::{
 };
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, MemCollectorInfo, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID,
-    OP_TYPE,
+    InstanceType, MemCollectorInfo, OperationData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
@@ -62,9 +61,8 @@ impl<F: PrimeField64> ArithFullInstance<F> {
     }
 
     pub fn build_arith_collector(&self, chunk_id: ChunkId) -> ArithInstanceCollector {
-        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
-            self.collect_info[&chunk_id];
-        ArithInstanceCollector::new(num_ops, num_freq_ops, collect_skipper, force_execute_to_end)
+        let (num_ops, _, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
+        ArithInstanceCollector::new(num_ops, collect_skipper, force_execute_to_end)
     }
 }
 
@@ -92,7 +90,6 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
             .into_iter()
             .map(|(_, collector)| {
                 let _collector = collector.as_any().downcast::<ArithInstanceCollector>().unwrap();
-                self.arith_full_sm.compute_frops(&_collector.frops_inputs);
                 _collector.inputs
             })
             .collect();
@@ -123,14 +120,8 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
-            self.collect_info[&chunk_id];
-        Some(Box::new(ArithInstanceCollector::new(
-            num_ops,
-            num_freq_ops,
-            collect_skipper,
-            force_execute_to_end,
-        )))
+        let (num_ops, _, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
+        Some(Box::new(ArithInstanceCollector::new(num_ops, collect_skipper, force_execute_to_end)))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -142,8 +133,6 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
 pub struct ArithInstanceCollector {
     /// Collected inputs for witness computation.
     inputs: Vec<OperationData<u64>>,
-    /// Collected rows for FROPS
-    frops_inputs: Vec<u32>,
 
     /// The number of operations to collect.
     num_operations: u64,
@@ -168,7 +157,6 @@ impl ArithInstanceCollector {
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
     pub fn new(
         num_operations: u64,
-        num_freq_ops: u64,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
     ) -> Self {
@@ -176,7 +164,6 @@ impl ArithInstanceCollector {
             inputs: Vec::with_capacity(num_operations as usize),
             num_operations,
             collect_skipper,
-            frops_inputs: Vec::with_capacity(num_freq_ops as usize),
             force_execute_to_end,
         }
     }
@@ -212,14 +199,7 @@ impl BusDevice<u64> for ArithInstanceCollector {
             return true;
         }
 
-        let frops_row = ArithFrops::get_row(data[OP] as u8, data[A], data[B]);
-
-        if self.collect_skipper.should_skip_query(frops_row == ArithFrops::NO_FROPS) {
-            return true;
-        }
-
-        if frops_row != ArithFrops::NO_FROPS {
-            self.frops_inputs.push(frops_row as u32);
+        if self.collect_skipper.should_skip() {
             return true;
         }
 

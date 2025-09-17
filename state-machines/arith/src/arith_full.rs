@@ -8,8 +8,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use crate::{
-    ArithFrops, ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs,
-    ArithTableSM,
+    ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -36,9 +35,6 @@ pub struct ArithFullSM<F: PrimeField64> {
 
     /// The table ID for the Range Table State Machine
     range_table_id: usize,
-
-    /// The table ID for the FROPS
-    frops_table_id: usize,
 }
 
 impl<F: PrimeField64> ArithFullSM<F> {
@@ -56,10 +52,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         // Get the Arithmetic Range table ID
         let range_table_id = std.get_virtual_table_id(ArithRangeTableSM::TABLE_ID);
 
-        // Get the Arithmetic FROPS table ID
-        let frops_table_id = std.get_virtual_table_id(ArithFrops::TABLE_ID);
-
-        Arc::new(Self { std, table_id, range_table_id, frops_table_id })
+        Arc::new(Self { std, table_id, range_table_id })
     }
 
     /// Computes the witness for arithmetic operations and updates associated tables.
@@ -158,12 +151,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
         }
 
         AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
-    }
-
-    pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
-        for row in frops_inputs {
-            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
-        }
     }
 
     /// Generates binary inputs for operations requiring additional validation (e.g., division).

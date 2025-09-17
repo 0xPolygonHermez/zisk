@@ -644,7 +644,7 @@ impl BinaryBasicFrops {
         self.table.count()
     }
     #[cfg(test)]
-    pub fn test_table_offsets(&mut self) {
+    pub fn test_binary_table_offsets(&mut self) {
         self.build_table();
         let (start, offsets) = self.table.generate_table_offsets();
         if (start != OP_TABLE_OFFSETS_START) || (offsets != OP_TABLE_OFFSETS) {
@@ -685,7 +685,7 @@ impl BinaryBasicFrops {
 #[test]
 pub fn test_binary_basic_table_offsets() {
     let mut fops = BinaryBasicFrops::new();
-    fops.test_table_offsets();
+    fops.test_binary_table_offsets();
 }
 // #[test]
 // fn test_frequent_ops() {

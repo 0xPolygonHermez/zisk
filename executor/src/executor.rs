@@ -60,6 +60,7 @@ use zisk_common::ExecutorStatsEvent;
 
 use crossbeam::atomic::AtomicCell;
 
+use std::sync::atomic::AtomicBool;
 use zisk_common::EmuTrace;
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
@@ -164,6 +165,8 @@ pub struct ZiskExecutor<F: PrimeField64> {
     asm_shmem_mt: Arc<Mutex<Option<PreloadedMT>>>,
     asm_shmem_mo: Arc<Mutex<Option<PreloadedMO>>>,
     asm_shmem_rh: Arc<Mutex<Option<PreloadedRH>>>,
+
+    executed_chunks: Arc<Vec<AtomicBool>>,
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
@@ -206,6 +209,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             (None, None)
         };
 
+        let max_chunks = Self::MAX_NUM_STEPS / chunk_size;
+        let executed_chunks = (0..max_chunks).map(|_| AtomicBool::new(false)).collect::<Vec<_>>();
+
         Self {
             rom_path,
             asm_runner_path: asm_path,
@@ -230,6 +236,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             asm_shmem_mt: Arc::new(Mutex::new(asm_shmem_mt)),
             asm_shmem_mo: Arc::new(Mutex::new(asm_shmem_mo)),
             asm_shmem_rh: Arc::new(Mutex::new(None)),
+            executed_chunks: Arc::new(executed_chunks),
         }
     }
 
@@ -909,6 +916,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         &self,
         pctx: Arc<ProofCtx<F>>,
         secn_instances: HashMap<usize, &Box<dyn Instance<F>>>,
+        execute: bool,
     ) {
         let min_traces = self.min_traces.read().unwrap();
 
@@ -936,7 +944,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // Create data buses for each chunk
         let data_buses = self
             .sm_bundle
-            .build_data_bus_collectors(&pctx, &secn_instances, &chunks_to_execute)
+            .build_data_bus_collectors(
+                &pctx,
+                &secn_instances,
+                &chunks_to_execute,
+                self.std.clone(),
+                &self.executed_chunks,
+                execute,
+            )
             .into_iter()
             .map(|db| Arc::new(Mutex::new(db)))
             .collect::<Vec<_>>();
@@ -1165,6 +1180,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.secn_instances.write().unwrap().clear();
         self.collectors_by_instance.write().unwrap().clear();
         self.stats.lock().unwrap().reset();
+        for executed in self.executed_chunks.iter() {
+            executed.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
     }
 }
 
@@ -1415,6 +1433,66 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // self.stats.lock().unwrap().store_stats();
     }
 
+    fn pre_calculate_tables(&self, pctx: Arc<ProofCtx<F>>) {
+        let frops_instance_id = self.std.get_virtual_table_id_unique(&vec![5010, 5011, 5012]);
+        if frops_instance_id.is_none() {
+            return;
+        }
+        let frops_instance_id = frops_instance_id.unwrap();
+        let is_mine = pctx.dctx_is_my_process_instance(frops_instance_id);
+        println!("FROPS instance ID: {:?} is mine", frops_instance_id);
+
+        if !is_mine {
+            return;
+        }
+        timer_start_info!(PRE_CALC_TABLES);
+        let min_traces_guard = self.min_traces.read().unwrap();
+        let min_traces = &*min_traces_guard;
+
+        let n_min_traces = match min_traces {
+            MinimalTraces::EmuTrace(min_traces) => min_traces.len(),
+            MinimalTraces::AsmEmuTrace(asm_min_traces) => asm_min_traces.vec_chunks.len(),
+            _ => unreachable!(),
+        };
+
+        let mut non_executed_chunks = Vec::new();
+        for (chunk_id, executed_flag) in self.executed_chunks[0..n_min_traces].iter().enumerate() {
+            if !executed_flag.load(Ordering::SeqCst) {
+                non_executed_chunks.push(ChunkId(chunk_id));
+            }
+        }
+
+        println!("Pre-calculating {} missing chunks", non_executed_chunks.len());
+        if !non_executed_chunks.is_empty() {
+            non_executed_chunks.par_iter().for_each(|chunk_id| {
+                let mut data_bus = self
+                    .sm_bundle
+                    .build_data_bus_collectors(
+                        &pctx,
+                        &HashMap::new(),
+                        &[vec![]],
+                        self.std.clone(),
+                        &self.executed_chunks,
+                        true,
+                    )
+                    .remove(0)
+                    .unwrap();
+                let min_traces = match min_traces {
+                    MinimalTraces::EmuTrace(v) => v,
+                    MinimalTraces::AsmEmuTrace(a) => &a.vec_chunks,
+                    _ => unreachable!(),
+                };
+                ZiskEmulator::process_emu_traces::<F, _, _>(
+                    &self.zisk_rom,
+                    min_traces,
+                    chunk_id.as_usize(),
+                    &mut data_bus,
+                );
+            });
+        }
+        timer_stop_and_log_info!(PRE_CALC_TABLES);
+    }
+
     /// Computes the witness for the main and secondary state machines.
     ///
     /// # Arguments
@@ -1489,7 +1567,11 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                                 } else {
                                     let mut secn_instances = HashMap::new();
                                     secn_instances.insert(global_id, secn_instance);
-                                    self.witness_collect_instances(pctx.clone(), secn_instances);
+                                    self.witness_collect_instances(
+                                        pctx.clone(),
+                                        secn_instances,
+                                        false,
+                                    );
                                 }
                             }
                             self.witness_secn_instance(
@@ -1602,7 +1684,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         let pool = create_pool(n_cores);
         pool.install(|| {
             if !secn_instances.is_empty() {
-                self.witness_collect_instances(pctx.clone(), secn_instances);
+                self.witness_collect_instances(pctx.clone(), secn_instances, false);
             }
         });
 

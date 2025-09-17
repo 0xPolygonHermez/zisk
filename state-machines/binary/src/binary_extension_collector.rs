@@ -4,10 +4,10 @@
 
 use std::collections::VecDeque;
 
-use crate::{BinaryExtensionFrops, BinaryInput};
+use crate::BinaryInput;
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, MemCollectorInfo, OperationBusData, A, B,
-    OP, OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, MemCollectorInfo, OperationBusData,
+    OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 
@@ -15,8 +15,6 @@ use zisk_core::ZiskOperationType;
 pub struct BinaryExtensionCollector {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
-    /// Collected rows for FROPS
-    pub frops_inputs: Vec<u32>,
 
     pub num_operations: usize,
     pub collect_skipper: CollectSkipper,
@@ -28,7 +26,6 @@ pub struct BinaryExtensionCollector {
 impl BinaryExtensionCollector {
     pub fn new(
         num_operations: usize,
-        num_freq_ops: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
     ) -> Self {
@@ -36,7 +33,6 @@ impl BinaryExtensionCollector {
             inputs: Vec::with_capacity(num_operations),
             num_operations,
             collect_skipper,
-            frops_inputs: Vec::with_capacity(num_freq_ops),
             force_execute_to_end,
         }
     }
@@ -68,8 +64,6 @@ impl BusDevice<u64> for BinaryExtensionCollector {
             return false;
         }
 
-        let frops_row = BinaryExtensionFrops::get_row(data[OP] as u8, data[A], data[B]);
-
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
@@ -79,12 +73,7 @@ impl BusDevice<u64> for BinaryExtensionCollector {
             return true;
         }
 
-        if self.collect_skipper.should_skip_query(frops_row == BinaryExtensionFrops::NO_FROPS) {
-            return true;
-        }
-
-        if frops_row != BinaryExtensionFrops::NO_FROPS {
-            self.frops_inputs.push(frops_row as u32);
+        if self.collect_skipper.should_skip() {
             return true;
         }
 

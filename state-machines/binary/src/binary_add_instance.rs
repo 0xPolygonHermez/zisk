@@ -63,14 +63,8 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
             "BinaryAddInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
-        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
-            self.collect_info[&chunk_id];
-        BinaryAddCollector::new(
-            num_ops as usize,
-            num_freq_ops as usize,
-            collect_skipper,
-            force_execute_to_end,
-        )
+        let (num_ops, _, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
+        BinaryAddCollector::new(num_ops as usize, collect_skipper, force_execute_to_end)
     }
 }
 
@@ -98,7 +92,6 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
             .into_iter()
             .map(|(_, collector)| {
                 let _collector = collector.as_any().downcast::<BinaryAddCollector>().unwrap();
-                self.binary_add_sm.compute_frops(&_collector.frops_inputs);
                 _collector.inputs
             })
             .collect();
@@ -136,11 +129,9 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
             "BinaryAddInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
-        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
-            self.collect_info[&chunk_id];
+        let (num_ops, _, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryAddCollector::new(
             num_ops as usize,
-            num_freq_ops as usize,
             collect_skipper,
             force_execute_to_end,
         )))

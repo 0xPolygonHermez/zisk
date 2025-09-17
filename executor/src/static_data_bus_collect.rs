@@ -2,9 +2,9 @@
 //! system. Subscribers, referred to as `BusDevice`, can listen to specific bus IDs or act as
 //! omnipresent devices that process all data sent to the bus. This module provides mechanisms to
 //! send data, route it to the appropriate subscribers, and manage device connections.
-use std::collections::VecDeque;
-
 use data_bus::DataBusTrait;
+use fields::PrimeField64;
+use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqCollector;
 use precomp_arith_eq::ArithEqCounterInputGen;
 use precomp_arith_eq_384::ArithEq384Collector;
@@ -14,13 +14,17 @@ use precomp_keccakf::KeccakfCounterInputGen;
 use precomp_sha256f::Sha256fCollector;
 use precomp_sha256f::Sha256fCounterInputGen;
 use sm_arith::ArithCounterInputGen;
+use sm_arith::ArithFrops;
 use sm_arith::ArithInstanceCollector;
 use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollector};
+use sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
 use sm_mem::{MemAlignCollector, MemModuleCollector};
 use sm_rom::RomCollector;
+use std::collections::VecDeque;
+use std::sync::Arc;
 use zisk_common::{
-    BusDevice, BusId, MemCollectorInfo, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE,
-    ROM_BUS_ID,
+    BusDevice, BusId, MemCollectorInfo, PayloadType, A, B, MEM_BUS_ID, OP, OPERATION_BUS_ID,
+    OP_TYPE, ROM_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 
@@ -33,7 +37,7 @@ use zisk_core::ZiskOperationType;
 /// * `D` - The type of data payloads handled by the bus.
 /// * `BD` - The type of devices (subscribers) connected to the bus, implementing the `BusDevice`
 ///   trait.
-pub struct StaticDataBusCollect<D> {
+pub struct StaticDataBusCollect<F: PrimeField64, D> {
     /// Memory-related collectors (grouped for cache locality)
     pub mem_collector: Vec<(usize, MemModuleCollector)>,
     pub mem_align_collector: Vec<(usize, MemAlignCollector)>,
@@ -45,21 +49,21 @@ pub struct StaticDataBusCollect<D> {
 
     /// Arithmetic collectors (grouped for cache locality)
     pub arith_collector: Vec<(usize, ArithInstanceCollector)>,
-    pub arith_inputs_generator: ArithCounterInputGen,
+    pub arith_inputs_generator: Option<ArithCounterInputGen>,
 
     /// Cryptographic hash collectors (grouped for cache locality)
     pub keccakf_collector: Vec<(usize, KeccakfCollector)>,
-    pub keccakf_inputs_generator: KeccakfCounterInputGen,
+    pub keccakf_inputs_generator: Option<KeccakfCounterInputGen>,
     pub sha256f_collector: Vec<(usize, Sha256fCollector)>,
-    pub sha256f_inputs_generator: Sha256fCounterInputGen,
+    pub sha256f_inputs_generator: Option<Sha256fCounterInputGen>,
 
     /// Arithmetic equality collectors
     pub arith_eq_collector: Vec<(usize, ArithEqCollector)>,
-    pub arith_eq_inputs_generator: ArithEqCounterInputGen,
+    pub arith_eq_inputs_generator: Option<ArithEqCounterInputGen>,
 
     /// ArithEq384 collectors
     pub arith_eq_384_collector: Vec<(usize, ArithEq384Collector)>,
-    pub arith_eq_384_inputs_generator: ArithEq384CounterInputGen,
+    pub arith_eq_384_inputs_generator: Option<ArithEq384CounterInputGen>,
 
     /// ROM collector
     pub rom_collector: Vec<(usize, RomCollector)>,
@@ -68,6 +72,14 @@ pub struct StaticDataBusCollect<D> {
     pending_transfers: VecDeque<(BusId, Vec<D>)>,
 
     mem_collectors_info: Vec<MemCollectorInfo>,
+
+    std: Arc<Std<F>>,
+
+    frops_binary_table_id: usize,
+    frops_binary_extension_table_id: usize,
+    frops_arith_table_id: usize,
+
+    calculate_frops: bool,
 }
 
 const BINARY_TYPE: u64 = ZiskOperationType::Binary as u64;
@@ -78,7 +90,7 @@ const SHA256_TYPE: u64 = ZiskOperationType::Sha256 as u64;
 const ARITH_EQ_TYPE: u64 = ZiskOperationType::ArithEq as u64;
 const ARITH_EQ_384_TYPE: u64 = ZiskOperationType::ArithEq384 as u64;
 
-impl StaticDataBusCollect<PayloadType> {
+impl<F: PrimeField64> StaticDataBusCollect<F, PayloadType> {
     /// Creates a new `DataBus` instance.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -93,14 +105,21 @@ impl StaticDataBusCollect<PayloadType> {
         arith_eq_collector: Vec<(usize, ArithEqCollector)>,
         arith_eq_384_collector: Vec<(usize, ArithEq384Collector)>,
         rom_collector: Vec<(usize, RomCollector)>,
-        arith_eq_inputs_generator: ArithEqCounterInputGen,
-        arith_eq_384_inputs_generator: ArithEq384CounterInputGen,
-        keccakf_inputs_generator: KeccakfCounterInputGen,
-        sha256f_inputs_generator: Sha256fCounterInputGen,
-        arith_inputs_generator: ArithCounterInputGen,
+        arith_eq_inputs_generator: Option<ArithEqCounterInputGen>,
+        arith_eq_384_inputs_generator: Option<ArithEq384CounterInputGen>,
+        keccakf_inputs_generator: Option<KeccakfCounterInputGen>,
+        sha256f_inputs_generator: Option<Sha256fCounterInputGen>,
+        arith_inputs_generator: Option<ArithCounterInputGen>,
+        std: Arc<Std<F>>,
+        calculate_frops: bool,
     ) -> Self {
         let mem_collectors_info: Vec<MemCollectorInfo> =
             mem_collector.iter().map(|(_, collector)| collector.get_mem_collector_info()).collect();
+
+        let frops_binary_table_id = std.get_virtual_table_id(BinaryBasicFrops::TABLE_ID);
+        let frops_binary_extension_table_id =
+            std.get_virtual_table_id(BinaryExtensionFrops::TABLE_ID);
+        let frops_arith_table_id = std.get_virtual_table_id(ArithFrops::TABLE_ID);
 
         Self {
             mem_collector,
@@ -121,6 +140,11 @@ impl StaticDataBusCollect<PayloadType> {
             arith_inputs_generator,
             pending_transfers: VecDeque::with_capacity(64),
             mem_collectors_info,
+            std,
+            frops_binary_table_id,
+            frops_binary_extension_table_id,
+            frops_arith_table_id,
+            calculate_frops,
         }
     }
 
@@ -155,50 +179,87 @@ impl StaticDataBusCollect<PayloadType> {
             }
             OPERATION_BUS_ID => match payload[OP_TYPE] {
                 BINARY_TYPE => {
-                    for (_, binary_add_collector) in &mut self.binary_add_collector {
-                        binary_add_collector.process_data(
-                            &bus_id,
-                            payload,
-                            &mut self.pending_transfers,
-                            None,
-                        );
-                    }
-
-                    for (_, binary_basic_collector) in &mut self.binary_basic_collector {
-                        binary_basic_collector.process_data(
-                            &bus_id,
-                            payload,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                    let frops_row =
+                        BinaryBasicFrops::get_row(payload[OP] as u8, payload[A], payload[B]);
+                    if frops_row != BinaryBasicFrops::NO_FROPS {
+                        if self.calculate_frops {
+                            self.std.inc_virtual_row(
+                                self.frops_binary_table_id,
+                                frops_row as u64,
+                                1,
+                            );
+                        }
+                    } else {
+                        for (_, binary_add_collector) in &mut self.binary_add_collector {
+                            binary_add_collector.process_data(
+                                &bus_id,
+                                payload,
+                                &mut self.pending_transfers,
+                                None,
+                            );
+                        }
+                        for (_, binary_basic_collector) in &mut self.binary_basic_collector {
+                            binary_basic_collector.process_data(
+                                &bus_id,
+                                payload,
+                                &mut self.pending_transfers,
+                                None,
+                            );
+                        }
                     }
                 }
                 BINARY_E_TYPE => {
-                    for (_, binary_extension_collector) in &mut self.binary_extension_collector {
-                        binary_extension_collector.process_data(
-                            &bus_id,
-                            payload,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                    let frops_row =
+                        BinaryExtensionFrops::get_row(payload[OP] as u8, payload[A], payload[B]);
+                    if frops_row != BinaryExtensionFrops::NO_FROPS {
+                        if self.calculate_frops {
+                            self.std.inc_virtual_row(
+                                self.frops_binary_extension_table_id,
+                                frops_row as u64,
+                                1,
+                            );
+                        }
+                    } else {
+                        for (_, binary_extension_collector) in &mut self.binary_extension_collector
+                        {
+                            binary_extension_collector.process_data(
+                                &bus_id,
+                                payload,
+                                &mut self.pending_transfers,
+                                None,
+                            );
+                        }
                     }
                 }
                 ARITH_TYPE => {
-                    for (_, arith_collector) in &mut self.arith_collector {
-                        arith_collector.process_data(
+                    let frops_row = ArithFrops::get_row(payload[OP] as u8, payload[A], payload[B]);
+                    if frops_row != ArithFrops::NO_FROPS {
+                        if self.calculate_frops {
+                            self.std.inc_virtual_row(
+                                self.frops_arith_table_id,
+                                frops_row as u64,
+                                1,
+                            );
+                        }
+                    } else {
+                        for (_, arith_collector) in &mut self.arith_collector {
+                            arith_collector.process_data(
+                                &bus_id,
+                                payload,
+                                &mut self.pending_transfers,
+                                None,
+                            );
+                        }
+                    }
+
+                    if let Some(arith_inputs_generator) = &mut self.arith_inputs_generator {
+                        arith_inputs_generator.process_data(
                             &bus_id,
                             payload,
                             &mut self.pending_transfers,
                             None,
                         );
                     }
-
-                    self.arith_inputs_generator.process_data(
-                        &bus_id,
-                        payload,
-                        &mut self.pending_transfers,
-                        None,
-                    );
                 }
                 KECCAK_TYPE => {
                     for (_, keccakf_collector) in &mut self.keccakf_collector {
@@ -210,12 +271,14 @@ impl StaticDataBusCollect<PayloadType> {
                         );
                     }
 
-                    self.keccakf_inputs_generator.process_data(
-                        &bus_id,
-                        payload,
-                        &mut self.pending_transfers,
-                        Some(&self.mem_collectors_info),
-                    );
+                    if let Some(keccakf_inputs_generator) = &mut self.keccakf_inputs_generator {
+                        keccakf_inputs_generator.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            Some(&self.mem_collectors_info),
+                        );
+                    }
                 }
                 SHA256_TYPE => {
                     for (_, sha256f_collector) in &mut self.sha256f_collector {
@@ -227,12 +290,14 @@ impl StaticDataBusCollect<PayloadType> {
                         );
                     }
 
-                    self.sha256f_inputs_generator.process_data(
-                        &bus_id,
-                        payload,
-                        &mut self.pending_transfers,
-                        Some(&self.mem_collectors_info),
-                    );
+                    if let Some(sha256f_inputs_generator) = &mut self.sha256f_inputs_generator {
+                        sha256f_inputs_generator.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            Some(&self.mem_collectors_info),
+                        );
+                    }
                 }
                 ARITH_EQ_TYPE => {
                     for (_, arith_eq_collector) in &mut self.arith_eq_collector {
@@ -244,12 +309,14 @@ impl StaticDataBusCollect<PayloadType> {
                         );
                     }
 
-                    self.arith_eq_inputs_generator.process_data(
-                        &bus_id,
-                        payload,
-                        &mut self.pending_transfers,
-                        Some(&self.mem_collectors_info),
-                    );
+                    if let Some(arith_eq_inputs_generator) = &mut self.arith_eq_inputs_generator {
+                        arith_eq_inputs_generator.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            Some(&self.mem_collectors_info),
+                        );
+                    }
                 }
                 ARITH_EQ_384_TYPE => {
                     for (_, arith_eq_384_collector) in &mut self.arith_eq_384_collector {
@@ -261,12 +328,16 @@ impl StaticDataBusCollect<PayloadType> {
                         );
                     }
 
-                    self.arith_eq_384_inputs_generator.process_data(
-                        &bus_id,
-                        payload,
-                        &mut self.pending_transfers,
-                        Some(&self.mem_collectors_info),
-                    );
+                    if let Some(arith_eq_384_inputs_generator) =
+                        &mut self.arith_eq_384_inputs_generator
+                    {
+                        arith_eq_384_inputs_generator.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            Some(&self.mem_collectors_info),
+                        );
+                    }
                 }
                 _ => {}
             },
@@ -280,8 +351,8 @@ impl StaticDataBusCollect<PayloadType> {
     }
 }
 
-impl DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
-    for StaticDataBusCollect<PayloadType>
+impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
+    for StaticDataBusCollect<F, PayloadType>
 {
     #[inline(always)]
     fn write_to_bus(&mut self, bus_id: BusId, payload: &[PayloadType]) -> bool {

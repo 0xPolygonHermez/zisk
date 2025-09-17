@@ -4,10 +4,10 @@
 
 use std::collections::VecDeque;
 
-use crate::{BinaryBasicFrops, BinaryInput};
+use crate::BinaryInput;
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, MemCollectorInfo, OperationBusData, A, B,
-    OP, OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, MemCollectorInfo, OperationBusData,
+    OPERATION_BUS_ID,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -15,8 +15,6 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 pub struct BinaryBasicCollector {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
-    /// Collected rows for FROPS
-    pub frops_inputs: Vec<u32>,
 
     pub num_operations: usize,
 
@@ -40,7 +38,6 @@ impl BinaryBasicCollector {
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
     pub fn new(
         num_operations: usize,
-        num_freq_ops: usize,
         collect_skipper: CollectSkipper,
         with_adds: bool,
         force_execute_to_end: bool,
@@ -50,7 +47,6 @@ impl BinaryBasicCollector {
             num_operations,
             collect_skipper,
             with_adds,
-            frops_inputs: Vec::with_capacity(num_freq_ops),
             force_execute_to_end,
         }
     }
@@ -82,8 +78,6 @@ impl BusDevice<u64> for BinaryBasicCollector {
             return false;
         }
 
-        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
-
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
@@ -97,12 +91,7 @@ impl BusDevice<u64> for BinaryBasicCollector {
             return true;
         }
 
-        if self.collect_skipper.should_skip_query(frops_row == BinaryBasicFrops::NO_FROPS) {
-            return true;
-        }
-
-        if frops_row != BinaryBasicFrops::NO_FROPS {
-            self.frops_inputs.push(frops_row as u32);
+        if self.collect_skipper.should_skip() {
             return true;
         }
 

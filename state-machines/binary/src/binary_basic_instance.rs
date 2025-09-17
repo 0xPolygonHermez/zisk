@@ -61,11 +61,9 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
     }
 
     pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector {
-        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
-            self.collect_info[&chunk_id];
+        let (num_ops, _, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         BinaryBasicCollector::new(
             num_ops as usize,
-            num_freq_ops as usize,
             collect_skipper,
             self.with_adds,
             force_execute_to_end,
@@ -97,7 +95,6 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
             .into_iter()
             .map(|(_, collector)| {
                 let _collector = collector.as_any().downcast::<BinaryBasicCollector>().unwrap();
-                self.binary_basic_sm.compute_frops(&_collector.frops_inputs);
                 _collector.inputs
             })
             .collect();
@@ -129,11 +126,9 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
-            self.collect_info[&chunk_id];
+        let (num_ops, _, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryBasicCollector::new(
             num_ops as usize,
-            num_freq_ops as usize,
             collect_skipper,
             self.with_adds,
             force_execute_to_end,
