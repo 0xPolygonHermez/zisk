@@ -542,6 +542,17 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             });
         });
 
+        #[cfg(feature = "stats")]
+        {
+            self.stats.lock().unwrap().add_stat(
+                0,
+                parent_stats_id,
+                "RUN_MT_ASSEMBLY",
+                0,
+                ExecutorStatsEvent::End,
+            );
+        }
+
         (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_vec_counters)
     }
 
@@ -1455,6 +1466,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         n_cores: usize,
         buffer_pool: &dyn BufferPool<F>,
     ) {
+        if stage != 1 {
+            return;
+        }
+
         #[cfg(feature = "stats")]
         let parent_stats_id = self.stats.lock().unwrap().get_id();
         #[cfg(feature = "stats")]
@@ -1465,10 +1480,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             0,
             ExecutorStatsEvent::Begin,
         );
-
-        if stage != 1 {
-            return;
-        }
 
         let pool = create_pool(n_cores);
         pool.install(|| {
