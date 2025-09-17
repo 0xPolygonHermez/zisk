@@ -11,7 +11,6 @@ use rom_setup::{
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{collections::HashMap, fs};
-use zisk_pil::VIRTUAL_TABLE_0_AIR_IDS;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionConfig {
@@ -241,8 +240,6 @@ pub async fn initialize_prover_config(
     if prover_config.max_witness_stored.is_some() {
         gpu_params.with_max_witness_stored(prover_config.max_witness_stored.unwrap());
     }
-
-    gpu_params.with_single_instance((0, VIRTUAL_TABLE_0_AIR_IDS[0]));
 
     //TODO! CHECK THIS
     let shared_tables = false;
