@@ -482,7 +482,7 @@ impl CoordinatorService {
         let job_id = execute_task_response.job_id.clone();
 
         // Store the Phase1 result
-        self.store_phase1_result(execute_task_response).await?;
+        self.store_contribution_result(execute_task_response).await?;
 
         // Check if all contributions are complete
         if self.are_all_phase1_contributions_complete(&job_id).await? {
@@ -493,7 +493,7 @@ impl CoordinatorService {
     }
 
     /// Store Phase1 contribution result from a prover
-    async fn store_phase1_result(
+    async fn store_contribution_result(
         &self,
         execute_task_response: ExecuteTaskResponseDto,
     ) -> Result<()> {
@@ -504,18 +504,31 @@ impl CoordinatorService {
             .get_mut(&job_id)
             .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
-        let phase1_results = job.results.entry(JobPhase::Contributions).or_default();
+        let contributions_results = job.results.entry(JobPhase::Contributions).or_default();
 
-        let data = self.extract_challenges_data(execute_task_response.result_data)?;
         let prover_id = execute_task_response.prover_id.clone();
 
-        phase1_results
+        // Check for duplicate results
+        if contributions_results.contains_key(&prover_id) {
+            warn!(
+                "Received duplicate Contribution result from prover {} for job {}",
+                prover_id, job_id
+            );
+            return Err(Error::InvalidRequest(format!(
+                "Duplicate Contribution result from prover {prover_id} for job {job_id}"
+            ))
+            .into());
+        }
+
+        let data = self.extract_challenges_data(execute_task_response.result_data)?;
+
+        contributions_results
             .insert(prover_id.clone(), JobResult { success: execute_task_response.success, data });
 
         Ok(())
     }
 
-    /// Extract and validate challenges data from Phase1 response
+    /// Extract and validate challenges data from Contribution response
     fn extract_challenges_data(
         &self,
         result_data: ExecuteTaskResponseResultDataDto,
@@ -524,7 +537,7 @@ impl CoordinatorService {
             ExecuteTaskResponseResultDataDto::Challenges(challenges) => {
                 if challenges.is_empty() {
                     return Err(Error::InvalidRequest(
-                        "Received empty Challenges result data for Phase1".to_string(),
+                        "Received empty Challenges result data".to_string(),
                     )
                     .into());
                 }
@@ -753,20 +766,18 @@ impl CoordinatorService {
         execute_task_response: ExecuteTaskResponseDto,
     ) -> Result<()> {
         let job_id = execute_task_response.job_id.clone();
+        let prover_id = ProverId::from(execute_task_response.prover_id.clone());
 
-        // Store Phase2 result
-        self.store_phase2_result(execute_task_response).await?;
+        // Store Proof response
+        self.store_proof_response(execute_task_response).await?;
 
-        // Check if all Phase2 proofs are complete
-        if self.are_all_phase2_proofs_complete(&job_id).await? {
-            self.handle_phase2_completion(&job_id).await?;
-        }
+        self.handle_phase2_completion(&job_id, prover_id).await?;
 
         Ok(())
     }
 
     /// Store Phase2 proof result from a prover
-    async fn store_phase2_result(
+    async fn store_proof_response(
         &self,
         execute_task_response: ExecuteTaskResponseDto,
     ) -> Result<()> {
@@ -782,9 +793,9 @@ impl CoordinatorService {
 
         // Check for duplicate results
         if phase2_results.contains_key(&prover_id) {
-            warn!("Received duplicate Phase2 result from prover {} for job {}", prover_id, job_id);
+            warn!("Received duplicate Proof result from prover {} for job {}", prover_id, job_id);
             return Err(Error::InvalidRequest(format!(
-                "Duplicate Phase2 result from prover {prover_id} for job {job_id}"
+                "Duplicate Proof result from prover {prover_id} for job {job_id}"
             ))
             .into());
         }
@@ -822,50 +833,52 @@ impl CoordinatorService {
         }
     }
 
-    /// Check if all Phase2 proofs are complete for a job
-    async fn are_all_phase2_proofs_complete(&self, job_id: &JobId) -> Result<bool> {
-        let jobs = self.jobs.read().await;
-        let job = jobs
-            .get(job_id)
-            .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
+    // /// Check if all Phase2 proofs are complete for a job
+    // async fn are_all_phase2_proofs_complete(&self, job_id: &JobId) -> Result<bool> {
+    //     let jobs = self.jobs.read().await;
+    //     let job = jobs
+    //         .get(job_id)
+    //         .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
-        let empty_results = HashMap::new();
-        let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
+    //     let empty_results = HashMap::new();
+    //     let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
 
-        // For simulated execution, complete immediately
-        if job.execution_mode.is_simulating() {
-            return Ok(true);
-        }
+    //     // For simulated execution, complete immediately
+    //     if job.execution_mode.is_simulating() {
+    //         return Ok(true);
+    //     }
 
-        // Check if we have results from all assigned provers
-        if phase2_results.len() < job.provers.len() {
-            info!(
-                "Phase2 progress for job {}: {}/{} provers completed",
-                job_id,
-                phase2_results.len(),
-                job.provers.len()
-            );
-            return Ok(false);
-        }
+    //     // Check if we have results from all assigned provers
+    //     if phase2_results.len() < job.provers.len() {
+    //         info!(
+    //             "Phase2 progress for job {}: {}/{} provers completed",
+    //             job_id,
+    //             phase2_results.len(),
+    //             job.provers.len()
+    //         );
+    //         return Ok(false);
+    //     }
 
-        Ok(true)
-    }
+    //     Ok(true)
+    // }
 
     /// Handle completion of Phase2 - either finish job (simulated) or proceed to Phase3
-    async fn handle_phase2_completion(&self, job_id: &JobId) -> Result<()> {
-        let jobs_guard = self.jobs.read().await;
-        let is_simulated = jobs_guard
-            .get(job_id)
-            .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?
-            .execution_mode
-            .is_simulating();
-        drop(jobs_guard);
+    async fn handle_phase2_completion(&self, job_id: &JobId, prover_id: ProverId) -> Result<()> {
+        let is_simulated = {
+            self.jobs
+                .read()
+                .await
+                .get(job_id)
+                .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?
+                .execution_mode
+                .is_simulating()
+        };
 
         if is_simulated {
             self.complete_simulated_job(job_id).await
         } else {
             // Validate Phase2 results and proceed to Phase3
-            self.validate_phase2_results_and_transition(job_id).await
+            self.validate_phase2_results_and_transition(job_id, prover_id).await
         }
     }
 
@@ -890,9 +903,13 @@ impl CoordinatorService {
     }
 
     /// Validate Phase2 results and transition to Phase3
-    async fn validate_phase2_results_and_transition(&self, job_id: &JobId) -> Result<()> {
+    async fn validate_phase2_results_and_transition(
+        &self,
+        job_id: &JobId,
+        prover_id: ProverId,
+    ) -> Result<()> {
         // Validate all Phase2 results are successful
-        self.validate_phase2_results_success(job_id).await?;
+        // self.validate_phase2_results_success(job_id).await?;
 
         // Update job state to Phase3
         let mut jobs = self.jobs.write().await;
@@ -900,20 +917,79 @@ impl CoordinatorService {
             .get_mut(job_id)
             .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
-        job.change_state(JobState::Running(JobPhase::Aggregate));
+        // The first prover that completes Phase2 becomes the aggregator
+        let agg_prover = if job.agg_prover.is_none() {
+            job.agg_prover = Some(prover_id.clone());
+            job.change_state(JobState::Running(JobPhase::Aggregate));
+
+            // if prover_state != ProverState::Computing(JobPhase::Prove) {
+            //     warn!("Prover {} is not in working state for job {}", prover_id, job_id);
+            //     return Err(Error::InvalidRequest(format!(
+            //         "Prover {prover_id} is not in computing state for job {job_id}",
+            //     ))
+            //     .into());
+            // }
+
+            self.provers_pool
+                .mark_prover_with_state(&prover_id, ProverState::Computing(JobPhase::Aggregate))
+                .await?;
+
+            prover_id.clone()
+        } else {
+            job.agg_prover.as_ref().unwrap().clone()
+        };
 
         // Get assigned provers and start Phase3
         let assigned_provers = job.provers.clone();
 
         drop(jobs);
 
-        self.start_aggregation(job_id, &assigned_provers).await?;
+        let all_done = self.validate_phase2_results_success(job_id).await?;
+
+        self.start_aggregation(job_id, &assigned_provers, agg_prover, prover_id, all_done).await?;
 
         Ok(())
     }
 
     /// Validate that all Phase2 results are successful
-    async fn validate_phase2_results_success(&self, job_id: &JobId) -> Result<()> {
+    // async fn validate_phase2_results_success(&self, job_id: &JobId) -> Result<()> {
+    //     let jobs = self.jobs.read().await;
+    //     let job = jobs
+    //         .get(job_id)
+    //         .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
+
+    //     let empty_results = HashMap::new();
+    //     let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
+    //     let all_successful = phase2_results.values().all(|result| result.success);
+
+    //     if !all_successful {
+    //         let failed_provers: Vec<ProverId> = phase2_results
+    //             .iter()
+    //             .filter_map(
+    //                 |(prover_id, result)| {
+    //                     if !result.success {
+    //                         Some(prover_id.clone())
+    //                     } else {
+    //                         None
+    //                     }
+    //                 },
+    //             )
+    //             .collect();
+
+    //         warn!("Phase2 failed for provers {:?} in job {}", failed_provers, job_id);
+    //         let reason = format!("Phase2 failed for provers: {failed_provers:?}");
+
+    //         drop(jobs);
+    //         self.fail_job(job_id, reason).await?;
+
+    //         return Err(Error::Service("Phase2 failed".to_string()).into());
+    //     }
+
+    //     Ok(())
+    // }
+
+    /// Validate that all Phase2 results are successful
+    async fn validate_phase2_results_success(&self, job_id: &JobId) -> Result<bool> {
         let jobs = self.jobs.read().await;
         let job = jobs
             .get(job_id)
@@ -921,6 +997,18 @@ impl CoordinatorService {
 
         let empty_results = HashMap::new();
         let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
+
+        // Check if we have results from ALL assigned provers otherwise wait for more
+        if phase2_results.len() < job.provers.len() {
+            info!(
+                "Phase2 progress for job {}: {}/{} provers completed",
+                job_id,
+                phase2_results.len(),
+                job.provers.len()
+            );
+            return Ok(false);
+        }
+
         let all_successful = phase2_results.values().all(|result| result.success);
 
         if !all_successful {
@@ -946,72 +1034,85 @@ impl CoordinatorService {
             return Err(Error::Service("Phase2 failed".to_string()).into());
         }
 
-        Ok(())
+        Ok(true)
     }
 
     /// Start Phase3 for all provers that completed Phase2
-    async fn start_aggregation(&self, job_id: &JobId, assigned_provers: &[ProverId]) -> Result<()> {
+    async fn start_aggregation(
+        &self,
+        job_id: &JobId,
+        assigned_provers: &[ProverId],
+        agg_prover_id: ProverId,
+        prover_id: ProverId,
+        all_done: bool,
+    ) -> Result<()> {
         // For the sake of simplicity, we use now only the first prover to aggregate the proofs
-        let agg_prover = self.provers_pool.select_agg_prover().await;
+        // let agg_prover = self.provers_pool.select_agg_prover().await;
 
         let proofs: Vec<AggProofData> = {
-            let jobs = self.jobs.read().await;
-            let agg_proofs = jobs.get(job_id).unwrap().results.get(&JobPhase::Prove).unwrap();
+            if prover_id == agg_prover_id {
+                vec![]
+            } else {
+                let jobs = self.jobs.read().await;
+                let agg_proofs = jobs.get(job_id).unwrap().results.get(&JobPhase::Prove).unwrap();
 
-            // Get all job_result from agg_proofs unless agg_prover contains the prover_id
-            let proofs: Vec<Vec<AggProofData>> = agg_proofs
-                .iter()
-                .filter_map(|(prover_id, result)| {
-                    if !agg_prover.contains(prover_id) {
-                        match &result.data {
-                            JobResultData::AggProofs(values) => Some(values.clone()),
-                            _ => None,
-                        }
-                    } else {
-                        None
+                let proof = agg_proofs.get(&prover_id).ok_or_else(|| {
+                    Error::InvalidRequest(format!(
+                        "Prover {prover_id} has not completed Phase2 for job {job_id}"
+                    ))
+                })?;
+
+                // Reset prover statuses back to Idle
+                self.provers_pool
+                    .mark_provers_with_state(&assigned_provers, ProverState::Idle)
+                    .await?;
+
+                let proof_data = &proof.data;
+
+                match proof_data {
+                    JobResultData::AggProofs(values) => values.clone(),
+                    _ => {
+                        return Err(Error::InvalidRequest(
+                            "Expected AggProofs data for Phase2".to_string(),
+                        )
+                        .into());
                     }
-                })
-                .collect();
+                }
 
-            proofs.into_iter().flatten().collect()
+                // // Get all job_result from agg_proofs unless agg_prover contains the prover_id
+                // let proofs: Vec<Vec<AggProofData>> = agg_proofs
+                //     .iter()
+                //     .filter_map(|(prover_id, result)| {
+                //         if !agg_prover.contains(prover_id) {
+                //             match &result.data {
+                //                 JobResultData::AggProofs(values) => Some(values.clone()),
+                //                 _ => None,
+                //             }
+                //         } else {
+                //             None
+                //         }
+                //     })
+                //     .collect();
+
+                // proofs.into_iter().flatten().collect()
+            }
         };
 
-        println!("Starting aggregation with {} proofs", proofs.len());
+        // for prover_id in agg_prover {
+        self.send_aggregation_request(job_id, proofs, &agg_prover_id, all_done).await?;
+        // }
 
-        for prover_id in agg_prover {
-            let prover_state = self.provers_pool.prover_state(&prover_id).await.unwrap();
-            self.send_aggregation_request(job_id, &proofs, &prover_id, prover_state).await?;
-        }
-
-        info!(
-            "Successfully started ProveAggregate for job {} with {} provers",
-            job_id,
-            assigned_provers.len()
-        );
         Ok(())
     }
 
     async fn send_aggregation_request(
         &self,
         job_id: &JobId,
-        proofs: &Vec<AggProofData>,
-        prover_id: &ProverId,
-        prover_state: ProverState,
+        proofs: Vec<AggProofData>,
+        agg_prover_id: &ProverId,
+        all_done: bool,
     ) -> Result<(), anyhow::Error> {
-        if prover_state != ProverState::Computing(JobPhase::Prove) {
-            warn!("Prover {} is not in working state for job {}", prover_id, job_id);
-            return Err(Error::InvalidRequest(format!(
-                "Prover {prover_id} is not in computing state for job {job_id}",
-            ))
-            .into());
-        }
-
-        self.provers_pool
-            .mark_prover_with_state(prover_id, ProverState::Computing(JobPhase::Aggregate))
-            .await?;
-
         let proofs: Vec<ProofDto> = proofs
-            .clone() // This clone must be removed when using more than one prover
             .into_iter()
             .map(|p| ProofDto {
                 airgroup_id: p.airgroup_id,
@@ -1021,12 +1122,12 @@ impl CoordinatorService {
             .collect();
 
         let req = ExecuteTaskRequestDto {
-            prover_id: prover_id.clone().into(),
+            prover_id: agg_prover_id.clone().into(),
             job_id: job_id.clone().into(),
             params: ExecuteTaskRequestTypeDto::AggParams(AggParamsDto {
                 agg_proofs: proofs,
-                last_proof: true,
-                final_proof: true,
+                last_proof: all_done,
+                final_proof: all_done,
                 verify_constraints: true,
                 aggregation: true,
                 final_snark: false,
@@ -1040,53 +1141,58 @@ impl CoordinatorService {
 
         let message = CoordinatorMessageDto::ExecuteTaskRequest(req).into();
 
-        self.provers_pool.send_message(prover_id, message).await?;
+        self.provers_pool.send_message(agg_prover_id, message).await?;
         Ok(())
     }
 
-    /// Handle Phase2 result and check if the job is complete
+    /// Handle Contributions result and check if the job is complete
     async fn handle_aggregation_completion(
         &self,
         execute_task_response: ExecuteTaskResponseDto,
     ) -> Result<()> {
         let job_id = execute_task_response.job_id.clone();
 
-        info!("Handling aggregation result for job {}", job_id);
-
         let mut jobs = self.jobs.write().await;
         let job = jobs
             .get_mut(&job_id)
             .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
-        let _result = match execute_task_response.result_data {
-            ExecuteTaskResponseResultDataDto::FinalProof(final_proof) => final_proof,
-            _ => {
-                return Err(Error::InvalidRequest(
-                    "Expected Proofs result data for Phase2".to_string(),
-                )
-                .into());
-            }
-        };
-
-        if execute_task_response.success {
-            job.change_state(JobState::Completed);
-
-            // Get the assigned provers before releasing the lock
-            let assigned_provers = job.provers.clone();
-
-            // Reset prover statuses back to Idle
-            self.provers_pool.mark_provers_with_state(&assigned_provers, ProverState::Idle).await?;
-
-            info!("Completed job {} and freed {} provers", job_id, assigned_provers.len());
-        } else {
-            // Some Phase2 results failed
+        if !execute_task_response.success {
+            // Some Contributions results failed
             warn!("Aggregation failed in job {}", job_id);
             let reason = "Aggregation failed".to_string();
 
             self.fail_job(&job.job_id, reason).await?;
         }
 
+        let proof_data = match execute_task_response.result_data {
+            ExecuteTaskResponseResultDataDto::FinalProof(final_proof) => final_proof,
+            _ => {
+                return Err(Error::InvalidRequest(
+                    "Expected FinalProof result data for Aggregation".to_string(),
+                )
+                .into());
+            }
+        };
+
+        // Check if the final proof has no values.
+        // An empty proof means this was not the last aggregation step,
+        // so we need to wait for additional results to complete the job.
+        if proof_data.is_empty() {
+            return Ok(());
+        }
+
+        // Mark the aggregation prover as Idle
+        self.provers_pool
+            .mark_prover_with_state(job.agg_prover.as_ref().unwrap(), ProverState::Idle)
+            .await?;
+
+        // Change job state to Completed
+        job.change_state(JobState::Completed);
+
         drop(jobs);
+
+        info!("Job {} completed successfully!", job_id);
 
         self.post_launch_proof(&job_id, execute_task_response.success);
 

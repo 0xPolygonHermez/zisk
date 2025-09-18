@@ -224,6 +224,7 @@ pub struct Job {
     pub block: BlockContext,
     pub compute_units: ComputeCapacity,
     pub provers: Vec<ProverId>,
+    pub agg_prover: Option<ProverId>,
     pub partitions: Vec<Vec<u32>>,
     pub results: HashMap<JobPhase, HashMap<ProverId, JobResult>>,
     pub stats: HashMap<JobPhase, JobStats>,
@@ -248,6 +249,7 @@ impl Job {
             block: BlockContext { block_id, input_path },
             compute_units,
             provers: selected_provers,
+            agg_prover: None,
             partitions,
             results: HashMap::new(),
             stats: HashMap::new(),
@@ -269,6 +271,12 @@ impl Job {
 
         if let JobState::Running(new_phase) = &new_state {
             self.add_start_time(new_phase.clone());
+        }
+
+        if matches!(new_state, JobState::Completed | JobState::Failed) {
+            let end_time = Utc::now();
+            let duration = end_time.signed_duration_since(self.start_time);
+            self.duration_ms = Some(duration.num_milliseconds() as u64);
         }
     }
 

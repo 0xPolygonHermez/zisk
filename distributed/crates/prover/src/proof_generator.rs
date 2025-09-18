@@ -25,10 +25,11 @@ use crate::prover_service::{ComputationResult, JobContext, ProverServiceConfig};
 pub struct ProofGenerator {
     // It is important to keep the witness_lib declaration before the proofman declaration
     // to ensure that the witness library is dropped before the proofman.
-    witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+    _witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+    _asm_services: Option<AsmServices>,
+
     proofman: Arc<ProofMan<Goldilocks>>,
     local_rank: i32,
-    asm_services: Option<AsmServices>,
 }
 
 impl ProofGenerator {
@@ -92,7 +93,12 @@ impl ProofGenerator {
 
         let witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync> = Arc::from(witness_lib);
 
-        Ok(Self { witness_lib, proofman: Arc::new(proofman), local_rank, asm_services })
+        Ok(Self {
+            _witness_lib: witness_lib,
+            proofman: Arc::new(proofman),
+            local_rank,
+            _asm_services: asm_services,
+        })
     }
 
     pub fn local_rank(&self) -> i32 {
@@ -319,43 +325,31 @@ impl ProofGenerator {
                 agg_params.last_proof,
                 agg_params.final_proof,
                 options,
-            )
-            .await;
+            );
 
-            match result {
-                Ok(data) => {
-                    let _ = tx.send(ComputationResult::AggProof {
-                        job_id,
-                        success: true,
-                        result: Ok(data),
-                    });
-                }
-                Err(error) => {
-                    error!("Prove computation failed for job {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::AggProof {
-                        job_id,
-                        success: false,
-                        result: Err(error),
-                    });
-                }
-            }
+            let _ =
+                tx.send(ComputationResult::AggProof { job_id, success: true, result: Ok(Some(result)) });
         })
     }
 
-    pub async fn execute_aggregation_task(
+    pub fn execute_aggregation_task(
         job_id: JobId,
         proofman: Arc<ProofMan<Goldilocks>>,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
         options: ProofOptions,
-    ) -> Result<Option<Vec<u64>>> {
+    ) -> Vec<u64> {
         let proof =
             proofman.receive_aggregated_proofs(agg_proofs, last_proof, final_proof, &options);
 
         info!("Aggregation computation successful for job {}", job_id);
 
-        Ok(Some(proof.unwrap()[0].proof.clone()))
+        if proof.is_some() {
+            proof.unwrap()[0].proof.clone()
+        } else {
+            Vec::new()
+        }
     }
 
     pub async fn partial_contribution_broadcast(&self, job: Arc<Mutex<JobContext>>) {

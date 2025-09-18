@@ -300,6 +300,11 @@ impl ProverGrpcEndpoint {
             }
         };
 
+        let reset_current_job = matches!(
+            result_data.as_ref(),
+            Some(ResultData::FinalProof(FinalProof { values })) if !values.is_empty()
+        );
+
         let message = ProverMessage {
             payload: Some(prover_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
                 prover_id: self.config_endpoint.prover.prover_id.as_string(),
@@ -313,9 +318,12 @@ impl ProverGrpcEndpoint {
 
         message_sender.send(message)?;
 
-        // TODO move this logic to the client
-        self.prover_service.set_current_job(None);
-        self.prover_service.set_state(ProverState::Idle);
+        // TODO! move this logic to the client
+        if reset_current_job {
+            info!("Aggregation task completed for job {}", job_id);
+            self.prover_service.set_current_job(None);
+            self.prover_service.set_state(ProverState::Idle);
+        }
 
         Ok(())
     }

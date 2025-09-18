@@ -277,9 +277,9 @@ impl ProversPool {
         Ok((selected_provers, prover_allocations))
     }
 
-    pub async fn select_agg_prover(&self) -> Vec<ProverId> {
-        let available_provers = self.provers.read().await;
-        // For the sake of simplicity, we use now only the first prover to aggregate the proofs
-        vec![available_provers.iter().next().unwrap().0.clone()]
-    }
+    // pub async fn select_agg_prover(&self) -> Vec<ProverId> {
+    //     let available_provers = self.provers.read().await;
+    //     // For the sake of simplicity, we use now only the first prover to aggregate the proofs
+    //     vec![available_provers.iter().next().unwrap().0.clone()]
+    // }
 }
