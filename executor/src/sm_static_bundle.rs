@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
+use crate::NestedDeviceMetricsList;
+use crate::StaticDataBusCollect;
 use data_bus::DataBusTrait;
-use executor::NestedDeviceMetricsList;
-use executor::SMBundle;
-use executor::StaticDataBusCollect;
 use fields::PrimeField64;
 use precomp_arith_eq::{ArithEqInstance, ArithEqManager};
 use precomp_keccakf::{KeccakfInstance, KeccakfManager};
@@ -28,6 +27,9 @@ use zisk_pil::{
 use crate::StaticDataBus;
 use rayon::prelude::*;
 
+type SMAirType = Vec<(usize, usize)>;
+pub type SMType<F> = (SMAirType, StateMachines<F>);
+
 pub enum StateMachines<F: PrimeField64> {
     RomSM(Arc<RomSM>),
     MemSM(Arc<Mem<F>>),
@@ -36,10 +38,21 @@ pub enum StateMachines<F: PrimeField64> {
     KeccakfManager(Arc<KeccakfManager<F>>),
     Sha256fManager(Arc<Sha256fManager<F>>),
     ArithEqManager(Arc<ArithEqManager<F>>),
-    Custom(Arc<dyn zisk_common::ComponentBuilder<F>>),
 }
 
 impl<F: PrimeField64> StateMachines<F> {
+    pub fn type_id(&self) -> usize {
+        match self {
+            StateMachines::RomSM(_) => 0,
+            StateMachines::MemSM(_) => 1,
+            StateMachines::BinarySM(_) => 2,
+            StateMachines::ArithSM(_) => 3,
+            StateMachines::KeccakfManager(_) => 4,
+            StateMachines::Sha256fManager(_) => 5,
+            StateMachines::ArithEqManager(_) => 6,
+        }
+    }
+
     fn build_planner(&self, process_only_operation_bus: bool) -> Box<dyn zisk_common::Planner> {
         match self {
             StateMachines::RomSM(sm) => <RomSM as ComponentBuilder<F>>::build_planner(sm),
@@ -55,7 +68,6 @@ impl<F: PrimeField64> StateMachines<F> {
             StateMachines::KeccakfManager(sm) => (**sm).build_planner(),
             StateMachines::Sha256fManager(sm) => (**sm).build_planner(),
             StateMachines::ArithEqManager(sm) => (**sm).build_planner(),
-            StateMachines::Custom(sm) => sm.build_planner(),
         }
     }
 
@@ -70,150 +82,67 @@ impl<F: PrimeField64> StateMachines<F> {
             StateMachines::KeccakfManager(sm) => (**sm).configure_instances(pctx, plans),
             StateMachines::Sha256fManager(sm) => (**sm).configure_instances(pctx, plans),
             StateMachines::ArithEqManager(sm) => (**sm).configure_instances(pctx, plans),
-            StateMachines::Custom(sm) => sm.configure_instances(pctx, plans),
+        }
+    }
+
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
+        match self {
+            StateMachines::RomSM(sm) => <RomSM as ComponentBuilder<F>>::build_instance(sm, ictx),
+            StateMachines::MemSM(sm) => (**sm).build_instance(ictx),
+            StateMachines::BinarySM(sm) => (**sm).build_instance(ictx),
+            StateMachines::ArithSM(sm) => (**sm).build_instance(ictx),
+            StateMachines::KeccakfManager(sm) => (**sm).build_instance(ictx),
+            StateMachines::Sha256fManager(sm) => (**sm).build_instance(ictx),
+            StateMachines::ArithEqManager(sm) => (**sm).build_instance(ictx),
         }
     }
 }
 
 pub struct StaticSMBundle<F: PrimeField64> {
     process_only_operation_bus: bool,
-    sm: HashMap<(usize, usize), StateMachines<F>>,
+    sm: HashMap<usize, SMType<F>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        process_only_operation_bus: bool,
-        sm: Vec<(usize, usize, StateMachines<F>)>,
-    ) -> Self {
+    pub fn new(process_only_operation_bus: bool, sm: Vec<(SMAirType, StateMachines<F>)>) -> Self {
         Self {
             process_only_operation_bus,
             sm: HashMap::from_iter(
-                sm.into_iter().map(|(airgroup_id, air_id, sm)| ((airgroup_id, air_id), sm)),
+                sm.into_iter().map(|(air_ids, sm)| (sm.type_id(), (air_ids, sm))),
             ),
         }
     }
-}
 
-impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
-    fn plan_sec(&self, vec_counters: NestedDeviceMetricsList) -> Vec<Vec<Plan>> {
-        let mut plans = Vec::new();
-        let mut it = vec_counters.into_iter();
+    pub fn get_mem_sm_id(&self) -> usize {
+        1
+    }
 
-        // Create plans for each secondary state machine in the same order as the counters
-        // This matches the order from StaticDataBus::into_devices and build_data_bus_counters
+    pub fn plan_sec(
+        &self,
+        vec_counters: &mut NestedDeviceMetricsList,
+    ) -> HashMap<usize, Vec<Plan>> {
+        let mut plans = HashMap::new();
 
-        if let Some(mem_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0])) {
-            plans.push(
-                mem_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
-            );
-        }
-
-        // Rom state machine
-        if let Some(rom_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])) {
-            plans.push(
-                rom_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
-            );
-        }
-
-        // Binary counter
-        if let Some(binary_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0])) {
-            plans.push(
-                binary_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
-            );
-        }
-
-        // Arith counter
-        if let Some(arith_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0])) {
-            plans.push(
-                arith_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
-            );
-        }
-
-        // Keccakf counter
-        if let Some(keccakf_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, KECCAKF_AIR_IDS[0])) {
-            plans.push(
-                keccakf_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
-            );
-        }
-
-        // Sha256f counter
-        if let Some(sha256f_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, SHA_256_F_AIR_IDS[0])) {
-            plans.push(
-                sha256f_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
-            );
-        }
-
-        // ArithEq counter
-        if let Some(arith_eq_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, ARITH_EQ_AIR_IDS[0])) {
-            plans.push(
-                arith_eq_sm.build_planner(self.process_only_operation_bus).plan(it.next().unwrap()),
-            );
+        // Iterate over vec_counters hashmap
+        for (id, (_, sm)) in self.sm.iter() {
+            if let Some(counters) = vec_counters.remove(id) {
+                plans.insert(*id, sm.build_planner(self.process_only_operation_bus).plan(counters));
+            }
         }
 
         plans
     }
 
-    fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Vec<Plan>]) {
-        let mut plan_idx = 0;
-
-        // 1. Mem SM
-        if let Some(mem_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, MEM_AIR_IDS[0])) {
-            if plan_idx < plannings.len() {
-                mem_sm.configure_instances(pctx, &plannings[plan_idx]);
-                plan_idx += 1;
-            }
-        }
-
-        // 2. Rom SM
-        if let Some(rom_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])) {
-            if plan_idx < plannings.len() {
-                rom_sm.configure_instances(pctx, &plannings[plan_idx]);
-                plan_idx += 1;
-            }
-        }
-
-        // 2. Binary SM
-        if let Some(binary_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0])) {
-            if plan_idx < plannings.len() {
-                binary_sm.configure_instances(pctx, &plannings[plan_idx]);
-                plan_idx += 1;
-            }
-        }
-
-        // 3. Arith SM
-        if let Some(arith_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0])) {
-            if plan_idx < plannings.len() {
-                arith_sm.configure_instances(pctx, &plannings[plan_idx]);
-                plan_idx += 1;
-            }
-        }
-
-        // 4. Keccakf SM
-        if let Some(keccakf_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, KECCAKF_AIR_IDS[0])) {
-            if plan_idx < plannings.len() {
-                keccakf_sm.configure_instances(pctx, &plannings[plan_idx]);
-                plan_idx += 1;
-            }
-        }
-
-        // 5. Sha256f SM
-        if let Some(sha256f_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, SHA_256_F_AIR_IDS[0])) {
-            if plan_idx < plannings.len() {
-                sha256f_sm.configure_instances(pctx, &plannings[plan_idx]);
-                plan_idx += 1;
-            }
-        }
-
-        // 6. ArithEq SM
-        if let Some(arith_eq_sm) = self.sm.get(&(ZISK_AIRGROUP_ID, ARITH_EQ_AIR_IDS[0])) {
-            if plan_idx < plannings.len() {
-                arith_eq_sm.configure_instances(pctx, &plannings[plan_idx]);
+    pub fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &HashMap<usize, Vec<Plan>>) {
+        for (id, (_, sm)) in self.sm.iter() {
+            if let Some(plans) = plannings.get(id) {
+                sm.configure_instances(pctx, plans);
             }
         }
     }
 
-    fn build_instance(&self, _idx: usize, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
+    pub fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         let airgroup_id = ictx.plan.airgroup_id;
         let air_id = ictx.plan.air_id;
 
@@ -221,20 +150,18 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
             panic!("Unsupported AIR group ID: {}", airgroup_id);
         }
 
-        let sm = self.sm.get(&(airgroup_id, air_id)).expect("State machine not found");
-        match sm {
-            StateMachines::MemSM(mem_sm) => mem_sm.build_instance(ictx),
-            StateMachines::RomSM(rom_sm) => rom_sm.build_instance(ictx),
-            StateMachines::BinarySM(binary_sm) => binary_sm.build_instance(ictx),
-            StateMachines::ArithSM(arith_sm) => arith_sm.build_instance(ictx),
-            StateMachines::KeccakfManager(keccak_sm) => keccak_sm.build_instance(ictx),
-            StateMachines::Sha256fManager(sha256_sm) => sha256_sm.build_instance(ictx),
-            StateMachines::ArithEqManager(arith_eq_sm) => arith_eq_sm.build_instance(ictx),
-            StateMachines::Custom(custom_sm) => custom_sm.build_instance(ictx),
-        }
+        let (_, sm) = self
+            .sm
+            .values()
+            .find(|(air_ids, _)| air_ids.contains(&(airgroup_id, air_id)))
+            .unwrap_or_else(|| {
+                panic!("State machine not found for pair ({}, {})", airgroup_id, air_id)
+            });
+
+        sm.build_instance(ictx)
     }
 
-    fn build_data_bus_counters(
+    pub fn build_data_bus_counters(
         &self,
     ) -> impl DataBusTrait<u64, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static {
         // Extract counters from each state machine type
@@ -245,27 +172,29 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         let mut sha256f_counter = None;
         let mut arith_eq_counter = None;
 
-        for sm in self.sm.values() {
+        for (_, sm) in self.sm.values() {
             match sm {
                 StateMachines::MemSM(mem_sm) => {
                     if !self.process_only_operation_bus {
-                        mem_counter = Some(mem_sm.build_mem_counter());
+                        mem_counter = Some((sm.type_id(), Some(mem_sm.build_mem_counter())));
+                    } else {
+                        mem_counter = Some((sm.type_id(), None));
                     }
                 }
                 StateMachines::BinarySM(binary_sm) => {
-                    binary_counter = Some(binary_sm.build_binary_counter());
+                    binary_counter = Some((sm.type_id(), binary_sm.build_binary_counter()));
                 }
                 StateMachines::ArithSM(arith_sm) => {
-                    arith_counter = Some(arith_sm.build_arith_counter());
+                    arith_counter = Some((sm.type_id(), arith_sm.build_arith_counter()));
                 }
                 StateMachines::KeccakfManager(keccak_sm) => {
-                    keccakf_counter = Some(keccak_sm.build_keccakf_counter());
+                    keccakf_counter = Some((sm.type_id(), keccak_sm.build_keccakf_counter()));
                 }
                 StateMachines::Sha256fManager(sha256_sm) => {
-                    sha256f_counter = Some(sha256_sm.build_sha256f_counter());
+                    sha256f_counter = Some((sm.type_id(), sha256_sm.build_sha256f_counter()));
                 }
                 StateMachines::ArithEqManager(arith_eq_sm) => {
-                    arith_eq_counter = Some(arith_eq_sm.build_arith_eq_counter());
+                    arith_eq_counter = Some((sm.type_id(), arith_eq_sm.build_arith_eq_counter()));
                 }
                 _ => {} // Handle other cases if needed
             }
@@ -273,20 +202,18 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
 
         StaticDataBus::new(
             self.process_only_operation_bus,
-            mem_counter,
+            mem_counter.expect("Mem counter not found"),
             binary_counter.expect("Binary counter not found"),
             arith_counter.expect("Arith counter not found"),
             keccakf_counter.expect("Keccakf counter not found"),
             sha256f_counter.expect("Sha256f counter not found"),
             arith_eq_counter.expect("ArithEq counter not found"),
+            Some(0),
         )
     }
 
-    fn main_counter_idx(&self) -> Option<usize> {
-        Some(0)
-    }
-
-    fn build_data_bus_collectors(
+    #[allow(clippy::borrowed_box)]
+    pub fn build_data_bus_collectors(
         &self,
         pctx: &ProofCtx<F>,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
@@ -445,7 +372,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                 let mut keccakf_inputs_generator = None;
                 let mut sha256f_inputs_generator = None;
                 let mut arith_inputs_generator = None;
-                for sm in self.sm.values() {
+                for (_, sm) in self.sm.values() {
                     match sm {
                         StateMachines::ArithSM(arith_sm) => {
                             arith_inputs_generator = Some(arith_sm.build_arith_input_generator());

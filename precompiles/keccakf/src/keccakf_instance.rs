@@ -13,7 +13,7 @@ use std::{
 };
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, MemCollectorInfo, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;
@@ -176,11 +176,13 @@ impl BusDevice<PayloadType> for KeccakfCollector {
     /// A tuple where:
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
         _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 

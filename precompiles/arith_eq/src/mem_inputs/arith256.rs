@@ -1,8 +1,8 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Arith256;
-use sm_mem::MemCollectorInfo;
 use std::collections::VecDeque;
 use zisk_common::BusId;
+use zisk_common::MemCollectorInfo;
 
 pub const ARITH_256_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 5,

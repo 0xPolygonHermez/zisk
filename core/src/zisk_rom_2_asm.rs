@@ -62,6 +62,7 @@ const FCALL_RESULT: u64 = 37;
 const FCALL_RESULT_GOT: u64 = 69;
 
 const XMM_MAPPED_REGS: [u64; 16] = [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+//const XMM_MAPPED_REGS: [u64; 0] = []; // Used for debugging
 
 const F_MEM_CLEAR_WRITE_BYTE: u64 = 1 << 37;
 const F_MEM_WRITE_SHIFT: u64 = 36;
@@ -3078,6 +3079,13 @@ impl ZiskRom2Asm {
             // *s += &format!("\tpop {}\n", REG_FLAG);
             // *s += &format!("\tpop {}\n", REG_FLAG);
 
+            // Used for debugging
+            // Self::push_internal_registers(&mut ctx, code, false);
+            // *code += &format!("\tmov rdi, {}\n", ctx.pc);
+            // *code += &format!("\tmov rsi, {}\n", REG_C);
+            // *code += &format!("\tcall _print_pc\n");
+            // Self::pop_internal_registers(&mut ctx, code, false);
+
             if ctx.main_trace() {
                 *code += &ctx.full_line_comment(
                     "Main[5] = prev_reg_mem[0] + (prev_reg_mem[1] & 0xfffff ) << 40".to_string(),
@@ -4821,7 +4829,12 @@ impl ZiskRom2Asm {
                 // Generate mem reads
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    Self::read_riscv_reg(ctx, code, 10, "rdi", "rdi");
+                    // Use the memory address as the first and unique parameter
+                    *code += &format!(
+                        "\tmov rdi, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("rdi = b = address")
+                    );
 
                     // Copy read data into mem_reads_address and advance it
                     if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {

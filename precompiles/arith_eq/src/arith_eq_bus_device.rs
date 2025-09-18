@@ -4,7 +4,7 @@
 
 use std::{collections::VecDeque, ops::Add};
 
-use sm_mem::MemCollectorInfo;
+use zisk_common::MemCollectorInfo;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
@@ -72,17 +72,7 @@ impl ArithEqCounterInputGen {
         (op_type == ZiskOperationType::ArithEq).then_some(self.counter.inst_count)
     }
 
-    pub fn skip_data(
-        &self,
-        bus_id: &BusId,
-        data: &[u64],
-        mem_collectors_info: &[MemCollectorInfo],
-    ) -> bool {
-        if *bus_id != OPERATION_BUS_ID || data[OP_TYPE] as u32 != ZiskOperationType::ArithEq as u32
-        {
-            return false;
-        }
-
+    fn skip_data(&self, data: &[u64], mem_collectors_info: &[MemCollectorInfo]) -> bool {
         let addr_main = data[B] as u32;
 
         match data[OP] as u8 {
@@ -168,6 +158,7 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
         bus_id: &BusId,
         data: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
@@ -175,6 +166,12 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
 
         if data[OP_TYPE] != ARITH_EQ {
             return true;
+        }
+
+        if let Some(mem_collectors_info) = mem_collector_info {
+            if self.skip_data(data, mem_collectors_info) {
+                return true;
+            }
         }
 
         let op = data[OP] as u8;

@@ -6,8 +6,8 @@ use std::collections::VecDeque;
 
 use crate::{BinaryBasicFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, MemCollectorInfo, OperationBusData, A, B,
+    OP, OPERATION_BUS_ID,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -67,11 +67,13 @@ impl BusDevice<u64> for BinaryBasicCollector {
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
         let instance_complete = self.inputs.len() == self.num_operations;

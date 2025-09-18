@@ -1,8 +1,8 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Bn254Curve;
-use sm_mem::MemCollectorInfo;
 use std::collections::VecDeque;
 use zisk_common::BusId;
+use zisk_common::MemCollectorInfo;
 
 pub const BN254_CURVE_DBL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 0,
