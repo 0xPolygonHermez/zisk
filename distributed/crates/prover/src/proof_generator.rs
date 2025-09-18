@@ -318,13 +318,15 @@ impl ProofGenerator {
 
             let options = Self::get_proof_options_aggregation(&agg_params);
 
-            let result = Self::execute_aggregation_task(
-                proofman.clone(),
-                agg_proofs,
-                agg_params.last_proof,
-                agg_params.final_proof,
-                options,
-            );
+            let result = proofman
+                .receive_aggregated_proofs(
+                    agg_proofs,
+                    agg_params.last_proof,
+                    agg_params.final_proof,
+                    &options,
+                )
+                .map(|proof| proof.into_iter().map(|p| p.proof).collect())
+                .unwrap_or_default();
 
             let _ = tx.send(ComputationResult::AggProof {
                 job_id,
@@ -332,19 +334,6 @@ impl ProofGenerator {
                 result: Ok(Some(result)),
             });
         })
-    }
-
-    pub fn execute_aggregation_task(
-        proofman: Arc<ProofMan<Goldilocks>>,
-        agg_proofs: Vec<AggProofs>,
-        last_proof: bool,
-        final_proof: bool,
-        options: ProofOptions,
-    ) -> Vec<Vec<u64>> {
-        proofman
-            .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, &options)
-            .map(|proof| proof.into_iter().map(|p| p.proof).collect())
-            .unwrap_or_default()
     }
 
     pub async fn partial_contribution_broadcast(&self, job: Arc<Mutex<JobContext>>) {
