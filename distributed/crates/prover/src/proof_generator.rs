@@ -327,8 +327,11 @@ impl ProofGenerator {
                 options,
             );
 
-            let _ =
-                tx.send(ComputationResult::AggProof { job_id, success: true, result: Ok(Some(result)) });
+            let _ = tx.send(ComputationResult::AggProof {
+                job_id,
+                success: true,
+                result: Ok(Some(result)),
+            });
         })
     }
 

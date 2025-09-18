@@ -5,6 +5,7 @@ use tracing::{error, info, warn};
 pub async fn send_completion_webhook(
     webhook_url: String,
     job_id: JobId,
+    proof_data: Option<Vec<u64>>,
     success: bool,
 ) -> Result<()> {
     let client = reqwest::Client::new();
@@ -22,6 +23,7 @@ pub async fn send_completion_webhook(
     let payload = serde_json::json!({
         "job_id": job_id.as_string(),
         "status": if success { "completed" } else { "failed" },
+        "proof": proof_data,
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
 

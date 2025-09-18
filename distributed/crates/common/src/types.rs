@@ -230,6 +230,7 @@ pub struct Job {
     pub stats: HashMap<JobPhase, JobStats>,
     pub challenges: Option<Vec<ContributionsInfo>>,
     pub execution_mode: JobExecutionMode,
+    pub final_proof: Option<Vec<u64>>,
 }
 
 impl Job {
@@ -255,6 +256,7 @@ impl Job {
             stats: HashMap::new(),
             challenges: None,
             execution_mode,
+            final_proof: None,
         }
     }
 
