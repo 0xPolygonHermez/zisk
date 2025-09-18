@@ -173,13 +173,17 @@ impl AsmRunnerMO {
 
                     // Add to executor stats
                     #[cfg(feature = "stats")]
-                    _stats.lock().unwrap().add_stat(
-                        parent_stats_id,
-                        0,
-                        "MO_CHUNK_DONE",
-                        0,
-                        ExecutorStatsEvent::Mark,
-                    );
+                    {
+                        let mut stats_guard = _stats.lock().unwrap();
+                        let stats_id = stats_guard.get_id();
+                        stats_guard.add_stat(
+                            parent_stats_id,
+                            stats_id,
+                            "MO_CHUNK_DONE",
+                            0,
+                            ExecutorStatsEvent::Mark,
+                        );
+                    }
 
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
