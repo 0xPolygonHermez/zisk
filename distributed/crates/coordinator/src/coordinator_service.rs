@@ -167,20 +167,19 @@ impl CoordinatorService {
     ) -> Result<LaunchProofResponseDto> {
         self.pre_launch_proof(&request)?;
 
-        let block_id = request.block_id.clone();
         let required_compute_capacity = ComputeCapacity::from(request.compute_capacity);
 
         // Create and configure a new job
         let mut job = self
             .create_job(
-                block_id.clone(),
+                request.block_id.clone(),
                 required_compute_capacity,
                 request.input_path,
                 request.simulated_node,
             )
             .await?;
 
-        info!("Successfully started new job {}", job.job_id);
+        info!("Successfully started Prove job {}", job.job_id);
 
         // Initialize job state
         job.change_state(JobState::Running(JobPhase::Contributions));
@@ -194,7 +193,7 @@ impl CoordinatorService {
 
         // Send Phase1 tasks to selected provers
         self.dispatch_contributions_messages(
-            block_id,
+            request.block_id,
             required_compute_capacity,
             &job,
             &active_provers,
@@ -214,7 +213,6 @@ impl CoordinatorService {
         // Check if webhook URL is configured
         if let Some(webhook_url) = &self.config.coordinator.webhook_url {
             let webhook_url = webhook_url.clone();
-            let job_id = job_id.clone();
 
             let (final_proof, success) = {
                 let jobs = self.jobs.read().await;
@@ -224,6 +222,8 @@ impl CoordinatorService {
 
                 (job.final_proof.clone(), matches!(job.state(), JobState::Completed))
             };
+
+            let job_id = job_id.clone();
 
             // Spawn a non-blocking task
             tokio::spawn(async move {
@@ -404,18 +404,13 @@ impl CoordinatorService {
     }
 
     pub async fn handle_stream_error(&self, message: ProverErrorDto) -> Result<()> {
-        let prover_id = message.prover_id;
-
         // Update last heartbeat
-        self.provers_pool.update_last_heartbeat(&prover_id).await?;
+        self.provers_pool.update_last_heartbeat(&message.prover_id).await?;
 
-        error!("Prover {} error: {}", prover_id, message.error_message);
+        error!("Prover {} error: {}", message.prover_id, message.error_message);
 
-        // If the error includes a job_id, we should fail that job
-        let job_id = message.job_id;
-
-        self.fail_job(&job_id, message.error_message.clone()).await.map_err(|e| {
-            error!("Failed to mark job {} as failed after prover error: {}", job_id, e);
+        self.fail_job(&message.job_id, message.error_message.clone()).await.map_err(|e| {
+            error!("Failed to mark job {} as failed after prover error: {}", message.job_id, e);
             e
         })?;
 
@@ -449,19 +444,16 @@ impl CoordinatorService {
 
     /// Validate request and update prover heartbeat
     async fn validate_and_update_heartbeat(&self, message: &ExecuteTaskResponseDto) -> Result<()> {
-        let prover_id = message.prover_id.clone();
-        let job_id = message.job_id.clone();
-
         // Update last heartbeat
-        self.provers_pool.update_last_heartbeat(&prover_id).await?;
+        self.provers_pool.update_last_heartbeat(&message.prover_id).await?;
 
         // Check if job exists
-        if !self.jobs.read().await.contains_key(&job_id) {
+        if !self.jobs.read().await.contains_key(&message.job_id) {
             warn!(
                 "Received ExecuteTaskResponse for unknown job {} from prover {}",
-                job_id, prover_id
+                message.job_id, message.prover_id
             );
-            return Err(Error::InvalidRequest(format!("Job {job_id} not found")).into());
+            return Err(Error::InvalidRequest(format!("Job {} not found", message.job_id)).into());
         }
 
         Ok(())
@@ -469,16 +461,15 @@ impl CoordinatorService {
 
     /// Handle task failure by failing the job and returning appropriate error
     async fn handle_task_failure(&self, message: ExecuteTaskResponseDto) -> Result<()> {
-        let prover_id = message.prover_id.clone();
-        let job_id = message.job_id.clone();
-
-        self.fail_job(&job_id, "Task execution failed".to_string()).await.map_err(|e| {
-            error!("Failed to mark job {} as failed: {}", job_id, e);
+        self.fail_job(&message.job_id, "Task execution failed".to_string()).await.map_err(|e| {
+            error!("Failed to mark job {} as failed: {}", message.job_id, e);
             e
         })?;
 
         Err(Error::Service(format!(
-            "Prover {prover_id} failed to execute task for {job_id}: {}",
+            "Prover {} failed to execute task for {}: {}",
+            message.prover_id,
+            message.job_id,
             message.error_message.unwrap_or_default()
         ))
         .into())
