@@ -80,7 +80,7 @@ This command builds the program using the `zkvm` target. The resulting `sha_hash
 
 ## Execute
 
-Before generating a proof, you can test the program using the ZisK emulator to ensure its correctness. Specify the ELF file (using the `-e` or `--elf flag`) and the input file `input.bin` (using the `-i` or `--inputs` flag):
+Before generating a proof, you can test the program using the ZisK emulator to ensure its correctness. Specify the ELF file (using the `-e` or `--elf` flag) and the input file `input.bin` (using the `-i` or `--inputs` flag):
 
 ```bash
 ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
