@@ -18,7 +18,7 @@ use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::sync::Mutex;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
-    InstanceType, Metrics, PayloadType, ROM_BUS_ID,
+    InstanceType, MemCollectorInfo, Metrics, PayloadType, ROM_BUS_ID,
 };
 use zisk_core::ZiskRom;
 
@@ -265,6 +265,7 @@ impl BusDevice<u64> for RomCollector {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == ROM_BUS_ID);
 

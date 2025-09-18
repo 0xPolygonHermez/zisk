@@ -4,7 +4,7 @@
 
 use std::{collections::VecDeque, ops::Add};
 
-use sm_mem::MemCollectorInfo;
+use zisk_common::MemCollectorInfo;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE,
 };
@@ -47,21 +47,6 @@ impl Sha256fCounterInputGen {
     /// Returns the count of instructions for the specified operation type.
     pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
         (op_type == ZiskOperationType::Sha256).then_some(self.counter.inst_count)
-    }
-
-    pub fn skip_data(
-        &self,
-        bus_id: &BusId,
-        data: &[u64],
-        mem_collectors_info: &[MemCollectorInfo],
-    ) -> bool {
-        if *bus_id != OPERATION_BUS_ID || data[OP_TYPE] as u32 != ZiskOperationType::Sha256 as u32 {
-            return false;
-        }
-
-        let addr_main = data[B] as u32;
-
-        skip_sha256f_mem_inputs(addr_main, data, mem_collectors_info)
     }
 }
 
@@ -121,11 +106,18 @@ impl BusDevice<u64> for Sha256fCounterInputGen {
         bus_id: &BusId,
         data: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Sha256 as u32 {
             return true;
+        }
+
+        if let Some(mem_collectors_info) = mem_collector_info {
+            if skip_sha256f_mem_inputs(data[B] as u32, data, mem_collectors_info) {
+                return true;
+            }
         }
 
         let step_main = data[A];

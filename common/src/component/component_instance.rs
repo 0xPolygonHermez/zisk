@@ -185,6 +185,7 @@ macro_rules! table_instance {
                 bus_id: &BusId,
                 data: &[u64],
                 _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+                _mem_collector_info: Option<&[MemCollectorInfo]>,
             ) -> bool {
                 true
             }
@@ -311,6 +312,7 @@ macro_rules! table_instance_array {
                 bus_id: &BusId,
                 data: &[u64],
                 _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+                _mem_collector_info: Option<&[MemCollectorInfo]>,
             ) -> bool {
                 true
             }

@@ -11,7 +11,9 @@ use zisk_common::ChunkId;
 
 use crate::{MemAlignCounters, MemHelpers};
 use std::fmt;
-use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
+use zisk_common::{
+    BusDevice, BusId, MemBusData, MemCollectorInfo, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID,
+};
 
 #[derive(Default)]
 pub struct MemCounters {
@@ -199,6 +201,7 @@ impl BusDevice<u64> for MemCounters {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(bus_id == &MEM_BUS_ID);
 

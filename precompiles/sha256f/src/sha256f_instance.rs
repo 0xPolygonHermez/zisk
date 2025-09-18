@@ -12,7 +12,7 @@ use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, MemCollectorInfo, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::Sha256fTrace;
@@ -163,11 +163,13 @@ impl BusDevice<PayloadType> for Sha256fCollector {
     /// A tuple where:
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
         _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
