@@ -5993,13 +5993,518 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_one = true;
             }
-            // TODO!!!
-            ZiskOp::Arith384Mod => unimplemented!(),
-            ZiskOp::Bls12_381CurveAdd => unimplemented!(),
-            ZiskOp::Bls12_381CurveDbl => unimplemented!(),
-            ZiskOp::Bls12_381ComplexAdd => unimplemented!(),
-            ZiskOp::Bls12_381ComplexSub => unimplemented!(),
-            ZiskOp::Bls12_381ComplexMul => unimplemented!(),
+            ZiskOp::Arith384Mod => {
+                *code += &ctx.full_line_comment("Arith384Mod".to_string());
+
+                // Use the memory address as the first and unique parameter
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    *code += &format!(
+                        "\tmov rdi, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("rdi = b = address")
+                    );
+                }
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
+                    // If zip, check if chunk is active
+                    if ctx.zip() {
+                        *code += &format!(
+                            "\ttest {}, 1 {}\n",
+                            REG_ACTIVE_CHUNK,
+                            ctx.comment_str("active_chunk == 1 ?")
+                        );
+                        *code += &format!("\tjnz pc_{:x}_arith384mod_active_chunk\n", ctx.pc);
+                        *code += &format!("\tjmp pc_{:x}_arith384mod_active_chunk_done\n", ctx.pc);
+                        *code += &format!("pc_{:x}_arith384mod_active_chunk:\n", ctx.pc);
+                    }
+                    Self::precompiled_save_mem_reads(ctx, code, 5, 4, [6, 6, 6, 6].to_vec());
+                    if ctx.zip() {
+                        *code += &format!("pc_{:x}_arith384mod_active_chunk_done:\n", ctx.pc);
+                    }
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    // Arguments will be read from indirection[0, 1, 2, 3]
+                    Self::mem_op_precompiled_read(ctx, code, 5, 4, [6, 6, 6, 6].to_vec());
+
+                    // Result will be written to indirection[4]
+                    Self::mem_op_precompiled_write(ctx, code, 5, 4, 4, 6);
+                }
+
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    // Call the arith384_mod function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_arith384_mod\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Consume mem reads
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tadd {}, 29*8 {}\n",
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("chunk_address += 29*8")
+                    );
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Bls12_381CurveAdd => {
+                *code += &ctx.full_line_comment("Bls12_381CurveAdd".to_string());
+
+                // Use the memory address as the first and unique parameter
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    *code += &format!(
+                        "\tmov rdi, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("rdi = b = address")
+                    );
+                }
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
+                    // If zip, check if chunk is active
+                    if ctx.zip() {
+                        *code += &format!(
+                            "\ttest {}, 1 {}\n",
+                            REG_ACTIVE_CHUNK,
+                            ctx.comment_str("active_chunk == 1 ?")
+                        );
+                        *code += &format!("\tjnz pc_{:x}_bls12_381curveadd_active_chunk\n", ctx.pc);
+                        *code +=
+                            &format!("\tjmp pc_{:x}_bls12_381curveadd_active_chunk_done\n", ctx.pc);
+                        *code += &format!("pc_{:x}_bls12_381curveadd_active_chunk:\n", ctx.pc);
+                    }
+                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [12, 12].to_vec());
+                    if ctx.zip() {
+                        *code += &format!("pc_{:x}_bls12_381curveadd_active_chunk_done:\n", ctx.pc);
+                    }
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    // Arguments will be read from indirection[0, 1]
+                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [12, 12].to_vec());
+
+                    // Result will be written to indirection[0]
+                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 12);
+                }
+
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    // Call the bls12_381_curve_add function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_bls12_381_curve_add\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Consume mem reads
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tadd {}, 22*8 {}\n",
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("chunk_address += 22*8")
+                    );
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Bls12_381CurveDbl => {
+                *code += &ctx.full_line_comment("Bls12_381CurveDbl".to_string());
+
+                // Use the memory address as the first and unique parameter
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    *code += &format!(
+                        "\tmov rdi, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("rdi = b = address")
+                    );
+                }
+
+                // Copy read data into mem_reads
+                if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
+                    // If zip, check if chunk is active
+                    if ctx.zip() {
+                        *code += &format!(
+                            "\ttest {}, 1 {}\n",
+                            REG_ACTIVE_CHUNK,
+                            ctx.comment_str("active_chunk == 1 ?")
+                        );
+                        *code += &format!("\tjnz pc_{:x}_bls12_381curvedbl_active_chunk\n", ctx.pc);
+                        *code +=
+                            &format!("\tjmp pc_{:x}_bls12_381curvedbl_active_chunk_done\n", ctx.pc);
+                        *code += &format!("pc_{:x}_bls12_381curvedbl_active_chunk:\n", ctx.pc);
+                    }
+                    *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
+                    for k in 0..12 {
+                        *code += &format!(
+                            "\tmov {}, [{} + {}] {}\n",
+                            REG_VALUE,
+                            REG_ADDRESS,
+                            k * 8,
+                            ctx.comment(format!("value = mem[address[{k}]]"))
+                        );
+                        *code += &format!(
+                            "\tmov [{} + {}*8 + {}], {} {}\n",
+                            REG_MEM_READS_ADDRESS,
+                            REG_MEM_READS_SIZE,
+                            k * 8,
+                            REG_VALUE,
+                            ctx.comment(format!("mem_reads[{k}] = value"))
+                        );
+                    }
+
+                    // Increment chunk.steps.mem_reads_size in 8 units
+                    *code += &format!(
+                        "\tadd {}, 12 {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size += 12")
+                    );
+                    if ctx.zip() {
+                        *code += &format!("pc_{:x}_bls12_381curvedbl_active_chunk_done:\n", ctx.pc);
+                    }
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_array(ctx, code, "rdi", false, 8, 12);
+                    Self::mem_op_array(ctx, code, "rdi", true, 8, 12);
+                }
+
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    // Call the bls12_381_curve_dbl function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_bls12_381_curve_dbl\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Consume mem reads
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tadd {}, 12*8 {}\n",
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("chunk_address += 12*8")
+                    );
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Bls12_381ComplexAdd => {
+                *code += &ctx.full_line_comment("Bls12_381ComplexAdd".to_string());
+
+                // Use the memory address as the first and unique parameter
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    *code += &format!(
+                        "\tmov rdi, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("rdi = b = address")
+                    );
+                }
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
+                    // If zip, check if chunk is active
+                    if ctx.zip() {
+                        *code += &format!(
+                            "\ttest {}, 1 {}\n",
+                            REG_ACTIVE_CHUNK,
+                            ctx.comment_str("active_chunk == 1 ?")
+                        );
+                        *code +=
+                            &format!("\tjnz pc_{:x}_bls12_381complexadd_active_chunk\n", ctx.pc);
+                        *code += &format!(
+                            "\tjmp pc_{:x}_bls12_381complexadd_active_chunk_done\n",
+                            ctx.pc
+                        );
+                        *code += &format!("pc_{:x}_bls12_381complexadd_active_chunk:\n", ctx.pc);
+                    }
+                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [12, 12].to_vec());
+                    if ctx.zip() {
+                        *code +=
+                            &format!("pc_{:x}_bls12_381complexadd_active_chunk_done:\n", ctx.pc);
+                    }
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    // Arguments will be read from indirection[0, 1]
+                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [12, 12].to_vec());
+
+                    // Result will be written to indirection[0]
+                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 12);
+                }
+
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    // Call the bls12_381_complex_add function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_bls12_381_complex_add\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Consume mem reads
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tadd {}, 26*8 {}\n",
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("chunk_address += 26*8")
+                    );
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Bls12_381ComplexSub => {
+                *code += &ctx.full_line_comment("Bls12_381ComplexSub".to_string());
+
+                // Use the memory address as the first and unique parameter
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    *code += &format!(
+                        "\tmov rdi, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("rdi = b = address")
+                    );
+                }
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
+                    // If zip, check if chunk is active
+                    if ctx.zip() {
+                        *code += &format!(
+                            "\ttest {}, 1 {}\n",
+                            REG_ACTIVE_CHUNK,
+                            ctx.comment_str("active_chunk == 1 ?")
+                        );
+                        *code +=
+                            &format!("\tjnz pc_{:x}_bls12_381complexsub_active_chunk\n", ctx.pc);
+                        *code += &format!(
+                            "\tjmp pc_{:x}_bls12_381complexsub_active_chunk_done\n",
+                            ctx.pc
+                        );
+                        *code += &format!("pc_{:x}_bls12_381complexsub_active_chunk:\n", ctx.pc);
+                    }
+                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [12, 12].to_vec());
+                    if ctx.zip() {
+                        *code +=
+                            &format!("pc_{:x}_bls12_381complexsub_active_chunk_done:\n", ctx.pc);
+                    }
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    // Arguments will be read from indirection[0, 1]
+                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [12, 12].to_vec());
+
+                    // Result will be written to indirection[0]
+                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 12);
+                }
+
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    // Call the bls12_381_complex_sub function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_bls12_381_complex_sub\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Consume mem reads
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tadd {}, 26*8 {}\n",
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("chunk_address += 26*8")
+                    );
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Bls12_381ComplexMul => {
+                *code += &ctx.full_line_comment("Bls12_381ComplexMul".to_string());
+
+                // Use the memory address as the first and unique parameter
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    *code += &format!(
+                        "\tmov rdi, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("rdi = b = address")
+                    );
+                }
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
+                    // If zip, check if chunk is active
+                    if ctx.zip() {
+                        *code += &format!(
+                            "\ttest {}, 1 {}\n",
+                            REG_ACTIVE_CHUNK,
+                            ctx.comment_str("active_chunk == 1 ?")
+                        );
+                        *code +=
+                            &format!("\tjnz pc_{:x}_bls12_381complexmul_active_chunk\n", ctx.pc);
+                        *code += &format!(
+                            "\tjmp pc_{:x}_bls12_381complexmul_active_chunk_done\n",
+                            ctx.pc
+                        );
+                        *code += &format!("pc_{:x}_bls12_381complexmul_active_chunk:\n", ctx.pc);
+                    }
+                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [12, 12].to_vec());
+                    if ctx.zip() {
+                        *code +=
+                            &format!("pc_{:x}_bls12_381complexmul_active_chunk_done:\n", ctx.pc);
+                    }
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    // Arguments will be read from indirection[0, 1]
+                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [12, 12].to_vec());
+
+                    // Result will be written to indirection[0]
+                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 12);
+                }
+
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    // Call the bls12_381_complex_mul function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_bls12_381_complex_mul\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Consume mem reads
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tadd {}, 26*8 {}\n",
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("chunk_address += 26*8")
+                    );
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
         }
     }
 
