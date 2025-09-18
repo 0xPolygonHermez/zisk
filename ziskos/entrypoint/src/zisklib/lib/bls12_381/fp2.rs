@@ -106,6 +106,9 @@ pub(crate) fn inv_fp2_bls12_381_core(a: &[u64; 12]) -> [u64; 12] {
 
 // ========== Pointer-based API (Thin Wrappers) ==========
 
+/// # Safety
+///
+/// Addition in Fp2
 #[inline]
 pub unsafe fn add_fp2_bls12_381(a: *mut u64, b: *const u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 12);
@@ -117,6 +120,9 @@ pub unsafe fn add_fp2_bls12_381(a: *mut u64, b: *const u64) {
     out.copy_from_slice(&result);
 }
 
+/// # Safety
+///
+/// Doubling in Fp2
 #[inline]
 pub unsafe fn dbl_fp2_bls12_381(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 12);
@@ -127,7 +133,9 @@ pub unsafe fn dbl_fp2_bls12_381(a: *mut u64) {
     out.copy_from_slice(&result);
 }
 
-/// Negation in the degree 2 extension of the BLS12-381 curve
+/// # Safety
+///
+/// Negation in Fp2
 #[inline]
 pub unsafe fn neg_fp2_bls12_381(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 12);
@@ -138,7 +146,9 @@ pub unsafe fn neg_fp2_bls12_381(a: *mut u64) {
     out.copy_from_slice(&result);
 }
 
-/// Subtraction in the degree 2 extension of the BLS12-381 curve
+/// # Safety
+///
+/// Subtraction in Fp2
 #[inline]
 pub unsafe fn sub_fp2_bls12_381(a: *mut u64, b: *const u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 12);
@@ -150,7 +160,9 @@ pub unsafe fn sub_fp2_bls12_381(a: *mut u64, b: *const u64) {
     out.copy_from_slice(&result);
 }
 
-/// Multiplication in the degree 2 extension of the BLS12-381 curve
+/// # Safety
+///
+/// Multiplication in Fp2
 #[inline]
 pub unsafe fn mul_fp2_bls12_381(a: *mut u64, b: *const u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 12);
@@ -162,7 +174,9 @@ pub unsafe fn mul_fp2_bls12_381(a: *mut u64, b: *const u64) {
     out.copy_from_slice(&result);
 }
 
-/// Squaring in the degree 2 extension of the BLS12-381 curve
+/// # Safety
+///
+/// Squaring in Fp2
 #[inline]
 pub unsafe fn square_fp2_bls12_381(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 12);
@@ -173,7 +187,9 @@ pub unsafe fn square_fp2_bls12_381(a: *mut u64) {
     out.copy_from_slice(&result);
 }
 
-/// Inversion of a non-zero element in the degree 2 extension of the BLS12-381 curve
+/// # Safety
+///
+/// Inversion of a non-zero element in Fp2
 #[inline]
 pub unsafe fn inv_fp2_bls12_381(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 12).try_into().unwrap();

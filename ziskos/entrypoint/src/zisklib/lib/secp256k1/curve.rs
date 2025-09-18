@@ -38,7 +38,7 @@ pub fn secp256k1_decompress(x_bytes: &[u8; 32], y_is_odd: bool) -> (([u8; 32], [
         y_bytes[i * 8..(i + 1) * 8].copy_from_slice(&y[3 - i].to_be_bytes());
     }
 
-    ((x_bytes.clone(), y_bytes), true)
+    ((*x_bytes, y_bytes), true)
 }
 
 /// Given points `p1` and `p2`, performs the point addition `p1 + p2` and assigns the result to `p1`.

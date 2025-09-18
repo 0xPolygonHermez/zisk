@@ -150,6 +150,9 @@ pub fn inv_fp_bls12_381_core(x: &[u64; 6]) -> [u64; 6] {
 
 // ========== Pointer-based API (Thin Wrappers) ==========
 
+/// # Safety
+/// 
+/// Addition in Fp
 #[inline]
 pub unsafe fn add_fp_bls12_381(a: *mut u64, b: *const u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
@@ -161,6 +164,9 @@ pub unsafe fn add_fp_bls12_381(a: *mut u64, b: *const u64) {
     out.copy_from_slice(&result);
 }
 
+/// # Safety
+/// 
+/// Doubling in Fp
 #[inline]
 pub unsafe fn dbl_fp_bls12_381(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
@@ -171,6 +177,9 @@ pub unsafe fn dbl_fp_bls12_381(a: *mut u64) {
     out.copy_from_slice(&result);
 }
 
+/// # Safety
+/// 
+/// Subtraction in Fp
 #[inline]
 pub unsafe fn sub_fp_bls12_381(a: *mut u64, b: *const u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
@@ -182,6 +191,9 @@ pub unsafe fn sub_fp_bls12_381(a: *mut u64, b: *const u64) {
     out.copy_from_slice(&result);
 }
 
+/// # Safety
+/// 
+/// Negation in Fp
 #[inline]
 pub unsafe fn neg_fp_bls12_381(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
@@ -192,6 +204,9 @@ pub unsafe fn neg_fp_bls12_381(a: *mut u64) {
     out.copy_from_slice(&result);
 }
 
+/// # Safety
+/// 
+/// Multiplication in Fp
 #[inline]
 pub unsafe fn mul_fp_bls12_381(a: *mut u64, b: *const u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
@@ -203,6 +218,9 @@ pub unsafe fn mul_fp_bls12_381(a: *mut u64, b: *const u64) {
     out.copy_from_slice(&result);
 }
 
+/// # Safety
+/// 
+/// Squaring in Fp
 #[inline]
 pub unsafe fn square_fp_bls12_381(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
@@ -213,6 +231,9 @@ pub unsafe fn square_fp_bls12_381(a: *mut u64) {
     out.copy_from_slice(&result);
 }
 
+/// # Safety
+/// 
+/// Square root in Fp
 #[inline]
 pub unsafe fn sqrt_fp_bls12_381(a: *mut u64, is_qr: *mut u8) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
@@ -224,6 +245,9 @@ pub unsafe fn sqrt_fp_bls12_381(a: *mut u64, is_qr: *mut u8) {
     *is_qr = if qr { 1 } else { 0 };
 }
 
+/// # Safety
+/// 
+/// Inversion of a non-zero element in Fp
 #[inline]
 pub unsafe fn inv_fp_bls12_381(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
@@ -234,6 +258,9 @@ pub unsafe fn inv_fp_bls12_381(a: *mut u64) {
     out.copy_from_slice(&result);
 }
 
+/// # Safety
+/// 
+/// Inversion in Montgomery form in Fp
 #[inline]
 pub unsafe fn inv_mont_fp_bls12_381(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
