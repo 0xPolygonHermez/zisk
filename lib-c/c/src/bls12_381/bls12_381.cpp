@@ -35,14 +35,14 @@ int BLS12_381CurveAddP (const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
 {
     RawBLS12_381_384::Element x1, y1, x2, y2, x3, y3;
     array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
+    array2fe(p1 + 6, y1);
     array2fe(p2, x2);
-    array2fe(p2 + 4, y2);
+    array2fe(p2 + 6, y2);
 
     int result = BLS12_381CurveAddFe (x1, y1, x2, y2, x3, y3);
 
     fe2array(x3, p3);
-    fe2array(y3, p3 + 4);
+    fe2array(y3, p3 + 6);
 
     return result;
 }
@@ -69,12 +69,12 @@ int BLS12_381CurveDblP (const uint64_t * p1, uint64_t * p2)
 {
     RawBLS12_381_384::Element x1, y1, x2, y2;
     array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
+    array2fe(p1 + 6, y1);
 
     int result = BLS12_381CurveDblFe (x1, y1, x2, y2);
 
     fe2array(x2, p2);
-    fe2array(y2, p2 + 4);
+    fe2array(y2, p2 + 6);
 
     return result;
 }
@@ -103,14 +103,14 @@ int BLS12_381ComplexAddP (const uint64_t * p1, const uint64_t * p2, uint64_t * p
 {
     RawBLS12_381_384::Element x1, y1, x2, y2, x3, y3;
     array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
+    array2fe(p1 + 6, y1);
     array2fe(p2, x2);
-    array2fe(p2 + 4, y2);
+    array2fe(p2 + 6, y2);
 
     int result = BLS12_381ComplexAddFe (x1, y1, x2, y2, x3, y3);
 
     fe2array(x3, p3);
-    fe2array(y3, p3 + 4);
+    fe2array(y3, p3 + 6);
 
     return result;
 }
@@ -139,14 +139,14 @@ int BLS12_381ComplexSubP (const uint64_t * p1, const uint64_t * p2, uint64_t * p
 {
     RawBLS12_381_384::Element x1, y1, x2, y2, x3, y3;
     array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
+    array2fe(p1 + 6, y1);
     array2fe(p2, x2);
-    array2fe(p2 + 4, y2);
+    array2fe(p2 + 6, y2);
 
     int result = BLS12_381ComplexSubFe (x1, y1, x2, y2, x3, y3);
 
     fe2array(x3, p3);
-    fe2array(y3, p3 + 4);
+    fe2array(y3, p3 + 6);
 
     return result;
 }
@@ -175,14 +175,14 @@ int BLS12_381ComplexMulP (const uint64_t * p1, const uint64_t * p2, uint64_t * p
 {
     RawBLS12_381_384::Element x1, y1, x2, y2, x3, y3;
     array2fe(p1, x1);
-    array2fe(p1 + 4, y1);
+    array2fe(p1 + 6, y1);
     array2fe(p2, x2);
-    array2fe(p2 + 4, y2);
+    array2fe(p2 + 6, y2);
 
     int result = BLS12_381ComplexMulFe (x1, y1, x2, y2, x3, y3);
 
     fe2array(x3, p3);
-    fe2array(y3, p3 + 4);
+    fe2array(y3, p3 + 6);
 
     return result;
 }
