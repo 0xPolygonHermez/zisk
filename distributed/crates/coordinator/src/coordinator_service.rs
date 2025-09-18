@@ -181,6 +181,8 @@ impl CoordinatorService {
             )
             .await?;
 
+        info!("Successfully started new job {}", job.job_id);
+
         // Initialize job state
         job.change_state(JobState::Running(JobPhase::Contributions));
 
@@ -200,7 +202,11 @@ impl CoordinatorService {
         )
         .await?;
 
-        info!("Successfully started new job {}", job.job_id);
+        info!(
+            "Successfully started Phase1 for job {} with {} provers",
+            job.job_id,
+            active_provers.len()
+        );
 
         Ok(LaunchProofResponseDto { job_id: job.job_id.clone() })
     }
@@ -317,12 +323,6 @@ impl CoordinatorService {
                 .mark_prover_with_state(prover_id, ProverState::Computing(JobPhase::Contributions))
                 .await?;
         }
-
-        info!(
-            "Successfully started Phase2 for job {} with {} provers",
-            job.job_id,
-            active_provers.len()
-        );
 
         Ok(())
     }
@@ -590,17 +590,19 @@ impl CoordinatorService {
         let phase1_results_len =
             job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
 
-        // Check if we have results from ALL assigned provers otherwise wait for more
+        info!(
+            "Phase1 progress for job {}: {}/{} provers completed",
+            job_id,
+            phase1_results_len,
+            job.provers.len()
+        );
+
+        // Ensure we have results from all assigned provers before proceeding.
+        // If not all provers have responded (and we're not in simulation mode),
+        // return early and wait for more results.
         if !job.execution_mode.is_simulating() && phase1_results_len < job.provers.len() {
-            info!(
-                "Phase1 progress for job {}: {}/{} provers completed",
-                job_id,
-                phase1_results_len,
-                job.provers.len()
-            );
             return Ok(false);
         }
-
         Ok(true)
     }
 
@@ -927,14 +929,16 @@ impl CoordinatorService {
         let empty_results = HashMap::new();
         let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
 
-        // Check if we have results from ALL assigned provers otherwise wait for more
+        info!(
+            "Phase2 progress for job {}: {}/{} provers completed",
+            job_id,
+            phase2_results.len(),
+            job.provers.len()
+        );
+
+        // Ensure we have results from all assigned provers before proceeding.
+        // If not all provers have responded, return early and wait for more results.
         if phase2_results.len() < job.provers.len() {
-            info!(
-                "Phase2 progress for job {}: {}/{} provers completed",
-                job_id,
-                phase2_results.len(),
-                job.provers.len()
-            );
             return Ok(false);
         }
 
@@ -1095,7 +1099,7 @@ impl CoordinatorService {
 
         drop(jobs);
 
-        info!("Job {} completed successfully!", job_id);
+        info!("Job completed successfully {}", job_id);
 
         self.post_launch_proof(job_id).await?;
 

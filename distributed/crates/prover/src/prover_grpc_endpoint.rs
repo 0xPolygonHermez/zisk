@@ -503,8 +503,6 @@ impl ProverGrpcEndpoint {
 
         assert_eq!(job_id.as_string(), request.job_id, "Job ID mismatch in Aggregate");
 
-        info!("Starting Aggregate for job {}", job_id);
-
         // Extract the Aggregate params
         let agg_params = match request.params {
             Some(execute_task_request::Params::AggParams(params)) => params,

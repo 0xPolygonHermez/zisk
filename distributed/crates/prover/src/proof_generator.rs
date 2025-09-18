@@ -304,7 +304,7 @@ impl ProofGenerator {
             let job = job.lock().await;
             let job_id = job.job_id.clone();
 
-            info!("Computing Aggregation for job {}", job_id);
+            info!("Starting aggregation step for job: {job_id}");
 
             let agg_proofs: Vec<AggProofs> = agg_params
                 .agg_proofs
@@ -319,7 +319,6 @@ impl ProofGenerator {
             let options = Self::get_proof_options_aggregation(&agg_params);
 
             let result = Self::execute_aggregation_task(
-                job_id.clone(),
                 proofman.clone(),
                 agg_proofs,
                 agg_params.last_proof,
@@ -336,7 +335,6 @@ impl ProofGenerator {
     }
 
     pub fn execute_aggregation_task(
-        job_id: JobId,
         proofman: Arc<ProofMan<Goldilocks>>,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
@@ -345,8 +343,6 @@ impl ProofGenerator {
     ) -> Vec<u64> {
         let proof =
             proofman.receive_aggregated_proofs(agg_proofs, last_proof, final_proof, &options);
-
-        info!("Aggregation computation successful for job {}", job_id);
 
         if proof.is_some() {
             proof.unwrap()[0].proof.clone()
