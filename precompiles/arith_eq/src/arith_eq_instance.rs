@@ -16,7 +16,7 @@ use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
+    InstanceType, MemCollectorInfo, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
 
 use zisk_core::ZiskOperationType;
@@ -172,11 +172,13 @@ impl BusDevice<PayloadType> for ArithEqCollector {
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 

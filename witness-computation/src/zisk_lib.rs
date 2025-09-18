@@ -4,8 +4,7 @@
 //! This module leverages `WitnessLibrary` to orchestrate the setup of state machines,
 //! program conversion, and execution pipelines to generate required witnesses.
 
-use crate::{StateMachines, StaticSMBundle};
-use executor::{/*DynSMBundle,*/ ZiskExecutor};
+use executor::{StateMachines, StaticSMBundle, ZiskExecutor};
 use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
 use proofman::register_std;
@@ -33,7 +32,7 @@ pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
-    executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
+    executor: Option<Arc<ZiskExecutor<F>>>,
     chunk_size: u64,
     world_rank: i32,
     local_rank: i32,
@@ -110,68 +109,50 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let sha256f_sm = Sha256fManager::new(std.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
-        // let sm_bundle = DynSMBundle::new(vec![
-        //     mem_sm.clone(),
-        //     rom_sm.clone(),
-        //     binary_sm.clone(),
-        //     arith_sm.clone(),
-        //     keccakf_sm.clone(),
-        //     sha256f_sm.clone(),
-        //     arith_eq_sm.clone(),
-        // ]);
+        let mem_instances = vec![
+            (ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, MEM_ALIGN_BYTE_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, MEM_ALIGN_WRITE_BYTE_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, MEM_ALIGN_READ_BYTE_AIR_IDS[0]),
+        ];
+
+        let binary_instances = vec![
+            (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, BINARY_ADD_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]),
+        ];
 
         let sm_bundle = StaticSMBundle::new(
             self.asm_path.is_some(),
             vec![
-                (ZISK_AIRGROUP_ID, ROM_AIR_IDS[0], StateMachines::RomSM(rom_sm.clone())),
-                (ZISK_AIRGROUP_ID, MEM_AIR_IDS[0], StateMachines::MemSM(mem_sm.clone())),
-                (ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0], StateMachines::MemSM(mem_sm.clone())),
-                (ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0], StateMachines::MemSM(mem_sm.clone())),
-                (ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0], StateMachines::MemSM(mem_sm.clone())),
-                (ZISK_AIRGROUP_ID, MEM_ALIGN_BYTE_AIR_IDS[0], StateMachines::MemSM(mem_sm.clone())),
+                (vec![(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])], StateMachines::RomSM(rom_sm.clone())),
+                (mem_instances, StateMachines::MemSM(mem_sm.clone())),
+                (binary_instances, StateMachines::BinarySM(binary_sm.clone())),
                 (
-                    ZISK_AIRGROUP_ID,
-                    MEM_ALIGN_WRITE_BYTE_AIR_IDS[0],
-                    StateMachines::MemSM(mem_sm.clone()),
+                    vec![(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0])],
+                    StateMachines::ArithSM(arith_sm.clone()),
                 ),
-                (
-                    ZISK_AIRGROUP_ID,
-                    MEM_ALIGN_READ_BYTE_AIR_IDS[0],
-                    StateMachines::MemSM(mem_sm.clone()),
-                ),
-                (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0], StateMachines::BinarySM(binary_sm.clone())),
-                (
-                    ZISK_AIRGROUP_ID,
-                    BINARY_ADD_AIR_IDS[0],
-                    StateMachines::BinarySM(binary_sm.clone()),
-                ),
-                (
-                    ZISK_AIRGROUP_ID,
-                    BINARY_EXTENSION_AIR_IDS[0],
-                    StateMachines::BinarySM(binary_sm.clone()),
-                ),
-                (ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0], StateMachines::ArithSM(arith_sm.clone())),
                 // The precompiles state machines
                 (
-                    ZISK_AIRGROUP_ID,
-                    KECCAKF_AIR_IDS[0],
+                    vec![(ZISK_AIRGROUP_ID, KECCAKF_AIR_IDS[0])],
                     StateMachines::KeccakfManager(keccakf_sm.clone()),
                 ),
                 (
-                    ZISK_AIRGROUP_ID,
-                    SHA_256_F_AIR_IDS[0],
+                    vec![(ZISK_AIRGROUP_ID, SHA_256_F_AIR_IDS[0])],
                     StateMachines::Sha256fManager(sha256f_sm.clone()),
                 ),
                 (
-                    ZISK_AIRGROUP_ID,
-                    ARITH_EQ_AIR_IDS[0],
+                    vec![(ZISK_AIRGROUP_ID, ARITH_EQ_AIR_IDS[0])],
                     StateMachines::ArithEqManager(arith_eq_sm.clone()),
                 ),
             ],
         );
 
         // Step 5: Create the executor and register the secondary state machines
-        let executor: ZiskExecutor<F, StaticSMBundle<F>> = ZiskExecutor::new(
+        let executor: ZiskExecutor<F> = ZiskExecutor::new(
             self.elf_path.clone(),
             self.asm_path.clone(),
             self.asm_rom_path.clone(),

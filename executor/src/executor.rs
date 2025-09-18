@@ -64,11 +64,11 @@ use zisk_common::EmuTrace;
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
-use crate::SMBundle;
+use crate::StaticSMBundle;
 
 type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
 type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
-pub type NestedDeviceMetricsList = Vec<DeviceMetricsList>;
+pub type NestedDeviceMetricsList = HashMap<usize, DeviceMetricsList>;
 
 #[derive(Debug, Default, Clone)]
 pub struct ZiskExecutionResult {
@@ -99,7 +99,7 @@ pub struct Stats {
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
-pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
+pub struct ZiskExecutor<F: PrimeField64> {
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
 
@@ -119,7 +119,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     pub main_planning: RwLock<Vec<Plan>>,
 
     /// Planning information for secondary state machines.
-    pub secn_planning: RwLock<Vec<Vec<Plan>>>,
+    pub secn_planning: RwLock<Vec<Plan>>,
 
     /// Main state machine instances, indexed by their global ID.
     pub main_instances: RwLock<HashMap<usize, MainInstance<F>>>,
@@ -134,7 +134,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     execution_result: Mutex<ZiskExecutionResult>,
 
     /// State machine bundle, containing the state machines and their configurations.
-    sm_bundle: BD,
+    sm_bundle: StaticSMBundle<F>,
 
     /// Optional ROM state machine, used for assembly ROM execution.
     rom_sm: Option<Arc<RomSM>>,
@@ -169,7 +169,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     asm_shmem_rh: Arc<Mutex<Option<PreloadedRH>>>,
 }
 
-impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
+impl<F: PrimeField64> ZiskExecutor<F> {
     /// The number of threads to use for parallel processing when computing minimal traces.
     const NUM_THREADS: usize = 16;
 
@@ -187,7 +187,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         asm_rom_path: Option<PathBuf>,
         zisk_rom: Arc<ZiskRom>,
         std: Arc<Std<F>>,
-        sm_bundle: BD,
+        sm_bundle: StaticSMBundle<F>,
         rom_sm: Option<Arc<RomSM>>,
         chunk_size: u64,
         world_rank: i32,
@@ -514,38 +514,27 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 
         let mut main_count = Vec::with_capacity(data_buses.len());
-        let mut secn_count = Vec::with_capacity(data_buses.len());
+        let mut secn_count = HashMap::new();
 
-        let main_idx = self.sm_bundle.main_counter_idx();
         for (chunk_id, data_bus) in data_buses {
             let databus_counters = data_bus.into_devices(false);
 
-            let mut secondary = Vec::new();
-
-            for (idx, (_, counter)) in databus_counters.into_iter().enumerate() {
-                match main_idx {
-                    None => secondary.push((chunk_id, counter)),
-                    Some(i) if idx == i => {
-                        main_count.push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))))
+            for (idx, counter) in databus_counters.into_iter() {
+                match idx {
+                    None => {
+                        main_count.push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))));
                     }
-                    Some(_) => secondary.push((chunk_id, counter)),
+                    Some(idx) => {
+                        secn_count
+                            .entry(idx)
+                            .or_insert_with(Vec::new)
+                            .push((chunk_id, counter.unwrap()));
+                    }
                 }
             }
-
-            secn_count.push(secondary);
         }
 
-        // Group counters by chunk_id and counter type
-        let mut secn_vec_counters =
-            (0..secn_count[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
-
-        secn_count.into_iter().for_each(|counter_slice| {
-            counter_slice.into_iter().enumerate().for_each(|(i, (chunk_id, counter))| {
-                secn_vec_counters[i].push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))));
-            });
-        });
-
-        (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_vec_counters)
+        (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_count)
     }
 
     fn run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>) -> MinimalTraces {
@@ -636,7 +625,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             _ => unreachable!(),
         };
 
-        let (main_metrics_slices, secn_metrics_slices): (Vec<_>, Vec<_>) = min_traces
+        let metrics_slices: Vec<_> = min_traces
             .par_iter()
             .map(|minimal_trace| {
                 let mut data_bus = self.sm_bundle.build_data_bus_counters();
@@ -649,43 +638,40 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     true,
                 );
 
-                let (mut main_count, mut secn_count) = (Vec::new(), Vec::new());
+                let mut counters = Vec::new();
 
                 let databus_counters = data_bus.into_devices(true);
-                let main_idx = self.sm_bundle.main_counter_idx();
-                for (idx, counter) in databus_counters.into_iter().enumerate() {
-                    match main_idx {
-                        None => secn_count.push(counter),
-                        Some(i) if idx == i => main_count.push(counter),
-                        Some(_) => secn_count.push(counter),
-                    }
+                for counter in databus_counters.into_iter() {
+                    counters.push(counter);
                 }
-                (main_count, secn_count)
-            })
-            .unzip();
 
-        // Group counters by chunk_id and counter type
-        let mut secn_vec_counters =
-            (0..secn_metrics_slices[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
-
-        secn_metrics_slices.into_iter().enumerate().for_each(|(chunk_id, counter_slice)| {
-            counter_slice.into_iter().enumerate().for_each(|(i, (_, counter))| {
-                secn_vec_counters[i]
-                    .push((ChunkId(chunk_id), counter.unwrap_or(Box::new(DummyCounter {}))));
-            });
-        });
-
-        let main_vec_counters: Vec<_> = main_metrics_slices
-            .into_iter()
-            .enumerate()
-            .flat_map(|(chunk_id, counters)| {
-                counters.into_iter().map(move |(_, counter)| {
-                    (ChunkId(chunk_id), counter.unwrap_or(Box::new(DummyCounter {})))
-                })
+                counters
             })
             .collect();
 
-        (main_vec_counters, secn_vec_counters)
+        let mut main_count = Vec::new();
+        let mut secn_count = HashMap::new();
+
+        for (chunk_id, counter_slice) in metrics_slices.into_iter().enumerate() {
+            for (idx, counter) in counter_slice.into_iter() {
+                match idx {
+                    None => {
+                        main_count.push((
+                            ChunkId(chunk_id),
+                            counter.unwrap_or_else(|| Box::new(DummyCounter {})),
+                        ));
+                    }
+                    Some(idx) => {
+                        secn_count
+                            .entry(idx)
+                            .or_insert_with(Vec::new)
+                            .push((ChunkId(chunk_id), counter.unwrap()));
+                    }
+                }
+            }
+        }
+
+        (main_count, secn_count)
     }
 
     /// Adds secondary state machine instances to the proof context and assigns global IDs.
@@ -693,29 +679,26 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// # Arguments
     /// * `pctx` - Proof context.
     /// * `secn_planning` - Planning information for secondary state machines.
-    fn assign_secn_instances(&self, pctx: &ProofCtx<F>, secn_planning: &mut [Vec<Plan>]) {
-        for plans_by_sm in secn_planning.iter_mut() {
-            for plan in plans_by_sm.iter_mut() {
-                // If the node has rank 0 and the plan targets the ROM instance,
-                // we need to add it to the proof context using a special method.
-                // This method allows us to mark it as an instance to be computed by node 0.
-                let global_id = if plan.airgroup_id == ZISK_AIRGROUP_ID
-                    && plan.air_id == ROM_AIR_IDS[0]
-                {
-                    // If this is the ROM instance, we need to add it to the proof context
-                    // with the rank 0.
-                    pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, plan.n_threads_witness)
-                } else {
-                    match plan.instance_type {
-                        InstanceType::Instance => {
-                            pctx.add_instance(plan.airgroup_id, plan.air_id, plan.n_threads_witness)
-                        }
-                        InstanceType::Table => pctx.add_table(plan.airgroup_id, plan.air_id),
+    fn assign_secn_instances(&self, pctx: &ProofCtx<F>, secn_planning: &mut [Plan]) {
+        for plan in secn_planning.iter_mut() {
+            // If the node has rank 0 and the plan targets the ROM instance,
+            // we need to add it to the proof context using a special method.
+            // This method allows us to mark it as an instance to be computed by node 0.
+            let global_id = if plan.airgroup_id == ZISK_AIRGROUP_ID && plan.air_id == ROM_AIR_IDS[0]
+            {
+                // If this is the ROM instance, we need to add it to the proof context
+                // with the rank 0.
+                pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, plan.n_threads_witness)
+            } else {
+                match plan.instance_type {
+                    InstanceType::Instance => {
+                        pctx.add_instance(plan.airgroup_id, plan.air_id, plan.n_threads_witness)
                     }
-                };
+                    InstanceType::Table => pctx.add_table(plan.airgroup_id, plan.air_id),
+                }
+            };
 
-                plan.set_global_id(global_id);
-            }
+            plan.set_global_id(global_id);
         }
     }
 
@@ -729,23 +712,19 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn create_secn_instance(&self, global_id: usize) -> Box<dyn Instance<F>> {
         let mut secn_planning_guard = self.secn_planning.write().unwrap();
 
-        let plan_idx = secn_planning_guard.iter().enumerate().find_map(|(outer_idx, plans)| {
-            plans
-                .iter()
-                .position(|plan| plan.global_id.unwrap() == global_id)
-                .map(|inner_idx| (outer_idx, inner_idx))
-        });
+        let plan_idx =
+            secn_planning_guard.iter().position(|plan| plan.global_id.unwrap() == global_id);
         if plan_idx.is_none() {
             panic!("Secondary instance not found");
         }
 
         let plan_idx = plan_idx.unwrap();
-        let plan = secn_planning_guard[plan_idx.0].remove(plan_idx.1);
+        let plan = secn_planning_guard.remove(plan_idx);
 
         let global_id = plan.global_id.unwrap();
 
         let ictx = InstanceCtx::new(global_id, plan);
-        self.sm_bundle.build_instance(plan_idx.0, ictx)
+        self.sm_bundle.build_instance(ictx)
     }
 
     /// Expands and computes witnesses for a main instance.
@@ -1194,7 +1173,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     }
 }
 
-impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, BD> {
+impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     /// Executes the ZisK ROM program and calculate the plans for main and secondary state machines.
     ///
     /// # Arguments
@@ -1224,7 +1203,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         assert_eq!(self.asm_runner_path.is_some(), self.asm_rom_path.is_some());
 
-        let (min_traces, main_count, secn_count, handle_mo) = if self.asm_runner_path.is_some() {
+        let (min_traces, main_count, mut secn_count, handle_mo) = if self.asm_runner_path.is_some()
+        {
             // If we are executing in assembly mode
             self.execute_with_assembly(
                 input_data_path,
@@ -1281,7 +1261,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             ExecutorStatsEvent::Begin,
         );
 
-        let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
+        let mut secn_planning = self.sm_bundle.plan_sec(&mut secn_count);
 
         timer_stop_and_log_info!(PLAN);
 
@@ -1332,7 +1312,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                 ExecutorStatsEvent::Begin,
             );
 
-            secn_planning[0].extend(asm_runner_mo.plans);
+            secn_planning
+                .entry(self.sm_bundle.get_mem_sm_id())
+                .or_default()
+                .extend(asm_runner_mo.plans);
 
             // Add to executor stats
             #[cfg(feature = "stats")]
@@ -1361,6 +1344,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         // Configure the instances
         self.sm_bundle.configure_instances(&pctx, &secn_planning);
 
+        // Flatten all plans
+        let mut secn_planning =
+            secn_planning.into_iter().flat_map(|(_, plans)| plans).collect::<Vec<_>>();
+
         // Assign the instances
         self.assign_main_instances(&pctx, &mut main_planning);
         self.assign_secn_instances(&pctx, &mut secn_planning);
@@ -1368,11 +1355,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         // Get the global IDs of the instances to compute witness for
         let main_global_ids =
             main_planning.iter().map(|plan| plan.global_id.unwrap()).collect::<Vec<_>>();
-        let secn_global_ids = secn_planning
-            .iter()
-            .map(|plans| plans.iter().map(|plan| plan.global_id.unwrap()).collect::<Vec<_>>())
-            .collect::<Vec<_>>();
-        let secn_global_ids_vec = secn_global_ids.iter().flatten().copied().collect::<Vec<_>>();
+        let secn_global_ids =
+            secn_planning.iter().map(|plan| plan.global_id.unwrap()).collect::<Vec<_>>();
+        let secn_global_ids_vec: Vec<usize> = secn_global_ids.to_vec();
 
         // Add public values to the proof context
         let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
