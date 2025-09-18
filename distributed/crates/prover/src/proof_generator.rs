@@ -340,15 +340,11 @@ impl ProofGenerator {
         last_proof: bool,
         final_proof: bool,
         options: ProofOptions,
-    ) -> Vec<u64> {
-        let proof =
-            proofman.receive_aggregated_proofs(agg_proofs, last_proof, final_proof, &options);
-
-        if let Some(proof) = proof {
-            proof[0].proof.clone()
-        } else {
-            Vec::new()
-        }
+    ) -> Vec<Vec<u64>> {
+        proofman
+            .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, &options)
+            .map(|proof| proof.into_iter().map(|p| p.proof).collect())
+            .unwrap_or_default()
     }
 
     pub async fn partial_contribution_broadcast(&self, job: Arc<Mutex<JobContext>>) {

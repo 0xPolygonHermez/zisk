@@ -364,7 +364,9 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                 Some(ExecuteTaskResponseResultDataDto::Proofs(proofs))
             }
             Some(execute_task_response::ResultData::FinalProof(final_proof)) => {
-                Some(ExecuteTaskResponseResultDataDto::FinalProof(final_proof.values))
+                Some(ExecuteTaskResponseResultDataDto::FinalProof(
+                    final_proof.final_proofs.iter().map(|v| v.values.clone()).collect(),
+                ))
             }
             None => None,
         };

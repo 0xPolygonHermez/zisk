@@ -270,7 +270,7 @@ message ExecuteTaskResponse {
   oneof result_data {
     ChallengesList challenges = 6;
     ProofList proofs = 7;
-    FinalProof final_proof = 8;
+    FinalProofList final_proof = 8;
   }
 }
 
@@ -282,6 +282,10 @@ message Proof {
   uint32 worker_idx = 1;
   uint64 airgroup_id = 2;
   repeated uint64 values = 3;
+}
+
+message FinalProofList {
+  repeated FinalProof final_proofs = 1;
 }
 
 message FinalProof {

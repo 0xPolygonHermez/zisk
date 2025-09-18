@@ -172,7 +172,7 @@ pub struct ExecuteTaskResponseDto {
 pub enum ExecuteTaskResponseResultDataDto {
     Challenges(Vec<ChallengesDto>),
     Proofs(Vec<ProofDto>),
-    FinalProof(Vec<u64>),
+    FinalProof(Vec<Vec<u64>>),
 }
 
 pub struct HeartbeatAckDto {

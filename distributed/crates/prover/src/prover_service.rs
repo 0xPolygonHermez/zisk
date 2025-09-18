@@ -16,7 +16,7 @@ use crate::proof_generator::ProofGenerator;
 pub enum ComputationResult {
     Challenge { job_id: JobId, success: bool, result: Result<Vec<ContributionsInfo>> },
     Proofs { job_id: JobId, success: bool, result: Result<Vec<AggProofs>> },
-    AggProof { job_id: JobId, success: bool, result: Result<Option<Vec<u64>>> },
+    AggProof { job_id: JobId, success: bool, result: Result<Option<Vec<Vec<u64>>>> },
 }
 
 /// Current job context

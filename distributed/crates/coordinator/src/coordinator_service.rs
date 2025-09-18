@@ -217,7 +217,7 @@ impl CoordinatorService {
             let (final_proof, success) = {
                 let jobs = self.jobs.read().await;
                 let job = jobs
-                    .get(&job_id)
+                    .get(job_id)
                     .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
                 (job.final_proof.clone(), matches!(job.state(), JobState::Completed))
@@ -1051,7 +1051,7 @@ impl CoordinatorService {
             self.fail_job(job_id, reason).await?;
         }
 
-        let proof_data = match execute_task_response.result_data {
+        let mut proof_data = match execute_task_response.result_data {
             ExecuteTaskResponseResultDataDto::FinalProof(final_proof) => final_proof,
             _ => {
                 return Err(Error::InvalidRequest(
@@ -1074,7 +1074,7 @@ impl CoordinatorService {
             .await?;
 
         // Finalize completed job
-        job.final_proof = Some(proof_data);
+        job.final_proof = Some(proof_data.swap_remove(0));
         job.change_state(JobState::Completed);
 
         drop(jobs);

@@ -273,7 +273,7 @@ impl ProverGrpcEndpoint {
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<Option<Vec<u64>>>,
+        result: Result<Option<Vec<Vec<u64>>>>,
         message_sender: &mpsc::UnboundedSender<ProverMessage>,
     ) -> Result<()> {
         if let Some(handle) = self.prover_service.take_current_computation() {
@@ -286,7 +286,12 @@ impl ProverGrpcEndpoint {
 
                 if let Some(final_proof) = data {
                     (
-                        Some(ResultData::FinalProof(FinalProof { values: final_proof })),
+                        Some(ResultData::FinalProof(FinalProofList {
+                            final_proofs: final_proof
+                                .into_iter()
+                                .map(|v| FinalProof { values: v })
+                                .collect(),
+                        })),
                         String::new(),
                     )
                 } else {
@@ -302,7 +307,7 @@ impl ProverGrpcEndpoint {
 
         let reset_current_job = matches!(
             result_data.as_ref(),
-            Some(ResultData::FinalProof(FinalProof { values })) if !values.is_empty()
+            Some(ResultData::FinalProof(FinalProofList { final_proofs })) if !final_proofs.is_empty()
         );
 
         let message = ProverMessage {
