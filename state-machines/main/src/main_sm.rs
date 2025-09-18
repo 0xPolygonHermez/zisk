@@ -25,8 +25,6 @@ pub struct MainInstance<F: PrimeField64> {
     /// Instance Context
     pub ictx: InstanceCtx,
 
-    pub is_last_segment: bool,
-
     pub std: Arc<Std<F>>,
 }
 
@@ -38,8 +36,8 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Returns
     /// A new `MainInstance`.
-    pub fn new(ictx: InstanceCtx, is_last_segment: bool, std: Arc<Std<F>>) -> Self {
-        Self { ictx, is_last_segment, std }
+    pub fn new(ictx: InstanceCtx, std: Arc<Std<F>>) -> Self {
+        Self { ictx, std }
     }
 
     /// Computes the main witness trace for a given segment based on the provided proof context,
@@ -65,6 +63,14 @@ impl<F: PrimeField64> MainInstance<F> {
         let mut main_trace = MainTrace::new_from_vec(trace_buffer);
 
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
+
+        let is_last_segment = main_instance
+            .ictx
+            .plan
+            .meta
+            .as_ref()
+            .and_then(|m| m.downcast_ref::<bool>())
+            .unwrap_or_else(|| panic!("create_main_instance: Invalid metadata format"));
 
         // Determine the number of minimal traces per segment
         let num_within = MainTrace::<F>::NUM_ROWS / chunk_size as usize;
@@ -171,7 +177,7 @@ impl<F: PrimeField64> MainInstance<F> {
         let mut air_values = MainAirValues::<F>::new();
 
         air_values.main_segment = F::from_usize(segment_id.into());
-        air_values.main_last_segment = F::from_bool(main_instance.is_last_segment);
+        air_values.main_last_segment = F::from_bool(*is_last_segment);
         air_values.segment_initial_pc = main_trace.row_slice()[0].pc;
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
