@@ -141,7 +141,6 @@ impl CoordinatorService {
     /// - `pre_launch_proof` runs beforehand for validation and setup.  
     /// - `post_launch_proof` runs afterward for cleanup, logging, or extra processing.
     /// -------------------------------------------------------------------------------------
-
     pub fn pre_launch_proof(&self, request: &LaunchProofRequestDto) -> Result<()> {
         // Check if compute_units is within allowed limits
         if request.compute_capacity == 0 {
@@ -168,7 +167,7 @@ impl CoordinatorService {
     ) -> Result<LaunchProofResponseDto> {
         self.pre_launch_proof(&request)?;
 
-        let block_id = BlockId::from(request.block_id.clone());
+        let block_id = request.block_id.clone();
         let required_compute_capacity = ComputeCapacity::from(request.compute_capacity);
 
         // Create and configure a new job
@@ -203,7 +202,7 @@ impl CoordinatorService {
         .await?;
 
         info!(
-            "Successfully started Phase1 for job {} with {} provers",
+            "Successfully started Phase1 for {} with {} provers",
             job.job_id,
             active_provers.len()
         );
@@ -302,10 +301,10 @@ impl CoordinatorService {
         for (rank_id, prover_id) in active_provers.iter().enumerate() {
             // Create contribution task request
             let req = ExecuteTaskRequestDto {
-                prover_id: prover_id.clone().into(),
-                job_id: job.job_id.clone().into(),
+                prover_id: prover_id.clone(),
+                job_id: job.job_id.clone(),
                 params: ExecuteTaskRequestTypeDto::ContributionParams(ContributionParamsDto {
-                    block_id: block_id.clone().into(),
+                    block_id: block_id.clone(),
                     input_path: job.block.input_path.display().to_string(),
                     rank_id: rank_id as u32,
                     total_provers: active_provers.len() as u32,
@@ -316,7 +315,7 @@ impl CoordinatorService {
             let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 
             // Send task to prover
-            self.provers_pool.send_message(prover_id, req.into()).await?;
+            self.provers_pool.send_message(prover_id, req).await?;
 
             // Update prover state
             self.provers_pool
@@ -368,7 +367,7 @@ impl CoordinatorService {
 
         match self
             .provers_pool
-            .register_prover(ProverId::from(req.prover_id), req.compute_capacity, msg_sender)
+            .register_prover(req.prover_id, req.compute_capacity, msg_sender)
             .await
         {
             Ok(()) => (true, "Registration successful".to_string()),
@@ -399,13 +398,13 @@ impl CoordinatorService {
 
     pub async fn handle_stream_heartbeat_ack(&self, message: HeartbeatAckDto) -> Result<()> {
         self.provers_pool
-            .update_last_heartbeat(&ProverId::from(message.prover_id))
+            .update_last_heartbeat(&message.prover_id)
             .await
             .map_err(|e| anyhow::anyhow!(e))
     }
 
     pub async fn handle_stream_error(&self, message: ProverErrorDto) -> Result<()> {
-        let prover_id = ProverId::from(message.prover_id);
+        let prover_id = message.prover_id;
 
         // Update last heartbeat
         self.provers_pool.update_last_heartbeat(&prover_id).await?;
@@ -413,7 +412,7 @@ impl CoordinatorService {
         error!("Prover {} error: {}", prover_id, message.error_message);
 
         // If the error includes a job_id, we should fail that job
-        let job_id = JobId::from(message.job_id.clone());
+        let job_id = message.job_id;
 
         self.fail_job(&job_id, message.error_message.clone()).await.map_err(|e| {
             error!("Failed to mark job {} as failed after prover error: {}", job_id, e);
@@ -450,8 +449,8 @@ impl CoordinatorService {
 
     /// Validate request and update prover heartbeat
     async fn validate_and_update_heartbeat(&self, message: &ExecuteTaskResponseDto) -> Result<()> {
-        let prover_id = ProverId::from(message.prover_id.clone());
-        let job_id = JobId::from(message.job_id.clone());
+        let prover_id = message.prover_id.clone();
+        let job_id = message.job_id.clone();
 
         // Update last heartbeat
         self.provers_pool.update_last_heartbeat(&prover_id).await?;
@@ -470,8 +469,8 @@ impl CoordinatorService {
 
     /// Handle task failure by failing the job and returning appropriate error
     async fn handle_task_failure(&self, message: ExecuteTaskResponseDto) -> Result<()> {
-        let prover_id = ProverId::from(message.prover_id.clone());
-        let job_id = JobId::from(message.job_id.clone());
+        let prover_id = message.prover_id.clone();
+        let job_id = message.job_id.clone();
 
         self.fail_job(&job_id, "Task execution failed".to_string()).await.map_err(|e| {
             error!("Failed to mark job {} as failed: {}", job_id, e);
@@ -479,9 +478,7 @@ impl CoordinatorService {
         })?;
 
         Err(Error::Service(format!(
-            "Prover {} failed to execute task for job {}: {}",
-            prover_id,
-            job_id,
+            "Prover {prover_id} failed to execute task for {job_id}: {}",
             message.error_message.unwrap_or_default()
         ))
         .into())
@@ -523,12 +520,9 @@ impl CoordinatorService {
 
         // Check for duplicate results
         if contributions_results.contains_key(&prover_id) {
-            warn!(
-                "Received duplicate Contribution result from prover {} for job {}",
-                prover_id, job_id
-            );
+            warn!("Received duplicate Contribution result from prover {prover_id} for {job_id}");
             return Err(Error::InvalidRequest(format!(
-                "Duplicate Contribution result from prover {prover_id} for job {job_id}"
+                "Duplicate Contribution result from prover {prover_id} for {job_id}"
             ))
             .into());
         }
@@ -591,7 +585,7 @@ impl CoordinatorService {
             job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
 
         info!(
-            "Phase1 progress for job {}: {}/{} provers completed",
+            "Phase1 progress for {}: {}/{} provers completed",
             job_id,
             phase1_results_len,
             job.provers.len()
@@ -735,9 +729,9 @@ impl CoordinatorService {
             if let Some(prover_state) = self.provers_pool.prover_state(prover_id).await {
                 // Prover should still be in Working status from Phase1
                 if !matches!(prover_state, ProverState::Computing(JobPhase::Contributions)) {
-                    warn!("Prover {} is not in working state for job {}", prover_id, job_id);
+                    warn!("Prover {prover_id} is not in working state for {job_id}");
                     return Err(Error::InvalidRequest(format!(
-                        "Prover {prover_id} is not in computing state for job {job_id}",
+                        "Prover {prover_id} is not in computing state for {job_id}",
                     ))
                     .into());
                 }
@@ -747,17 +741,16 @@ impl CoordinatorService {
                     .await?;
 
                 let req = ExecuteTaskRequestDto {
-                    prover_id: prover_id.clone().into(),
-                    job_id: job_id.clone().into(),
+                    prover_id: prover_id.clone(),
+                    job_id: job_id.clone(),
                     params: ExecuteTaskRequestTypeDto::ProveParams(ProveParamsDto {
                         challenges: ch.clone(),
                     }),
                 };
                 let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
-                let message = req.into();
 
                 // Send start prove message
-                self.provers_pool.send_message(prover_id, message).await?;
+                self.provers_pool.send_message(prover_id, req).await?;
             } else {
                 warn!("Prover {} not found when starting Phase2", prover_id);
                 return Err(Error::InvalidRequest(format!(
@@ -767,11 +760,7 @@ impl CoordinatorService {
             }
         }
 
-        info!(
-            "Successfully started Phase2 for job {} with {} provers",
-            job_id,
-            active_provers.len()
-        );
+        info!("Successfully started Phase2 for {} with {} provers", job_id, active_provers.len());
         Ok(())
     }
 
@@ -781,7 +770,7 @@ impl CoordinatorService {
         execute_task_response: ExecuteTaskResponseDto,
     ) -> Result<()> {
         let job_id = execute_task_response.job_id.clone();
-        let prover_id = ProverId::from(execute_task_response.prover_id.clone());
+        let prover_id = execute_task_response.prover_id.clone();
 
         // Store Proof response
         self.store_proof_response(execute_task_response).await?;
@@ -808,9 +797,9 @@ impl CoordinatorService {
 
         // Check for duplicate results
         if phase2_results.contains_key(&prover_id) {
-            warn!("Received duplicate Proof result from prover {} for job {}", prover_id, job_id);
+            warn!("Received duplicate Proof result from prover {prover_id} for {job_id}");
             return Err(Error::InvalidRequest(format!(
-                "Duplicate Proof result from prover {prover_id} for job {job_id}"
+                "Duplicate Proof result from prover {prover_id} for {job_id}"
             ))
             .into());
         }
@@ -930,7 +919,7 @@ impl CoordinatorService {
         let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
 
         info!(
-            "Phase2 progress for job {}: {}/{} provers completed",
+            "Phase2 progress for {}: {}/{} provers completed",
             job_id,
             phase2_results.len(),
             job.provers.len()
@@ -987,7 +976,7 @@ impl CoordinatorService {
 
                 let proof = agg_proofs.get(&prover_id).ok_or_else(|| {
                     Error::InvalidRequest(format!(
-                        "Prover {prover_id} has not completed Phase2 for job {job_id}"
+                        "Prover {prover_id} has not completed Phase2 for {job_id}"
                     ))
                 })?;
 
@@ -1027,8 +1016,8 @@ impl CoordinatorService {
             .collect();
 
         let req = ExecuteTaskRequestDto {
-            prover_id: agg_prover_id.clone().into(),
-            job_id: job_id.clone().into(),
+            prover_id: agg_prover_id.clone(),
+            job_id: job_id.clone(),
             params: ExecuteTaskRequestTypeDto::AggParams(AggParamsDto {
                 agg_proofs: proofs,
                 last_proof: all_done,
@@ -1044,7 +1033,7 @@ impl CoordinatorService {
             }),
         };
 
-        let message = CoordinatorMessageDto::ExecuteTaskRequest(req).into();
+        let message = CoordinatorMessageDto::ExecuteTaskRequest(req);
 
         self.provers_pool.send_message(agg_prover_id, message).await?;
 

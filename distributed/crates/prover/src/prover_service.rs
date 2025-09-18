@@ -122,12 +122,12 @@ impl ProverServiceConfig {
 }
 
 pub struct ProverService {
-    prover_id: ProverId,
-    compute_capacity: ComputeCapacity,
+    _prover_id: ProverId,
+    _compute_capacity: ComputeCapacity,
     state: ProverState,
     current_job: Option<Arc<Mutex<JobContext>>>,
     current_computation: Option<JoinHandle<()>>,
-    config: ProverServiceConfig,
+    _config: ProverServiceConfig,
     proof_generator: ProofGenerator,
 }
 
@@ -140,12 +140,12 @@ impl ProverService {
         let proof_generator = ProofGenerator::new(&config)?;
 
         Ok(Self {
-            prover_id,
-            compute_capacity,
+            _prover_id: prover_id,
+            _compute_capacity: compute_capacity,
             state: ProverState::Disconnected,
             current_job: None,
             current_computation: None,
-            config,
+            _config: config,
             proof_generator,
         })
     }

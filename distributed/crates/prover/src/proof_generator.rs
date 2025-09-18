@@ -155,7 +155,7 @@ impl ProofGenerator {
             let job = job.lock().await;
             let job_id = job.job_id.clone();
 
-            info!("Computing Contribution for job {}", job_id);
+            info!("Computing Contribution for {job_id}");
 
             let proof_info = ProofInfo::new(
                 Some(job.block.input_path.clone()),
@@ -180,7 +180,7 @@ impl ProofGenerator {
                     });
                 }
                 Err(error) => {
-                    error!("Contribution computation failed for job {}: {}", job_id, error);
+                    error!("Contribution computation failed for {}: {}", job_id, error);
                     let _ = tx.send(ComputationResult::Challenge {
                         job_id,
                         success: false,
@@ -202,17 +202,17 @@ impl ProofGenerator {
         // Handle the result immediately without holding it across await
         let challenge = match proofman.generate_proof_from_lib(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Contributions(challenge)) => {
-                info!("Contribution computation successful for job {}", job_id);
+                info!("Contribution computation successful for {job_id}");
                 challenge
             }
             Ok(_) => {
-                error!("Error during Contribution computation for job {}", job_id);
+                error!("Error during Contribution computation for {job_id}");
                 return Err(anyhow::anyhow!(
                     "Unexpected result type during Contribution computation"
                 ));
             }
             Err(err) => {
-                error!("Failed to generate proof for job {}: {:?}", job_id, err);
+                error!("Failed to generate proof for {job_id}: {:?}", err);
                 return Err(anyhow::anyhow!("Failed to generate proof"));
             }
         };
@@ -232,7 +232,7 @@ impl ProofGenerator {
             let job = job.lock().await;
             let job_id = job.job_id.clone();
 
-            info!("Computing Prove for job {}", job_id);
+            info!("Computing Prove for {job_id}");
 
             let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
 
@@ -249,7 +249,7 @@ impl ProofGenerator {
                     });
                 }
                 Err(error) => {
-                    error!("Prove computation failed for job {}: {}", job_id, error);
+                    error!("Prove computation failed for {}: {}", job_id, error);
                     let _ = tx.send(ComputationResult::Proofs {
                         job_id,
                         success: false,
@@ -275,16 +275,16 @@ impl ProofGenerator {
         ) {
             Ok(proofman::ProvePhaseResult::Internal(proof)) => {
                 if world_rank == 0 {
-                    info!("Prove computation successful for job {}", job_id);
+                    info!("Prove computation successful for {job_id}",);
                 }
                 proof
             }
             Ok(_) => {
-                error!("Error during Prove computation for job {}", job_id);
+                error!("Error during Prove computation for {job_id}");
                 return Err(anyhow::anyhow!("Unexpected result type during Prove computation"));
             }
             Err(err) => {
-                error!("Failed to generate proof for job {}: {:?}", job_id, err);
+                error!("Failed to generate proof for {job_id}: {err}");
                 return Err(anyhow::anyhow!("Failed to generate proof"));
             }
         };
@@ -304,7 +304,7 @@ impl ProofGenerator {
             let job = job.lock().await;
             let job_id = job.job_id.clone();
 
-            info!("Starting aggregation step for job: {job_id}");
+            info!("Starting aggregation step for {job_id}");
 
             let agg_proofs: Vec<AggProofs> = agg_params
                 .agg_proofs
@@ -344,8 +344,8 @@ impl ProofGenerator {
         let proof =
             proofman.receive_aggregated_proofs(agg_proofs, last_proof, final_proof, &options);
 
-        if proof.is_some() {
-            proof.unwrap()[0].proof.clone()
+        if let Some(proof) = proof {
+            proof[0].proof.clone()
         } else {
             Vec::new()
         }

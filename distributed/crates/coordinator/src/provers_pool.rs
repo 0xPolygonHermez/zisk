@@ -48,8 +48,8 @@ impl ProversPool {
             .provers
             .read()
             .await
-            .iter()
-            .map(|(_, prover_info)| ProverInfoDto {
+            .values()
+            .map(|prover_info| ProverInfoDto {
                 prover_id: prover_info.prover_id.clone(),
                 state: prover_info.state.clone(),
                 compute_capacity: prover_info.compute_capacity,
@@ -276,10 +276,4 @@ impl ProversPool {
 
         Ok((selected_provers, prover_allocations))
     }
-
-    // pub async fn select_agg_prover(&self) -> Vec<ProverId> {
-    //     let available_provers = self.provers.read().await;
-    //     // For the sake of simplicity, we use now only the first prover to aggregate the proofs
-    //     vec![available_provers.iter().next().unwrap().0.clone()]
-    // }
 }

@@ -320,7 +320,7 @@ impl ProverGrpcEndpoint {
 
         // TODO! move this logic to the client
         if reset_current_job {
-            info!("Aggregation task completed for job {}", job_id);
+            info!("Aggregation task completed for {}", job_id);
             self.prover_service.set_current_job(None);
             self.prover_service.set_state(ProverState::Idle);
         }
@@ -413,7 +413,7 @@ impl ProverGrpcEndpoint {
         computation_tx: &mpsc::UnboundedSender<ComputationResult>,
         request: ExecuteTaskRequest,
     ) {
-        info!("Starting Partial Contribution for job {}", request.job_id);
+        info!("Starting Partial Contribution for {}", request.job_id);
 
         // Cancel any existing computation
         self.prover_service.cancel_current_computation();
@@ -463,7 +463,7 @@ impl ProverGrpcEndpoint {
         let job_id = job.lock().await.job_id.clone();
         assert_eq!(job_id.as_string(), request.job_id, "Job ID mismatch in Phase 2");
 
-        info!("Starting Phase 2 for job {}", job_id);
+        info!("Starting Phase 2 for {}", job_id);
 
         // Extract the Prove params
         let prove_params = match request.params {

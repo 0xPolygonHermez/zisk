@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .out_dir(&out_dir)
         // Disable features that create additional temporary files
         .compile_well_known_types(false)
-        .disable_comments(&["."])
+        .disable_comments(["."])
         .extern_path(".google.protobuf.Timestamp", "::prost_types::Timestamp")
         // Add support for proto3 optional fields
         .protoc_arg("--experimental_allow_proto3_optional")

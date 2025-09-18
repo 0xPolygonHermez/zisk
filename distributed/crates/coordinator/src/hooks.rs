@@ -15,7 +15,7 @@ pub async fn send_completion_webhook(
     // - If no placeholder is found, the job ID is appended to the URL as a path segment.
 
     let webhook_url = if webhook_url.contains("{$job_id}") {
-        webhook_url.replace("{$job_id}", &job_id.as_str())
+        webhook_url.replace("{$job_id}", job_id.as_str())
     } else {
         format!("{}/{}", webhook_url, job_id.as_str())
     };
@@ -44,10 +44,10 @@ pub async fn send_completion_webhook(
     };
 
     if response.status().is_success() {
-        info!("Successfully sent webhook notification for job {} to {}", job_id, webhook_url);
+        info!("Successfully sent webhook notification for {} to {}", job_id, webhook_url);
     } else {
         warn!(
-            "Webhook returned non-success status {} for job {}: {}",
+            "Webhook returned non-success status {} for {}: {}",
             response.status(),
             job_id,
             response.text().await.unwrap_or_default()
