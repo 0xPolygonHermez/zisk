@@ -260,13 +260,17 @@ impl ProofGenerator {
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
     ) -> Result<Vec<AggProofs>> {
+        let world_rank = proofman.get_mpi_ctx().rank;
+
         let proof = match proofman.generate_proof_from_lib(
             phase_inputs,
             options,
             proofman::ProvePhase::Internal,
         ) {
             Ok(proofman::ProvePhaseResult::Internal(proof)) => {
-                info!("Prove computation successful for job {}", job_id);
+                if world_rank == 0 {
+                    info!("Prove computation successful for job {}", job_id);
+                }
                 proof
             }
             Ok(_) => {

@@ -34,9 +34,8 @@ impl ProverGrpcEndpoint {
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        info!("Starting prover client {}", self.config_endpoint.prover.prover_id);
-
         let rank = self.prover_service.local_rank();
+
         loop {
             if rank == 0 {
                 match self.prover_service.get_state() {

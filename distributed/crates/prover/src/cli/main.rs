@@ -7,7 +7,6 @@ use distributed_prover::{
     ProverGrpcEndpoint, ProverServiceConfig,
 };
 use std::path::PathBuf;
-use tracing::info;
 
 #[derive(Parser)]
 #[command(name = "distributed-client")]
@@ -138,19 +137,9 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    let prover_id = grpc_config.prover.prover_id.clone();
-    let compute_capacity = grpc_config.prover.compute_capacity;
-    let server_url = grpc_config.server.url.clone();
-
     print_command_info(&service_config, cli.debug.is_some());
 
     let mut prover_client = ProverGrpcEndpoint::new(grpc_config, service_config).await?;
-
-    info!(
-        "Starting prover client {} ({}) connecting to server {}",
-        prover_id, compute_capacity, server_url,
-    );
-
     prover_client.run().await
 }
 

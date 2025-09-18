@@ -244,7 +244,7 @@ impl Job {
             job_id: JobId::new(),
             start_time: Utc::now(),
             duration_ms: None,
-            state: JobState::Running(JobPhase::Contributions),
+            state: JobState::Created,
             block: BlockContext { block_id, input_path },
             compute_units,
             provers: selected_provers,
@@ -256,7 +256,23 @@ impl Job {
         }
     }
 
-    pub fn add_start_time(&mut self, job_phase: JobPhase) {
+    pub fn job_id(&self) -> &JobId {
+        &self.job_id
+    }
+
+    pub fn change_state(&mut self, new_state: JobState) {
+        if let JobState::Running(current_state) = &self.state {
+            self.add_end_time(current_state.clone());
+        }
+
+        self.state = new_state.clone();
+
+        if let JobState::Running(new_phase) = &new_state {
+            self.add_start_time(new_phase.clone());
+        }
+    }
+
+    fn add_start_time(&mut self, job_phase: JobPhase) {
         match self.stats.get_mut(&job_phase) {
             Some(_) => {
                 unreachable!("Start time added twice for the same phase");
@@ -268,7 +284,7 @@ impl Job {
         }
     }
 
-    pub fn add_end_time(&mut self, job_phase: JobPhase) {
+    fn add_end_time(&mut self, job_phase: JobPhase) {
         match self.stats.get_mut(&job_phase) {
             Some(existing_stats) => {
                 existing_stats.end_time = Some(Utc::now());
@@ -276,10 +292,15 @@ impl Job {
             None => unreachable!("End time added without start time"),
         }
     }
+
+    pub fn state(&self) -> &JobState {
+        &self.state
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum JobState {
+    Created,
     Running(JobPhase),
     Completed,
     Failed,
@@ -288,6 +309,7 @@ pub enum JobState {
 impl fmt::Display for JobState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            JobState::Created => write!(f, "Created"),
             JobState::Running(phase) => write!(f, "Running ({:?})", phase),
             JobState::Completed => write!(f, "Completed"),
             JobState::Failed => write!(f, "Failed"),
