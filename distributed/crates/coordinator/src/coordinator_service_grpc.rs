@@ -1,4 +1,3 @@
-use anyhow::Result;
 use async_stream::stream;
 use distributed_common::{CoordinatorMessageDto, JobId, ProverId};
 use distributed_grpc_api::{distributed_api_server::*, *};
@@ -10,6 +9,7 @@ use tracing::{error, info};
 
 use crate::config::Config;
 use crate::coordinator_service::MessageSender;
+use crate::coordinator_service_error::{CoordinatorError, CoordinatorResult};
 use crate::CoordinatorService;
 
 /// Wrapper around mpsc::UnboundedSender to implement MessageSender trait for gRPC
@@ -23,8 +23,10 @@ impl GrpcMessageSender {
 }
 
 impl MessageSender for GrpcMessageSender {
-    fn send(&self, msg: CoordinatorMessageDto) -> Result<()> {
-        self.0.send(msg.into())?;
+    fn send(&self, msg: CoordinatorMessageDto) -> CoordinatorResult<()> {
+        self.0
+            .send(msg.into())
+            .map_err(|e| CoordinatorError::Internal(format!("Failed to send message: {}", e)))?;
         Ok(())
     }
 }
@@ -38,7 +40,7 @@ pub struct CoordinatorServiceGrpc {
 }
 
 impl CoordinatorServiceGrpc {
-    pub async fn new(config: Config) -> Result<Self> {
+    pub async fn new(config: Config) -> CoordinatorResult<Self> {
         Ok(Self { coordinator_service: Arc::new(CoordinatorService::new(config)) })
     }
 
@@ -65,13 +67,20 @@ impl CoordinatorServiceGrpc {
         Ok(())
     }
 
-    fn validate_same_prover_id(prover_id: &ProverId, request_prover_id: &str) -> Result<()> {
-        anyhow::ensure!(
-            prover_id.as_string() == request_prover_id,
-            "Prover ID mismatch: expected {}, got {}",
-            prover_id.as_string(),
-            request_prover_id
-        );
+    fn validate_same_prover_id(
+        prover_id: &ProverId,
+        request_prover_id: &str,
+    ) -> CoordinatorResult<()> {
+        if prover_id.as_string() != request_prover_id {
+            // Log the mismatch internally for debugging
+            error!(
+                "Prover ID mismatch: expected {}, got {}",
+                prover_id.as_string(),
+                request_prover_id
+            );
+            // Return generic error to client (security best practice)
+            return Err(CoordinatorError::InvalidRequest("Invalid prover credentials".to_string()));
+        }
         Ok(())
     }
 
@@ -79,7 +88,7 @@ impl CoordinatorServiceGrpc {
         coordinator: &CoordinatorService,
         prover_id: &ProverId,
         message: ProverMessage,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         match message.payload {
             Some(payload) => match payload {
                 prover_message::Payload::HeartbeatAck(heartbeat_ack) => {
@@ -100,9 +109,7 @@ impl CoordinatorServiceGrpc {
                         .await
                 }
             },
-            None => {
-                Err(anyhow::anyhow!("Received message with no payload from prover {}", prover_id))
-            }
+            None => Err(CoordinatorError::InvalidRequest("Invalid message format".to_string())),
         }
     }
 
@@ -182,7 +189,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
             .handle_job_status(&job_id)
             .await
             .map(|status_dto| Response::new(status_dto.into()))
-            .map_err(|e| Status::internal(format!("Failed to get job status: {}", e)))
+            .map_err(Status::from)
     }
 
     async fn system_status(
@@ -205,9 +212,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
         let launch_proof_request_dto = request.into_inner().into();
         let result = self.coordinator_service.launch_proof(launch_proof_request_dto).await;
 
-        result
-            .map(|response_dto| Response::new(response_dto.into()))
-            .map_err(|e| Status::internal(format!("Failed to start proof: {}", e)))
+        result.map(|response_dto| Response::new(response_dto.into())).map_err(Status::from)
     }
 
     /// Bidirectional stream for communication between coordinator and provers.
@@ -279,7 +284,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
                             Some(Ok(message)) => {
                                 if let Err(e) = Self::handle_stream_message(&coordinator_service, &prover_id, message).await {
                                     error!("Error handling prover message: {}", e);
-                                    yield Err(Status::internal(format!("Error handling message: {e}")));
+                                    yield Err(Status::from(e));
                                     break;
                                 }
                             }

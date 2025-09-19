@@ -1,12 +1,16 @@
 use distributed_common::{
-    ComputeCapacity, CoordinatorMessageDto, Error, JobExecutionMode, ProverId, ProverInfoDto,
-    ProverState, ProversListDto, Result,
+    ComputeCapacity, CoordinatorMessageDto, JobExecutionMode, ProverId, ProverInfoDto, ProverState,
+    ProversListDto,
 };
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-use crate::{coordinator_service::MessageSender, ProverInfo};
+use crate::{
+    coordinator_service::MessageSender,
+    coordinator_service_error::{CoordinatorError, CoordinatorResult},
+    ProverInfo,
+};
 
 pub struct ProversPool {
     /// Map of prover_id to ProverConnection
@@ -67,14 +71,14 @@ impl ProversPool {
         prover_id: ProverId,
         compute_capacity: impl Into<ComputeCapacity>,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         let connection = ProverInfo::new(prover_id.clone(), compute_capacity.into(), msg_sender);
 
         // Check if prover_id is already registered
         if self.provers.read().await.contains_key(&prover_id) {
-            let msg = format!("Prover ID {} is already registered", prover_id);
+            let msg = format!("Prover {} is already registered", prover_id);
             warn!("{}", msg);
-            Err(Error::InvalidRequest(msg))
+            Err(CoordinatorError::InvalidRequest(msg))
         } else {
             self.provers.write().await.insert(prover_id.clone(), connection);
             info!("Registered prover: {} (total: {})", prover_id, self.num_provers().await);
@@ -87,7 +91,7 @@ impl ProversPool {
         prover_id: ProverId,
         compute_capacity: impl Into<ComputeCapacity>,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         match self.provers.write().await.get_mut(&prover_id) {
             Some(existing_prover) => {
                 existing_prover.state = ProverState::Idle;
@@ -102,17 +106,17 @@ impl ProversPool {
                 let msg =
                     format!("Prover ID {} is not registered. Impossible to reconnect.", prover_id);
                 warn!("{}", msg);
-                Err(Error::InvalidRequest(msg))
+                Err(CoordinatorError::InvalidRequest(msg))
             }
         }
     }
 
     /// Unregister a prover
-    pub async fn unregister_prover(&self, prover_id: &ProverId) -> Result<()> {
+    pub async fn unregister_prover(&self, prover_id: &ProverId) -> CoordinatorResult<()> {
         self.provers.write().await.remove(prover_id).map(|_| ()).ok_or_else(|| {
             let msg = format!("Prover {prover_id} not found for removal");
             warn!("{}", msg);
-            Error::InvalidRequest(msg)
+            CoordinatorError::NotFoundOrInaccessible
         })
     }
 
@@ -124,7 +128,7 @@ impl ProversPool {
         &self,
         prover_ids: &[ProverId],
         state: ProverState,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         for prover_id in prover_ids {
             self.mark_prover_with_state(prover_id, state.clone()).await?;
         }
@@ -135,42 +139,41 @@ impl ProversPool {
         &self,
         prover_id: &ProverId,
         state: ProverState,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         if let Some(prover) = self.provers.write().await.get_mut(prover_id) {
             prover.state = state;
+            Ok(())
         } else {
-            return Err(Error::InvalidRequest(format!("Prover {prover_id} not found")));
+            Err(CoordinatorError::NotFoundOrInaccessible)
         }
-
-        Ok(())
     }
 
     pub async fn send_message(
         &self,
         prover_id: &ProverId,
         message: CoordinatorMessageDto,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         if let Some(prover) = self.provers.read().await.get(prover_id) {
             prover.msg_sender.send(message).map_err(|e| {
                 let msg = format!("Failed to send message to prover {prover_id}: {}", e);
                 warn!("{}", msg);
-                Error::Comm(msg)
+                CoordinatorError::Internal(msg)
             })
         } else {
             let msg = format!("Prover {prover_id} not found for sending message");
             warn!("{}", msg);
-            Err(Error::InvalidRequest(msg))
+            Err(CoordinatorError::NotFoundOrInaccessible)
         }
     }
 
-    pub async fn update_last_heartbeat(&self, prover_id: &ProverId) -> Result<()> {
+    pub async fn update_last_heartbeat(&self, prover_id: &ProverId) -> CoordinatorResult<()> {
         if let Some(prover) = self.provers.write().await.get_mut(prover_id) {
             prover.update_last_heartbeat();
             Ok(())
         } else {
             let msg = format!("Prover {prover_id} not found for heartbeat update");
             warn!("{}", msg);
-            Err(Error::InvalidRequest(msg))
+            Err(CoordinatorError::NotFoundOrInaccessible)
         }
     }
 
@@ -178,17 +181,17 @@ impl ProversPool {
         &self,
         required_compute_capacity: ComputeCapacity,
         execution_mode: JobExecutionMode,
-    ) -> Result<(Vec<ProverId>, Vec<Vec<u32>>)> {
+    ) -> CoordinatorResult<(Vec<ProverId>, Vec<Vec<u32>>)> {
         if execution_mode.is_simulating() && self.num_provers().await != 1 {
             warn!("Simulated mode enabled but there are multiple provers connected. Only the first prover will be used.");
-            return Err(Error::InvalidRequest(
+            return Err(CoordinatorError::InvalidRequest(
                 "Simulated mode can only be used when there is exactly one prover connected"
                     .to_string(),
             ));
         }
 
         if required_compute_capacity.compute_units == 0 {
-            return Err(Error::InvalidRequest(
+            return Err(CoordinatorError::InvalidArgument(
                 "Compute capacity must be greater than 0".to_string(),
             ));
         }
@@ -206,9 +209,7 @@ impl ProversPool {
 
                 vec![(prover_id, prover_info); times as usize]
             } else {
-                return Err(Error::InvalidRequest(
-                    "No provers available for allocation".to_string(),
-                ));
+                return Err(CoordinatorError::InsufficientCapacity);
             }
         } else {
             provers.iter().filter(|(_, p)| matches!(p.state, ProverState::Idle)).collect()
@@ -218,9 +219,7 @@ impl ProversPool {
             available_provers.iter().map(|(_, p)| p.compute_capacity.compute_units).sum();
 
         if required_compute_capacity.compute_units > available_capacity {
-            return Err(Error::InvalidRequest(format!(
-                "Not enough compute capacity available: need {required_compute_capacity}, have {available_capacity}",
-            )));
+            return Err(CoordinatorError::InsufficientCapacity);
         }
 
         let mut selected_provers = Vec::new();

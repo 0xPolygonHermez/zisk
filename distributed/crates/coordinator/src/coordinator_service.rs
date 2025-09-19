@@ -1,11 +1,14 @@
-use crate::{config::Config, hooks, ProversPool};
+use crate::{
+    config::Config,
+    coordinator_service_error::{CoordinatorError, CoordinatorResult},
+    hooks, ProversPool,
+};
 
-use anyhow::Result;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use distributed_common::{
     AggParamsDto, AggProofData, BlockId, ChallengesDto, ComputeCapacity, ContributionParamsDto,
-    CoordinatorMessageDto, Error, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
+    CoordinatorMessageDto, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
     ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, Job,
     JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
     JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
@@ -18,7 +21,7 @@ use tokio::sync::RwLock;
 use tracing::{error, info, instrument, warn};
 
 pub trait MessageSender {
-    fn send(&self, msg: CoordinatorMessageDto) -> Result<()>;
+    fn send(&self, msg: CoordinatorMessageDto) -> CoordinatorResult<()>;
 }
 
 /// Represents the runtime state of the service
@@ -87,11 +90,8 @@ impl CoordinatorService {
         self.provers_pool.provers_list().await
     }
 
-    pub async fn handle_job_status(&self, job_id: &JobId) -> Result<JobStatusDto> {
-        let job_entry = self.jobs.get(job_id).ok_or_else(|| {
-            Error::InvalidRequest(format!("Job with ID {} not found", job_id.as_string()))
-        })?;
-
+    pub async fn handle_job_status(&self, job_id: &JobId) -> CoordinatorResult<JobStatusDto> {
+        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.read().await;
 
         Ok(JobStatusDto {
@@ -137,11 +137,13 @@ impl CoordinatorService {
     /// - `pre_launch_proof` runs beforehand for validation and setup.  
     /// - `post_launch_proof` runs afterward for cleanup, logging, or extra processing.
     /// -------------------------------------------------------------------------------------
-    pub fn pre_launch_proof(&self, request: &LaunchProofRequestDto) -> Result<()> {
+    pub fn pre_launch_proof(&self, request: &LaunchProofRequestDto) -> CoordinatorResult<()> {
         // Check if compute_capacity is within allowed limits
         if request.compute_capacity == 0 {
-            error!("Requested compute_capacity is 0, which is invalid.");
-            return Err(anyhow::anyhow!("compute_capacity must be greater than 0".to_string()));
+            error!("Invalid requested compute capacity");
+            return Err(CoordinatorError::InvalidArgument(
+                "Compute capacity must be greater than zero".to_string(),
+            ));
         }
 
         // Check if we have enough capacity to compute the proof is already checked
@@ -151,7 +153,10 @@ impl CoordinatorService {
         let input_path = PathBuf::from(&request.input_path);
         if !input_path.exists() {
             error!("Input path does not exist: {}", request.input_path);
-            return Err(anyhow::anyhow!("Input path does not exist: {}", request.input_path));
+            return Err(CoordinatorError::InvalidArgument(format!(
+                "Input path does not exist: {}",
+                request.input_path
+            )));
         }
 
         Ok(())
@@ -160,7 +165,7 @@ impl CoordinatorService {
     pub async fn launch_proof(
         &self,
         request: LaunchProofRequestDto,
-    ) -> Result<LaunchProofResponseDto> {
+    ) -> CoordinatorResult<LaunchProofResponseDto> {
         self.pre_launch_proof(&request)?;
 
         let required_compute_capacity = ComputeCapacity::from(request.compute_capacity);
@@ -203,16 +208,14 @@ impl CoordinatorService {
         Ok(LaunchProofResponseDto { job_id })
     }
 
-    pub async fn post_launch_proof(&self, job_id: &JobId) -> Result<()> {
+    pub async fn post_launch_proof(&self, job_id: &JobId) -> CoordinatorResult<()> {
         // Check if webhook URL is configured
         if let Some(webhook_url) = &self.config.coordinator.webhook_url {
             let webhook_url = webhook_url.clone();
 
             let (final_proof, success) = {
-                let job_entry = self
-                    .jobs
-                    .get(job_id)
-                    .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
+                let job_entry =
+                    self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
                 let job = job_entry.read().await;
                 (job.final_proof.clone(), matches!(job.state(), JobState::Completed))
             };
@@ -238,7 +241,7 @@ impl CoordinatorService {
         required_compute_capacity: ComputeCapacity,
         input_path: String,
         simulated_node: Option<u32>,
-    ) -> Result<Job> {
+    ) -> CoordinatorResult<Job> {
         let execution_mode = if let Some(node) = simulated_node {
             JobExecutionMode::Simulating(node)
         } else {
@@ -264,7 +267,7 @@ impl CoordinatorService {
         ))
     }
 
-    fn select_provers_for_execution(&self, job: &Job) -> Result<Vec<ProverId>> {
+    fn select_provers_for_execution(&self, job: &Job) -> CoordinatorResult<Vec<ProverId>> {
         let selected_provers = match job.execution_mode {
             // In simulation mode we only use the first prover to simulate the execution of N nodes
             JobExecutionMode::Simulating(simulated_node) => {
@@ -273,8 +276,7 @@ impl CoordinatorService {
                         "Simulated mode index ({simulated_node}) exceeds available provers ({}).",
                         job.provers.len()
                     );
-                    error!(msg);
-                    return Err(anyhow::anyhow!(Error::InvalidRequest(msg)));
+                    return Err(CoordinatorError::InvalidArgument(msg));
                 }
 
                 job.provers[0..1].to_vec()
@@ -282,6 +284,7 @@ impl CoordinatorService {
             // In standard mode use the already selected provers during the job creation
             JobExecutionMode::Standard => job.provers.clone(),
         };
+
         Ok(selected_provers)
     }
 
@@ -291,7 +294,7 @@ impl CoordinatorService {
         required_compute_capacity: ComputeCapacity,
         job: &Job,
         active_provers: &[ProverId],
-    ) -> Result<(), anyhow::Error> {
+    ) -> CoordinatorResult<()> {
         for (rank_id, prover_id) in active_provers.iter().enumerate() {
             // Create contribution task request
             let req = ExecuteTaskRequestDto {
@@ -321,11 +324,8 @@ impl CoordinatorService {
     }
 
     /// Mark a job as failed and reset prover statuses
-    pub async fn fail_job(&self, job_id: &JobId, reason: impl AsRef<str>) -> Result<()> {
-        let job_entry = self
-            .jobs
-            .get(job_id)
-            .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
+    pub async fn fail_job(&self, job_id: &JobId, reason: impl AsRef<str>) -> CoordinatorResult<()> {
+        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
         job.change_state(JobState::Failed);
@@ -389,18 +389,18 @@ impl CoordinatorService {
     }
 
     /// Unregister a prover by its ID
-    pub async fn unregister_prover(&self, prover_id: &ProverId) -> Result<()> {
+    pub async fn unregister_prover(&self, prover_id: &ProverId) -> CoordinatorResult<()> {
         Ok(self.provers_pool.unregister_prover(prover_id).await?)
     }
 
-    pub async fn handle_stream_heartbeat_ack(&self, message: HeartbeatAckDto) -> Result<()> {
-        self.provers_pool
-            .update_last_heartbeat(&message.prover_id)
-            .await
-            .map_err(|e| anyhow::anyhow!(e))
+    pub async fn handle_stream_heartbeat_ack(
+        &self,
+        message: HeartbeatAckDto,
+    ) -> CoordinatorResult<()> {
+        self.provers_pool.update_last_heartbeat(&message.prover_id).await
     }
 
-    pub async fn handle_stream_error(&self, message: ProverErrorDto) -> Result<()> {
+    pub async fn handle_stream_error(&self, message: ProverErrorDto) -> CoordinatorResult<()> {
         // Update last heartbeat
         self.provers_pool.update_last_heartbeat(&message.prover_id).await?;
 
@@ -417,7 +417,7 @@ impl CoordinatorService {
     pub async fn handle_stream_execute_task_response(
         &self,
         message: ExecuteTaskResponseDto,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         // Validate and update heartbeat
         self.validate_and_update_heartbeat(&message).await?;
 
@@ -440,7 +440,10 @@ impl CoordinatorService {
     }
 
     /// Validate request and update prover heartbeat
-    async fn validate_and_update_heartbeat(&self, message: &ExecuteTaskResponseDto) -> Result<()> {
+    async fn validate_and_update_heartbeat(
+        &self,
+        message: &ExecuteTaskResponseDto,
+    ) -> CoordinatorResult<()> {
         // Update last heartbeat
         self.provers_pool.update_last_heartbeat(&message.prover_id).await?;
 
@@ -450,20 +453,17 @@ impl CoordinatorService {
                 "Received ExecuteTaskResponse for unknown job {} from prover {}",
                 message.job_id, message.prover_id
             );
-            return Err(Error::InvalidRequest(format!("Job {} not found", message.job_id)).into());
+            return Err(CoordinatorError::NotFoundOrInaccessible);
         }
 
         Ok(())
     }
 
     /// Handle task failure by failing the job and returning appropriate error
-    async fn handle_task_failure(&self, message: ExecuteTaskResponseDto) -> Result<()> {
-        self.fail_job(&message.job_id, "Task execution failed").await.map_err(|e| {
-            error!("Failed to mark job {} as failed: {}", message.job_id, e);
-            e
-        })?;
+    async fn handle_task_failure(&self, message: ExecuteTaskResponseDto) -> CoordinatorResult<()> {
+        self.fail_job(&message.job_id, "Task execution failed").await?;
 
-        Err(Error::Service(format!(
+        Err(CoordinatorError::ProverError(format!(
             "Prover {} failed to execute task for {}: {}",
             message.prover_id,
             message.job_id,
@@ -476,13 +476,10 @@ impl CoordinatorService {
     pub async fn handle_contributions_completion(
         &self,
         execute_task_response: ExecuteTaskResponseDto,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id.clone();
 
-        let job_entry = self
-            .jobs
-            .get(&job_id)
-            .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
+        let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
 
@@ -490,7 +487,7 @@ impl CoordinatorService {
         self.store_contribution_response(&mut job, execute_task_response).await?;
 
         // Check if all contributions are complete
-        if !self.check_phase1_completion(&job).await? {
+        if !self.check_phase1_completion(&job) {
             return Ok(());
         }
 
@@ -520,7 +517,7 @@ impl CoordinatorService {
         &self,
         job: &mut Job,
         execute_task_response: ExecuteTaskResponseDto,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         let contributions_results = job.results.entry(JobPhase::Contributions).or_default();
 
         let prover_id = execute_task_response.prover_id.clone();
@@ -531,11 +528,10 @@ impl CoordinatorService {
                 "Received duplicate Contribution result from prover {prover_id} for {}",
                 job.job_id
             );
-            return Err(Error::InvalidRequest(format!(
+            return Err(CoordinatorError::InvalidRequest(format!(
                 "Duplicate Contribution result from prover {prover_id} for {}",
                 job.job_id
-            ))
-            .into());
+            )));
         }
 
         let data = self.extract_challenges_data(execute_task_response.result_data)?;
@@ -550,39 +546,34 @@ impl CoordinatorService {
     fn extract_challenges_data(
         &self,
         result_data: ExecuteTaskResponseResultDataDto,
-    ) -> Result<JobResultData> {
+    ) -> CoordinatorResult<JobResultData> {
         match result_data {
             ExecuteTaskResponseResultDataDto::Challenges(challenges) => {
                 if challenges.is_empty() {
-                    return Err(Error::InvalidRequest(
+                    return Err(CoordinatorError::InvalidRequest(
                         "Received empty Challenges result data".to_string(),
-                    )
-                    .into());
+                    ));
                 }
 
-                let cont: Result<Vec<ContributionsInfo>, Error> = challenges
+                let contributions: Vec<ContributionsInfo> = challenges
                     .into_iter()
-                    .map(|challenge| {
-                        Ok(ContributionsInfo {
-                            worker_index: challenge.worker_index,
-                            airgroup_id: challenge.airgroup_id as usize,
-                            challenge: challenge.challenge,
-                        })
+                    .map(|challenge| ContributionsInfo {
+                        worker_index: challenge.worker_index,
+                        airgroup_id: challenge.airgroup_id as usize,
+                        challenge: challenge.challenge,
                     })
                     .collect();
 
-                let cont = cont.map_err(anyhow::Error::from)?;
-                Ok(JobResultData::Challenges(cont))
+                Ok(JobResultData::Challenges(contributions))
             }
-            _ => {
-                Err(Error::InvalidRequest("Expected Challenges result data for Phase1".to_string())
-                    .into())
-            }
+            _ => Err(CoordinatorError::InvalidRequest(
+                "Expected Challenges result data for Phase1".to_string(),
+            )),
         }
     }
 
     /// Check if all Phase1 contributions are complete for a job
-    async fn check_phase1_completion(&self, job: &Job) -> Result<bool> {
+    fn check_phase1_completion(&self, job: &Job) -> bool {
         let phase1_results_len =
             job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
 
@@ -597,13 +588,17 @@ impl CoordinatorService {
         // If not all provers have responded (and we're not in simulation mode),
         // return early and wait for more results.
         if !job.execution_mode.is_simulating() && phase1_results_len < job.provers.len() {
-            return Ok(false);
+            return false;
         }
-        Ok(true)
+
+        true
     }
 
     /// Validate Phase1 results and extract challenges in a single operation
-    async fn validate_and_extract_challenges(&self, job: &Job) -> Result<Vec<ContributionsInfo>> {
+    async fn validate_and_extract_challenges(
+        &self,
+        job: &Job,
+    ) -> CoordinatorResult<Vec<ContributionsInfo>> {
         // Extract data we need while minimizing lock time
         let (simulating, phase1_results) = {
             let empty_results = HashMap::new();
@@ -636,7 +631,7 @@ impl CoordinatorService {
                 format!("Phase1 failed for provers: {failed_provers:?} in job {}", job.job_id);
             self.fail_job(&job.job_id, &reason).await?;
 
-            return Err(Error::Service(reason).into());
+            return Err(CoordinatorError::ProverError(reason).into());
         }
 
         // Extract and prepare challenges
@@ -684,7 +679,7 @@ impl CoordinatorService {
         job_id: &JobId,
         active_provers: &[ProverId],
         ch: Vec<ChallengesDto>,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         // Send messages to active provers
         for prover_id in active_provers {
             if let Some(prover_state) = self.provers_pool.prover_state(prover_id).await {
@@ -692,7 +687,7 @@ impl CoordinatorService {
                 if !matches!(prover_state, ProverState::Computing(JobPhase::Contributions)) {
                     let reason =
                         format!("Prover {prover_id} is not in computing state for {}", job_id);
-                    return Err(Error::InvalidRequest(reason).into());
+                    return Err(CoordinatorError::InvalidRequest(reason));
                 }
 
                 self.provers_pool
@@ -712,10 +707,7 @@ impl CoordinatorService {
                 self.provers_pool.send_message(prover_id, req).await?;
             } else {
                 warn!("Prover {} not found when starting Phase2", prover_id);
-                return Err(Error::InvalidRequest(format!(
-                    "Prover {prover_id} not found when starting Phase2"
-                ))
-                .into());
+                return Err(CoordinatorError::NotFoundOrInaccessible);
             }
         }
 
@@ -726,14 +718,11 @@ impl CoordinatorService {
     async fn handle_proofs_completion(
         &self,
         execute_task_response: ExecuteTaskResponseDto,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id.clone();
         let prover_id = execute_task_response.prover_id.clone();
 
-        let job_entry = self
-            .jobs
-            .get(&job_id)
-            .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
+        let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
 
@@ -764,7 +753,7 @@ impl CoordinatorService {
         &self,
         job: &mut Job,
         execute_task_response: ExecuteTaskResponseDto,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id;
         let prover_id = execute_task_response.prover_id;
 
@@ -775,7 +764,7 @@ impl CoordinatorService {
             let msg =
                 format!("Received duplicate Proof result from prover {} for {}", prover_id, job_id);
             warn!(msg);
-            return Err(Error::InvalidRequest(msg).into());
+            return Err(CoordinatorError::InvalidRequest(msg));
         }
 
         // Extract and validate proofs data from Phase2 response
@@ -792,10 +781,9 @@ impl CoordinatorService {
                 JobResultData::AggProofs(agg_proofs)
             }
             _ => {
-                return Err(Error::InvalidRequest(
+                return Err(CoordinatorError::InvalidRequest(
                     "Expected Proofs result data for Phase2".to_string(),
-                )
-                .into());
+                ));
             }
         };
 
@@ -806,7 +794,7 @@ impl CoordinatorService {
     }
 
     /// Finish a simulated job by marking it as completed and freeing provers
-    async fn complete_simulated_job(&self, job: &mut Job) -> Result<()> {
+    async fn complete_simulated_job(&self, job: &mut Job) -> CoordinatorResult<()> {
         job.change_state(JobState::Completed);
 
         let assigned_provers = job.provers.clone();
@@ -828,7 +816,7 @@ impl CoordinatorService {
         &self,
         job: &mut Job,
         candidate_prover_id: &ProverId,
-    ) -> Result<ProverId> {
+    ) -> CoordinatorResult<ProverId> {
         match job.agg_prover_id.as_ref() {
             Some(existing_aggregator_id) => {
                 // Aggregator already exists - mark the candidate as idle since it's not the aggregator
@@ -845,7 +833,11 @@ impl CoordinatorService {
     }
 
     /// Assign a new aggregator and update both job and prover states
-    async fn assign_new_aggregator(&self, job: &mut Job, prover_id: &ProverId) -> Result<ProverId> {
+    async fn assign_new_aggregator(
+        &self,
+        job: &mut Job,
+        prover_id: &ProverId,
+    ) -> CoordinatorResult<ProverId> {
         // Update job state
         job.agg_prover_id = Some(prover_id.clone());
         job.change_state(JobState::Running(JobPhase::Aggregate));
@@ -860,7 +852,7 @@ impl CoordinatorService {
         Ok(prover_id.clone())
     }
 
-    async fn check_phase2_completion(&self, job: &Job) -> Result<bool> {
+    async fn check_phase2_completion(&self, job: &Job) -> CoordinatorResult<bool> {
         let empty_results = HashMap::new();
         let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
 
@@ -897,7 +889,7 @@ impl CoordinatorService {
                 format!("Phase2 failed for provers {:?} in job {}", failed_provers, job.job_id);
             self.fail_job(&job.job_id, reason).await?;
 
-            return Err(Error::Service("Phase2 failed".to_string()).into());
+            return Err(CoordinatorError::Internal("Phase2 failed".to_string()));
         }
 
         Ok(true)
@@ -909,26 +901,22 @@ impl CoordinatorService {
         job: &Job,
         agg_prover_id: &ProverId,
         prover_id: &ProverId,
-    ) -> Result<Vec<AggProofData>> {
+    ) -> CoordinatorResult<Vec<AggProofData>> {
         Ok(if prover_id == agg_prover_id {
             vec![]
         } else {
             let job_results = job.results.get(&JobPhase::Prove).unwrap();
 
-            let job_result = job_results.get(prover_id).ok_or_else(|| {
-                Error::InvalidRequest(format!(
-                    "Prover {prover_id} has not completed Phase2 for {}",
-                    job.job_id
-                ))
-            })?;
+            let job_result = job_results.get(prover_id).ok_or(CoordinatorError::InvalidRequest(
+                format!("Prover {prover_id} has not completed Phase2 for {}", job.job_id),
+            ))?;
 
             match &job_result.data {
                 JobResultData::AggProofs(values) => values.clone(),
                 _ => {
-                    return Err(Error::InvalidRequest(
+                    return Err(CoordinatorError::InvalidRequest(
                         "Expected AggProofs data for Phase2".to_string(),
-                    )
-                    .into());
+                    ));
                 }
             }
         })
@@ -940,7 +928,7 @@ impl CoordinatorService {
         agg_prover_id: &ProverId,
         proofs: Vec<AggProofData>,
         all_done: bool,
-    ) -> Result<(), anyhow::Error> {
+    ) -> CoordinatorResult<()> {
         let proofs: Vec<ProofDto> = proofs
             .into_iter()
             .map(|p| ProofDto {
@@ -979,7 +967,7 @@ impl CoordinatorService {
     async fn handle_aggregation_completion(
         &self,
         execute_task_response: ExecuteTaskResponseDto,
-    ) -> Result<()> {
+    ) -> CoordinatorResult<()> {
         let job_id = &execute_task_response.job_id;
 
         // An aggregation request has failed, fail the job
@@ -987,17 +975,16 @@ impl CoordinatorService {
             let reason = format!("Aggregation failed in job {}", job_id);
             self.fail_job(job_id, &reason).await?;
 
-            return Err(Error::Service(reason).into());
+            return Err(CoordinatorError::Internal(reason));
         }
 
         // Extract the proof data
         let mut proof_data = match execute_task_response.result_data {
             ExecuteTaskResponseResultDataDto::FinalProof(final_proof) => final_proof,
             _ => {
-                return Err(Error::InvalidRequest(
+                return Err(CoordinatorError::InvalidRequest(
                     "Expected FinalProof result data for Aggregation".to_string(),
-                )
-                .into());
+                ));
             }
         };
 
@@ -1008,10 +995,7 @@ impl CoordinatorService {
             return Ok(());
         }
 
-        let job_entry = self
-            .jobs
-            .get(job_id)
-            .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
+        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
 
