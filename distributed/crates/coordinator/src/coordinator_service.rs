@@ -2,6 +2,7 @@ use crate::{config::Config, hooks, ProversPool};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use dashmap::DashMap;
 use distributed_common::{
     AggParamsDto, AggProofData, BlockId, ChallengesDto, ComputeCapacity, ContributionParamsDto,
     CoordinatorMessageDto, Error, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
@@ -31,8 +32,8 @@ pub struct CoordinatorService {
     /// Pool of streaming connections
     provers_pool: ProversPool,
 
-    /// Hashmap of jobs
-    jobs: RwLock<HashMap<JobId, Job>>,
+    /// DashMap of jobs with individual RwLocks for better granularity
+    jobs: DashMap<JobId, RwLock<Job>>,
 }
 
 impl CoordinatorService {
@@ -40,12 +41,7 @@ impl CoordinatorService {
     pub fn new(config: Config) -> Self {
         let start_time_utc = Utc::now();
 
-        Self {
-            config,
-            start_time_utc,
-            provers_pool: ProversPool::new(),
-            jobs: RwLock::new(HashMap::new()),
-        }
+        Self { config, start_time_utc, provers_pool: ProversPool::new(), jobs: DashMap::new() }
     }
 
     pub async fn handle_status_info(&self) -> StatusInfoDto {
@@ -65,27 +61,24 @@ impl CoordinatorService {
 
     /// List all running jobs only
     pub async fn handle_jobs_list(&self) -> JobsListDto {
-        let jobs = self
-            .jobs
-            .read()
-            .await
-            .values()
-            .filter_map(|job| {
-                if let JobState::Running(phase) = &job.state() {
-                    Some(JobStatusDto {
-                        job_id: job.job_id.clone(),
-                        block_id: job.block.block_id.clone(),
-                        phase: Some(phase.clone()),
-                        state: job.state().clone(),
-                        assigned_provers: job.provers.clone(),
-                        start_time: job.start_time.timestamp() as u64,
-                        duration_ms: job.duration_ms.unwrap_or(0),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let mut jobs = Vec::new();
+
+        for entry in self.jobs.iter() {
+            let job_lock = entry.value();
+            let job = job_lock.read().await;
+
+            if let JobState::Running(phase) = &job.state() {
+                jobs.push(JobStatusDto {
+                    job_id: job.job_id.clone(),
+                    block_id: job.block.block_id.clone(),
+                    phase: Some(phase.clone()),
+                    state: job.state().clone(),
+                    assigned_provers: job.provers.clone(),
+                    start_time: job.start_time.timestamp() as u64,
+                    duration_ms: job.duration_ms.unwrap_or(0),
+                });
+            }
+        }
 
         JobsListDto { jobs }
     }
@@ -95,9 +88,11 @@ impl CoordinatorService {
     }
 
     pub async fn handle_job_status(&self, job_id: &JobId) -> Result<JobStatusDto> {
-        let job = self.jobs.read().await.get(job_id).cloned().ok_or_else(|| {
+        let job_entry = self.jobs.get(job_id).ok_or_else(|| {
             Error::InvalidRequest(format!("Job with ID {} not found", job_id.as_string()))
         })?;
+
+        let job = job_entry.read().await;
 
         Ok(JobStatusDto {
             job_id: job.job_id.clone(),
@@ -117,13 +112,14 @@ impl CoordinatorService {
     pub async fn handle_system_status(&self) -> SystemStatusDto {
         let total_provers = self.provers_pool.num_provers().await;
         let busy_provers = self.provers_pool.busy_provers().await;
-        let active_jobs = self
-            .jobs
-            .read()
-            .await
-            .values()
-            .filter(|job| matches!(job.state(), JobState::Running(_)))
-            .count();
+
+        let mut active_jobs = 0;
+        for entry in self.jobs.iter() {
+            let job = entry.value().read().await;
+            if matches!(job.state(), JobState::Running(_)) {
+                active_jobs += 1;
+            }
+        }
 
         SystemStatusDto {
             total_provers: total_provers as u32,
@@ -184,29 +180,27 @@ impl CoordinatorService {
         // Initialize job state
         job.change_state(JobState::Running(JobPhase::Contributions));
 
-        // Store job in jobs map
-        self.jobs.write().await.insert(job.job_id.clone(), job.clone());
-
-        // In simulation mode, only the first prover is reused to simulate multiple nodes.
-        // In standard mode, all provers are selected.
+        let job_id = job.job_id.clone();
         let active_provers = self.select_provers_for_execution(&job)?;
 
+        // Store job in jobs map with RwLock
+        self.jobs.insert(job_id.clone(), RwLock::new(job));
+
         // Send Phase1 tasks to selected provers
-        self.dispatch_contributions_messages(
-            request.block_id,
-            required_compute_capacity,
-            &job,
-            &active_provers,
-        )
-        .await?;
+        if let Some(job_entry) = self.jobs.get(&job_id) {
+            let job = job_entry.read().await;
+            self.dispatch_contributions_messages(
+                request.block_id,
+                required_compute_capacity,
+                &job,
+                &active_provers,
+            )
+            .await?;
+        }
 
-        info!(
-            "Successfully started Phase1 for {} with {} provers",
-            job.job_id,
-            active_provers.len()
-        );
+        info!("Successfully started Phase1 for {} with {} provers", job_id, active_provers.len());
 
-        Ok(LaunchProofResponseDto { job_id: job.job_id.clone() })
+        Ok(LaunchProofResponseDto { job_id })
     }
 
     pub async fn post_launch_proof(&self, job_id: &JobId) -> Result<()> {
@@ -215,11 +209,11 @@ impl CoordinatorService {
             let webhook_url = webhook_url.clone();
 
             let (final_proof, success) = {
-                let jobs = self.jobs.read().await;
-                let job = jobs
+                let job_entry = self
+                    .jobs
                     .get(job_id)
                     .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
-
+                let job = job_entry.read().await;
                 (job.final_proof.clone(), matches!(job.state(), JobState::Completed))
             };
 
@@ -328,11 +322,12 @@ impl CoordinatorService {
 
     /// Mark a job as failed and reset prover statuses
     pub async fn fail_job(&self, job_id: &JobId, reason: impl AsRef<str>) -> Result<()> {
-        let mut jobs = self.jobs.write().await;
-        let job = jobs
-            .get_mut(job_id)
+        let job_entry = self
+            .jobs
+            .get(job_id)
             .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
+        let mut job = job_entry.write().await;
         job.change_state(JobState::Failed);
 
         // Reset prover statuses back to Idle
@@ -344,6 +339,8 @@ impl CoordinatorService {
             reason.as_ref(),
             job.provers.len()
         );
+
+        drop(job); // Release job lock before calling post_launch_proof
 
         // Add webhook notification for failed jobs
         self.post_launch_proof(job_id).await?;
@@ -448,7 +445,7 @@ impl CoordinatorService {
         self.provers_pool.update_last_heartbeat(&message.prover_id).await?;
 
         // Check if job exists
-        if !self.jobs.read().await.contains_key(&message.job_id) {
+        if !self.jobs.contains_key(&message.job_id) {
             warn!(
                 "Received ExecuteTaskResponse for unknown job {} from prover {}",
                 message.job_id, message.prover_id
@@ -482,31 +479,33 @@ impl CoordinatorService {
     ) -> Result<()> {
         let job_id = execute_task_response.job_id.clone();
 
-        let mut jobs = self.jobs.write().await;
-        let job = jobs
-            .get_mut(&job_id)
+        let job_entry = self
+            .jobs
+            .get(&job_id)
             .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
+        let mut job = job_entry.write().await;
+
         // Store Contributions response
-        self.store_contribution_response(job, execute_task_response).await?;
+        self.store_contribution_response(&mut job, execute_task_response).await?;
 
         // Check if all contributions are complete
-        if !self.check_phase1_completion(job).await? {
+        if !self.check_phase1_completion(&job).await? {
             return Ok(());
         }
 
         // Validate and extract challenges in a single operation to minimize lock time
-        let challenges = self.validate_and_extract_challenges(job).await?;
+        let challenges = self.validate_and_extract_challenges(&job).await?;
 
         // Update job state to Phase2
         job.challenges = Some(challenges);
         job.change_state(JobState::Running(JobPhase::Prove));
 
-        let challenges_dto = self.collect_challenges_dto(job);
+        let challenges_dto = self.collect_challenges_dto(&job);
 
-        let active_provers = self.select_provers_for_execution(job)?;
+        let active_provers = self.select_provers_for_execution(&job)?;
 
-        drop(jobs); // Release jobs lock early
+        drop(job); // Release jobs lock early
 
         // Start Phase2 for all provers
         self.start_prove(&job_id, &active_provers, challenges_dto).await?;
@@ -735,27 +734,29 @@ impl CoordinatorService {
         let job_id = execute_task_response.job_id.clone();
         let prover_id = execute_task_response.prover_id.clone();
 
-        let mut jobs = self.jobs.write().await;
-        let job = jobs
-            .get_mut(&job_id)
+        let job_entry = self
+            .jobs
+            .get(&job_id)
             .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
+
+        let mut job = job_entry.write().await;
 
         // If in simulation mode, complete the job
         if job.execution_mode.is_simulating() {
-            return self.complete_simulated_job(job).await;
+            return self.complete_simulated_job(&mut job).await;
         }
 
         // Store Proof response
-        self.store_proof_response(job, execute_task_response).await?;
+        self.store_proof_response(&mut job, execute_task_response).await?;
 
         // Assign aggregator prover if not already assigned
-        let agg_prover = self.ensure_aggregator_assigned(job, &prover_id).await?;
+        let agg_prover = self.ensure_aggregator_assigned(&mut job, &prover_id).await?;
 
-        let all_done = self.check_phase2_completion(job).await?;
+        let all_done = self.check_phase2_completion(&job).await?;
 
-        let proofs = self.collect_prover_proofs(job, &agg_prover, &prover_id).await?;
+        let proofs = self.collect_prover_proofs(&job, &agg_prover, &prover_id).await?;
 
-        drop(jobs); // Release jobs lock early
+        drop(job); // Release jobs lock early
 
         self.send_aggregation_task(&job_id, &agg_prover, proofs, all_done).await?;
 
@@ -1000,10 +1001,12 @@ impl CoordinatorService {
             return Ok(());
         }
 
-        let mut jobs = self.jobs.write().await;
-        let job = jobs
-            .get_mut(job_id)
+        let job_entry = self
+            .jobs
+            .get(job_id)
             .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
+
+        let mut job = job_entry.write().await;
 
         // Mark the aggregation prover as Idle
         self.provers_pool
@@ -1014,7 +1017,7 @@ impl CoordinatorService {
         job.final_proof = Some(proof_data.swap_remove(0));
         job.change_state(JobState::Completed);
 
-        drop(jobs);
+        drop(job);
 
         info!("Job completed successfully {}", job_id);
 
