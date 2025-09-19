@@ -1,51 +1,48 @@
-FROM rust:1.75-bullseye as builder
+FROM rust:1.75-bookworm as builder
 
 WORKDIR /app
 
-# Copy workspace manifests
-COPY Cargo.toml Cargo.lock ./
-COPY crates/ ./crates/
+# Copy the entire workspace
+COPY . .
 
-# Build the workspace
-RUN cargo build --release --bin consensus-server
+# Build the distributed binaries
+RUN cargo build --release --bin coordinator --bin prover
 
 # Runtime stage
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 # Install necessary runtime dependencies
 RUN apt-get update && \
-    apt-get install -y ca-certificates tzdata curl && \
+    apt-get install -y ca-certificates tzdata && \
     rm -rf /var/lib/apt/lists/*
 
 # Create app user
 RUN useradd -r -s /bin/false zisk
 
 # Create log directory
-RUN mkdir -p /var/log/consensus-network && chown zisk:zisk /var/log/consensus-network
+RUN mkdir -p /var/log/distributed && chown zisk:zisk /var/log/distributed
 
-# Copy the binary
-COPY --from=builder /app/target/release/consensus-server /usr/local/bin/consensus-server
+# Copy the binaries
+COPY --from=builder /app/target/release/coordinator /usr/local/bin/coordinator
+COPY --from=builder /app/target/release/prover /usr/local/bin/prover
 
-# Copy configuration
-COPY config /etc/consensus-network/config
+# Copy configuration files
+COPY distributed/crates/coordinator/config /etc/distributed/coordinator/
+COPY distributed/crates/prover/config /etc/distributed/prover/
 
 # Set permissions
-RUN chown -R zisk:zisk /etc/consensus-network
+RUN chown -R zisk:zisk /etc/distributed
 
 # Switch to app user
 USER zisk
 
 # Set environment variables
-ENV CONFIG_PATH=/etc/consensus-network/config/production
-ENV CONSENSUS_LOGGING_FILE_OUTPUT=true
-ENV CONSENSUS_LOGGING_FILE_PATH=/var/log/consensus-network/app.log
+ENV CONFIG_PATH=/etc/distributed
+ENV DISTRIBUTED_LOGGING_FILE_OUTPUT=true
+ENV DISTRIBUTED_LOGGING_FILE_PATH=/var/log/distributed/app.log
 
-# Expose port
-EXPOSE 8080
+# Expose port (coordinator gRPC port)
+EXPOSE 50051
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
-
-# Run the service
-CMD ["consensus-server"]
+# Default to coordinator, but can be overridden
+CMD ["coordinator"]

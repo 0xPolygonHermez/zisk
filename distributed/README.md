@@ -1,6 +1,6 @@
-# Consensus Network - Decentralized P2P Microservice
+# Zisk Distributed System
 
-A production-ready Rust microservice designed for decentralized peer-to-peer task coordination with secure networking capabilities.
+A distributed proof generation system for the Zisk zkVM, consisting of a coordinator and multiple prover nodes.
 
 ## Architecture
 
@@ -8,117 +8,119 @@ This project is organized as a Rust workspace with multiple crates:
 
 ```
 crates/
-├── consensus-server/     # Main binary orchestrating the application
-├── consensus-core/       # Core business logic and shared functionality
-├── consensus-api/        # HTTP API layer with REST endpoints
-├── consensus-config/     # Configuration management
-└── consensus-client/     # Command-line client
+├── coordinator/          # Main coordinator service managing proof tasks
+├── prover/              # Prover nodes that generate proofs
+├── grpc-api/            # gRPC API definitions for communication
+└── common/              # Shared functionality between components
 ```
 
-## Command Line Client
+## Docker Deployment
 
-cargo run --bin consensus-server server --port 50051
-cargo run --bin consensus-client -- --url http://127.0.0.1:50051
-cargo run --bin consensus-server prove-block --url htp://127.0.0.1:50051 --input xxx.txt --provers 1
-
-The project includes a powerful CLI client for interacting with the server:
+The distributed system can be deployed using Docker Compose:
 
 ```bash
-# Build the client
-cargo build --bin consensus-client
+# Build and start the services
+docker-compose up -d
 
-# Basic usage
-consensus-client --url http://localhost:3030 status
-consensus-client --url http://localhost:3030 health
-consensus-client --url http://localhost:3030 task --task-type "compute" --payload '{"data": "value"}' --priority 5
+# View logs
+docker-compose logs -f
 
-# Interactive mode
-consensus-client --url http://localhost:3030 interactive
+# Scale prover nodes
+docker-compose up -d --scale prover=3
+
+# Stop the services
+docker-compose down
+```
+
+## Command Line Usage
+
+```bash
+# Build the binaries
+cargo build --release --bin coordinator --bin prover
+
+# Run coordinator (from workspace root)
+cargo run --bin coordinator
+
+# Run prover (from workspace root) 
+cargo run --bin prover
+
+# With custom configuration
+CONFIG_PATH=/path/to/config cargo run --bin coordinator
 ```
 
 ## Configuration
 
-Configuration is loaded from multiple sources with the following priority:
-1. Environment variables (with `CONSENSUS_` prefix)
-2. Configuration files (`config/local.toml`, `config/default.toml`)
-3. Built-in defaults
+Configuration is loaded from TOML files with environment variable overrides:
 
 ### Environment Variables
 
 ```bash
 # Service Configuration
-CONSENSUS_SERVICE_NAME="consensus-network"
-CONSENSUS_SERVICE_ENVIRONMENT="production"
+DISTRIBUTED_SERVICE_NAME="zisk-distributed"
+DISTRIBUTED_SERVICE_ENVIRONMENT="production"
 
-# Server Configuration
-CONSENSUS_SERVER_HOST="0.0.0.0"
-CONSENSUS_SERVER_PORT=8080
+# Server Configuration (Coordinator)
+DISTRIBUTED_SERVER_HOST="0.0.0.0"
+DISTRIBUTED_SERVER_PORT=50051
+
+# Prover Configuration
+DISTRIBUTED_SERVER_URL="http://coordinator:50051"
+DISTRIBUTED_PROVER_ID="prover-001"
 
 # Logging Configuration
-CONSENSUS_LOGGING_LEVEL="info"
-CONSENSUS_LOGGING_FORMAT="json"  # json, pretty, compact
-CONSENSUS_LOGGING_FILE_OUTPUT=false
-
-# Communication Configuration
-CONSENSUS_COMM_MAX_PEERS=100
-CONSENSUS_COMM_DISCOVERY_INTERVAL_SECONDS=30
-CONSENSUS_COMM_HEARTBEAT_INTERVAL_SECONDS=10
+DISTRIBUTED_LOGGING_LEVEL="info"
+DISTRIBUTED_LOGGING_FORMAT="json"  # json, pretty, compact
+DISTRIBUTED_LOGGING_FILE_OUTPUT=true
+DISTRIBUTED_LOGGING_FILE_PATH="/var/log/distributed/app.log"
 ```
+
+### Configuration Files
+
+- `crates/coordinator/config/default.toml` - Coordinator default configuration
+- `crates/coordinator/config/production.toml` - Production overrides
+- `crates/prover/config/config.toml` - Prover configuration
 
 ## Development
 
 ### Prerequisites
 
-- Rust 1.70+
-- Cargo
+- Rust 1.75+
+- Docker & Docker Compose (for containerized deployment)
 
-### Running the Service
+### Running the Services
 
 ```bash
-# Development mode (server with pretty logging)
-cargo run --bin consensus-server
+# Development mode - coordinator
+DISTRIBUTED_LOGGING_FORMAT=pretty cargo run --bin coordinator
+
+# Development mode - prover
+DISTRIBUTED_SERVER_URL=http://127.0.0.1:50051 cargo run --bin prover
 
 # Production mode with JSON logging
-CONSENSUS_LOGGING_FORMAT=json CONSENSUS_LOGGING_LEVEL=info cargo run --bin consensus-server --release
-
-# With custom port to avoid conflicts
-CONSENSUS_SERVER_PORT=3030 cargo run --bin consensus-server
-
-# Run client (connects to server)
-cargo run --bin consensus-client -- --url http://localhost:3030 status
+DISTRIBUTED_LOGGING_FORMAT=json DISTRIBUTED_LOGGING_LEVEL=info cargo run --bin coordinator --release
 ```
-
-### Client CLI
-
-```bash
-# Check server health
-consensus-client --url http://localhost:3030 health
-
-# Submit a computation task
-consensus-client --url http://localhost:3030 task \
-  --task-type "computation" \
-  --payload '{"algorithm": "factorial", "input": 10}' \
-  --priority 5
-
-# Interactive mode for multiple commands
-consensus-client --url http://localhost:3030 interactive
-```
-
 ## Docker
 
-```dockerfile
-FROM rust:1.70 as builder
-WORKDIR /app
-COPY . .
-RUN cargo build --release
+The system is containerized for easy deployment:
 
-FROM debian:bullseye-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/consensus-network /usr/local/bin/
-EXPOSE 8080
-CMD ["consensus-network"]
+```bash
+# Build from workspace root
+docker build -f distributed/Dockerfile -t zisk-distributed .
+
+# Run coordinator
+docker run -p 50051:50051 -e DISTRIBUTED_LOGGING_LEVEL=info zisk-distributed coordinator
+
+# Run prover
+docker run -e DISTRIBUTED_SERVER_URL=http://coordinator:50051 zisk-distributed prover
+
+# Using Docker Compose (recommended)
+cd distributed/
+docker-compose up -d
+
+# Scale provers
+docker-compose up -d --scale prover=5
 ```
 
 ## License
 
-MIT OR Apache-2.0
+Apache-2.0 OR MIT

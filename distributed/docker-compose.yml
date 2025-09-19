@@ -1,36 +1,50 @@
 version: '3.8'
 
 services:
-  consensus-network:
-    build: .
+  coordinator:
+    build:
+      context: ..
+      dockerfile: distributed/Dockerfile
     ports:
-      - "8080:8080"
+      - "50051:50051"
     environment:
-      - CONSENSUS_LOGGING_LEVEL=info
-      - CONSENSUS_LOGGING_FORMAT=json
-      - CONSENSUS_SERVER_HOST=0.0.0.0
-      - CONSENSUS_SERVER_PORT=8080
+      - DISTRIBUTED_LOGGING_LEVEL=info
+      - DISTRIBUTED_LOGGING_FORMAT=json
+      - DISTRIBUTED_SERVER_HOST=0.0.0.0
+      - DISTRIBUTED_SERVER_PORT=50051
+      - CONFIG_PATH=/etc/distributed/coordinator
     volumes:
-      - ./logs:/var/log/consensus-network
+      - ./logs:/var/log/distributed
     restart: unless-stopped
+    command: ["coordinator"]
+
+  prover:
+    build:
+      context: ..
+      dockerfile: distributed/Dockerfile
+    environment:
+      - DISTRIBUTED_LOGGING_LEVEL=info
+      - DISTRIBUTED_LOGGING_FORMAT=json
+      - DISTRIBUTED_SERVER_URL=http://coordinator:50051
+      - DISTRIBUTED_PROVER_ID=docker-prover-001
+      - CONFIG_PATH=/etc/distributed/prover
+    volumes:
+      - ./logs:/var/log/distributed
+    restart: unless-stopped
+    command: ["prover"]
+    depends_on:
+      - coordinator
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "pgrep", "-f", "prover"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
-  # Optional: Add a reverse proxy
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - consensus-network
-    restart: unless-stopped
-
 networks:
   default:
-    name: consensus-network
+    name: zisk-distributed
+
+volumes:
+  logs:
+    driver: local
