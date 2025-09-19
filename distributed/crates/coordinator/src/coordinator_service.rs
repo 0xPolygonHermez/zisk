@@ -138,10 +138,10 @@ impl CoordinatorService {
     /// - `post_launch_proof` runs afterward for cleanup, logging, or extra processing.
     /// -------------------------------------------------------------------------------------
     pub fn pre_launch_proof(&self, request: &LaunchProofRequestDto) -> Result<()> {
-        // Check if compute_units is within allowed limits
+        // Check if compute_capacity is within allowed limits
         if request.compute_capacity == 0 {
-            error!("Requested compute_units is 0, which is invalid.");
-            return Err(anyhow::anyhow!("compute_units must be greater than 0".to_string()));
+            error!("Requested compute_capacity is 0, which is invalid.");
+            return Err(anyhow::anyhow!("compute_capacity must be greater than 0".to_string()));
         }
 
         // Check if we have enough capacity to compute the proof is already checked
@@ -746,15 +746,15 @@ impl CoordinatorService {
         self.store_proof_response(&mut job, execute_task_response).await?;
 
         // Assign aggregator prover if not already assigned
-        let agg_prover = self.ensure_aggregator_assigned(&mut job, &prover_id).await?;
+        let agg_prover_id = self.resolve_aggregator_assignment(&mut job, &prover_id).await?;
 
         let all_done = self.check_phase2_completion(&job).await?;
 
-        let proofs = self.collect_prover_proofs(&job, &agg_prover, &prover_id).await?;
+        let proofs = self.collect_prover_proofs(&job, &agg_prover_id, &prover_id)?;
 
         drop(job); // Release jobs lock early
 
-        self.send_aggregation_task(&job_id, &agg_prover, proofs, all_done).await?;
+        self.send_aggregation_task(&job_id, &agg_prover_id, proofs, all_done).await?;
 
         Ok(())
     }
@@ -823,30 +823,41 @@ impl CoordinatorService {
         Ok(())
     }
 
-    /// Assign if it's possible the aggregator prover for Phase3
-    async fn ensure_aggregator_assigned(
+    /// Determine who should be the aggregator and update job state accordingly
+    async fn resolve_aggregator_assignment(
         &self,
         job: &mut Job,
-        prover_id: &ProverId,
+        candidate_prover_id: &ProverId,
     ) -> Result<ProverId> {
-        // The first prover that completes Phase2 becomes the aggregator
-        let agg_prover = if job.agg_prover.is_none() {
-            job.agg_prover = Some(prover_id.clone());
-            job.change_state(JobState::Running(JobPhase::Aggregate));
+        match job.agg_prover_id.as_ref() {
+            Some(existing_aggregator_id) => {
+                // Aggregator already exists - mark the candidate as idle since it's not the aggregator
+                self.provers_pool
+                    .mark_prover_with_state(candidate_prover_id, ProverState::Idle)
+                    .await?;
+                Ok(existing_aggregator_id.clone())
+            }
+            None => {
+                // No aggregator yet - assign the candidate as aggregator
+                self.assign_new_aggregator(job, candidate_prover_id).await
+            }
+        }
+    }
 
-            self.provers_pool
-                .mark_prover_with_state(prover_id, ProverState::Computing(JobPhase::Aggregate))
-                .await?;
+    /// Assign a new aggregator and update both job and prover states
+    async fn assign_new_aggregator(&self, job: &mut Job, prover_id: &ProverId) -> Result<ProverId> {
+        // Update job state
+        job.agg_prover_id = Some(prover_id.clone());
+        job.change_state(JobState::Running(JobPhase::Aggregate));
 
-            prover_id.clone()
-        } else {
-            // The prover_id is not the aggregator, mark it as Idle
-            self.provers_pool.mark_prover_with_state(prover_id, ProverState::Idle).await?;
+        // Update prover state
+        self.provers_pool
+            .mark_prover_with_state(prover_id, ProverState::Computing(JobPhase::Aggregate))
+            .await?;
 
-            job.agg_prover.as_ref().unwrap().clone()
-        };
+        info!("Assigned prover {} as aggregator for job {}", prover_id, job.job_id);
 
-        Ok(agg_prover)
+        Ok(prover_id.clone())
     }
 
     async fn check_phase2_completion(&self, job: &Job) -> Result<bool> {
@@ -893,7 +904,7 @@ impl CoordinatorService {
     }
 
     /// Start Phase3 for all provers that completed Phase2
-    async fn collect_prover_proofs(
+    fn collect_prover_proofs(
         &self,
         job: &Job,
         agg_prover_id: &ProverId,
@@ -1006,7 +1017,7 @@ impl CoordinatorService {
 
         // Mark the aggregation prover as Idle
         self.provers_pool
-            .mark_prover_with_state(job.agg_prover.as_ref().unwrap(), ProverState::Idle)
+            .mark_prover_with_state(job.agg_prover_id.as_ref().unwrap(), ProverState::Idle)
             .await?;
 
         // Finalize completed job

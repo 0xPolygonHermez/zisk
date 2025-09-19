@@ -10,7 +10,7 @@ use crate::{coordinator_service::MessageSender, ProverInfo};
 
 pub struct ProversPool {
     /// Map of prover_id to ProverConnection
-    pub provers: RwLock<HashMap<ProverId, ProverInfo>>,
+    provers: RwLock<HashMap<ProverId, ProverInfo>>,
 }
 
 impl ProversPool {
