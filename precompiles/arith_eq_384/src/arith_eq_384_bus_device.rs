@@ -83,7 +83,6 @@ impl ArithEq384CounterInputGen {
             BLS12_381_COMPLEX_MUL_OP => {
                 skip_bls12_381_complex_mul_mem_inputs(addr_main, data, mem_collectors_info)
             }
-
             _ => {
                 panic!("ArithEq384CounterInputGen: Unsupported data length {}", data.len());
             }
@@ -227,7 +226,6 @@ impl BusDevice<u64> for ArithEq384CounterInputGen {
                     pending,
                 );
             }
-
             _ => {
                 panic!("ArithEq384CounterInputGen: Unsupported data length {}", data.len());
             }

@@ -8,9 +8,10 @@ use num_traits::Zero;
 pub fn bigint_to_16bit_chunks<const N: usize>(value: &BigInt, result: &mut [i64; N]) {
     assert!(N % 4 == 0, "chunk count N={} must be multiple of 4", N);
     let (sign, limbs) = value.to_u64_digits();
+    let limbs_count = limbs.len();
     let limbs_needed = N / 4;
     for i in 0..limbs_needed {
-        let mut limb64_value = if i < limbs.len() { limbs[i] } else { 0 };
+        let mut limb64_value = if i < limbs_count { limbs[i] } else { 0 };
         for j in 0..4 {
             let idx = i * 4 + j;
             // last chunk has more than 16 bits to avoid an extra chunk.
@@ -19,6 +20,11 @@ pub fn bigint_to_16bit_chunks<const N: usize>(value: &BigInt, result: &mut [i64;
             result[idx] = if sign == Sign::Minus { -limb16_value } else { limb16_value };
             limb64_value >>= 16;
         }
+    }
+    if limbs_count > limbs_needed {
+        assert_eq!(limbs_count, limbs_needed + 1);
+        let chunk16_value = (limbs[limbs_needed] as i64) << 16;
+        result[N - 1] += if sign == Sign::Minus { -chunk16_value } else { chunk16_value };
     }
 }
 

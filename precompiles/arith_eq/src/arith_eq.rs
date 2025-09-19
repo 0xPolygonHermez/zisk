@@ -432,10 +432,6 @@ impl<F: PrimeField64> ArithEqSM<F> {
         inputs: &[Vec<ArithEqInput>],
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        // Get the fixed cols
-        let _airgroup_id = ArithEqTrace::<usize>::AIRGROUP_ID;
-        let _air_id = ArithEqTrace::<usize>::AIR_ID;
-
         let mut trace = ArithEqTrace::<F>::new_from_vec(trace_buffer);
         let num_rows = trace.num_rows();
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
