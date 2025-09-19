@@ -483,7 +483,7 @@ impl ProverGrpcEndpoint {
             cont.push(ContributionsInfo {
                 worker_index: ch.worker_index,
                 airgroup_id: ch.airgroup_id as usize,
-                challenge: ch.challenge.try_into().expect("Challenge must have length 10"),
+                challenge: ch.challenge,
             });
         }
 

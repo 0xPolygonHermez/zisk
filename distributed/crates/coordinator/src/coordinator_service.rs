@@ -563,14 +563,10 @@ impl CoordinatorService {
                 let cont: Result<Vec<ContributionsInfo>, Error> = challenges
                     .into_iter()
                     .map(|challenge| {
-                        let challenge_array = challenge.challenge.try_into().map_err(|_| {
-                            Error::InvalidRequest("Challenge length mismatch".to_string())
-                        })?;
-
                         Ok(ContributionsInfo {
                             worker_index: challenge.worker_index,
                             airgroup_id: challenge.airgroup_id as usize,
-                            challenge: challenge_array,
+                            challenge: challenge.challenge,
                         })
                     })
                     .collect();

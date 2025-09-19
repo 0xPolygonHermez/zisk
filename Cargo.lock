@@ -581,9 +581,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.37"
+version = "1.2.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65193589c6404eb80b450d618eaf9a2cafaaafd57ecce47370519ef674a7bd44"
+checksum = "80f41ae168f955c12fb8960b057d70d0ca153fb83182b57d86380443527be7e9"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -738,7 +738,7 @@ dependencies = [
  "serde-untagged",
  "serde_core",
  "serde_json",
- "toml 0.9.6",
+ "toml 0.9.7",
  "winnow",
  "yaml-rust2",
 ]
@@ -983,7 +983,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1173,7 +1173,7 @@ dependencies = [
  "serde",
  "tokio",
  "tokio-stream",
- "toml 0.9.6",
+ "toml 0.9.7",
  "tonic",
  "tracing",
  "vergen",
@@ -1415,7 +1415,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "num-bigint",
  "paste",
@@ -1424,9 +1424,9 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fd99930f64d146689264c637b5af2f0233a933bef0d8570e2526bf9e083192d"
+checksum = "1ced73b1dacfc750a6db6c0a0c3a3853c8b41997e2e2c563dc90804ae6867959"
 
 [[package]]
 name = "findshlibs"
@@ -1684,6 +1684,12 @@ dependencies = [
  "allocator-api2",
  "foldhash",
 ]
+
+[[package]]
+name = "hashbrown"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5419bdc4f6a9207fbeba6d11b604d481addf78ecd10c11ad51e76c2f6482748d"
 
 [[package]]
 name = "hashlink"
@@ -1980,12 +1986,12 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.11.3"
+version = "2.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92119844f513ffa41556430369ab02c295a3578af21cf945caa3e9e0c2481ac3"
+checksum = "4b0f83760fb341a774ed326568e19f5a863af4a952def8c39f9ab92fd95b88e5"
 dependencies = [
  "equivalent",
- "hashbrown 0.15.5",
+ "hashbrown 0.16.0",
  "serde",
  "serde_core",
 ]
@@ -2718,7 +2724,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "colored",
  "fields",
@@ -2996,7 +3002,7 @@ version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "219cb19e96be00ab2e37d6e299658a0cfa83e52429179969b0f0121b4ac46983"
 dependencies = [
- "toml_edit 0.23.5",
+ "toml_edit 0.23.6",
 ]
 
 [[package]]
@@ -3011,7 +3017,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "blake3",
  "borsh",
@@ -3044,7 +3050,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "borsh",
  "crossbeam-channel",
@@ -3069,7 +3075,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "fields",
  "proofman-common",
@@ -3081,7 +3087,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3092,7 +3098,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3101,7 +3107,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "colored",
  "fields",
@@ -3112,7 +3118,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "bytemuck",
  "fields",
@@ -3744,9 +3750,9 @@ dependencies = [
 
 [[package]]
 name = "serde_spanned"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2789234a13a53fc4be1b51ea1bab45a3c338bdb884862a257d10e5a74ae009e6"
+checksum = "5417783452c2be558477e104686f7de5dae53dba813c28435e0e70f82d9b04ee"
 dependencies = [
  "serde_core",
 ]
@@ -4058,9 +4064,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "symbolic-common"
-version = "12.16.2"
+version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9da12f8fecbbeaa1ee62c1d50dc656407e007c3ee7b2a41afce4b5089eaef15e"
+checksum = "d03f433c9befeea460a01d750e698aa86caf86dcfbd77d552885cd6c89d52f50"
 dependencies = [
  "debugid",
  "memmap2",
@@ -4070,9 +4076,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "12.16.2"
+version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fd35afe0ef9d35d3dcd41c67ddf882fc832a387221338153b7cd685a105495c"
+checksum = "13d359ef6192db1760a34321ec4f089245ede4342c27e59be99642f12a859de8"
 dependencies = [
  "cpp_demangle",
  "rustc-demangle",
@@ -4361,14 +4367,14 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.9.6"
+version = "0.9.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae2a4cf385da23d1d53bc15cdfa5c2109e93d8d362393c801e87da2f72f0e201"
+checksum = "00e5e5d9bf2475ac9d4f0d9edab68cc573dc2fd644b0dba36b0c30a92dd9eaa0"
 dependencies = [
  "indexmap",
  "serde_core",
- "serde_spanned 1.0.1",
- "toml_datetime 0.7.1",
+ "serde_spanned 1.0.2",
+ "toml_datetime 0.7.2",
  "toml_parser",
  "toml_writer",
  "winnow",
@@ -4385,9 +4391,9 @@ dependencies = [
 
 [[package]]
 name = "toml_datetime"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a197c0ec7d131bfc6f7e82c8442ba1595aeab35da7adbf05b6b73cd06a16b6be"
+checksum = "32f1085dec27c2b6632b04c80b3bb1b4300d6495d1e129693bdda7d91e72eec1"
 dependencies = [
  "serde_core",
 ]
@@ -4408,21 +4414,21 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.23.5"
+version = "0.23.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2ad0b7ae9cfeef5605163839cb9221f453399f15cfb5c10be9885fcf56611f9"
+checksum = "f3effe7c0e86fdff4f69cdd2ccc1b96f933e24811c5441d44904e8683e27184b"
 dependencies = [
  "indexmap",
- "toml_datetime 0.7.1",
+ "toml_datetime 0.7.2",
  "toml_parser",
  "winnow",
 ]
 
 [[package]]
 name = "toml_parser"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b551886f449aa90d4fe2bdaa9f4a2577ad2dde302c61ecf262d80b116db95c10"
+checksum = "4cf893c33be71572e0e9aa6dd15e6677937abd686b066eac3f8cd3531688a627"
 dependencies = [
  "winnow",
 ]
@@ -4435,9 +4441,9 @@ checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "toml_writer"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcc842091f2def52017664b53082ecbbeb5c7731092bad69d2c63050401dfd64"
+checksum = "d163a63c116ce562a22cda521fcc4d79152e7aba014456fb5eb442f6d6a10109"
 
 [[package]]
 name = "tonic"
@@ -4646,7 +4652,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -5339,7 +5345,7 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 [[package]]
 name = "witness"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#ca92e35c5318117f2be1339261d6e4889feb0cb8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fserver-proofman-updated#226142766305e5b811c98ed0ef909c0cdfe36148"
 dependencies = [
  "colored",
  "fields",
