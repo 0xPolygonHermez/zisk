@@ -16,6 +16,7 @@ require "binary/pil/binary_extension_table.pil"
 require "binary/pil/binary_add.pil"
 require "arith/pil/arith.pil"
 require "arith_eq/pil/arith_eq.pil"
+require "arith_eq_384/pil/arith_eq_384.pil"
 require "keccakf/pil/keccakf.pil"
 require "keccakf/pil/keccakf_table.pil"
 require "sha256f/pil/sha256f.pil"
@@ -75,7 +76,8 @@ airgroup Zisk {
                         bin_file: "state-machines/binary/src/binary_extension_frops_fixed.bin") alias BinaryExtensionFrops;
 
     // Precompiles
-    ArithEq(N: 2**21);
+    ArithEq(N: 2**20);
+    ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
 
     const int KECCAKF_CHUNKS = 9;

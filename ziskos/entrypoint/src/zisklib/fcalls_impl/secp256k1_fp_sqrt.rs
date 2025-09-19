@@ -74,7 +74,7 @@ cfg_if::cfg_if! {
             let sqrt = a_big.modpow(&P_DIV_4, &P);
 
             // Adjust the result based on the parity
-            let mut limbs = to_limbs_le(&sqrt);
+            let mut limbs: [u64; 4] = to_limbs_le(&sqrt);
             // If parities does not coincide, we need to take the negative square root
             if (&sqrt & BigUint::one()) != BigUint::from(parity) {
                 let neg_sqrt = P.clone() - &sqrt;

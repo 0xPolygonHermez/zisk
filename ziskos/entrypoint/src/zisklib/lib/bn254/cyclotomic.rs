@@ -181,10 +181,10 @@ pub fn square_cyclo_bn254(a: &[u64; 32]) -> [u64; 32] {
 /// **NOTE**: The output is not guaranteed to be in GΦ6(p²), if the input isn't.
 pub fn exp_by_x_cyclo_bn254(a: &[u64; 48]) -> [u64; 48] {
     // Start the loop with a
-    let mut result = a.clone();
+    let mut result = *a;
 
     // Compress the input so we can work in compressed form
-    let mut comp = compress_cyclo_bn254(&a);
+    let mut comp = compress_cyclo_bn254(a);
     for &bit in X_BIN_BE.iter().skip(1) {
         // We always square (in compressed form): C(c²)
         comp = square_cyclo_bn254(&comp);

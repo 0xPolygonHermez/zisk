@@ -25,6 +25,9 @@ typedef struct {
     uint64_t arith256_mod_counter;
     uint64_t arith256_mod_duration;
 
+    uint64_t arith384_mod_counter;
+    uint64_t arith384_mod_duration;
+
     uint64_t secp256k1_add_counter;
     uint64_t secp256k1_add_duration;
 
@@ -57,6 +60,21 @@ typedef struct {
 
     uint64_t bn254_complex_mul_counter;
     uint64_t bn254_complex_mul_duration;
+
+    uint64_t bls12_381_curve_add_counter;
+    uint64_t bls12_381_curve_add_duration;
+
+    uint64_t bls12_381_curve_dbl_counter;
+    uint64_t bls12_381_curve_dbl_duration;
+
+    uint64_t bls12_381_complex_add_counter;
+    uint64_t bls12_381_complex_add_duration;
+
+    uint64_t bls12_381_complex_sub_counter;
+    uint64_t bls12_381_complex_sub_duration;
+
+    uint64_t bls12_381_complex_mul_counter;
+    uint64_t bls12_381_complex_mul_duration;
 
 } AsmCallMetrics;
 

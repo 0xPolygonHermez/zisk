@@ -30,7 +30,6 @@ name = "arith_eq_test_secp256k1"
 path = "src/arith_eq_test_secp256k1.rs"
 required-features = ["test_data"]
 
-
 [dependencies]
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }

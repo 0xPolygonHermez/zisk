@@ -23,6 +23,7 @@ data-bus = { workspace = true }
 precomp-keccakf = { workspace = true }
 precomp-sha256f = { workspace = true }
 precomp-arith-eq = { workspace = true }
+precomp-arith-eq-384 = { workspace = true }
 zisk-pil = { workspace = true }
 ziskemu = { workspace = true }
 zisk-core = { workspace = true }

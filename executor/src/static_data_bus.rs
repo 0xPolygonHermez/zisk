@@ -8,6 +8,7 @@ use crate::DummyCounter;
 use data_bus::DataBusTrait;
 use mem_common::MemCounters;
 use precomp_arith_eq::ArithEqCounterInputGen;
+use precomp_arith_eq_384::ArithEq384CounterInputGen;
 use precomp_keccakf::KeccakfCounterInputGen;
 use precomp_sha256f::Sha256fCounterInputGen;
 use sm_arith::ArithCounterInputGen;
@@ -15,8 +16,8 @@ use sm_binary::BinaryCounter;
 use sm_main::MainCounter;
 use zisk_common::{BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
 use zisk_core::{
-    ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID,
-    KECCAK_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+    ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID,
+    BINARY_OP_TYPE_ID, KECCAK_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID, SHA256_OP_TYPE_ID,
 };
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -40,6 +41,7 @@ pub struct StaticDataBus<D> {
     pub keccakf_counter: (usize, KeccakfCounterInputGen),
     pub sha256f_counter: (usize, Sha256fCounterInputGen),
     pub arith_eq_counter: (usize, ArithEqCounterInputGen),
+    pub arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
     pub rom_counter_id: Option<usize>,
 
     /// Queue of pending data transfers to be processed.
@@ -57,6 +59,7 @@ impl StaticDataBus<PayloadType> {
         keccakf_counter: (usize, KeccakfCounterInputGen),
         sha256f_counter: (usize, Sha256fCounterInputGen),
         arith_eq_counter: (usize, ArithEqCounterInputGen),
+        arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
         rom_counter_id: Option<usize>,
     ) -> Self {
         Self {
@@ -68,6 +71,7 @@ impl StaticDataBus<PayloadType> {
             keccakf_counter,
             sha256f_counter,
             arith_eq_counter,
+            arith_eq_384_counter,
             rom_counter_id,
             pending_transfers: VecDeque::new(),
         }
@@ -138,6 +142,12 @@ impl StaticDataBus<PayloadType> {
                     &mut self.pending_transfers,
                     None,
                 ),
+                ARITH_EQ_384_OP_TYPE_ID => self.arith_eq_384_counter.1.process_data(
+                    &bus_id,
+                    payload,
+                    &mut self.pending_transfers,
+                    None,
+                ),
                 _ => true,
             },
             _ => true,
@@ -167,6 +177,7 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
         self.keccakf_counter.1.on_close();
         self.sha256f_counter.1.on_close();
         self.arith_eq_counter.1.on_close();
+        self.arith_eq_384_counter.1.on_close();
     }
 
     fn into_devices(
@@ -186,6 +197,7 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             (Some(self.keccakf_counter.0), Some(Box::new(self.keccakf_counter.1))),
             (Some(self.sha256f_counter.0), Some(Box::new(self.sha256f_counter.1))),
             (Some(self.arith_eq_counter.0), Some(Box::new(self.arith_eq_counter.1))),
+            (Some(self.arith_eq_384_counter.0), Some(Box::new(self.arith_eq_384_counter.1))),
         ];
 
         if let Some(mem_counter) = self.mem_counter.1 {
