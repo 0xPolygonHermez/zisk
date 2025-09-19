@@ -1,4 +1,4 @@
-use crate::Result;
+use anyhow::Result;
 use std::env;
 use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
 
