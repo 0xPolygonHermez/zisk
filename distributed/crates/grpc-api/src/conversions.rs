@@ -1,3 +1,13 @@
+//! Type Conversions for Distributed Proving System gRPC API
+//!
+//! This module provides bidirectional type conversions between the domain types used in the
+//! distributed proving system (`distributed-common`) and the generated gRPC protobuf types.
+//!
+//! ## Purpose
+//!
+//! The gRPC protobuf compiler generates Rust types that don't always match our internal domain
+//! model. All conversions implement the `From` and/or `Into` traits for idiomatic Rust usage.
+
 use crate::{
     coordinator_message::Payload, execute_task_request, execute_task_response, job_status_response,
     jobs_list_response, launch_proof_response, provers_list_response, system_status_response,
@@ -11,9 +21,6 @@ use crate::{
 };
 use distributed_common::*;
 
-/// Conversions between coordinator-common types and gRPC types
-/// This module handles the translation layer between our domain types
-/// and the generated gRPC protobuf types.
 impl From<ComputeCapacity> for GrpcComputeCapacity {
     fn from(capacity: ComputeCapacity) -> Self {
         GrpcComputeCapacity { compute_units: capacity.compute_units }
