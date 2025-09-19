@@ -128,8 +128,6 @@ pub fn ecrecover(sig: &[u8; 65], msg: &[u8; 32]) -> ([u8; 20], u8) {
 
     // Return the right-most 20 bytes of the hash
     let mut addr = [0u8; 20];
-    for i in 0..20 {
-        addr[i] = pk_hash[12 + i];
-    }
+    addr.copy_from_slice(&pk_hash[12..32]);
     (addr, 0)
 }
