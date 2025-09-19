@@ -14,5 +14,8 @@ extern RawBLS12_381_384 bls12_381;
 
 extern mpz_class ScalarMask256;
 extern mpz_class ScalarMask384;
+extern mpz_class ScalarP_DIV_4;
+extern mpz_class ScalarP;
+extern mpz_class ScalarNQR;
 
 #endif
