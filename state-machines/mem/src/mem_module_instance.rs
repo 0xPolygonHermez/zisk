@@ -41,6 +41,16 @@ impl<F: PrimeField64> MemModuleInstance<F> {
         }
         timer_stop_and_log_debug!(MEM_SORT);
     }
+
+    pub fn build_mem_collector(&self, chunk_id: ChunkId) -> MemModuleCollector {
+        let chunk_check_point = self.check_point.chunks.get(&chunk_id).unwrap();
+        MemModuleCollector::new(
+            chunk_check_point,
+            self.min_addr,
+            self.ictx.plan.segment_id.unwrap(),
+            Some(chunk_id) == self.check_point.first_chunk_id,
+        )
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
@@ -122,5 +132,9 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
 
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

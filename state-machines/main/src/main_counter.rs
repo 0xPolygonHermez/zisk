@@ -3,7 +3,7 @@
 //! `ZiskOperationType::PubOut` instructions.
 
 use std::collections::VecDeque;
-use zisk_common::{BusDevice, BusId, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE};
+use zisk_common::{BusDevice, BusId, MemCollectorInfo, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
 
 /// The `MainCounter` struct represents a counter that monitors and measures
@@ -65,6 +65,7 @@ impl BusDevice<u64> for MainCounter {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 

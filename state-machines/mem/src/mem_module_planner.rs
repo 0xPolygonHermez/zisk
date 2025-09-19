@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{MemCounters, MemCountersCursor, MemPlanCalculator};
-use mem_common::{MemModuleCheckPoint, MemModuleSegmentCheckPoint};
+use crate::{MemCountersCursor, MemPlanCalculator};
+use mem_common::{MemCounters, MemModuleCheckPoint, MemModuleSegmentCheckPoint};
 use std::cmp::min;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 pub struct MemModulePlanner {
@@ -61,7 +61,6 @@ impl MemModulePlanner {
         while !self.cursor.end() {
             // searches for the first smallest element in the vector
             let (chunk_id, addr, count) = self.cursor.get_next();
-            // println!("COUNTER: 0x{:X} CHUNK: {} COUNT: {}", addr * 8, chunk_id, count);
             self.add_to_current_instance(chunk_id, addr, count);
         }
         self.close_last_segment();

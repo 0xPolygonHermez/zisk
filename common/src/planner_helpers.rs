@@ -143,13 +143,13 @@ pub fn plan(
 pub fn plan_with_frops(
     counts: &[InstFropsCount],
     size: u64,
-) -> Vec<(CheckPoint, HashMap<ChunkId, (u64, bool, CollectSkipper)>)> {
+) -> Vec<(CheckPoint, HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>)> {
     if counts.is_empty() || size == 0 {
         return vec![];
     }
 
     let mut checkpoints = Vec::new();
-    let mut current_scope: HashMap<ChunkId, (u64, bool, CollectSkipper)> = HashMap::new();
+    let mut current_scope: HashMap<ChunkId, (u64, u64, bool, CollectSkipper)> = HashMap::new();
     let mut remaining_size = size; // Remaining size for the current scope.
 
     for (current_chunk, count) in counts.iter().enumerate() {
@@ -168,7 +168,12 @@ pub fn plan_with_frops(
             let force_execute_to_end = has_frops && inst_count == 0;
             current_scope.insert(
                 ChunkId(current_chunk),
-                (checkpoint_size, force_execute_to_end, CollectSkipper::new(cumulative_offset)),
+                (
+                    checkpoint_size,
+                    count.frops_count,
+                    force_execute_to_end,
+                    CollectSkipper::new(cumulative_offset),
+                ),
             );
             cumulative_offset += checkpoint_size;
 
@@ -308,7 +313,7 @@ mod tests_frops {
         let size = 10;
         let expected = vec![(
             CheckPoint::Multiple(vec![ChunkId(0)]),
-            [(ChunkId(0), (10, frops > 0, CollectSkipper::new(0)))]
+            [(ChunkId(0), (10, frops, frops > 0, CollectSkipper::new(0)))]
                 .into_iter()
                 .collect::<HashMap<_, _>>(),
         )];
@@ -333,19 +338,19 @@ mod tests_frops {
         let expected = vec![
             (
                 CheckPoint::Multiple(vec![ChunkId(0)]),
-                [(ChunkId(0), (10, false, CollectSkipper::new(0)))]
+                [(ChunkId(0), (10, frops, false, CollectSkipper::new(0)))]
                     .into_iter()
                     .collect::<HashMap<_, _>>(),
             ),
             (
                 CheckPoint::Multiple(vec![ChunkId(0)]),
-                [(ChunkId(0), (10, false, CollectSkipper::new(10)))]
+                [(ChunkId(0), (10, frops, false, CollectSkipper::new(10)))]
                     .into_iter()
                     .collect::<HashMap<_, _>>(),
             ),
             (
                 CheckPoint::Multiple(vec![ChunkId(0)]),
-                [(ChunkId(0), (5, frops > 0, CollectSkipper::new(20)))]
+                [(ChunkId(0), (5, frops, frops > 0, CollectSkipper::new(20)))]
                     .into_iter()
                     .collect::<HashMap<_, _>>(),
             ),
@@ -374,15 +379,15 @@ mod tests_frops {
         let mut expected = vec![
             (
                 CheckPoint::Multiple(vec![ChunkId(0)]),
-                [(ChunkId(0), (10, false, CollectSkipper::new(0)))]
+                [(ChunkId(0), (10, frops[0], false, CollectSkipper::new(0)))]
                     .into_iter()
                     .collect::<HashMap<_, _>>(),
             ),
             (
                 CheckPoint::Multiple(vec![ChunkId(0), ChunkId(1)]),
                 [
-                    (ChunkId(0), (5, frops[0] > 0, CollectSkipper::new(10))),
-                    (ChunkId(1), (5, frops[1] > 0, CollectSkipper::new(0))),
+                    (ChunkId(0), (5, frops[0], frops[0] > 0, CollectSkipper::new(10))),
+                    (ChunkId(1), (5, frops[1], frops[1] > 0, CollectSkipper::new(0))),
                 ]
                 .into_iter()
                 .collect::<HashMap<_, _>>(),

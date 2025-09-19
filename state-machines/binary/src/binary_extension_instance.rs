@@ -24,7 +24,7 @@ pub struct BinaryExtensionInstance<F: PrimeField64> {
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
+    collect_info: HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -52,10 +52,28 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, bool, CollectSkipper)>>()
+            .downcast::<HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { binary_extension_sm, collect_info, ictx }
+    }
+
+    pub fn build_binary_extension_collector(&self, chunk_id: ChunkId) -> BinaryExtensionCollector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            BinaryExtensionTrace::<F>::AIR_ID,
+            "BinaryExtensionInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
+            self.collect_info[&chunk_id];
+        BinaryExtensionCollector::new(
+            num_ops as usize,
+            num_freq_ops as usize,
+            collect_skipper,
+            force_execute_to_end,
+        )
     }
 }
 
@@ -115,11 +133,17 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
+        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
+            self.collect_info[&chunk_id];
         Some(Box::new(BinaryExtensionCollector::new(
             num_ops as usize,
+            num_freq_ops as usize,
             collect_skipper,
             force_execute_to_end,
         )))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

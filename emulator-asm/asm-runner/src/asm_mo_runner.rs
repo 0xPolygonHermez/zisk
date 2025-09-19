@@ -18,6 +18,9 @@ use anyhow::{Context, Result};
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
 
+#[cfg(feature = "save_mem_plans")]
+use mem_common::save_plans;
+
 pub struct PreloadedMO {
     pub output_shmem: AsmSharedMemory<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
@@ -219,6 +222,9 @@ impl AsmRunnerMO {
         assert!(response.trace_len <= response.allocated_len);
 
         mem_planner.set_completed();
+        // Wait for mem_align_plans, this mem_align_plans are calculated in rust from
+        // counters calculated in C++
+        let mut mem_align_plans = mem_planner.wait_mem_align_plans();
         mem_planner.wait();
 
         // Add to executor stats
@@ -242,7 +248,10 @@ impl AsmRunnerMO {
             ExecutorStatsEvent::Begin,
         );
 
-        let plans = mem_planner.collect_plans();
+        let plans = mem_planner.collect_plans(&mut mem_align_plans);
+
+        #[cfg(feature = "save_mem_plans")]
+        save_plans(&plans, "mem_plans_cpp.txt");
 
         // Add to executor stats
         #[cfg(feature = "stats")]

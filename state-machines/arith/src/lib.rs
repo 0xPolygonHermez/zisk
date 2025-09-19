@@ -15,7 +15,7 @@ pub use arith::*;
 pub use arith_bus_device::*;
 pub use arith_frops::*;
 use arith_full::*;
-use arith_full_instance::*;
+pub use arith_full_instance::*;
 use arith_operation::*;
 use arith_planner::*;
 use arith_range_table::*;

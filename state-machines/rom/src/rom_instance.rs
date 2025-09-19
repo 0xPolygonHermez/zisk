@@ -18,7 +18,7 @@ use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::sync::Mutex;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
-    InstanceType, Metrics, PayloadType, ROM_BUS_ID,
+    InstanceType, MemCollectorInfo, Metrics, PayloadType, ROM_BUS_ID,
 };
 use zisk_core::ZiskRom;
 
@@ -80,8 +80,24 @@ impl RomInstance {
         }
     }
 
+    pub fn skip_collector(&self) -> bool {
+        self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some()
+    }
+
     pub fn is_asm_execution(&self) -> bool {
         self.handle_rh.lock().unwrap().is_some() || self.asm_result.lock().unwrap().is_some()
+    }
+
+    pub fn build_rom_collector(&self, _chunk_id: ChunkId) -> Option<RomCollector> {
+        if self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some() {
+            return None;
+        }
+
+        Some(RomCollector::new(
+            self.counter_stats.lock().unwrap().is_some(),
+            self.bios_inst_count.lock().unwrap().clone(),
+            self.prog_inst_count.lock().unwrap().clone(),
+        ))
     }
 }
 
@@ -203,6 +219,10 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
             self.prog_inst_count.lock().unwrap().clone(),
         )))
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct RomCollector {
@@ -245,6 +265,7 @@ impl BusDevice<u64> for RomCollector {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == ROM_BUS_ID);
 

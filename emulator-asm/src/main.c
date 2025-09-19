@@ -129,6 +129,40 @@ extern uint64_t MEM_CHUNK_START_STEP;
 uint64_t realloc_counter = 0;
 
 extern void zisk_keccakf(uint64_t state[25]);
+/* Used for debugging
+extern uint64_t reg_0;
+extern uint64_t reg_1;
+extern uint64_t reg_2;
+extern uint64_t reg_3;
+extern uint64_t reg_4;
+extern uint64_t reg_5;
+extern uint64_t reg_6;
+extern uint64_t reg_7;
+extern uint64_t reg_8;
+extern uint64_t reg_9;
+extern uint64_t reg_10;
+extern uint64_t reg_11;
+extern uint64_t reg_12;
+extern uint64_t reg_13;
+extern uint64_t reg_14;
+extern uint64_t reg_15;
+extern uint64_t reg_16;
+extern uint64_t reg_17;
+extern uint64_t reg_18;
+extern uint64_t reg_19;
+extern uint64_t reg_20;
+extern uint64_t reg_21;
+extern uint64_t reg_22;
+extern uint64_t reg_23;
+extern uint64_t reg_24;
+extern uint64_t reg_25;
+extern uint64_t reg_26;
+extern uint64_t reg_27;
+extern uint64_t reg_28;
+extern uint64_t reg_29;
+extern uint64_t reg_30;
+extern uint64_t reg_31;
+*/
 
 bool is_power_of_two (uint64_t number) {
     return (number != 0) && ((number & (number - 1)) == 0);
@@ -2957,9 +2991,44 @@ extern int _print_regs()
     // printf("\n");
 }
 
-extern int _print_pc (uint64_t pc, uint64_t c, uint64_t chunk_address)
+extern int _print_pc (uint64_t pc, uint64_t c)
 {
-    printf("print_pc() counter=%lu pc=%lx c=%lx chunk_address=%lx\n", print_pc_counter, pc, c, chunk_address);
+    printf("s=%lu pc=%lx c=%lx", print_pc_counter, pc, c);
+    /* Used for debugging
+    printf(" r0=%lx", reg_0);
+    printf(" r1=%lx", reg_1);
+    printf(" r2=%lx", reg_2);
+    printf(" r3=%lx", reg_3);
+    printf(" r4=%lx", reg_4);
+    printf(" r5=%lx", reg_5);
+    printf(" r6=%lx", reg_6);
+    printf(" r7=%lx", reg_7);
+    printf(" r8=%lx", reg_8);
+    printf(" r9=%lx", reg_9);
+    printf(" r10=%lx", reg_10);
+    printf(" r11=%lx", reg_11);
+    printf(" r12=%lx", reg_12);
+    printf(" r13=%lx", reg_13);
+    printf(" r14=%lx", reg_14);
+    printf(" r15=%lx", reg_15);
+    printf(" r16=%lx", reg_16);
+    printf(" r17=%lx", reg_17);
+    printf(" r18=%lx", reg_18);
+    printf(" r19=%lx", reg_19);
+    printf(" r20=%lx", reg_20);
+    printf(" r21=%lx", reg_21);
+    printf(" r22=%lx", reg_22);
+    printf(" r23=%lx", reg_23);
+    printf(" r24=%lx", reg_24);
+    printf(" r25=%lx", reg_25);
+    printf(" r26=%lx", reg_26);
+    printf(" r27=%lx", reg_27);
+    printf(" r28=%lx", reg_28);
+    printf(" r29=%lx", reg_29);
+    printf(" r30=%lx", reg_30);
+    printf(" r31=%lx", reg_31);
+    */
+    printf("\n");
     fflush(stdout);
     print_pc_counter++;
 }
@@ -3382,6 +3451,7 @@ void log_mem_op(void)
 
         for (uint64_t m=0; m<mem_op_trace_size; m++)
         {
+            uint64_t rest_are_zeros = (chunk[i] >> 49) & 0x1;
             uint64_t write = (chunk[i] >> 48) & 0x1;
             uint64_t width = (chunk[i] >> 32) & 0xF;
             uint64_t address = chunk[i] & 0xFFFFFFFF;
@@ -3391,10 +3461,11 @@ void log_mem_op(void)
                 ((address >= INPUT_ADDR) && (address < (INPUT_ADDR + MAX_INPUT_SIZE)));
             if (trace_trace || !inside_range)
             {
-                printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = write=%lx, width=%lx, address=%lx%s\n",
+                printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = rest_are_zeros=%lx, write=%lx, width=%lx, address=%lx%s\n",
                     c,
                     m,
                     chunk[i],
+                    rest_are_zeros,
                     write,
                     width,
                     address,

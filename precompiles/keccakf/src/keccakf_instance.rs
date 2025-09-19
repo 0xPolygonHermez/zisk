@@ -13,7 +13,7 @@ use std::{
 };
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, MemCollectorInfo, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;
@@ -59,6 +59,18 @@ impl<F: PrimeField64> KeccakfInstance<F> {
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { keccakf_sm, collect_info, ictx }
+    }
+
+    pub fn build_keccakf_collector(&self, chunk_id: ChunkId) -> KeccakfCollector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            KeccakfTrace::<F>::AIR_ID,
+            "KeccakfInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
+        KeccakfCollector::new(num_ops, collect_skipper)
     }
 }
 
@@ -115,6 +127,10 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(KeccakfCollector::new(num_ops, collect_skipper)))
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct KeccakfCollector {
@@ -140,7 +156,11 @@ impl KeccakfCollector {
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
     pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+        Self {
+            inputs: Vec::with_capacity(num_operations as usize),
+            num_operations,
+            collect_skipper,
+        }
     }
 }
 
@@ -156,11 +176,13 @@ impl BusDevice<PayloadType> for KeccakfCollector {
     /// A tuple where:
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
         _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 

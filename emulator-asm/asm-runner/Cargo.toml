@@ -15,6 +15,7 @@ path = "src/lib.rs"
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 mem-planner-cpp = { workspace = true }
+mem-common = { workspace = true }
 
 tracing = { workspace = true}
 rayon = { workspace = true}
@@ -30,3 +31,4 @@ named-sem = { workspace = true }
 
 [features]
 stats = []
+save_mem_plans = []

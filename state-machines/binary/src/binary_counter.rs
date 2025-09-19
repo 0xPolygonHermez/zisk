@@ -7,7 +7,9 @@
 
 use crate::{BinaryBasicFrops, BinaryExtensionFrops};
 use std::collections::VecDeque;
-use zisk_common::{BusDevice, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE};
+use zisk_common::{
+    BusDevice, BusId, Counter, MemCollectorInfo, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
+};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 /// The `BinaryCounter` struct represents a counter that monitors and measures
@@ -105,6 +107,7 @@ impl BusDevice<u64> for BinaryCounter {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 

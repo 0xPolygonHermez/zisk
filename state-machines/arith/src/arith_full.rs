@@ -4,6 +4,7 @@
 //! trace generation. It coordinates with `ArithTableSM` and `ArithRangeTableSM` to handle
 //! state transitions and multiplicity updates.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use crate::{
@@ -15,7 +16,7 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
-use zisk_common::{ExtOperationData, OperationBusData, OperationData, PayloadType};
+use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::*;
 
@@ -167,7 +168,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
 
     /// Generates binary inputs for operations requiring additional validation (e.g., division).
     #[inline(always)]
-    pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
+    pub fn generate_inputs(input: &OperationData<u64>, pending: &mut VecDeque<(BusId, Vec<u64>)>) {
         let mut aop = ArithOperation::new();
 
         let input_data = ExtOperationData::OperationData(*input);
@@ -197,7 +198,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
             };
 
             // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do this!
-            vec![OperationBusData::from_values(
+            OperationBusData::from_values(
                 opcode,
                 ZiskOperationType::Binary as u64,
                 aop.d[0]
@@ -208,10 +209,8 @@ impl<F: PrimeField64> ArithFullSM<F> {
                     + CHUNK_SIZE * aop.b[1]
                     + CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1)
                     + CHUNK_SIZE.pow(3) * aop.b[3],
-            )
-            .to_vec()]
-        } else {
-            vec![]
+                pending,
+            );
         }
     }
 

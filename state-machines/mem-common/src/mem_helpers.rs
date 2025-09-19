@@ -199,4 +199,26 @@ impl MemHelpers {
         let to_chunk = self.mem_step_to_chunk(to_step);
         self.max_distance_between_chunks(from_chunk, to_chunk)
     }
+    #[inline(always)]
+    pub fn encode_mem_align_rows_and_count(rows: u32, count: u32) -> u32 {
+        debug_assert!(rows == 3 || rows == 5);
+        count
+            + match rows {
+                2 => 0x4000_0000,
+                3 => 0x8000_0000,
+                5 => 0xC000_0000,
+                _ => panic!("Invalid rows value"),
+            }
+    }
+    #[inline(always)]
+    pub fn decode_mem_align_rows_and_count(value: u32) -> (u32, u32) {
+        let rows = match (value >> 30) as u8 {
+            1 => 2,
+            2 => 3,
+            3 => 5,
+            _ => panic!("Invalid rows value"),
+        };
+        let count = value & 0x3FFF_FFFF;
+        (rows, count)
+    }
 }

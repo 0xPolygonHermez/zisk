@@ -41,6 +41,16 @@ pub struct MemoryOperations {
     mread_na2: u64,
     /// Counter of writes to non-aligned memory addresses (2)
     mwrite_na2: u64,
+    /// Counter of byte reads
+    mread_byte: u64,
+    /// Counter of byte writes where value was a byte (value & 0xFFFF_FFFF_FFFF_FF00 == 0)
+    mwrite_byte: u64,
+    /// Counter of byte writes where value was dirty (value & 0xFFFF_FFFF_FFFF_FF00 != 0)
+    mwrite_dirty_byte: u64,
+    /// Counter of byte writes where value was signextend (value & 0xFFFF_FFFF_FFFF_FF00 != 0xFFFF_FFFF_FFFF_FF00)
+    mwrite_dirty_s64_byte: u64,
+    mwrite_dirty_s32_byte: u64,
+    mwrite_dirty_s16_byte: u64,
 }
 
 /// Keeps statistics of the emulator operations
@@ -94,12 +104,15 @@ impl Stats {
             // Otherwise increase the non-aligned counter number 1
             else {
                 self.mops.mread_na1 += 1;
+                if width == 1 {
+                    self.mops.mread_byte += 1;
+                }
             }
         }
     }
 
     /// Called every time some data is writen to memory, if statistics are enabled
-    pub fn on_memory_write(&mut self, address: u64, width: u64) {
+    pub fn on_memory_write(&mut self, address: u64, width: u64, value: u64) {
         // If the memory is alligned to 8 bytes, i.e. last 3 bits are zero, then increase the
         // aligned memory read counter
         if ((address & M3) == 0) && (width == 8) {
@@ -114,6 +127,22 @@ impl Stats {
             // Otherwise increase the non-aligned counter number 1
             else {
                 self.mops.mwrite_na1 += 1;
+                if width == 1 {
+                    self.mops.mwrite_byte += 1;
+                    if (value & 0xFFFF_FFFF_FFFF_FF00) != 0 {
+                        self.mops.mwrite_dirty_byte += 1;
+                        if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFFFF_FFFF_FFFF_FF00 {
+                            self.mops.mwrite_dirty_s64_byte += 1;
+                        } else if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFFFF_FF00 {
+                            self.mops.mwrite_dirty_s32_byte += 1;
+                        } else if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFF00 {
+                            self.mops.mwrite_dirty_s16_byte += 1;
+                        }
+                    }
+                }
+            }
+            if ((address & M3) == 0) && (width == 8) {
+                self.mops.mwrite_a += 1;
             }
         }
     }
@@ -304,6 +333,29 @@ impl Stats {
             memory_reads,
             memory_writes,
             memory_total
+        );
+        let mwrite_dirty_sext_byte = self.mops.mwrite_dirty_s64_byte
+            + self.mops.mwrite_dirty_s32_byte
+            + self.mops.mwrite_dirty_s16_byte;
+        output += &format!(
+            "    MemoryAlignByte: {} reads + {} writes / {} dirt_nosext_writes ({:.2}%) / {} dirt_sext_writes ({:.2}%) (64:{}, 32:{}, 16:{})\n",
+            self.mops.mread_byte,
+            self.mops.mwrite_byte,
+            self.mops.mwrite_dirty_byte - mwrite_dirty_sext_byte,
+            if self.mops.mwrite_byte == 0 {
+                0.0
+            } else {
+                (self.mops.mwrite_dirty_byte - mwrite_dirty_sext_byte) as f64 * 100.0 / self.mops.mwrite_byte as f64
+            },
+            mwrite_dirty_sext_byte,
+            if mwrite_dirty_sext_byte == 0 {
+                0.0
+            } else {
+                mwrite_dirty_sext_byte as f64 * 100.0 / self.mops.mwrite_byte as f64
+            },
+            self.mops.mwrite_dirty_s64_byte,
+            self.mops.mwrite_dirty_s32_byte,
+            self.mops.mwrite_dirty_s16_byte
         );
 
         // Build the operations usage counters and cost values
