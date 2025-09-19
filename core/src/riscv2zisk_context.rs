@@ -86,7 +86,11 @@ impl Riscv2ZiskContext<'_> {
             // I.2. Integer Computational (Register-Immediate)
             "addi" => {
                 if riscv_instruction.is_nop() {
+                    // r0 = r0 + imm(0) = 0
                     self.nop(riscv_instruction, 4);
+                } else if riscv_instruction.imm == 0 && riscv_instruction.rs1 != 0 {
+                    // rd = rs1 + imm(0) = rs1
+                    self.copyb(riscv_instruction, 4, 1);
                 } else {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 4);
                 }
@@ -588,6 +592,21 @@ impl Riscv2ZiskContext<'_> {
             zib.op(op).unwrap();
             zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
         }
+        zib.store("reg", i.rd as i64, false, false);
+        zib.j(inst_size as i32, inst_size as i32);
+        zib.build();
+        self.insts.insert(self.s, zib);
+        self.s += inst_size;
+    }
+
+    pub fn copyb(&mut self, i: &RiscvInstruction, inst_size: u64, rs: u64) {
+        assert!(inst_size == 2 || inst_size == 4);
+        assert!(rs == 1 || rs == 2);
+        let mut zib = ZiskInstBuilder::new(self.s);
+        zib.src_a("imm", 0, false);
+        zib.src_b("reg", if rs == 1 { i.rs1 } else { i.rs2 } as u64, false);
+        zib.op("copyb").unwrap();
+        zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst, i.rd, i.rs1, i.imm));
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i32, inst_size as i32);
         zib.build();
