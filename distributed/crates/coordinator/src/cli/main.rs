@@ -29,8 +29,9 @@ enum CoordinatorServerCommands {
         ///
         /// Examples:
         ///   coordinator server --webhook-url 'http://example.com/notify?job_id={$job_id}'
+        ///   # becomes 'http://example.com/notify?job_id=12345'
         ///   coordinator server --webhook-url 'http://example.com/notify'
-        ///   # becomes 'http://example.com/notify/{job_id}'
+        ///   # becomes 'http://example.com/notify/12345'
         #[arg(long, help = "Webhook URL for job finish notifications")]
         webhook_url: Option<String>,
     },

@@ -2,6 +2,15 @@ use anyhow::Result;
 use distributed_common::JobId;
 use tracing::{error, info, warn};
 
+/// Sends a webhook notification upon job completion or failure.
+///
+/// # Arguments
+///
+/// * `webhook_url` - The URL to send the webhook to. It can contain a placeholder `{$job_id}`
+///   which will be replaced with the actual job ID.
+/// * `job_id` - The ID of the job that has completed or failed.
+/// * `proof_data` - Optional proof data to include in the webhook payload.
+/// * `success` - A boolean indicating whether the job completed successfully or failed.
 pub async fn send_completion_webhook(
     webhook_url: String,
     job_id: JobId,
