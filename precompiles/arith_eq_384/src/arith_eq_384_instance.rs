@@ -9,11 +9,11 @@ use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::collections::VecDeque;
 use std::{any::Any, collections::HashMap, sync::Arc};
 
-use zisk_common::ChunkId;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
     InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
+use zisk_common::{ChunkId, MemCollectorInfo};
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithEq384Trace;
 
@@ -65,6 +65,18 @@ impl<F: PrimeField64> ArithEq384Instance<F> {
 
         Self { arith_eq_384_sm, collect_info, ictx }
     }
+
+    pub fn build_arith_eq_384_collector(&self, chunk_id: ChunkId) -> ArithEq384Collector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            ArithEq384Trace::<F>::AIR_ID,
+            "ArithEq384Instance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
+        ArithEq384Collector::new(num_ops, collect_skipper)
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for ArithEq384Instance<F> {
@@ -115,6 +127,10 @@ impl<F: PrimeField64> Instance<F> for ArithEq384Instance<F> {
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(ArithEq384Collector::new(num_ops, collect_skipper)))
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct ArithEq384Collector {
@@ -160,6 +176,7 @@ impl BusDevice<PayloadType> for ArithEq384Collector {
         bus_id: &BusId,
         data: &[PayloadType],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 

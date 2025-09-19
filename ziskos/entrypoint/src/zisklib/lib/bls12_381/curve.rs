@@ -7,7 +7,7 @@ use crate::{
 };
 
 /// # Safety
-/// 
+///
 /// Addition of two non-zero and distinct points
 pub unsafe fn add_bls12_381(p1: *mut u64, p2: *const u64) {
     let mut p1_point = SyscallPoint384 {
@@ -27,7 +27,7 @@ pub unsafe fn add_bls12_381(p1: *mut u64, p2: *const u64) {
 }
 
 /// # Safety
-/// 
+///
 /// Doubling of a non-zero point
 pub unsafe fn dbl_bls12_381(p: *mut u64) {
     let mut p_point = SyscallPoint384 {

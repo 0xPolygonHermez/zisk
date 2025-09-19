@@ -142,7 +142,7 @@ impl StaticDataBus<PayloadType> {
                     &mut self.pending_transfers,
                     None,
                 ),
-                ARITH_EQ_384_OP_TYPE_ID => self.arith_eq_384_counter.process_data(
+                ARITH_EQ_384_OP_TYPE_ID => self.arith_eq_384_counter.1.process_data(
                     &bus_id,
                     payload,
                     &mut self.pending_transfers,

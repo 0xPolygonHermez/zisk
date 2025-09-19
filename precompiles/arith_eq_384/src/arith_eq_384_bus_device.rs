@@ -5,7 +5,8 @@
 use std::{collections::VecDeque, ops::Add};
 
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusDeviceMode, BusId, Counter, MemCollectorInfo, Metrics, A, B, OP,
+    OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -13,6 +14,9 @@ use crate::mem_inputs::{
     generate_arith384_mod_mem_inputs, generate_bls12_381_complex_add_mem_inputs,
     generate_bls12_381_complex_mul_mem_inputs, generate_bls12_381_complex_sub_mem_inputs,
     generate_bls12_381_curve_add_mem_inputs, generate_bls12_381_curve_dbl_mem_inputs,
+    skip_arith384_mod_mem_inputs, skip_bls12_381_complex_add_mem_inputs,
+    skip_bls12_381_complex_mul_mem_inputs, skip_bls12_381_complex_sub_mem_inputs,
+    skip_bls12_381_curve_add_mem_inputs, skip_bls12_381_curve_dbl_mem_inputs,
 };
 
 const ARITH384_MOD_OP: u8 = ZiskOp::Arith384Mod.code();
@@ -57,6 +61,33 @@ impl ArithEq384CounterInputGen {
     /// Returns the count of instructions for the specified operation type.
     pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
         (op_type == ZiskOperationType::ArithEq384).then_some(self.counter.inst_count)
+    }
+
+    fn skip_data(&self, data: &[u64], mem_collectors_info: &[MemCollectorInfo]) -> bool {
+        let addr_main = data[B] as u32;
+
+        match data[OP] as u8 {
+            ARITH384_MOD_OP => skip_arith384_mod_mem_inputs(addr_main, data, mem_collectors_info),
+            BLS12_381_CURVE_ADD_OP => {
+                skip_bls12_381_curve_add_mem_inputs(addr_main, data, mem_collectors_info)
+            }
+            BLS12_381_CURVE_DBL_OP => {
+                skip_bls12_381_curve_dbl_mem_inputs(addr_main, data, mem_collectors_info)
+            }
+            BLS12_381_COMPLEX_ADD_OP => {
+                skip_bls12_381_complex_add_mem_inputs(addr_main, data, mem_collectors_info)
+            }
+            BLS12_381_COMPLEX_SUB_OP => {
+                skip_bls12_381_complex_sub_mem_inputs(addr_main, data, mem_collectors_info)
+            }
+            BLS12_381_COMPLEX_MUL_OP => {
+                skip_bls12_381_complex_mul_mem_inputs(addr_main, data, mem_collectors_info)
+            }
+
+            _ => {
+                panic!("ArithEq384CounterInputGen: Unsupported data length {}", data.len());
+            }
+        }
     }
 }
 
@@ -116,6 +147,7 @@ impl BusDevice<u64> for ArithEq384CounterInputGen {
         bus_id: &BusId,
         data: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
@@ -123,6 +155,12 @@ impl BusDevice<u64> for ArithEq384CounterInputGen {
 
         if data[OP_TYPE] != ARITH_EQ_384 {
             return true;
+        }
+
+        if let Some(mem_collectors_info) = mem_collector_info {
+            if self.skip_data(data, mem_collectors_info) {
+                return true;
+            }
         }
 
         let op = data[OP] as u8;
@@ -136,52 +174,58 @@ impl BusDevice<u64> for ArithEq384CounterInputGen {
 
         match op {
             ARITH384_MOD_OP => {
-                pending.extend(generate_arith384_mod_mem_inputs(
+                generate_arith384_mod_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             BLS12_381_CURVE_ADD_OP => {
-                pending.extend(generate_bls12_381_curve_add_mem_inputs(
+                generate_bls12_381_curve_add_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             BLS12_381_CURVE_DBL_OP => {
-                pending.extend(generate_bls12_381_curve_dbl_mem_inputs(
+                generate_bls12_381_curve_dbl_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             BLS12_381_COMPLEX_ADD_OP => {
-                pending.extend(generate_bls12_381_complex_add_mem_inputs(
+                generate_bls12_381_complex_add_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             BLS12_381_COMPLEX_SUB_OP => {
-                pending.extend(generate_bls12_381_complex_sub_mem_inputs(
+                generate_bls12_381_complex_sub_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
             BLS12_381_COMPLEX_MUL_OP => {
-                pending.extend(generate_bls12_381_complex_mul_mem_inputs(
+                generate_bls12_381_complex_mul_mem_inputs(
                     addr_main,
                     step_main,
                     data,
                     only_counters,
-                ));
+                    pending,
+                );
             }
 
             _ => {

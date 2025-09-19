@@ -151,7 +151,7 @@ pub fn inv_fp_bls12_381_core(x: &[u64; 6]) -> [u64; 6] {
 // ========== Pointer-based API (Thin Wrappers) ==========
 
 /// # Safety
-/// 
+///
 /// Addition in Fp
 #[inline]
 pub unsafe fn add_fp_bls12_381(a: *mut u64, b: *const u64) {
@@ -165,7 +165,7 @@ pub unsafe fn add_fp_bls12_381(a: *mut u64, b: *const u64) {
 }
 
 /// # Safety
-/// 
+///
 /// Doubling in Fp
 #[inline]
 pub unsafe fn dbl_fp_bls12_381(a: *mut u64) {
@@ -178,7 +178,7 @@ pub unsafe fn dbl_fp_bls12_381(a: *mut u64) {
 }
 
 /// # Safety
-/// 
+///
 /// Subtraction in Fp
 #[inline]
 pub unsafe fn sub_fp_bls12_381(a: *mut u64, b: *const u64) {
@@ -192,7 +192,7 @@ pub unsafe fn sub_fp_bls12_381(a: *mut u64, b: *const u64) {
 }
 
 /// # Safety
-/// 
+///
 /// Negation in Fp
 #[inline]
 pub unsafe fn neg_fp_bls12_381(a: *mut u64) {
@@ -205,7 +205,7 @@ pub unsafe fn neg_fp_bls12_381(a: *mut u64) {
 }
 
 /// # Safety
-/// 
+///
 /// Multiplication in Fp
 #[inline]
 pub unsafe fn mul_fp_bls12_381(a: *mut u64, b: *const u64) {
@@ -219,7 +219,7 @@ pub unsafe fn mul_fp_bls12_381(a: *mut u64, b: *const u64) {
 }
 
 /// # Safety
-/// 
+///
 /// Squaring in Fp
 #[inline]
 pub unsafe fn square_fp_bls12_381(a: *mut u64) {
@@ -232,7 +232,7 @@ pub unsafe fn square_fp_bls12_381(a: *mut u64) {
 }
 
 /// # Safety
-/// 
+///
 /// Square root in Fp
 #[inline]
 pub unsafe fn sqrt_fp_bls12_381(a: *mut u64, is_qr: *mut u8) {
@@ -246,7 +246,7 @@ pub unsafe fn sqrt_fp_bls12_381(a: *mut u64, is_qr: *mut u8) {
 }
 
 /// # Safety
-/// 
+///
 /// Inversion of a non-zero element in Fp
 #[inline]
 pub unsafe fn inv_fp_bls12_381(a: *mut u64) {
@@ -259,7 +259,7 @@ pub unsafe fn inv_fp_bls12_381(a: *mut u64) {
 }
 
 /// # Safety
-/// 
+///
 /// Inversion in Montgomery form in Fp
 #[inline]
 pub unsafe fn inv_mont_fp_bls12_381(a: *mut u64) {
