@@ -117,7 +117,13 @@ impl ZiskServiceProveHandler {
                     #[cfg(feature = "stats")]
                     {
                         let stats_id = _stats.lock().unwrap().get_id();
-                        _stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
+                        _stats.lock().unwrap().add_stat(
+                            0,
+                            stats_id,
+                            "END",
+                            0,
+                            ExecutorStatsEvent::Mark,
+                        );
                         _stats.lock().unwrap().store_stats();
                     }
 
