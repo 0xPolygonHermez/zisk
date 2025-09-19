@@ -402,7 +402,8 @@ impl ZiskProve {
             // Store the stats in stats.json
             #[cfg(feature = "stats")]
             {
-                _stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
+                let stats_id = _stats.lock().unwrap().get_id();
+                _stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
                 _stats.lock().unwrap().store_stats();
             }
         }
