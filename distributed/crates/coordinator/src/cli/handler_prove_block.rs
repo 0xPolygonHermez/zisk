@@ -8,6 +8,7 @@ pub async fn handle(
     server_url: String,
     input_path: String,
     compute_capacity: u32,
+    aggregate_compute_capacity: Option<u32>,
     simulated_node: Option<u32>,
 ) -> Result<()> {
     // Connect to the gRPC server
@@ -18,7 +19,8 @@ pub async fn handle(
 
     let launch_proof_request = LaunchProofRequest {
         block_id: "0x1234567890abcdef".into(), // Placeholder block ID
-        compute_units: compute_capacity,
+        compute_capacity,
+        aggregate_compute_capacity: aggregate_compute_capacity.unwrap_or(0),
         input_path,
         simulated_node,
     };
@@ -26,7 +28,7 @@ pub async fn handle(
     // Make the RPC call
     info!(
         "Sending Launch request for block id: {} with {} compute units",
-        launch_proof_request.block_id, launch_proof_request.compute_units
+        launch_proof_request.block_id, launch_proof_request.compute_capacity
     );
     let response = client.launch_proof(launch_proof_request).await?;
 

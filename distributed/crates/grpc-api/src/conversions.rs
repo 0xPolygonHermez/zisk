@@ -146,7 +146,8 @@ impl From<LaunchProofRequestDto> for LaunchProofRequest {
     fn from(dto: LaunchProofRequestDto) -> Self {
         LaunchProofRequest {
             block_id: dto.block_id.into(),
-            compute_units: dto.compute_capacity,
+            compute_capacity: dto.compute_capacity,
+            aggregate_compute_capacity: dto.aggregate_compute_capacity,
             input_path: dto.input_path,
             simulated_node: dto.simulated_node,
         }
@@ -157,7 +158,8 @@ impl From<LaunchProofRequest> for LaunchProofRequestDto {
     fn from(req: LaunchProofRequest) -> Self {
         LaunchProofRequestDto {
             block_id: req.block_id.into(),
-            compute_capacity: req.compute_units,
+            compute_capacity: req.compute_capacity,
+            aggregate_compute_capacity: req.aggregate_compute_capacity,
             input_path: req.input_path,
             simulated_node: req.simulated_node,
         }
