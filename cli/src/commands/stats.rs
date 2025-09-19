@@ -93,9 +93,6 @@ pub struct ZiskStats {
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
-    #[clap(short = 'c', long)]
-    pub chunk_size_bits: Option<u64>,
-
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
 
@@ -292,7 +289,6 @@ impl ZiskStats {
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,
-                    self.chunk_size_bits,
                     Some(world_rank),
                     Some(local_rank),
                     self.port,
