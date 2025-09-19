@@ -390,7 +390,7 @@ impl CoordinatorService {
 
     /// Unregister a prover by its ID
     pub async fn unregister_prover(&self, prover_id: &ProverId) -> CoordinatorResult<()> {
-        Ok(self.provers_pool.unregister_prover(prover_id).await?)
+        self.provers_pool.unregister_prover(prover_id).await
     }
 
     pub async fn handle_stream_heartbeat_ack(
@@ -468,8 +468,7 @@ impl CoordinatorService {
             message.prover_id,
             message.job_id,
             message.error_message.unwrap_or_default()
-        ))
-        .into())
+        )))
     }
 
     /// Handle Phase1 result and check if we can proceed to Phase2
@@ -631,7 +630,7 @@ impl CoordinatorService {
                 format!("Phase1 failed for provers: {failed_provers:?} in job {}", job.job_id);
             self.fail_job(&job.job_id, &reason).await?;
 
-            return Err(CoordinatorError::ProverError(reason).into());
+            return Err(CoordinatorError::ProverError(reason));
         }
 
         // Extract and prepare challenges
