@@ -1,3 +1,9 @@
+//! gRPC transport layer for the distributed proof coordination system.
+//!
+//! This module provides the gRPC server implementation that exposes the coordinator's
+//! functionality over the network, handling bidirectional streaming communication
+//! with provers and admin API endpoints.
+
 use async_stream::stream;
 use distributed_common::{CoordinatorMessageDto, JobId, ProverId};
 use distributed_grpc_api::{distributed_api_server::*, *};
@@ -12,17 +18,25 @@ use crate::coordinator_service::MessageSender;
 use crate::coordinator_service_error::{CoordinatorError, CoordinatorResult};
 use crate::CoordinatorService;
 
-/// Wrapper around mpsc::UnboundedSender to implement MessageSender trait for gRPC
-/// and decouple gRPC stream from CoordinatorService
+/// gRPC message sender adapter for prover communication.
+///
+/// Wraps an unbounded channel sender to implement the MessageSender trait,
+/// decoupling gRPC streaming from the core coordinator service.
 pub struct GrpcMessageSender(mpsc::UnboundedSender<CoordinatorMessage>);
 
 impl GrpcMessageSender {
+    /// Creates a new gRPC message sender with the given channel.
     pub fn new(sender: mpsc::UnboundedSender<CoordinatorMessage>) -> Self {
         Self(sender)
     }
 }
 
 impl MessageSender for GrpcMessageSender {
+    /// Sends a message to the prover through the gRPC channel.
+    ///
+    /// # Returns
+    ///
+    /// `Internal` error if the channel is closed or full.
     fn send(&self, msg: CoordinatorMessageDto) -> CoordinatorResult<()> {
         self.0
             .send(msg.into())
@@ -31,20 +45,35 @@ impl MessageSender for GrpcMessageSender {
     }
 }
 
-/// gRPC transport layer implementation for the distributed proof coordination system.
+/// gRPC server implementation for the distributed proof coordination system.
 ///
-/// This struct serves as the gRPC adapter that bridges external network communication
-/// with the core coordinator business logic.
+/// Serves as the network transport layer, exposing coordinator functionality through:
+/// - Admin API endpoints (status, job management, system monitoring)  
+/// - Bidirectional streaming for prover communication
+/// - Authentication and authorization for admin endpoints
 pub struct CoordinatorServiceGrpc {
     coordinator_service: Arc<CoordinatorService>,
 }
 
 impl CoordinatorServiceGrpc {
+    /// Creates a new gRPC service instance with the given configuration.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` - Configuration parameters for the coordinator service.
     pub async fn new(config: Config) -> CoordinatorResult<Self> {
         Ok(Self { coordinator_service: Arc::new(CoordinatorService::new(config)) })
     }
 
-    /// Check if the request comes from localhost/127.0.0.1
+    /// Checks if the request originates from localhost for admin endpoint security.
+    ///
+    /// # Parameters
+    ///
+    /// * `request` - The incoming gRPC request to check.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the request is from localhost, `false` otherwise.
     fn is_local_request(&self, request: &Request<impl std::fmt::Debug>) -> bool {
         if let Some(remote_addr) = request.remote_addr() {
             let ip = remote_addr.ip();
@@ -54,7 +83,15 @@ impl CoordinatorServiceGrpc {
         }
     }
 
-    /// Validate admin request access
+    /// Validates that admin requests come from localhost only.
+    ///
+    /// # Parameters
+    ///
+    /// * `request` - The incoming gRPC request to validate.
+    ///
+    /// # Returns
+    ///
+    /// `Status::permission_denied` if request is not from localhost.
     fn validate_admin_request<T: std::fmt::Debug>(
         &self,
         request: &Request<T>,
@@ -67,6 +104,16 @@ impl CoordinatorServiceGrpc {
         Ok(())
     }
 
+    /// Validates that the prover ID in the message matches the authenticated prover.
+    ///
+    /// # Parameters
+    ///
+    /// * `prover_id` - The authenticated prover ID.
+    /// * `request_prover_id` - The prover ID from the incoming message.
+    ///
+    /// # Returns
+    ///
+    /// `InvalidRequest` error if prover IDs don't match.
     fn validate_same_prover_id(
         prover_id: &ProverId,
         request_prover_id: &str,
@@ -84,6 +131,15 @@ impl CoordinatorServiceGrpc {
         Ok(())
     }
 
+    /// Processes individual messages from the prover stream.
+    ///
+    /// Routes messages to appropriate coordinator handlers after validation.
+    ///
+    /// # Parameters
+    ///
+    /// * `coordinator` - Reference to the coordinator service instance.
+    /// * `prover_id` - The authenticated prover ID.
+    /// * `message` - The incoming prover message to process.
     async fn handle_stream_message(
         coordinator: &CoordinatorService,
         prover_id: &ProverId,
@@ -113,6 +169,13 @@ impl CoordinatorServiceGrpc {
         }
     }
 
+    /// Creates a registration response message for prover handshake.
+    ///
+    /// # Parameters
+    ///
+    /// * `prover_id` - The prover ID to include in the response.
+    /// * `accepted` - Whether the registration was accepted.
+    /// * `message` - Additional message to include in the response.
     fn registration_response(
         prover_id: &ProverId,
         accepted: bool,
@@ -133,11 +196,19 @@ impl CoordinatorServiceGrpc {
     }
 }
 
+/// Implements the gRPC service trait generated by tonic from the protobuf definitions.
 #[tonic::async_trait]
 impl DistributedApi for CoordinatorServiceGrpc {
     type ProverStreamStream =
         Pin<Box<dyn Stream<Item = Result<CoordinatorMessage, Status>> + Send>>;
 
+    /// Returns detailed coordinator status information.
+    ///
+    /// Admin-only endpoint that provides system metrics and operational status.
+    ///
+    /// # Parameters
+    ///
+    /// * `request` - The incoming StatusInfoRequest gRPC request.
     async fn status_info(
         &self,
         request: Request<StatusInfoRequest>,
@@ -149,6 +220,11 @@ impl DistributedApi for CoordinatorServiceGrpc {
         Ok(Response::new(status_info.into()))
     }
 
+    /// Basic health check endpoint for service monitoring.
+    ///
+    /// # Parameters
+    ///
+    /// * `request` - The incoming HealthCheckRequest gRPC request.
     async fn health_check(
         &self,
         _request: Request<HealthCheckRequest>,
@@ -156,6 +232,13 @@ impl DistributedApi for CoordinatorServiceGrpc {
         Ok(Response::new(HealthCheckResponse {}))
     }
 
+    /// Returns list of all jobs with their current status.
+    ///
+    /// Admin-only endpoint for job monitoring and management.
+    ///
+    /// # Parameters
+    ///
+    /// * `request` - The incoming JobsListRequest gRPC request.
     async fn jobs_list(
         &self,
         request: Request<JobsListRequest>,
@@ -167,6 +250,13 @@ impl DistributedApi for CoordinatorServiceGrpc {
         Ok(Response::new(jobs_list.into()))
     }
 
+    /// Returns list of all registered provers and their states.
+    ///
+    /// Admin-only endpoint for prover fleet monitoring.
+    ///
+    /// # Parameters
+    ///
+    /// * `request` - The incoming ProversListRequest gRPC request.
     async fn provers_list(
         &self,
         request: Request<ProversListRequest>,
@@ -178,6 +268,13 @@ impl DistributedApi for CoordinatorServiceGrpc {
         Ok(Response::new(provers_list.into()))
     }
 
+    /// Returns detailed status for a specific job.
+    ///
+    /// Admin-only endpoint for job inspection and debugging.
+    ///
+    /// # Parameters
+    ///
+    /// * `request` - The incoming JobStatusRequest gRPC request.
     async fn job_status(
         &self,
         request: Request<JobStatusRequest>,
@@ -192,6 +289,13 @@ impl DistributedApi for CoordinatorServiceGrpc {
             .map_err(Status::from)
     }
 
+    /// Returns overall system status and health metrics.
+    ///
+    /// Admin-only endpoint for system monitoring and alerting.
+    ///
+    /// # Parameters
+    ///
+    /// * `request` - The incoming SystemStatusRequest gRPC request.
     async fn system_status(
         &self,
         request: Request<SystemStatusRequest>,
@@ -203,6 +307,13 @@ impl DistributedApi for CoordinatorServiceGrpc {
         Ok(Response::new(system_status.into()))
     }
 
+    /// Starts a new proof generation job.
+    ///
+    /// Admin-only endpoint for initiating distributed proof computation.
+    ///
+    /// # Parameters
+    ///
+    /// * `request` - The incoming LaunchProofRequest gRPC request.
     async fn launch_proof(
         &self,
         request: Request<LaunchProofRequest>,
@@ -215,8 +326,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
         result.map(|response_dto| Response::new(response_dto.into())).map_err(Status::from)
     }
 
-    /// Bidirectional stream for communication between coordinator and provers.
-    /// This handles stream messages defined in the .proto file.
+    /// Bidirectional streaming endpoint for prover communication.
     async fn prover_stream(
         &self,
         request: Request<Streaming<ProverMessage>>,
