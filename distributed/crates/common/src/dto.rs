@@ -58,7 +58,6 @@ pub struct SystemStatusDto {
 pub struct LaunchProofRequestDto {
     pub block_id: BlockId,
     pub compute_capacity: u32,
-    pub aggregate_compute_capacity: u32,
     pub input_path: String,
     pub simulated_node: Option<u32>,
 }

@@ -49,10 +49,6 @@ enum CoordinatorServerCommands {
         #[arg(long, short, help = "Compute capacity needed to generate the block proof")]
         compute_capacity: u32,
 
-        /// Compute capacity needed to aggregate
-        #[arg(long, short, help = "Minimal compute capacity needed to aggregate proofs")]
-        aggregate_compute_capacity: Option<u32>,
-
         #[arg(long, help = "Simulated node ID")]
         simulated_node: Option<u32>,
     },
@@ -71,22 +67,9 @@ async fn main() -> Result<()> {
             // Server mode
             handler_server::handle(port, webhook_url).await
         }
-        CoordinatorServerCommands::ProveBlock {
-            url,
-            input,
-            compute_capacity,
-            simulated_node,
-            aggregate_compute_capacity,
-        } => {
+        CoordinatorServerCommands::ProveBlock { url, input, compute_capacity, simulated_node } => {
             // Initialize basic tracing for the prove-block command
-            handler_prove_block::handle(
-                url,
-                input,
-                compute_capacity,
-                aggregate_compute_capacity,
-                simulated_node,
-            )
-            .await
+            handler_prove_block::handle(url, input, compute_capacity, simulated_node).await
         }
     }
 }

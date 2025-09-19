@@ -56,7 +56,6 @@ message SystemStatusRequest {}
 message LaunchProofRequest {
   string block_id = 1;
   uint32 compute_capacity = 2;
-  uint32 aggregate_compute_capacity = 5;
   string input_path = 3;
   optional uint32 simulated_node = 4; // If set, indicates this is a simulated prover
 }
