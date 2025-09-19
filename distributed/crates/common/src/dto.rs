@@ -1,3 +1,9 @@
+//! Data Transfer Objects (DTOs) for Distributed Proving System
+//!
+//! This module defines the internal domain types used throughout the distributed proving system.
+//! These DTOs serve as the canonical data structures for business logic, separate from external
+//! representations like gRPC protobuf types or serialization formats.
+
 use crate::{BlockId, ComputeCapacity, JobId, JobPhase, JobState, ProverId, ProverState};
 use chrono::{DateTime, Utc};
 

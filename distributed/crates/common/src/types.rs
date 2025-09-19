@@ -1,3 +1,9 @@
+//! Core Domain Types for Distributed Proving System
+//!
+//! This module defines the fundamental domain types and business entities used throughout
+//! the distributed proving system. These types form the core vocabulary of the system,
+//! providing type safety, semantic clarity, and domain-driven design principles.
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
 use proofman::ContributionsInfo;
