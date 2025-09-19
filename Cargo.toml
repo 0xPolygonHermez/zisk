@@ -49,6 +49,9 @@ opt-level = 3
 [profile.bench]
 opt-level = 3
 
+[profile.release.package."proofman-verifier"]
+opt-level = 0
+
 [workspace.dependencies]
 # Internal crates
 cargo-zisk = { path = "cli" }

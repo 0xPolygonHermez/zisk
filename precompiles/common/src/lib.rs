@@ -2,6 +2,8 @@ mod goldilocks_constants;
 
 pub use goldilocks_constants::{get_ks, GOLDILOCKS_GEN, GOLDILOCKS_K};
 
+use std::collections::VecDeque;
+use zisk_common::{BusId, MEM_BUS_ID};
 use zisk_core::InstContext;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -44,38 +46,63 @@ const MEM_STEP_BASE: u64 = 1;
 const MAX_MEM_OPS_BY_MAIN_STEP: u64 = 4;
 
 impl MemBusHelpers {
-    pub fn mem_aligned_load(addr: u32, step: u64, mem_value: u64) -> [u64; 7] {
-        [
-            MEMORY_LOAD_OP,
-            addr as u64,
-            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2,
-            8,
-            mem_value,
-            0,
-            0,
-        ]
+    pub fn mem_aligned_load(
+        addr: u32,
+        step: u64,
+        mem_value: u64,
+        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
+        pending.push_back((
+            MEM_BUS_ID,
+            vec![
+                MEMORY_LOAD_OP,
+                addr as u64,
+                MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2,
+                8,
+                mem_value,
+                0,
+                0,
+            ],
+        ));
     }
-    pub fn mem_aligned_write(addr: u32, step: u64, value: u64) -> [u64; 7] {
-        [
-            MEMORY_STORE_OP,
-            addr as u64,
-            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 3,
-            8,
-            0,
-            0,
-            value,
-        ]
+    pub fn mem_aligned_write(
+        addr: u32,
+        step: u64,
+        value: u64,
+        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
+        pending.push_back((
+            MEM_BUS_ID,
+            vec![
+                MEMORY_STORE_OP,
+                addr as u64,
+                MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 3,
+                8,
+                0,
+                0,
+                value,
+            ],
+        ));
     }
-    pub fn mem_aligned_op(addr: u32, step: u64, value: u64, is_write: bool) -> [u64; 7] {
-        [
-            if is_write { MEMORY_STORE_OP } else { MEMORY_LOAD_OP },
-            addr as u64,
-            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + if is_write { 3 } else { 2 },
-            8,
-            if is_write { 0 } else { value },
-            0,
-            if is_write { value } else { 0 },
-        ]
+    pub fn mem_aligned_op(
+        addr: u32,
+        step: u64,
+        value: u64,
+        is_write: bool,
+        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
+        pending.push_back((
+            MEM_BUS_ID,
+            vec![
+                if is_write { MEMORY_STORE_OP } else { MEMORY_LOAD_OP },
+                addr as u64,
+                MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + if is_write { 3 } else { 2 },
+                8,
+                if is_write { 0 } else { value },
+                0,
+                if is_write { value } else { 0 },
+            ],
+        ));
     }
 }
 

@@ -2,6 +2,7 @@
 //! sent over the data bus. It is designed to be reusable across multiple state machines
 //! and collects metrics for specified `ZiskOperationType` instructions.
 
+use crate::MemCollectorInfo;
 use crate::{BusDevice, BusId, Counter, ExtOperationData, Metrics, OperationBusData};
 use std::{collections::VecDeque, ops::Add};
 use zisk_core::ZiskOperationType;
@@ -126,6 +127,7 @@ impl BusDevice<u64> for RegularCounters {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == self.bus_id);
 

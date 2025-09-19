@@ -4,7 +4,9 @@
 //! send data, route it to the appropriate subscribers, and manage device connections.
 use std::collections::VecDeque;
 
+use crate::DummyCounter;
 use data_bus::DataBusTrait;
+use mem_common::MemCounters;
 use precomp_arith_eq::ArithEqCounterInputGen;
 use precomp_arith_eq_384::ArithEq384CounterInputGen;
 use precomp_keccakf::KeccakfCounterInputGen;
@@ -12,7 +14,6 @@ use precomp_sha256f::Sha256fCounterInputGen;
 use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
 use sm_main::MainCounter;
-use sm_mem::MemCounters;
 use zisk_common::{BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
 use zisk_core::{
     ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID,
@@ -34,13 +35,14 @@ pub struct StaticDataBus<D> {
 
     /// List of devices connected to the bus.
     pub main_counter: MainCounter,
-    pub mem_counter: MemCounters,
-    pub binary_counter: BinaryCounter,
-    pub arith_counter: ArithCounterInputGen,
-    pub keccakf_counter: KeccakfCounterInputGen,
-    pub sha256f_counter: Sha256fCounterInputGen,
-    pub arith_eq_counter: ArithEqCounterInputGen,
-    pub arith_eq_384_counter: ArithEq384CounterInputGen,
+    pub mem_counter: (usize, Option<MemCounters>),
+    pub binary_counter: (usize, BinaryCounter),
+    pub arith_counter: (usize, ArithCounterInputGen),
+    pub keccakf_counter: (usize, KeccakfCounterInputGen),
+    pub sha256f_counter: (usize, Sha256fCounterInputGen),
+    pub arith_eq_counter: (usize, ArithEqCounterInputGen),
+    pub arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
+    pub rom_counter_id: Option<usize>,
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>)>,
@@ -51,13 +53,14 @@ impl StaticDataBus<PayloadType> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         process_only_operation_bus: bool,
-        mem_counter: MemCounters,
-        binary_counter: BinaryCounter,
-        arith_counter: ArithCounterInputGen,
-        keccakf_counter: KeccakfCounterInputGen,
-        sha256f_counter: Sha256fCounterInputGen,
-        arith_eq_counter: ArithEqCounterInputGen,
-        arith_eq_384_counter: ArithEq384CounterInputGen,
+        mem_counter: (usize, Option<MemCounters>),
+        binary_counter: (usize, BinaryCounter),
+        arith_counter: (usize, ArithCounterInputGen),
+        keccakf_counter: (usize, KeccakfCounterInputGen),
+        sha256f_counter: (usize, Sha256fCounterInputGen),
+        arith_eq_counter: (usize, ArithEqCounterInputGen),
+        arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
+        rom_counter_id: Option<usize>,
     ) -> Self {
         Self {
             process_only_operation_bus,
@@ -69,6 +72,7 @@ impl StaticDataBus<PayloadType> {
             sha256f_counter,
             arith_eq_counter,
             arith_eq_384_counter,
+            rom_counter_id,
             pending_transfers: VecDeque::new(),
         }
     }
@@ -89,41 +93,60 @@ impl StaticDataBus<PayloadType> {
             MEM_BUS_ID => {
                 let mut _continue = true;
                 if !self.process_only_operation_bus {
-                    // If we are not processing only operation bus, we process memory bus data.
-                    _continue &= self.mem_counter.process_data(
-                        &bus_id,
-                        payload,
-                        &mut self.pending_transfers,
-                    );
+                    if let Some(mem_counter) = self.mem_counter.1.as_mut() {
+                        // If we are not processing only operation bus, we process memory bus data.
+                        _continue &= mem_counter.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            None,
+                        );
+                    }
                 }
-
                 _continue
             }
             OPERATION_BUS_ID => match payload[1] as u32 {
-                PUB_OUT_OP_TYPE_ID => {
-                    self.main_counter.process_data(&bus_id, payload, &mut self.pending_transfers)
-                }
-                BINARY_OP_TYPE_ID | BINARY_E_OP_TYPE_ID => {
-                    self.binary_counter.process_data(&bus_id, payload, &mut self.pending_transfers)
-                }
-                ARITH_OP_TYPE_ID => {
-                    self.arith_counter.process_data(&bus_id, payload, &mut self.pending_transfers)
-                }
-                KECCAK_OP_TYPE_ID => {
-                    self.keccakf_counter.process_data(&bus_id, payload, &mut self.pending_transfers)
-                }
-                SHA256_OP_TYPE_ID => {
-                    self.sha256f_counter.process_data(&bus_id, payload, &mut self.pending_transfers)
-                }
-                ARITH_EQ_OP_TYPE_ID => self.arith_eq_counter.process_data(
+                PUB_OUT_OP_TYPE_ID => self.main_counter.process_data(
                     &bus_id,
                     payload,
                     &mut self.pending_transfers,
+                    None,
+                ),
+                BINARY_OP_TYPE_ID | BINARY_E_OP_TYPE_ID => self.binary_counter.1.process_data(
+                    &bus_id,
+                    payload,
+                    &mut self.pending_transfers,
+                    None,
+                ),
+                ARITH_OP_TYPE_ID => self.arith_counter.1.process_data(
+                    &bus_id,
+                    payload,
+                    &mut self.pending_transfers,
+                    None,
+                ),
+                KECCAK_OP_TYPE_ID => self.keccakf_counter.1.process_data(
+                    &bus_id,
+                    payload,
+                    &mut self.pending_transfers,
+                    None,
+                ),
+                SHA256_OP_TYPE_ID => self.sha256f_counter.1.process_data(
+                    &bus_id,
+                    payload,
+                    &mut self.pending_transfers,
+                    None,
+                ),
+                ARITH_EQ_OP_TYPE_ID => self.arith_eq_counter.1.process_data(
+                    &bus_id,
+                    payload,
+                    &mut self.pending_transfers,
+                    None,
                 ),
                 ARITH_EQ_384_OP_TYPE_ID => self.arith_eq_384_counter.process_data(
                     &bus_id,
                     payload,
                     &mut self.pending_transfers,
+                    None,
                 ),
                 _ => true,
             },
@@ -146,13 +169,15 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
 
     fn on_close(&mut self) {
         self.main_counter.on_close();
-        self.mem_counter.on_close();
-        self.binary_counter.on_close();
-        self.arith_counter.on_close();
-        self.keccakf_counter.on_close();
-        self.sha256f_counter.on_close();
-        self.arith_eq_counter.on_close();
-        self.arith_eq_384_counter.on_close();
+        if let Some(mem_counter) = self.mem_counter.1.as_mut() {
+            mem_counter.on_close();
+        }
+        self.binary_counter.1.on_close();
+        self.arith_counter.1.on_close();
+        self.keccakf_counter.1.on_close();
+        self.sha256f_counter.1.on_close();
+        self.arith_eq_counter.1.on_close();
+        self.arith_eq_384_counter.1.on_close();
     }
 
     fn into_devices(
@@ -163,31 +188,21 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             self.on_close();
         }
 
-        let StaticDataBus {
-            process_only_operation_bus: _,
-            main_counter,
-            mem_counter,
-            binary_counter,
-            arith_counter,
-            keccakf_counter,
-            sha256f_counter,
-            arith_eq_counter,
-            arith_eq_384_counter,
-            pending_transfers: _,
-        } = self;
-
         #[allow(clippy::type_complexity)]
-        let counters: Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> = vec![
-            (None, Some(Box::new(main_counter))),
-            (None, Some(Box::new(mem_counter))),
-            (None, None),
-            (None, Some(Box::new(binary_counter))),
-            (None, Some(Box::new(arith_counter))),
-            (None, Some(Box::new(keccakf_counter))),
-            (None, Some(Box::new(sha256f_counter))),
-            (None, Some(Box::new(arith_eq_counter))),
-            (None, Some(Box::new(arith_eq_384_counter))),
+        let mut counters: Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> = vec![
+            (None, Some(Box::new(self.main_counter))),
+            (self.rom_counter_id, Some(Box::new(DummyCounter {}))),
+            (Some(self.binary_counter.0), Some(Box::new(self.binary_counter.1))),
+            (Some(self.arith_counter.0), Some(Box::new(self.arith_counter.1))),
+            (Some(self.keccakf_counter.0), Some(Box::new(self.keccakf_counter.1))),
+            (Some(self.sha256f_counter.0), Some(Box::new(self.sha256f_counter.1))),
+            (Some(self.arith_eq_counter.0), Some(Box::new(self.arith_eq_counter.1))),
+            (Some(self.arith_eq_384_counter.0), Some(Box::new(self.arith_eq_384_counter.1))),
         ];
+
+        if let Some(mem_counter) = self.mem_counter.1 {
+            counters.insert(1, (Some(self.mem_counter.0), Some(Box::new(mem_counter))));
+        }
 
         counters
     }

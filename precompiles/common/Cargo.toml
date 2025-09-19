@@ -9,5 +9,6 @@ categories = { workspace = true }
 
 [dependencies]
 zisk-core = { workspace = true }
+zisk-common = { workspace = true }
 
 fields = { workspace = true }

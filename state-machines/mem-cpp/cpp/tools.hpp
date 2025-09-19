@@ -60,7 +60,7 @@ inline uint32_t count_operations(MemCountersBusData *chunk_data, int count) {
     for (int i = 0; i < count; ++i) {
         const uint32_t bytes = chunk_data[i].flags & 0x0F;
         const uint32_t offset = chunk_data[i].addr & 0x07;
-        const bool wr = (chunk_data[i].flags & 0x10000) != 0;
+        const bool wr = (chunk_data[i].flags & MEM_WRITE_FLAG) != 0;
         if (offset == 0 && bytes == 8) {
             cops = 1;
         } else if (offset + bytes > 8) {

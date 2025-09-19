@@ -16,7 +16,7 @@ use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
+    InstanceType, MemCollectorInfo, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
 
 use zisk_core::ZiskOperationType;
@@ -63,6 +63,18 @@ impl<F: PrimeField64> ArithEqInstance<F> {
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { arith_eq_sm, collect_info, ictx }
+    }
+
+    pub fn build_arith_eq_collector(&self, chunk_id: ChunkId) -> ArithEqCollector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            ArithEqTrace::<F>::AIR_ID,
+            "ArithEqInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
+        ArithEqCollector::new(num_ops, collect_skipper)
     }
 }
 
@@ -112,6 +124,10 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(ArithEqCollector::new(num_ops, collect_skipper)))
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 pub struct ArithEqCollector {
@@ -137,7 +153,11 @@ impl ArithEqCollector {
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
     pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+        Self {
+            inputs: Vec::with_capacity(num_operations as usize),
+            num_operations,
+            collect_skipper,
+        }
     }
 }
 
@@ -152,11 +172,13 @@ impl BusDevice<PayloadType> for ArithEqCollector {
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 

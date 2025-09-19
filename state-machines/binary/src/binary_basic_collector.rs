@@ -6,8 +6,8 @@ use std::collections::VecDeque;
 
 use crate::{BinaryBasicFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, MemCollectorInfo, OperationBusData, A, B,
+    OP, OPERATION_BUS_ID,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -19,6 +19,7 @@ pub struct BinaryBasicCollector {
     pub frops_inputs: Vec<u32>,
 
     pub num_operations: usize,
+
     pub collect_skipper: CollectSkipper,
 
     /// Flag to indicate that this instance comute add operations
@@ -39,16 +40,17 @@ impl BinaryBasicCollector {
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
     pub fn new(
         num_operations: usize,
+        num_freq_ops: usize,
         collect_skipper: CollectSkipper,
         with_adds: bool,
         force_execute_to_end: bool,
     ) -> Self {
         Self {
-            inputs: Vec::new(),
+            inputs: Vec::with_capacity(num_operations),
             num_operations,
             collect_skipper,
             with_adds,
-            frops_inputs: Vec::new(),
+            frops_inputs: Vec::with_capacity(num_freq_ops),
             force_execute_to_end,
         }
     }
@@ -65,11 +67,13 @@ impl BusDevice<u64> for BinaryBasicCollector {
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
         let instance_complete = self.inputs.len() == self.num_operations;

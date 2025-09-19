@@ -53,4 +53,7 @@
 #define NO_CHUNK_ID 0xFFFFFFFF
 #define EMPTY_PAGE 0xFFFFFFFF
 
+#define MEM_WRITE_FLAG 0x10
+#define MEM_WRITE_BYTE_CLEAR_FLAG 0x20
+
 #endif
