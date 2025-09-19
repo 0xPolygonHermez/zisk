@@ -4,6 +4,7 @@ pub const DEFAULT_MAX_STEPS: u64 = 0xffffffff;
 pub const DEFAULT_MAX_STEPS_STR: &str = "4294967295"; // 2^32 - 1
 
 pub const CHUNK_SIZE_BITS: usize = 18;
+pub const CHUNK_SIZE: u64 = 1 << CHUNK_SIZE_BITS;
 
 /// Power of 2 constant definitions, named P2_n, equivalent to 2 to the power of n, in u64 format
 pub const P2_0: u64 = 0x1;

@@ -10,7 +10,7 @@ use pil_std_lib::Std;
 use proofman::register_std;
 use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
-use zisk_core::{Riscv2zisk, CHUNK_SIZE_BITS};
+use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 use zisk_pil::{
     ARITH_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
     INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS,
@@ -53,7 +53,8 @@ fn init_library(
     shared_tables: bool,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, world_rank);
-    let chunk_size = 1 << CHUNK_SIZE_BITS;
+
+    let chunk_size = CHUNK_SIZE;
 
     let result = Box::new(WitnessLib {
         elf_path,
