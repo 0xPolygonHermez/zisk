@@ -10,6 +10,7 @@ pub fn bigint_to_16bit_chunks<const N: usize>(value: &BigInt, result: &mut [i64;
     let (sign, limbs) = value.to_u64_digits();
     let limbs_count = limbs.len();
     let limbs_needed = N / 4;
+    #[allow(clippy::needless_range_loop)]
     for i in 0..limbs_needed {
         let mut limb64_value = if i < limbs_count { limbs[i] } else { 0 };
         for j in 0..4 {
