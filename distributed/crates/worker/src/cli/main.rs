@@ -2,24 +2,24 @@ use anyhow::Result;
 use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
 use clap::Parser;
 use colored::Colorize;
-use distributed_prover::{
-    config::{initialize_prover_config, ProverClientConfig},
-    ProverGrpcEndpoint, ProverServiceConfig,
-};
 use std::path::PathBuf;
+use zisk_distributed_worker::{
+    config::{build_worker_and_prover_config, ProverServiceConfigDto},
+    ProverServiceConfig, WorkerGrpcEndpoint,
+};
 
 #[derive(Parser)]
-#[command(name = "distributed-client")]
-#[command(about = "A prover client for the Distributed Network")]
+#[command(name = "zisk-distributed-worker")]
+#[command(about = "A Worker for the Distributed ZisK Network")]
 #[command(version)]
 struct Cli {
-    /// Server URL (overrides config file)
+    /// Distributed ZisK Coordinator URL (overrides config file)
     #[arg(short, long)]
     url: Option<String>,
 
-    /// Prover ID (overrides config file, defaults to auto-generated UUID)
+    /// Worker ID (overrides config file, defaults to auto-generated UUID)
     #[arg(long)]
-    prover_id: Option<String>,
+    worker_id: Option<String>,
 
     /// Number of compute units to advertise (overrides config file)
     #[arg(long)]
@@ -108,7 +108,7 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    let prover_config = ProverClientConfig {
+    let prover_config = ProverServiceConfigDto {
         elf: cli.elf.clone(),
         witness_lib: cli.witness_lib.clone(),
         asm: cli.asm.clone(),
@@ -128,23 +128,23 @@ async fn main() -> Result<()> {
         max_witness_stored: cli.max_witness_stored,
     };
 
-    let (grpc_config, service_config) = initialize_prover_config(
+    let (grpc_config, service_config) = build_worker_and_prover_config(
         prover_config,
         &cli.config,
         cli.url,
-        cli.prover_id,
+        cli.worker_id,
         cli.compute_units,
     )
     .await?;
 
     print_command_info(&service_config, cli.debug.is_some());
 
-    let mut prover_client = ProverGrpcEndpoint::new(grpc_config, service_config).await?;
-    prover_client.run().await
+    let mut worker = WorkerGrpcEndpoint::new(grpc_config, service_config).await?;
+    worker.run().await
 }
 
 fn print_command_info(service_config: &ProverServiceConfig, debug: bool) {
-    println!("{} Prove Network Client", format!("{: >12}", "Command").bright_green().bold());
+    println!("{} ZisK Worker", format!("{: >12}", "Command").bright_green().bold());
     println!(
         "{: >12} {}",
         "Witness Lib".bright_green().bold(),

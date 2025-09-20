@@ -1,6 +1,6 @@
-# Zisk Distributed System
+# ZisK Distributed System
 
-A distributed proof generation system for the Zisk zkVM, consisting of a coordinator and multiple prover nodes.
+A distributed proof generation system for the ZisK zkVM, consisting of a coordinator and multiple prover nodes.
 
 ## Architecture
 

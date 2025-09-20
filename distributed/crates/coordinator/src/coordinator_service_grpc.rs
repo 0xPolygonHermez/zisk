@@ -5,7 +5,7 @@
 //! with provers and admin API endpoints.
 
 use async_stream::stream;
-use distributed_common::{CoordinatorMessageDto, JobId, ProverId};
+use distributed_common::{CoordinatorMessageDto, JobId, WorkerId};
 use distributed_grpc_api::{distributed_api_server::*, *};
 use futures_util::{Stream, StreamExt};
 use std::{pin::Pin, sync::Arc};
@@ -115,7 +115,7 @@ impl CoordinatorServiceGrpc {
     ///
     /// `InvalidRequest` error if prover IDs don't match.
     fn validate_same_prover_id(
-        prover_id: &ProverId,
+        prover_id: &WorkerId,
         request_prover_id: &str,
     ) -> CoordinatorResult<()> {
         if prover_id.as_string() != request_prover_id {
@@ -142,7 +142,7 @@ impl CoordinatorServiceGrpc {
     /// * `message` - The incoming prover message to process.
     async fn handle_stream_message(
         coordinator: &CoordinatorService,
-        prover_id: &ProverId,
+        prover_id: &WorkerId,
         message: ProverMessage,
     ) -> CoordinatorResult<()> {
         match message.payload {
@@ -177,7 +177,7 @@ impl CoordinatorServiceGrpc {
     /// * `accepted` - Whether the registration was accepted.
     /// * `message` - Additional message to include in the response.
     fn registration_response(
-        prover_id: &ProverId,
+        prover_id: &WorkerId,
         accepted: bool,
         message: String,
     ) -> Result<CoordinatorMessage, Status> {
@@ -343,7 +343,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
             // Clean registration handling - wait for prover to introduce itself
             let prover_id = match in_stream.next().await {
                 Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Register(req)) })) => {
-                    let requested_prover_id = ProverId::from(req.prover_id.clone());
+                    let requested_prover_id = WorkerId::from(req.prover_id.clone());
                     let (accepted, message) = coordinator_service.handle_stream_registration(req.into(), grpc_msg_tx).await;
 
                     if accepted {
@@ -355,7 +355,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
                     }
                 }
                 Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Reconnect(req)) })) => {
-                    let requested_prover_id = ProverId::from(req.prover_id.clone());
+                    let requested_prover_id = WorkerId::from(req.prover_id.clone());
                     let (accepted, message) = coordinator_service.handle_stream_reconnection(req.into(), grpc_msg_tx).await;
 
                     if accepted {

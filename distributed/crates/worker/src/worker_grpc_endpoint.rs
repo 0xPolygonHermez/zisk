@@ -1,6 +1,6 @@
-use crate::{prover_service::ComputationResult, ProverService, ProverServiceConfig};
+use crate::{worker_service::ComputationResult, ProverServiceConfig, WorkerService};
 use anyhow::{anyhow, Result};
-use distributed_common::{AggProofData, AggregationParams, BlockContext, ProverState};
+use distributed_common::{AggProofData, AggregationParams, BlockContext, WorkerState};
 use distributed_common::{BlockId, JobId};
 use distributed_grpc_api::execute_task_response::ResultData;
 use distributed_grpc_api::*;
@@ -12,25 +12,25 @@ use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info};
 
-use crate::config::ProverGrpcEndpointConfig;
+use crate::config::WorkerServiceConfig;
 
-pub struct ProverGrpcEndpoint {
-    config_endpoint: ProverGrpcEndpointConfig,
-    prover_service: ProverService,
+pub struct WorkerGrpcEndpoint {
+    worker_service_config: WorkerServiceConfig,
+    prover_service: WorkerService,
 }
 
-impl ProverGrpcEndpoint {
+impl WorkerGrpcEndpoint {
     pub async fn new(
-        config_endpoint: ProverGrpcEndpointConfig,
-        config_service: ProverServiceConfig,
+        worker_service_config: WorkerServiceConfig,
+        prover_service_config: ProverServiceConfig,
     ) -> Result<Self> {
-        let prover_service = ProverService::new(
-            config_endpoint.prover.prover_id.clone(),
-            config_endpoint.prover.compute_capacity,
-            config_service,
+        let prover_service = WorkerService::new(
+            worker_service_config.worker.worker_id.clone(),
+            worker_service_config.worker.compute_capacity,
+            prover_service_config,
         )?;
 
-        Ok(Self { config_endpoint, prover_service })
+        Ok(Self { worker_service_config, prover_service })
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -39,20 +39,20 @@ impl ProverGrpcEndpoint {
         loop {
             if rank == 0 {
                 match self.prover_service.get_state() {
-                    ProverState::Disconnected => {
+                    WorkerState::Disconnected => {
                         if let Err(e) = self.connect_and_run().await {
                             error!("Connection failed: {}", e);
                             tokio::time::sleep(Duration::from_secs(
-                                self.config_endpoint.connection.reconnect_interval_seconds,
+                                self.worker_service_config.connection.reconnect_interval_seconds,
                             ))
                             .await;
                         }
                     }
-                    ProverState::Error => {
-                        error!("Prover in error state, attempting to reconnect");
-                        self.prover_service.set_state(ProverState::Disconnected);
+                    WorkerState::Error => {
+                        error!("Worker in error state, attempting to reconnect");
+                        self.prover_service.set_state(WorkerState::Disconnected);
                         tokio::time::sleep(Duration::from_secs(
-                            self.config_endpoint.connection.reconnect_interval_seconds,
+                            self.worker_service_config.connection.reconnect_interval_seconds,
                         ))
                         .await;
                     }
@@ -62,7 +62,7 @@ impl ProverGrpcEndpoint {
                     }
                 }
             } else {
-                // Non-rank 0 provers are executing inside a cluster and only receives MPI requests
+                // Non-rank 0 workers are executing inside a cluster and only receives MPI requests
                 self.prover_service.receive_mpi_request().await?;
             }
         }
@@ -71,10 +71,11 @@ impl ProverGrpcEndpoint {
     }
 
     async fn connect_and_run(&mut self) -> Result<()> {
-        info!("Connecting to coordinator at {}", self.config_endpoint.server.url);
+        info!("Connecting to coordinator at {}", self.worker_service_config.coordinator.url);
 
-        let channel =
-            Channel::from_shared(self.config_endpoint.server.url.clone())?.connect().await?;
+        let channel = Channel::from_shared(self.worker_service_config.coordinator.url.clone())?
+            .connect()
+            .await?;
         let mut client = distributed_api_client::DistributedApiClient::new(channel);
 
         // Create bidirectional stream
@@ -89,22 +90,26 @@ impl ProverGrpcEndpoint {
         let connect_message = if let Some(job) = self.prover_service.get_current_job() {
             ProverMessage {
                 payload: Some(prover_message::Payload::Reconnect(ProverReconnectRequest {
-                    prover_id: self.config_endpoint.prover.prover_id.as_string(),
-                    compute_capacity: Some(self.config_endpoint.prover.compute_capacity.into()),
+                    prover_id: self.worker_service_config.worker.worker_id.as_string(),
+                    compute_capacity: Some(
+                        self.worker_service_config.worker.compute_capacity.into(),
+                    ),
                     last_known_job_id: job.lock().await.job_id.as_string(),
                 })),
             }
         } else {
             ProverMessage {
                 payload: Some(prover_message::Payload::Register(ProverRegisterRequest {
-                    prover_id: self.config_endpoint.prover.prover_id.as_string(),
-                    compute_capacity: Some(self.config_endpoint.prover.compute_capacity.into()),
+                    prover_id: self.worker_service_config.worker.worker_id.as_string(),
+                    compute_capacity: Some(
+                        self.worker_service_config.worker.compute_capacity.into(),
+                    ),
                 })),
             }
         };
 
         message_sender.send(connect_message)?;
-        self.prover_service.set_state(ProverState::Connecting);
+        self.prover_service.set_state(WorkerState::Connecting);
 
         // Create channels for computation results
         let (computation_tx, mut computation_rx) = mpsc::unbounded_channel::<ComputationResult>();
@@ -152,7 +157,7 @@ impl ProverGrpcEndpoint {
         // Cancel any running computation
         self.prover_service.cancel_current_computation();
 
-        self.prover_service.set_state(ProverState::Disconnected);
+        self.prover_service.set_state(WorkerState::Disconnected);
         Ok(())
     }
 
@@ -207,7 +212,7 @@ impl ProverGrpcEndpoint {
 
         let message = ProverMessage {
             payload: Some(prover_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
-                prover_id: self.config_endpoint.prover.prover_id.as_string(),
+                prover_id: self.worker_service_config.worker.worker_id.as_string(),
                 job_id: job_id.as_string(),
                 task_type: TaskType::PartialContribution as i32,
                 success,
@@ -255,7 +260,7 @@ impl ProverGrpcEndpoint {
 
         let message = ProverMessage {
             payload: Some(prover_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
-                prover_id: self.config_endpoint.prover.prover_id.as_string(),
+                prover_id: self.worker_service_config.worker.worker_id.as_string(),
                 job_id: job_id.as_string(),
                 task_type: TaskType::Prove as i32,
                 success,
@@ -312,7 +317,7 @@ impl ProverGrpcEndpoint {
 
         let message = ProverMessage {
             payload: Some(prover_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
-                prover_id: self.config_endpoint.prover.prover_id.as_string(),
+                prover_id: self.worker_service_config.worker.worker_id.as_string(),
                 job_id: job_id.as_string(),
                 task_type: TaskType::Aggregate as i32,
                 success,
@@ -327,7 +332,7 @@ impl ProverGrpcEndpoint {
         if reset_current_job {
             info!("Aggregation task completed for {}", job_id);
             self.prover_service.set_current_job(None);
-            self.prover_service.set_state(ProverState::Idle);
+            self.prover_service.set_state(WorkerState::Idle);
         }
 
         Ok(())
@@ -339,7 +344,7 @@ impl ProverGrpcEndpoint {
     ) -> Result<()> {
         let message = ProverMessage {
             payload: Some(prover_message::Payload::HeartbeatAck(HeartbeatAck {
-                prover_id: self.config_endpoint.prover.prover_id.as_string(),
+                prover_id: self.worker_service_config.worker.worker_id.as_string(),
             })),
         };
 
@@ -359,9 +364,9 @@ impl ProverGrpcEndpoint {
                 coordinator_message::Payload::RegisterResponse(response) => {
                     if response.accepted {
                         info!("Registration accepted: {}", response.message);
-                        self.prover_service.set_state(ProverState::Idle);
+                        self.prover_service.set_state(WorkerState::Idle);
                     } else {
-                        self.prover_service.set_state(ProverState::Error);
+                        self.prover_service.set_state(WorkerState::Error);
                         error!("Registration rejected: {}", response.message);
                         std::process::exit(1);
                     }
@@ -391,7 +396,7 @@ impl ProverGrpcEndpoint {
                         let cancelled_job_id = JobId::from(cancelled.job_id.clone());
                         if job.lock().await.job_id == cancelled_job_id {
                             self.prover_service.cancel_current_computation();
-                            self.prover_service.set_state(ProverState::Idle);
+                            self.prover_service.set_state(WorkerState::Idle);
                         }
                     }
                 }

@@ -103,15 +103,15 @@ impl std::fmt::Display for BlockId {
 
 /// Prover ID wrapper for type safety
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct ProverId(String);
+pub struct WorkerId(String);
 
-impl Default for ProverId {
+impl Default for WorkerId {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ProverId {
+impl WorkerId {
     pub fn new() -> Self {
         Self(uuid::Uuid::new_v4().to_string())
     }
@@ -125,26 +125,26 @@ impl ProverId {
     }
 }
 
-impl From<String> for ProverId {
+impl From<String> for WorkerId {
     fn from(id: String) -> Self {
         Self(id)
     }
 }
 
-impl From<ProverId> for String {
-    fn from(prover_id: ProverId) -> Self {
+impl From<WorkerId> for String {
+    fn from(prover_id: WorkerId) -> Self {
         prover_id.0
     }
 }
 
-impl std::fmt::Display for ProverId {
+impl std::fmt::Display for WorkerId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "ProverId({})", self.0)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProverState {
+pub enum WorkerState {
     Disconnected,
     Connecting,
     Idle,
@@ -152,14 +152,14 @@ pub enum ProverState {
     Error,
 }
 
-impl Display for ProverState {
+impl Display for WorkerState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let state_str = match self {
-            ProverState::Disconnected => "Disconnected",
-            ProverState::Connecting => "Connecting",
-            ProverState::Idle => "Idle",
-            ProverState::Computing(phase) => return write!(f, "Computing({})", phase),
-            ProverState::Error => "Error",
+            WorkerState::Disconnected => "Disconnected",
+            WorkerState::Connecting => "Connecting",
+            WorkerState::Idle => "Idle",
+            WorkerState::Computing(phase) => return write!(f, "Computing({})", phase),
+            WorkerState::Error => "Error",
         };
         write!(f, "{}", state_str)
     }
@@ -229,10 +229,10 @@ pub struct Job {
     pub state: JobState,
     pub block: BlockContext,
     pub compute_capacity: ComputeCapacity,
-    pub provers: Vec<ProverId>,
-    pub agg_prover_id: Option<ProverId>,
+    pub provers: Vec<WorkerId>,
+    pub agg_prover_id: Option<WorkerId>,
     pub partitions: Vec<Vec<u32>>,
-    pub results: HashMap<JobPhase, HashMap<ProverId, JobResult>>,
+    pub results: HashMap<JobPhase, HashMap<WorkerId, JobResult>>,
     pub stats: HashMap<JobPhase, JobStats>,
     pub challenges: Option<Vec<ContributionsInfo>>,
     pub execution_mode: JobExecutionMode,
@@ -244,7 +244,7 @@ impl Job {
         block_id: BlockId,
         input_path: PathBuf,
         compute_capacity: ComputeCapacity,
-        selected_provers: Vec<ProverId>,
+        selected_provers: Vec<WorkerId>,
         partitions: Vec<Vec<u32>>,
         execution_mode: JobExecutionMode,
     ) -> Self {

@@ -1,6 +1,6 @@
 use anyhow::Result;
-use distributed_common::{AggregationParams, BlockContext, JobPhase, ProverState};
-use distributed_common::{ComputeCapacity, JobId, ProverId};
+use distributed_common::{AggregationParams, BlockContext, JobPhase, WorkerState};
+use distributed_common::{ComputeCapacity, JobId, WorkerId};
 use proofman::{AggProofs, ContributionsInfo};
 use proofman_common::{DebugInfo, ParamsGPU};
 use std::collections::HashMap;
@@ -25,8 +25,8 @@ pub struct JobContext {
     pub job_id: JobId,
     pub block: BlockContext,
     pub rank_id: u32,
-    pub total_provers: u32,
-    pub allocation: Vec<u32>, // Prover allocation for this job, vector of all computed units assigned
+    pub total_workers: u32,
+    pub allocation: Vec<u32>, // Worker allocation for this job, vector of all computed units assigned
     pub total_compute_units: u32, // Total compute units for the whole job
     pub phase: JobPhase,
 }
@@ -121,28 +121,28 @@ impl ProverServiceConfig {
     }
 }
 
-pub struct ProverService {
-    _prover_id: ProverId,
+pub struct WorkerService {
+    _worker_id: WorkerId,
     _compute_capacity: ComputeCapacity,
-    state: ProverState,
+    state: WorkerState,
     current_job: Option<Arc<Mutex<JobContext>>>,
     current_computation: Option<JoinHandle<()>>,
     _config: ProverServiceConfig,
     proof_generator: ProofGenerator,
 }
 
-impl ProverService {
+impl WorkerService {
     pub fn new(
-        prover_id: ProverId,
+        worker_id: WorkerId,
         compute_capacity: ComputeCapacity,
         config: ProverServiceConfig,
     ) -> Result<Self> {
         let proof_generator = ProofGenerator::new(&config)?;
 
         Ok(Self {
-            _prover_id: prover_id,
+            _worker_id: worker_id,
             _compute_capacity: compute_capacity,
-            state: ProverState::Disconnected,
+            state: WorkerState::Disconnected,
             current_job: None,
             current_computation: None,
             _config: config,
@@ -158,11 +158,11 @@ impl ProverService {
         self.proof_generator.receive_mpi_request().await
     }
 
-    pub fn get_state(&self) -> &ProverState {
+    pub fn get_state(&self) -> &WorkerState {
         &self.state
     }
 
-    pub fn set_state(&mut self, state: ProverState) {
+    pub fn set_state(&mut self, state: WorkerState) {
         self.state = state;
     }
 
@@ -198,7 +198,7 @@ impl ProverService {
         job_id: JobId,
         block: BlockContext,
         rank_id: u32,
-        total_provers: u32,
+        total_workers: u32,
         allocation: Vec<u32>,
         total_compute_units: u32,
     ) -> Arc<Mutex<JobContext>> {
@@ -206,14 +206,14 @@ impl ProverService {
             job_id,
             block,
             rank_id,
-            total_provers,
+            total_workers,
             allocation,
             total_compute_units,
             phase: JobPhase::Contributions,
         }));
         self.current_job = Some(current_job.clone());
 
-        self.state = ProverState::Computing(JobPhase::Contributions);
+        self.state = WorkerState::Computing(JobPhase::Contributions);
 
         current_job
     }

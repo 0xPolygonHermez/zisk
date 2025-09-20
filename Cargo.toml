@@ -37,10 +37,10 @@ members = [
     "common",
     "tools/circuit",
     "server",
-    "distributed/crates/grpc-api",
-    "distributed/crates/prover",
     "distributed/crates/coordinator",
+    "distributed/crates/grpc-api",
     "distributed/crates/common",
+    "distributed/crates/worker",
 ]
 
 resolver = "2"
@@ -90,10 +90,10 @@ ziskos = { path = "ziskos/entrypoint" }
 circuit = { path = "tools/circuit" }
 
 # Distributed crates
-distributed-grpc-api = { path = "distributed/crates/grpc-api" }
-distributed-prover = { path = "distributed/crates/prover" }
 distributed-common = { path = "distributed/crates/common" }
 distributed-coordinator = { path = "distributed/crates/coordinator" }
+distributed-grpc-api = { path = "distributed/crates/grpc-api" }
+distributed-prover = { path = "distributed/crates/worker" }
 
 # Proofman
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-updated" }

@@ -20,7 +20,7 @@ use witness::WitnessLibrary;
 
 use zisk_common::ZiskLibInitFn;
 
-use crate::prover_service::{ComputationResult, JobContext, ProverServiceConfig};
+use crate::worker_service::{ComputationResult, JobContext, ProverServiceConfig};
 
 pub struct ProofGenerator {
     // It is important to keep the witness_lib declaration before the proofman declaration

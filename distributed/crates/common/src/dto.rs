@@ -4,7 +4,7 @@
 //! These DTOs serve as the canonical data structures for business logic, separate from external
 //! representations like gRPC protobuf types or serialization formats.
 
-use crate::{BlockId, ComputeCapacity, JobId, JobPhase, JobState, ProverId, ProverState};
+use crate::{BlockId, ComputeCapacity, JobId, JobPhase, JobState, WorkerId, WorkerState};
 use chrono::{DateTime, Utc};
 
 pub struct StatusInfoDto {
@@ -36,7 +36,7 @@ pub struct JobStatusDto {
     pub block_id: BlockId,
     pub state: JobState,
     pub phase: Option<JobPhase>,
-    pub assigned_provers: Vec<ProverId>,
+    pub assigned_provers: Vec<WorkerId>,
     pub start_time: u64,
     pub duration_ms: u64,
 }
@@ -46,8 +46,8 @@ pub struct ProversListDto {
 }
 
 pub struct ProverInfoDto {
-    pub prover_id: ProverId,
-    pub state: ProverState,
+    pub prover_id: WorkerId,
+    pub state: WorkerState,
     pub compute_capacity: ComputeCapacity,
     pub connected_at: DateTime<Utc>,
     pub last_heartbeat: DateTime<Utc>,
@@ -77,12 +77,12 @@ pub struct MetricsDto {
 }
 
 pub struct ProverRegisterRequestDto {
-    pub prover_id: ProverId,
+    pub prover_id: WorkerId,
     pub compute_capacity: ComputeCapacity,
 }
 
 pub struct ProverReconnectRequestDto {
-    pub prover_id: ProverId,
+    pub prover_id: WorkerId,
     pub compute_capacity: ComputeCapacity,
 }
 
@@ -104,7 +104,7 @@ pub struct ShutdownDto {
 }
 
 pub struct ProverRegisterResponseDto {
-    pub prover_id: ProverId,
+    pub prover_id: WorkerId,
     pub accepted: bool,
     pub message: String,
     pub registered_at: DateTime<Utc>,
@@ -116,7 +116,7 @@ pub struct JobCancelledDto {
 }
 
 pub struct ExecuteTaskRequestDto {
-    pub prover_id: ProverId,
+    pub prover_id: WorkerId,
     pub job_id: JobId,
     pub params: ExecuteTaskRequestTypeDto,
 }
@@ -169,7 +169,7 @@ pub struct ProofDto {
 
 pub struct ExecuteTaskResponseDto {
     pub job_id: JobId,
-    pub prover_id: ProverId,
+    pub prover_id: WorkerId,
     pub success: bool,
     pub error_message: Option<String>,
     pub result_data: ExecuteTaskResponseResultDataDto,
@@ -182,11 +182,11 @@ pub enum ExecuteTaskResponseResultDataDto {
 }
 
 pub struct HeartbeatAckDto {
-    pub prover_id: ProverId,
+    pub prover_id: WorkerId,
 }
 
 pub struct ProverErrorDto {
-    pub prover_id: ProverId,
+    pub prover_id: WorkerId,
     pub job_id: JobId,
     pub error_message: String,
 }

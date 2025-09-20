@@ -1,8 +1,8 @@
-[server]
+[coordinator]
 url = "http://127.0.0.1:50051"
 
-[prover]
-prover_id = "my-prover-001"
+[worker]
+worker_id = "my-worker-001"
 compute_capacity.compute_units = 10
 
 [connection]

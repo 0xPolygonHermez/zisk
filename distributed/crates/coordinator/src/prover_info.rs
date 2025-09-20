@@ -3,12 +3,12 @@ use std::fmt::Display;
 use crate::coordinator_service::MessageSender;
 
 use chrono::{DateTime, Utc};
-use distributed_common::{ComputeCapacity, ProverId, ProverState};
+use distributed_common::{ComputeCapacity, WorkerId, WorkerState};
 
 /// Information about a connected prover client
 pub struct ProverInfo {
-    pub prover_id: ProverId,
-    pub state: ProverState,
+    pub prover_id: WorkerId,
+    pub state: WorkerState,
     pub compute_capacity: ComputeCapacity,
     pub connected_at: DateTime<Utc>,
     pub last_heartbeat: DateTime<Utc>,
@@ -18,14 +18,14 @@ pub struct ProverInfo {
 impl ProverInfo {
     /// Create a new ProverConnection2
     pub fn new(
-        prover_id: ProverId,
+        prover_id: WorkerId,
         compute_capacity: ComputeCapacity,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Self {
         let now = Utc::now();
         Self {
             prover_id,
-            state: ProverState::Idle,
+            state: WorkerState::Idle,
             compute_capacity,
             connected_at: now,
             last_heartbeat: now,

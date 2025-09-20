@@ -380,7 +380,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
 
         ExecuteTaskResponseDto {
             job_id: JobId::from(response.job_id),
-            prover_id: ProverId::from(response.prover_id),
+            prover_id: WorkerId::from(response.prover_id),
             success: response.success,
             error_message: if response.error_message.is_empty() {
                 None
@@ -394,14 +394,14 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
 
 impl From<HeartbeatAck> for HeartbeatAckDto {
     fn from(message: HeartbeatAck) -> Self {
-        HeartbeatAckDto { prover_id: ProverId::from(message.prover_id) }
+        HeartbeatAckDto { prover_id: WorkerId::from(message.prover_id) }
     }
 }
 
 impl From<ProverError> for ProverErrorDto {
     fn from(error: ProverError) -> Self {
         ProverErrorDto {
-            prover_id: ProverId::from(error.prover_id),
+            prover_id: WorkerId::from(error.prover_id),
             job_id: JobId::from(error.job_id),
             error_message: error.error_message,
         }

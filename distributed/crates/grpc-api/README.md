@@ -1,6 +1,6 @@
 # Distributed Proving System gRPC API
 
-This crate provides the gRPC API layer for Zisk's distributed proving system, enabling coordination between proof coordinators and distributed provers.
+This crate provides the gRPC API layer for ZisK's distributed proving system, enabling coordination between proof coordinators and distributed provers.
 
 ## Core gRPC Methods
 

@@ -4,7 +4,7 @@
 //! for distributed proof generation jobs.
 
 use distributed_common::{
-    ComputeCapacity, CoordinatorMessageDto, JobExecutionMode, ProverId, ProverInfoDto, ProverState,
+    ComputeCapacity, CoordinatorMessageDto, JobExecutionMode, WorkerId, ProverInfoDto, WorkerState,
     ProversListDto,
 };
 use std::collections::HashMap;
@@ -23,7 +23,7 @@ use crate::{
 /// capacity-based work allocation across the distributed prover network.
 pub struct ProversPool {
     /// Map of prover_id to ProverConnection
-    provers: RwLock<HashMap<ProverId, ProverInfo>>,
+    provers: RwLock<HashMap<WorkerId, ProverInfo>>,
 }
 
 impl ProversPool {
@@ -39,7 +39,7 @@ impl ProversPool {
 
     /// Returns the number of provers currently available for new jobs.
     pub async fn idle_provers(&self) -> usize {
-        self.provers.read().await.values().filter(|p| p.state == ProverState::Idle).count()
+        self.provers.read().await.values().filter(|p| p.state == WorkerState::Idle).count()
     }
 
     /// Returns the number of provers currently executing tasks.
@@ -48,7 +48,7 @@ impl ProversPool {
             .read()
             .await
             .values()
-            .filter(|p| matches!(p.state, ProverState::Computing(_)))
+            .filter(|p| matches!(p.state, WorkerState::Computing(_)))
             .count()
     }
 
@@ -92,7 +92,7 @@ impl ProversPool {
     /// `InvalidRequest` error if prover ID is already registered.
     pub async fn register_prover(
         &self,
-        prover_id: ProverId,
+        prover_id: WorkerId,
         compute_capacity: impl Into<ComputeCapacity>,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> CoordinatorResult<()> {
@@ -125,13 +125,13 @@ impl ProversPool {
     /// `InvalidRequest` error if prover ID is not registered.
     pub async fn reconnect_prover(
         &self,
-        prover_id: ProverId,
+        prover_id: WorkerId,
         compute_capacity: impl Into<ComputeCapacity>,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> CoordinatorResult<()> {
         match self.provers.write().await.get_mut(&prover_id) {
             Some(existing_prover) => {
-                existing_prover.state = ProverState::Idle;
+                existing_prover.state = WorkerState::Idle;
                 existing_prover.compute_capacity = compute_capacity.into();
                 existing_prover.msg_sender = msg_sender;
                 existing_prover.update_last_heartbeat();
@@ -153,7 +153,7 @@ impl ProversPool {
     /// # Parameters
     ///
     /// - `prover_id`: Unique identifier for the prover to be removed.
-    pub async fn unregister_prover(&self, prover_id: &ProverId) -> CoordinatorResult<()> {
+    pub async fn unregister_prover(&self, prover_id: &WorkerId) -> CoordinatorResult<()> {
         self.provers.write().await.remove(prover_id).map(|_| ()).ok_or_else(|| {
             let msg = format!("Prover {prover_id} not found for removal");
             warn!("{}", msg);
@@ -166,7 +166,7 @@ impl ProversPool {
     /// # Parameters
     ///
     /// - `prover_id`: Unique identifier for the prover.
-    pub async fn prover_state(&self, prover_id: &ProverId) -> Option<ProverState> {
+    pub async fn prover_state(&self, prover_id: &WorkerId) -> Option<WorkerState> {
         self.provers.read().await.get(prover_id).map(|p| p.state.clone())
     }
 
@@ -178,8 +178,8 @@ impl ProversPool {
     /// - `state`: New state to set for the specified provers.
     pub async fn mark_provers_with_state(
         &self,
-        prover_ids: &[ProverId],
-        state: ProverState,
+        prover_ids: &[WorkerId],
+        state: WorkerState,
     ) -> CoordinatorResult<()> {
         for prover_id in prover_ids {
             self.mark_prover_with_state(prover_id, state.clone()).await?;
@@ -195,8 +195,8 @@ impl ProversPool {
     /// - `state`: New state to set for the prover.
     pub async fn mark_prover_with_state(
         &self,
-        prover_id: &ProverId,
-        state: ProverState,
+        prover_id: &WorkerId,
+        state: WorkerState,
     ) -> CoordinatorResult<()> {
         if let Some(prover) = self.provers.write().await.get_mut(prover_id) {
             prover.state = state;
@@ -214,7 +214,7 @@ impl ProversPool {
     /// - `message`: The message to send to the prover.
     pub async fn send_message(
         &self,
-        prover_id: &ProverId,
+        prover_id: &WorkerId,
         message: CoordinatorMessageDto,
     ) -> CoordinatorResult<()> {
         if let Some(prover) = self.provers.read().await.get(prover_id) {
@@ -235,7 +235,7 @@ impl ProversPool {
     /// # Parameters
     ///
     /// - `prover_id`: Unique identifier for the prover.
-    pub async fn update_last_heartbeat(&self, prover_id: &ProverId) -> CoordinatorResult<()> {
+    pub async fn update_last_heartbeat(&self, prover_id: &WorkerId) -> CoordinatorResult<()> {
         if let Some(prover) = self.provers.write().await.get_mut(prover_id) {
             prover.update_last_heartbeat();
             Ok(())
@@ -262,7 +262,7 @@ impl ProversPool {
         &self,
         required_compute_capacity: ComputeCapacity,
         execution_mode: JobExecutionMode,
-    ) -> CoordinatorResult<(Vec<ProverId>, Vec<Vec<u32>>)> {
+    ) -> CoordinatorResult<(Vec<WorkerId>, Vec<Vec<u32>>)> {
         // Simulation mode requires exactly one prover
         if execution_mode.is_simulating() && self.num_provers().await != 1 {
             warn!("Simulated mode enabled but there are multiple provers connected. Only the first prover will be used.");
@@ -282,10 +282,10 @@ impl ProversPool {
         let provers = self.provers.write().await;
 
         // For simulation mode, replicate single prover multiple times
-        let available_provers: Vec<(&ProverId, &ProverInfo)> = if execution_mode.is_simulating() {
+        let available_provers: Vec<(&WorkerId, &ProverInfo)> = if execution_mode.is_simulating() {
             // Copy the only available idle prover 'times' times
             if let Some((prover_id, prover_info)) =
-                provers.iter().find(|(_, p)| matches!(p.state, ProverState::Idle))
+                provers.iter().find(|(_, p)| matches!(p.state, WorkerState::Idle))
             {
                 let times = (required_compute_capacity.compute_units as f32
                     / prover_info.compute_capacity.compute_units as f32)
@@ -297,7 +297,7 @@ impl ProversPool {
             }
         } else {
             // Standard mode: use all idle provers
-            provers.iter().filter(|(_, p)| matches!(p.state, ProverState::Idle)).collect()
+            provers.iter().filter(|(_, p)| matches!(p.state, WorkerState::Idle)).collect()
         };
 
         let available_capacity: u32 =
@@ -314,7 +314,7 @@ impl ProversPool {
 
         // Step 1: Select provers that can cover the required compute capacity
         for (prover_id, prover_connection) in available_provers {
-            if matches!(prover_connection.state, ProverState::Idle) {
+            if matches!(prover_connection.state, WorkerState::Idle) {
                 selected_provers.push(prover_id.clone());
                 prover_capacities.push(prover_connection.compute_capacity.compute_units);
                 total_capacity += prover_connection.compute_capacity.compute_units;
