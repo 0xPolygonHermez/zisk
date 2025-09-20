@@ -9,8 +9,6 @@ mod mem_align_rom_sm;
 mod mem_align_sm;
 mod mem_align_write_byte_instance;
 mod mem_counters_cursor;
-#[cfg(feature = "debug_mem")]
-mod mem_debug;
 mod mem_inputs;
 mod mem_module;
 mod mem_module_collector;
