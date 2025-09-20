@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "coordinator"
+name = "zisk-coordinator"
 path = "src/cli/main.rs"
 
 [dependencies]
