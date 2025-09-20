@@ -1,9 +1,5 @@
 use crate::{worker_service::ComputationResult, ProverServiceConfig, WorkerService};
 use anyhow::{anyhow, Result};
-use distributed_common::{AggProofData, AggregationParams, BlockContext, WorkerState};
-use distributed_common::{BlockId, JobId};
-use distributed_grpc_api::execute_task_response::ResultData;
-use distributed_grpc_api::*;
 use proofman::{AggProofs, ContributionsInfo};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
@@ -11,6 +7,10 @@ use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info};
+use zisk_distributed_common::{AggProofData, AggregationParams, BlockContext, WorkerState};
+use zisk_distributed_common::{BlockId, JobId};
+use zisk_distributed_grpc_api::execute_task_response::ResultData;
+use zisk_distributed_grpc_api::*;
 
 use crate::config::WorkerServiceConfig;
 

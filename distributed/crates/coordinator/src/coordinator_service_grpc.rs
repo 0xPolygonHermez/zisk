@@ -5,13 +5,13 @@
 //! with provers and admin API endpoints.
 
 use async_stream::stream;
-use distributed_common::{CoordinatorMessageDto, JobId, WorkerId};
-use distributed_grpc_api::{distributed_api_server::*, *};
 use futures_util::{Stream, StreamExt};
 use std::{pin::Pin, sync::Arc};
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
+use zisk_distributed_common::{CoordinatorMessageDto, JobId, WorkerId};
+use zisk_distributed_grpc_api::{distributed_api_server::*, *};
 
 use crate::config::Config;
 use crate::coordinator_service::MessageSender;

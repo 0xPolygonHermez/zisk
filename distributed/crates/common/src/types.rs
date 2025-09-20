@@ -101,7 +101,7 @@ impl std::fmt::Display for BlockId {
     }
 }
 
-/// Prover ID wrapper for type safety
+/// Worker ID wrapper for type safety
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct WorkerId(String);
 
@@ -132,14 +132,14 @@ impl From<String> for WorkerId {
 }
 
 impl From<WorkerId> for String {
-    fn from(prover_id: WorkerId) -> Self {
-        prover_id.0
+    fn from(worker_id: WorkerId) -> Self {
+        worker_id.0
     }
 }
 
 impl std::fmt::Display for WorkerId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ProverId({})", self.0)
+        write!(f, "WorkerId({})", self.0)
     }
 }
 
@@ -165,7 +165,7 @@ impl Display for WorkerState {
     }
 }
 
-/// Compute capacity for provers
+/// Compute capacity
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ComputeCapacity {
     pub compute_units: u32,
@@ -186,7 +186,7 @@ impl std::fmt::Display for ComputeCapacity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobExecutionMode {
     Standard,        // the normal mode
-    Simulating(u32), // simulation mode where we simulate N nodes but only use one prover
+    Simulating(u32), // simulation mode where we simulate N workers but only use one worker
 }
 
 impl JobExecutionMode {
@@ -229,8 +229,8 @@ pub struct Job {
     pub state: JobState,
     pub block: BlockContext,
     pub compute_capacity: ComputeCapacity,
-    pub provers: Vec<WorkerId>,
-    pub agg_prover_id: Option<WorkerId>,
+    pub workers: Vec<WorkerId>,
+    pub agg_worker_id: Option<WorkerId>,
     pub partitions: Vec<Vec<u32>>,
     pub results: HashMap<JobPhase, HashMap<WorkerId, JobResult>>,
     pub stats: HashMap<JobPhase, JobStats>,
@@ -244,7 +244,7 @@ impl Job {
         block_id: BlockId,
         input_path: PathBuf,
         compute_capacity: ComputeCapacity,
-        selected_provers: Vec<WorkerId>,
+        selected_workers: Vec<WorkerId>,
         partitions: Vec<Vec<u32>>,
         execution_mode: JobExecutionMode,
     ) -> Self {
@@ -255,8 +255,8 @@ impl Job {
             state: JobState::Created,
             block: BlockContext { block_id, input_path },
             compute_capacity,
-            provers: selected_provers,
-            agg_prover_id: None,
+            workers: selected_workers,
+            agg_worker_id: None,
             partitions,
             results: HashMap::new(),
             stats: HashMap::new(),
@@ -390,7 +390,7 @@ impl fmt::Display for JobPhase {
 }
 
 #[derive(Debug, Clone)]
-pub struct ProverAllocationDto {
+pub struct WorkerAllocationDto {
     pub range: Range<u32>,
 }
 

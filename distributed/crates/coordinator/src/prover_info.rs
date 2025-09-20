@@ -3,7 +3,7 @@ use std::fmt::Display;
 use crate::coordinator_service::MessageSender;
 
 use chrono::{DateTime, Utc};
-use distributed_common::{ComputeCapacity, WorkerId, WorkerState};
+use zisk_distributed_common::{ComputeCapacity, WorkerId, WorkerState};
 
 /// Information about a connected prover client
 pub struct ProverInfo {

@@ -1,9 +1,6 @@
 use anyhow::Result;
 use asm_runner::AsmRunnerOptions;
 use asm_runner::AsmServices;
-use distributed_common::AggregationParams;
-use distributed_common::JobId;
-use distributed_common::JobPhase;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::AggProofs;
@@ -17,6 +14,9 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 use witness::WitnessLibrary;
+use zisk_distributed_common::AggregationParams;
+use zisk_distributed_common::JobId;
+use zisk_distributed_common::JobPhase;
 
 use zisk_common::ZiskLibInitFn;
 

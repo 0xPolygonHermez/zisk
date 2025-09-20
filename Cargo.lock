@@ -1092,68 +1092,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "distributed-common"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "borsh",
- "chrono",
- "proofman",
- "serde",
- "serde_json",
- "thiserror 2.0.16",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "distributed-coordinator"
-version = "0.12.0"
-dependencies = [
- "anyhow",
- "async-stream",
- "chrono",
- "clap",
- "config",
- "dashmap",
- "distributed-common",
- "distributed-grpc-api",
- "futures",
- "futures-util",
- "proofman",
- "prost-types",
- "reqwest",
- "serde",
- "serde_json",
- "signal-hook",
- "signal-hook-tokio",
- "thiserror 2.0.16",
- "tokio",
- "tonic",
- "tracing",
- "uuid",
- "witness",
-]
-
-[[package]]
-name = "distributed-grpc-api"
-version = "0.12.0"
-dependencies = [
- "chrono",
- "distributed-common",
- "prost",
- "prost-types",
- "serde",
- "serde_json",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "dlv-list"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5509,6 +5447,68 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-distributed-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "borsh",
+ "chrono",
+ "proofman",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.16",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "zisk-distributed-coordinator"
+version = "0.12.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "chrono",
+ "clap",
+ "config",
+ "dashmap",
+ "futures",
+ "futures-util",
+ "proofman",
+ "prost-types",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "signal-hook",
+ "signal-hook-tokio",
+ "thiserror 2.0.16",
+ "tokio",
+ "tonic",
+ "tracing",
+ "uuid",
+ "witness",
+ "zisk-distributed-common",
+ "zisk-distributed-grpc-api",
+]
+
+[[package]]
+name = "zisk-distributed-grpc-api"
+version = "0.12.0"
+dependencies = [
+ "chrono",
+ "prost",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tracing",
+ "uuid",
+ "zisk-distributed-common",
+]
+
+[[package]]
 name = "zisk-distributed-worker"
 version = "0.12.0"
 dependencies = [
@@ -5518,8 +5518,6 @@ dependencies = [
  "cargo-zisk",
  "clap",
  "colored",
- "distributed-common",
- "distributed-grpc-api",
  "fields",
  "libloading",
  "proofman",
@@ -5534,6 +5532,8 @@ dependencies = [
  "vergen",
  "witness",
  "zisk-common",
+ "zisk-distributed-common",
+ "zisk-distributed-grpc-api",
  "zisk-pil",
 ]
 

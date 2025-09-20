@@ -1,5 +1,5 @@
 [package]
-name = "distributed-coordinator"
+name = "zisk-distributed-coordinator"
 description = "Core types and functionality for Distributed Network"
 version.workspace = true
 edition.workspace = true
@@ -11,9 +11,10 @@ name = "zisk-coordinator"
 path = "src/cli/main.rs"
 
 [dependencies]
+zisk-distributed-grpc-api = { workspace = true }
+zisk-distributed-common = { workspace = true }
+
 proofman = { workspace = true }
-distributed-grpc-api = { workspace = true }
-distributed-common = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

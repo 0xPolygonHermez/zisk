@@ -90,10 +90,10 @@ ziskos = { path = "ziskos/entrypoint" }
 circuit = { path = "tools/circuit" }
 
 # Distributed crates
-distributed-common = { path = "distributed/crates/common" }
-distributed-coordinator = { path = "distributed/crates/coordinator" }
-distributed-grpc-api = { path = "distributed/crates/grpc-api" }
-distributed-prover = { path = "distributed/crates/worker" }
+zisk-distributed-common = { path = "distributed/crates/common" }
+zisk-distributed-coordinator = { path = "distributed/crates/coordinator" }
+zisk-distributed-grpc-api = { path = "distributed/crates/grpc-api" }
+zisk-distributed-prover = { path = "distributed/crates/worker" }
 
 # Proofman
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-updated" }

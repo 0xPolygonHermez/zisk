@@ -1,6 +1,6 @@
 use anyhow::Result;
-use distributed_common::JobId;
 use tracing::{error, info, warn};
+use zisk_distributed_common::JobId;
 
 /// Sends a webhook notification upon job completion or failure.
 ///

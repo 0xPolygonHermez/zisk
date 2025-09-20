@@ -1,6 +1,4 @@
 use anyhow::Result;
-use distributed_common::{AggregationParams, BlockContext, JobPhase, WorkerState};
-use distributed_common::{ComputeCapacity, JobId, WorkerId};
 use proofman::{AggProofs, ContributionsInfo};
 use proofman_common::{DebugInfo, ParamsGPU};
 use std::collections::HashMap;
@@ -8,6 +6,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
+use zisk_distributed_common::{AggregationParams, BlockContext, JobPhase, WorkerState};
+use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
 
 use crate::proof_generator::ProofGenerator;
 

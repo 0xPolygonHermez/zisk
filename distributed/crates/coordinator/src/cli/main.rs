@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
     let args = CoordinatorServerArgs::parse();
 
     // Initialize tracing
-    distributed_common::tracing::init()?;
+    zisk_distributed_common::tracing::init()?;
 
     match args.command {
         Some(CoordinatorServerCommands::ProveBlock {

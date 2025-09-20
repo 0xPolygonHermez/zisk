@@ -1,7 +1,7 @@
 use anyhow::Result;
-use distributed_grpc_api::{distributed_api_client::DistributedApiClient, LaunchProofRequest};
 use tonic::transport::Channel;
 use tracing::{error, info};
+use zisk_distributed_grpc_api::{distributed_api_client::DistributedApiClient, LaunchProofRequest};
 
 /// Handle the prove-block subcommand - makes RPC request to coordinator
 pub async fn handle(
@@ -31,10 +31,10 @@ pub async fn handle(
     let response = client.launch_proof(launch_proof_request).await?;
 
     match response.into_inner().result {
-        Some(distributed_grpc_api::launch_proof_response::Result::JobId(job_id)) => {
+        Some(zisk_distributed_grpc_api::launch_proof_response::Result::JobId(job_id)) => {
             info!("Proof job started successfully with job_id: {}", job_id);
         }
-        Some(distributed_grpc_api::launch_proof_response::Result::Error(error)) => {
+        Some(zisk_distributed_grpc_api::launch_proof_response::Result::Error(error)) => {
             error!("Proof job failed: {} - {}", error.code, error.message);
         }
         None => {

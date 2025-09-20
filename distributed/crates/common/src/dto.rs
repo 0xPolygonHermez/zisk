@@ -36,17 +36,17 @@ pub struct JobStatusDto {
     pub block_id: BlockId,
     pub state: JobState,
     pub phase: Option<JobPhase>,
-    pub assigned_provers: Vec<WorkerId>,
+    pub assigned_workers: Vec<WorkerId>,
     pub start_time: u64,
     pub duration_ms: u64,
 }
 
-pub struct ProversListDto {
-    pub provers: Vec<ProverInfoDto>,
+pub struct WorkersListDto {
+    pub workers: Vec<WorkerInfoDto>,
 }
 
-pub struct ProverInfoDto {
-    pub prover_id: WorkerId,
+pub struct WorkerInfoDto {
+    pub worker_id: WorkerId,
     pub state: WorkerState,
     pub compute_capacity: ComputeCapacity,
     pub connected_at: DateTime<Utc>,
@@ -54,10 +54,10 @@ pub struct ProverInfoDto {
 }
 
 pub struct SystemStatusDto {
-    pub total_provers: u32,
+    pub total_workers: u32,
     pub compute_capacity: ComputeCapacity,
-    pub idle_provers: u32,
-    pub busy_provers: u32,
+    pub idle_workers: u32,
+    pub busy_workers: u32,
     pub active_jobs: u32,
 }
 
@@ -76,20 +76,20 @@ pub struct MetricsDto {
     pub active_connections: u32,
 }
 
-pub struct ProverRegisterRequestDto {
-    pub prover_id: WorkerId,
+pub struct WorkerRegisterRequestDto {
+    pub worker_id: WorkerId,
     pub compute_capacity: ComputeCapacity,
 }
 
-pub struct ProverReconnectRequestDto {
-    pub prover_id: WorkerId,
+pub struct WorkerReconnectRequestDto {
+    pub worker_id: WorkerId,
     pub compute_capacity: ComputeCapacity,
 }
 
 pub enum CoordinatorMessageDto {
     Heartbeat(HeartbeatDto),
     Shutdown(ShutdownDto),
-    ProverRegisterResponse(ProverRegisterResponseDto),
+    WorkerRegisterResponse(WorkerRegisterResponseDto),
     ExecuteTaskRequest(ExecuteTaskRequestDto),
     JobCancelled(JobCancelledDto),
 }
@@ -103,8 +103,8 @@ pub struct ShutdownDto {
     pub grace_period_seconds: u32,
 }
 
-pub struct ProverRegisterResponseDto {
-    pub prover_id: WorkerId,
+pub struct WorkerRegisterResponseDto {
+    pub worker_id: WorkerId,
     pub accepted: bool,
     pub message: String,
     pub registered_at: DateTime<Utc>,
@@ -116,7 +116,7 @@ pub struct JobCancelledDto {
 }
 
 pub struct ExecuteTaskRequestDto {
-    pub prover_id: WorkerId,
+    pub worker_id: WorkerId,
     pub job_id: JobId,
     pub params: ExecuteTaskRequestTypeDto,
 }
@@ -131,8 +131,8 @@ pub struct ContributionParamsDto {
     pub block_id: BlockId,
     pub input_path: String,
     pub rank_id: u32,
-    pub total_provers: u32,
-    pub prover_allocation: Vec<u32>,
+    pub total_workers: u32,
+    pub worker_allocation: Vec<u32>,
     pub job_compute_units: ComputeCapacity,
 }
 
@@ -169,7 +169,7 @@ pub struct ProofDto {
 
 pub struct ExecuteTaskResponseDto {
     pub job_id: JobId,
-    pub prover_id: WorkerId,
+    pub worker_id: WorkerId,
     pub success: bool,
     pub error_message: Option<String>,
     pub result_data: ExecuteTaskResponseResultDataDto,
@@ -182,11 +182,11 @@ pub enum ExecuteTaskResponseResultDataDto {
 }
 
 pub struct HeartbeatAckDto {
-    pub prover_id: WorkerId,
+    pub worker_id: WorkerId,
 }
 
-pub struct ProverErrorDto {
-    pub prover_id: WorkerId,
+pub struct WorkerErrorDto {
+    pub worker_id: WorkerId,
     pub job_id: JobId,
     pub error_message: String,
 }

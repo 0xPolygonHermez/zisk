@@ -38,19 +38,19 @@ use crate::{
 
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use distributed_common::{
+use proofman::ContributionsInfo;
+use std::{collections::HashMap, path::PathBuf};
+use tokio::sync::RwLock;
+use tracing::{error, info, instrument, warn};
+use zisk_distributed_common::{
     AggParamsDto, AggProofData, BlockId, ChallengesDto, ComputeCapacity, ContributionParamsDto,
     CoordinatorMessageDto, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
     ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, Job,
     JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
     JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
-    ProveParamsDto, ProverErrorDto, ProverReconnectRequestDto, ProverRegisterRequestDto,
-    ProversListDto, StatusInfoDto, SystemStatusDto, WorkerId, WorkerState,
+    ProveParamsDto, StatusInfoDto, SystemStatusDto, WorkerErrorDto, WorkerId,
+    WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
 };
-use proofman::ContributionsInfo;
-use std::{collections::HashMap, path::PathBuf};
-use tokio::sync::RwLock;
-use tracing::{error, info, instrument, warn};
 
 /// Trait for sending messages to provers through various communication channels.
 ///
@@ -157,7 +157,7 @@ impl CoordinatorService {
                     block_id: job.block.block_id.clone(),
                     phase: Some(phase.clone()),
                     state: job.state().clone(),
-                    assigned_provers: job.provers.clone(),
+                    assigned_workers: job.workers.clone(),
                     start_time: job.start_time.timestamp() as u64,
                     duration_ms: job.duration_ms.unwrap_or(0),
                 });
@@ -172,7 +172,7 @@ impl CoordinatorService {
     /// # Returns
     ///
     /// A `ProversListDto` containing detailed information about each registered prover.
-    pub async fn handle_provers_list(&self) -> ProversListDto {
+    pub async fn handle_provers_list(&self) -> WorkersListDto {
         self.provers_pool.provers_list().await
     }
 
@@ -198,7 +198,7 @@ impl CoordinatorService {
             } else {
                 None
             },
-            assigned_provers: job.provers.clone(),
+            assigned_workers: job.workers.clone(),
             start_time: job.start_time.timestamp() as u64,
             duration_ms: job.duration_ms.unwrap_or(0),
         })
@@ -223,10 +223,10 @@ impl CoordinatorService {
         }
 
         SystemStatusDto {
-            total_provers: total_provers as u32,
+            total_workers: total_provers as u32,
             compute_capacity: self.provers_pool.compute_capacity().await,
-            idle_provers: self.provers_pool.idle_provers().await as u32,
-            busy_provers: busy_provers as u32,
+            idle_workers: self.provers_pool.idle_provers().await as u32,
+            busy_workers: busy_provers as u32,
             active_jobs: active_jobs as u32,
         }
     }
@@ -458,18 +458,18 @@ impl CoordinatorService {
         let selected_provers = match job.execution_mode {
             // In simulation mode we only use the first prover to simulate the execution of N nodes
             JobExecutionMode::Simulating(simulated_node) => {
-                if simulated_node as usize >= job.provers.len() {
+                if simulated_node as usize >= job.workers.len() {
                     let msg = format!(
                         "Simulated mode index ({simulated_node}) exceeds available provers ({}).",
-                        job.provers.len()
+                        job.workers.len()
                     );
                     return Err(CoordinatorError::InvalidArgument(msg));
                 }
 
-                job.provers[0..1].to_vec()
+                job.workers[0..1].to_vec()
             }
             // In standard mode use the already selected provers during the job creation
-            JobExecutionMode::Standard => job.provers.clone(),
+            JobExecutionMode::Standard => job.workers.clone(),
         };
 
         Ok(selected_provers)
@@ -497,14 +497,14 @@ impl CoordinatorService {
         for (rank_id, prover_id) in active_provers.iter().enumerate() {
             // Create contribution task request
             let req = ExecuteTaskRequestDto {
-                prover_id: prover_id.clone(),
+                worker_id: prover_id.clone(),
                 job_id: job.job_id.clone(),
                 params: ExecuteTaskRequestTypeDto::ContributionParams(ContributionParamsDto {
                     block_id: block_id.clone(),
                     input_path: job.block.input_path.display().to_string(),
                     rank_id: rank_id as u32,
-                    total_provers: active_provers.len() as u32,
-                    prover_allocation: job.partitions[rank_id].clone(),
+                    total_workers: active_provers.len() as u32,
+                    worker_allocation: job.partitions[rank_id].clone(),
                     job_compute_units: required_compute_capacity,
                 }),
             };
@@ -535,13 +535,13 @@ impl CoordinatorService {
         job.change_state(JobState::Failed);
 
         // Reset prover statuses back to Idle
-        self.provers_pool.mark_provers_with_state(&job.provers, WorkerState::Idle).await?;
+        self.provers_pool.mark_provers_with_state(&job.workers, WorkerState::Idle).await?;
 
         error!(
             "Failed job {} (reason: {}) and freed {} provers",
             job_id,
             reason.as_ref(),
-            job.provers.len()
+            job.workers.len()
         );
 
         drop(job); // Release job lock before calling post_launch_proof
@@ -583,7 +583,7 @@ impl CoordinatorService {
     /// maintain system stability under load.
     pub async fn handle_stream_registration(
         &self,
-        req: ProverRegisterRequestDto,
+        req: WorkerRegisterRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> (bool, String) {
         let max_connections = self.config.coordinator.max_total_provers as usize;
@@ -596,7 +596,7 @@ impl CoordinatorService {
 
         match self
             .provers_pool
-            .register_prover(req.prover_id, req.compute_capacity, msg_sender)
+            .register_prover(req.worker_id, req.compute_capacity, msg_sender)
             .await
         {
             Ok(()) => (true, "Registration successful".to_string()),
@@ -643,12 +643,12 @@ impl CoordinatorService {
     /// - System state consistency allows for safe state restoration
     pub async fn handle_stream_reconnection(
         &self,
-        req: ProverReconnectRequestDto,
+        req: WorkerReconnectRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> (bool, String) {
         match self
             .provers_pool
-            .reconnect_prover(req.prover_id, req.compute_capacity, msg_sender)
+            .reconnect_prover(req.worker_id, req.compute_capacity, msg_sender)
             .await
         {
             Ok(()) => (true, "Reconnection successful".to_string()),
@@ -694,7 +694,7 @@ impl CoordinatorService {
         &self,
         message: HeartbeatAckDto,
     ) -> CoordinatorResult<()> {
-        self.provers_pool.update_last_heartbeat(&message.prover_id).await
+        self.provers_pool.update_last_heartbeat(&message.worker_id).await
     }
 
     /// Handles error reports from provers and marks associated jobs as failed.
@@ -702,11 +702,11 @@ impl CoordinatorService {
     /// # Parameters
     ///
     /// * `message` - Prover error message containing job ID, prover ID, and error details
-    pub async fn handle_stream_error(&self, message: ProverErrorDto) -> CoordinatorResult<()> {
+    pub async fn handle_stream_error(&self, message: WorkerErrorDto) -> CoordinatorResult<()> {
         // Update last heartbeat
-        self.provers_pool.update_last_heartbeat(&message.prover_id).await?;
+        self.provers_pool.update_last_heartbeat(&message.worker_id).await?;
 
-        error!("Prover {} error: {}", message.prover_id, message.error_message);
+        error!("Prover {} error: {}", message.worker_id, message.error_message);
 
         self.fail_job(&message.job_id, message.error_message).await.map_err(|e| {
             error!("Failed to mark job {} as failed after prover error: {}", message.job_id, e);
@@ -756,13 +756,13 @@ impl CoordinatorService {
         message: &ExecuteTaskResponseDto,
     ) -> CoordinatorResult<()> {
         // Update last heartbeat
-        self.provers_pool.update_last_heartbeat(&message.prover_id).await?;
+        self.provers_pool.update_last_heartbeat(&message.worker_id).await?;
 
         // Check if job exists
         if !self.jobs.contains_key(&message.job_id) {
             warn!(
                 "Received ExecuteTaskResponse for unknown job {} from prover {}",
-                message.job_id, message.prover_id
+                message.job_id, message.worker_id
             );
             return Err(CoordinatorError::NotFoundOrInaccessible);
         }
@@ -780,7 +780,7 @@ impl CoordinatorService {
 
         Err(CoordinatorError::ProverError(format!(
             "Prover {} failed to execute task for {}: {}",
-            message.prover_id,
+            message.worker_id,
             message.job_id,
             message.error_message.unwrap_or_default()
         )))
@@ -846,7 +846,7 @@ impl CoordinatorService {
     ) -> CoordinatorResult<()> {
         let contributions_results = job.results.entry(JobPhase::Contributions).or_default();
 
-        let prover_id = execute_task_response.prover_id.clone();
+        let prover_id = execute_task_response.worker_id.clone();
 
         // Check for duplicate results
         if contributions_results.contains_key(&prover_id) {
@@ -915,13 +915,13 @@ impl CoordinatorService {
             "Phase1 progress for {}: {}/{} provers completed",
             job.job_id,
             phase1_results_len,
-            job.provers.len()
+            job.workers.len()
         );
 
         // Ensure we have results from all assigned provers before proceeding.
         // If not all provers have responded (and we're not in simulation mode),
         // return early and wait for more results.
-        if !job.execution_mode.is_simulating() && phase1_results_len < job.provers.len() {
+        if !job.execution_mode.is_simulating() && phase1_results_len < job.workers.len() {
             return false;
         }
 
@@ -1058,7 +1058,7 @@ impl CoordinatorService {
                 // Create Phase 2 task with complete challenge set
                 // All provers receive the full challenge data regardless of their individual contributions
                 let req = ExecuteTaskRequestDto {
-                    prover_id: prover_id.clone(),
+                    worker_id: prover_id.clone(),
                     job_id: job_id.clone(),
                     params: ExecuteTaskRequestTypeDto::ProveParams(ProveParamsDto {
                         challenges: challenges.clone(), // Complete challenge set from Phase 1 aggregation
@@ -1092,7 +1092,7 @@ impl CoordinatorService {
         execute_task_response: ExecuteTaskResponseDto,
     ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id.clone();
-        let prover_id = execute_task_response.prover_id.clone();
+        let prover_id = execute_task_response.worker_id.clone();
 
         let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let mut job = job_entry.write().await;
@@ -1131,7 +1131,7 @@ impl CoordinatorService {
         execute_task_response: ExecuteTaskResponseDto,
     ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id;
-        let prover_id = execute_task_response.prover_id;
+        let prover_id = execute_task_response.worker_id;
 
         let phase2_results = job.results.entry(JobPhase::Prove).or_default();
 
@@ -1177,7 +1177,7 @@ impl CoordinatorService {
     async fn complete_simulated_job(&self, job: &mut Job) -> CoordinatorResult<()> {
         job.change_state(JobState::Completed);
 
-        let assigned_provers = job.provers.clone();
+        let assigned_provers = job.workers.clone();
 
         // Reset prover statuses back to Idle
         self.provers_pool.mark_provers_with_state(&assigned_provers, WorkerState::Idle).await?;
@@ -1211,7 +1211,7 @@ impl CoordinatorService {
         job: &mut Job,
         candidate_prover_id: &WorkerId,
     ) -> CoordinatorResult<WorkerId> {
-        match job.agg_prover_id.as_ref() {
+        match job.agg_worker_id.as_ref() {
             Some(existing_aggregator_id) => {
                 // Aggregator already exists - mark the candidate as idle since it's not the aggregator
                 // This immediately frees up the prover's resources for other jobs
@@ -1223,7 +1223,7 @@ impl CoordinatorService {
             None => {
                 // No aggregator yet - assign the candidate as aggregator
                 // This represents the first prover to complete Phase 2, implementing "first-wins" selection
-                job.agg_prover_id = Some(candidate_prover_id.clone());
+                job.agg_worker_id = Some(candidate_prover_id.clone());
                 job.change_state(JobState::Running(JobPhase::Aggregate));
 
                 // Update prover state
@@ -1270,12 +1270,12 @@ impl CoordinatorService {
             "Phase2 progress for {}: {}/{} provers completed",
             job.job_id,
             phase2_results.len(),
-            job.provers.len()
+            job.workers.len()
         );
 
         // Check if all assigned provers have completed their proof generation
         // Early return allows other provers to continue working while we wait
-        if phase2_results.len() < job.provers.len() {
+        if phase2_results.len() < job.workers.len() {
             return Ok(false);
         }
 
@@ -1369,7 +1369,7 @@ impl CoordinatorService {
             .collect();
 
         let req = ExecuteTaskRequestDto {
-            prover_id: agg_prover_id.clone(),
+            worker_id: agg_prover_id.clone(),
             job_id: job_id.clone(),
             params: ExecuteTaskRequestTypeDto::AggParams(AggParamsDto {
                 agg_proofs: proofs,
@@ -1435,7 +1435,7 @@ impl CoordinatorService {
 
         // Mark the aggregation prover as Idle
         self.provers_pool
-            .mark_prover_with_state(job.agg_prover_id.as_ref().unwrap(), WorkerState::Idle)
+            .mark_prover_with_state(job.agg_worker_id.as_ref().unwrap(), WorkerState::Idle)
             .await?;
 
         // Finalize completed job

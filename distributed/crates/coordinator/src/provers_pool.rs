@@ -3,13 +3,13 @@
 //! Manages the pool of connected provers, their states, and capacity allocation
 //! for distributed proof generation jobs.
 
-use distributed_common::{
-    ComputeCapacity, CoordinatorMessageDto, JobExecutionMode, WorkerId, ProverInfoDto, WorkerState,
-    ProversListDto,
-};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
+use zisk_distributed_common::{
+    ComputeCapacity, CoordinatorMessageDto, JobExecutionMode, WorkerId, WorkerInfoDto, WorkerState,
+    WorkersListDto,
+};
 
 use crate::{
     coordinator_service::MessageSender,
@@ -61,14 +61,14 @@ impl ProversPool {
     }
 
     /// Returns detailed information about all registered provers.
-    pub async fn provers_list(&self) -> ProversListDto {
+    pub async fn provers_list(&self) -> WorkersListDto {
         let provers = self
             .provers
             .read()
             .await
             .values()
-            .map(|prover_info| ProverInfoDto {
-                prover_id: prover_info.prover_id.clone(),
+            .map(|prover_info| WorkerInfoDto {
+                worker_id: prover_info.prover_id.clone(),
                 state: prover_info.state.clone(),
                 compute_capacity: prover_info.compute_capacity,
                 connected_at: prover_info.connected_at,
@@ -76,7 +76,7 @@ impl ProversPool {
             })
             .collect();
 
-        ProversListDto { provers }
+        WorkersListDto { workers: provers }
     }
 
     /// Registers a new prover with the pool.

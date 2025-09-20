@@ -2,7 +2,6 @@ use crate::ProverServiceConfig;
 
 use anyhow::Result;
 use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
-use distributed_common::{ComputeCapacity, WorkerId};
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
@@ -11,6 +10,7 @@ use rom_setup::{
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{collections::HashMap, fs};
+use zisk_distributed_common::{ComputeCapacity, WorkerId};
 
 /// Worker Service Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -288,7 +288,9 @@ pub async fn build_worker_and_prover_config(
 
     // Validate required fields
     if grpc_config.coordinator.url.is_empty() {
-        return Err(anyhow::anyhow!("Coordinator URL is required. Set it in config file or use --url"));
+        return Err(anyhow::anyhow!(
+            "Coordinator URL is required. Set it in config file or use --url"
+        ));
     }
 
     Ok((grpc_config, service_config))

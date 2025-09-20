@@ -19,7 +19,7 @@ use crate::{
     ProversListResponse, Shutdown, StatusInfoResponse, SystemStatus, SystemStatusResponse,
     TaskType,
 };
-use distributed_common::*;
+use zisk_distributed_common::*;
 
 impl From<ComputeCapacity> for GrpcComputeCapacity {
     fn from(capacity: ComputeCapacity) -> Self {
@@ -84,7 +84,7 @@ impl From<JobStatusDto> for JobStatus {
             block_id: dto.block_id.into(),
             phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
             state: dto.state.to_string(),
-            assigned_provers: dto.assigned_provers.into_iter().map(|id| id.into()).collect(),
+            assigned_provers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
             start_time: dto.start_time,
             duration_ms: dto.duration_ms,
         }
@@ -98,7 +98,7 @@ impl From<JobStatusDto> for JobStatusResponse {
             block_id: dto.block_id.into(),
             phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
             state: dto.state.to_string(),
-            assigned_provers: dto.assigned_provers.into_iter().map(|id| id.into()).collect(),
+            assigned_provers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
             start_time: dto.start_time,
             duration_ms: dto.duration_ms,
         };
@@ -106,10 +106,10 @@ impl From<JobStatusDto> for JobStatusResponse {
     }
 }
 
-impl From<ProversListDto> for ProversListResponse {
-    fn from(dto: ProversListDto) -> Self {
+impl From<WorkersListDto> for ProversListResponse {
+    fn from(dto: WorkersListDto) -> Self {
         let provers_info: Vec<ProverInfo> =
-            dto.provers.into_iter().map(|prover| prover.into()).collect();
+            dto.workers.into_iter().map(|prover| prover.into()).collect();
         let provers_list = ProversList { provers: provers_info };
         ProversListResponse {
             result: Some(provers_list_response::Result::ProversList(provers_list)),
@@ -117,10 +117,10 @@ impl From<ProversListDto> for ProversListResponse {
     }
 }
 
-impl From<ProverInfoDto> for ProverInfo {
-    fn from(dto: ProverInfoDto) -> Self {
+impl From<WorkerInfoDto> for ProverInfo {
+    fn from(dto: WorkerInfoDto) -> Self {
         ProverInfo {
-            prover_id: dto.prover_id.into(),
+            prover_id: dto.worker_id.into(),
             state: dto.state.to_string(),
             compute_capacity: Some(dto.compute_capacity.into()),
             last_heartbeat: Some(prost_types::Timestamp {
@@ -138,10 +138,10 @@ impl From<ProverInfoDto> for ProverInfo {
 impl From<SystemStatusDto> for SystemStatusResponse {
     fn from(dto: SystemStatusDto) -> Self {
         let system_status = SystemStatus {
-            total_provers: dto.total_provers,
+            total_provers: dto.total_workers,
             compute_capacity: dto.compute_capacity.compute_units,
-            idle_provers: dto.idle_provers,
-            busy_provers: dto.busy_provers,
+            idle_provers: dto.idle_workers,
+            busy_provers: dto.busy_workers,
             active_jobs: dto.active_jobs,
         };
 
@@ -185,19 +185,19 @@ impl From<MetricsDto> for Metrics {
     }
 }
 
-impl From<ProverRegisterRequest> for ProverRegisterRequestDto {
+impl From<ProverRegisterRequest> for WorkerRegisterRequestDto {
     fn from(req: ProverRegisterRequest) -> Self {
-        ProverRegisterRequestDto {
-            prover_id: req.prover_id.into(),
+        WorkerRegisterRequestDto {
+            worker_id: req.prover_id.into(),
             compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
         }
     }
 }
 
-impl From<ProverReconnectRequest> for ProverReconnectRequestDto {
+impl From<ProverReconnectRequest> for WorkerReconnectRequestDto {
     fn from(req: ProverReconnectRequest) -> Self {
-        ProverReconnectRequestDto {
-            prover_id: req.prover_id.into(),
+        WorkerReconnectRequestDto {
+            worker_id: req.prover_id.into(),
             compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
         }
     }
@@ -212,7 +212,7 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
             CoordinatorMessageDto::Shutdown(shutdown) => {
                 CoordinatorMessage { payload: Some(Payload::Shutdown(shutdown.into())) }
             }
-            CoordinatorMessageDto::ProverRegisterResponse(resp) => {
+            CoordinatorMessageDto::WorkerRegisterResponse(resp) => {
                 CoordinatorMessage { payload: Some(Payload::RegisterResponse(resp.into())) }
             }
             CoordinatorMessageDto::ExecuteTaskRequest(req) => {
@@ -242,10 +242,10 @@ impl From<ShutdownDto> for Shutdown {
     }
 }
 
-impl From<ProverRegisterResponseDto> for ProverRegisterResponse {
-    fn from(dto: ProverRegisterResponseDto) -> Self {
+impl From<WorkerRegisterResponseDto> for ProverRegisterResponse {
+    fn from(dto: WorkerRegisterResponseDto) -> Self {
         ProverRegisterResponse {
-            prover_id: dto.prover_id.as_string(),
+            prover_id: dto.worker_id.as_string(),
             accepted: dto.accepted,
             message: dto.message,
             registered_at: Some(prost_types::Timestamp {
@@ -278,7 +278,7 @@ impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
         };
 
         ExecuteTaskRequest {
-            prover_id: dto.prover_id.into(),
+            prover_id: dto.worker_id.into(),
             job_id: dto.job_id.into(),
             task_type: task_type as i32,
             params: Some(params),
@@ -292,8 +292,8 @@ impl From<ContributionParamsDto> for ContributionParams {
             block_id: dto.block_id.as_string(),
             input_path: dto.input_path,
             rank_id: dto.rank_id,
-            total_provers: dto.total_provers,
-            prover_allocation: dto.prover_allocation,
+            total_provers: dto.total_workers,
+            prover_allocation: dto.worker_allocation,
             job_compute_units: dto.job_compute_units.compute_units,
         }
     }
@@ -380,7 +380,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
 
         ExecuteTaskResponseDto {
             job_id: JobId::from(response.job_id),
-            prover_id: WorkerId::from(response.prover_id),
+            worker_id: WorkerId::from(response.prover_id),
             success: response.success,
             error_message: if response.error_message.is_empty() {
                 None
@@ -394,14 +394,14 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
 
 impl From<HeartbeatAck> for HeartbeatAckDto {
     fn from(message: HeartbeatAck) -> Self {
-        HeartbeatAckDto { prover_id: WorkerId::from(message.prover_id) }
+        HeartbeatAckDto { worker_id: WorkerId::from(message.prover_id) }
     }
 }
 
-impl From<ProverError> for ProverErrorDto {
+impl From<ProverError> for WorkerErrorDto {
     fn from(error: ProverError) -> Self {
-        ProverErrorDto {
-            prover_id: WorkerId::from(error.prover_id),
+        WorkerErrorDto {
+            worker_id: WorkerId::from(error.prover_id),
             job_id: JobId::from(error.job_id),
             error_message: error.error_message,
         }

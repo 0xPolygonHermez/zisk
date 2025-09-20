@@ -1,9 +1,9 @@
 use anyhow::Result;
-use distributed_coordinator::{create_shutdown_signal, Config, CoordinatorServiceGrpc};
-use distributed_grpc_api::distributed_api_server::DistributedApiServer;
 use std::net::TcpListener;
 use tonic::transport::Server;
 use tracing::{error, info};
+use zisk_distributed_coordinator::{create_shutdown_signal, Config, CoordinatorServiceGrpc};
+use zisk_distributed_grpc_api::distributed_api_server::DistributedApiServer;
 
 /// Handle the server mode (default behavior)
 pub async fn handle(port_override: Option<u16>, webhook_url: Option<String>) -> Result<()> {

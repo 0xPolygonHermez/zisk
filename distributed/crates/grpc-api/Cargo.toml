@@ -1,5 +1,5 @@
 [package]
-name = "distributed-grpc-api"
+name = "zisk-distributed-grpc-api"
 description = "gRPC API layer for Distributed Network"
 version.workspace = true
 edition.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-distributed-common = { workspace = true }
+zisk-distributed-common = { workspace = true }
 
 tonic = { workspace = true }
 tonic-prost = { workspace = true }

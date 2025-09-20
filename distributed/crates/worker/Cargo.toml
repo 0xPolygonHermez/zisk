@@ -18,13 +18,14 @@ vergen = { version = "8", default-features = false, features = [
 ] }
 
 [dependencies]
+zisk-distributed-common = { workspace = true }
+zisk-distributed-grpc-api = { workspace = true }
+
 cargo-zisk = { workspace = true }
 zisk-common = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 asm-runner = { workspace = true }
-distributed-common = { workspace = true }
-distributed-grpc-api = { workspace = true }
 fields = { workspace = true }
 witness = { workspace = true }
 rom-setup = { workspace = true }
