@@ -231,7 +231,6 @@ impl ZiskVerifyConstraints {
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,
-                    None,
                     Some(mpi_context.world_rank),
                     Some(mpi_context.local_rank),
                     self.port,
