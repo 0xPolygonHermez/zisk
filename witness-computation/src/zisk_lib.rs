@@ -10,7 +10,7 @@ use pil_std_lib::Std;
 use proofman::register_std;
 use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
-use zisk_core::Riscv2zisk;
+use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 use zisk_pil::{
     ARITH_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS,
     BINARY_EXTENSION_AIR_IDS, INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
@@ -26,8 +26,6 @@ use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
-
-const DEFAULT_CHUNK_SIZE_BITS: u64 = 18;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
@@ -49,7 +47,6 @@ fn init_library(
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
-    chunk_size_bits: Option<u64>,
     world_rank: Option<i32>,
     local_rank: Option<i32>,
     base_port: Option<u16>,
@@ -57,7 +54,8 @@ fn init_library(
     shared_tables: bool,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, world_rank);
-    let chunk_size = 1 << chunk_size_bits.unwrap_or(DEFAULT_CHUNK_SIZE_BITS);
+
+    let chunk_size = CHUNK_SIZE;
 
     let result = Box::new(WitnessLib {
         elf_path,

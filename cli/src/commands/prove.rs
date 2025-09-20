@@ -120,9 +120,6 @@ pub struct ZiskProve {
     #[clap(short = 'b', long, default_value_t = false)]
     pub save_proofs: bool,
 
-    #[clap(short = 'c', long)]
-    pub chunk_size_bits: Option<u64>,
-
     #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
@@ -291,7 +288,6 @@ impl ZiskProve {
             self.elf.clone(),
             self.asm.clone(),
             asm_rom,
-            self.chunk_size_bits,
             Some(mpi_context.world_rank),
             Some(mpi_context.local_rank),
             self.port,
