@@ -4,6 +4,7 @@ use mem_common::{MemCounters, MemDebug};
 use std::path::PathBuf;
 use zisk_common::ChunkId;
 use zisk_common::MemBusData;
+use zisk_pil::MemTrace;
 
 /// Inspect mem_{chunk}.bin files produced with feature save_mem_bus_data
 #[derive(Parser, Debug)]
@@ -61,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let count = debug.get_total();
     let area_wo_duals = count * COSTS[0];
     for (dual, cost) in COSTS.iter().enumerate().skip(1) {
-        let (dual_rows, dual_count) = debug.count_n_dual(dual, 0);
+        let (dual_rows, dual_count) = debug.count_n_dual(dual);
         let rows_w_duals = count - dual_count as usize + dual_rows as usize;
         let area_w_duals = rows_w_duals * cost;
         println!("area_w_duals:{area_w_duals} area_wo_duals:{area_wo_duals}");
@@ -84,8 +85,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ((area_wo_duals - area_w_duals) as f32 * 100.0) / area_wo_duals as f32,
             (dual as f32 * 100.0) / count as f32
     );
-    debug.info_instances(1 << 22);
-    debug.info_chunks(1 << 22, 1 << 18);
+    debug.info_instances(MemTrace::<usize>::NUM_ROWS);
+    debug.info_chunks(MemTrace::<usize>::NUM_ROWS);
     debug.dump_to_file("tmp/mem_debug_cli_ops.txt");
     // debug.save_to_file("tmp/debug_mem.txt");
     Ok(())

@@ -126,9 +126,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                 trace[i].previous_step = F::from_u64(last_step);
                 // println!("trace[{i}].previous_step = {last_step} (last_step)");
                 let previous_step = mem_ops[index - 1].step;
-                let previous_chunk_id =
-                    MemHelpers::static_mem_step_to_chunk(previous_step, 1 << 18);
-                let chunk_id = MemHelpers::static_mem_step_to_chunk(step, 1 << 18);
+                let previous_chunk_id = MemHelpers::mem_step_to_chunk(previous_step);
+                let chunk_id = MemHelpers::mem_step_to_chunk(step);
                 if mem_op.is_write || addr_changes || previous_chunk_id != chunk_id {
                     // not dual, because write or addr changes
                     trace[i].sel_dual = F::ZERO;

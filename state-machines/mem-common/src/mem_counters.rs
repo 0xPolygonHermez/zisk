@@ -335,9 +335,7 @@ impl BusDevice<u64> for MemCounters {
 
         #[cfg(feature = "save_mem_bus_data")]
         {
-            // TODO: dynamic chunk_size
-            let chunk_id =
-                MemHelpers::static_mem_step_to_chunk(MemBusData::get_step(data), 1 << 18);
+            let chunk_id = MemHelpers::mem_step_to_chunk(MemBusData::get_step(data));
             // self.save_to_compact_file(chunk_id, data);
             self.save_to_file(chunk_id, data);
         }

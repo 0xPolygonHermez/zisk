@@ -1908,6 +1908,7 @@ dependencies = [
 name = "mem-common"
 version = "0.12.0"
 dependencies = [
+ "clap",
  "fields",
  "num-bigint",
  "num-traits",
@@ -1917,6 +1918,7 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
+ "static_assertions",
  "tracing",
  "witness",
  "zisk-common",

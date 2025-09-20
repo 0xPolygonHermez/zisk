@@ -27,7 +27,7 @@ tracing = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
 clap = { version = "4", features = ["derive"] }
-
+static_assertions = { workspace = true }
 num-traits = "0.2"
 
 [features]

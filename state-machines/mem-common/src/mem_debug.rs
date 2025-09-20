@@ -61,8 +61,6 @@ impl Default for ChunkInfo {
     }
 }
 
-const DEBUG_CHUNK_SIZE: u64 = 1 << 18;
-
 #[allow(dead_code)]
 impl MemDebug {
     pub fn new(from_addr: u32, to_addr: u32, is_dual: bool) -> Self {
@@ -241,11 +239,11 @@ impl MemDebug {
         let ops = std::mem::take(&mut self.ops);
         let mut index = 0;
         while index < ops.len() {
-            let chunk_id = MemHelpers::static_mem_step_to_chunk(ops[index].step, DEBUG_CHUNK_SIZE);
+            let chunk_id = MemHelpers::mem_step_to_chunk(ops[index].step);
             let op = &ops[index];
             if index + 1 < ops.len() {
                 let op2 = &ops[index + 1];
-                let chunk_id_2 = MemHelpers::static_mem_step_to_chunk(op2.step, DEBUG_CHUNK_SIZE);
+                let chunk_id_2 = MemHelpers::mem_step_to_chunk(op2.step);
                 if op.addr == op2.addr && chunk_id == chunk_id_2 && !Self::flags_to_write(op2.flags)
                 {
                     self.ops.push(MemOp {
@@ -270,9 +268,8 @@ impl MemDebug {
             index += 1;
         }
     }
-    pub fn count_n_dual(&mut self, n_dual: usize, chunk_size: u64) -> (u32, u32) {
+    pub fn count_n_dual(&mut self, n_dual: usize) -> (u32, u32) {
         self.prepare();
-        let chunk_size = if chunk_size > 0 { chunk_size } else { DEBUG_CHUNK_SIZE };
         assert!(self.dual_count == 0);
         let mut index = 0;
         let count = self.ops.len();
@@ -280,11 +277,11 @@ impl MemDebug {
         let mut dual_rows = 0;
         while index < count {
             let op = &self.ops[index];
-            let chunk_id = MemHelpers::static_mem_step_to_chunk(op.step, chunk_size);
+            let chunk_id = MemHelpers::mem_step_to_chunk(op.step);
             for n in 0..n_dual {
                 if index + 1 < self.ops.len() {
                     let op2 = &self.ops[index + 1];
-                    let chunk_id_2 = MemHelpers::static_mem_step_to_chunk(op2.step, chunk_size);
+                    let chunk_id_2 = MemHelpers::mem_step_to_chunk(op2.step);
                     if op.addr == op2.addr
                         && chunk_id == chunk_id_2
                         && !Self::flags_to_write(op2.flags)
@@ -404,11 +401,10 @@ impl MemDebug {
             }
         }
     }
-    pub fn info_chunks(&self, rows: usize, chunk_size: u64) {
+    pub fn info_chunks(&self, rows: usize) {
         let count = self.ops.len();
         assert!(count > 0);
-        let chunk_size = if chunk_size > 0 { chunk_size } else { DEBUG_CHUNK_SIZE };
-        let max_chunk_id = MemHelpers::static_mem_step_to_chunk(self.max_step, chunk_size);
+        let max_chunk_id = MemHelpers::mem_step_to_chunk(self.max_step);
         let chunk_count = usize::from(max_chunk_id) + 1;
         let instances = ((count - 1) / rows) + 1;
         println!("instances: {instances}");
@@ -424,8 +420,7 @@ impl MemDebug {
                     if step == 0 {
                         break;
                     }
-                    let chunk_id =
-                        usize::from(MemHelpers::static_mem_step_to_chunk(step, chunk_size));
+                    let chunk_id = usize::from(MemHelpers::mem_step_to_chunk(step));
                     let addr = row.addr;
                     let chunk = &mut chunk_info[chunk_id];
                     if chunk.from_addr > addr {
@@ -443,12 +438,9 @@ impl MemDebug {
             for i_row in first_row..=last_row {
                 let row = &self.ops[i_row];
                 let addr = row.addr;
-                let chunk_id =
-                    usize::from(MemHelpers::static_mem_step_to_chunk(row.step, chunk_size));
+                let chunk_id = usize::from(MemHelpers::mem_step_to_chunk(row.step));
                 assert!(
-                    row.step_dual == 0
-                        || MemHelpers::static_mem_step_to_chunk(row.step_dual, chunk_size)
-                            == chunk_id
+                    row.step_dual == 0 || MemHelpers::mem_step_to_chunk(row.step_dual) == chunk_id
                 );
                 let chunk = &mut chunk_info[chunk_id];
                 if chunk.to_addr == addr {
