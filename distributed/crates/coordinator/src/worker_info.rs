@@ -5,9 +5,9 @@ use crate::coordinator_service::MessageSender;
 use chrono::{DateTime, Utc};
 use zisk_distributed_common::{ComputeCapacity, WorkerId, WorkerState};
 
-/// Information about a connected prover client
-pub struct ProverInfo {
-    pub prover_id: WorkerId,
+/// Information about a connected worker
+pub struct WorkerInfo {
+    pub worker_id: WorkerId,
     pub state: WorkerState,
     pub compute_capacity: ComputeCapacity,
     pub connected_at: DateTime<Utc>,
@@ -15,16 +15,15 @@ pub struct ProverInfo {
     pub msg_sender: Box<dyn MessageSender + Send + Sync>,
 }
 
-impl ProverInfo {
-    /// Create a new ProverConnection2
+impl WorkerInfo {
     pub fn new(
-        prover_id: WorkerId,
+        worker_id: WorkerId,
         compute_capacity: ComputeCapacity,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> Self {
         let now = Utc::now();
         Self {
-            prover_id,
+            worker_id,
             state: WorkerState::Idle,
             compute_capacity,
             connected_at: now,
@@ -38,11 +37,11 @@ impl ProverInfo {
     }
 }
 
-impl Display for ProverInfo {
+impl Display for WorkerInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "ProverConnection(state: {}, capacity: {}, connected_at: {}, last_heartbeat: {})",
+            "WorkerInfo(state: {}, capacity: {}, connected_at: {}, last_heartbeat: {})",
             self.state, self.compute_capacity, self.connected_at, self.last_heartbeat
         )
     }

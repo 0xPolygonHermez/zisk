@@ -83,14 +83,14 @@ impl WorkerGrpcEndpoint {
         let request_stream = tokio_stream::wrappers::UnboundedReceiverStream::new(message_receiver);
         let request = Request::new(request_stream);
 
-        let response = client.prover_stream(request).await?;
+        let response = client.worker_stream(request).await?;
         let mut response_stream = response.into_inner();
 
         // Send initial registration
         let connect_message = if let Some(job) = self.prover_service.get_current_job() {
-            ProverMessage {
-                payload: Some(prover_message::Payload::Reconnect(ProverReconnectRequest {
-                    prover_id: self.worker_service_config.worker.worker_id.as_string(),
+            WorkerMessage {
+                payload: Some(worker_message::Payload::Reconnect(WorkerReconnectRequest {
+                    worker_id: self.worker_service_config.worker.worker_id.as_string(),
                     compute_capacity: Some(
                         self.worker_service_config.worker.compute_capacity.into(),
                     ),
@@ -98,9 +98,9 @@ impl WorkerGrpcEndpoint {
                 })),
             }
         } else {
-            ProverMessage {
-                payload: Some(prover_message::Payload::Register(ProverRegisterRequest {
-                    prover_id: self.worker_service_config.worker.worker_id.as_string(),
+            WorkerMessage {
+                payload: Some(worker_message::Payload::Register(WorkerRegisterRequest {
+                    worker_id: self.worker_service_config.worker.worker_id.as_string(),
                     compute_capacity: Some(
                         self.worker_service_config.worker.compute_capacity.into(),
                     ),
@@ -164,7 +164,7 @@ impl WorkerGrpcEndpoint {
     pub async fn handle_computation_result(
         &mut self,
         result: ComputationResult,
-        message_sender: &mpsc::UnboundedSender<ProverMessage>,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         match result {
             ComputationResult::Challenge { job_id, success, result } => {
@@ -184,7 +184,7 @@ impl WorkerGrpcEndpoint {
         job_id: JobId,
         success: bool,
         result: Result<Vec<ContributionsInfo>>,
-        message_sender: &mpsc::UnboundedSender<ProverMessage>,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         if let Some(handle) = self.prover_service.take_current_computation() {
             handle.await?;
@@ -210,9 +210,9 @@ impl WorkerGrpcEndpoint {
             });
         }
 
-        let message = ProverMessage {
-            payload: Some(prover_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
-                prover_id: self.worker_service_config.worker.worker_id.as_string(),
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                worker_id: self.worker_service_config.worker.worker_id.as_string(),
                 job_id: job_id.as_string(),
                 task_type: TaskType::PartialContribution as i32,
                 success,
@@ -231,7 +231,7 @@ impl WorkerGrpcEndpoint {
         job_id: JobId,
         success: bool,
         result: Result<Vec<AggProofs>>,
-        message_sender: &mpsc::UnboundedSender<ProverMessage>,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         if let Some(handle) = self.prover_service.take_current_computation() {
             handle.await?;
@@ -258,9 +258,9 @@ impl WorkerGrpcEndpoint {
             }
         };
 
-        let message = ProverMessage {
-            payload: Some(prover_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
-                prover_id: self.worker_service_config.worker.worker_id.as_string(),
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                worker_id: self.worker_service_config.worker.worker_id.as_string(),
                 job_id: job_id.as_string(),
                 task_type: TaskType::Prove as i32,
                 success,
@@ -279,7 +279,7 @@ impl WorkerGrpcEndpoint {
         job_id: JobId,
         success: bool,
         result: Result<Option<Vec<Vec<u64>>>>,
-        message_sender: &mpsc::UnboundedSender<ProverMessage>,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         if let Some(handle) = self.prover_service.take_current_computation() {
             handle.await?;
@@ -315,9 +315,9 @@ impl WorkerGrpcEndpoint {
             Some(ResultData::FinalProof(FinalProofList { final_proofs })) if !final_proofs.is_empty()
         );
 
-        let message = ProverMessage {
-            payload: Some(prover_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
-                prover_id: self.worker_service_config.worker.worker_id.as_string(),
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                worker_id: self.worker_service_config.worker.worker_id.as_string(),
                 job_id: job_id.as_string(),
                 task_type: TaskType::Aggregate as i32,
                 success,
@@ -340,11 +340,11 @@ impl WorkerGrpcEndpoint {
 
     async fn send_heartbeat_ack(
         &self,
-        message_sender: &mpsc::UnboundedSender<ProverMessage>,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
-        let message = ProverMessage {
-            payload: Some(prover_message::Payload::HeartbeatAck(HeartbeatAck {
-                prover_id: self.worker_service_config.worker.worker_id.as_string(),
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::HeartbeatAck(HeartbeatAck {
+                worker_id: self.worker_service_config.worker.worker_id.as_string(),
             })),
         };
 
@@ -356,7 +356,7 @@ impl WorkerGrpcEndpoint {
     async fn handle_coordinator_message(
         &mut self,
         message: CoordinatorMessage,
-        message_sender: &mpsc::UnboundedSender<ProverMessage>,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         computation_tx: &mpsc::UnboundedSender<ComputationResult>,
     ) -> Result<()> {
         if let Some(payload) = message.payload {
@@ -447,8 +447,8 @@ impl WorkerGrpcEndpoint {
             job_id.clone(),
             block.clone(),
             params.rank_id,
-            params.total_provers,
-            params.prover_allocation,
+            params.total_workers,
+            params.worker_allocation,
             params.job_compute_units,
         );
 

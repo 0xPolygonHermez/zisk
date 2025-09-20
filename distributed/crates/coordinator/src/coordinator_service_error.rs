@@ -20,8 +20,8 @@ pub enum CoordinatorError {
     #[error("Internal service error")]
     Internal(String),
 
-    #[error("Prover error: {0}")]
-    ProverError(String),
+    #[error("Worker error: {0}")]
+    WorkerError(String),
 }
 
 impl From<CoordinatorError> for Status {
@@ -41,8 +41,8 @@ impl From<CoordinatorError> for Status {
             CoordinatorError::Internal(_) => {
                 Status::new(Code::Internal, "An internal error occurred")
             }
-            CoordinatorError::ProverError(msg) => {
-                Status::new(Code::Internal, format!("Prover error: {msg}"))
+            CoordinatorError::WorkerError(msg) => {
+                Status::new(Code::Internal, format!("Worker error: {msg}"))
             }
         }
     }

@@ -3,13 +3,13 @@ mod coordinator_service;
 mod coordinator_service_error;
 mod coordinator_service_grpc;
 mod hooks;
-mod prover_info;
-mod provers_pool;
+mod worker_info;
+mod workers_pool;
 mod shutdown;
 
 pub use config::*;
 use coordinator_service::*;
 pub use coordinator_service_grpc::*;
-use prover_info::*;
-use provers_pool::*;
+use worker_info::*;
+use workers_pool::*;
 pub use shutdown::*;

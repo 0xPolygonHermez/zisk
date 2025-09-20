@@ -2,7 +2,7 @@
 //!
 //! This module provides the gRPC server implementation that exposes the coordinator's
 //! functionality over the network, handling bidirectional streaming communication
-//! with provers and admin API endpoints.
+//! with workers and admin API endpoints.
 
 use async_stream::stream;
 use futures_util::{Stream, StreamExt};
@@ -18,7 +18,7 @@ use crate::coordinator_service::MessageSender;
 use crate::coordinator_service_error::{CoordinatorError, CoordinatorResult};
 use crate::CoordinatorService;
 
-/// gRPC message sender adapter for prover communication.
+/// gRPC message sender adapter for worker communication.
 ///
 /// Wraps an unbounded channel sender to implement the MessageSender trait,
 /// decoupling gRPC streaming from the core coordinator service.
@@ -32,7 +32,7 @@ impl GrpcMessageSender {
 }
 
 impl MessageSender for GrpcMessageSender {
-    /// Sends a message to the prover through the gRPC channel.
+    /// Sends a message to the worker through the gRPC channel.
     ///
     /// # Returns
     ///
@@ -49,7 +49,7 @@ impl MessageSender for GrpcMessageSender {
 ///
 /// Serves as the network transport layer, exposing coordinator functionality through:
 /// - Admin API endpoints (status, job management, system monitoring)  
-/// - Bidirectional streaming for prover communication
+/// - Bidirectional streaming for worker communication
 /// - Authentication and authorization for admin endpoints
 pub struct CoordinatorServiceGrpc {
     coordinator_service: Arc<CoordinatorService>,
@@ -104,62 +104,62 @@ impl CoordinatorServiceGrpc {
         Ok(())
     }
 
-    /// Validates that the prover ID in the message matches the authenticated prover.
+    /// Validates that the worker ID in the message matches the authenticated worker.
     ///
     /// # Parameters
     ///
-    /// * `prover_id` - The authenticated prover ID.
-    /// * `request_prover_id` - The prover ID from the incoming message.
+    /// * `worker_id` - The authenticated worker ID.
+    /// * `request_worker_id` - The worker ID from the incoming message.
     ///
     /// # Returns
     ///
-    /// `InvalidRequest` error if prover IDs don't match.
-    fn validate_same_prover_id(
-        prover_id: &WorkerId,
-        request_prover_id: &str,
+    /// `InvalidRequest` error if worker IDs don't match.
+    fn validate_same_worker_id(
+        worker_id: &WorkerId,
+        request_worker_id: &str,
     ) -> CoordinatorResult<()> {
-        if prover_id.as_string() != request_prover_id {
+        if worker_id.as_string() != request_worker_id {
             // Log the mismatch internally for debugging
             error!(
-                "Prover ID mismatch: expected {}, got {}",
-                prover_id.as_string(),
-                request_prover_id
+                "Worker ID mismatch: expected {}, got {}",
+                worker_id.as_string(),
+                request_worker_id
             );
             // Return generic error to client (security best practice)
-            return Err(CoordinatorError::InvalidRequest("Invalid prover credentials".to_string()));
+            return Err(CoordinatorError::InvalidRequest("Invalid worker credentials".to_string()));
         }
         Ok(())
     }
 
-    /// Processes individual messages from the prover stream.
+    /// Processes individual messages from the worker stream.
     ///
     /// Routes messages to appropriate coordinator handlers after validation.
     ///
     /// # Parameters
     ///
     /// * `coordinator` - Reference to the coordinator service instance.
-    /// * `prover_id` - The authenticated prover ID.
-    /// * `message` - The incoming prover message to process.
+    /// * `worker_id` - The authenticated worker ID.
+    /// * `message` - The incoming worker message to process.
     async fn handle_stream_message(
         coordinator: &CoordinatorService,
-        prover_id: &WorkerId,
-        message: ProverMessage,
+        worker_id: &WorkerId,
+        message: WorkerMessage,
     ) -> CoordinatorResult<()> {
         match message.payload {
             Some(payload) => match payload {
-                prover_message::Payload::HeartbeatAck(heartbeat_ack) => {
-                    Self::validate_same_prover_id(prover_id, &heartbeat_ack.prover_id)?;
+                worker_message::Payload::HeartbeatAck(heartbeat_ack) => {
+                    Self::validate_same_worker_id(worker_id, &heartbeat_ack.worker_id)?;
                     coordinator.handle_stream_heartbeat_ack(heartbeat_ack.into()).await
                 }
-                prover_message::Payload::Error(prover_error) => {
-                    Self::validate_same_prover_id(prover_id, &prover_error.prover_id)?;
-                    coordinator.handle_stream_error(prover_error.into()).await
+                worker_message::Payload::Error(worker_error) => {
+                    Self::validate_same_worker_id(worker_id, &worker_error.worker_id)?;
+                    coordinator.handle_stream_error(worker_error.into()).await
                 }
-                prover_message::Payload::Register(_) | prover_message::Payload::Reconnect(_) => {
+                worker_message::Payload::Register(_) | worker_message::Payload::Reconnect(_) => {
                     unreachable!("Register/Reconnect should be handled in the initial handshake");
                 }
-                prover_message::Payload::ExecuteTaskResponse(execute_task_response) => {
-                    Self::validate_same_prover_id(prover_id, &execute_task_response.prover_id)?;
+                worker_message::Payload::ExecuteTaskResponse(execute_task_response) => {
+                    Self::validate_same_worker_id(worker_id, &execute_task_response.worker_id)?;
                     coordinator
                         .handle_stream_execute_task_response(execute_task_response.into())
                         .await
@@ -169,21 +169,21 @@ impl CoordinatorServiceGrpc {
         }
     }
 
-    /// Creates a registration response message for prover handshake.
+    /// Creates a registration response message for worker handshake.
     ///
     /// # Parameters
     ///
-    /// * `prover_id` - The prover ID to include in the response.
+    /// * `worker_id` - The worker ID to include in the response.
     /// * `accepted` - Whether the registration was accepted.
     /// * `message` - Additional message to include in the response.
     fn registration_response(
-        prover_id: &WorkerId,
+        worker_id: &WorkerId,
         accepted: bool,
         message: String,
     ) -> Result<CoordinatorMessage, Status> {
         Ok(CoordinatorMessage {
-            payload: Some(coordinator_message::Payload::RegisterResponse(ProverRegisterResponse {
-                prover_id: prover_id.as_string(),
+            payload: Some(coordinator_message::Payload::RegisterResponse(WorkerRegisterResponse {
+                worker_id: worker_id.as_string(),
                 accepted,
                 message,
                 registered_at: if accepted {
@@ -199,7 +199,7 @@ impl CoordinatorServiceGrpc {
 /// Implements the gRPC service trait generated by tonic from the protobuf definitions.
 #[tonic::async_trait]
 impl DistributedApi for CoordinatorServiceGrpc {
-    type ProverStreamStream =
+    type WorkerStreamStream =
         Pin<Box<dyn Stream<Item = Result<CoordinatorMessage, Status>> + Send>>;
 
     /// Returns detailed coordinator status information.
@@ -250,22 +250,22 @@ impl DistributedApi for CoordinatorServiceGrpc {
         Ok(Response::new(jobs_list.into()))
     }
 
-    /// Returns list of all registered provers and their states.
+    /// Returns list of all registered workers and their states.
     ///
-    /// Admin-only endpoint for prover fleet monitoring.
+    /// Admin-only endpoint for worker fleet monitoring.
     ///
     /// # Parameters
     ///
-    /// * `request` - The incoming ProversListRequest gRPC request.
-    async fn provers_list(
+    /// * `request` - The incoming WorkersListRequest gRPC request.
+    async fn workers_list(
         &self,
-        request: Request<ProversListRequest>,
-    ) -> Result<Response<ProversListResponse>, Status> {
+        request: Request<WorkersListRequest>,
+    ) -> Result<Response<WorkersListResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let provers_list = self.coordinator_service.handle_provers_list().await;
+        let workers_list = self.coordinator_service.handle_workers_list().await;
 
-        Ok(Response::new(provers_list.into()))
+        Ok(Response::new(workers_list.into()))
     }
 
     /// Returns detailed status for a specific job.
@@ -326,43 +326,43 @@ impl DistributedApi for CoordinatorServiceGrpc {
         result.map(|response_dto| Response::new(response_dto.into())).map_err(Status::from)
     }
 
-    /// Bidirectional streaming endpoint for prover communication.
-    async fn prover_stream(
+    /// Bidirectional streaming endpoint for worker communication.
+    async fn worker_stream(
         &self,
-        request: Request<Streaming<ProverMessage>>,
-    ) -> Result<Response<Self::ProverStreamStream>, Status> {
+        request: Request<Streaming<WorkerMessage>>,
+    ) -> Result<Response<Self::WorkerStreamStream>, Status> {
         let coordinator_service = self.coordinator_service.clone();
         let mut in_stream = request.into_inner();
 
         let response_stream = Box::pin(stream! {
-            // Create a channel for outbound messages to this prover (for backpressure)
+            // Create a channel for outbound messages to this worker (for backpressure)
             // The sender will be held by GrpcMessageSender and used by CoordinatorService
             let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<CoordinatorMessage>();
             let grpc_msg_tx = Box::new(GrpcMessageSender::new(outbound_tx));
 
-            // Clean registration handling - wait for prover to introduce itself
-            let prover_id = match in_stream.next().await {
-                Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Register(req)) })) => {
-                    let requested_prover_id = WorkerId::from(req.prover_id.clone());
+            // Clean registration handling - wait for worker to introduce itself
+            let worker_id = match in_stream.next().await {
+                Some(Ok(WorkerMessage { payload: Some(worker_message::Payload::Register(req)) })) => {
+                    let requested_worker_id = WorkerId::from(req.worker_id.clone());
                     let (accepted, message) = coordinator_service.handle_stream_registration(req.into(), grpc_msg_tx).await;
 
                     if accepted {
-                        yield Self::registration_response(&requested_prover_id, accepted, message);
-                        requested_prover_id
+                        yield Self::registration_response(&requested_worker_id, accepted, message);
+                        requested_worker_id
                     } else {
-                        yield Self::registration_response(&requested_prover_id, accepted, message);
+                        yield Self::registration_response(&requested_worker_id, accepted, message);
                         return;
                     }
                 }
-                Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Reconnect(req)) })) => {
-                    let requested_prover_id = WorkerId::from(req.prover_id.clone());
+                Some(Ok(WorkerMessage { payload: Some(worker_message::Payload::Reconnect(req)) })) => {
+                    let requested_worker_id = WorkerId::from(req.worker_id.clone());
                     let (accepted, message) = coordinator_service.handle_stream_reconnection(req.into(), grpc_msg_tx).await;
 
                     if accepted {
-                        yield Self::registration_response(&requested_prover_id, accepted, message);
-                        requested_prover_id
+                        yield Self::registration_response(&requested_worker_id, accepted, message);
+                        requested_worker_id
                     } else {
-                        yield Self::registration_response(&requested_prover_id, accepted, message);
+                        yield Self::registration_response(&requested_worker_id, accepted, message);
                         return;
                     }
                 }
@@ -383,33 +383,33 @@ impl DistributedApi for CoordinatorServiceGrpc {
                 }
             };
 
-            info!("Prover {} registered successfully, starting message loop", prover_id);
+            info!("Worker {} registered successfully, starting message loop", worker_id);
 
             // Now handle the rest of the stream messages
             loop {
                 tokio::select! {
-                    // Handle incoming messages from prover
+                    // Handle incoming messages from worker
                     incoming_result = in_stream.next() => {
                         match incoming_result {
                             Some(Ok(message)) => {
-                                if let Err(e) = Self::handle_stream_message(&coordinator_service, &prover_id, message).await {
-                                    error!("Error handling prover message: {}", e);
+                                if let Err(e) = Self::handle_stream_message(&coordinator_service, &worker_id, message).await {
+                                    error!("Error handling worker message: {}", e);
                                     yield Err(Status::from(e));
                                     break;
                                 }
                             }
                             Some(Err(e)) => {
-                                error!("Error receiving message from prover {prover_id}: {e}");
+                                error!("Error receiving message from worker {worker_id}: {e}");
                                 yield Err(e);
                                 break;
                             }
                             None => {
-                                info!("Prover {} stream ended", prover_id);
+                                info!("Worker {} stream ended", worker_id);
                                 break;
                             }
                         }
                     }
-                    // Handle outgoing messages to prover
+                    // Handle outgoing messages to worker
                     outbound_result = outbound_rx.recv() => {
                         match outbound_result {
                             Some(message) => {
@@ -417,7 +417,7 @@ impl DistributedApi for CoordinatorServiceGrpc {
                             }
                             None => {
                                 // Channel closed, likely service shutdown
-                                info!("Outbound channel closed for prover {}", prover_id);
+                                info!("Outbound channel closed for worker {}", worker_id);
                                 break; // Break out of the loop, ending the stream naturally
                             }
                         }
@@ -426,11 +426,11 @@ impl DistributedApi for CoordinatorServiceGrpc {
             }
 
             // Stream cleanup - this runs when the loop breaks
-            info!("Cleaning up prover {} connection", prover_id);
+            info!("Cleaning up worker {} connection", worker_id);
 
             // Perform async cleanup
-            if let Err(e) = coordinator_service.unregister_prover(&prover_id).await {
-                error!("Failed to handle disconnect for prover {}: {}", prover_id, e);
+            if let Err(e) = coordinator_service.unregister_worker(&worker_id).await {
+                error!("Failed to handle disconnect for worker {}: {}", worker_id, e);
             }
         });
 

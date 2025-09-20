@@ -10,13 +10,13 @@
 
 use crate::{
     coordinator_message::Payload, execute_task_request, execute_task_response, job_status_response,
-    jobs_list_response, launch_proof_response, provers_list_response, system_status_response,
+    jobs_list_response, launch_proof_response, workers_list_response, system_status_response,
     AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity, ContributionParams,
     CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck,
     JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, LaunchProofRequest,
-    LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, ProverError, ProverInfo,
-    ProverReconnectRequest, ProverRegisterRequest, ProverRegisterResponse, ProversList,
-    ProversListResponse, Shutdown, StatusInfoResponse, SystemStatus, SystemStatusResponse,
+    LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, WorkerError, WorkerInfo,
+    WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse, WorkersList,
+    WorkersListResponse, Shutdown, StatusInfoResponse, SystemStatus, SystemStatusResponse,
     TaskType,
 };
 use zisk_distributed_common::*;
@@ -84,7 +84,7 @@ impl From<JobStatusDto> for JobStatus {
             block_id: dto.block_id.into(),
             phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
             state: dto.state.to_string(),
-            assigned_provers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
+            assigned_workers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
             start_time: dto.start_time,
             duration_ms: dto.duration_ms,
         }
@@ -98,7 +98,7 @@ impl From<JobStatusDto> for JobStatusResponse {
             block_id: dto.block_id.into(),
             phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
             state: dto.state.to_string(),
-            assigned_provers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
+            assigned_workers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
             start_time: dto.start_time,
             duration_ms: dto.duration_ms,
         };
@@ -106,21 +106,21 @@ impl From<JobStatusDto> for JobStatusResponse {
     }
 }
 
-impl From<WorkersListDto> for ProversListResponse {
+impl From<WorkersListDto> for WorkersListResponse {
     fn from(dto: WorkersListDto) -> Self {
-        let provers_info: Vec<ProverInfo> =
-            dto.workers.into_iter().map(|prover| prover.into()).collect();
-        let provers_list = ProversList { provers: provers_info };
-        ProversListResponse {
-            result: Some(provers_list_response::Result::ProversList(provers_list)),
+        let workers_info: Vec<WorkerInfo> =
+            dto.workers.into_iter().map(|worker| worker.into()).collect();
+        let workers_list = WorkersList { workers: workers_info };
+        WorkersListResponse {
+            result: Some(workers_list_response::Result::WorkersList(workers_list)),
         }
     }
 }
 
-impl From<WorkerInfoDto> for ProverInfo {
+impl From<WorkerInfoDto> for WorkerInfo {
     fn from(dto: WorkerInfoDto) -> Self {
-        ProverInfo {
-            prover_id: dto.worker_id.into(),
+        WorkerInfo {
+            worker_id: dto.worker_id.into(),
             state: dto.state.to_string(),
             compute_capacity: Some(dto.compute_capacity.into()),
             last_heartbeat: Some(prost_types::Timestamp {
@@ -138,10 +138,10 @@ impl From<WorkerInfoDto> for ProverInfo {
 impl From<SystemStatusDto> for SystemStatusResponse {
     fn from(dto: SystemStatusDto) -> Self {
         let system_status = SystemStatus {
-            total_provers: dto.total_workers,
+            total_workers: dto.total_workers,
             compute_capacity: dto.compute_capacity.compute_units,
-            idle_provers: dto.idle_workers,
-            busy_provers: dto.busy_workers,
+            idle_workers: dto.idle_workers,
+            busy_workers: dto.busy_workers,
             active_jobs: dto.active_jobs,
         };
 
@@ -185,19 +185,19 @@ impl From<MetricsDto> for Metrics {
     }
 }
 
-impl From<ProverRegisterRequest> for WorkerRegisterRequestDto {
-    fn from(req: ProverRegisterRequest) -> Self {
+impl From<WorkerRegisterRequest> for WorkerRegisterRequestDto {
+    fn from(req: WorkerRegisterRequest) -> Self {
         WorkerRegisterRequestDto {
-            worker_id: req.prover_id.into(),
+            worker_id: req.worker_id.into(),
             compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
         }
     }
 }
 
-impl From<ProverReconnectRequest> for WorkerReconnectRequestDto {
-    fn from(req: ProverReconnectRequest) -> Self {
+impl From<WorkerReconnectRequest> for WorkerReconnectRequestDto {
+    fn from(req: WorkerReconnectRequest) -> Self {
         WorkerReconnectRequestDto {
-            worker_id: req.prover_id.into(),
+            worker_id: req.worker_id.into(),
             compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
         }
     }
@@ -242,10 +242,10 @@ impl From<ShutdownDto> for Shutdown {
     }
 }
 
-impl From<WorkerRegisterResponseDto> for ProverRegisterResponse {
+impl From<WorkerRegisterResponseDto> for WorkerRegisterResponse {
     fn from(dto: WorkerRegisterResponseDto) -> Self {
-        ProverRegisterResponse {
-            prover_id: dto.worker_id.as_string(),
+        WorkerRegisterResponse {
+            worker_id: dto.worker_id.as_string(),
             accepted: dto.accepted,
             message: dto.message,
             registered_at: Some(prost_types::Timestamp {
@@ -278,7 +278,7 @@ impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
         };
 
         ExecuteTaskRequest {
-            prover_id: dto.worker_id.into(),
+            worker_id: dto.worker_id.into(),
             job_id: dto.job_id.into(),
             task_type: task_type as i32,
             params: Some(params),
@@ -292,8 +292,8 @@ impl From<ContributionParamsDto> for ContributionParams {
             block_id: dto.block_id.as_string(),
             input_path: dto.input_path,
             rank_id: dto.rank_id,
-            total_provers: dto.total_workers,
-            prover_allocation: dto.worker_allocation,
+            total_workers: dto.total_workers,
+            worker_allocation: dto.worker_allocation,
             job_compute_units: dto.job_compute_units.compute_units,
         }
     }
@@ -380,7 +380,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
 
         ExecuteTaskResponseDto {
             job_id: JobId::from(response.job_id),
-            worker_id: WorkerId::from(response.prover_id),
+            worker_id: WorkerId::from(response.worker_id),
             success: response.success,
             error_message: if response.error_message.is_empty() {
                 None
@@ -394,14 +394,14 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
 
 impl From<HeartbeatAck> for HeartbeatAckDto {
     fn from(message: HeartbeatAck) -> Self {
-        HeartbeatAckDto { worker_id: WorkerId::from(message.prover_id) }
+        HeartbeatAckDto { worker_id: WorkerId::from(message.worker_id) }
     }
 }
 
-impl From<ProverError> for WorkerErrorDto {
-    fn from(error: ProverError) -> Self {
+impl From<WorkerError> for WorkerErrorDto {
+    fn from(error: WorkerError) -> Self {
         WorkerErrorDto {
-            worker_id: WorkerId::from(error.prover_id),
+            worker_id: WorkerId::from(error.worker_id),
             job_id: JobId::from(error.job_id),
             error_message: error.error_message,
         }
