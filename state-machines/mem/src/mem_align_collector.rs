@@ -2,7 +2,9 @@ use crate::MemAlignInput;
 use mem_common::{MemAlignCheckPoint, MemHelpers};
 
 use std::collections::VecDeque;
-use zisk_common::{BusDevice, BusId, ChunkId, CollectCounter, MemBusData, MEM_BUS_ID};
+use zisk_common::{
+    BusDevice, BusId, ChunkId, CollectCounter, MemBusData, MemCollectorInfo, MEM_BUS_ID,
+};
 
 pub struct MemAlignCollector {
     /// Collected inputs
@@ -66,17 +68,20 @@ impl MemAlignCollector {
 }
 
 impl BusDevice<u64> for MemAlignCollector {
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let bytes = MemBusData::get_bytes(data);
-        let is_write = MemHelpers::is_write(MemBusData::get_op(data));
+
         if bytes == 1 {
+            let is_write = MemHelpers::is_write(MemBusData::get_op(data));
             if is_write {
                 if (MemBusData::get_value(data) & 0xFFFF_FFFF_FFFF_FF00) == 0 {
                     if !self.write_byte.should_skip() {
@@ -91,10 +96,13 @@ impl BusDevice<u64> for MemAlignCollector {
                 return true;
             }
         }
+
         let addr = MemBusData::get_addr(data);
         if MemHelpers::is_aligned(addr, bytes) {
             return true;
         }
+
+        let is_write = MemHelpers::is_write(MemBusData::get_op(data));
         let ops_by_addr = if MemHelpers::is_double(addr, bytes) { 2 } else { 1 };
         let rows = if is_write { 1 + 2 * ops_by_addr } else { 1 + ops_by_addr };
         match rows as u8 {

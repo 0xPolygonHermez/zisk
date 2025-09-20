@@ -24,6 +24,25 @@ inline void scalar2array (mpz_class &s, uint64_t * a)
     mpz_export((void *)a, NULL, -1, 8, -1, 0, s.get_mpz_t());
 }
 
+// Converts and array of 6 u64 LE to a scalar
+inline void array2scalar6 (const uint64_t * a, mpz_class &s)
+{
+    mpz_import(s.get_mpz_t(), 6, -1, 8, -1, 0, (const void *)a);
+}
+
+// Converts a 384 bits scalar to an array of 6 u64 LE
+inline void scalar2array6 (mpz_class &s, uint64_t * a)
+{
+    // Pre-set to zero in case the scalar is smaller than 384 bits
+    a[0] = 0;
+    a[1] = 0;
+    a[2] = 0;
+    a[3] = 0;
+    a[4] = 0;
+    a[5] = 0;
+    mpz_export((void *)a, NULL, -1, 8, -1, 0, s.get_mpz_t());
+}
+
 // Converts an array of 4 u64 LE to a FEC element
 inline void array2fe (const uint64_t * a, RawFec::Element &fe)
 {
@@ -70,6 +89,22 @@ inline void fe2array (const RawFq::Element &fe, uint64_t * a)
     mpz_class s;
     bn254.toMpz(s.get_mpz_t(), fe);
     scalar2array(s, a);
+}
+
+// Converts an array of 6 u64 LE to a Fq (BLS12_381) element
+inline void array2fe (const uint64_t * a, RawBLS12_381_384::Element &fe)
+{
+    mpz_class s;
+    array2scalar6(a, s);
+    bls12_381.fromMpz(fe, s.get_mpz_t());
+}
+
+// Converts a Fq (BLS12_381) element to an array of 6 u64 LE
+inline void fe2array (const RawBLS12_381_384::Element &fe, uint64_t * a)
+{
+    mpz_class s;
+    bls12_381.toMpz(s.get_mpz_t(), fe);
+    scalar2array6(s, a);
 }
 
 #endif

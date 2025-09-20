@@ -1,8 +1,8 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Secp256k1;
-use sm_mem::MemCollectorInfo;
 use std::collections::VecDeque;
 use zisk_common::BusId;
+use zisk_common::MemCollectorInfo;
 
 pub const SECP256K1_DBL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 0,
@@ -19,7 +19,7 @@ pub fn generate_secp256k1_dbl_mem_inputs(
     only_counters: bool,
     pending: &mut VecDeque<(BusId, Vec<u64>)>,
 ) {
-    // op,op_type,a,b,addr[2],...
+    // op,op_type,a,b,...
     let p1: &[u64; 8] = &data[4..12].try_into().unwrap();
     let mut p3 = [0u64; 8];
 

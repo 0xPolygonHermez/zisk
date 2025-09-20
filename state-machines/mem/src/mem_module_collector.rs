@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crate::{MemInput, MemPreviousSegment};
 use mem_common::{MemHelpers, MemModuleCheckPoint};
-use zisk_common::{BusDevice, BusId, MemBusData, SegmentId, MEM_BUS_ID};
+use zisk_common::{BusDevice, BusId, MemBusData, MemCollectorInfo, SegmentId, MEM_BUS_ID};
 
 #[derive(Debug, PartialEq, Eq)]
 enum InputAction {
@@ -16,23 +16,6 @@ enum DualState {
     Ini,
     Read,
     Write,
-}
-
-pub struct MemCollectorInfo {
-    pub from_addr: u32,
-    pub to_addr: u32,
-    pub min_addr: u32,
-}
-
-impl MemCollectorInfo {
-    pub fn skip(&self, addr: u32) -> bool {
-        let addr_w = MemHelpers::get_addr_w(addr);
-
-        if addr_w > self.to_addr || addr_w < self.min_addr || addr_w < self.from_addr {
-            return true;
-        }
-        false
-    }
 }
 
 #[derive(Debug)]
@@ -495,6 +478,7 @@ impl BusDevice<u64> for MemModuleCollector {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == MEM_BUS_ID);
 

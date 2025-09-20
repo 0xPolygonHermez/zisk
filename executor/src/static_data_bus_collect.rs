@@ -5,9 +5,10 @@
 use std::collections::VecDeque;
 
 use data_bus::DataBusTrait;
-use mem_common::MemHelpers;
 use precomp_arith_eq::ArithEqCollector;
 use precomp_arith_eq::ArithEqCounterInputGen;
+use precomp_arith_eq_384::ArithEq384Collector;
+use precomp_arith_eq_384::ArithEq384CounterInputGen;
 use precomp_keccakf::KeccakfCollector;
 use precomp_keccakf::KeccakfCounterInputGen;
 use precomp_sha256f::Sha256fCollector;
@@ -15,13 +16,13 @@ use precomp_sha256f::Sha256fCounterInputGen;
 use sm_arith::ArithCounterInputGen;
 use sm_arith::ArithInstanceCollector;
 use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollector};
-use sm_mem::{MemAlignCollector, MemCollectorInfo, MemModuleCollector};
+use sm_mem::{MemAlignCollector, MemModuleCollector};
 use sm_rom::RomCollector;
 use zisk_common::{
-    BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID, OP, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, MemCollectorInfo, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE,
     ROM_BUS_ID,
 };
-use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
+use zisk_core::ZiskOperationType;
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///
@@ -56,6 +57,10 @@ pub struct StaticDataBusCollect<D> {
     pub arith_eq_collector: Vec<(usize, ArithEqCollector)>,
     pub arith_eq_inputs_generator: ArithEqCounterInputGen,
 
+    /// ArithEq384 collectors
+    pub arith_eq_384_collector: Vec<(usize, ArithEq384Collector)>,
+    pub arith_eq_384_inputs_generator: ArithEq384CounterInputGen,
+
     /// ROM collector
     pub rom_collector: Vec<(usize, RomCollector)>,
 
@@ -64,6 +69,14 @@ pub struct StaticDataBusCollect<D> {
 
     mem_collectors_info: Vec<MemCollectorInfo>,
 }
+
+const BINARY_TYPE: u64 = ZiskOperationType::Binary as u64;
+const BINARY_E_TYPE: u64 = ZiskOperationType::BinaryE as u64;
+const ARITH_TYPE: u64 = ZiskOperationType::Arith as u64;
+const KECCAK_TYPE: u64 = ZiskOperationType::Keccak as u64;
+const SHA256_TYPE: u64 = ZiskOperationType::Sha256 as u64;
+const ARITH_EQ_TYPE: u64 = ZiskOperationType::ArithEq as u64;
+const ARITH_EQ_384_TYPE: u64 = ZiskOperationType::ArithEq384 as u64;
 
 impl StaticDataBusCollect<PayloadType> {
     /// Creates a new `DataBus` instance.
@@ -78,8 +91,10 @@ impl StaticDataBusCollect<PayloadType> {
         keccakf_collector: Vec<(usize, KeccakfCollector)>,
         sha256f_collector: Vec<(usize, Sha256fCollector)>,
         arith_eq_collector: Vec<(usize, ArithEqCollector)>,
+        arith_eq_384_collector: Vec<(usize, ArithEq384Collector)>,
         rom_collector: Vec<(usize, RomCollector)>,
         arith_eq_inputs_generator: ArithEqCounterInputGen,
+        arith_eq_384_inputs_generator: ArithEq384CounterInputGen,
         keccakf_inputs_generator: KeccakfCounterInputGen,
         sha256f_inputs_generator: Sha256fCounterInputGen,
         arith_inputs_generator: ArithCounterInputGen,
@@ -97,8 +112,10 @@ impl StaticDataBusCollect<PayloadType> {
             keccakf_collector,
             sha256f_collector,
             arith_eq_collector,
+            arith_eq_384_collector,
             rom_collector,
             arith_eq_inputs_generator,
+            arith_eq_384_inputs_generator,
             keccakf_inputs_generator,
             sha256f_inputs_generator,
             arith_inputs_generator,
@@ -121,143 +138,141 @@ impl StaticDataBusCollect<PayloadType> {
     fn route_data(&mut self, bus_id: BusId, payload: &[PayloadType]) {
         match bus_id {
             MEM_BUS_ID => {
-                // Pre-compute values once and reuse
-                let addr = MemBusData::get_addr(payload);
-                let bytes = MemBusData::get_bytes(payload);
-                let is_unaligned = !MemHelpers::is_aligned(addr, bytes);
-
                 // Process mem collectors - inverted condition to avoid continue
                 for (_, mem_collector) in &mut self.mem_collector {
-                    mem_collector.process_data(&bus_id, payload, &mut self.pending_transfers);
+                    mem_collector.process_data(&bus_id, payload, &mut self.pending_transfers, None);
                 }
 
                 // Only process align collectors if needed
-                if is_unaligned {
-                    for (_, mem_align_collector) in &mut self.mem_align_collector {
-                        mem_align_collector.process_data(
+                for (_, mem_align_collector) in &mut self.mem_align_collector {
+                    mem_align_collector.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                        None,
+                    );
+                }
+            }
+            OPERATION_BUS_ID => match payload[OP_TYPE] {
+                BINARY_TYPE => {
+                    for (_, binary_add_collector) in &mut self.binary_add_collector {
+                        binary_add_collector.process_data(
                             &bus_id,
                             payload,
                             &mut self.pending_transfers,
+                            None,
                         );
                     }
-                }
-            }
-            OPERATION_BUS_ID => {
-                let op_type = payload[OP_TYPE] as u32;
-                match op_type {
-                    op if op == ZiskOperationType::Binary as u32 => {
-                        if payload[OP] as u8 == ZiskOp::Add.code() {
-                            for (_, binary_add_collector) in &mut self.binary_add_collector {
-                                binary_add_collector.process_data(
-                                    &bus_id,
-                                    payload,
-                                    &mut self.pending_transfers,
-                                );
-                            }
-                        } else {
-                            for (_, binary_basic_collector) in &mut self.binary_basic_collector {
-                                binary_basic_collector.process_data(
-                                    &bus_id,
-                                    payload,
-                                    &mut self.pending_transfers,
-                                );
-                            }
-                        }
-                    }
-                    op if op == ZiskOperationType::BinaryE as u32 => {
-                        for (_, binary_extension_collector) in &mut self.binary_extension_collector
-                        {
-                            binary_extension_collector.process_data(
-                                &bus_id,
-                                payload,
-                                &mut self.pending_transfers,
-                            );
-                        }
-                    }
-                    op if op == ZiskOperationType::Arith as u32 => {
-                        for (_, arith_collector) in &mut self.arith_collector {
-                            arith_collector.process_data(
-                                &bus_id,
-                                payload,
-                                &mut self.pending_transfers,
-                            );
-                        }
 
-                        self.arith_inputs_generator.process_data(
+                    for (_, binary_basic_collector) in &mut self.binary_basic_collector {
+                        binary_basic_collector.process_data(
                             &bus_id,
                             payload,
                             &mut self.pending_transfers,
+                            None,
                         );
                     }
-                    op if op == ZiskOperationType::Keccak as u32 => {
-                        for (_, keccakf_collector) in &mut self.keccakf_collector {
-                            keccakf_collector.process_data(
-                                &bus_id,
-                                payload,
-                                &mut self.pending_transfers,
-                            );
-                        }
-
-                        if !self.keccakf_inputs_generator.skip_data(
-                            &bus_id,
-                            payload,
-                            &self.mem_collectors_info,
-                        ) {
-                            self.keccakf_inputs_generator.process_data(
-                                &bus_id,
-                                payload,
-                                &mut self.pending_transfers,
-                            );
-                        }
-                    }
-                    op if op == ZiskOperationType::Sha256 as u32 => {
-                        for (_, sha256f_collector) in &mut self.sha256f_collector {
-                            sha256f_collector.process_data(
-                                &bus_id,
-                                payload,
-                                &mut self.pending_transfers,
-                            );
-                        }
-
-                        if !self.sha256f_inputs_generator.skip_data(
-                            &bus_id,
-                            payload,
-                            &self.mem_collectors_info,
-                        ) {
-                            self.sha256f_inputs_generator.process_data(
-                                &bus_id,
-                                payload,
-                                &mut self.pending_transfers,
-                            );
-                        }
-                    }
-                    op if op == ZiskOperationType::ArithEq as u32 => {
-                        for (_, arith_eq_collector) in &mut self.arith_eq_collector {
-                            arith_eq_collector.process_data(
-                                &bus_id,
-                                payload,
-                                &mut self.pending_transfers,
-                            );
-                        }
-
-                        if !self.arith_eq_inputs_generator.skip_data(
-                            &bus_id,
-                            payload,
-                            &self.mem_collectors_info,
-                        ) {
-                            self.arith_eq_inputs_generator.process_data(
-                                &bus_id,
-                                payload,
-                                &mut self.pending_transfers,
-                            );
-                        }
-                    }
-                    _ => {}
                 }
-            }
+                BINARY_E_TYPE => {
+                    for (_, binary_extension_collector) in &mut self.binary_extension_collector {
+                        binary_extension_collector.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            None,
+                        );
+                    }
+                }
+                ARITH_TYPE => {
+                    for (_, arith_collector) in &mut self.arith_collector {
+                        arith_collector.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            None,
+                        );
+                    }
+
+                    self.arith_inputs_generator.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                        None,
+                    );
+                }
+                KECCAK_TYPE => {
+                    for (_, keccakf_collector) in &mut self.keccakf_collector {
+                        keccakf_collector.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            None,
+                        );
+                    }
+
+                    self.keccakf_inputs_generator.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                        Some(&self.mem_collectors_info),
+                    );
+                }
+                SHA256_TYPE => {
+                    for (_, sha256f_collector) in &mut self.sha256f_collector {
+                        sha256f_collector.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            None,
+                        );
+                    }
+
+                    self.sha256f_inputs_generator.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                        Some(&self.mem_collectors_info),
+                    );
+                }
+                ARITH_EQ_TYPE => {
+                    for (_, arith_eq_collector) in &mut self.arith_eq_collector {
+                        arith_eq_collector.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            None,
+                        );
+                    }
+
+                    self.arith_eq_inputs_generator.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                        Some(&self.mem_collectors_info),
+                    );
+                }
+                ARITH_EQ_384_TYPE => {
+                    for (_, arith_eq_384_collector) in &mut self.arith_eq_384_collector {
+                        arith_eq_384_collector.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            None,
+                        );
+                    }
+
+                    self.arith_eq_384_inputs_generator.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                        Some(&self.mem_collectors_info),
+                    );
+                }
+                _ => {}
+            },
             ROM_BUS_ID => {
                 for (_, rom_collector) in &mut self.rom_collector {
-                    rom_collector.process_data(&bus_id, payload, &mut self.pending_transfers);
+                    rom_collector.process_data(&bus_id, payload, &mut self.pending_transfers, None);
                 }
             }
             _ => {}
@@ -329,27 +344,13 @@ impl DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
             result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
         }
 
-        for (id, collector) in self.rom_collector {
+        for (id, collector) in self.arith_eq_384_collector {
             result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
         }
 
-        // Add generators
-        result.push((
-            None,
-            Some(Box::new(self.arith_eq_inputs_generator) as Box<dyn BusDevice<PayloadType>>),
-        ));
-        result.push((
-            None,
-            Some(Box::new(self.keccakf_inputs_generator) as Box<dyn BusDevice<PayloadType>>),
-        ));
-        result.push((
-            None,
-            Some(Box::new(self.sha256f_inputs_generator) as Box<dyn BusDevice<PayloadType>>),
-        ));
-        result.push((
-            None,
-            Some(Box::new(self.arith_inputs_generator) as Box<dyn BusDevice<PayloadType>>),
-        ));
+        for (id, collector) in self.rom_collector {
+            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+        }
 
         result
     }

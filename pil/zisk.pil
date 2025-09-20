@@ -16,6 +16,7 @@ require "binary/pil/binary_extension_table.pil"
 require "binary/pil/binary_add.pil"
 require "arith/pil/arith.pil"
 require "arith_eq/pil/arith_eq.pil"
+require "arith_eq_384/pil/arith_eq_384.pil"
 require "keccakf/pil/keccakf.pil"
 require "keccakf/pil/keccakf_table.pil"
 require "sha256f/pil/sha256f.pil"
@@ -34,8 +35,11 @@ const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
 
 airgroup Zisk {
     // Virtual Tables Configuration
-    set_range_check_tables_virtual(); // Enable virtual tables for range checks
+    set_max_std_tables_bits(21);
     set_max_num_rows_virtual(1 << 21); // Set the maximum rows for virtual tables
+    set_max_num_virtual_tables(2);
+    set_group_virtual_tables(table_ids: [ARITH_TABLE_ID, ARITH_RANGE_TABLE_ID, ARITH_EQ_LT_TABLE_ID, BINARY_EXTENSION_TABLE_ID, BINARY_TABLE_ID, MEM_ALIGN_ROM_ID, KECCAKF_TABLE_ID]);
+    set_group_virtual_tables(table_ids: [BINARY_EXTENSION_FROPS_TABLE_ID, BINARY_BASIC_FROPS_TABLE_ID, ARITH_FROPS_TABLE_ID]);
 
     // Main Program
     Main(N: 2**22);
@@ -46,7 +50,7 @@ airgroup Zisk {
     Mem(N: 2**21, base_address: 0x8000_0000, immutable: 1) alias RomData;
     Mem(N: 2**21, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
 
-    MemAlign(N: 2**22, use_predefined_ranges: 0);
+    MemAlign(N: 2**21, use_predefined_ranges: 0);
     MemAlignByte(N: 2**22, read: 1, write: 1);
     MemAlignByte(N: 2**22, read: 1, write: 0) alias MemAlignReadByte;
     MemAlignByte(N: 2**22, read: 0, write: 1) alias MemAlignWriteByte;
@@ -73,6 +77,7 @@ airgroup Zisk {
 
     // Precompiles
     ArithEq(N: 2**20);
+    ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
 
     const int KECCAKF_CHUNKS = 9;

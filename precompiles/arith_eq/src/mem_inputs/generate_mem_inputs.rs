@@ -1,6 +1,7 @@
+use mem_common::MemHelpers;
 use precompiles_common::MemBusHelpers;
-use sm_mem::MemCollectorInfo;
 use std::collections::VecDeque;
+use zisk_common::MemCollectorInfo;
 use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
 
 #[derive(Debug)]
@@ -84,7 +85,8 @@ pub fn skip_mem_inputs(
     for iparam in 0..config.indirect_params {
         let addr = addr_main + iparam as u32 * 8;
         for mem_collector in mem_collectors_info {
-            if !mem_collector.skip(addr) {
+            let addr_w = MemHelpers::get_addr_w(addr);
+            if !mem_collector.skip(addr_w) {
                 return false;
             }
         }
@@ -104,7 +106,8 @@ pub fn skip_mem_inputs(
         for ichunk in 0..config.chunks_per_param {
             let addr = param_addr + ichunk as u32 * 8;
             for mem_collector in mem_collectors_info {
-                if !mem_collector.skip(addr) {
+                let addr_w = MemHelpers::get_addr_w(addr);
+                if !mem_collector.skip(addr_w) {
                     return false;
                 }
             }

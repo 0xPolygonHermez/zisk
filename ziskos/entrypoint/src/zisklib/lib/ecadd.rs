@@ -1,7 +1,7 @@
 use crate::{
     bn254_curve_add::{syscall_bn254_curve_add, SyscallBn254CurveAddParams},
     bn254_curve_dbl::syscall_bn254_curve_dbl,
-    point256::SyscallPoint256,
+    point::SyscallPoint256,
 };
 
 use super::{
