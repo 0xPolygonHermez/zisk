@@ -67,7 +67,17 @@ impl Riscv2ZiskContext<'_> {
             //////////////////////////////////
 
             // I.1. Integer Computational (Register-Register)
-            "add" => self.create_register_op(riscv_instruction, "add", 4),
+            "add" => {
+                if riscv_instruction.rs1 == 0 {
+                    // rd = rs1(0) + rs2 = rs2
+                    self.copyb(riscv_instruction, 4, 2);
+                } else if riscv_instruction.rs2 == 0 {
+                    // rd = rs1 + rs2(0) = rs1
+                    self.copyb(riscv_instruction, 4, 1);
+                } else {
+                    self.create_register_op(riscv_instruction, "add", 4);
+                }
+            }
             "sub" => self.create_register_op(riscv_instruction, "sub", 4),
             "sll" => self.create_register_op(riscv_instruction, "sll", 4),
             "slt" => self.create_register_op(riscv_instruction, "lt", 4),
@@ -75,9 +85,29 @@ impl Riscv2ZiskContext<'_> {
             "xor" => self.create_register_op(riscv_instruction, "xor", 4),
             "srl" => self.create_register_op(riscv_instruction, "srl", 4),
             "sra" => self.create_register_op(riscv_instruction, "sra", 4),
-            "or" => self.create_register_op(riscv_instruction, "or", 4),
+            "or" => {
+                if riscv_instruction.rs1 == 0 {
+                    // rd = rs1(0) | rs2 = rs2
+                    self.copyb(riscv_instruction, 4, 2);
+                } else if riscv_instruction.rs2 == 0 {
+                    // rd = rs1 | rs2(0) = rs1
+                    self.copyb(riscv_instruction, 4, 1);
+                } else {
+                    self.create_register_op(riscv_instruction, "or", 4);
+                }
+            }
             "and" => self.create_register_op(riscv_instruction, "and", 4),
-            "addw" => self.create_register_op(riscv_instruction, "add_w", 4),
+            "addw" => {
+                if riscv_instruction.rs1 == 0 {
+                    // rd = rs1(0) + rs2 = rs2
+                    self.copyb(riscv_instruction, 4, 2);
+                } else if riscv_instruction.rs2 == 0 {
+                    // rd = rs1 + rs2(0) = rs1
+                    self.copyb(riscv_instruction, 4, 1);
+                } else {
+                    self.create_register_op(riscv_instruction, "add_w", 4);
+                }
+            }
             "subw" => self.create_register_op(riscv_instruction, "sub_w", 4),
             "sllw" => self.create_register_op(riscv_instruction, "sll_w", 4),
             "srlw" => self.create_register_op(riscv_instruction, "srl_w", 4),
@@ -85,7 +115,10 @@ impl Riscv2ZiskContext<'_> {
 
             // I.2. Integer Computational (Register-Immediate)
             "addi" => {
-                if riscv_instruction.is_nop() {
+                if riscv_instruction.rd == 0
+                    && riscv_instruction.rs1 == 0
+                    && riscv_instruction.rs2 == 0
+                {
                     // r0 = r0 + imm(0) = 0
                     self.nop(riscv_instruction, 4);
                 } else if riscv_instruction.imm == 0 && riscv_instruction.rs1 != 0 {
@@ -104,7 +137,20 @@ impl Riscv2ZiskContext<'_> {
             "ori" => self.immediate_op_or_x0_copyb(riscv_instruction, "or", 4),
             "andi" => self.immediate_op(riscv_instruction, "and", 4),
             "auipc" => self.auipc(riscv_instruction),
-            "addiw" => self.immediate_op(riscv_instruction, "add_w", 4),
+            "addiw" => {
+                if riscv_instruction.rd == 0
+                    && riscv_instruction.rs1 == 0
+                    && riscv_instruction.imm == 0
+                {
+                    // rd(0) = rs1(0) + imm(0) = 0
+                    self.nop(riscv_instruction, 4);
+                } else if riscv_instruction.imm == 0 && riscv_instruction.rs1 != 0 {
+                    // rd = rs1 + imm(0) = rs1
+                    self.copyb(riscv_instruction, 4, 1);
+                } else {
+                    self.immediate_op(riscv_instruction, "add_w", 4);
+                }
+            }
             "slliw" => self.immediate_op(riscv_instruction, "sll_w", 4),
             "srliw" => self.immediate_op(riscv_instruction, "srl_w", 4),
             "sraiw" => self.immediate_op(riscv_instruction, "sra_w", 4),
@@ -211,22 +257,54 @@ impl Riscv2ZiskContext<'_> {
             "c.xor" => self.create_register_op(riscv_instruction, "xor", 2),
             "c.or" => self.create_register_op(riscv_instruction, "or", 2),
             "c.and" => self.create_register_op(riscv_instruction, "and", 2),
-            "c.addw" => self.create_register_op(riscv_instruction, "add_w", 2),
+            "c.addw" => {
+                if riscv_instruction.rs1 == 0 {
+                    // rd = rs1(0) + rs2 = rs2
+                    self.copyb(riscv_instruction, 2, 2);
+                } else if riscv_instruction.rs2 == 0 {
+                    // rd = rs1 + rs2(0) = rs1
+                    self.copyb(riscv_instruction, 2, 1);
+                } else {
+                    self.create_register_op(riscv_instruction, "add_w", 2);
+                }
+            }
             "c.subw" => self.create_register_op(riscv_instruction, "sub_w", 2),
 
             // C.I.2. Integer Computational (Register-Immediate)
-            "c.addi" | "c.addi4spn" | "c.li" | "c.addi16sp" => {
-                if riscv_instruction.is_nop() {
+            "c.addi" => {
+                if riscv_instruction.rd == 0
+                    && riscv_instruction.rs1 == 0
+                    && riscv_instruction.rs2 == 0
+                {
                     self.nop(riscv_instruction, 2);
+                } else if riscv_instruction.imm == 0 && riscv_instruction.rs1 != 0 {
+                    // rd = rs1 + imm(0) = rs1
+                    self.copyb(riscv_instruction, 2, 1);
                 } else {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
                 }
+            }
+            "c.addi4spn" | "c.li" | "c.addi16sp" => {
+                self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
             }
             "c.slli" => self.immediate_op(riscv_instruction, "sll", 2),
             "c.srli" => self.immediate_op(riscv_instruction, "srl", 2),
             "c.srai" => self.immediate_op(riscv_instruction, "sra", 2),
             "c.andi" => self.immediate_op(riscv_instruction, "and", 2),
-            "c.addiw" => self.immediate_op(riscv_instruction, "add_w", 2),
+            "c.addiw" => {
+                if riscv_instruction.rd == 0
+                    && riscv_instruction.rs1 == 0
+                    && riscv_instruction.imm == 0
+                {
+                    // rd(0) = rs1(0) + imm(0) = 0
+                    self.nop(riscv_instruction, 2);
+                } else if riscv_instruction.imm == 0 && riscv_instruction.rs1 != 0 {
+                    // rd = rs1 + imm(0) = rs1
+                    self.copyb(riscv_instruction, 2, 1);
+                } else {
+                    self.immediate_op(riscv_instruction, "add_w", 2)
+                }
+            }
 
             // C.I.3. Control Transfer Instructions
             "c.jr" | "c.jalr" => self.jalr(riscv_instruction, 2),

@@ -72,11 +72,6 @@ impl RiscvInstruction {
         }
     }
 
-    /// Checks if this instruction is a NOP (ADDI x0, x0, 0)
-    pub fn is_nop(&self) -> bool {
-        self.inst == "addi" && self.rd == 0 && self.rs1 == 0 && self.imm == 0
-    }
-
     /// Creates a HALT instruction
     pub fn halt(rvinst: u32) -> Self {
         Self {
