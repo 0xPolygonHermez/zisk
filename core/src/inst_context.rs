@@ -4,7 +4,9 @@
 //! * The state includes: memory, registers (a, b, c, flag, sp), program counter (pc), step and a
 //!   flag to mark the end of the program execution.
 
-use crate::{Mem, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY};
+use crate::{
+    Mem, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
+};
 
 /// Zisk precompiled
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -37,24 +39,37 @@ pub struct PrecompiledInstContext {
 
 /// Zisk fcall instruction context.
 /// Stores the fcall arguments data and the result data.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FcallInstContext {
     /// Fcall parameters data
     /// Maximum size is 32 u64's
-    pub parameters: [u64; 32],
+    pub parameters: [u64; FCALL_PARAMS_MAX_SIZE],
 
     /// Indicates how many parameters u64's contain valid data
     pub parameters_size: u64,
 
     /// Fcall result data
     /// Maximum size is 32 u64's
-    pub result: [u64; 32],
+    pub result: [u64; FCALL_RESULT_MAX_SIZE],
 
     /// Indicates how many result u64's contain valid data
     pub result_size: u64,
 
     /// Indicates how many result u64's have been read using fcall_get()
     pub result_got: u64,
+}
+
+impl Default for FcallInstContext {
+    /// Default fcall instruction context constructor
+    fn default() -> Self {
+        FcallInstContext {
+            parameters: [0; FCALL_PARAMS_MAX_SIZE],
+            parameters_size: 0,
+            result: [0; FCALL_RESULT_MAX_SIZE],
+            result_size: 0,
+            result_got: 0,
+        }
+    }
 }
 
 #[derive(Debug)]

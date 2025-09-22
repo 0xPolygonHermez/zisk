@@ -1,15 +1,16 @@
+//! Finite field Fp operations for BLS12-381
+
 use crate::{
     arith384_mod::{syscall_arith384_mod, SyscallArith384ModParams},
     fcall_bls12_381_fp_inv, fcall_bls12_381_fp_sqrt,
+    zisklib::lib::utils::eq,
 };
 
-use super::constants::{NQR, P, P_MINUS_ONE, R2_MONT};
-
-// ========== Core Implementation (Array-based, Safe) ==========
+use super::constants::{NQR, P, P_MINUS_ONE};
 
 /// Addition in Fp
 #[inline]
-pub fn add_fp_bls12_381_core(x: &[u64; 6], y: &[u64; 6]) -> [u64; 6] {
+pub fn add_fp_bls12_381(x: &[u64; 6], y: &[u64; 6]) -> [u64; 6] {
     // x·1 + y
     let mut params = SyscallArith384ModParams {
         a: x,
@@ -24,7 +25,7 @@ pub fn add_fp_bls12_381_core(x: &[u64; 6], y: &[u64; 6]) -> [u64; 6] {
 
 /// Doubling in Fp
 #[inline]
-pub fn dbl_fp_bls12_381_core(x: &[u64; 6]) -> [u64; 6] {
+pub fn dbl_fp_bls12_381(x: &[u64; 6]) -> [u64; 6] {
     // 2·x + 0 or x·1 + x
     let mut params = SyscallArith384ModParams {
         a: x,
@@ -39,7 +40,7 @@ pub fn dbl_fp_bls12_381_core(x: &[u64; 6]) -> [u64; 6] {
 
 /// Subtraction in Fp
 #[inline]
-pub fn sub_fp_bls12_381_core(x: &[u64; 6], y: &[u64; 6]) -> [u64; 6] {
+pub fn sub_fp_bls12_381(x: &[u64; 6], y: &[u64; 6]) -> [u64; 6] {
     // y·(-1) + x
     let mut params = SyscallArith384ModParams {
         a: y,
@@ -54,7 +55,7 @@ pub fn sub_fp_bls12_381_core(x: &[u64; 6], y: &[u64; 6]) -> [u64; 6] {
 
 /// Negation in Fp
 #[inline]
-pub fn neg_fp_bls12_381_core(x: &[u64; 6]) -> [u64; 6] {
+pub fn neg_fp_bls12_381(x: &[u64; 6]) -> [u64; 6] {
     // x·(-1) + 0
     let mut params = SyscallArith384ModParams {
         a: x,
@@ -69,7 +70,7 @@ pub fn neg_fp_bls12_381_core(x: &[u64; 6]) -> [u64; 6] {
 
 /// Multiplication in Fp
 #[inline]
-pub fn mul_fp_bls12_381_core(x: &[u64; 6], y: &[u64; 6]) -> [u64; 6] {
+pub fn mul_fp_bls12_381(x: &[u64; 6], y: &[u64; 6]) -> [u64; 6] {
     // x·y + 0
     let mut params = SyscallArith384ModParams {
         a: x,
@@ -84,7 +85,7 @@ pub fn mul_fp_bls12_381_core(x: &[u64; 6], y: &[u64; 6]) -> [u64; 6] {
 
 /// Squaring in Fp
 #[inline]
-pub fn square_fp_bls12_381_core(x: &[u64; 6]) -> [u64; 6] {
+pub fn square_fp_bls12_381(x: &[u64; 6]) -> [u64; 6] {
     // x·x + 0
     let mut params = SyscallArith384ModParams {
         a: x,
@@ -99,7 +100,7 @@ pub fn square_fp_bls12_381_core(x: &[u64; 6]) -> [u64; 6] {
 
 /// Square root in Fp
 #[inline]
-pub fn sqrt_fp_bls12_381_core(x: &[u64; 6]) -> ([u64; 6], bool) {
+pub fn sqrt_fp_bls12_381(x: &[u64; 6]) -> ([u64; 6], bool) {
     // Hint the sqrt
     let hint = fcall_bls12_381_fp_sqrt(x);
     let is_qr = hint[0] == 1;
@@ -121,7 +122,7 @@ pub fn sqrt_fp_bls12_381_core(x: &[u64; 6]) -> ([u64; 6], bool) {
         (sqrt, true)
     } else {
         // Check that sqrt * sqrt == x * NQR
-        let nqr = mul_fp_bls12_381_core(x, &NQR);
+        let nqr = mul_fp_bls12_381(x, &NQR);
         assert_eq!(*params.d, nqr);
         (sqrt, false)
     }
@@ -129,7 +130,14 @@ pub fn sqrt_fp_bls12_381_core(x: &[u64; 6]) -> ([u64; 6], bool) {
 
 /// Inversion of a non-zero element in Fp
 #[inline]
-pub fn inv_fp_bls12_381_core(x: &[u64; 6]) -> [u64; 6] {
+pub fn inv_fp_bls12_381(x: &[u64; 6]) -> [u64; 6] {
+    // if x == 0, return 0
+    if eq(x, &[0; 6]) {
+        return *x;
+    }
+
+    // if x != 0, return 1 / x
+
     // Remember that an element y ∈ Fp is the inverse of x ∈ Fp if and only if x·y = 1 in Fp
     // We will therefore hint the inverse y and check the product with x is 1
     let inv = fcall_bls12_381_fp_inv(x);
@@ -148,17 +156,17 @@ pub fn inv_fp_bls12_381_core(x: &[u64; 6]) -> [u64; 6] {
     inv
 }
 
-// ========== Pointer-based API (Thin Wrappers) ==========
+// ========== Pointer-based API ==========
 
 /// # Safety
 ///
 /// Addition in Fp
 #[inline]
-pub unsafe fn add_fp_bls12_381(a: *mut u64, b: *const u64) {
+pub unsafe fn add_fp_bls12_381_ptr(a: *mut u64, b: *const u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
     let b_in = core::slice::from_raw_parts(b, 6);
 
-    let result = add_fp_bls12_381_core(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+    let result = add_fp_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
 
     let out = core::slice::from_raw_parts_mut(a, 6);
     out.copy_from_slice(&result);
@@ -168,10 +176,10 @@ pub unsafe fn add_fp_bls12_381(a: *mut u64, b: *const u64) {
 ///
 /// Doubling in Fp
 #[inline]
-pub unsafe fn dbl_fp_bls12_381(a: *mut u64) {
+pub unsafe fn dbl_fp_bls12_381_ptr(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
 
-    let result = dbl_fp_bls12_381_core(a_in.try_into().unwrap());
+    let result = dbl_fp_bls12_381(a_in.try_into().unwrap());
 
     let out = core::slice::from_raw_parts_mut(a, 6);
     out.copy_from_slice(&result);
@@ -181,11 +189,11 @@ pub unsafe fn dbl_fp_bls12_381(a: *mut u64) {
 ///
 /// Subtraction in Fp
 #[inline]
-pub unsafe fn sub_fp_bls12_381(a: *mut u64, b: *const u64) {
+pub unsafe fn sub_fp_bls12_381_ptr(a: *mut u64, b: *const u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
     let b_in = core::slice::from_raw_parts(b, 6);
 
-    let result = sub_fp_bls12_381_core(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+    let result = sub_fp_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
 
     let out = core::slice::from_raw_parts_mut(a, 6);
     out.copy_from_slice(&result);
@@ -195,10 +203,10 @@ pub unsafe fn sub_fp_bls12_381(a: *mut u64, b: *const u64) {
 ///
 /// Negation in Fp
 #[inline]
-pub unsafe fn neg_fp_bls12_381(a: *mut u64) {
+pub unsafe fn neg_fp_bls12_381_ptr(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
 
-    let result = neg_fp_bls12_381_core(a_in.try_into().unwrap());
+    let result = neg_fp_bls12_381(a_in.try_into().unwrap());
 
     let out = core::slice::from_raw_parts_mut(a, 6);
     out.copy_from_slice(&result);
@@ -208,11 +216,11 @@ pub unsafe fn neg_fp_bls12_381(a: *mut u64) {
 ///
 /// Multiplication in Fp
 #[inline]
-pub unsafe fn mul_fp_bls12_381(a: *mut u64, b: *const u64) {
+pub unsafe fn mul_fp_bls12_381_ptr(a: *mut u64, b: *const u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
     let b_in = core::slice::from_raw_parts(b, 6);
 
-    let result = mul_fp_bls12_381_core(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+    let result = mul_fp_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
 
     let out = core::slice::from_raw_parts_mut(a, 6);
     out.copy_from_slice(&result);
@@ -222,10 +230,10 @@ pub unsafe fn mul_fp_bls12_381(a: *mut u64, b: *const u64) {
 ///
 /// Squaring in Fp
 #[inline]
-pub unsafe fn square_fp_bls12_381(a: *mut u64) {
+pub unsafe fn square_fp_bls12_381_ptr(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
 
-    let result = square_fp_bls12_381_core(a_in.try_into().unwrap());
+    let result = square_fp_bls12_381(a_in.try_into().unwrap());
 
     let out = core::slice::from_raw_parts_mut(a, 6);
     out.copy_from_slice(&result);
@@ -235,10 +243,10 @@ pub unsafe fn square_fp_bls12_381(a: *mut u64) {
 ///
 /// Square root in Fp
 #[inline]
-pub unsafe fn sqrt_fp_bls12_381(a: *mut u64, is_qr: *mut u8) {
+pub unsafe fn sqrt_fp_bls12_381_ptr(a: *mut u64, is_qr: *mut u8) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
 
-    let (result, qr) = sqrt_fp_bls12_381_core(a_in.try_into().unwrap());
+    let (result, qr) = sqrt_fp_bls12_381(a_in.try_into().unwrap());
 
     let out = core::slice::from_raw_parts_mut(a, 6);
     out.copy_from_slice(&result);
@@ -249,25 +257,10 @@ pub unsafe fn sqrt_fp_bls12_381(a: *mut u64, is_qr: *mut u8) {
 ///
 /// Inversion of a non-zero element in Fp
 #[inline]
-pub unsafe fn inv_fp_bls12_381(a: *mut u64) {
+pub unsafe fn inv_fp_bls12_381_ptr(a: *mut u64) {
     let a_in = core::slice::from_raw_parts(a as *const u64, 6);
 
-    let result = inv_fp_bls12_381_core(a_in.try_into().unwrap());
-
-    let out = core::slice::from_raw_parts_mut(a, 6);
-    out.copy_from_slice(&result);
-}
-
-/// # Safety
-///
-/// Inversion in Montgomery form in Fp
-#[inline]
-pub unsafe fn inv_mont_fp_bls12_381(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 6);
-
-    let result = inv_fp_bls12_381_core(a_in.try_into().unwrap());
-    // This gives us a^-1 * R^-1, we should multiply by R^2 to get the montgomery form
-    let result = mul_fp_bls12_381_core(&result, &R2_MONT);
+    let result = inv_fp_bls12_381(a_in.try_into().unwrap());
 
     let out = core::slice::from_raw_parts_mut(a, 6);
     out.copy_from_slice(&result);

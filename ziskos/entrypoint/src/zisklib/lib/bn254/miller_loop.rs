@@ -14,7 +14,7 @@ use super::{
 
 /// Pseudobinary representation of the loop length 6·X+2 of the
 /// optimal ate pairing over the BN254.
-const LOOP_LENGHT_BE: [i8; 65] = [
+const LOOP_LENGTH: [i8; 65] = [
     1, 1, 0, 1, 0, 0, -1, 0, 1, 1, 0, 0, 0, -1, 0, 0, 1, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, -1,
     0, 0, 1, 1, 1, 0, 0, 0, 0, -1, 0, 1, 0, 0, -1, 0, 1, 1, 0, 0, 1, 0, 0, -1, 1, 0, 0, -1, 0, 1,
     0, 1, 0, 0, 0,
@@ -33,7 +33,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
     let mut r: [u64; 16] = q[0..16].try_into().unwrap();
     let mut f = [0u64; 48];
     f[0] = 1;
-    for &bit in LOOP_LENGHT_BE.iter().skip(1) {
+    for &bit in LOOP_LENGTH.iter().skip(1) {
         // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(r)}
         let (lambda, mu) = fcall_bn254_dbl_line_coeffs(&r);
 
@@ -115,7 +115,7 @@ pub fn miller_loop_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) 
     let mut f = [0u64; 48];
     f[0] = 1;
     let n = g1_points.len();
-    for &bit in LOOP_LENGHT_BE.iter().skip(1) {
+    for &bit in LOOP_LENGTH.iter().skip(1) {
         // Compute f = f² · line_{twist(r),twist(r)}(p)
         f = square_fp12_bn254(&f);
 
@@ -240,7 +240,7 @@ fn line_check_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bo
     eq(&rhs, y)
 }
 
-/// Evaluates the line function l(x,y) := (1 + 0·v + 0·v²) + (λx + μy·v + 0·v²)·w
+/// Evaluates the line function l(x,y) := (1 + 0·v + 0·v²) + (λx - μy·v + 0·v²)·w
 #[inline]
 fn line_eval_twist_bn254(
     lambda: &[u64; 8],
