@@ -104,7 +104,7 @@ public:
             #endif
             if (chunk_id % 100 == 0) printf("Loaded chunk %d with size %d\n", chunk_id, chunk_size);
         }
-        printf("chunks: %ld  tot_chunks: %d tot_ops: %d tot_time:%ld (ms) Speed(Mhz): %04.2f\n", chunks.size(), tot_chunks, tot_ops, (chunks.size() * TIME_US_BY_CHUNK)/1000, (double)(1 << 18) / TIME_US_BY_CHUNK);
+        printf("chunks: %ld  tot_chunks: %d tot_ops: %d tot_time:%ld (ms) Speed(Mhz): %04.2f\n", chunks.size(), tot_chunks, tot_ops, (chunks.size() * TIME_US_BY_CHUNK)/1000, (double)(CHUNK_SIZE) / TIME_US_BY_CHUNK);
     }
     void execute(void) {
         printf("Starting...\n");

@@ -69,6 +69,10 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
     fn get_addr_range(&self) -> (u32, u32) {
         (ROM_DATA_W_ADDR_INIT, ROM_DATA_W_ADDR_END)
     }
+    fn is_dual(&self) -> bool {
+        false
+    }
+
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.

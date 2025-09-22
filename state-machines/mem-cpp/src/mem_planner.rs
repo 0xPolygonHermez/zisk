@@ -3,7 +3,7 @@ use std::{os::raw::c_void, sync::Arc};
 
 use crate::*;
 
-#[cfg(feature = "save_mem_bus_data")]
+#[cfg(feature = "save_mem_plans")]
 use mem_common::save_plans;
 use mem_common::{
     MemAlignCounters, MemAlignPlanner, MemModuleCheckPoint, MemModuleSegmentCheckPoint,
@@ -186,7 +186,7 @@ impl MemPlanner {
             }
         }
 
-        #[cfg(feature = "save_mem_bus_data")]
+        #[cfg(feature = "save_mem_plans")]
         save_plans(&plans, "asm_plans.txt");
 
         timer_stop_and_log_info!(COLLECT_MEM_PLANS);

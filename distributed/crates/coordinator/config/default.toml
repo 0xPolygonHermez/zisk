@@ -1,0 +1,12 @@
+[service]
+name = "distributed-network"
+environment = "development"
+
+[server]
+host = "127.0.0.1"
+port = 50051
+
+[logging]
+level = "debug"
+format = "pretty"
+file_output = false

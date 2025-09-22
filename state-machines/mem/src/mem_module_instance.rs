@@ -49,6 +49,7 @@ impl<F: PrimeField64> MemModuleInstance<F> {
             self.min_addr,
             self.ictx.plan.segment_id.unwrap(),
             Some(chunk_id) == self.check_point.first_chunk_id,
+            self.module.is_dual(),
         )
     }
 }
@@ -123,6 +124,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
             self.min_addr,
             self.ictx.plan.segment_id.unwrap(),
             Some(chunk_id) == self.check_point.first_chunk_id,
+            self.module.is_dual(),
         )))
     }
 

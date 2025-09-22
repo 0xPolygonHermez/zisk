@@ -1,0 +1,24 @@
+require "std_permutation.pil"
+require "std_range_check.pil"
+
+const int ROM_DATA_ID = 12;
+
+airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom_bus_id = ROM_BUS_ID, 
+                    const int RC = 2, const int bytes = 8, const int reads_by_row = 1) {
+
+
+    col witness addr; // n-byte address, real address = addr * bytes
+    col witness step[reads_by_row];
+    col witness sel[reads_by_row]; // one-hot encoding of the read in the row
+    col witness value[RC];
+
+    for (int i = 0; i < reads_by_row; i++) {
+        sel[i] * (1 - sel[i]) === 0;
+        permutation_proves(id, expressions: [MEMORY_LOAD_OP, addr * bytes, step[i], bytes, ...value], sel: sel[i]);
+    }
+
+    // line:0, a_offset_imm0:addr, a_imm1:0, b_offset_imm0:value[0], b_imm1:value[1], ind_width:8, 
+    // op:0, store_offset:0, jmp_offset1:0, jmp_offset2:0, flags:0x4000_0000
+
+    permutation_assumes(rom_bus_id, expressions: [0, addr * bytes, 0, ...value, 8, 0, 0, 0, 0, 0x4000_0000], sel: sel[0]);
+}

@@ -8,7 +8,7 @@
     address to prevent repeated addresses.
 
     There are three types of memory:
-    - Mutable (read/write) memory.
+    - Mutable (read/write) memory. The dual_mem feature can be enabled for this memory type.
     - Immutable (read-only) memory, with a single write at initialization.
     - Immutable free-input memory, always reading the same value for each address.
 
@@ -16,10 +16,10 @@
     - Allows to define a memory on a region. Initially the distance between address could up
       to 2^(36+3) bits = 2^39 = 512 GB, but executor use only 32 bits for address, so the maximum
       memory size is 4 GB
-    - Inside this component the address are mem-byte address, to translate internal adress to
-      external need to multiply by bytes.
-    - The memory regions must be exclusive, to avoid collisions between different memories.
-    - The constraints over instances guarantees that the memory access are inside definited region.
+      - Inside this component the address are mem-byte address, to translate internal adress to
+      external need to multiply by bytes.    
+      - The memory regions must be exclusive, to avoid collisions between different memories.
+    - The constraints over instances guarantees that the memory access are inside definited region.    
     - The constraints guarantees that only one cyle for memory region is allowed.
     - For non-aligned or for non mem-bytes access, the MemAlign machine was used.
     - For reads, it's possible read (only read) many times the same address, in same step, this
@@ -50,6 +50,18 @@
     - These previous airvalues are validated throw bus, because assume these values at end of previous
       segment.
 
+    Dual Memory:
+
+    - The dual memory feature groups the common parts of an operation, allowing the same row to validate 
+      two read operations (RR) or one write operation followed by a read operation (WR).
+    - These operations must be performed on the same address and the value must be the same; the only 
+      difference is the step (timestamp).
+    - Due a distribute limitations, chunk driven planner, this is only permitted if both operations 
+      are in the same chunk. This limits the range for verifying that one operation follows another 
+      in time: (step_dual - step) < 2^24 - 1.
+    - It must be considered that to verify a row is subsequent, it should be compared with the previous 
+      step_dual or step, depending on whether the dual mode was active in the previous row or not.
+
 */
 
 require "std_permutation.pil"
@@ -70,7 +82,8 @@ const int MAX_RANGE_CHECK_CHUNK = 2**16;
 
 airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int bytes = 8,
                 const int base_address = 0, const int size_mb = 128, int immutable = 0,
-                const int free_input_mem = 0, const expr enable_flag = 1, const int use_predefined_ranges = 0, const int large_mem = 0) {
+                const int free_input_mem = 0, const expr enable_flag = 1, const int use_predefined_ranges = 0, 
+                const int large_mem = 0, const int dual_mem = 0) {
 
     col fixed SEGMENT_L1 = [1,0...];
     const expr SEGMENT_LAST = SEGMENT_L1';
@@ -99,6 +112,21 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     col witness step;
     col witness sel;
     col witness addr_changes;
+
+    if (dual_mem) {
+        // Dual mem feature not supported for free input memory
+        assert(free_input_mem == 0);
+        // Dual mem feature not supported for immutable memory
+        assert(immutable == 0);
+
+        // Two columns, one for step (timestap) of second operation, and other
+        // to enable dual operation in the row.
+        col witness air.step_dual;
+        col witness air.sel_dual;
+
+        sel_dual * (1 - sel_dual) === 0;
+        (1 - sel) * sel_dual === 0;
+    }
 
     // boolean constraints
 
@@ -184,11 +212,24 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     airval segment_last_step, segment_last_addr;
 
     for (int i = 0; i < RC; i++) {
+        // The `segment_last_value[i]` air_value must match the `value[i]` from the last row. In this 
+        // case, it doesn't matter if it's dual or not, because the value is unique for the last row.
         SEGMENT_LAST * (value[i] - segment_last_value[i]) === 0;
     }
 
+    // The `segment_last_addr` air_value must match the `addr` from the last row. In this case, 
+    // it doesn't matter if it's dual or not, because the addr is unique for the last row.
     SEGMENT_LAST * (addr - segment_last_addr) === 0;
-    SEGMENT_LAST * (step - segment_last_step) === 0;
+
+    if (dual_mem) {
+        // The `segment_last_step` air_value must match the step from the last row.
+        // - If the last row was in dual mode, it must match the last `step_dual`.
+        // - Otherwise, it must match the last `step`.
+        SEGMENT_LAST * (sel_dual * (step_dual - step) + step - segment_last_step) === 0;
+    } else {
+        // The `segment_last_step` air_value must match the `step` from the last row.
+        SEGMENT_LAST * (step - segment_last_step) === 0;
+    }
 
     direct_update_proves(MEMORY_CONT_ID,
                   [
@@ -217,8 +258,9 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // number of instances that could cause an "overflow" in the prime field.
 
     if (large_mem) {
-        // Distance between the internal base address of memory area and previous_segment_address could be greater than 2^24, so
-        // we divide this distance in two chunks of 16 bits, to verify that this distance is "positive"
+        // Distance between the internal base address of memory area and previous_segment_address 
+        // could be greater than 2^24, so we divide this distance in two chunks of 16 bits, to verify 
+        // that this distance is "positive"
 
         airval distance_base[2];
 
@@ -227,7 +269,6 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         range_check(expression: distance_base[0], min: 0, max: 0xFFFF);
         range_check(expression: distance_base[1], min: 0, max: 0xFFFF);
     } else {
-
         range_check(expression: previous_segment_addr - internal_base_address, min: 0, max: 2**24 - 1);
     }
 
@@ -316,7 +357,18 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         // on first row of first segment could be the same and address_change = 1 because it's as a new addr
         // SEGMENT_L1 * (x + is_first_segment * SEGMENT_L1) === SEGMENT_L1 * (x + is_first_segment)
 
-        const expr previous_step = SEGMENT_L1 * (previous_segment_step - 'step) + 'step;
+        
+        if (dual_mem) {
+            // The `previous_step` column must match with the `step` from the previous row.
+            // - If the previous row was in dual mode, it must match the previous `step_dual`.
+            // - Otherwise, it must match the previous `step`.
+
+            col witness air.previous_step;
+            const expr previous_row_step = 'sel_dual * ('step_dual - 'step) + 'step;
+            previous_step === SEGMENT_L1 * (previous_segment_step - previous_row_step) + previous_row_step;
+        } else {
+            const expr air.previous_step = SEGMENT_L1 * (previous_segment_step - 'step) + 'step;
+        }
         const expr delta_step = step - previous_step + (1 - wr);
 
         col witness increment[2];
@@ -335,7 +387,17 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         col witness air.read_same_addr;
 
         read_same_addr === (1 - addr_changes) * (1 - wr);
+
+        if (dual_mem) {
+            // Range check to validate that `step_dual` > `step` if the row is dual. In case of operations
+            // RR, `step_dual` could be equal to `step`, but in operation WR, `step_dual` must be strictly 
+            // greater than `step`. How dual operation must be in same chunk, with range_check of 2^24 is
+            // enough if chunk_size <= 2^22.
+            range_check(expression: step_dual - step - wr , min: 0, max: 2**24 - 1, sel: sel_dual);
+        }
     }
+
+    // if addr_changes is 0, check that previous address match with current addr.
 
     (1 - addr_changes) * (addr - previous_addr) === 0;
 
@@ -371,6 +433,11 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
     const expr mem_op = wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
     permutation_proves(MEMORY_ID, expressions: [mem_op, addr * bytes, step, bytes, ...value], sel: sel);
+
+    if (dual_mem) {
+        // dual mem memory, send to bus always a READ operation, with same address, and value, only change de step.
+        permutation_proves(MEMORY_ID, expressions: [MEMORY_LOAD_OP, addr * bytes, step_dual, bytes, ...value], sel: sel_dual);
+    }
 }
 
 // Memory helpers to use the memory

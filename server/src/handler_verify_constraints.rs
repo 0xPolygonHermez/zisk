@@ -96,7 +96,8 @@ impl ZiskServiceVerifyConstraintsHandler {
                 #[cfg(feature = "stats")]
                 {
                     let stats = result.1;
-                    stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
+                    let stats_id = stats.lock().unwrap().get_id();
+                    stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
                     stats.lock().unwrap().store_stats();
                 }
             }

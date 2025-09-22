@@ -25,8 +25,6 @@ pub struct MainInstance<F: PrimeField64> {
     /// Instance Context
     pub ictx: InstanceCtx,
 
-    pub is_last_segment: bool,
-
     pub std: Arc<Std<F>>,
 }
 
@@ -38,8 +36,8 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Returns
     /// A new `MainInstance`.
-    pub fn new(ictx: InstanceCtx, is_last_segment: bool, std: Arc<Std<F>>) -> Self {
-        Self { ictx, is_last_segment, std }
+    pub fn new(ictx: InstanceCtx, std: Arc<Std<F>>) -> Self {
+        Self { ictx, std }
     }
 
     /// Computes the main witness trace for a given segment based on the provided proof context,
@@ -65,6 +63,16 @@ impl<F: PrimeField64> MainInstance<F> {
         let mut main_trace = MainTrace::new_from_vec(trace_buffer);
 
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
+
+        let is_last_segment = main_instance
+            .ictx
+            .plan
+            .meta
+            .as_ref()
+            .and_then(|m| m.downcast_ref::<bool>())
+            .unwrap_or_else(|| {
+                panic!("create_main_instance: Invalid metadata format, expected bool")
+            });
 
         // Determine the number of minimal traces per segment
         let num_within = MainTrace::<F>::NUM_ROWS / chunk_size as usize;
@@ -93,12 +101,11 @@ impl<F: PrimeField64> MainInstance<F> {
         let last_row_previous_segment =
             if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
 
-        let mem_helpers = MemHelpers::new(chunk_size);
+        let initial_step = MemHelpers::main_step_to_special_mem_step(last_row_previous_segment);
 
-        let initial_step = mem_helpers.main_step_to_special_mem_step(last_row_previous_segment);
-
-        let final_step = mem_helpers
-            .main_step_to_special_mem_step(((segment_id.as_usize() + 1) * num_rows) as u64 - 1);
+        let final_step = MemHelpers::main_step_to_special_mem_step(
+            ((segment_id.as_usize() + 1) * num_rows) as u64 - 1,
+        );
 
         // To reduce memory used, only take memory for the maximum range of mem_step inside the
         // minimal trace.
@@ -122,7 +129,6 @@ impl<F: PrimeField64> MainInstance<F> {
                     zisk_rom,
                     chunk,
                     &segment_min_traces[chunk_id],
-                    chunk_size,
                     &mut reg_trace,
                     &mut step_range_check,
                     chunk_id == (end_idx - start_idx - 1),
@@ -171,7 +177,7 @@ impl<F: PrimeField64> MainInstance<F> {
         let mut air_values = MainAirValues::<F>::new();
 
         air_values.main_segment = F::from_usize(segment_id.into());
-        air_values.main_last_segment = F::from_bool(main_instance.is_last_segment);
+        air_values.main_last_segment = F::from_bool(*is_last_segment);
         air_values.segment_initial_pc = main_trace.row_slice()[0].pc;
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
@@ -206,13 +212,12 @@ impl<F: PrimeField64> MainInstance<F> {
         zisk_rom: &ZiskRom,
         main_trace: &mut [MainTraceRow<F>],
         min_trace: &EmuTrace,
-        chunk_size: u64,
         reg_trace: &mut EmuRegTrace,
         step_range_check: &mut [u32],
         last_reg_values: bool,
     ) -> (u64, Vec<u64>) {
         // Initialize the emulator with the start state of the emu trace
-        let mut emu = Emu::from_emu_trace_start(zisk_rom, chunk_size, &min_trace.start_state);
+        let mut emu = Emu::from_emu_trace_start(zisk_rom, &min_trace.start_state);
         let mut mem_reads_index: usize = 0;
 
         for trace in main_trace {

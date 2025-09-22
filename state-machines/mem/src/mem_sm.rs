@@ -14,12 +14,15 @@ use {
 use crate::{MemInput, MemModule};
 use fields::PrimeField64;
 use mem_common::{
-    MEM_INC_C_BITS, MEM_INC_C_MASK, MEM_INC_C_MAX_RANGE, MEM_INC_C_SIZE, RAM_W_ADDR_END,
-    RAM_W_ADDR_INIT,
+    MemHelpers, MEM_INC_C_BITS, MEM_INC_C_MASK, MEM_INC_C_MAX_RANGE, MEM_INC_C_SIZE,
+    RAM_W_ADDR_END, RAM_W_ADDR_INIT,
 };
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_core::{RAM_ADDR, RAM_SIZE};
+
+const DUAL_RANGE_MAX: usize = (1 << 24) - 1;
+const DUAL_PARTIAL_RANGE_MAX: usize = 1 << 20;
 
 pub struct MemSM<F: PrimeField64> {
     /// PIL2 standard library
@@ -66,6 +69,9 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
     fn get_addr_range(&self) -> (u32, u32) {
         (RAM_W_ADDR_INIT, RAM_W_ADDR_END)
     }
+    fn is_dual(&self) -> bool {
+        true
+    }
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.
@@ -88,24 +94,87 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         let range_id = std.get_range_id(0, MEM_INC_C_MAX_RANGE as i64, None);
         let mut range_check_data: Vec<u32> = vec![0; MEM_INC_C_SIZE];
 
+        // 2^20 * 2 = 2^21 = 2MB
+        let dual_range_id = std.get_range_id(0, DUAL_RANGE_MAX as i64, None);
+        let mut dual_partial_range: Vec<u16> = vec![0; DUAL_PARTIAL_RANGE_MAX];
+
         // use special counter for internal reads
         let distance_base = previous_segment.addr - RAM_W_ADDR_INIT;
         let mut last_addr = previous_segment.addr;
-        let mut last_step = previous_segment.step;
         let mut last_value = previous_segment.value;
+        let mut dual_candidate = false;
+        // the last_step of previous_row
+        let mut last_step = previous_segment.step;
 
         let mut i = 0;
+        let mut step = 0;
+        let mem_op_count = mem_ops.len();
+        for index in 0..mem_op_count {
+            let mem_op = &mem_ops[index];
+            step = mem_op.step;
+            // if step >= 28184622 && step <= 28184624 {
+            //     println!(
+            //         "@@@@@@@@@@ 0x{:08X} {step} 8 OP:{}",
+            //         mem_op.addr * 8,
+            //         if mem_op.is_write { 2 } else { 1 }
+            //     );
+            // }
 
-        for mem_op in mem_ops {
-            let step = mem_op.step;
+            let addr_changes = last_addr != mem_op.addr;
+            if dual_candidate {
+                dual_candidate = false;
+                trace[i].previous_step = F::from_u64(last_step);
+                // println!("trace[{i}].previous_step = {last_step} (last_step)");
+                let previous_step = mem_ops[index - 1].step;
+                let previous_chunk_id = MemHelpers::mem_step_to_chunk(previous_step);
+                let chunk_id = MemHelpers::mem_step_to_chunk(step);
+                if mem_op.is_write || addr_changes || previous_chunk_id != chunk_id {
+                    // not dual, because write or addr changes
+                    trace[i].sel_dual = F::ZERO;
+                    trace[i].step_dual = F::ZERO;
+                    // last step is previous_step (step)
+                    last_step = previous_step;
+                    i += 1;
+                } else {
+                    trace[i].sel_dual = F::ONE;
+                    trace[i].step_dual = F::from_u64(step);
+                    // last step is step_dual (step)
+                    last_step = step;
+                    let increment_step =
+                        step - previous_step - if mem_ops[index - 1].is_write { 1 } else { 0 };
+                    assert_eq!(
+                        (trace[i].step_dual.as_canonical_u64()
+                            - trace[i].step.as_canonical_u64()
+                            - trace[i].wr.as_canonical_u64()),
+                        increment_step
+                    );
+                    if increment_step >= DUAL_PARTIAL_RANGE_MAX as u64 {
+                        self.std.range_check(dual_range_id, increment_step as i64, 1);
+                    } else if dual_partial_range[increment_step as usize] == u16::MAX {
+                        dual_partial_range[increment_step as usize] = 0;
+                        self.std.range_check(
+                            dual_range_id,
+                            increment_step as i64,
+                            u16::MAX as u64 + 1,
+                        );
+                    } else {
+                        dual_partial_range[increment_step as usize] += 1;
+                    }
+
+                    // TODO: add to range check
+                    i += 1;
+                    continue;
+                }
+            }
 
             if i >= trace.num_rows {
                 break;
             }
 
+            dual_candidate = true;
+
             // set the common values of trace between internal reads and regular memory operation
             trace[i].addr = F::from_u32(mem_op.addr);
-            let addr_changes = last_addr != mem_op.addr;
             trace[i].addr_changes = if addr_changes { F::ONE } else { F::ZERO };
 
             let mut increment = if addr_changes {
@@ -120,9 +189,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                 (step - last_step) as usize
             };
 
-            if i >= trace.num_rows {
-                break;
-            }
             // set specific values of trace for regular memory operation
             let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);
             trace[i].value = [F::from_u32(low_val), F::from_u32(high_val)];
@@ -154,8 +220,14 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             range_check_data[msb_increment] += 1;
 
             last_addr = mem_op.addr;
-            last_step = step;
             last_value = mem_op.value;
+        }
+        if dual_candidate {
+            // if dual, need to "close" not dual row
+            trace[i].sel_dual = F::ZERO;
+            trace[i].step_dual = F::ZERO;
+            trace[i].previous_step = F::from_u64(last_step);
+            last_step = step;
             i += 1;
         }
         let count = i;
@@ -166,7 +238,11 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         let last_row_idx = count - 1;
         let addr = trace[last_row_idx].addr;
         let value = trace[last_row_idx].value;
-        let step = trace[last_row_idx].step;
+        let step = if trace[last_row_idx].sel_dual.is_zero() {
+            trace[last_row_idx].step
+        } else {
+            trace[last_row_idx].step_dual
+        };
 
         let padding_size = trace.num_rows - count;
         let padding_increment = [F::ZERO, F::ZERO];
@@ -175,12 +251,15 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             trace[i].step = step;
             trace[i].sel = F::ZERO;
             trace[i].wr = F::ZERO;
+            trace[i].previous_step = step;
 
             trace[i].value = value;
 
             trace[i].addr_changes = F::ZERO;
             trace[i].increment = padding_increment;
             trace[i].read_same_addr = F::ONE;
+            trace[i].sel_dual = F::ZERO;
+            trace[i].step_dual = F::ZERO;
         }
 
         if padding_size > 0 {
@@ -227,6 +306,13 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         self.std.range_check(range_16bits_id, distance_base[1] as i64, 1);
         self.std.range_check(range_16bits_id, distance_end[0] as i64, 1);
         self.std.range_check(range_16bits_id, distance_end[1] as i64, 1);
+
+        for (value, count) in dual_partial_range.iter().enumerate() {
+            if *count == 0 {
+                continue;
+            }
+            self.std.range_check(dual_range_id, value as i64, *count as u64);
+        }
 
         #[cfg(feature = "debug_mem")]
         {

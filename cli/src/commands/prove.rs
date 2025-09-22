@@ -1,5 +1,5 @@
 use crate::{
-    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
+    commands::{get_proving_key, get_witness_computation_lib, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -11,7 +11,10 @@ use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions};
+use proofman::{ProofInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman_common::{
+    initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions,
+};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -120,9 +123,6 @@ pub struct ZiskProve {
     #[clap(short = 'b', long, default_value_t = false)]
     pub save_proofs: bool,
 
-    #[clap(short = 'c', long)]
-    pub chunk_size_bits: Option<u64>,
-
     #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
@@ -133,10 +133,6 @@ pub struct ZiskProve {
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
         print_banner();
-
-        let mpi_context = initialize_mpi()?;
-
-        proofman_common::initialize_logger(self.verbose.into(), Some(mpi_context.world_rank));
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
@@ -238,46 +234,31 @@ impl ZiskProve {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let proofman;
-        #[cfg(distributed)]
-        {
-            proofman = ProofMan::<Goldilocks>::new(
-                proving_key,
-                custom_commits_map,
-                verify_constraints,
-                self.aggregation,
-                self.final_snark,
-                gpu_params,
-                self.verbose.into(),
-                Some(mpi_context.universe),
-            )
-            .expect("Failed to initialize proofman");
-        }
-        #[cfg(not(distributed))]
-        {
-            proofman = ProofMan::<Goldilocks>::new(
-                proving_key,
-                custom_commits_map,
-                verify_constraints,
-                self.aggregation,
-                self.final_snark,
-                gpu_params,
-                self.verbose.into(),
-            )
-            .expect("Failed to initialize proofman");
-        }
-        let asm_services =
-            AsmServices::new(mpi_context.world_rank, mpi_context.local_rank, self.port);
+        let proofman = ProofMan::<Goldilocks>::new(
+            proving_key,
+            custom_commits_map,
+            verify_constraints,
+            self.aggregation,
+            self.final_snark,
+            gpu_params,
+            self.verbose.into(),
+        )
+        .expect("Failed to initialize proofman");
+        let mpi_ctx = proofman.get_mpi_ctx();
+
+        initialize_logger(self.verbose.into(), Some(mpi_ctx.rank));
+
+        let asm_services = AsmServices::new(mpi_ctx.rank, mpi_ctx.node_rank, self.port);
         let asm_runner_options = AsmRunnerOptions::new()
             .with_verbose(self.verbose > 0)
             .with_base_port(self.port)
-            .with_world_rank(mpi_context.world_rank)
-            .with_local_rank(mpi_context.local_rank)
+            .with_world_rank(mpi_ctx.rank)
+            .with_local_rank(mpi_ctx.node_rank)
             .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
         if self.asm.is_some() {
             // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_ctx.rank,);
 
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }
@@ -291,9 +272,8 @@ impl ZiskProve {
             self.elf.clone(),
             self.asm.clone(),
             asm_rom,
-            self.chunk_size_bits,
-            Some(mpi_context.world_rank),
-            Some(mpi_context.local_rank),
+            Some(mpi_ctx.rank),
+            Some(mpi_ctx.node_rank),
             self.port,
             self.unlock_mapped_memory,
             self.shared_tables,
@@ -318,9 +298,14 @@ impl ZiskProve {
             match self.field {
                 Field::Goldilocks => {
                     proofman.set_barrier();
-                    (proof_id, vadcop_final_proof) = proofman
+                    let result = proofman
                         .generate_proof_from_lib(
-                            self.input.clone(),
+                            ProvePhaseInputs::Full(ProofInfo::new(
+                                self.input.clone(),
+                                1,
+                                vec![0],
+                                0,
+                            )),
                             ProofOptions::new(
                                 false,
                                 self.aggregation,
@@ -330,13 +315,21 @@ impl ZiskProve {
                                 self.save_proofs,
                                 self.output_dir.clone(),
                             ),
+                            ProvePhase::Full,
                         )
                         .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+
+                    (proof_id, vadcop_final_proof) =
+                        if let ProvePhaseResult::Full(proof_id, vadcop_final_proof) = result {
+                            (proof_id, vadcop_final_proof)
+                        } else {
+                            (None, None)
+                        };
                 }
             };
         }
 
-        if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
+        if mpi_ctx.rank == 0 {
             let elapsed = start.elapsed();
 
             #[allow(clippy::type_complexity)]
@@ -402,7 +395,8 @@ impl ZiskProve {
             // Store the stats in stats.json
             #[cfg(feature = "stats")]
             {
-                _stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
+                let stats_id = _stats.lock().unwrap().get_id();
+                _stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
                 _stats.lock().unwrap().store_stats();
             }
         }
@@ -411,7 +405,7 @@ impl ZiskProve {
 
         if self.asm.is_some() {
             // Shut down ASM microservices
-            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_context.world_rank);
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_ctx.rank);
             asm_services.stop_asm_services()?;
         }
 

@@ -147,7 +147,7 @@ fn test_mem_module_planner() {
     let counters: Vec<(ChunkId, &MemCounters)> = vec![(ChunkId(0), &counter)];
 
     let plans = generate_test_plans(0xA000_0000, 4, counters);
-    assert_eq!(plans.len(), 2);
+    assert_eq!(plans.len(), 1);
 }
 
 #[test]
@@ -158,11 +158,16 @@ fn test_counters() {
     add_mem_data(&mut counter, 10, 0x8000_0000, 100, 0x01020304_05060708, 8, false, &cfg);
     add_mem_write64(&mut counter, 0xA000_0002, 18, 0x2222_2222_2222_2222);
     add_mem_read64(&mut counter, 0xA000_0000, 12, 0x1111_1111_1111_1111);
-    add_mem_read64(&mut counter, 0xA000_0000, 40, 0x2222_2222_2222_1111);
-    add_mem_read64(&mut counter, 0xA000_0016, 50, 0x3333_3333_3333_3333);
+    add_mem_read64(&mut counter, 0xA000_0000, 40, 0x2222_2222_2222_1111); // dual
+    add_mem_write64(&mut counter, 0xA000_0000, 50, 0x2222_2222_3333_1111);
+    add_mem_write64(&mut counter, 0xA000_0000, 60, 0x2222_2222_4444_1111);
+    add_mem_write64(&mut counter, 0xA000_0000, 70, 0x2222_2222_5555_1111);
+    add_mem_write64(&mut counter, 0xA000_0000, 80, 0x2222_2222_6666_1111);
+    add_mem_read64(&mut counter, 0xA000_0016, 85, 0x3333_3333_3333_3333);
+    add_mem_read64(&mut counter, 0xA000_0000, 90, 0x2222_2222_6666_1111); // dual => 2 (A000_0002) + 5 rows = 7
     add_mem_data(&mut counter, 10, 0x9000_0000, 10, 0x4041_4243_4445_4647, 8, false, &cfg);
     counter.close();
-    assert_eq!(format!("{counter:?}"), "[MEM_0,#:10 => 0x80000000:2 0x80000008:2 0x80000010:2 0x80000018:2 0x80000020:2 0x80000028:2 0x80000030:2 0x80000038:2 0x80000040:2 0x80000048:2][MEM_1,#:10 => 0x90000000:1 0x90000008:1 0x90000010:1 0x90000018:1 0x90000020:1 0x90000028:1 0x90000030:1 0x90000038:1 0x90000040:1 0x90000048:1][MEM_2,#:4 => 0xA0000000:4 0xA0000008:2 0xA0000010:1 0xA0000018:1]");
+    assert_eq!(format!("{counter:?}"), "[MEM_0,#:10 => 0x80000000:2 0x80000008:2 0x80000010:2 0x80000018:2 0x80000020:2 0x80000028:2 0x80000030:2 0x80000038:2 0x80000040:2 0x80000048:2][MEM_1,#:10 => 0x90000000:1 0x90000008:1 0x90000010:1 0x90000018:1 0x90000020:1 0x90000028:1 0x90000030:1 0x90000038:1 0x90000040:1 0x90000048:1][MEM_2,#:4 => 0xA0000000:7 0xA0000008:2 0xA0000010:1 0xA0000018:1]");
 }
 
 /*

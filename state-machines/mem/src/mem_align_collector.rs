@@ -79,13 +79,9 @@ impl BusDevice<u64> for MemAlignCollector {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let bytes = MemBusData::get_bytes(data);
-        let addr = MemBusData::get_addr(data);
-        if MemHelpers::is_aligned(addr, bytes) {
-            return true;
-        }
 
-        let is_write = MemHelpers::is_write(MemBusData::get_op(data));
         if bytes == 1 {
+            let is_write = MemHelpers::is_write(MemBusData::get_op(data));
             if is_write {
                 if (MemBusData::get_value(data) & 0xFFFF_FFFF_FFFF_FF00) == 0 {
                     if !self.write_byte.should_skip() {
@@ -101,6 +97,12 @@ impl BusDevice<u64> for MemAlignCollector {
             }
         }
 
+        let addr = MemBusData::get_addr(data);
+        if MemHelpers::is_aligned(addr, bytes) {
+            return true;
+        }
+
+        let is_write = MemHelpers::is_write(MemBusData::get_op(data));
         let ops_by_addr = if MemHelpers::is_double(addr, bytes) { 2 } else { 1 };
         let rows = if is_write { 1 + 2 * ops_by_addr } else { 1 + ops_by_addr };
         match rows as u8 {
