@@ -20,7 +20,7 @@ use crate::{
 use mem_common::{MemAlignPlanner, MemCounters, RAM_W_ADDR_INIT};
 
 #[cfg(feature = "save_mem_counters")]
-use crate::MemAlignCounters;
+use mem_common::MemAlignCounters;
 
 #[cfg(feature = "save_mem_counters")]
 #[derive(Clone)]
@@ -138,6 +138,7 @@ impl MemPlanner {
             }
 
             // Save mem_align_counters
+            file.write_all(&counters.mem_align_counters.chunk_id.to_le_bytes())?;
             file.write_all(&counters.mem_align_counters.full_2.to_le_bytes())?;
             file.write_all(&counters.mem_align_counters.full_3.to_le_bytes())?;
             file.write_all(&counters.mem_align_counters.full_5.to_le_bytes())?;
@@ -230,6 +231,7 @@ impl MemPlanner {
             };
 
             let mem_align_counters = MemAlignCounters {
+                chunk_id: read_u32()?,
                 full_2: read_u32()?,
                 full_3: read_u32()?,
                 full_5: read_u32()?,

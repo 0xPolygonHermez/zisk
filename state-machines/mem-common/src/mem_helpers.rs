@@ -1,47 +1,51 @@
 use crate::{
     MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEPS_BY_MAIN_STEP,
-    MEM_STEP_BASE, RAM_W_ADDR_INIT,
+    MEM_STEPS_BY_MAIN_STEP_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT,
 };
 use zisk_common::ChunkId;
-use zisk_core::RAM_ADDR;
-pub struct MemHelpers {
-    chunk_size_steps: u64,
-}
+use zisk_core::{CHUNK_SIZE_BITS, RAM_ADDR, RAM_SIZE};
+
+const CHUNK_MEM_STEP_BITS: u64 = CHUNK_SIZE_BITS as u64 + MEM_STEPS_BY_MAIN_STEP_BITS;
+const CHUNK_MEM_STEPS: u64 = 1 << CHUNK_MEM_STEP_BITS;
+
+use static_assertions::const_assert;
+const_assert!(CHUNK_MEM_STEP_BITS <= 24);
+
+pub struct MemHelpers {}
 
 impl MemHelpers {
-    pub fn new(chunk_size: u64) -> Self {
-        MemHelpers { chunk_size_steps: chunk_size * MEM_STEPS_BY_MAIN_STEP }
-    }
-
     #[inline(always)]
-    pub fn main_step_to_mem_step(&self, step: u64, slot: u8) -> u64 {
-        MEM_STEP_BASE + MEM_STEPS_BY_MAIN_STEP * step + slot as u64
+    pub fn main_step_to_mem_step(step: u64, slot: u8) -> u64 {
+        MEM_STEP_BASE + (step << MEM_STEPS_BY_MAIN_STEP_BITS) + slot as u64
     }
     #[inline(always)]
-    pub fn main_step_to_precompiled_mem_step(&self, step: u64, is_write: bool) -> u64 {
-        MEM_STEP_BASE + MEM_STEPS_BY_MAIN_STEP * step + if is_write { 3 } else { 2 }
+    pub fn main_step_to_precompiled_mem_step(step: u64, is_write: bool) -> u64 {
+        MEM_STEP_BASE + (step << MEM_STEPS_BY_MAIN_STEP_BITS) + if is_write { 3 } else { 2 }
     }
     #[inline(always)]
-    pub fn mem_step_to_chunk(&self, step: u64) -> ChunkId {
-        ChunkId(((step - MEM_STEP_BASE) / self.chunk_size_steps) as usize)
+    pub fn mem_step_to_chunk(step: u64) -> ChunkId {
+        ChunkId(
+            (step - MEM_STEP_BASE) as usize
+                >> (MEM_STEPS_BY_MAIN_STEP_BITS as usize + CHUNK_SIZE_BITS),
+        )
     }
     #[inline(always)]
-    pub fn static_mem_step_to_chunk(step: u64, chunk_size: u64) -> ChunkId {
-        ChunkId(((step - MEM_STEP_BASE) / (chunk_size * MEM_STEPS_BY_MAIN_STEP)) as usize)
+    pub fn mem_step_to_main_step(step: u64) -> u64 {
+        (step - MEM_STEP_BASE) >> MEM_STEPS_BY_MAIN_STEP_BITS
     }
     #[inline(always)]
-    pub fn first_chunk_mem_step(&self, chunk: ChunkId) -> u64 {
-        (chunk.0 as u64) * self.chunk_size_steps + MEM_STEP_BASE
+    pub fn first_chunk_mem_step(chunk: ChunkId) -> u64 {
+        ((chunk.0 as u64) >> CHUNK_MEM_STEP_BITS) + MEM_STEP_BASE
     }
     #[inline(always)]
-    pub fn last_chunk_mem_step(&self, chunk: ChunkId) -> u64 {
-        (chunk.0 as u64) * self.chunk_size_steps + MEM_STEP_BASE + self.chunk_size_steps - 1
+    pub fn last_chunk_mem_step(chunk: ChunkId) -> u64 {
+        ((chunk.0 as u64) >> CHUNK_MEM_STEP_BITS) + MEM_STEP_BASE + CHUNK_MEM_STEPS - 1
     }
     #[inline(always)]
-    pub fn max_distance_between_chunks(&self, from_chunk: ChunkId, to_chunk: ChunkId) -> u64 {
+    pub fn max_distance_between_chunks(from_chunk: ChunkId, to_chunk: ChunkId) -> u64 {
         debug_assert!(from_chunk <= to_chunk);
-        let from_step = self.first_chunk_mem_step(from_chunk);
-        let to_step = self.last_chunk_mem_step(to_chunk);
+        let from_step = Self::first_chunk_mem_step(from_chunk);
+        let to_step = Self::last_chunk_mem_step(to_chunk);
         to_step - from_step
     }
 
@@ -70,6 +74,10 @@ impl MemHelpers {
         (addr & MEM_ADDR_ALIGN_MASK) + bytes as u32 > 8
     }
     #[inline(always)]
+    pub fn is_dual(addr: u32) -> bool {
+        addr as u64 >= RAM_ADDR && addr as u64 <= (RAM_ADDR + RAM_SIZE)
+    }
+    #[inline(always)]
     pub fn is_write(op: u8) -> bool {
         op == MEMORY_STORE_OP
     }
@@ -79,20 +87,20 @@ impl MemHelpers {
     }
 
     #[inline(always)]
-    pub fn main_step_to_special_mem_step(&self, main_step: u64) -> u64 {
+    pub fn main_step_to_special_mem_step(main_step: u64) -> u64 {
         if main_step == 0 {
             0
         } else {
-            self.main_step_to_mem_step(main_step, 3)
+            Self::main_step_to_mem_step(main_step, 3)
         }
     }
     #[inline(always)]
     pub fn mem_step_to_slot(mem_step: u64) -> u8 {
-        ((mem_step - MEM_STEP_BASE) % MEM_STEPS_BY_MAIN_STEP) as u8
+        ((mem_step - MEM_STEP_BASE) & (MEM_STEPS_BY_MAIN_STEP - 1)) as u8
     }
     #[inline(always)]
     pub fn mem_step_to_row(mem_step: u64) -> usize {
-        ((mem_step - MEM_STEP_BASE) / MEM_STEPS_BY_MAIN_STEP) as usize
+        ((mem_step - MEM_STEP_BASE) >> MEM_STEPS_BY_MAIN_STEP_BITS) as usize
     }
 
     #[cfg(target_endian = "big")]
@@ -153,7 +161,6 @@ impl MemHelpers {
     }
     #[inline(always)]
     pub fn mem_load(
-        &self,
         addr: u32,
         step: u64,
         step_offset: u8,
@@ -163,7 +170,7 @@ impl MemHelpers {
         [
             MEMORY_LOAD_OP as u64,
             addr as u64,
-            self.main_step_to_mem_step(step, step_offset),
+            Self::main_step_to_mem_step(step, step_offset),
             bytes as u64,
             mem_values[0],
             mem_values[1],
@@ -172,7 +179,6 @@ impl MemHelpers {
     }
     #[inline(always)]
     pub fn mem_write(
-        &self,
         addr: u32,
         step: u64,
         step_offset: u8,
@@ -183,7 +189,7 @@ impl MemHelpers {
         [
             MEMORY_STORE_OP as u64,
             addr as u64,
-            self.main_step_to_mem_step(step, step_offset),
+            Self::main_step_to_mem_step(step, step_offset),
             bytes as u64,
             mem_values[0],
             mem_values[1],
@@ -192,12 +198,12 @@ impl MemHelpers {
     }
 
     #[inline(always)]
-    pub fn get_distance_by_chunks(&self, from_step: u64, to_step: u64) -> u64 {
+    pub fn get_distance_by_chunks(from_step: u64, to_step: u64) -> u64 {
         debug_assert!(from_step <= to_step);
 
-        let from_chunk = self.mem_step_to_chunk(from_step);
-        let to_chunk = self.mem_step_to_chunk(to_step);
-        self.max_distance_between_chunks(from_chunk, to_chunk)
+        let from_chunk = Self::mem_step_to_chunk(from_step);
+        let to_chunk = Self::mem_step_to_chunk(to_step);
+        Self::max_distance_between_chunks(from_chunk, to_chunk)
     }
     #[inline(always)]
     pub fn encode_mem_align_rows_and_count(rows: u32, count: u32) -> u32 {

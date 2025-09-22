@@ -17,7 +17,7 @@
 #define FLAGS_4_BYTES_WRITE (MEM_WRITE_FLAG + 4)
 #define FLAGS_8_BYTES_WRITE (MEM_WRITE_FLAG + 8)
 
-MemAlignCounter::MemAlignCounter(uint32_t rows, std::shared_ptr<MemContext> context) :context(context), rows(rows) {
+MemAlignCounter::MemAlignCounter(std::shared_ptr<MemContext> context) :context(context) {
     total_counters.chunk_id = 0xFFFFFFFF;
     total_counters.full_5 = 0;
     total_counters.full_3 = 0;

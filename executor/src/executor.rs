@@ -432,7 +432,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             emu_trace: Arc<EmuTrace>,
             data_bus: DB,
             zisk_rom: Arc<ZiskRom>,
-            chunk_size: u64,
             _phantom: std::marker::PhantomData<F>,
             _stats: Arc<Mutex<ExecutorStats>>,
             _parent_stats_id: u64,
@@ -461,7 +460,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     &self.zisk_rom,
                     &self.emu_trace,
                     &mut self.data_bus,
-                    self.chunk_size,
                     false,
                 );
 
@@ -487,7 +485,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 CounterTask {
                     chunk_id,
                     emu_trace,
-                    chunk_size: self.chunk_size,
                     data_bus,
                     zisk_rom: self.zisk_rom.clone(),
                     _phantom: std::marker::PhantomData::<F>,
@@ -634,7 +631,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     &self.zisk_rom,
                     minimal_trace,
                     &mut data_bus,
-                    self.chunk_size,
                     true,
                 );
 
@@ -982,7 +978,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             let collectors_by_instance = self.collectors_by_instance.clone();
             let witness_stats = self.witness_stats.clone();
             let ordered_chunks_clone = ordered_chunks.clone();
-            let chunk_size = self.chunk_size;
 
             let pctx_clone = pctx.clone();
 
@@ -1017,7 +1012,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                             min_traces,
                             chunk_id,
                             &mut data_bus,
-                            chunk_size,
                         );
 
                         for (global_id, collector) in data_bus.into_devices(false) {
