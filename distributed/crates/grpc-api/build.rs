@@ -17,10 +17,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .extern_path(".google.protobuf.Timestamp", "::prost_types::Timestamp")
         // Add support for proto3 optional fields
         .protoc_arg("--experimental_allow_proto3_optional")
-        .compile_protos(&["proto/distributed_api.proto"], &["proto/"])?;
+        .compile_protos(&["proto/zisk_distributed_api.proto"], &["proto/"])?;
 
     // Tell cargo to rerun this build script if the proto file changes
-    println!("cargo:rerun-if-changed=proto/distributed_api.proto");
+    println!("cargo:rerun-if-changed=proto/zisk_distributed_api.proto");
 
     Ok(())
 }

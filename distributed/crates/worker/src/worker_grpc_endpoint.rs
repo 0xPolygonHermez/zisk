@@ -76,7 +76,7 @@ impl WorkerGrpcEndpoint {
         let channel = Channel::from_shared(self.worker_service_config.coordinator.url.clone())?
             .connect()
             .await?;
-        let mut client = distributed_api_client::DistributedApiClient::new(channel);
+        let mut client = zisk_distributed_api_client::ZiskDistributedApiClient::new(channel);
 
         // Create bidirectional stream
         let (message_sender, message_receiver) = mpsc::unbounded_channel();

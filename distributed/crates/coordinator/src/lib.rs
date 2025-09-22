@@ -1,15 +1,13 @@
 mod config;
-mod coordinator_service;
-mod coordinator_service_error;
-mod coordinator_service_grpc;
+mod coordinator;
+mod coordinator_errors;
+mod coordinator_grpc;
 mod hooks;
-mod worker_info;
-mod workers_pool;
 mod shutdown;
+mod workers_pool;
 
 pub use config::*;
-use coordinator_service::*;
-pub use coordinator_service_grpc::*;
-use worker_info::*;
-use workers_pool::*;
+use coordinator::*;
+pub use coordinator_grpc::*;
 pub use shutdown::*;
+use workers_pool::*;

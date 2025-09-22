@@ -1,15 +1,15 @@
 use anyhow::Result;
 use clap::Parser;
 
+mod handler_coordinator;
 mod handler_prove_block;
-mod handler_server;
 
 #[derive(Parser, Debug)]
-#[command(name = "coordinator-server")]
-#[command(about = "A Coordinator Network gRPC Server")]
-struct CoordinatorServerArgs {
-    /// Port to bind the gRPC server to
-    #[arg(short, long, help = "Port number for the gRPC server")]
+#[command(name = "zisk-coordinator")]
+#[command(about = "The Coordinator for the Distributed ZisK Network")]
+struct ZiskCoordinatorArgs {
+    /// Port where the gRPC server will listen for incoming connections.
+    #[arg(short, long, help = "Port number to bind the gRPC server to")]
     port: Option<u16>,
 
     /// Webhook URL to notify when a job finishes.
@@ -28,16 +28,16 @@ struct CoordinatorServerArgs {
     webhook_url: Option<String>,
 
     #[command(subcommand)]
-    pub command: Option<CoordinatorServerCommands>,
+    pub command: Option<ZiskCoordinatorCommands>,
 }
 
 #[derive(Parser, Debug)]
-enum CoordinatorServerCommands {
+enum ZiskCoordinatorCommands {
     /// Prove a block with the specified input file and node
     ProveBlock {
-        /// Server URL
+        /// Coordinator URL
         #[arg(short, long)]
-        url: String,
+        coordinator_url: String,
 
         /// Path to the input file
         /// NOTE: THIS IS A DEV FEATURE IT WILL BE REMOVED IN PRODUCTION
@@ -56,24 +56,25 @@ enum CoordinatorServerCommands {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Parse command line arguments
-    let args = CoordinatorServerArgs::parse();
+    let args = ZiskCoordinatorArgs::parse();
 
     // Initialize tracing
     zisk_distributed_common::tracing::init()?;
 
     match args.command {
-        Some(CoordinatorServerCommands::ProveBlock {
-            url,
+        Some(ZiskCoordinatorCommands::ProveBlock {
+            coordinator_url,
             input,
             compute_capacity,
             simulated_node,
         }) => {
-            // Prove block command
-            handler_prove_block::handle(url, input, compute_capacity, simulated_node).await
+            // Run the "prove-block" subcommand
+            handler_prove_block::handle(coordinator_url, input, compute_capacity, simulated_node)
+                .await
         }
         None => {
-            // Default to server mode when no subcommand is provided
-            handler_server::handle(args.port, args.webhook_url).await
+            // No subcommand was provided → default to coordinator mode
+            handler_coordinator::handle(args.port, args.webhook_url).await
         }
     }
 }

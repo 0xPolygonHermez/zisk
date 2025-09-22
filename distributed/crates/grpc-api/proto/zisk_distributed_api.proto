@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package distributed.api.v1;
+package zisk.distributed.api.v1;
 
 import "google/protobuf/timestamp.proto";
 
@@ -8,17 +8,17 @@ import "google/protobuf/timestamp.proto";
 // gRPC Service Definition
 // ============================================================================
 
-service DistributedApi {
+service ZiskDistributedApi {
   // Bidirectional stream between worker(s) and coordinator
   rpc WorkerStream(stream WorkerMessage) returns (stream CoordinatorMessage);
   
   // Admin endpoints (optional, for monitoring)
-  rpc StatusInfo(StatusInfoRequest) returns (StatusInfoResponse);
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
-  rpc JobsList(JobsListRequest) returns (JobsListResponse);
-  rpc WorkersList(WorkersListRequest) returns (WorkersListResponse);
-  rpc JobStatus(JobStatusRequest) returns (JobStatusResponse);
   rpc SystemStatus(SystemStatusRequest) returns (SystemStatusResponse);
+  rpc StatusInfo(StatusInfoRequest) returns (StatusInfoResponse);
+  rpc JobsList(JobsListRequest) returns (JobsListResponse);
+  rpc JobStatus(JobStatusRequest) returns (JobStatusResponse);
+  rpc WorkersList(WorkersListRequest) returns (WorkersListResponse);
   
   // Coordinator control
   rpc LaunchProof(LaunchProofRequest) returns (LaunchProofResponse);
@@ -26,7 +26,7 @@ service DistributedApi {
 
 // Standardized error response
 message ErrorResponse {
-  string code = 1;      // Error code (e.g., "JOB_NOT_FOUND", "WORKER_UNAVAILABLE")
+  string code = 1;      // Error code
   string message = 2;   // Human-readable error message
 }
 
@@ -34,24 +34,23 @@ message ErrorResponse {
 // Admin Commands Request Messages
 // ============================================================================
 
-// Service info requests
-message StatusInfoRequest {}
-
 message HealthCheckRequest {}
+
+message SystemStatusRequest {}
+
+message StatusInfoRequest {}
 
 message JobsListRequest {
   bool active_only = 1;
-}
-
-message WorkersListRequest {
-  bool available_only = 1;
 }
 
 message JobStatusRequest {
   string job_id = 1;
 }
 
-message SystemStatusRequest {}
+message WorkersListRequest {
+  bool available_only = 1;
+}
 
 message LaunchProofRequest {
   string block_id = 1;
@@ -64,6 +63,23 @@ message LaunchProofRequest {
 // Admin Commands Response Messages
 // ============================================================================
 
+message HealthCheckResponse {}
+
+message SystemStatusResponse {
+  oneof result {
+    SystemStatus status = 1;
+    ErrorResponse error = 2;
+  }
+}
+
+message SystemStatus {
+  uint32 total_workers = 1;
+  uint32 compute_capacity = 2;
+  uint32 idle_workers = 3;
+  uint32 busy_workers = 4;
+  uint32 active_jobs = 5;
+}
+
 message StatusInfoResponse {
   string service_name = 1;
   string version = 2;
@@ -74,15 +90,12 @@ message StatusInfoResponse {
 
 // Metrics information
 message Metrics {
-  uint32 active_connections = 2;
+  uint32 active_connections = 1;
 }
-
-// Health check response
-message HealthCheckResponse {}
 
 message JobsListResponse {
   oneof result {
-    JobsList jobs_list = 1;         // Success case
+    JobsList jobs_list = 1;    // Success case
     ErrorResponse error = 2;   // Error case (e.g., system unavailable)
   }
 }
@@ -93,7 +106,7 @@ message JobsList {
 
 message JobStatusResponse {
   oneof result {
-    JobStatus job = 1;          // Success case
+    JobStatus job = 1;         // Success case
     ErrorResponse error = 2;   // Error case (e.g., job not found)
   }
 }
@@ -127,21 +140,6 @@ message WorkerInfo {
   google.protobuf.Timestamp last_heartbeat = 5;
 }
 
-message SystemStatusResponse {
-  oneof result {
-    SystemStatus status = 1;
-    ErrorResponse error = 2;
-  }
-}
-
-message SystemStatus {
-  uint32 total_workers = 1;
-  uint32 compute_capacity = 2;
-  uint32 idle_workers = 3;
-  uint32 busy_workers = 4;
-  uint32 active_jobs = 5;
-}
-
 message LaunchProofResponse {
   oneof result {
     string job_id = 1;
@@ -150,7 +148,7 @@ message LaunchProofResponse {
 }
 
 // ============================================================================
-// Proof Coordinator Messages (NEW)
+// STREAM MESSAGES from COORDINATOR <-> WORKER
 // ============================================================================
 
 // Messages from coordinator to worker
@@ -164,11 +162,52 @@ message CoordinatorMessage {
   }
 }
 
+// Messages from worker to coordinator
+message WorkerMessage {
+  oneof payload {
+    HeartbeatAck heartbeat_ack = 1;
+    WorkerError error = 2;
+    WorkerRegisterRequest register = 3;
+    WorkerReconnectRequest reconnect = 4;
+    ExecuteTaskResponse execute_task_response = 5;
+  }
+}
+
+message Heartbeat {
+  google.protobuf.Timestamp timestamp = 1;
+}
+
+message HeartbeatAck {
+  string worker_id = 1;
+}
+
+message Shutdown {
+  string reason = 1;
+  uint32 grace_period_seconds = 2;
+}
+
+message WorkerRegisterRequest {
+  string worker_id = 1;
+  ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
+}
+
+message WorkerReconnectRequest {
+  string worker_id = 1;
+  ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
+  string last_known_job_id = 3;
+}
+
+message WorkerRegisterResponse {
+  string worker_id = 1;
+  bool accepted = 2;
+  string message = 3;
+  google.protobuf.Timestamp registered_at = 4;
+}
+
 message ExecuteTaskRequest {
   string worker_id = 1;
   string job_id = 2;
   TaskType task_type = 3;
-
   oneof params {
     ContributionParams contribution_params = 4;
     ProveParams prove_params = 5;
@@ -209,58 +248,6 @@ message AggParams {
   bool minimal_memory = 11;
 }
 
-// Messages from worker to coordinator
-message WorkerMessage {
-  oneof payload {
-    HeartbeatAck heartbeat_ack = 1;
-    WorkerError error = 2;
-    WorkerRegisterRequest register = 3;
-    WorkerReconnectRequest reconnect = 4;
-    ExecuteTaskResponse execute_task_response = 5;
-  }
-}
-
-message Heartbeat {
-  google.protobuf.Timestamp timestamp = 1;
-}
-
-message Shutdown {
-  string reason = 1;
-  uint32 grace_period_seconds = 2;
-}
-
-message WorkerRegisterResponse {
-  string worker_id = 1;
-  bool accepted = 2;
-  string message = 3;
-  google.protobuf.Timestamp registered_at = 4;
-}
-
-message HeartbeatAck {
-  string worker_id = 2;
-}
-
-message WorkerError {
-  string worker_id = 1;
-  string job_id = 2;
-  string error_message = 3;
-}
-
-message WorkerRegisterRequest {
-  string worker_id = 1;
-  ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
-}
-
-message WorkerReconnectRequest {
-  string worker_id = 1;
-  ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
-  string last_known_job_id = 4;
-}
-
-message ComputeCapacity {
-  uint32 compute_units = 1;
-}
-
 message ExecuteTaskResponse {
   string job_id = 1;
   string worker_id = 2;
@@ -272,6 +259,16 @@ message ExecuteTaskResponse {
     ProofList proofs = 7;
     FinalProofList final_proof = 8;
   }
+}
+
+message ChallengesList {
+  repeated Challenges challenges = 1;
+}
+
+message Challenges {
+  uint32 worker_index = 1;
+  uint32 airgroup_id = 2;
+  repeated uint64 challenge = 3;
 }
 
 message ProofList {
@@ -292,15 +289,14 @@ message FinalProof {
   repeated uint64 values = 1;
 }
 
-message ChallengesList {
-  repeated Challenges challenges = 1;
-
+message WorkerError {
+  string worker_id = 1;
+  string job_id = 2;
+  string error_message = 3;
 }
 
-message Challenges {
-  uint32 worker_index = 1;
-  uint32 airgroup_id = 2;
-  repeated uint64 challenge = 3;
+message ComputeCapacity {
+  uint32 compute_units = 1;
 }
 
 message JobCancelled {

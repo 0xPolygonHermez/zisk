@@ -32,7 +32,7 @@
 
 use crate::{
     config::Config,
-    coordinator_service_error::{CoordinatorError, CoordinatorResult},
+    coordinator_errors::{CoordinatorError, CoordinatorResult},
     hooks, WorkersPool,
 };
 
@@ -88,7 +88,7 @@ pub trait MessageSender {
 /// 2. **Worker Registration**: Workers connect and register their compute capacity
 /// 3. **Job Execution**: Proof requests trigger multi-phase job workflows
 /// 4. **Cleanup**: Completed jobs trigger webhooks and resource cleanup
-pub struct CoordinatorService {
+pub struct Coordinator {
     /// Configuration settings for the coordinator including server parameters,
     /// logging parameters and coordinator specific settings.
     config: Config,
@@ -103,7 +103,7 @@ pub struct CoordinatorService {
     jobs: DashMap<JobId, RwLock<Job>>,
 }
 
-impl CoordinatorService {
+impl Coordinator {
     /// Creates a new coordinator service instance with the provided configuration.
     ///
     /// # Parameters

@@ -2,16 +2,16 @@ use anyhow::Result;
 use std::net::TcpListener;
 use tonic::transport::Server;
 use tracing::{error, info};
-use zisk_distributed_coordinator::{create_shutdown_signal, Config, CoordinatorServiceGrpc};
-use zisk_distributed_grpc_api::distributed_api_server::DistributedApiServer;
+use zisk_distributed_coordinator::{create_shutdown_signal, Config, CoordinatorGrpc};
+use zisk_distributed_grpc_api::zisk_distributed_api_server::ZiskDistributedApiServer;
 
-/// Handle the server mode (default behavior)
+/// Handle the coordinator server mode (default behavior)
 pub async fn handle(port_override: Option<u16>, webhook_url: Option<String>) -> Result<()> {
     // Load configuration
     let config = Config::load(port_override, webhook_url)?;
 
     // Create coordinator service
-    let coordinator_service = CoordinatorServiceGrpc::new(config.clone()).await?;
+    let coordinator_service = CoordinatorGrpc::new(config.clone()).await?;
 
     // Use command line port if provided, otherwise use config port
     let grpc_port = port_override.unwrap_or(config.server.port);
@@ -41,7 +41,7 @@ pub async fn handle(port_override: Option<u16>, webhook_url: Option<String>) -> 
     // Run the gRPC server with shutdown signal
     tokio::select! {
         result = Server::builder()
-            .add_service(DistributedApiServer::new(coordinator_service))
+            .add_service(ZiskDistributedApiServer::new(coordinator_service))
             .serve(grpc_addr) => {
             match result {
                 Ok(_) => {

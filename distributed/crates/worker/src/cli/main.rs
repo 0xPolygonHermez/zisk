@@ -9,7 +9,7 @@ use zisk_distributed_worker::{
 };
 
 #[derive(Parser)]
-#[command(name = "zisk-distributed-worker")]
+#[command(name = "zisk-worker")]
 #[command(about = "A Worker for the Distributed ZisK Network")]
 #[command(version)]
 struct Cli {

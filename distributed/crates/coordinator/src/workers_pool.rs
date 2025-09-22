@@ -3,7 +3,9 @@
 //! Manages the pool of connected workers, their states, and capacity allocation
 //! for distributed proof generation jobs.
 
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use std::fmt::Display;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 use zisk_distributed_common::{
@@ -12,10 +14,51 @@ use zisk_distributed_common::{
 };
 
 use crate::{
-    coordinator_service::MessageSender,
-    coordinator_service_error::{CoordinatorError, CoordinatorResult},
-    WorkerInfo,
+    coordinator::MessageSender,
+    coordinator_errors::{CoordinatorError, CoordinatorResult},
 };
+
+/// Information about a connected worker
+pub struct WorkerInfo {
+    pub worker_id: WorkerId,
+    pub state: WorkerState,
+    pub compute_capacity: ComputeCapacity,
+    pub connected_at: DateTime<Utc>,
+    pub last_heartbeat: DateTime<Utc>,
+    pub msg_sender: Box<dyn MessageSender + Send + Sync>,
+}
+
+impl WorkerInfo {
+    pub fn new(
+        worker_id: WorkerId,
+        compute_capacity: ComputeCapacity,
+        msg_sender: Box<dyn MessageSender + Send + Sync>,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            worker_id,
+            state: WorkerState::Idle,
+            compute_capacity,
+            connected_at: now,
+            last_heartbeat: now,
+            msg_sender,
+        }
+    }
+
+    pub fn update_last_heartbeat(&mut self) {
+        self.last_heartbeat = Utc::now();
+    }
+}
+
+impl Display for WorkerInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "WorkerInfo(state: {}, capacity: {}, connected_at: {}, last_heartbeat: {})",
+            self.state, self.compute_capacity, self.connected_at, self.last_heartbeat
+        )
+    }
+}
 
 /// Manages connected workers and their resource allocation.
 ///

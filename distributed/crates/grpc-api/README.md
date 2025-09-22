@@ -53,16 +53,16 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 
 ```bash
 # Health check (adjust port as needed)
-grpcurl -plaintext 127.0.0.1:50051 distributed.api.v1.DistributedApi/HealthCheck
+grpcurl -plaintext 127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/HealthCheck
 
 # Get service information  
-grpcurl -plaintext 127.0.0.1:50051 distributed.api.v1.DistributedApi/StatusInfo
+grpcurl -plaintext 127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/StatusInfo
 
 # Get system status
-grpcurl -plaintext 127.0.0.1:50051 distributed.api.v1.DistributedApi/SystemStatus
+grpcurl -plaintext 127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/SystemStatus
 
 # For manual builds using default port
-grpcurl -plaintext 127.0.0.1:8080 distributed.api.v1.DistributedApi/HealthCheck
+grpcurl -plaintext 127.0.0.1:8080 zisk.distributed.api.v1.ZiskDistributedApi/HealthCheck
 ```
 
 ### Job and Prover Management
@@ -70,19 +70,19 @@ grpcurl -plaintext 127.0.0.1:8080 distributed.api.v1.DistributedApi/HealthCheck
 ```bash
 # List active jobs
 grpcurl -plaintext -d '{"active_only": true}' \
-  127.0.0.1:50051 distributed.api.v1.DistributedApi/JobsList
+  127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/JobsList
 
 # List available provers
 grpcurl -plaintext -d '{"available_only": true}' \
-  127.0.0.1:50051 distributed.api.v1.DistributedApi/ProversList
+  127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/ProversList
 
 # Get specific job status
 grpcurl -plaintext -d '{"job_id": "job_123"}' \
-  127.0.0.1:50051 distributed.api.v1.DistributedApi/JobStatus
+  127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/JobStatus
 
 # Launch a new proof job
 grpcurl -plaintext -d '{"block_id": "block_456", "compute_capacity": 4, "input_path": "/path/to/input"}' \
-  127.0.0.1:50051 distributed.api.v1.DistributedApi/LaunchProof
+  127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/LaunchProof
 ```
 
 ### Interactive Streaming (Advanced)
@@ -164,8 +164,8 @@ cargo run --bin prover -- --url http://127.0.0.1:50051
 This crate provides the generated gRPC stubs and message types. Import it in your coordinator or prover implementations:
 
 ```rust
-use distributed_grpc_api::distributed_api::{
-    DistributedApiServer, DistributedApiClient,
+use distributed_grpc_api::zisk_distributed_api::{
+    ZiskDistributedApiServer, ZiskDistributedApiClient,
     ProverMessage, CoordinatorMessage,
     // ... other message types
 };
@@ -199,4 +199,4 @@ Common error codes:
 
 ## Protocol Buffer Schema
 
-The complete gRPC service definition is available in `proto/distributed_api.proto` with detailed message schemas for all request/response types.
+The complete gRPC service definition is available in `proto/zisk_distributed_api.proto` with detailed message schemas for all request/response types.

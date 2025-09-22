@@ -10,14 +10,13 @@
 
 use crate::{
     coordinator_message::Payload, execute_task_request, execute_task_response, job_status_response,
-    jobs_list_response, launch_proof_response, workers_list_response, system_status_response,
+    jobs_list_response, launch_proof_response, system_status_response, workers_list_response,
     AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity, ContributionParams,
     CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck,
     JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, LaunchProofRequest,
-    LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, WorkerError, WorkerInfo,
-    WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse, WorkersList,
-    WorkersListResponse, Shutdown, StatusInfoResponse, SystemStatus, SystemStatusResponse,
-    TaskType,
+    LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, Shutdown, StatusInfoResponse,
+    SystemStatus, SystemStatusResponse, TaskType, WorkerError, WorkerInfo, WorkerReconnectRequest,
+    WorkerRegisterRequest, WorkerRegisterResponse, WorkersList, WorkersListResponse,
 };
 use zisk_distributed_common::*;
 

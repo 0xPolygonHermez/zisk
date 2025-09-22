@@ -1,7 +1,9 @@
 use anyhow::Result;
 use tonic::transport::Channel;
 use tracing::{error, info};
-use zisk_distributed_grpc_api::{distributed_api_client::DistributedApiClient, LaunchProofRequest};
+use zisk_distributed_grpc_api::{
+    zisk_distributed_api_client::ZiskDistributedApiClient, LaunchProofRequest,
+};
 
 /// Handle the prove-block subcommand - makes RPC request to coordinator
 pub async fn handle(
@@ -14,7 +16,7 @@ pub async fn handle(
     info!("Connecting to Coordinator Network gRPC service on {}", server_url);
 
     let channel = Channel::from_shared(server_url)?.connect().await?;
-    let mut client = DistributedApiClient::new(channel);
+    let mut client = ZiskDistributedApiClient::new(channel);
 
     let launch_proof_request = LaunchProofRequest {
         block_id: "0x1234567890abcdef".into(), // Placeholder block ID
