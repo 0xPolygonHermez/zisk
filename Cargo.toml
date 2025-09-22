@@ -122,7 +122,7 @@ anyhow = "1.0"
 libloading = "0.8"
 named-sem = "0.2.2"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3.19", features = ["fmt", "env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 mpi = { version = "0.8.0" }
 static_assertions = "1"
 
