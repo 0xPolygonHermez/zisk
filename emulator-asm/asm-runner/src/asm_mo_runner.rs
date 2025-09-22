@@ -2,6 +2,7 @@
 use named_sem::NamedSemaphore;
 use zisk_common::ExecutorStats;
 use zisk_common::Plan;
+use zisk_core::CHUNK_SIZE;
 
 use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
@@ -83,7 +84,6 @@ impl AsmRunnerMO {
     pub fn run(
         preloaded: &mut PreloadedMO,
         max_steps: u64,
-        chunk_size: u64,
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
@@ -127,7 +127,7 @@ impl AsmRunnerMO {
             );
 
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-            let result = asm_services.send_memory_ops_request(max_steps, chunk_size);
+            let result = asm_services.send_memory_ops_request(max_steps, CHUNK_SIZE);
 
             // Add to executor stats
             #[cfg(feature = "stats")]

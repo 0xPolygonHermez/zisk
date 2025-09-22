@@ -10,7 +10,7 @@ use pil_std_lib::Std;
 use proofman::register_std;
 use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
-use zisk_core::{Riscv2zisk, CHUNK_SIZE};
+use zisk_core::Riscv2zisk;
 use zisk_pil::{
     ARITH_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS,
     BINARY_EXTENSION_AIR_IDS, INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
@@ -32,7 +32,6 @@ pub struct WitnessLib<F: PrimeField64> {
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     executor: Option<Arc<ZiskExecutor<F>>>,
-    chunk_size: u64,
     world_rank: i32,
     local_rank: i32,
     base_port: Option<u16>,
@@ -55,14 +54,11 @@ fn init_library(
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, world_rank);
 
-    let chunk_size = CHUNK_SIZE;
-
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,
         asm_rom_path,
         executor: None,
-        chunk_size,
         world_rank: world_rank.unwrap_or(0),
         local_rank: local_rank.unwrap_or(0),
         base_port,
@@ -164,7 +160,6 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             std,
             sm_bundle,
             Some(rom_sm.clone()),
-            self.chunk_size,
             self.world_rank,
             self.local_rank,
             self.base_port,

@@ -8,6 +8,7 @@ use std::any::Any;
 use asm_runner::MinimalTraces;
 use fields::PrimeField;
 use zisk_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan, SegmentId};
+use zisk_core::CHUNK_SIZE;
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::MainCounter;
@@ -34,7 +35,6 @@ impl MainPlanner {
     pub fn plan<F: PrimeField>(
         min_traces: &MinimalTraces,
         main_counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>,
-        min_traces_size: u64,
     ) -> (Vec<Plan>, Vec<(u64, u32)>) {
         let min_traces = match min_traces {
             MinimalTraces::AsmEmuTrace(asm_min_traces) => &asm_min_traces.vec_chunks,
@@ -54,11 +54,9 @@ impl MainPlanner {
         });
 
         assert!(num_rows.is_power_of_two());
-        assert!(min_traces_size.is_power_of_two());
-        assert!(num_rows >= min_traces_size);
 
         // This is the number of minimal traces wrapped in a main trace
-        let num_within = num_rows / min_traces_size;
+        let num_within = num_rows / CHUNK_SIZE;
         let num_instances = (min_traces.len() as f64 / num_within as f64).ceil() as usize;
 
         let plans: Vec<Plan> = (0..num_instances)

@@ -41,7 +41,6 @@ impl AsmRunnerMT {
     pub fn run_and_count<T: Task>(
         _: &mut PreloadedMT,
         _: u64,
-        _: u64,
         _: TaskFactory<T>,
         _: i32,
         _: i32,

@@ -1,18 +1,14 @@
 use crate::{
-    MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEPS_BY_MAIN_STEP,
-    MEM_STEP_BASE, RAM_W_ADDR_INIT,
+    CHUNK_SIZE_STEPS, MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS,
+    MEM_STEPS_BY_MAIN_STEP, MEM_STEP_BASE, RAM_W_ADDR_INIT,
 };
 use zisk_common::ChunkId;
 use zisk_core::RAM_ADDR;
-pub struct MemHelpers {
-    chunk_size_steps: u64,
-}
+
+#[derive(Default)]
+pub struct MemHelpers;
 
 impl MemHelpers {
-    pub fn new(chunk_size: u64) -> Self {
-        MemHelpers { chunk_size_steps: chunk_size * MEM_STEPS_BY_MAIN_STEP }
-    }
-
     #[inline(always)]
     pub fn main_step_to_mem_step(&self, step: u64, slot: u8) -> u64 {
         MEM_STEP_BASE + MEM_STEPS_BY_MAIN_STEP * step + slot as u64
@@ -23,19 +19,19 @@ impl MemHelpers {
     }
     #[inline(always)]
     pub fn mem_step_to_chunk(&self, step: u64) -> ChunkId {
-        ChunkId(((step - MEM_STEP_BASE) / self.chunk_size_steps) as usize)
+        ChunkId(((step - MEM_STEP_BASE) / CHUNK_SIZE_STEPS) as usize)
     }
     #[inline(always)]
-    pub fn static_mem_step_to_chunk(step: u64, chunk_size: u64) -> ChunkId {
-        ChunkId(((step - MEM_STEP_BASE) / (chunk_size * MEM_STEPS_BY_MAIN_STEP)) as usize)
+    pub fn static_mem_step_to_chunk(step: u64) -> ChunkId {
+        ChunkId(((step - MEM_STEP_BASE) / CHUNK_SIZE_STEPS) as usize)
     }
     #[inline(always)]
     pub fn first_chunk_mem_step(&self, chunk: ChunkId) -> u64 {
-        (chunk.0 as u64) * self.chunk_size_steps + MEM_STEP_BASE
+        (chunk.0 as u64) * CHUNK_SIZE_STEPS + MEM_STEP_BASE
     }
     #[inline(always)]
     pub fn last_chunk_mem_step(&self, chunk: ChunkId) -> u64 {
-        (chunk.0 as u64) * self.chunk_size_steps + MEM_STEP_BASE + self.chunk_size_steps - 1
+        (chunk.0 as u64) * CHUNK_SIZE_STEPS + MEM_STEP_BASE + CHUNK_SIZE_STEPS - 1
     }
     #[inline(always)]
     pub fn max_distance_between_chunks(&self, from_chunk: ChunkId, to_chunk: ChunkId) -> u64 {

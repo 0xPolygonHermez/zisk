@@ -26,7 +26,7 @@ use std::{
 };
 use sysinfo::System;
 use zisk_common::EmuTrace;
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::{Riscv2zisk, ZiskRom, CHUNK_SIZE};
 
 pub trait Emulator {
     fn emulate(
@@ -115,7 +115,7 @@ impl ZiskEmulator {
         }
 
         // Create a emulator instance with the Zisk rom
-        let mut emu = Emu::new(rom, options.chunk_size.unwrap_or(1u64 << 18));
+        let mut emu = Emu::new(rom);
 
         // Get the current time, to be used to calculate the metrics
         let start = Instant::now();
@@ -185,11 +185,10 @@ impl ZiskEmulator {
         let mut minimal_traces = vec![Vec::new(); num_threads];
 
         minimal_traces.par_iter_mut().enumerate().for_each(|(thread_id, emu_trace)| {
-            let par_emu_options =
-                ParEmuOptions::new(num_threads, thread_id, options.chunk_size.unwrap() as usize);
+            let par_emu_options = ParEmuOptions::new(num_threads, thread_id, CHUNK_SIZE as usize);
 
             // Run the emulation
-            let mut emu = Emu::new(rom, options.chunk_size.unwrap());
+            let mut emu = Emu::new(rom);
             let result = emu.par_run(inputs.to_owned(), options, &par_emu_options);
 
             if !emu.terminated() {
@@ -221,11 +220,10 @@ impl ZiskEmulator {
         rom: &ZiskRom,
         emu_trace: &EmuTrace,
         data_bus: &mut DB,
-        chunk_size: u64,
         with_mem_ops: bool,
     ) {
         // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom, chunk_size);
+        let mut emu = Emu::new(rom);
 
         // Run the emulation
         emu.process_emu_trace(emu_trace, data_bus, with_mem_ops);
@@ -239,10 +237,9 @@ impl ZiskEmulator {
         min_traces: &[EmuTrace],
         chunk_id: usize,
         data_bus: &mut DB,
-        chunk_size: u64,
     ) {
         // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom, chunk_size);
+        let mut emu = Emu::new(rom);
 
         // Run the emulation
         emu.process_emu_traces(min_traces, chunk_id, data_bus);

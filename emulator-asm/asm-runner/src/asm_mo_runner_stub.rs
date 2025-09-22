@@ -20,7 +20,6 @@ impl AsmRunnerMO {
     pub fn run(
         _: &mut PreloadedMO,
         _: u64,
-        _: u64,
         _: i32,
         _: i32,
         _: Option<u16>,
