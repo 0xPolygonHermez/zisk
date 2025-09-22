@@ -1,8 +1,9 @@
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 
-use crate::zisklib::fcalls_impl::bls12_381_fp_inv::{
-    bls12_381_fp_add, bls12_381_fp_inv, bls12_381_fp_mul, bls12_381_fp_neg,
+use super::bls12_381_fp_inv::{
+    bls12_381_fp_add, bls12_381_fp_dbl, bls12_381_fp_inv, bls12_381_fp_mul, bls12_381_fp_neg,
+    bls12_381_fp_square, bls12_381_fp_sub,
 };
 
 lazy_static! {
@@ -39,20 +40,69 @@ pub fn bls12_381_fp2_inv(a: &[u64; 12]) -> [u64; 12] {
     let inv_real = bls12_381_fp_mul(real, &denominator);
     let inv_imaginary = bls12_381_fp_mul(&bls12_381_fp_neg(imaginary), &denominator);
 
-    [
-        inv_real[0],
-        inv_real[1],
-        inv_real[2],
-        inv_real[3],
-        inv_real[4],
-        inv_real[5],
-        inv_imaginary[0],
-        inv_imaginary[1],
-        inv_imaginary[2],
-        inv_imaginary[3],
-        inv_imaginary[4],
-        inv_imaginary[5],
-    ]
+    [inv_real, inv_imaginary].concat().try_into().unwrap()
+}
+
+pub(crate) fn bls12_381_fp2_dbl(a: &[u64; 12]) -> [u64; 12] {
+    let a_real = &a[0..6].try_into().unwrap();
+    let a_imaginary = &a[6..12].try_into().unwrap();
+
+    let real_part = bls12_381_fp_add(a_real, a_real);
+    let imaginary_part = bls12_381_fp_add(a_imaginary, a_imaginary);
+
+    [real_part, imaginary_part].concat().try_into().unwrap()
+}
+
+pub(crate) fn bls12_381_fp2_sub(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
+    let a_real = &a[0..6].try_into().unwrap();
+    let a_imaginary = &a[6..12].try_into().unwrap();
+    let b_real = &b[0..6].try_into().unwrap();
+    let b_imaginary = &b[6..12].try_into().unwrap();
+
+    let real_part = bls12_381_fp_sub(a_real, b_real);
+    let imaginary_part = bls12_381_fp_sub(a_imaginary, b_imaginary);
+
+    [real_part, imaginary_part].concat().try_into().unwrap()
+}
+
+pub(crate) fn bls12_381_fp2_mul(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
+    let a_real = &a[0..6].try_into().unwrap();
+    let a_imaginary = &a[6..12].try_into().unwrap();
+    let b_real = &b[0..6].try_into().unwrap();
+    let b_imaginary = &b[6..12].try_into().unwrap();
+
+    let real_part = bls12_381_fp_sub(
+        &bls12_381_fp_mul(a_real, b_real),
+        &bls12_381_fp_mul(a_imaginary, b_imaginary),
+    );
+    let imaginary_part = bls12_381_fp_add(
+        &bls12_381_fp_mul(a_real, b_imaginary),
+        &bls12_381_fp_mul(a_imaginary, b_real),
+    );
+
+    [real_part, imaginary_part].concat().try_into().unwrap()
+}
+
+pub(crate) fn bls12_381_fp2_square(a: &[u64; 12]) -> [u64; 12] {
+    let a_real = &a[0..6].try_into().unwrap();
+    let a_imaginary = &a[6..12].try_into().unwrap();
+
+    let real_part =
+        bls12_381_fp_sub(&bls12_381_fp_square(a_real), &bls12_381_fp_square(a_imaginary));
+    let imaginary_part = bls12_381_fp_dbl(&bls12_381_fp_mul(a_real, a_imaginary));
+
+    [real_part, imaginary_part].concat().try_into().unwrap()
+}
+
+pub(crate) fn bls12_381_fp2_scalar_mul(a: &[u64; 12], b: &[u64; 6]) -> [u64; 12] {
+    let a_real = &a[0..6].try_into().unwrap();
+    let a_imaginary = &a[6..12].try_into().unwrap();
+    let b = &b[0..6].try_into().unwrap();
+
+    let real_part = bls12_381_fp_mul(a_real, b);
+    let imaginary_part = bls12_381_fp_mul(a_imaginary, b);
+
+    [real_part, imaginary_part].concat().try_into().unwrap()
 }
 
 #[cfg(test)]

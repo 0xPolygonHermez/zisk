@@ -1,4 +1,4 @@
-mod bls12_381;
+pub mod bls12_381;
 pub mod bn254;
 mod ecadd;
 mod ecmul;
@@ -10,18 +10,6 @@ mod utils;
 
 // For public consumption
 pub use bls12_381::curve::{add_bls12_381, dbl_bls12_381};
-pub use bls12_381::fp::{
-    add_fp_bls12_381, dbl_fp_bls12_381, inv_fp_bls12_381, inv_mont_fp_bls12_381, mul_fp_bls12_381,
-    neg_fp_bls12_381, sqrt_fp_bls12_381, square_fp_bls12_381, sub_fp_bls12_381,
-};
-pub use bls12_381::fp2::{
-    add_fp2_bls12_381, dbl_fp2_bls12_381, inv_fp2_bls12_381, mul_fp2_bls12_381, neg_fp2_bls12_381,
-    square_fp2_bls12_381, sub_fp2_bls12_381,
-};
-pub use bls12_381::fr::{
-    add_fr_bls12_381, dbl_fr_bls12_381, mul_fr_bls12_381, neg_fr_bls12_381, square_fr_bls12_381,
-    sub_fr_bls12_381,
-};
 pub use bn254::curve::{add_bn254, mul_bn254, to_affine_bn254};
 pub use bn254::pairing::pairing_batch_bn254;
 pub use ecadd::ecadd;

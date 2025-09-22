@@ -4,11 +4,10 @@ use crate::{
     bls12_381_complex_sub::{syscall_bls12_381_complex_sub, SyscallBls12_381ComplexSubParams},
     complex::SyscallComplex384,
     fcall_bls12_381_fp2_inv,
+    zisklib::lib::utils::eq,
 };
 
 use super::constants::P_MINUS_ONE;
-
-// ========== Core Implementation (Array-based, Safe) ==========
 
 /// Helper to convert from array representation to syscall representation
 #[inline]
@@ -32,7 +31,7 @@ fn from_syscall_complex(complex: &SyscallComplex384) -> [u64; 12] {
 
 /// Addition in Fp2
 #[inline]
-pub(crate) fn add_fp2_bls12_381_core(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
+pub fn add_fp2_bls12_381(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
     let mut params = SyscallBls12_381ComplexAddParams { f1: &mut f1, f2: &f2 };
@@ -42,7 +41,7 @@ pub(crate) fn add_fp2_bls12_381_core(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] 
 
 /// Doubling in Fp2
 #[inline]
-pub(crate) fn dbl_fp2_bls12_381_core(a: &[u64; 12]) -> [u64; 12] {
+pub fn dbl_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(a);
     let mut params = SyscallBls12_381ComplexAddParams { f1: &mut f1, f2: &f2 };
@@ -52,7 +51,7 @@ pub(crate) fn dbl_fp2_bls12_381_core(a: &[u64; 12]) -> [u64; 12] {
 
 /// Negation in Fp2
 #[inline]
-pub(crate) fn neg_fp2_bls12_381_core(a: &[u64; 12]) -> [u64; 12] {
+pub fn neg_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex_x(&P_MINUS_ONE);
     let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
@@ -62,7 +61,7 @@ pub(crate) fn neg_fp2_bls12_381_core(a: &[u64; 12]) -> [u64; 12] {
 
 /// Subtraction in Fp2
 #[inline]
-pub(crate) fn sub_fp2_bls12_381_core(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
+pub fn sub_fp2_bls12_381(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
     let mut params = SyscallBls12_381ComplexSubParams { f1: &mut f1, f2: &f2 };
@@ -72,7 +71,7 @@ pub(crate) fn sub_fp2_bls12_381_core(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] 
 
 /// Multiplication in Fp2
 #[inline]
-pub(crate) fn mul_fp2_bls12_381_core(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
+pub fn mul_fp2_bls12_381(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
     let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
@@ -80,11 +79,23 @@ pub(crate) fn mul_fp2_bls12_381_core(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] 
     from_syscall_complex(&f1)
 }
 
+/// Scalar multiplication in Fp2
+#[inline]
+pub fn scalar_mul_fp2_bls12_381(a: &[u64; 12], b: &[u64; 6]) -> [u64; 12] {
+    let mut f1 =
+        SyscallComplex384 { x: a[0..6].try_into().unwrap(), y: a[6..12].try_into().unwrap() };
+    let f2 = SyscallComplex384 { x: b[0..6].try_into().unwrap(), y: [0, 0, 0, 0, 0, 0] };
+
+    let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
+    syscall_bls12_381_complex_mul(&mut params);
+    from_syscall_complex(&f1)
+}
+
 /// Squaring in Fp2
 #[inline]
-pub(crate) fn square_fp2_bls12_381_core(a: &[u64; 12]) -> [u64; 12] {
+pub fn square_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
-    let f2 = SyscallComplex384 { x: f1.x, y: f1.y };
+    let f2 = to_syscall_complex(a);
     let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
     syscall_bls12_381_complex_mul(&mut params);
     from_syscall_complex(&f1)
@@ -92,110 +103,32 @@ pub(crate) fn square_fp2_bls12_381_core(a: &[u64; 12]) -> [u64; 12] {
 
 /// Inversion in Fp2: returns a⁻¹
 #[inline]
-pub(crate) fn inv_fp2_bls12_381_core(a: &[u64; 12]) -> [u64; 12] {
+pub fn inv_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
+    // if a == 0, return 0
+    if eq(a, &[0; 12]) {
+        return *a;
+    }
+
+    // if a != 0, return 1 / a
+
     // Remember that an element b ∈ Fp2 is the inverse of a ∈ Fp2 if and only if a·b = 1 in Fp2
     // We will therefore hint the inverse b and check the product with a is 1
     let inv = fcall_bls12_381_fp2_inv(a);
 
-    let product = mul_fp2_bls12_381_core(a, &inv);
+    let product = mul_fp2_bls12_381(a, &inv);
     assert_eq!(&product[0..6], &[1, 0, 0, 0, 0, 0]);
     assert_eq!(&product[6..12], &[0, 0, 0, 0, 0, 0]);
 
     inv
 }
 
-// ========== Pointer-based API (Thin Wrappers) ==========
-
-/// # Safety
-///
-/// Addition in Fp2
+/// Conjugation in Fp2
 #[inline]
-pub unsafe fn add_fp2_bls12_381(a: *mut u64, b: *const u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
-    let b_in = core::slice::from_raw_parts(b, 12);
+pub fn conjugate_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
+    let mut f1 = SyscallComplex384 { x: a[0..6].try_into().unwrap(), y: [0, 0, 0, 0, 0, 0] };
+    let f2 = SyscallComplex384 { x: [0, 0, 0, 0, 0, 0], y: a[6..12].try_into().unwrap() };
 
-    let result = add_fp2_bls12_381_core(a_in.try_into().unwrap(), b_in.try_into().unwrap());
-
-    let out = core::slice::from_raw_parts_mut(a, 12);
-    out.copy_from_slice(&result);
-}
-
-/// # Safety
-///
-/// Doubling in Fp2
-#[inline]
-pub unsafe fn dbl_fp2_bls12_381(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
-
-    let result = dbl_fp2_bls12_381_core(a_in.try_into().unwrap());
-
-    let out = core::slice::from_raw_parts_mut(a, 12);
-    out.copy_from_slice(&result);
-}
-
-/// # Safety
-///
-/// Negation in Fp2
-#[inline]
-pub unsafe fn neg_fp2_bls12_381(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
-
-    let result = neg_fp2_bls12_381_core(a_in.try_into().unwrap());
-
-    let out = core::slice::from_raw_parts_mut(a, 12);
-    out.copy_from_slice(&result);
-}
-
-/// # Safety
-///
-/// Subtraction in Fp2
-#[inline]
-pub unsafe fn sub_fp2_bls12_381(a: *mut u64, b: *const u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
-    let b_in = core::slice::from_raw_parts(b, 12);
-
-    let result = sub_fp2_bls12_381_core(a_in.try_into().unwrap(), b_in.try_into().unwrap());
-
-    let out = core::slice::from_raw_parts_mut(a, 12);
-    out.copy_from_slice(&result);
-}
-
-/// # Safety
-///
-/// Multiplication in Fp2
-#[inline]
-pub unsafe fn mul_fp2_bls12_381(a: *mut u64, b: *const u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
-    let b_in = core::slice::from_raw_parts(b, 12);
-
-    let result = mul_fp2_bls12_381_core(a_in.try_into().unwrap(), b_in.try_into().unwrap());
-
-    let out = core::slice::from_raw_parts_mut(a, 12);
-    out.copy_from_slice(&result);
-}
-
-/// # Safety
-///
-/// Squaring in Fp2
-#[inline]
-pub unsafe fn square_fp2_bls12_381(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
-
-    let result = square_fp2_bls12_381_core(a_in.try_into().unwrap());
-
-    let out = core::slice::from_raw_parts_mut(a, 12);
-    out.copy_from_slice(&result);
-}
-
-/// # Safety
-///
-/// Inversion of a non-zero element in Fp2
-#[inline]
-pub unsafe fn inv_fp2_bls12_381(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 12).try_into().unwrap();
-
-    let result = inv_fp2_bls12_381_core(&a_in);
-
-    let out = core::slice::from_raw_parts_mut(a, 12);
-    out.copy_from_slice(&result);
+    let mut params = SyscallBls12_381ComplexSubParams { f1: &mut f1, f2: &f2 };
+    syscall_bls12_381_complex_sub(&mut params);
+    from_syscall_complex(&f1)
 }

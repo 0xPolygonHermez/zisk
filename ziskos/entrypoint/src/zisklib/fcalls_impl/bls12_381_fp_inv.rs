@@ -44,10 +44,23 @@ pub(crate) fn bls12_381_fp_add(a: &[u64; 6], b: &[u64; 6]) -> [u64; 6] {
     to_limbs_le(&sum)
 }
 
+pub(crate) fn bls12_381_fp_dbl(a: &[u64; 6]) -> [u64; 6] {
+    let a_big = from_limbs_le(a);
+    let double = (a_big.clone() + a_big) % &*P;
+    to_limbs_le(&double)
+}
+
 pub(crate) fn bls12_381_fp_neg(a: &[u64; 6]) -> [u64; 6] {
     let a_big = from_limbs_le(a);
     let neg = &*P - a_big;
     to_limbs_le(&neg)
+}
+
+pub(crate) fn bls12_381_fp_sub(a: &[u64; 6], b: &[u64; 6]) -> [u64; 6] {
+    let a_big = from_limbs_le(a);
+    let b_big = from_limbs_le(b);
+    let diff = if a_big >= b_big { (a_big - b_big) % &*P } else { ((a_big + &*P) - b_big) % &*P };
+    to_limbs_le(&diff)
 }
 
 pub(crate) fn bls12_381_fp_mul(a: &[u64; 6], b: &[u64; 6]) -> [u64; 6] {
@@ -55,6 +68,12 @@ pub(crate) fn bls12_381_fp_mul(a: &[u64; 6], b: &[u64; 6]) -> [u64; 6] {
     let b_big = from_limbs_le(b);
     let product = (a_big * b_big) % &*P;
     to_limbs_le(&product)
+}
+
+pub(crate) fn bls12_381_fp_square(a: &[u64; 6]) -> [u64; 6] {
+    let a_big = from_limbs_le(a);
+    let square = (a_big.clone() * a_big) % &*P;
+    to_limbs_le(&square)
 }
 
 #[cfg(test)]
