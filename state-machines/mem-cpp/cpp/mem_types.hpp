@@ -3,11 +3,10 @@
 
 #include <stdint.h>
 #include "mem_config.hpp"
-
 struct MemCountersBusData {
     uint32_t addr;
     uint32_t flags;
-};
+} __attribute__((packed));
 
 struct MemChunk {
     MemCountersBusData *data;

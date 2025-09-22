@@ -15,8 +15,8 @@ pub struct MemAlignInput {
     pub is_write: bool,
     pub width: u8,
     pub step: u64,
-    pub value: u64,
-    pub mem_values: [u64; 2],
+    pub value: u64,           // value to write
+    pub mem_values: [u64; 2], // values read from memory
 }
 
 #[derive(Debug)]

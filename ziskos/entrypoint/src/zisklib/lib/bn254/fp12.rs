@@ -59,7 +59,7 @@ pub fn sparse_mul_fp12_bn254(a: &[u64; 48], b: &[u64; 16]) -> [u64; 48] {
     let a1 = &a[0..24].try_into().unwrap();
     let a2 = &a[24..48].try_into().unwrap();
 
-    let mut c1 = sparse_mulc_fp6_bn254(&a2, b);
+    let mut c1 = sparse_mulc_fp6_bn254(a2, b);
     c1 = add_fp6_bn254(&c1, a1);
 
     let mut c2 = sparse_mulb_fp6_bn254(a1, b);
@@ -256,7 +256,7 @@ pub fn exp_fp12_bn254(e: u64, a: &[u64; 48]) -> [u64; 48] {
     if e == 0 {
         return one;
     } else if e == 1 {
-        return a.clone();
+        return *a;
     }
 
     let (_, max_bit) = fcall_msb_pos_256(&[e, 0, 0, 0], &[0, 0, 0, 0]);
@@ -268,7 +268,7 @@ pub fn exp_fp12_bn254(e: u64, a: &[u64; 48]) -> [u64; 48] {
     assert_eq!(e_bit, 1); // the first received bit should be 1
 
     // Start the loop at a
-    let mut result = a.clone();
+    let mut result = *a;
     let mut e_rec = 1 << max_bit;
 
     // Perform the rest of the loop

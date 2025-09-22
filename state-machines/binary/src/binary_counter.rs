@@ -5,9 +5,10 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
+use crate::{BinaryBasicFrops, BinaryExtensionFrops};
 use std::collections::VecDeque;
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, Metrics, OP, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, Counter, MemCollectorInfo, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -16,6 +17,7 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 ///
 /// It tracks specific operations and types and updates differents counters for each
 /// accepted operation whenever data is processed on the bus.
+#[derive(Default)]
 pub struct BinaryCounter {
     /// Counter for binary add operations (only add, no addw)
     pub counter_add: Counter,
@@ -25,9 +27,6 @@ pub struct BinaryCounter {
 
     /// Counter for binary extension operations
     pub counter_extension: Counter,
-
-    /// Bus device mode (counter or input generator).
-    pub mode: BusDeviceMode,
 }
 
 impl BinaryCounter {
@@ -38,13 +37,8 @@ impl BinaryCounter {
     ///
     /// # Returns
     /// A new `BinaryCounter` instance.
-    pub fn new(mode: BusDeviceMode) -> Self {
-        Self {
-            counter_add: Counter::default(),
-            counter_basic_wo_add: Counter::default(),
-            counter_extension: Counter::default(),
-            mode,
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -64,17 +58,26 @@ impl Metrics for BinaryCounter {
         const ADD_CODE: u64 = ZiskOp::Add.code() as u64;
 
         let op_type = data[OP_TYPE];
-
         if op_type == BINARY {
             // Always read the OP index (assume well-formed trace)
             let op = data[OP];
             if op == ADD_CODE {
-                self.counter_add.update(1);
+                if BinaryBasicFrops::is_frequent_op(ADD_CODE as u8, data[A], data[B]) {
+                    self.counter_add.update_frops(1);
+                } else {
+                    self.counter_add.update(1);
+                }
+            } else if BinaryBasicFrops::is_frequent_op(op as u8, data[A], data[B]) {
+                self.counter_basic_wo_add.update_frops(1);
             } else {
                 self.counter_basic_wo_add.update(1);
             }
         } else if op_type == BINARY_E {
-            self.counter_extension.update(1);
+            if BinaryExtensionFrops::is_frequent_op(data[OP] as u8, data[A], data[B]) {
+                self.counter_extension.update_frops(1);
+            } else {
+                self.counter_extension.update(1);
+            }
         }
     }
 
@@ -93,21 +96,24 @@ impl BusDevice<u64> for BinaryCounter {
     /// # Arguments
     /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// A vector of derived inputs to be sent back to the bus.
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        if self.mode == BusDeviceMode::Counter {
-            self.measure(data);
-        }
+        self.measure(data);
+
+        true
     }
 
     /// Returns the bus IDs associated with this counter.

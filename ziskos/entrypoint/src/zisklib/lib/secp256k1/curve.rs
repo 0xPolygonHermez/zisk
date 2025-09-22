@@ -1,6 +1,6 @@
 use crate::{
-    fcall_msb_pos_256, fcall_secp256k1_fp_sqrt,
-    point256::SyscallPoint256,
+    fcall_msb_pos_256,
+    point::SyscallPoint256,
     secp256k1_add::{syscall_secp256k1_add, SyscallSecp256k1AddParams},
     secp256k1_dbl::syscall_secp256k1_dbl,
     zisklib::lib::secp256k1::field::secp256k1_fp_assert_nqr,
@@ -48,7 +48,7 @@ pub fn secp256k1_decompress(x_bytes: &[u8; 32], y_is_odd: bool) -> (([u8; 32], [
         y_bytes[i * 8..(i + 1) * 8].copy_from_slice(&y[3 - i].to_be_bytes());
     }
 
-    ((x_bytes.clone(), y_bytes), true)
+    ((*x_bytes, y_bytes), true)
 }
 
 /// Given a point `p1`, performs the point doubling `2·p1` and assigns the result to `p1`.

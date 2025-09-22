@@ -9,51 +9,44 @@
 use std::sync::Arc;
 
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use zisk_common::{
-    table_instance, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance,
-    InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID,
+    BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
+    InstanceInfo, PayloadType, Planner,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
+use zisk_pil::ArithTrace;
 
-use crate::{
-    ArithCounterInputGen, ArithFullInstance, ArithFullSM, ArithPlanner, ArithRangeTableSM,
-    ArithTableSM,
-};
+use crate::{ArithCounterInputGen, ArithFullInstance, ArithFullSM, ArithPlanner};
 
 /// The `ArithSM` struct represents the Arithmetic State Machine, which
 /// is a proxy machine to manage state machines involved in arithmetic operations.
-pub struct ArithSM {
+pub struct ArithSM<F: PrimeField64> {
     /// Arith Full state machine
-    arith_full_sm: Arc<ArithFullSM>,
-
-    /// Arith Table state machine
-    arith_table_sm: Arc<ArithTableSM>,
-
-    /// Arith Range Table state machine
-    arith_range_table_sm: Arc<ArithRangeTableSM>,
+    arith_full_sm: Arc<ArithFullSM<F>>,
 }
 
-impl ArithSM {
+impl<F: PrimeField64> ArithSM<F> {
     /// Creates a new instance of the `ArithSM` state machine.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithSM` containing initialized sub-state machines.
-    pub fn new() -> Arc<Self> {
-        let arith_table_sm = ArithTableSM::new();
-        let arith_range_table_sm = ArithRangeTableSM::new();
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        let arith_full_sm = ArithFullSM::new(std);
 
-        let arith_full_sm = ArithFullSM::new(arith_table_sm.clone(), arith_range_table_sm.clone());
-
-        Arc::new(Self { arith_full_sm, arith_table_sm, arith_range_table_sm })
+        Arc::new(Self { arith_full_sm })
     }
 
     pub fn build_arith_counter(&self) -> ArithCounterInputGen {
         ArithCounterInputGen::new(BusDeviceMode::Counter)
     }
+
+    pub fn build_arith_input_generator(&self) -> ArithCounterInputGen {
+        ArithCounterInputGen::new(BusDeviceMode::InputGenerator)
+    }
 }
 
-impl<F: PrimeField64> ComponentBuilder<F> for ArithSM {
+impl<F: PrimeField64> ComponentBuilder<F> for ArithSM<F> {
     /// Builds and returns a new counter for monitoring arithmetic operations.
     ///
     /// # Returns
@@ -67,23 +60,12 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithSM {
     /// # Returns
     /// A boxed implementation of `ArithPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
-        Box::new(
-            ArithPlanner::new()
-                .add_instance(InstanceInfo::new(
-                    ArithTrace::<usize>::AIRGROUP_ID,
-                    ArithTrace::<usize>::AIR_ID,
-                    ArithTrace::<usize>::NUM_ROWS,
-                    ZiskOperationType::Arith,
-                ))
-                .add_table_instance(TableInfo::new(
-                    ArithTableTrace::<usize>::AIRGROUP_ID,
-                    ArithTableTrace::<usize>::AIR_ID,
-                ))
-                .add_table_instance(TableInfo::new(
-                    ArithRangeTableTrace::<usize>::AIRGROUP_ID,
-                    ArithRangeTableTrace::<usize>::AIR_ID,
-                )),
-        )
+        Box::new(ArithPlanner::new().add_instance(InstanceInfo::new(
+            ArithTrace::<usize>::AIRGROUP_ID,
+            ArithTrace::<usize>::AIR_ID,
+            ArithTrace::<usize>::NUM_ROWS,
+            ZiskOperationType::Arith,
+        )))
     }
 
     /// Builds an instance of the Arithmetic state machine.
@@ -97,22 +79,6 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithSM {
         match ictx.plan.air_id {
             ArithTrace::<usize>::AIR_ID => {
                 Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx))
-            }
-            ArithTableTrace::<usize>::AIR_ID => {
-                table_instance!(ArithTableInstance, ArithTableSM, ArithTableTrace);
-                Box::new(ArithTableInstance::new(
-                    self.arith_table_sm.clone(),
-                    ictx,
-                    OPERATION_BUS_ID,
-                ))
-            }
-            ArithRangeTableTrace::<usize>::AIR_ID => {
-                table_instance!(ArithRangeTableInstance, ArithRangeTableSM, ArithRangeTableTrace);
-                Box::new(ArithRangeTableInstance::new(
-                    self.arith_range_table_sm.clone(),
-                    ictx,
-                    OPERATION_BUS_ID,
-                ))
             }
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }

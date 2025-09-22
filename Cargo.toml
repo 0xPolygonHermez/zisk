@@ -1,10 +1,14 @@
 [workspace.package]
-version = "0.9.0"
+version = "0.12.0"
 edition = "2021"
 license = "Apache-2.0 or MIT"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
 repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
+
+[workspace.metadata]
+gha_pil2_proofman_js_branch = "pre-develop-0.12.0"
+gha_pil2_compiler_branch = "develop"
 
 [workspace]
 members = [
@@ -24,7 +28,8 @@ members = [
     "state-machines/rom",
     "witness-computation",
     "ziskos/entrypoint",
-    "precompiles/zisk_precompiles",
+    "precompiles/arith_eq",
+    "precompiles/arith_eq_384",
     "precompiles/common",
     "precompiles/keccakf",
     "precompiles/sha256f",
@@ -34,6 +39,10 @@ members = [
     "common",
     "tools/circuit",
     "server",
+    "distributed/crates/coordinator",
+    "distributed/crates/grpc-api",
+    "distributed/crates/common",
+    "distributed/crates/worker",
 ]
 
 resolver = "2"
@@ -41,26 +50,71 @@ resolver = "2"
 [profile.release]
 opt-level = 3
 
+[profile.release.package."proofman-verifier"]
+opt-level = 0
+
 [profile.bench]
 opt-level = 3
 
 [workspace.dependencies]
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
-# Local development
+# Internal crates
+cargo-zisk = { path = "cli" }
+zisk-common = { path = "common" }
+zisk-core = { path = "core" }
+data-bus = { path = "data-bus" }
+ziskemu = { path = "emulator" }
+asm-runner = { path = "emulator-asm/asm-runner" }
+executor = { path = "executor" }
+lib-c = { path = "lib-c" }
+zisk-pil = { path = "pil" }
+precomp-arith-eq = { path = "precompiles/arith_eq" }
+precomp-arith-eq-384 = { path = "precompiles/arith_eq_384" }
+precompiles-common = { path = "precompiles/common" }
+precompiles-helpers = { path = "precompiles/helpers" }
+precomp-keccakf = { path = "precompiles/keccakf" }
+precomp-sha256f = { path = "precompiles/sha256f" }
+riscv = { path = "riscv" }
+rom-setup = { path = "rom-setup" }
+server = { path = "server" }
+sm-arith = { path = "state-machines/arith" }
+sm-binary = { path = "state-machines/binary" }
+sm-main = { path = "state-machines/main" }
+sm-mem = { path = "state-machines/mem" }
+sm-frequent-ops = { path = "state-machines/frequent-ops" }
+mem-common = { path = "state-machines/mem-common" }
+mem-planner-cpp = { path = "state-machines/mem-cpp" }
+sm-rom = { path = "state-machines/rom" }
+zisk-witness = { path = "witness-computation" }
+ziskclib = { path = "ziskclib" }
+ziskos = { path = "ziskos/entrypoint" }
+circuit = { path = "tools/circuit" }
+
+# Distributed crates
+zisk-distributed-common = { path = "distributed/crates/common" }
+zisk-distributed-coordinator = { path = "distributed/crates/coordinator" }
+zisk-distributed-grpc-api = { path = "distributed/crates/grpc-api" }
+zisk-distributed-prover = { path = "distributed/crates/worker" }
+
+# Proofman
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-updated" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-updated" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-updated" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-updated" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-updated" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-updated" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-updated" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-proofman-updated" }
+# Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
 # proofman-macros = { path = "../pil2-proofman/macros" }
+# proofman-verifier = { path = "../pil2-proofman/verifier" }
 # proofman-util = { path = "../pil2-proofman/util" }
 # pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
 # witness = { path = "../pil2-proofman/witness" }
 # fields = { path = "../pil2-proofman/fields" }
 
+# External dependencies
 rayon = "1.10"
 num-bigint = "0.4"
 num-traits = "0.2"
@@ -70,12 +124,42 @@ ark-ff = "0.5.0"
 ark-std = "0.5.0"
 ark-secp256k1 = "0.5"
 ark-bn254 = "0.5.0"
-sysinfo = "0.35.1"
+ark-bls12-381 = "0.5.0"
+sysinfo = "0.37"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 anyhow = "1.0"
 libloading = "0.8"
 named-sem = "0.2.2"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-subscriber = { version = "0.3", features = [
+    "fmt",
+    "env-filter",
+    "json",
+] }
 mpi = { version = "0.8.0" }
+static_assertions = "1"
+
+clap = { version = "4", features = ["derive", "env"] }
+futures = { version = "0.3" }
+thiserror = { version = "2" }
+bytes = "1.0"
+
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+futures-util = "0.3"
+uuid = { version = "1.0", features = ["serde", "v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# gRPC dependencies
+tonic = "0.14"
+tonic-prost = "0.14"
+tonic-build = "0.14"
+tonic-prost-build = "0.14"
+# Protocol Buffers support - match tonic's prost version
+prost = "0.14"
+prost-types = "0.14"
+config = "0.15"
+toml = "0.9"
+borsh = { version = "1.5", features = ["derive"] }
+reqwest = { version = "0.12", features = ["stream", "json", "rustls-tls"], default-features = false }

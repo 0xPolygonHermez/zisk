@@ -49,6 +49,7 @@ pub enum OpType {
     PubOut,
     ArithEq,
     Fcall,
+    ArithEq384,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -63,6 +64,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::PubOut => ZiskOperationType::PubOut,
             OpType::ArithEq => ZiskOperationType::ArithEq,
             OpType::Fcall => ZiskOperationType::Fcall,
+            OpType::ArithEq384 => ZiskOperationType::ArithEq384,
         }
     }
 }
@@ -81,6 +83,7 @@ impl Display for OpType {
             Self::PubOut => write!(f, "PubOut"),
             Self::ArithEq => write!(f, "Arith256"),
             Self::Fcall => write!(f, "Fcall"),
+            Self::ArithEq384 => write!(f, "Arith384"),
         }
     }
 }
@@ -100,6 +103,7 @@ impl FromStr for OpType {
             "s" => Ok(Self::Sha256),
             "aeq" => Ok(Self::ArithEq),
             "fcall" => Ok(Self::Fcall),
+            "aeq384" => Ok(Self::ArithEq384),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -261,16 +265,17 @@ macro_rules! define_ops {
     };
 }
 
-// Cost definitions
+// Cost definitions: Area x Op
 const INTERNAL_COST: u64 = 0;
 const BINARY_COST: u64 = 75;
 const BINARY_E_COST: u64 = 54;
 const ARITHA32_COST: u64 = 95;
 const ARITHAM32_COST: u64 = 95;
-const KECCAK_COST: u64 = 145000;
-const SHA256_COST: u64 = 0; // TODO: To be decide
+const KECCAK_COST: u64 = 167000;
+const SHA256_COST: u64 = 9000;
 const ARITH_EQ_COST: u64 = 1200;
 const FCALL_COST: u64 = INTERNAL_COST;
+const ARITH_EQ_384_COST: u64 = 2000;
 
 /// Table of Zisk opcode definitions: enum, name, type, cost, code and implementation functions
 /// This table is the backbone of the Zisk processor, it determines what functionality is supported,
@@ -342,6 +347,13 @@ define_ops! {
     (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, opc_bn254_complex_add, op_bn254_complex_add),
     (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, opc_bn254_complex_sub, op_bn254_complex_sub),
     (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, opc_bn254_complex_mul, op_bn254_complex_mul),
+    (Halt, "halt", Internal, INTERNAL_COST, 0xff, 144, opc_halt, op_halt),
+    (Arith384Mod, "arith384_mod", ArithEq384, ARITH_EQ_384_COST, 0xe2, 232, opc_arith384_mod, op_arith384_mod),
+    (Bls12_381CurveAdd, "bls12_381_curve_add", ArithEq384, ARITH_EQ_384_COST, 0xe3, 208, opc_bls12_381_curve_add, op_bls12_381_curve_add),
+    (Bls12_381CurveDbl, "bls12_381_curve_dbl", ArithEq384, ARITH_EQ_384_COST, 0xe4, 96, opc_bls12_381_curve_dbl, op_bls12_381_curve_dbl),
+    (Bls12_381ComplexAdd, "bls12_381_complex_add", ArithEq384, ARITH_EQ_384_COST, 0xe5, 208, opc_bls12_381_complex_add, op_bls12_381_complex_add),
+    (Bls12_381ComplexSub, "bls12_381_complex_sub", ArithEq384, ARITH_EQ_384_COST, 0xe6, 208, opc_bls12_381_complex_sub, op_bls12_381_complex_sub),
+    (Bls12_381ComplexMul, "bls12_381_complex_mul", ArithEq384, ARITH_EQ_384_COST, 0xe7, 208, opc_bls12_381_complex_mul, op_bls12_381_complex_mul),
 }
 
 /* INTERNAL operations */
@@ -1124,6 +1136,14 @@ pub fn opc_keccak(ctx: &mut InstContext) {
             for (i, d) in data.iter_mut().enumerate() {
                 *d = ctx.mem.read(address + (8 * i as u64), 8);
             }
+
+            // Call keccakf
+            keccakf(&mut data);
+
+            // Write data to the memory address
+            for (i, d) in data.iter().enumerate() {
+                ctx.mem.write(address + (8 * i as u64), *d, 8);
+            }
         }
         EmulationMode::GenerateMemReads => {
             // Read data from the memory address
@@ -1136,8 +1156,20 @@ pub fn opc_keccak(ctx: &mut InstContext) {
             for (i, d) in data.iter_mut().enumerate() {
                 ctx.precompiled.input_data.push(*d);
             }
-            // Write the input data address to the precompiled context
-            // ctx.precompiled.input_data_address = address;
+
+            // Call keccakf
+            keccakf(&mut data);
+
+            // Write data to the memory address
+            for (i, d) in data.iter().enumerate() {
+                ctx.mem.write(address + (8 * i as u64), *d, 8);
+            }
+
+            // Write data to the precompiled context
+            ctx.precompiled.output_data.clear();
+            for (i, d) in data.iter_mut().enumerate() {
+                ctx.precompiled.output_data.push(*d);
+            }
         }
         EmulationMode::ConsumeMemReads => {
             // Check input data has the expected length
@@ -1148,36 +1180,7 @@ pub fn opc_keccak(ctx: &mut InstContext) {
                     WORDS
                 );
             }
-            // Read data from the precompiled context
-            for (i, d) in data.iter_mut().enumerate() {
-                *d = ctx.precompiled.input_data[i];
-            }
-            // Write the input data address to the precompiled context
-            // ctx.precompiled.input_data_address = address;
         }
-    }
-
-    // Call keccakf
-    keccakf(&mut data);
-
-    // Write data to the memory address
-    for (i, d) in data.iter().enumerate() {
-        ctx.mem.write(address + (8 * i as u64), *d, 8);
-    }
-
-    // Set input data to the precompiled context
-    match ctx.emulation_mode {
-        EmulationMode::Mem => {}
-        EmulationMode::GenerateMemReads => {
-            // Write data to the precompiled context
-            ctx.precompiled.output_data.clear();
-            for (i, d) in data.iter_mut().enumerate() {
-                ctx.precompiled.output_data.push(*d);
-            }
-            // Write the input data address to the precompiled context
-            // ctx.precompiled.output_data_address = address;
-        }
-        EmulationMode::ConsumeMemReads => {}
     }
 
     ctx.c = 0;
@@ -1201,17 +1204,19 @@ pub fn opc_sha256(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 4, 4, &mut data, "sha256");
 
-    // Get the state and input slices
-    let (ind, rest) = data.split_at_mut(2);
-    let (state_slice, input_slice) = rest.split_at_mut(4);
-    let state: &mut [u64; 4] = state_slice.try_into().unwrap();
-    let input: &[u64; 8] = input_slice[..8].try_into().unwrap();
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // Get the state and input slices
+        let (ind, rest) = data.split_at_mut(2);
+        let (state_slice, input_slice) = rest.split_at_mut(4);
+        let state: &mut [u64; 4] = state_slice.try_into().unwrap();
+        let input: &[u64; 8] = input_slice[..8].try_into().unwrap();
 
-    // Compute the sha output with the fastest implementation available
-    sha256f(state, input);
+        // Compute the sha output with the fastest implementation available
+        sha256f(state, input);
 
-    for (i, d) in state.iter().enumerate() {
-        ctx.mem.write(ind[0] + (8 * i as u64), *d, 8);
+        for (i, d) in state.iter().enumerate() {
+            ctx.mem.write(ind[0] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1317,26 +1322,28 @@ pub fn opc_arith256(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 5, 3, 4, 0, &mut data, "arith256");
 
-    // ignore 5 indirections
-    let (_, rest) = data.split_at(5);
-    let (a, rest) = rest.split_at(4);
-    let (b, c) = rest.split_at(4);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 5 indirections
+        let (_, rest) = data.split_at(5);
+        let (a, rest) = rest.split_at(4);
+        let (b, c) = rest.split_at(4);
 
-    let a: &[u64; 4] = a.try_into().expect("opc_arith256: a.len != 4");
-    let b: &[u64; 4] = b.try_into().expect("opc_arith256: b.len != 4");
-    let c: &[u64; 4] = c.try_into().expect("opc_arith256: c.len != 4");
+        let a: &[u64; 4] = a.try_into().expect("opc_arith256: a.len != 4");
+        let b: &[u64; 4] = b.try_into().expect("opc_arith256: b.len != 4");
+        let c: &[u64; 4] = c.try_into().expect("opc_arith256: c.len != 4");
 
-    let mut dl = [0u64; 4];
-    let mut dh = [0u64; 4];
+        let mut dl = [0u64; 4];
+        let mut dh = [0u64; 4];
 
-    precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
+        precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
 
-    // [a,b,c,3:dl,4:dh]
-    for (i, dl_item) in dl.iter().enumerate() {
-        ctx.mem.write(data[3] + (8 * i as u64), *dl_item, 8);
-    }
-    for (i, dh_item) in dh.iter().enumerate() {
-        ctx.mem.write(data[4] + (8 * i as u64), *dh_item, 8);
+        // [a,b,c,3:dl,4:dh]
+        for (i, dl_item) in dl.iter().enumerate() {
+            ctx.mem.write(data[3] + (8 * i as u64), *dl_item, 8);
+        }
+        for (i, dh_item) in dh.iter().enumerate() {
+            ctx.mem.write(data[4] + (8 * i as u64), *dh_item, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1357,25 +1364,27 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 5, 4, 4, 0, &mut data, "arith256_mod");
 
-    // ignore 5 indirections
-    let (_, rest) = data.split_at(5);
-    let (a, rest) = rest.split_at(4);
-    let (b, rest) = rest.split_at(4);
-    let (c, module) = rest.split_at(4);
-    let mut d = [0u64; 4];
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 5 indirections
+        let (_, rest) = data.split_at(5);
+        let (a, rest) = rest.split_at(4);
+        let (b, rest) = rest.split_at(4);
+        let (c, module) = rest.split_at(4);
+        let mut d = [0u64; 4];
 
-    let a: &[u64; 4] = a.try_into().expect("opc_arith256_mod: a.len != 4");
-    let b: &[u64; 4] = b.try_into().expect("opc_arith256_mod: b.len != 4");
-    let c: &[u64; 4] = c.try_into().expect("opc_arith256_mod: c.len != 4");
-    let module: &[u64; 4] = module.try_into().expect("opc_arith256_mod: module.len != 4");
+        let a: &[u64; 4] = a.try_into().expect("opc_arith256_mod: a.len != 4");
+        let b: &[u64; 4] = b.try_into().expect("opc_arith256_mod: b.len != 4");
+        let c: &[u64; 4] = c.try_into().expect("opc_arith256_mod: c.len != 4");
+        let module: &[u64; 4] = module.try_into().expect("opc_arith256_mod: module.len != 4");
 
-    let mut d = [0u64; 4];
+        let mut d = [0u64; 4];
 
-    precompiles_helpers::arith256_mod(a, b, c, module, &mut d);
+        precompiles_helpers::arith256_mod(a, b, c, module, &mut d);
 
-    // [a,b,c,module,4:d]
-    for (i, d) in d.iter().enumerate() {
-        ctx.mem.write(data[4] + (8 * i as u64), *d, 8);
+        // [a,b,c,module,4:d]
+        for (i, d) in d.iter().enumerate() {
+            ctx.mem.write(data[4] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1396,21 +1405,22 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "secp256k1_add");
 
-    // ignore 2 indirections
-    let (_, rest) = data.split_at(2);
-    let (p1, p2) = rest.split_at(8);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (p1, p2) = rest.split_at(8);
 
-    let p1: &[u64; 8] = p1.try_into().expect("opc_secp256k1_add: p1.len != 8");
-    let p2: &[u64; 8] = p2.try_into().expect("opc_secp256k1_add: p2.len != 8");
-    let mut p3 = [0u64; 8];
+        let p1: &[u64; 8] = p1.try_into().expect("opc_secp256k1_add: p1.len != 8");
+        let p2: &[u64; 8] = p2.try_into().expect("opc_secp256k1_add: p2.len != 8");
+        let mut p3 = [0u64; 8];
 
-    precompiles_helpers::secp256k1_add(p1, p2, &mut p3);
+        precompiles_helpers::secp256k1_add(p1, p2, &mut p3);
 
-    // [0:p1,p2]
-    for (i, d) in p3.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        // [0:p1,p2]
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
     }
-
     ctx.c = 0;
     ctx.flag = false;
 }
@@ -1429,13 +1439,15 @@ pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "secp256k1_dbl");
 
-    let p1: &[u64; 8] = &data;
-    let mut p3 = [0u64; 8];
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        let p1: &[u64; 8] = &data;
+        let mut p3 = [0u64; 8];
 
-    precompiles_helpers::secp256k1_dbl(p1, &mut p3);
+        precompiles_helpers::secp256k1_dbl(p1, &mut p3);
 
-    for (i, d) in p3.iter().enumerate() {
-        ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1456,19 +1468,21 @@ pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_curve_add");
 
-    // ignore 2 indirections
-    let (_, rest) = data.split_at(2);
-    let (p1, p2) = rest.split_at(8);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (p1, p2) = rest.split_at(8);
 
-    let p1: &[u64; 8] = p1.try_into().expect("opc_bn254_curve_add: p1.len != 8");
-    let p2: &[u64; 8] = p2.try_into().expect("opc_bn254_curve_add: p2.len != 8");
-    let mut p3 = [0u64; 8];
+        let p1: &[u64; 8] = p1.try_into().expect("opc_bn254_curve_add: p1.len != 8");
+        let p2: &[u64; 8] = p2.try_into().expect("opc_bn254_curve_add: p2.len != 8");
+        let mut p3 = [0u64; 8];
 
-    precompiles_helpers::bn254_curve_add(p1, p2, &mut p3);
+        precompiles_helpers::bn254_curve_add(p1, p2, &mut p3);
 
-    // [0:p1,p2]
-    for (i, d) in p3.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        // [0:p1,p2]
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1489,13 +1503,15 @@ pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "bn254_curve_dbl");
 
-    let p1: &[u64; 8] = &data;
-    let mut p3 = [0u64; 8];
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        let p1: &[u64; 8] = &data;
+        let mut p3 = [0u64; 8];
 
-    precompiles_helpers::bn254_curve_dbl(p1, &mut p3);
+        precompiles_helpers::bn254_curve_dbl(p1, &mut p3);
 
-    for (i, d) in p3.iter().enumerate() {
-        ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1516,19 +1532,21 @@ pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_add");
 
-    // ignore 2 indirections
-    let (_, rest) = data.split_at(2);
-    let (f1, f2) = rest.split_at(8);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(8);
 
-    let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_add: f1.len != 8");
-    let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_add: f2.len != 8");
-    let mut f3 = [0u64; 8];
+        let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_add: f1.len != 8");
+        let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_add: f2.len != 8");
+        let mut f3 = [0u64; 8];
 
-    precompiles_helpers::bn254_complex_add(f1, f2, &mut f3);
+        precompiles_helpers::bn254_complex_add(f1, f2, &mut f3);
 
-    // [0:f1,f2]
-    for (i, d) in f3.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1549,19 +1567,21 @@ pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_sub");
 
-    // ignore 2 indirections
-    let (_, rest) = data.split_at(2);
-    let (f1, f2) = rest.split_at(8);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(8);
 
-    let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_sub: f1.len != 8");
-    let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_sub: f2.len != 8");
-    let mut f3 = [0u64; 8];
+        let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_sub: f1.len != 8");
+        let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_sub: f2.len != 8");
+        let mut f3 = [0u64; 8];
 
-    precompiles_helpers::bn254_complex_sub(f1, f2, &mut f3);
+        precompiles_helpers::bn254_complex_sub(f1, f2, &mut f3);
 
-    // [0:f1,f2]
-    for (i, d) in f3.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1582,19 +1602,21 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_mul");
 
-    // ignore 2 indirections
-    let (_, rest) = data.split_at(2);
-    let (f1, f2) = rest.split_at(8);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(8);
 
-    let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_mul: f1.len != 8");
-    let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_mul: f2.len != 8");
-    let mut f3 = [0u64; 8];
+        let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_mul: f1.len != 8");
+        let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_mul: f2.len != 8");
+        let mut f3 = [0u64; 8];
 
-    precompiles_helpers::bn254_complex_mul(f1, f2, &mut f3);
+        precompiles_helpers::bn254_complex_mul(f1, f2, &mut f3);
 
-    // [0:f1,f2]
-    for (i, d) in f3.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1606,6 +1628,216 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_bn254_complex_mul(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_bn254_complex_mul() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_arith384_mod(ctx: &mut InstContext) {
+    const WORDS: usize = 5 + 4 * 6;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 5, 4, 6, 0, &mut data, "arith384_mod");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 5 indirections
+        let (_, rest) = data.split_at(5);
+        let (a, rest) = rest.split_at(6);
+        let (b, rest) = rest.split_at(6);
+        let (c, module) = rest.split_at(6);
+        let mut d = [0u64; 6];
+
+        let a: &[u64; 6] = a.try_into().expect("opc_arith384_mod: a.len != 6");
+        let b: &[u64; 6] = b.try_into().expect("opc_arith384_mod: b.len != 6");
+        let c: &[u64; 6] = c.try_into().expect("opc_arith384_mod: c.len != 6");
+        let module: &[u64; 6] = module.try_into().expect("opc_arith384_mod: module.len != 6");
+
+        let mut d = [0u64; 6];
+
+        precompiles_helpers::arith384_mod(a, b, c, module, &mut d);
+
+        // [a,b,c,module,4:d]
+        for (i, d) in d.iter().enumerate() {
+            ctx.mem.write(data[4] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Arith384Mod can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_arith384_mod(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_arith384_mod() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 12;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_curve_add");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (p1, p2) = rest.split_at(12);
+
+        let p1: &[u64; 12] = p1.try_into().expect("opc_bls12_381_curve_add: p1.len != 12");
+        let p2: &[u64; 12] = p2.try_into().expect("opc_bls12_381_curve_add: p2.len != 12");
+        let mut p3 = [0u64; 12];
+
+        precompiles_helpers::bls12_381_curve_add(p1, p2, &mut p3);
+
+        // [0:p1,p2]
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bls12_381CurveAdd can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_curve_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_curve_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_curve_dbl(ctx: &mut InstContext) {
+    const WORDS: usize = 12;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 0, 1, 12, 0, &mut data, "bls12_381_curve_dbl");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        let p1: &[u64; 12] = &data;
+        let mut p3 = [0u64; 12];
+
+        precompiles_helpers::bls12_381_curve_dbl(p1, &mut p3);
+
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bls12_381CurveDbl can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_curve_dbl(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_curve_dbl() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_complex_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 12;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_add");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(12);
+
+        let f1: &[u64; 12] = f1.try_into().expect("opc_bls12_381_complex_add: f1.len != 12");
+        let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_add: f2.len != 12");
+        let mut f3 = [0u64; 12];
+
+        precompiles_helpers::bls12_381_complex_add(f1, f2, &mut f3);
+
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bls12_381ComplexAdd can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_complex_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_complex_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 12;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_sub");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(12);
+
+        let f1: &[u64; 12] = f1.try_into().expect("opc_bls12_381_complex_sub: f1.len != 12");
+        let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_sub: f2.len != 12");
+        let mut f3 = [0u64; 12];
+
+        precompiles_helpers::bls12_381_complex_sub(f1, f2, &mut f3);
+
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bls12_381ComplexSub can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_complex_sub(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_complex_sub() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 12;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_mul");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(12);
+
+        let f1: &[u64; 12] = f1.try_into().expect("opc_bls12_381_complex_mul: f1.len != 12");
+        let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_mul: f2.len != 12");
+        let mut f3 = [0u64; 12];
+
+        precompiles_helpers::bls12_381_complex_mul(f1, f2, &mut f3);
+
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bls12_381ComplexMul can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_complex_mul(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_complex_mul() is not implemented");
 }
 
 impl From<ZiskRequiredOperation> for ZiskOp {
@@ -1643,7 +1875,7 @@ pub fn opc_fcall_param(ctx: &mut InstContext) {
 
     // Do nothing when emulating in consume memory reads mode;
     // data will be directly obtained from mem_reads
-    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+    if ctx.emulation_mode == EmulationMode::ConsumeMemReads {
         return;
     }
 
@@ -1690,7 +1922,7 @@ pub fn opc_fcall(ctx: &mut InstContext) {
 
     // Do nothing when emulating in consume memory reads mode;
     // data will be directly obtained from mem_reads
-    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+    if ctx.emulation_mode == EmulationMode::ConsumeMemReads {
         return;
     }
 
@@ -1728,7 +1960,7 @@ pub fn opc_fcall_get(ctx: &mut InstContext) {
 
     // Do nothing when emulating in consume memory reads mode;
     // data will be directly obtained from mem_reads
-    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+    if ctx.emulation_mode == EmulationMode::ConsumeMemReads {
         return;
     }
     // Check for consistency
@@ -1752,5 +1984,19 @@ pub fn opc_fcall_get(ctx: &mut InstContext) {
         ctx.mem.free_input = ctx.fcall.result[ctx.fcall.result_got as usize];
     }
     ctx.fcall.result_got += 1;
+    ctx.flag = false;
+}
+
+/// Implements halt
+#[inline(always)]
+pub fn op_halt(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_halt() is not implemented");
+}
+
+/// InstContext-based wrapper over op_halt()
+#[inline(always)]
+pub fn opc_halt(ctx: &mut InstContext) {
+    ctx.error = true;
+    ctx.c = 0;
     ctx.flag = false;
 }

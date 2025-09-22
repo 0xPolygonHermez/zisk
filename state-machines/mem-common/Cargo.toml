@@ -7,10 +7,14 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
+[[bin]]
+name = "mem_debug_cli"
+path = "src/mem_debug_cli.rs"
+
 [dependencies]
-zisk-core = { path = "../../core" }
-zisk-common = { path = "../../common" }
-zisk-pil = { path = "../../pil" }
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
+zisk-pil = { workspace = true }
 
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
@@ -22,7 +26,8 @@ fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
-
+clap = { version = "4", features = ["derive"] }
+static_assertions = { workspace = true }
 num-traits = "0.2"
 
 [features]
@@ -33,3 +38,4 @@ disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_
 debug_mem = []
 debug_mem_align = []
 save_mem_bus_data = []
+mem_align_stats = []

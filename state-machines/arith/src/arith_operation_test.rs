@@ -254,6 +254,7 @@ impl ArithOperationTest {
             ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.d[i]);
         }
 
+        #[cfg(debug_assertions)]
         let row_1 = ArithTableHelpers::get_row(
             aop.op,
             aop.na,
@@ -270,6 +271,17 @@ impl ArithOperationTest {
             aop.signed,
             aop.range_ab as u16,
             aop.range_cd as u16,
+        );
+        #[cfg(not(debug_assertions))]
+        let row_1 = ArithTableHelpers::get_row(
+            aop.op,
+            aop.na,
+            aop.nb,
+            aop.np,
+            aop.nr,
+            aop.sext,
+            aop.div_by_zero,
+            aop.div_overflow,
         );
         self.table_rows[row_1] += 1;
     }

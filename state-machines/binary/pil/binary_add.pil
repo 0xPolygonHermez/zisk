@@ -3,7 +3,7 @@ require "std_range_check.pil"
 
 const int ADD_OP = 0x0C;
 
-airtemplate BinaryAdd(const int N = 2**21, const int operation_bus_id, const int RC = 2, const int operation_code = ADD_OP) {
+airtemplate BinaryAdd(const int N = 2**21, const int operation_bus_id = OPERATION_BUS_ID, const int RC = 2, const int operation_code = ADD_OP) {
 
     col witness a[RC];
     col witness b[RC];

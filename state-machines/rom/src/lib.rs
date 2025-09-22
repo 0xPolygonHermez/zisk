@@ -4,5 +4,5 @@ mod rom_instance;
 mod rom_planner;
 
 pub use rom::*;
-use rom_instance::*;
+pub use rom_instance::*;
 use rom_planner::*;

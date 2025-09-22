@@ -1,9 +1,14 @@
+const int OPERATION_BUS_ID = 5000;
+
 require "std_direct.pil"
 require "rom/pil/rom.pil"
 require "main/pil/main.pil"
 require "mem/pil/mem.pil"
 require "mem/pil/mem_align.pil"
+require "mem/pil/mem_align_byte.pil"
 require "mem/pil/mem_align_rom.pil"
+require "mem/pil/dual_byte.pil"
+require "frequent-ops/pil/frequent_ops.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
@@ -11,12 +16,10 @@ require "binary/pil/binary_extension_table.pil"
 require "binary/pil/binary_add.pil"
 require "arith/pil/arith.pil"
 require "arith_eq/pil/arith_eq.pil"
+require "arith_eq_384/pil/arith_eq_384.pil"
 require "keccakf/pil/keccakf.pil"
 require "keccakf/pil/keccakf_table.pil"
 require "sha256f/pil/sha256f.pil"
-require "sha256f/pil/sha256f_table.pil"
-
-const int OPERATION_BUS_ID = 5000;
 
 proofval enable_input_data;
 enable_input_data * (1 - enable_input_data);
@@ -26,49 +29,65 @@ public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
 
 const int PUBLIC_OP = 0x30;
 
-// Limit the std's tables size
-set_max_std_tables_bits(21);
+const int ARITH_FROPS_TABLE_ID = 5010;
+const int BINARY_BASIC_FROPS_TABLE_ID = 5011;
+const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
 
 airgroup Zisk {
+    // Virtual Tables Configuration
+    set_max_std_tables_bits(21);
+    set_max_num_rows_virtual(1 << 21); // Set the maximum rows for virtual tables
+    set_max_num_virtual_tables(2);
+    set_group_virtual_tables(table_ids: [ARITH_TABLE_ID, ARITH_RANGE_TABLE_ID, ARITH_EQ_LT_TABLE_ID, BINARY_EXTENSION_TABLE_ID, BINARY_TABLE_ID, MEM_ALIGN_ROM_ID, KECCAKF_TABLE_ID]);
+    set_group_virtual_tables(table_ids: [BINARY_EXTENSION_FROPS_TABLE_ID, BINARY_BASIC_FROPS_TABLE_ID, ARITH_FROPS_TABLE_ID]);
+
     // Main Program
-    Main(N: 2**22, RC: 2, operation_bus_id: OPERATION_BUS_ID);
+    Main(N: 2**22);
     Rom(N: 2**21);
 
-    // Standard Operations
-    Mem(N: 2**22, RC: 2, base_address: 0xA000_0000, size_mb: 512, large_mem: 1);
-    Mem(N: 2**21, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
-    Mem(N: 2**21, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
+    // Memory
+    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
+    Mem(N: 2**21, base_address: 0x8000_0000, immutable: 1) alias RomData;
+    Mem(N: 2**21, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
 
-    MemAlign(N: 2**22, use_predefined_ranges: 0);
-    MemAlignRom();
+    MemAlign(N: 2**21, use_predefined_ranges: 0);
+    MemAlignByte(N: 2**22, read: 1, write: 1);
+    MemAlignByte(N: 2**22, read: 1, write: 0) alias MemAlignReadByte;
+    MemAlignByte(N: 2**22, read: 0, write: 1) alias MemAlignWriteByte;
+    virtual MemAlignRom();
+    virtual DualByte();
 
-    Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
-    ArithTable();
-    ArithRangeTable();
+    // Standard operations
+    Arith(N: 2**21);
+    virtual ArithTable();
+    virtual ArithRangeTable();
+    virtual FrequentOps(2085944, table_id: ARITH_FROPS_TABLE_ID, 
+                        bin_file: "state-machines/arith/src/arith_frops_fixed.bin") alias ArithFrops;
 
-    Binary(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
-    BinaryAdd(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
-    BinaryTable();
-    BinaryExtension(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
-    BinaryExtensionTable();
+    Binary(N: 2**22);
+    BinaryAdd(N: 2**22);
+    virtual BinaryTable();
+    BinaryExtension(N: 2**22);
+    virtual BinaryExtensionTable();
+
+    virtual FrequentOps(13084068, table_id: BINARY_BASIC_FROPS_TABLE_ID, 
+                        bin_file: "state-machines/binary/src/binary_basic_frops_fixed.bin") alias BinaryBasicFrops;
+    virtual FrequentOps(1607204, table_id: BINARY_EXTENSION_FROPS_TABLE_ID, 
+                        bin_file: "state-machines/binary/src/binary_extension_frops_fixed.bin") alias BinaryExtensionFrops;
 
     // Precompiles
-    ArithEq(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
-    ArithEqLtTable();
-    
-    const int KECCAKF_CHUNKS = 7;
-    const int KECCAKF_BITS = 9;
-    Keccakf(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
-    const int KECCAKF_TABLE_CHUNKS = 1;
-    const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + 1;
-    KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);
+    ArithEq(N: 2**20);
+    ArithEq384(N: 2**20);
+    virtual ArithEqLtTable();
 
-    const int SHA256F_CHUNKS = 8;
-    const int SHA256F_BITS = 7;
-    Sha256f(N: 2**21, RC: 2, RB: 32, bits_in_parallel: 2, chunks: SHA256F_CHUNKS, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
-    const int SHA256F_TABLE_CHUNKS = 1;
-    const int SHA256F_TABLE_BITS = (SHA256F_BITS - SHA256F_TABLE_CHUNKS + 1) + SHA256F_BITS + SHA256F_BITS + 2;
-    Sha256fTable(N: 2**SHA256F_TABLE_BITS, chunks: SHA256F_TABLE_CHUNKS, bits: SHA256F_BITS);
+    const int KECCAKF_CHUNKS = 9;
+    const int KECCAKF_BITS = 7;
+    Keccakf(N: 2**21, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, RC: 2, RB: 32, mem_bits_in_parallel: 4);
+    const int KECCAKF_TABLE_CHUNKS = 1;
+    const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + KECCAKF_BITS + 1;
+    virtual KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);
+
+    Sha256f(N: 2**18, RC: 2, RB: 32);
 
     // Public Inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {

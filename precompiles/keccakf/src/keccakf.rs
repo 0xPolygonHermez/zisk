@@ -2,13 +2,14 @@ use core::panic;
 use std::sync::Arc;
 
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use tiny_keccak::keccakf;
 
 use circuit::{Gate, GateOperation, PinId};
 use precompiles_helpers::keccakf_topology;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{KeccakfFixed, KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
+use zisk_pil::{KeccakfFixed, KeccakfTrace, KeccakfTraceRow};
 
 use crate::KeccakfInput;
 
@@ -18,8 +19,11 @@ use rayon::prelude::*;
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
 pub struct KeccakfSM<F: PrimeField64> {
-    /// Reference to the Keccakf Table State Machine.
-    keccakf_table_sm: Arc<KeccakfTableSM>,
+    /// The table ID for the Keccakf Table State Machine
+    table_id: usize,
+
+    /// Reference to the PIL2 standard library.
+    std: Arc<Std<F>>,
 
     /// The circuit description of the Keccakf
     program: Vec<u64>,
@@ -34,6 +38,7 @@ pub struct KeccakfSM<F: PrimeField64> {
     /// Number of available keccakfs in the trace.
     pub num_available_keccakfs: usize,
 
+    /// Fixed columns for the Keccakf circuit.
     keccakf_fixed: KeccakfFixed<F>,
 }
 
@@ -45,7 +50,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     ///
     /// # Returns
     /// A new `KeccakfSM` instance.
-    pub fn new(sctx: Arc<SetupCtx<F>>, keccakf_table_sm: Arc<KeccakfTableSM>) -> Arc<Self> {
+    pub fn new(sctx: Arc<SetupCtx<F>>, std: Arc<Std<F>>) -> Arc<Self> {
         // Get the slot size
         let keccakf_top = keccakf_topology();
         let keccakf_program = keccakf_top.program;
@@ -56,13 +61,18 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let num_available_circuits = (KeccakfTrace::<usize>::NUM_ROWS - 1) / circuit_size;
         let num_available_keccakfs = NUM_KECCAKF_PER_CIRCUIT * num_available_circuits;
 
+        // Get the fixed columns
         let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
         let air_id = KeccakfTrace::<usize>::AIR_ID;
         let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
         let keccakf_fixed = KeccakfFixed::from_vec(fixed_pols);
 
+        // Get the table ID
+        let table_id = std.get_virtual_table_id(KeccakfTableSM::TABLE_ID);
+
         Arc::new(Self {
-            keccakf_table_sm,
+            table_id,
+            std,
             program: keccakf_program,
             gates: keccakf_gates,
             circuit_size,
@@ -92,60 +102,55 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let mut inputs_bits: Vec<[u64; INPUT_DATA_SIZE_BITS]> =
             vec![[0u64; INPUT_DATA_SIZE_BITS]; self.num_available_circuits];
 
-        // Process the inputs
         let initial_offset = num_rows_constants;
         let input_offset = INPUT_SIZE;
+
+        // Process the inputs
         let mut circuit = 0;
         for (i, input) in inputs.into_iter().enumerate() {
             // Get the basic data from the input
-            let step_received = input.step_main;
-            let addr_received = input.addr_main;
-
-            // Get the raw keccakf input
-            let state_received = &input.state;
+            let step_main = input.step_main;
+            let addr_main = input.addr_main;
+            let state = &input.state;
 
             circuit = i / NUM_KECCAKF_PER_CIRCUIT;
             let circuit_pos = i % NUM_KECCAKF_PER_CIRCUIT;
             let circuit_offset = circuit * self.circuit_size;
 
-            // Update the multiplicity for the input
             let initial_pos = initial_offset + circuit_offset + circuit_pos;
-            trace[initial_pos].in_use_clk_0 = F::ONE; // The pair (step_received, addr_received) is unique each time
 
-            // Update the step_addr and in_use as expected
-            let mut offset = initial_pos;
-            for j in 0..IN_DATA_BLOCKS {
-                let rb_offset = j * RB_SIZE;
-                let pos = offset + rb_offset;
+            // Activate the in_use_clk_0 a single time
+            trace[initial_pos].in_use_clk_0 = F::ONE;
 
-                trace[pos].in_use = F::ONE;
+            // Fill the step_addr
+            trace[initial_pos].step_addr = F::from_u64(step_main); // STEP_MAIN
+            trace[initial_pos + STATE_SIZE].step_addr = F::from_u32(addr_main); // ADDR_MAIN
 
-                trace[pos].step_addr = match j {
-                    0 => F::from_u64(step_received), // STEP_MAIN
-                    1 => F::from_u32(addr_received), // ADDR_OP
-                    _ => F::ZERO,
-                };
+            // Activate the in_use for the input data
+            for j in 0..IN_BLOCKS {
+                trace[initial_pos + j * STATE_SIZE].in_use = F::ONE;
             }
 
             // Process the keccakf input
-            state_received.iter().enumerate().for_each(|(j, &value)| {
-                let block_offset = j * BLOCK_SIZE;
-                let pos = offset + block_offset;
+            let mut offset = initial_pos;
+            state.iter().enumerate().for_each(|(j, &value)| {
+                let state_offset = j * STATE_SIZE;
+                let pos = offset + state_offset;
 
-                // Process the 64-bit chunk
-                for k in 0..64 {
+                // Process the STATE_BITS-bit chunk
+                for k in 0..STATE_BITS {
                     let bit = (value >> k) & 1;
 
                     // Divide the value in bits:
                     //    (circuit i) [0b1011,  0b0011,  0b1000,  0b0010]
                     //    (circuit i) [1,1,0,1, 1,1,0,0, 0,0,0,1, 0,0,1,0]
-                    let bit_num = k + 64 * j;
+                    let bit_num = k + STATE_BITS * j;
                     let old_value = inputs_bits[circuit][bit_num];
                     inputs_bits[circuit][bit_num] = (bit << circuit_pos) | old_value;
 
                     // We update bit[i] and val[i]
-                    let bit_pos = k % BITS_IN_PARALLEL;
-                    let bit_offset = (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / BITS_IN_PARALLEL;
+                    let bit_pos = k % MEM_BITS_IN_PARALLEL;
+                    let bit_offset = (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / MEM_BITS_IN_PARALLEL;
                     update_bit_val(
                         trace,
                         pos + bit_offset,
@@ -157,31 +162,28 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 }
             });
 
+            // Apply the keccakf function and get the output
+            let mut keccakf_output = *state;
+            keccakf(&mut keccakf_output);
+
             // Activate the in_use for the output data
             offset += input_offset;
             for j in 0..OUT_BLOCKS {
-                let rb_offset = j * RB_SIZE;
-                let pos = offset + rb_offset;
-
-                trace[pos].in_use = F::ONE;
+                trace[offset + j * STATE_SIZE].in_use = F::ONE;
             }
-
-            // Apply the keccakf function and get the output
-            let mut keccakf_output = *state_received;
-            keccakf(&mut keccakf_output);
 
             // Process the output
             keccakf_output.iter().enumerate().for_each(|(j, &value)| {
-                let block_offset = j * BLOCK_SIZE;
-                let pos = offset + block_offset;
+                let state_offset = j * STATE_SIZE;
+                let pos = offset + state_offset;
 
-                // Process the 64-bit chunk
-                for k in 0..64 {
+                // Process the STATE_BITS-bit chunk
+                for k in 0..STATE_BITS {
                     let bit = (value >> k) & 1;
 
                     // We update bit[i] and val[i]
-                    let bit_pos = k % BITS_IN_PARALLEL;
-                    let bit_offset = (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / BITS_IN_PARALLEL;
+                    let bit_pos = k % MEM_BITS_IN_PARALLEL;
+                    let bit_offset = (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / MEM_BITS_IN_PARALLEL;
                     update_bit_val(
                         trace,
                         pos + bit_offset,
@@ -214,12 +216,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 // Since no more bits are being introduced as input, we let 0 be the
                 // new bits and therefore we repeat the last values
                 let mut offset = initial_offset + circuit_offset;
-                for j in 0..INPUT_DATA_SIZE_BITS / BITS_IN_PARALLEL {
-                    let block_offset = j * NUM_KECCAKF_PER_CIRCUIT;
-                    let block = offset + block_offset;
+                for j in 0..INPUT_DATA_SIZE_BITS / MEM_BITS_IN_PARALLEL {
+                    let num_keccakf_offset = j * NUM_KECCAKF_PER_CIRCUIT;
+                    let block = offset + num_keccakf_offset;
                     for k in rem_inputs..NUM_KECCAKF_PER_CIRCUIT {
                         let pos = block + k;
-                        for l in 0..BITS_IN_PARALLEL {
+                        for l in 0..MEM_BITS_IN_PARALLEL {
                             trace[pos + 1].val[l] = trace[pos].val[l];
                         }
                     }
@@ -228,13 +230,14 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 offset += input_offset;
                 // Since the new bits are all zero, we have to set the hash of 0 as the respective output
                 zero_state.iter().enumerate().for_each(|(j, &value)| {
-                    let block_offset = j * BLOCK_SIZE;
-                    let block_pos = offset + block_offset;
-                    for k in 0..64 {
+                    let state_offset = j * STATE_SIZE;
+                    let state_pos = offset + state_offset;
+                    for k in 0..STATE_BITS {
                         let bit = (value >> k) & 1;
-                        let bit_pos = k % BITS_IN_PARALLEL;
-                        let bit_offset = (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / BITS_IN_PARALLEL;
-                        let pos = block_pos + bit_offset;
+                        let bit_pos = k % MEM_BITS_IN_PARALLEL;
+                        let bit_offset =
+                            (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / MEM_BITS_IN_PARALLEL;
+                        let pos = state_pos + bit_offset;
                         for w in rem_inputs..NUM_KECCAKF_PER_CIRCUIT {
                             update_bit_val(trace, pos + w, bit, w, bit_pos, w == 0);
                         }
@@ -247,15 +250,16 @@ impl<F: PrimeField64> KeccakfSM<F> {
             zero_state.iter().enumerate().for_each(|(j, &value)| {
                 for s in next_circuit..self.num_available_circuits {
                     let circuit_offset = s * self.circuit_size;
-                    let block_offset = j * BLOCK_SIZE;
-                    for k in 0..64 {
+                    let state_offset = j * STATE_SIZE;
+                    for k in 0..STATE_BITS {
                         let bit = (value >> k) & 1;
-                        let bit_pos = k % BITS_IN_PARALLEL;
-                        let bit_offset = (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / BITS_IN_PARALLEL;
+                        let bit_pos = k % MEM_BITS_IN_PARALLEL;
+                        let bit_offset =
+                            (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / MEM_BITS_IN_PARALLEL;
                         let pos = initial_offset
                             + circuit_offset
                             + input_offset
-                            + block_offset
+                            + state_offset
                             + bit_offset;
                         for w in 0..NUM_KECCAKF_PER_CIRCUIT {
                             update_bit_val(trace, pos + w, bit, w, bit_pos, w == 0);
@@ -330,15 +334,21 @@ impl<F: PrimeField64> KeccakfSM<F> {
                                 get_col_row(&row0, |row| &row.free_in_b)
                             };
                         }
-                        PinId::C => panic!("Input pin C is not used by the Keccakf circuit"),
-                        PinId::D => {
+                        PinId::C => {
                             value_a = if ref_a > 0 {
                                 get_col(par_trace, |row| &row.free_in_c, ref_a - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_c)
                             };
                         }
-                        PinId::E => panic!("Input pin E is not used by the Keccakf circuit"),
+                        PinId::D => {
+                            value_a = if ref_a > 0 {
+                                get_col(par_trace, |row| &row.free_in_d, ref_a - 1)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_d)
+                            };
+                        }
+                        PinId::E => panic!("Output pin E is not used by the Keccakf circuit"),
                     }
                 }
                 set_col(par_trace, |row| &mut row.free_in_a, row, value_a);
@@ -384,49 +394,118 @@ impl<F: PrimeField64> KeccakfSM<F> {
                                 get_col_row(&row0, |row| &row.free_in_b)
                             };
                         }
-                        PinId::C => panic!("Input pin C is not used by the Keccakf circuit"),
-                        PinId::D => {
+                        PinId::C => {
                             value_b = if ref_b > 0 {
                                 get_col(par_trace, |row| &row.free_in_c, ref_b - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_c)
                             };
                         }
-                        PinId::E => panic!("Input pin E is not used by the Keccakf circuit"),
+                        PinId::D => {
+                            value_b = if ref_b > 0 {
+                                get_col(par_trace, |row| &row.free_in_d, ref_b - 1)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_d)
+                            };
+                        }
+                        PinId::E => panic!("Output pin E is not used by the Keccakf circuit"),
                     }
                 }
                 set_col(par_trace, |row| &mut row.free_in_b, row, value_b);
 
-                // Set the value of free_in_c as value_a OP value_b
+                // Set the value of free_in_c
+                let c = &gate.pins[2];
+                let ref_c = c.wired_ref as usize;
+                let wired_c = c.wired_pin_id;
+                let value_c;
+                // If the reference is in the range of the inputs
+                // and the wired pin is A (inputs are located at pin A),
+                // we can get the value directly from the inputs
+                if (STATE_IN_FIRST_REF
+                    ..=STATE_IN_FIRST_REF
+                        + (STATE_IN_NUMBER - STATE_IN_GROUP_BY) * STATE_IN_REF_DISTANCE
+                            / STATE_IN_GROUP_BY
+                        + (STATE_IN_GROUP_BY - 1))
+                    .contains(&ref_c)
+                    && ((ref_c - STATE_IN_FIRST_REF) % STATE_IN_REF_DISTANCE < STATE_IN_GROUP_BY)
+                    && matches!(wired_c, PinId::A)
+                {
+                    let s = ref_c - STATE_IN_FIRST_REF;
+                    let bit_c = (0..STATE_IN_GROUP_BY)
+                        .find(|&r| (s - r) % STATE_IN_REF_DISTANCE == 0)
+                        .map(|r| ((s - r) / STATE_IN_REF_DISTANCE) * STATE_IN_GROUP_BY + r)
+                        .expect("Invalid bit index");
+                    value_c = inputs_bits[i][bit_c];
+                } else
+                // Otherwise, we get one of the already computed values
+                {
+                    match wired_c {
+                        PinId::A => {
+                            value_c = if ref_c > 0 {
+                                get_col(par_trace, |row| &row.free_in_a, ref_c - 1)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_a)
+                            };
+                        }
+                        PinId::B => {
+                            value_c = if ref_c > 0 {
+                                get_col(par_trace, |row| &row.free_in_b, ref_c - 1)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_b)
+                            };
+                        }
+                        PinId::C => {
+                            value_c = if ref_c > 0 {
+                                get_col(par_trace, |row| &row.free_in_c, ref_c - 1)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_c)
+                            };
+                        }
+                        PinId::D => {
+                            value_c = if ref_c > 0 {
+                                get_col(par_trace, |row| &row.free_in_d, ref_c - 1)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_d)
+                            };
+                        }
+                        PinId::E => panic!("Output pin E is not used by the Keccakf circuit"),
+                    }
+                }
+                set_col(par_trace, |row| &mut row.free_in_c, row, value_c);
+
+                // Set the value of free_in_d
                 let op = gate.op;
-                let c_val = match op {
-                    GateOperation::Xor => value_a ^ value_b,
-                    GateOperation::Andp => (value_a ^ MASK_CHUNK_BITS_KECCAKF) & value_b,
+                let d_val = match op {
+                    GateOperation::Xor => value_a ^ value_b ^ value_c,
+                    GateOperation::XorAndp => {
+                        value_a ^ ((value_b ^ MASK_CHUNK_BITS_KECCAKF) & value_c)
+                    }
                     _ => panic!("Invalid operation"),
                 };
-                set_col(par_trace, |row| &mut row.free_in_c, row, c_val);
+                set_col(par_trace, |row| &mut row.free_in_d, row, d_val);
             }
 
             // Update the multiplicity table for the circuit
-            let mut multiplicity = vec![0; KeccakfTableTrace::<usize>::NUM_ROWS];
-            for (k, trace) in par_trace.iter().enumerate().take(self.circuit_size) {
-                let a = &trace.free_in_a;
-                let b = &trace.free_in_b;
+            for (k, row) in par_trace.iter().enumerate().take(self.circuit_size) {
+                let a = &row.free_in_a;
+                let b = &row.free_in_b;
+                let c = &row.free_in_c;
                 let gate_op = self.keccakf_fixed[k + 1 + i * self.circuit_size].GATE_OP;
                 let gate_op_val = match F::as_canonical_u64(&gate_op) {
                     0 => KeccakfTableGateOp::Xor,
-                    1 => KeccakfTableGateOp::Andp,
+                    1 => KeccakfTableGateOp::XorAndp,
                     _ => panic!("Invalid gate operation"),
                 };
 
                 for j in 0..CHUNKS_KECCAKF {
                     let a_val = F::as_canonical_u64(&a[j]);
                     let b_val = F::as_canonical_u64(&b[j]);
-                    let table_row = KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val);
-                    multiplicity[table_row] += 1;
+                    let c_val = F::as_canonical_u64(&c[j]);
+                    let table_row =
+                        KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val, c_val);
+                    self.std.inc_virtual_row(self.table_id, table_row as u64, 1);
                 }
             }
-            self.keccakf_table_sm.update_multiplicities(&multiplicity);
         });
 
         fn update_bit_val<F: PrimeField64>(
@@ -531,8 +610,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
             num_rows_needed as f64 / num_rows as f64 * 100.0
         );
 
-        // Set a = 0b00..00 and b = 0b11..11 at the first row
-        // Set, e.g., the operation to be an XOR and set c = 0b11..11 = b = a ^ b
+        // Set a = 0b00..00, b = 0b11..11 and c = 0b00..00 at the first row
+        // Set, e.g., the operation to be an XOR and set d = 0b11..11 = b = a ^ b ^ c
         let mut row: KeccakfTraceRow<F> = Default::default();
         let zeros = 0u64;
         let ones = MASK_BITS_KECCAKF;
@@ -544,25 +623,27 @@ impl<F: PrimeField64> KeccakfSM<F> {
             "Invalid initial dummy gate operation"
         );
         for i in 0..CHUNKS_KECCAKF {
-            row.free_in_a[i] = F::from_u64(zeros);
+            row.free_in_a[i] = F::ZERO;
             row.free_in_b[i] = F::from_u64(ones);
-            row.free_in_c[i] = F::from_u64(ones);
+            row.free_in_c[i] = F::ZERO;
+            row.free_in_d[i] = F::from_u64(ones);
         }
         // Update the multiplicity table
-        let table_row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, ones);
-        self.keccakf_table_sm.update_input(table_row, CHUNKS_KECCAKF as u64);
+        let table_row =
+            KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, ones, zeros);
+        self.std.inc_virtual_row(self.table_id, table_row as u64, CHUNKS_KECCAKF as u64);
 
         // Assign the single constant row
         keccakf_trace[0] = row;
 
         // Fill the rest of the trace
-        // Flatten all the inputs, since I need to process them at least in chunks of NUM_SHA256F_PER_CIRCUIT
+        // Flatten all the inputs, since I need to process them at least in chunks of NUM_KECCAKF_PER_CIRCUIT
         let inputs = inputs.iter().flatten();
         self.process_trace(&mut keccakf_trace, num_rows_constants, inputs, num_inputs);
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
         timer_start_trace!(KECCAKF_PADDING);
-        // A row with all zeros satisfies the constraints (since both XOR(0,0) and ANDP(0,0) are 0)
+        // A row with all zeros satisfies the constraints (since XOR(0,0,0) = 0)
         let padding_row: KeccakfTraceRow<F> = Default::default();
         for i in (num_rows_constants + self.circuit_size * self.num_available_circuits)..num_rows {
             let gate_op = self.keccakf_fixed[i].GATE_OP.as_canonical_u64();
@@ -573,8 +654,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 "Invalid padding dummy gate operation"
             );
 
-            let table_row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, 0, 0);
-            self.keccakf_table_sm.update_input(table_row, CHUNKS_KECCAKF as u64);
+            let table_row =
+                KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, zeros, zeros);
+            self.std.inc_virtual_row(self.table_id, table_row as u64, CHUNKS_KECCAKF as u64);
 
             keccakf_trace[i] = padding_row;
         }

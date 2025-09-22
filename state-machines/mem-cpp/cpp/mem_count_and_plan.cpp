@@ -2,28 +2,73 @@
 #include "api.hpp"
 #include "tools.hpp"
 #include "mem_count_and_plan.hpp"
+#include "mem_stats.hpp"
 
 MemCountAndPlan::MemCountAndPlan() {
     context = std::make_shared<MemContext>();
+    sem_init(&sem_mem_align_created, 0, 0);
+#ifdef MEM_STATS_ACTIVE
+    mem_stats = new MemStats();
+#endif
+}
+
+MemCountAndPlan::~MemCountAndPlan() {
+    
+    // Call clear
+    clear();
+
+#ifdef MEM_STATS_ACTIVE
+    delete mem_stats;
+#endif
 }
 
 void MemCountAndPlan::clear() {
+    // Wait for and clean up any background threads
+    if (parallel_execute && parallel_execute->joinable()) {
+        parallel_execute->join();
+    }
+
+    // Clean up count_workers raw pointers
+    for (auto* worker : count_workers) {
+        delete worker;
+    }
+    count_workers.clear();
+    
+    // Clean up plan_workers
+    plan_threads.clear();
+    
+    // Clear segments (they have their own cleanup)
+    for (int i = 0; i < MEM_TYPES; ++i) {
+        segments[i].clear();
+    }
+    
     context->clear();
 }
 void MemCountAndPlan::prepare() {
-    uint init = get_usec();
+    uint64_t init = get_usec();
+    
+    // Clear existing workers to avoid memory leaks if prepare() called multiple times
+    for (auto* worker : count_workers) {
+        delete worker;
+    }
     count_workers.clear();
+    
     for (size_t i = 0; i < MAX_THREADS; ++i) {
         count_workers.push_back(new MemCounter(i, context));
+#ifdef MEM_STATS_ACTIVE
+        // Assign mem_stats to each worker if MEM_STATS_ACTIVE is defined
+        count_workers[i]->mem_stats = mem_stats;
+#endif // MEM_STATS_ACTIVE
     }
-    mem_align_counter = std::make_unique<MemAlignCounter>(MEM_ALIGN_ROWS, context);
+    mem_align_counter = std::make_unique<MemAlignCounter>(context);
     plan_workers.clear();
     plan_workers.reserve(MAX_MEM_PLANNERS);
-    rom_data_planner = std::make_unique<ImmutableMemPlanner>(ROM_ROWS, 0x80000000, 128);
-    input_data_planner = std::make_unique<ImmutableMemPlanner>(INPUT_ROWS, 0x90000000, 128);
-    quick_mem_planner = std::make_unique<MemPlanner>(0, RAM_ROWS, 0xA0000000, 512);
+    rom_data_planner = std::make_unique<ImmutableMemPlanner>(ROM_ROWS, ROM_ADDR, 128);
+    rom_data_planner->set_last_addr(ROM_ADDR - 8);
+    input_data_planner = std::make_unique<ImmutableMemPlanner>(INPUT_ROWS, INPUT_ADDR, 128);
+    quick_mem_planner = std::make_unique<MemPlanner>(0, RAM_ROWS, RAM_ADDR, 512);
     for (int i = 0; i < MAX_MEM_PLANNERS; ++i) {
-        plan_workers.emplace_back(i+1, RAM_ROWS, 0xA0000000, 512);
+        plan_workers.emplace_back(i+1, RAM_ROWS, RAM_ADDR, 512);
     }
     t_prepare_us = get_usec() - init;
 }
@@ -36,18 +81,34 @@ void MemCountAndPlan::execute(void) {
     parallel_execute = std::make_unique<std::thread>(&MemCountAndPlan::detach_execute, this);
 }
 
+void MemCountAndPlan::detach_execute_mem_align_counter() {
+    mem_align_counter->execute();
+}   
 void MemCountAndPlan::count_phase() {
+
+#ifdef MEM_STATS_ACTIVE
+    // Get start time for stats
+    struct timespec start_time;
+    clock_gettime(CLOCK_REALTIME, &start_time);
+#endif // MEM_STATS_ACTIVE
+
     uint64_t init = t_init_us = get_usec();
     std::vector<std::thread> threads;
+    context->init();
 
     for (int i = 0; i < MAX_THREADS; ++i) {
         threads.emplace_back([this, i](){count_workers[i]->execute();});
     }
-    threads.emplace_back([this](){ mem_align_counter->execute();});
+    // threads.emplace_back([this](){ mem_align_counter->execute();});
+    mem_align_execute = std::make_unique<std::thread>(&MemCountAndPlan::detach_execute_mem_align_counter, this);
+    if (sem_post(&sem_mem_align_created) != 0) {
+        perror("sem_post");
+    }
 
     for (auto& t : threads) {
         t.join();
     }
+
     uint64_t max_tot_wait_us = 0;
     uint64_t tot_wait_us = 0;
     uint32_t max_used_slots = 0;
@@ -60,15 +121,32 @@ void MemCountAndPlan::count_phase() {
             max_used_slots = count_workers[index]->get_used_slots();
         }
     }
-    // printf("MemCountAndPlan wait_avg(ms): %ld max_wait(ms): %ld ms threads: %d max_used_slots: %04.2f%%\n", 
-    //         (tot_wait_us >> THREAD_BITS)/1000, 
-    //         max_tot_wait_us/1000, 
-    //         1 << THREAD_BITS,
-    //         max_used_slots * 100.0 / ADDR_SLOTS);
-    t_count_us = (uint32_t) (get_usec() - init);    
+
+    wait_mem_align_counters();
+
+    t_count_us = (uint32_t) (get_usec() - init);
+
+#ifdef MEM_STATS_ACTIVE
+    // Add stats for count phase
+    struct timespec end_time;
+    clock_gettime(CLOCK_REALTIME, &end_time);
+    assert(mem_stats != nullptr);
+    mem_stats->add_stat(
+        MEM_STATS_COUNT_PHASE,
+        start_time.tv_sec,
+        start_time.tv_nsec, 
+        (end_time.tv_sec - start_time.tv_sec) * 1000000000 + (end_time.tv_nsec - start_time.tv_nsec));
+#endif // MEM_STATS_ACTIVE
 }
 
 void MemCountAndPlan::plan_phase() {
+
+#ifdef MEM_STATS_ACTIVE
+    // Get start time for stats
+    struct timespec start_time;
+    clock_gettime(CLOCK_REALTIME, &start_time);
+#endif // MEM_STATS_ACTIVE
+
     uint64_t init = get_usec();
     std::vector<std::thread> threads;
 
@@ -87,22 +165,23 @@ void MemCountAndPlan::plan_phase() {
     }
     t_plan_us = (uint32_t) (get_usec() - init);
 
-    // printf("RAM segments: %ld\n", segments[RAM_ID].size());
-    // segments[RAM_ID].debug();
-
     segments[ROM_ID].clear();
     rom_data_planner->collect_segments(segments[ROM_ID]);
-    // printf("ROM segments: %ld\n", segments[ROM_ID].size());
-    // segments[ROM_ID].debug();
-    // printf("ROM segments END\n");
 
     segments[INPUT_ID].clear();
     input_data_planner->collect_segments(segments[INPUT_ID]);
-    // printf("INPUT segments: %ld\n", segments[INPUT_ID].size());
-    // segments[INPUT_ID].debug();
-    
-    // printf("MEM_ALIGN segments\n");
-    // mem_align_counter->debug();
+
+#ifdef MEM_STATS_ACTIVE
+    // Add stats for plan phase
+    struct timespec end_time;
+    clock_gettime(CLOCK_REALTIME, &end_time);
+    assert(mem_stats != nullptr);
+    mem_stats->add_stat(
+        MEM_STATS_PLAN_PHASE,
+        start_time.tv_sec,
+        start_time.tv_nsec, 
+        (end_time.tv_sec - start_time.tv_sec) * 1000000000 + (end_time.tv_nsec - start_time.tv_nsec));
+#endif // MEM_STATS_ACTIVE
 }
 
 void MemCountAndPlan::stats() {
@@ -110,12 +189,19 @@ void MemCountAndPlan::stats() {
     for (size_t i = 0; i < MAX_THREADS; ++i) {
         uint32_t used_slots = count_workers[i]->get_used_slots();
         tot_used_slots += used_slots;
-        printf("Thread %ld: used slots %d/%d (%04.02f%%) T:%d ms S:%ld ms Q:%d\n",
+        printf("Thread %ld: used slots %d/%d (%04.02f%%) T(ms):%d S(ms):%ld C0(us):%ld Q:%d\n",
             i, used_slots, ADDR_SLOTS,
             ((double)used_slots*100.0)/(double)(ADDR_SLOTS), count_workers[i]->get_elapsed_ms(),
             count_workers[i]->tot_wait_us/1000,
+            count_workers[i]->get_first_chunk_us(),
             count_workers[i]->get_queue_full_times()/1000);
     }
+    #ifdef CHUNK_STATS
+    context->stats();
+    for (size_t i = 0; i < MAX_THREADS; ++i) {
+        count_workers[i]->stats();
+    }
+    #endif
     printf("\n> threads: %d\n", MAX_THREADS);
     printf("> address table: %ld MB\n", (ADDR_TABLE_SIZE * ADDR_TABLE_ELEMENT_SIZE * MAX_THREADS)>>20);
     printf("> memory slots: %ld MB (used: %ld MB)\n", (ADDR_SLOTS_SIZE * sizeof(uint32_t) * MAX_THREADS)>>20, (tot_used_slots * ADDR_SLOT_SIZE * sizeof(uint32_t))>> 20);
@@ -124,12 +210,14 @@ void MemCountAndPlan::stats() {
     for (uint32_t i = 0; i < plan_workers.size(); ++i) {
         plan_workers[i].stats();
     }
+    printf("prepare: %04.2f ms\n", t_prepare_us / 1000.0);
     printf("execution: %04.2f ms\n", (TIME_US_BY_CHUNK * context->size()) / 1000.0);
+    printf("completed: %04.2f ms\n", context->get_completed_us() / 1000.0);
     printf("count_phase: %04.2f ms\n", t_count_us / 1000.0);
     printf("plan_phase: %04.2f ms\n", t_plan_us / 1000.0);
 }
 
-MemCountAndPlan *create_mem_count_and_plan(void) {
+MemCountAndPlan *create_mem_count_and_plan(void) { 
     MemCountAndPlan *mcp = new MemCountAndPlan();
     mcp->prepare();
     return mcp;
@@ -153,7 +241,15 @@ void save_chunk(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t chun
     char filename[200];
     snprintf(filename, sizeof(filename), "tmp/bus_data_asm/mem_count_data_%d.bin", chunk_id);
     int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
+    
+    ssize_t bytes_written = write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
+    if (bytes_written < 0) {
+        perror("Error writing to file");
+    } else if (static_cast<size_t>(bytes_written) != sizeof(MemCountersBusData) * chunk_size) {
+        fprintf(stderr, "Partial write: expected %zu bytes, but wrote %zd bytes\n",
+                sizeof(MemCountersBusData) * chunk_size, bytes_written);
+    }
+    
     close(fd);
 }
 
@@ -170,6 +266,11 @@ void stats_mem_count_and_plan(MemCountAndPlan *mcp)
 void set_completed_mem_count_and_plan(MemCountAndPlan *mcp)
 {
     mcp->set_completed();
+}
+
+void wait_mem_align_counters(MemCountAndPlan *mcp)
+{
+    mcp->wait_mem_align_counters();
 }
 
 void wait_mem_count_and_plan(MemCountAndPlan *mcp)
@@ -189,28 +290,70 @@ const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t
     return segment->get_chunks();
 }
 
-const MemAlignCheckPoint *get_mem_align_check_points(MemCountAndPlan *mcp, uint32_t &count)
+const MemAlignChunkCounters *get_mem_align_counters(MemCountAndPlan *mcp, uint32_t &count)
 {
     count = mcp->mem_align_counter->size();
     if (count == 0) {
         return nullptr;
     }
-    return mcp->mem_align_counter->get_checkpoints();
+    return mcp->mem_align_counter->get_counters();
+}
+
+const MemAlignChunkCounters *get_mem_align_total_counters(MemCountAndPlan *mcp)
+{
+    return mcp->mem_align_counter->get_total_counters();
+}
+
+void MemCountAndPlan::wait_mem_align_counters() {
+    while (sem_wait(&sem_mem_align_created) < 0) {
+        if (errno != EINTR) {
+            throw std::runtime_error("MemContext::wait_mem_align_counters: sem_wait error");
+        }
+    }
+
+    try {
+        if (mem_align_execute && mem_align_execute->joinable()) {
+            mem_align_execute->join();
+        }
+    } catch (const std::exception &e) {
+        printf("Exception mem_align_execute in wait: %s\n", e.what());
+    }
+    sem_post(&sem_mem_align_created);   
 }
 
 void MemCountAndPlan::wait() {
     try {
         parallel_execute->join();
-        // delete parallel_execute;
-        // parallel_execute = nullptr;
     } catch (const std::exception &e) {
-        printf("Exception in wait: %s\n", e.what());
+        printf("Exception parallel_execute wait: %s\n", e.what());
     }
 }
 
 void MemCountAndPlan::detach_execute() {
     count_phase();
     plan_phase();
+    //stats();
     // printf("MemCountAndPlan count(ms):%ld plan(ms):%ld tot(ms):%ld\n", 
     //        t_count_us / 1000, t_plan_us / 1000, (t_count_us + t_plan_us) / 1000);
+}
+
+
+uint64_t get_mem_stats_len(MemCountAndPlan *mcp)
+{
+#ifdef MEM_STATS_ACTIVE
+    return mcp->mem_stats->stats.size();
+#else
+    (void)mcp; // To avoid unused parameter warning
+    return 0; // If MEM_STATS_ACTIVE is not defined, return 0
+#endif // MEM_STATS_ACTIVE
+}
+
+uint64_t get_mem_stats_ptr(MemCountAndPlan * mcp)
+{
+#ifdef MEM_STATS_ACTIVE
+    return (uint64_t)mcp->mem_stats->stats.data();
+#else
+    (void)mcp; // To avoid unused parameter warning
+    return 0; // If MEM_STATS_ACTIVE is not defined, return 0
+#endif // MEM_STATS_ACTIVE
 }

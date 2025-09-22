@@ -4,12 +4,13 @@
 
 use std::{collections::VecDeque, ops::Add};
 
+use zisk_common::MemCollectorInfo;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 
-use crate::generate_sha256f_mem_inputs;
+use crate::{generate_sha256f_mem_inputs, skip_sha256f_mem_inputs};
 
 /// The `Sha256fCounter` struct represents a counter that monitors and measures
 /// sha256f-related operations on the data bus.
@@ -94,20 +95,29 @@ impl BusDevice<u64> for Sha256fCounterInputGen {
     /// # Arguments
     /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// A vector of derived inputs to be sent back to the bus.
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+        mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Sha256 as u32 {
-            return;
+            return true;
+        }
+
+        if let Some(mem_collectors_info) = mem_collector_info {
+            if skip_sha256f_mem_inputs(data[B] as u32, data, mem_collectors_info) {
+                return true;
+            }
         }
 
         let step_main = data[A];
@@ -118,7 +128,9 @@ impl BusDevice<u64> for Sha256fCounterInputGen {
             self.measure(data);
         }
 
-        pending.extend(generate_sha256f_mem_inputs(addr_main, step_main, data, only_counters));
+        generate_sha256f_mem_inputs(addr_main, step_main, data, only_counters, pending);
+
+        true
     }
 
     /// Returns the bus IDs associated with this counter.

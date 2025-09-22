@@ -1,0 +1,230 @@
+use crate::{
+    MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEPS_BY_MAIN_STEP,
+    MEM_STEPS_BY_MAIN_STEP_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT,
+};
+use zisk_common::ChunkId;
+use zisk_core::{CHUNK_SIZE_BITS, RAM_ADDR, RAM_SIZE};
+
+const CHUNK_MEM_STEP_BITS: u64 = CHUNK_SIZE_BITS as u64 + MEM_STEPS_BY_MAIN_STEP_BITS;
+const CHUNK_MEM_STEPS: u64 = 1 << CHUNK_MEM_STEP_BITS;
+
+use static_assertions::const_assert;
+const_assert!(CHUNK_MEM_STEP_BITS <= 24);
+
+pub struct MemHelpers {}
+
+impl MemHelpers {
+    #[inline(always)]
+    pub fn main_step_to_mem_step(step: u64, slot: u8) -> u64 {
+        MEM_STEP_BASE + (step << MEM_STEPS_BY_MAIN_STEP_BITS) + slot as u64
+    }
+    #[inline(always)]
+    pub fn main_step_to_precompiled_mem_step(step: u64, is_write: bool) -> u64 {
+        MEM_STEP_BASE + (step << MEM_STEPS_BY_MAIN_STEP_BITS) + if is_write { 3 } else { 2 }
+    }
+    #[inline(always)]
+    pub fn mem_step_to_chunk(step: u64) -> ChunkId {
+        ChunkId(
+            (step - MEM_STEP_BASE) as usize
+                >> (MEM_STEPS_BY_MAIN_STEP_BITS as usize + CHUNK_SIZE_BITS),
+        )
+    }
+    #[inline(always)]
+    pub fn mem_step_to_main_step(step: u64) -> u64 {
+        (step - MEM_STEP_BASE) >> MEM_STEPS_BY_MAIN_STEP_BITS
+    }
+    #[inline(always)]
+    pub fn first_chunk_mem_step(chunk: ChunkId) -> u64 {
+        ((chunk.0 as u64) >> CHUNK_MEM_STEP_BITS) + MEM_STEP_BASE
+    }
+    #[inline(always)]
+    pub fn last_chunk_mem_step(chunk: ChunkId) -> u64 {
+        ((chunk.0 as u64) >> CHUNK_MEM_STEP_BITS) + MEM_STEP_BASE + CHUNK_MEM_STEPS - 1
+    }
+    #[inline(always)]
+    pub fn max_distance_between_chunks(from_chunk: ChunkId, to_chunk: ChunkId) -> u64 {
+        debug_assert!(from_chunk <= to_chunk);
+        let from_step = Self::first_chunk_mem_step(from_chunk);
+        let to_step = Self::last_chunk_mem_step(to_chunk);
+        to_step - from_step
+    }
+
+    #[inline(always)]
+    pub fn is_aligned(addr: u32, width: u8) -> bool {
+        (addr & MEM_ADDR_ALIGN_MASK) == 0 && width == 8
+    }
+    #[inline(always)]
+    pub fn get_addr_w(addr: u32) -> u32 {
+        addr >> MEM_BYTES_BITS
+    }
+    #[inline(always)]
+    pub fn get_addr(addr_w: u32) -> u32 {
+        addr_w << MEM_BYTES_BITS
+    }
+    #[inline(always)]
+    pub fn get_read_step(step: u64) -> u64 {
+        step
+    }
+    #[inline(always)]
+    pub fn get_write_step(step: u64) -> u64 {
+        step + 1
+    }
+    #[inline(always)]
+    pub fn is_double(addr: u32, bytes: u8) -> bool {
+        (addr & MEM_ADDR_ALIGN_MASK) + bytes as u32 > 8
+    }
+    #[inline(always)]
+    pub fn is_dual(addr: u32) -> bool {
+        addr as u64 >= RAM_ADDR && addr as u64 <= (RAM_ADDR + RAM_SIZE)
+    }
+    #[inline(always)]
+    pub fn is_write(op: u8) -> bool {
+        op == MEMORY_STORE_OP
+    }
+    #[inline(always)]
+    pub fn get_byte_offset(addr: u32) -> u8 {
+        (addr & MEM_ADDR_ALIGN_MASK) as u8
+    }
+
+    #[inline(always)]
+    pub fn main_step_to_special_mem_step(main_step: u64) -> u64 {
+        if main_step == 0 {
+            0
+        } else {
+            Self::main_step_to_mem_step(main_step, 3)
+        }
+    }
+    #[inline(always)]
+    pub fn mem_step_to_slot(mem_step: u64) -> u8 {
+        ((mem_step - MEM_STEP_BASE) & (MEM_STEPS_BY_MAIN_STEP - 1)) as u8
+    }
+    #[inline(always)]
+    pub fn mem_step_to_row(mem_step: u64) -> usize {
+        ((mem_step - MEM_STEP_BASE) >> MEM_STEPS_BY_MAIN_STEP_BITS) as usize
+    }
+
+    #[cfg(target_endian = "big")]
+    compile_error!("This code requires a little-endian machine.");
+
+    pub fn get_write_values(addr: u32, bytes: u8, value: u64, read_values: [u64; 2]) -> [u64; 2] {
+        let is_double = Self::is_double(addr, bytes);
+        let offset = Self::get_byte_offset(addr) * 8;
+        let value = match bytes {
+            1 => value & 0xFF,
+            2 => value & 0xFFFF,
+            4 => value & 0xFFFF_FFFF,
+            8 => value,
+            _ => panic!("Invalid bytes value"),
+        };
+        let byte_mask = match bytes {
+            1 => 0xFFu64,
+            2 => 0xFFFFu64,
+            4 => 0xFFFF_FFFFu64,
+            8 => 0xFFFF_FFFF_FFFF_FFFFu64,
+            _ => panic!("Invalid bytes value"),
+        };
+
+        let lo_mask = !(byte_mask << offset);
+        let lo_write = (lo_mask & read_values[0]) | (value << offset);
+        if !is_double {
+            return [lo_write, read_values[1]];
+        }
+
+        let hi_mask = !(byte_mask >> (64 - offset));
+        let hi_write = (hi_mask & read_values[1]) | (value >> (64 - offset));
+
+        [lo_write, hi_write]
+    }
+    #[cfg(target_endian = "big")]
+    compile_error!("This code requires a little-endian machine.");
+
+    pub fn get_read_value(addr: u32, bytes: u8, read_values: [u64; 2]) -> u64 {
+        let is_double = Self::is_double(addr, bytes);
+        let offset = Self::get_byte_offset(addr) * 8;
+        let mut value = read_values[0] >> offset;
+        if is_double {
+            value |= (read_values[1] >> offset) << (64 - offset);
+        }
+        match bytes {
+            1 => value & 0xFF,
+            2 => value & 0xFFFF,
+            4 => value & 0xFFFF_FFFF,
+            8 => value,
+            _ => panic!("Invalid bytes value"),
+        }
+    }
+    pub fn register_to_addr(register: u8) -> u32 {
+        ((RAM_ADDR + register as u64) * 8) as u32
+    }
+    pub fn register_to_addr_w(register: u8) -> u32 {
+        RAM_W_ADDR_INIT + register as u32
+    }
+    #[inline(always)]
+    pub fn mem_load(
+        addr: u32,
+        step: u64,
+        step_offset: u8,
+        bytes: u8,
+        mem_values: [u64; 2],
+    ) -> [u64; 7] {
+        [
+            MEMORY_LOAD_OP as u64,
+            addr as u64,
+            Self::main_step_to_mem_step(step, step_offset),
+            bytes as u64,
+            mem_values[0],
+            mem_values[1],
+            0,
+        ]
+    }
+    #[inline(always)]
+    pub fn mem_write(
+        addr: u32,
+        step: u64,
+        step_offset: u8,
+        bytes: u8,
+        value: u64,
+        mem_values: [u64; 2],
+    ) -> [u64; 7] {
+        [
+            MEMORY_STORE_OP as u64,
+            addr as u64,
+            Self::main_step_to_mem_step(step, step_offset),
+            bytes as u64,
+            mem_values[0],
+            mem_values[1],
+            value,
+        ]
+    }
+
+    #[inline(always)]
+    pub fn get_distance_by_chunks(from_step: u64, to_step: u64) -> u64 {
+        debug_assert!(from_step <= to_step);
+
+        let from_chunk = Self::mem_step_to_chunk(from_step);
+        let to_chunk = Self::mem_step_to_chunk(to_step);
+        Self::max_distance_between_chunks(from_chunk, to_chunk)
+    }
+    #[inline(always)]
+    pub fn encode_mem_align_rows_and_count(rows: u32, count: u32) -> u32 {
+        debug_assert!(rows == 3 || rows == 5);
+        count
+            + match rows {
+                2 => 0x4000_0000,
+                3 => 0x8000_0000,
+                5 => 0xC000_0000,
+                _ => panic!("Invalid rows value"),
+            }
+    }
+    #[inline(always)]
+    pub fn decode_mem_align_rows_and_count(value: u32) -> (u32, u32) {
+        let rows = match (value >> 30) as u8 {
+            1 => 2,
+            2 => 3,
+            3 => 5,
+            _ => panic!("Invalid rows value"),
+        };
+        let count = value & 0x3FFF_FFFF;
+        (rows, count)
+    }
+}

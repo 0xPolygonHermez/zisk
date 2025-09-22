@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "59d85fa6981085413e82e689fc0507e1c33eb6534f8f1e31be6bd7876315f929";
+pub const PILOUT_HASH: &str = "9afd28d6ebc7f5d463e3343fe57e925e1b3953cd4634d4271d915bae27db7cef";
 
 //AIRGROUP CONSTANTS
 
@@ -36,37 +36,33 @@ pub const INPUT_DATA_AIR_IDS: &[usize] = &[4];
 
 pub const MEM_ALIGN_AIR_IDS: &[usize] = &[5];
 
-pub const MEM_ALIGN_ROM_AIR_IDS: &[usize] = &[6];
+pub const MEM_ALIGN_BYTE_AIR_IDS: &[usize] = &[6];
 
-pub const ARITH_AIR_IDS: &[usize] = &[7];
+pub const MEM_ALIGN_READ_BYTE_AIR_IDS: &[usize] = &[7];
 
-pub const ARITH_TABLE_AIR_IDS: &[usize] = &[8];
+pub const MEM_ALIGN_WRITE_BYTE_AIR_IDS: &[usize] = &[8];
 
-pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[9];
+pub const ARITH_AIR_IDS: &[usize] = &[9];
 
 pub const BINARY_AIR_IDS: &[usize] = &[10];
 
 pub const BINARY_ADD_AIR_IDS: &[usize] = &[11];
 
-pub const BINARY_TABLE_AIR_IDS: &[usize] = &[12];
+pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[12];
 
-pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[13];
+pub const ARITH_EQ_AIR_IDS: &[usize] = &[13];
 
-pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[14];
+pub const ARITH_EQ_384_AIR_IDS: &[usize] = &[14];
 
-pub const ARITH_EQ_AIR_IDS: &[usize] = &[15];
+pub const KECCAKF_AIR_IDS: &[usize] = &[15];
 
-pub const ARITH_EQ_LT_TABLE_AIR_IDS: &[usize] = &[16];
+pub const SHA_256_F_AIR_IDS: &[usize] = &[16];
 
-pub const KECCAKF_AIR_IDS: &[usize] = &[17];
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[17];
 
-pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[18];
+pub const VIRTUAL_TABLE_0_AIR_IDS: &[usize] = &[18];
 
-pub const SHA_256_F_AIR_IDS: &[usize] = &[19];
-
-pub const SHA_256_F_TABLE_AIR_IDS: &[usize] = &[20];
-
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[21];
+pub const VIRTUAL_TABLE_1_AIR_IDS: &[usize] = &[19];
 
 
 //PUBLICS
@@ -131,7 +127,7 @@ trace!(MemFixed<F> {
 },  0, 2, 4194304 );
 
 trace!(MemTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: [F; 2], read_same_addr: F,
+ addr: F, step: F, sel: F, addr_changes: F, step_dual: F, sel_dual: F, value: [F; 2], wr: F, previous_step: F, increment: [F; 2], read_same_addr: F,
 },  0, 2, 4194304 );
 
 trace!(RomDataFixed<F> {
@@ -152,43 +148,43 @@ trace!(InputDataTrace<F> {
 
 trace!(MemAlignFixed<F> {
  L1: F, __L1__: F,
-},  0, 5, 4194304 );
+},  0, 5, 2097152 );
 
 trace!(MemAlignTrace<F> {
  addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2],
-},  0, 5, 4194304 );
+},  0, 5, 2097152 );
 
-trace!(MemAlignRomFixed<F> {
- OFFSET: F, WIDTH: F, PC: F, DELTA_PC: F, DELTA_ADDR: F, FLAGS: F, __L1__: F,
-},  0, 6, 256 );
+trace!(MemAlignByteFixed<F> {
+ __L1__: F,
+},  0, 6, 4194304 );
 
-trace!(MemAlignRomTrace<F> {
- multiplicity: F,
-},  0, 6, 256 );
+trace!(MemAlignByteTrace<F> {
+ sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, written_composed_value: F, written_byte_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F, is_write: F, mem_write_values: [F; 2], bus_byte: F,
+},  0, 6, 4194304 );
+
+trace!(MemAlignReadByteFixed<F> {
+ __L1__: F,
+},  0, 7, 4194304 );
+
+trace!(MemAlignReadByteTrace<F> {
+ sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F,
+},  0, 7, 4194304 );
+
+trace!(MemAlignWriteByteFixed<F> {
+ __L1__: F,
+},  0, 8, 4194304 );
+
+trace!(MemAlignWriteByteTrace<F> {
+ sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, written_composed_value: F, written_byte_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F, mem_write_values: [F; 2],
+},  0, 8, 4194304 );
 
 trace!(ArithFixed<F> {
  __L1__: F,
-},  0, 7, 2097152 );
+},  0, 9, 2097152 );
 
 trace!(ArithTrace<F> {
  carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
-},  0, 7, 2097152 );
-
-trace!(ArithTableFixed<F> {
- OP: F, FLAGS: F, RANGE_AB: F, RANGE_CD: F, __L1__: F,
-},  0, 8, 128 );
-
-trace!(ArithTableTrace<F> {
- multiplicity: F,
-},  0, 8, 128 );
-
-trace!(ArithRangeTableFixed<F> {
- RANGE_ID: F, RANGE_VALUES: F, __L1__: F,
-},  0, 9, 4194304 );
-
-trace!(ArithRangeTableTrace<F> {
- multiplicity: F,
-},  0, 9, 4194304 );
+},  0, 9, 2097152 );
 
 trace!(BinaryFixed<F> {
  __L1__: F,
@@ -206,85 +202,69 @@ trace!(BinaryAddTrace<F> {
  a: [F; 2], b: [F; 2], c_chunks: [F; 4], cout: [F; 2], multiplicity: F,
 },  0, 11, 4194304 );
 
-trace!(BinaryTableFixed<F> {
- A: F, B: F, LAST: F, CIN: F, OP: F, C: F, FLAGS: F, __L1__: F,
-},  0, 12, 8388608 );
-
-trace!(BinaryTableTrace<F> {
- multiplicity: F,
-},  0, 12, 8388608 );
-
 trace!(BinaryExtensionFixed<F> {
  __L1__: F,
-},  0, 13, 4194304 );
+},  0, 12, 4194304 );
 
 trace!(BinaryExtensionTrace<F> {
  op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], multiplicity: F,
-},  0, 13, 4194304 );
-
-trace!(BinaryExtensionTableFixed<F> {
- A: F, OFFSET: F, B: F, OP_IS_SHIFT: F, OP: F, C0: F, C1: F, __L1__: F,
-},  0, 14, 4194304 );
-
-trace!(BinaryExtensionTableTrace<F> {
- multiplicity: F,
-},  0, 14, 4194304 );
+},  0, 12, 4194304 );
 
 trace!(ArithEqFixed<F> {
- CLK_0: F, CHUNK_ID: F, __L1__: F,
-},  0, 15, 524288 );
+ CLK_0: F, __L1__: F,
+},  0, 13, 1048576 );
 
 trace!(ArithEqTrace<F> {
  x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 9], sel_op_clk0: [F; 9], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
-},  0, 15, 524288 );
+},  0, 13, 1048576 );
 
-trace!(ArithEqLtTableFixed<F> {
- LT_T: F, DELTA: F, __L1__: F,
-},  0, 16, 262144 );
+trace!(ArithEq384Fixed<F> {
+ CLK_0: F, __L1__: F,
+},  0, 14, 1048576 );
 
-trace!(ArithEqLtTableTrace<F> {
- multiplicity: F,
-},  0, 16, 262144 );
+trace!(ArithEq384Trace<F> {
+ x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 6], sel_op_clk0: [F; 6], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
+},  0, 14, 1048576 );
 
 trace!(KeccakfFixed<F> {
- L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
-},  0, 17, 4194304 );
+ L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
+},  0, 15, 2097152 );
 
 trace!(KeccakfTrace<F> {
- free_in_a: [F; 7], free_in_b: [F; 7], free_in_c: [F; 7], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 17, 4194304 );
-
-trace!(KeccakfTableFixed<F> {
- A: [F; 1], B: F, GATE_OP: F, C: [F; 1], __L1__: F,
-},  0, 18, 524288 );
-
-trace!(KeccakfTableTrace<F> {
- multiplicity: [F; 1],
-},  0, 18, 524288 );
+ free_in_a: [F; 9], free_in_b: [F; 9], free_in_c: [F; 9], free_in_d: [F; 9], bit: [F; 4], val: [F; 4], step_addr: F, in_use_clk_0: F, in_use: F,
+},  0, 15, 2097152 );
 
 trace!(Sha256fFixed<F> {
- L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_SHA256F: F, FACTOR_NUM_SHA256F: F, CLK_0: F, __L1__: F,
-},  0, 19, 2097152 );
+ CLK_0: F, __L1__: F,
+},  0, 16, 262144 );
 
 trace!(Sha256fTrace<F> {
- free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], carry: [F; 8], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 19, 2097152 );
-
-trace!(Sha256fTableFixed<F> {
- A: [F; 1], B: F, C: F, GATE_OP: F, D: [F; 1], CARRY: [F; 1], __L1__: F,
-},  0, 20, 8388608 );
-
-trace!(Sha256fTableTrace<F> {
- multiplicity: [F; 1],
-},  0, 20, 8388608 );
+ a: [F; 32], e: [F; 32], w: [F; 32], new_a_carry_bits: F, new_e_carry_bits: F, new_w_carry_bits: F, step_addr: F, in_use_clk_0: F, in_use: F,
+},  0, 16, 262144 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 17], __L1__: F,
-},  0, 21, 2097152 );
+ RANGE: [F; 18], __L1__: F,
+},  0, 17, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 17],
-},  0, 21, 2097152 );
+ mul: [F; 18],
+},  0, 17, 2097152 );
+
+trace!(VirtualTable0Fixed<F> {
+ UID: [F; 11], column: [F; 63], __L1__: F,
+},  0, 18, 2097152 );
+
+trace!(VirtualTable0Trace<F> {
+ multiplicity: [F; 11],
+},  0, 18, 2097152 );
+
+trace!(VirtualTable1Fixed<F> {
+ UID: [F; 8], column: [F; 64], __L1__: F,
+},  0, 19, 2097152 );
+
+trace!(VirtualTable1Trace<F> {
+ multiplicity: [F; 8],
+},  0, 19, 2097152 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -304,6 +284,18 @@ values!(RomDataAirValues<F> {
 
 values!(InputDataAirValues<F> {
  segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4],
+});
+
+values!(MemAlignByteAirValues<F> {
+ padding_size: F, im_direct: [FieldExtension<F>; 2],
+});
+
+values!(MemAlignReadByteAirValues<F> {
+ padding_size: F, im_direct: [FieldExtension<F>; 2],
+});
+
+values!(MemAlignWriteByteAirValues<F> {
+ padding_size: F, im_direct: [FieldExtension<F>; 3],
 });
 
 values!(MainAirGroupValues<F> {
@@ -330,19 +322,19 @@ values!(MemAlignAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(MemAlignRomAirGroupValues<F> {
+values!(MemAlignByteAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(MemAlignReadByteAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(MemAlignWriteByteAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
 values!(ArithAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(ArithTableAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(ArithRangeTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -354,15 +346,7 @@ values!(BinaryAddAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(BinaryTableAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
 values!(BinaryExtensionAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(BinaryExtensionTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -370,7 +354,7 @@ values!(ArithEqAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(ArithEqLtTableAirGroupValues<F> {
+values!(ArithEq384AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -378,18 +362,18 @@ values!(KeccakfAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(KeccakfTableAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
 values!(Sha256fAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(Sha256fTableAirGroupValues<F> {
+values!(SpecifiedRangesAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(SpecifiedRangesAirGroupValues<F> {
+values!(VirtualTable0AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(VirtualTable1AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });

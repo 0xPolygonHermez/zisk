@@ -1,5 +1,5 @@
 // extern crate env_logger;
-use crate::commands::{cli_fail_if_macos, get_proving_key, Field};
+use crate::commands::{get_proving_key, Field};
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
@@ -30,39 +30,20 @@ pub struct ZiskCheckSetup {
 
 impl ZiskCheckSetup {
     pub fn run(&self) -> Result<()> {
-        cli_fail_if_macos()?;
-
         println!("{} CheckSetup", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
         let verbose_mode = VerboseMode::Debug;
 
-        #[cfg(distributed)]
-        {
-            match self.field {
-                Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
-                    get_proving_key(self.proving_key.as_ref()),
-                    self.aggregation,
-                    self.final_snark,
-                    verbose_mode,
-                    None,
-                )
-                .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
-            };
-        }
-
-        #[cfg(not(distributed))]
-        {
-            match self.field {
-                Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
-                    get_proving_key(self.proving_key.as_ref()),
-                    self.aggregation,
-                    self.final_snark,
-                    verbose_mode,
-                )
-                .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
-            };
-        }
+        match self.field {
+            Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
+                get_proving_key(self.proving_key.as_ref()),
+                self.aggregation,
+                self.final_snark,
+                verbose_mode,
+            )
+            .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
+        };
 
         Ok(())
     }

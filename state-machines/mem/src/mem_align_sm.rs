@@ -36,11 +36,6 @@ const ALLOWED_WIDTHS: [u8; 4] = [1, 2, 4, 8];
 const DEFAULT_OFFSET: u64 = 0;
 const DEFAULT_WIDTH: u64 = 8;
 
-pub struct MemAlignResponse {
-    pub more_addr: bool,
-    pub step: u64,
-    pub value: Option<u64>,
-}
 pub struct MemAlignSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
@@ -48,8 +43,8 @@ pub struct MemAlignSM<F: PrimeField64> {
     #[cfg(feature = "debug_mem_align")]
     num_computed_rows: Mutex<usize>,
 
-    // Secondary State machines
-    mem_align_rom_sm: Arc<MemAlignRomSM>,
+    /// The table ID for the Mem Align ROM State Machine
+    table_id: usize,
 }
 
 macro_rules! debug_info {
@@ -62,12 +57,15 @@ macro_rules! debug_info {
 }
 
 impl<F: PrimeField64> MemAlignSM<F> {
-    pub fn new(std: Arc<Std<F>>, mem_align_rom_sm: Arc<MemAlignRomSM>) -> Arc<Self> {
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        // Get the table ID
+        let table_id = std.get_virtual_table_id(MemAlignRomSM::TABLE_ID);
+
         Arc::new(Self {
             std: std.clone(),
             #[cfg(feature = "debug_mem_align")]
             num_computed_rows: Mutex::new(0),
-            mem_align_rom_sm,
+            table_id,
         })
     }
 
@@ -96,6 +94,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
         #[cfg(feature = "debug_mem_align")]
         let num_rows = self.num_computed_rows.lock().unwrap();
+
         match (input.is_write, offset + width > CHUNK_NUM) {
             (false, false) => {
                 /*  RV with offset=2, width=4
@@ -117,9 +116,12 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 // Get the aligned value
                 let value_read = input.mem_values[0];
 
-                // Get the next pc
-                let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::OneRead, offset, width);
+                // Get the next pc and op size
+                let (next_pc, op_size) =
+                    MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneRead, offset, width);
+
+                // Update the row multiplicity of the operation
+                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 let mut read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -227,8 +229,11 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_read = input.mem_values[0];
 
                 // Get the next pc
-                let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::OneWrite, offset, width);
+                let (next_pc, op_size) =
+                    MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneWrite, offset, width);
+
+                // Update the row multiplicity of the operation
+                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 // Compute the write value
                 let value_write = {
@@ -392,8 +397,11 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_second_read = input.mem_values[1];
 
                 // Get the next pc
-                let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoReads, offset, width);
+                let (next_pc, op_size) =
+                    MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoReads, offset, width);
+
+                // Update the row multiplicity of the operation
+                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 let mut first_read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -578,8 +586,11 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 };
 
                 // Get the next pc
-                let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoWrites, offset, width);
+                let (next_pc, op_size) =
+                    MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoWrites, offset, width);
+
+                // Update the row multiplicity of the operation
+                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 // RWVWR
                 let mut first_read_row = MemAlignTraceRow::<F> {
@@ -833,8 +844,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
             .for_each(|slot| *slot = padding_row);
 
         // Compute the program multiplicity
-        let mem_align_rom_sm = self.mem_align_rom_sm.clone();
-        mem_align_rom_sm.update_padding_row(padding_size as u64);
+        self.std.inc_virtual_row(self.table_id, MemAlignRomSM::PADDING_ROW, padding_size as u64);
 
         reg_range_check[0] += CHUNK_NUM as u32 * padding_size as u32;
         self.update_std_range_check(reg_range_check);
@@ -844,7 +854,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
     fn update_std_range_check(&self, reg_range_check: Vec<u32>) {
         // Perform the range checks
-        let range_id = self.std.get_range(0, CHUNK_BITS_MASK as i64, None);
-        self.std.range_checks(reg_range_check, range_id);
+        let range_id = self.std.get_range_id(0, CHUNK_BITS_MASK as i64, None);
+        self.std.range_checks(range_id, reg_range_check);
     }
 }

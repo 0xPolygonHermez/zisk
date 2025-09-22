@@ -1,9 +1,16 @@
 use std::sync::Arc;
 
-use crate::{MemInput, MemModule, MemPreviousSegment, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
+use crate::{MemInput, MemModule, MemPreviousSegment};
 use fields::PrimeField64;
+use mem_common::{MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
+#[cfg(feature = "debug_mem")]
+use std::{
+    env,
+    fs::File,
+    io::{BufWriter, Write},
+};
 use zisk_common::SegmentId;
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
 use zisk_pil::{RomDataAirValues, RomDataTrace};
@@ -34,12 +41,38 @@ impl<F: PrimeField64> RomDataSM<F> {
     pub fn get_to_addr() -> u32 {
         ROM_DATA_W_ADDR_END
     }
+    #[cfg(feature = "debug_mem")]
+    pub fn save_to_file(trace: &RomDataTrace<F>, file_name: &str) {
+        let file = File::create(file_name).unwrap();
+        let mut writer = BufWriter::new(file);
+        let num_rows = RomDataTrace::<usize>::NUM_ROWS;
+
+        for i in 0..num_rows {
+            let addr = F::as_canonical_u64(&trace[i].addr) * 8;
+            let step = F::as_canonical_u64(&trace[i].step);
+            let sel = F::as_canonical_u64(&trace[i].sel);
+            // TODO: chunk_size * 4 = 20
+            writeln!(
+                writer,
+                "{:#010X} {} {:?} S:{sel} @{}",
+                addr,
+                step,
+                trace[i].value,
+                (step - 1) >> 20
+            )
+            .unwrap();
+        }
+    }
 }
 
 impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
     fn get_addr_range(&self) -> (u32, u32) {
         (ROM_DATA_W_ADDR_INIT, ROM_DATA_W_ADDR_END)
     }
+    fn is_dual(&self) -> bool {
+        false
+    }
+
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.
@@ -65,15 +98,15 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         );
 
         // range of instance
-        let range_id = self.std.get_range(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
-        self.std.range_check((previous_segment.addr - ROM_DATA_W_ADDR_INIT) as i64, 1, range_id);
+        let range_id = self.std.get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
+        self.std.range_check(range_id, (previous_segment.addr - ROM_DATA_W_ADDR_INIT) as i64, 1);
 
         // Fill the remaining rows
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
 
-        if segment_id == 0 && !mem_ops.is_empty() && mem_ops[0].addr > ROM_DATA_W_ADDR_INIT {
+        if segment_id == 0 {
             // In the pil, in first row of first segment, we use previous_segment less 1, to
             // allow to use ROM_DATA_W_ADDR_INIT as address, and active address change flag
             // to free the value, if not
@@ -88,15 +121,16 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             if distance > 1 {
                 let mut internal_reads = distance - 1;
 
-                // println!(
-                //     "INTERNAL_READS[{},{}] {} 0x{:X},{} LAST:0x{:X}",
-                //     segment_id,
-                //     i,
-                //     internal_reads,
-                //     mem_op.addr * 8,
-                //     mem_op.step,
-                //     last_addr * 8
-                // );
+                #[cfg(feature = "debug_mem")]
+                println!(
+                    "INTERNAL_READS[{},{}] {} 0x{:X},{} LAST:0x{:X}",
+                    segment_id,
+                    i,
+                    internal_reads,
+                    mem_op.addr * 8,
+                    mem_op.step,
+                    last_addr * 8
+                );
 
                 // check if has enough rows to complete the internal reads + regular memory
                 let incomplete = (i + internal_reads as usize) >= num_rows;
@@ -154,7 +188,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             }
         }
 
-        self.std.range_check((ROM_DATA_W_ADDR_END - last_addr) as i64, 1, range_id);
+        self.std.range_check(range_id, (ROM_DATA_W_ADDR_END - last_addr) as i64, 1);
 
         let mut air_values = RomDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());
@@ -170,6 +204,13 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
 
         air_values.segment_last_value[0] = F::from_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);
+
+        #[cfg(feature = "debug_mem")]
+        {
+            let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
+            let filename = format!("{path}/rom_trace_{segment_id:04}.txt");
+            Self::save_to_file(&trace, &filename);
+        }
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }

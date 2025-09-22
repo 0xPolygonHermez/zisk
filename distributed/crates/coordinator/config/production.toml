@@ -1,0 +1,20 @@
+[service]
+name = "coordinator-network"
+environment = "production"
+
+[server]
+host = "0.0.0.0"
+port = 50051
+# shutdown_timeout_seconds = 60
+
+[logging]
+level = "info"
+format = "json"
+file_output = true
+file_path = "/var/log/coordinator-network/server.log"
+
+[coordinator]
+max_workers_per_job = 20          # Maximum workers per single proof job
+max_total_workers = 5000          # Maximum total registered workers
+phase1_timeout_seconds = 600      # 10 minutes for phase 1
+phase2_timeout_seconds = 1200     # 20 minutes for phase 2

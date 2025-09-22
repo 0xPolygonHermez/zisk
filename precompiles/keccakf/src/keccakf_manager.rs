@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use proofman_common::SetupCtx;
-use zisk_common::{BusDevice, PayloadType, OPERATION_BUS_ID};
+use zisk_common::{BusDevice, PayloadType};
 
 use zisk_common::{
-    table_instance_array, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    InstanceInfo, Planner, TableInfo,
+    BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::{KeccakfTableTrace, KeccakfTrace};
+use zisk_pil::KeccakfTrace;
 
-use crate::{KeccakfCounterInputGen, KeccakfInstance, KeccakfPlanner, KeccakfSM, KeccakfTableSM};
+use crate::{KeccakfCounterInputGen, KeccakfInstance, KeccakfPlanner, KeccakfSM};
 
 /// The `KeccakfManager` struct represents the Keccakf manager,
 /// which is responsible for managing the Keccakf state machine and its table state machine.
@@ -19,9 +19,6 @@ use crate::{KeccakfCounterInputGen, KeccakfInstance, KeccakfPlanner, KeccakfSM, 
 pub struct KeccakfManager<F: PrimeField64> {
     /// Keccakf state machine
     keccakf_sm: Arc<KeccakfSM<F>>,
-
-    /// Keccakf table state machine
-    keccakf_table_sm: Arc<KeccakfTableSM>,
 }
 
 impl<F: PrimeField64> KeccakfManager<F> {
@@ -29,15 +26,18 @@ impl<F: PrimeField64> KeccakfManager<F> {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `KeccakfManager`.
-    pub fn new(sctx: Arc<SetupCtx<F>>) -> Arc<Self> {
-        let keccakf_table_sm = KeccakfTableSM::new::<F>();
-        let keccakf_sm = KeccakfSM::new(sctx, keccakf_table_sm.clone());
+    pub fn new(sctx: Arc<SetupCtx<F>>, std: Arc<Std<F>>) -> Arc<Self> {
+        let keccakf_sm = KeccakfSM::new(sctx, std);
 
-        Arc::new(Self { keccakf_sm, keccakf_table_sm })
+        Arc::new(Self { keccakf_sm })
     }
 
     pub fn build_keccakf_counter(&self) -> KeccakfCounterInputGen {
         KeccakfCounterInputGen::new(BusDeviceMode::Counter)
+    }
+
+    pub fn build_keccakf_input_generator(&self) -> KeccakfCounterInputGen {
+        KeccakfCounterInputGen::new(BusDeviceMode::InputGenerator)
     }
 }
 
@@ -58,19 +58,12 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager<F> {
         // Get the number of keccakfs that a single keccakf instance can handle
         let num_available_keccakfs = self.keccakf_sm.num_available_keccakfs;
 
-        Box::new(
-            KeccakfPlanner::new()
-                .add_instance(InstanceInfo::new(
-                    KeccakfTrace::<usize>::AIRGROUP_ID,
-                    KeccakfTrace::<usize>::AIR_ID,
-                    num_available_keccakfs,
-                    ZiskOperationType::Keccak,
-                ))
-                .add_table_instance(TableInfo::new(
-                    KeccakfTableTrace::<usize>::AIRGROUP_ID,
-                    KeccakfTableTrace::<usize>::AIR_ID,
-                )),
-        )
+        Box::new(KeccakfPlanner::new().add_instance(InstanceInfo::new(
+            KeccakfTrace::<usize>::AIRGROUP_ID,
+            KeccakfTrace::<usize>::AIR_ID,
+            num_available_keccakfs,
+            ZiskOperationType::Keccak,
+        )))
     }
 
     /// Builds an inputs data collector for keccakf operations.
@@ -88,14 +81,6 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager<F> {
         match ictx.plan.air_id {
             id if id == KeccakfTrace::<usize>::AIR_ID => {
                 Box::new(KeccakfInstance::new(self.keccakf_sm.clone(), ictx))
-            }
-            id if id == KeccakfTableTrace::<usize>::AIR_ID => {
-                table_instance_array!(KeccakfTableInstance, KeccakfTableSM, KeccakfTableTrace);
-                Box::new(KeccakfTableInstance::new(
-                    self.keccakf_table_sm.clone(),
-                    ictx,
-                    OPERATION_BUS_ID,
-                ))
             }
             _ => {
                 panic!("KeccakfBuilder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)
