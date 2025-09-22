@@ -19,6 +19,9 @@ extern "C" {
 #define FCALL_BLS12_381_FP_INV_ID 10
 #define FCALL_BLS12_381_FP_SQRT_ID 11
 #define FCALL_BLS12_381_FP2_INV_ID 12
+#define FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID 13
+#define FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID 14
+#define FCALL_MSB_POS_384_ID 15
 
 // Fcall context
 struct FcallContext
@@ -71,6 +74,15 @@ int BLS12_381FpSqrtCtx (
 int BLS12_381ComplexInvCtx (
     struct FcallContext * ctx  // fcall context
 );
+int BLS12_381TwistAddLineCoeffsCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int BLS12_381TwistDblLineCoeffsCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int MsbPos384Ctx (
+    struct FcallContext * ctx  // fcall context
+);
 
 // Functions supported by fcall, in u64 array format
 int InverseFpEc (
@@ -117,6 +129,18 @@ int BLS12_381FpSqrt (
 int BLS12_381ComplexInv (
     const uint64_t * a, // 12 x 64 bits
           uint64_t * r  // 12 x 64 bits
+);
+int BLS12_381TwistAddLineCoeffs (
+    const uint64_t * a, // 48 x 64 bits
+          uint64_t * r  // 24 x 64 bits
+);
+int BLS12_381TwistDblLineCoeffs (
+    const uint64_t * a, // 24 x 64 bits
+          uint64_t * r  // 24 x 64 bits
+);
+int MsbPos384 (
+    const uint64_t * a, // 12 x 64 bits
+          uint64_t * r  // 2 x 64 bits
 );
 
 #ifdef __cplusplus
