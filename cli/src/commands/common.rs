@@ -1,6 +1,5 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-#[cfg(distributed)]
 use std::env;
 use std::fmt::Display;
 use std::path::PathBuf;
