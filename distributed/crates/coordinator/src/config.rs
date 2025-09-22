@@ -55,7 +55,7 @@ pub struct CoordinatorConfig {
 impl Config {
     pub fn load(port: Option<u16>, webhook_url: Option<String>) -> Result<Self> {
         let mut builder = config::Config::builder()
-            .set_default("service.name", "coordinator-network")?
+            .set_default("service.name", "ZisK Distributed Coordinator")?
             .set_default("service.version", env!("CARGO_PKG_VERSION"))?
             .set_default("service.environment", "development")?
             .set_default("server.host", "0.0.0.0")?

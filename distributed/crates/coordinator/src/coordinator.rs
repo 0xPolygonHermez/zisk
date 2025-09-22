@@ -129,8 +129,8 @@ impl Coordinator {
             MetricsDto { active_connections: self.workers_pool.num_workers().await as u32 };
 
         StatusInfoDto::new(
-            "ZisK Distributed Coordinator".to_string(),
-            env!("CARGO_PKG_VERSION").to_string(),
+            self.config.service.name.clone(),
+            self.config.service.version.clone(),
             uptime_seconds,
             self.start_time_utc,
             metrics,

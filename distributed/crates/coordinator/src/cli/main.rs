@@ -8,8 +8,8 @@ mod handler_prove_block;
 #[command(name = "zisk-coordinator")]
 #[command(about = "The Coordinator for the Distributed ZisK Network")]
 struct ZiskCoordinatorArgs {
-    /// Port where the gRPC server will listen for incoming connections.
-    #[arg(short, long, help = "Port number to bind the gRPC server to")]
+    /// Port where the ZisK Coordinator gRPC server will listen for incoming connections.
+    #[arg(short, long, help = "Port number to bind the ZisK Coordinator gRPC server to")]
     port: Option<u16>,
 
     /// Webhook URL to notify when a job finishes.

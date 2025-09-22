@@ -5,7 +5,6 @@ use tracing::{error, info};
 use zisk_distributed_coordinator::{create_shutdown_signal, Config, CoordinatorGrpc};
 use zisk_distributed_grpc_api::zisk_distributed_api_server::ZiskDistributedApiServer;
 
-/// Handle the coordinator server mode (default behavior)
 pub async fn handle(port_override: Option<u16>, webhook_url: Option<String>) -> Result<()> {
     // Load configuration
     let config = Config::load(port_override, webhook_url)?;
@@ -22,10 +21,10 @@ pub async fn handle(port_override: Option<u16>, webhook_url: Option<String>) -> 
         anyhow::anyhow!("Invalid address format: {}", e)
     })?;
 
-    // Verify the port is available before starting the server
+    // Verify the port is available before starting the coordinator grpc server
     if TcpListener::bind(&addr).is_err() {
         error!(
-            "Port {} is already in use on {}. Server cannot start.",
+            "Port {} is already in use on {}. Coordinator gRPC server cannot start.",
             grpc_port, config.server.host
         );
         error!("Please ensure no other service is using this port or configure a different port.");
