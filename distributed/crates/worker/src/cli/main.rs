@@ -5,7 +5,7 @@ use colored::Colorize;
 use std::path::PathBuf;
 use zisk_distributed_worker::{
     config::{build_worker_and_prover_config, ProverServiceConfigDto},
-    ProverServiceConfig, WorkerGrpcEndpoint,
+    ProverConfig, WorkerNode,
 };
 
 #[derive(Parser)]
@@ -15,7 +15,7 @@ use zisk_distributed_worker::{
 struct Cli {
     /// Distributed ZisK Coordinator URL (overrides config file)
     #[arg(short, long)]
-    url: Option<String>,
+    coordinator_url: Option<String>,
 
     /// Worker ID (overrides config file, defaults to auto-generated UUID)
     #[arg(long)]
@@ -24,6 +24,14 @@ struct Cli {
     /// Number of compute units to advertise (overrides config file)
     #[arg(long)]
     compute_units: Option<u32>,
+
+    #[clap(
+        short = 'j',
+        long,
+        default_value_t = false,
+        help = "Whether to share tables when worker is running in a cluster"
+    )]
+    pub shared_tables: bool,
 
     /// Path to configuration file
     #[arg(long, default_value = "config.toml")]
@@ -126,12 +134,13 @@ async fn main() -> Result<()> {
         max_streams: cli.max_streams,
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
+        shared_tables: cli.shared_tables,
     };
 
     let (grpc_config, service_config) = build_worker_and_prover_config(
         prover_config,
         &cli.config,
-        cli.url,
+        cli.coordinator_url,
         cli.worker_id,
         cli.compute_units,
     )
@@ -139,11 +148,11 @@ async fn main() -> Result<()> {
 
     print_command_info(&service_config, cli.debug.is_some());
 
-    let mut worker = WorkerGrpcEndpoint::new(grpc_config, service_config).await?;
+    let mut worker = WorkerNode::new(grpc_config, service_config).await?;
     worker.run().await
 }
 
-fn print_command_info(service_config: &ProverServiceConfig, debug: bool) {
+fn print_command_info(service_config: &ProverConfig, debug: bool) {
     println!("{} ZisK Worker", format!("{: >12}", "Command").bright_green().bold());
     println!(
         "{: >12} {}",

@@ -5,10 +5,8 @@
 //! communication, and job handling capabilities.
 
 pub mod config;
-pub mod proof_generator;
-pub mod worker_grpc_endpoint;
-pub mod worker_service;
+pub mod worker;
+pub mod worker_node;
 
-pub use proof_generator::ProofGenerator;
-pub use worker_grpc_endpoint::*;
-pub use worker_service::{JobContext, ProverServiceConfig, WorkerService};
+pub use worker::{ProverConfig, Worker};
+pub use worker_node::*;

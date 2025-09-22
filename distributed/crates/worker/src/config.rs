@@ -1,4 +1,4 @@
-use crate::ProverServiceConfig;
+use crate::ProverConfig;
 
 use anyhow::Result;
 use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
@@ -37,11 +37,11 @@ impl WorkerServiceConfig {
     /// Apply CLI overrides to the configuration
     pub fn apply_cli_overrides(
         &mut self,
-        url: Option<String>,
+        coordinator_url: Option<String>,
         worker_id: Option<String>,
         compute_units: Option<u32>,
     ) {
-        if let Some(url) = url {
+        if let Some(url) = coordinator_url {
             self.coordinator.url = url;
         }
 
@@ -128,6 +128,7 @@ pub struct ProverServiceConfigDto {
     pub max_streams: Option<usize>,
     pub number_threads_witness: Option<usize>,
     pub max_witness_stored: Option<usize>,
+    pub shared_tables: bool,
 }
 
 impl Default for ProverServiceConfigDto {
@@ -150,6 +151,7 @@ impl Default for ProverServiceConfigDto {
             max_streams: None,
             number_threads_witness: None,
             max_witness_stored: None,
+            shared_tables: false,
         }
     }
 }
@@ -158,10 +160,10 @@ impl Default for ProverServiceConfigDto {
 pub async fn build_worker_and_prover_config(
     mut prover_service_config: ProverServiceConfigDto,
     config_path: &str,
-    url: Option<String>,
+    coordinator_url: Option<String>,
     worker_id: Option<String>,
     compute_units: Option<u32>,
-) -> Result<(WorkerServiceConfig, ProverServiceConfig)> {
+) -> Result<(WorkerServiceConfig, ProverConfig)> {
     // Validate ELF file
     if !prover_service_config.elf.exists() {
         return Err(anyhow::anyhow!(
@@ -253,28 +255,25 @@ pub async fn build_worker_and_prover_config(
         gpu_params.with_max_witness_stored(prover_service_config.max_witness_stored.unwrap());
     }
 
-    //TODO! CHECK THIS
-    let shared_tables = false;
-
-    let service_config = ProverServiceConfig::new(
-        prover_service_config.elf.clone(),
-        get_witness_computation_lib(prover_service_config.witness_lib.as_ref()),
-        prover_service_config.asm.clone(),
+    let service_config = ProverConfig {
+        elf: prover_service_config.elf.clone(),
+        witness_lib: get_witness_computation_lib(prover_service_config.witness_lib.as_ref()),
+        asm: prover_service_config.asm.clone(),
         asm_rom,
         custom_commits_map,
         emulator,
         proving_key,
-        prover_service_config.verbose,
+        verbose: prover_service_config.verbose,
         debug_info,
-        prover_service_config.chunk_size_bits,
-        prover_service_config.asm_port,
-        prover_service_config.unlock_mapped_memory,
-        prover_service_config.verify_constraints,
-        prover_service_config.aggregation,
-        prover_service_config.final_snark,
+        chunk_size_bits: prover_service_config.chunk_size_bits,
+        asm_port: prover_service_config.asm_port,
+        unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
+        verify_constraints: prover_service_config.verify_constraints,
+        aggregation: prover_service_config.aggregation,
+        final_snark: prover_service_config.final_snark,
         gpu_params,
-        shared_tables,
-    );
+        shared_tables: prover_service_config.shared_tables,
+    };
 
     // Load gRPC configuration
     let mut grpc_config = if std::path::Path::new(config_path).exists() {
@@ -284,12 +283,12 @@ pub async fn build_worker_and_prover_config(
     };
 
     // Apply CLI overrides if provided
-    grpc_config.apply_cli_overrides(url, worker_id, compute_units);
+    grpc_config.apply_cli_overrides(coordinator_url, worker_id, compute_units);
 
     // Validate required fields
     if grpc_config.coordinator.url.is_empty() {
         return Err(anyhow::anyhow!(
-            "Coordinator URL is required. Set it in config file or use --url"
+            "Coordinator URL is required. Set it in config file or use --coordinator-url"
         ));
     }
 
