@@ -1,4 +1,4 @@
-use zisk_core::{RAM_ADDR, RAM_SIZE};
+use zisk_core::{CHUNK_SIZE, RAM_ADDR, RAM_SIZE};
 
 pub const RAM_W_ADDR_INIT: u32 = RAM_ADDR as u32 >> MEM_BYTES_BITS;
 pub const RAM_W_ADDR_END: u32 = (RAM_ADDR + RAM_SIZE - 1) as u32 >> MEM_BYTES_BITS;
@@ -36,3 +36,5 @@ pub const MEM_INC_C_BITS: usize = 18;
 pub const MEM_INC_C_SIZE: usize = 1 << MEM_INC_C_BITS;
 pub const MEM_INC_C_MAX_RANGE: usize = MEM_INC_C_SIZE - 1;
 pub const MEM_INC_C_MASK: usize = MEM_INC_C_SIZE - 1;
+
+pub const CHUNK_SIZE_STEPS: u64 = CHUNK_SIZE * MEM_STEPS_BY_MAIN_STEP;

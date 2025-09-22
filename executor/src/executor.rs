@@ -149,8 +149,6 @@ pub struct ZiskExecutor<F: PrimeField64> {
 
     witness_stats: Arc<Mutex<HashMap<usize, Stats>>>,
 
-    chunk_size: u64,
-
     /// World rank for distributed execution. Default to 0 for single-node execution.
     world_rank: i32,
 
@@ -189,7 +187,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         std: Arc<Std<F>>,
         sm_bundle: StaticSMBundle<F>,
         rom_sm: Option<Arc<RomSM>>,
-        chunk_size: u64,
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
@@ -226,7 +223,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             rom_sm,
             stats: Arc::new(Mutex::new(ExecutorStats::new())),
             witness_stats: Arc::new(Mutex::new(HashMap::new())),
-            chunk_size,
             world_rank,
             local_rank,
             base_port,
@@ -339,7 +335,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             });
         }
 
-        let chunk_size = self.chunk_size;
         let (world_rank, local_rank, base_port) =
             (self.world_rank, self.local_rank, self.base_port);
 
@@ -352,7 +347,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 AsmRunnerMO::run(
                     asm_shmem_mo.lock().unwrap().as_mut().unwrap(),
                     Self::MAX_NUM_STEPS,
-                    chunk_size,
                     world_rank,
                     local_rank,
                     base_port,
@@ -432,7 +426,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             emu_trace: Arc<EmuTrace>,
             data_bus: DB,
             zisk_rom: Arc<ZiskRom>,
-            chunk_size: u64,
             _phantom: std::marker::PhantomData<F>,
             _stats: Arc<Mutex<ExecutorStats>>,
             _parent_stats_id: u64,
@@ -461,7 +454,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     &self.zisk_rom,
                     &self.emu_trace,
                     &mut self.data_bus,
-                    self.chunk_size,
                     false,
                 );
 
@@ -487,7 +479,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 CounterTask {
                     chunk_id,
                     emu_trace,
-                    chunk_size: self.chunk_size,
                     data_bus,
                     zisk_rom: self.zisk_rom.clone(),
                     _phantom: std::marker::PhantomData::<F>,
@@ -502,7 +493,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
             self.asm_shmem_mt.lock().unwrap().as_mut().unwrap(),
             Self::MAX_NUM_STEPS,
-            self.chunk_size,
             task_factory,
             self.world_rank,
             self.local_rank,
@@ -548,11 +538,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
 
         // Settings for the emulator
-        let emu_options = EmuOptions {
-            chunk_size: Some(self.chunk_size),
-            max_steps: Self::MAX_NUM_STEPS,
-            ..EmuOptions::default()
-        };
+        let emu_options = EmuOptions { max_steps: Self::MAX_NUM_STEPS, ..EmuOptions::default() };
 
         let min_traces = ZiskEmulator::compute_minimal_traces(
             &self.zisk_rom,
@@ -634,7 +620,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     &self.zisk_rom,
                     minimal_trace,
                     &mut data_bus,
-                    self.chunk_size,
                     true,
                 );
 
@@ -762,13 +747,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             _ => unreachable!(),
         };
 
-        let air_instance = main_instance.compute_witness(
-            &self.zisk_rom,
-            min_traces,
-            self.chunk_size,
-            main_instance,
-            trace_buffer,
-        );
+        let air_instance =
+            main_instance.compute_witness(&self.zisk_rom, min_traces, main_instance, trace_buffer);
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
 
@@ -982,7 +962,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             let collectors_by_instance = self.collectors_by_instance.clone();
             let witness_stats = self.witness_stats.clone();
             let ordered_chunks_clone = ordered_chunks.clone();
-            let chunk_size = self.chunk_size;
 
             let pctx_clone = pctx.clone();
 
@@ -1017,7 +996,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                             min_traces,
                             chunk_id,
                             &mut data_bus,
-                            chunk_size,
                         );
 
                         for (global_id, collector) in data_bus.into_devices(false) {
@@ -1238,8 +1216,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         );
 
         timer_start_info!(PLAN);
-        let (mut main_planning, public_values) =
-            MainPlanner::plan::<F>(&min_traces, main_count, self.chunk_size);
+        let (mut main_planning, public_values) = MainPlanner::plan::<F>(&min_traces, main_count);
 
         // Add to executor stats
         #[cfg(feature = "stats")]

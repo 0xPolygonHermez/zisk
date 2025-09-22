@@ -60,8 +60,8 @@ pub struct Emu<'a> {
 ///
 /// ZiskExecutor::calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>, global_ids: &[usize], n_cores: usize, buffer_pool: &dyn BufferPool<F>,)
 ///     ZiskExecutor::witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance, trace_buffer: Vec<F>,)
-///         MainSM::compute_witness<F: PrimeField64>(zisk_rom: &ZiskRom, min_traces: &[EmuTrace], chunk_size: u64, main_instance: &MainInstance, std: Arc<Std<F>>, trace_buffer: Vec<F>,) -> AirInstance<F>
-///             MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, chunk_size: u64, reg_trace: &mut EmuRegTrace, step_range_check: &mut [u32], last_reg_values: bool,) -> (u64, Vec<u64>)
+///         MainSM::compute_witness<F: PrimeField64>(zisk_rom: &ZiskRom, min_traces: &[EmuTrace], main_instance: &MainInstance, std: Arc<Std<F>>, trace_buffer: Vec<F>,) -> AirInstance<F>
+///             MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, reg_trace: &mut EmuRegTrace, step_range_check: &mut [u32], last_reg_values: bool,) -> (u64, Vec<u64>)
 ///                 Emu::step_slice_full_trace<F: PrimeField64>(&mut self, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace, step_range_check: Option<&mut [u32]>,) -> EmuFullTraceStep<F>
 ///                     Emu::source_a_mem_reads_consume(&mut self, instruction: &ZiskInst, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace,)
 ///
@@ -76,21 +76,17 @@ pub struct Emu<'a> {
 ///                         Emu::par_step_my_block(&mut self, emu_full_trace_vec: &mut EmuTrace)
 ///                             Emu::source_a_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
 impl<'a> Emu<'a> {
-    pub fn new(rom: &ZiskRom, chunk_size: u64) -> Emu<'_> {
+    pub fn new(rom: &ZiskRom) -> Emu<'_> {
         Emu {
             rom,
-            mem_helpers: MemHelpers::new(chunk_size),
+            mem_helpers: MemHelpers::new(),
             ctx: EmuContext::default(),
             static_array: [0; MAX_OPERATION_DATA_SIZE],
         }
     }
 
-    pub fn from_emu_trace_start(
-        rom: &'a ZiskRom,
-        chunk_size: u64,
-        trace_start: &'a EmuTraceStart,
-    ) -> Emu<'a> {
-        let mut emu = Emu::new(rom, chunk_size);
+    pub fn from_emu_trace_start(rom: &'a ZiskRom, trace_start: &'a EmuTraceStart) -> Emu<'a> {
+        let mut emu = Emu::new(rom);
         emu.ctx.inst_ctx.pc = trace_start.pc;
         emu.ctx.inst_ctx.sp = trace_start.sp;
         emu.ctx.inst_ctx.step = trace_start.step;
@@ -1537,29 +1533,6 @@ impl<'a> Emu<'a> {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs.clone());
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
-
-        // Check that callback is provided if chunk size is specified
-        if options.chunk_size.is_some() {
-            // Check callback consistency
-            if callback.is_none() {
-                panic!("Emu::run() called with chunk size but no callback");
-            }
-
-            // Record callback into context
-            self.ctx.do_callback = true;
-            self.ctx.callback_steps = options.chunk_size.unwrap();
-
-            // Check steps value
-            if self.ctx.callback_steps == 0 {
-                panic!("Emu::run() called with chunk_size=0");
-            }
-
-            // Reserve enough entries for all the requested steps between callbacks
-            self.ctx.trace.mem_reads.reserve(self.ctx.callback_steps as usize);
-
-            // Init pc to the rom entry address
-            self.ctx.trace.start_state.pc = ROM_ENTRY;
-        }
 
         // Call run_fast if only essential work is needed
         if options.is_fast() {

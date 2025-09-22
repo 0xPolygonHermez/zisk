@@ -2,6 +2,7 @@ use named_sem::NamedSemaphore;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::ExecutorStats;
 use zisk_common::{ChunkId, EmuTrace};
+use zisk_core::CHUNK_SIZE;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::atomic::{fence, Ordering};
@@ -81,7 +82,6 @@ impl AsmRunnerMT {
     pub fn run_and_count<T: Task>(
         preloaded: &mut PreloadedMT,
         max_steps: u64,
-        chunk_size: u64,
         task_factory: TaskFactory<T>,
         world_rank: i32,
         local_rank: i32,
@@ -129,7 +129,7 @@ impl AsmRunnerMT {
                 ExecutorStatsEvent::Begin,
             );
 
-            let result = asm_services.send_minimal_trace_request(max_steps, chunk_size);
+            let result = asm_services.send_minimal_trace_request(max_steps, CHUNK_SIZE);
 
             #[cfg(feature = "stats")]
             __stats.lock().unwrap().add_stat(

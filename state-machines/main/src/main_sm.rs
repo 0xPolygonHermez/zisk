@@ -11,12 +11,12 @@ use std::sync::Arc;
 
 use crate::MainCounter;
 use fields::PrimeField64;
-use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
+use mem_common::{MemHelpers, CHUNK_SIZE_STEPS, MEM_REGS_MAX_DIFF};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::prelude::*;
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx};
-use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
+use zisk_core::{ZiskRom, CHUNK_SIZE, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuRegTrace};
 /// Represents an instance of the main state machine,
@@ -57,7 +57,6 @@ impl<F: PrimeField64> MainInstance<F> {
         &self,
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
-        chunk_size: u64,
         main_instance: &MainInstance<F>,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
@@ -67,7 +66,7 @@ impl<F: PrimeField64> MainInstance<F> {
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
         // Determine the number of minimal traces per segment
-        let num_within = MainTrace::<F>::NUM_ROWS / chunk_size as usize;
+        let num_within = MainTrace::<F>::NUM_ROWS / CHUNK_SIZE as usize;
         let num_rows = MainTrace::<F>::NUM_ROWS;
 
         // Determine trace slice for the current segment
@@ -93,7 +92,7 @@ impl<F: PrimeField64> MainInstance<F> {
         let last_row_previous_segment =
             if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
 
-        let mem_helpers = MemHelpers::new(chunk_size);
+        let mem_helpers = MemHelpers::new();
 
         let initial_step = mem_helpers.main_step_to_special_mem_step(last_row_previous_segment);
 
@@ -102,7 +101,7 @@ impl<F: PrimeField64> MainInstance<F> {
 
         // To reduce memory used, only take memory for the maximum range of mem_step inside the
         // minimal trace.
-        let max_range = chunk_size * MEM_STEPS_BY_MAIN_STEP;
+        let max_range = CHUNK_SIZE_STEPS;
 
         // We know each register's previous step, but only by instance. We don't have this
         // information by chunk, so we need to store in the EmuRegTrace the location of the
@@ -122,7 +121,6 @@ impl<F: PrimeField64> MainInstance<F> {
                     zisk_rom,
                     chunk,
                     &segment_min_traces[chunk_id],
-                    chunk_size,
                     &mut reg_trace,
                     &mut step_range_check,
                     chunk_id == (end_idx - start_idx - 1),
@@ -206,13 +204,12 @@ impl<F: PrimeField64> MainInstance<F> {
         zisk_rom: &ZiskRom,
         main_trace: &mut [MainTraceRow<F>],
         min_trace: &EmuTrace,
-        chunk_size: u64,
         reg_trace: &mut EmuRegTrace,
         step_range_check: &mut [u32],
         last_reg_values: bool,
     ) -> (u64, Vec<u64>) {
         // Initialize the emulator with the start state of the emu trace
-        let mut emu = Emu::from_emu_trace_start(zisk_rom, chunk_size, &min_trace.start_state);
+        let mut emu = Emu::from_emu_trace_start(zisk_rom, &min_trace.start_state);
         let mut mem_reads_index: usize = 0;
 
         for trace in main_trace {
