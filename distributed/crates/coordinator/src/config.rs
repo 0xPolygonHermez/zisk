@@ -5,6 +5,7 @@ pub type Result<T> = std::result::Result<T, anyhow::Error>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    pub service: ServiceConfig,
     pub server: ServerConfig,
     pub logging: LoggingConfig,
     pub coordinator: CoordinatorConfig,
@@ -15,6 +16,13 @@ pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub shutdown_timeout_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceConfig {
+    pub name: String,
+    pub version: String,
+    pub environment: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,8 +57,6 @@ impl Config {
         let mut builder = config::Config::builder()
             .set_default("service.name", "coordinator-network")?
             .set_default("service.version", env!("CARGO_PKG_VERSION"))?
-            .set_default("service.build_time", build_time())?
-            .set_default("service.commit_hash", commit_hash())?
             .set_default("service.environment", "development")?
             .set_default("server.host", "0.0.0.0")?
             .set_default("server.port", 8080)?
@@ -92,14 +98,6 @@ impl Config {
 
         Ok(config.try_deserialize()?)
     }
-}
-
-fn build_time() -> String {
-    env::var("BUILD_TIME").unwrap_or_else(|_| chrono::Utc::now().to_rfc3339())
-}
-
-fn commit_hash() -> String {
-    env::var("GIT_COMMIT_HASH").unwrap_or_else(|_| "unknown".to_string())
 }
 
 #[cfg(test)]
