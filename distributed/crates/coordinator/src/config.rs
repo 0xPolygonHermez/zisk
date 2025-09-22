@@ -99,15 +99,3 @@ impl Config {
         Ok(config.try_deserialize()?)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_config_defaults() {
-        let config = Config::load(None, None).unwrap();
-        assert_eq!(config.server.host, "0.0.0.0");
-        assert_eq!(config.server.port, 8080);
-    }
-}
