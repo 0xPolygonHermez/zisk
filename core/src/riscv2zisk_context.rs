@@ -97,17 +97,7 @@ impl Riscv2ZiskContext<'_> {
                 }
             }
             "and" => self.create_register_op(riscv_instruction, "and", 4),
-            "addw" => {
-                if riscv_instruction.rs1 == 0 {
-                    // rd = rs1(0) + rs2 = rs2
-                    self.copyb(riscv_instruction, 4, 2);
-                } else if riscv_instruction.rs2 == 0 {
-                    // rd = rs1 + rs2(0) = rs1
-                    self.copyb(riscv_instruction, 4, 1);
-                } else {
-                    self.create_register_op(riscv_instruction, "add_w", 4);
-                }
-            }
+            "addw" => self.create_register_op(riscv_instruction, "add_w", 4),
             "subw" => self.create_register_op(riscv_instruction, "sub_w", 4),
             "sllw" => self.create_register_op(riscv_instruction, "sll_w", 4),
             "srlw" => self.create_register_op(riscv_instruction, "srl_w", 4),
