@@ -1,3 +1,6 @@
+//! BLS12-381 library
+#![deny(missing_docs)]
+
 mod constants;
 pub mod curve;
 pub mod cyclotomic;

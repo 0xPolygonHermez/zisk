@@ -1,3 +1,5 @@
+//! Final exponentiation for BLS12-381
+
 use super::{
     cyclotomic::{
         exp_by_x_cyclo_bls12_381, exp_by_xdiv3_cyclo_bls12_381, exp_by_xone_cyclo_bls12_381,

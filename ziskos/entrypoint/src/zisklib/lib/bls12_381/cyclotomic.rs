@@ -1,3 +1,5 @@
+//! Cyclotomic subgroup operations for BLS12-381
+
 use crate::zisklib::lib::utils::eq;
 
 use super::{
@@ -8,24 +10,6 @@ use super::{
         scalar_mul_fp2_bls12_381, square_fp2_bls12_381, sub_fp2_bls12_381,
     },
 };
-
-/// Family parameter X
-const X_ABS_BIN_LE: [u8; 64] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1,
-];
-
-/// Family parameter X+1
-const XONE_ABS_BIN_LE: [u8; 64] = [
-    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1,
-];
-
-/// Family parameter (X+1)/3
-const XDIV3_ABS_BIN_LE: [u8; 63] = [
-    1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
-    1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1,
-];
 
 /// Compression in the cyclotomic subgroup GΦ6(p²)
 ///
@@ -202,15 +186,36 @@ pub fn exp_cyclo_bls12_381(a: &[u64; 72], x: &[u8]) -> [u64; 72] {
 
 /// Exponentiation in the cyclotomic subgroup GΦ6(p²) by x = 15132376222941642752
 pub fn exp_by_x_cyclo_bls12_381(a: &[u64; 72]) -> [u64; 72] {
+    /// Family parameter X
+    const X_ABS_BIN_LE: [u8; 64] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+        1, 0, 1, 1,
+    ];
+
     exp_cyclo_bls12_381(a, &X_ABS_BIN_LE)
 }
 
 /// Exponentiation in the cyclotomic subgroup GΦ6(p²) by x+1 = 15132376222941642753
 pub fn exp_by_xone_cyclo_bls12_381(a: &[u64; 72]) -> [u64; 72] {
+    /// Family parameter X+1
+    const XONE_ABS_BIN_LE: [u8; 64] = [
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+        1, 0, 1, 1,
+    ];
+
     exp_cyclo_bls12_381(a, &XONE_ABS_BIN_LE)
 }
 
 /// Exponentiation in the cyclotomic subgroup GΦ6(p²) by (x+1)/3 = 5044125407647214251
 pub fn exp_by_xdiv3_cyclo_bls12_381(a: &[u64; 72]) -> [u64; 72] {
+    /// Family parameter (X+1)/3
+    const XDIV3_ABS_BIN_LE: [u8; 63] = [
+        1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+        1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0,
+        0, 0, 1,
+    ];
+
     exp_cyclo_bls12_381(a, &XDIV3_ABS_BIN_LE)
 }

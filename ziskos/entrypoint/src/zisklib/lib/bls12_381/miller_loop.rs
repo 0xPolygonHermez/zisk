@@ -1,3 +1,5 @@
+//! Miller loop for BLS12-381
+
 use crate::{
     fcall_bls12_381_add_line_coeffs, fcall_bls12_381_dbl_line_coeffs,
     zisklib::lib::{

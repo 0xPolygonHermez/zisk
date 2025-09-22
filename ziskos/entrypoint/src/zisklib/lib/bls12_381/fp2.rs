@@ -1,3 +1,5 @@
+//! Finite field Fp2 operations for BLS12-381
+
 use crate::{
     bls12_381_complex_add::{syscall_bls12_381_complex_add, SyscallBls12_381ComplexAddParams},
     bls12_381_complex_mul::{syscall_bls12_381_complex_mul, SyscallBls12_381ComplexMulParams},

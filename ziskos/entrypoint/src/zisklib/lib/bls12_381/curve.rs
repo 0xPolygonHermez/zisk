@@ -1,3 +1,5 @@
+//! Operations on the BLS12-381 curve E: y² = x³ + 4
+
 use crate::{
     bls12_381_curve_add::{syscall_bls12_381_curve_add, SyscallBls12_381CurveAddParams},
     bls12_381_curve_dbl::syscall_bls12_381_curve_dbl,
@@ -10,14 +12,6 @@ use super::{
     constants::{E_B, GAMMA},
     fp::{add_fp_bls12_381, mul_fp_bls12_381, neg_fp_bls12_381, square_fp_bls12_381},
 };
-
-/// Family parameter (X²-1)/3
-const X2DIV3_BIN_BE: [u8; 126] = [
-    1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-    0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-    0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
-];
 
 /// Check if a point `p` is on the BLS12-381 curve
 pub fn is_on_curve_bls12_381(p: &[u64; 12]) -> bool {
@@ -65,10 +59,7 @@ pub fn add_bls12_381(p1: &[u64; 12], p2: &[u64; 12]) -> [u64; 12] {
             // Compute the doubling
             let mut p1 = SyscallPoint384 { x: x1, y: y1 };
             syscall_bls12_381_curve_dbl(&mut p1);
-            return [
-                p1.x[0], p1.x[1], p1.x[2], p1.x[3], p1.x[4], p1.x[5], p1.y[0], p1.y[1], p1.y[2],
-                p1.y[3], p1.y[4], p1.y[5],
-            ];
+            return [p1.x, p1.y].concat().try_into().unwrap();
         } else {
             // Return 𝒪
             return [0u64; 12];
@@ -80,20 +71,14 @@ pub fn add_bls12_381(p1: &[u64; 12], p2: &[u64; 12]) -> [u64; 12] {
     let p2 = SyscallPoint384 { x: x2, y: y2 };
     let mut params = SyscallBls12_381CurveAddParams { p1: &mut p1, p2: &p2 };
     syscall_bls12_381_curve_add(&mut params);
-    [
-        p1.x[0], p1.x[1], p1.x[2], p1.x[3], p1.x[4], p1.x[5], p1.y[0], p1.y[1], p1.y[2], p1.y[3],
-        p1.y[4], p1.y[5],
-    ]
+    [p1.x, p1.y].concat().try_into().unwrap()
 }
 
 /// Doubling of a non-zero point
 pub fn dbl_bls12_381(p: &[u64; 12]) -> [u64; 12] {
-    let x: [u64; 6] = p[0..6].try_into().unwrap();
-    let y: [u64; 6] = p[6..12].try_into().unwrap();
-
-    let mut p = SyscallPoint384 { x, y };
+    let mut p = SyscallPoint384 { x: p[0..6].try_into().unwrap(), y: p[6..12].try_into().unwrap() };
     syscall_bls12_381_curve_dbl(&mut p);
-    [p.x[0], p.x[1], p.x[2], p.x[3], p.x[4], p.x[5], p.y[0], p.y[1], p.y[2], p.y[3], p.y[4], p.y[5]]
+    [p.x, p.y].concat().try_into().unwrap()
 }
 
 /// Subtraction of two non-zero points
@@ -181,8 +166,6 @@ pub fn scalar_mul_bls12_381(p: &[u64; 12], k: &[u64; 6]) -> [u64; 12] {
 
 /// Scalar multiplication of a non-zero point by x
 pub fn scalar_mul_bin_bls12_381(p: &[u64; 12], k: &[u8]) -> [u64; 12] {
-    debug_assert!(k == X2DIV3_BIN_BE);
-
     let x1: [u64; 6] = p[0..6].try_into().unwrap();
     let y1: [u64; 6] = p[6..12].try_into().unwrap();
     let p = SyscallPoint384 { x: x1, y: y1 };
@@ -200,6 +183,15 @@ pub fn scalar_mul_bin_bls12_381(p: &[u64; 12], k: &[u8]) -> [u64; 12] {
 
 /// Scalar multiplication of a non-zero point by (x²-1)/3
 pub fn scalar_mul_by_x2div3_bls12_381(p: &[u64; 12]) -> [u64; 12] {
+    /// Family parameter (X²-1)/3
+    const X2DIV3_BIN_BE: [u8; 126] = [
+        1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
+        0, 1, 0, 1, 0, 1,
+    ];
+
     scalar_mul_bin_bls12_381(p, &X2DIV3_BIN_BE)
 }
 

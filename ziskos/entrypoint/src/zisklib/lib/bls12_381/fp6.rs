@@ -1,3 +1,5 @@
+//! Finite field Fp6 operations for BLS12-381
+
 use super::{
     constants::EXT_U,
     fp2::{
@@ -90,34 +92,6 @@ pub fn mul_fp6_bls12_381(a: &[u64; 36], b: &[u64; 36]) -> [u64; 36] {
 
     [c1, c2, c3].concat().try_into().unwrap()
 }
-
-/// Multiplication of a = a1 + a2·v + a3·v² and b = b3·v² in Fp6
-//
-// in: (a1 + a2·v + a3·v²),(b3·v²) ∈ Fp6, where ai,b3 ∈ Fp2
-// out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
-//      - c1 = a2·b3·(1+u)
-//      - c2 = a3·b3·(1+u)
-//      - c3 = a1·b3
-#[inline]
-pub fn sparse_mula_fp6_bls12_381(a: &[u64; 36], b3: &[u64; 12]) -> [u64; 36] {
-    let a1 = &a[0..12].try_into().unwrap();
-    let a2 = &a[12..24].try_into().unwrap();
-    let a3 = &a[24..36].try_into().unwrap();
-
-    // c1 = a2·b3·(1+u)
-    let mut c1 = mul_fp2_bls12_381(a2, b3);
-    c1 = mul_fp2_bls12_381(&c1, &EXT_U);
-
-    // c2 = a3·b3·(1+u)
-    let mut c2 = mul_fp2_bls12_381(a3, b3);
-    c2 = mul_fp2_bls12_381(&c2, &EXT_U);
-
-    // c3 = a1·b3
-    let c3 = mul_fp2_bls12_381(a1, b3);
-
-    [c1, c2, c3].concat().try_into().unwrap()
-}
-
 /// Multiplication of a = a1 + a2·v + a3·v² and b = b2·v in Fp6
 //
 //  in: (a1 + a2·v + a3·v²),(b2·v) ∈ Fp6, where ai,bi ∈ Fp2
@@ -126,7 +100,7 @@ pub fn sparse_mula_fp6_bls12_381(a: &[u64; 36], b3: &[u64; 12]) -> [u64; 36] {
 //       - c2 = a1·b2
 //       - c3 = a2·b2
 #[inline]
-pub fn sparse_mulb_fp6_bls12_381(a: &[u64; 36], b2: &[u64; 12]) -> [u64; 36] {
+pub fn sparse_mula_fp6_bls12_381(a: &[u64; 36], b2: &[u64; 12]) -> [u64; 36] {
     let a1 = &a[0..12].try_into().unwrap();
     let a2 = &a[12..24].try_into().unwrap();
     let a3 = &a[24..36].try_into().unwrap();
@@ -152,7 +126,7 @@ pub fn sparse_mulb_fp6_bls12_381(a: &[u64; 36], b2: &[u64; 12]) -> [u64; 36] {
 //       - c2 = a1·b2 + a3·b3·(1+u)
 //       - c3 = a1·b3 + a2·b2
 #[inline]
-pub fn sparse_mulc_fp6_bls12_381(a: &[u64; 36], b: &[u64; 24]) -> [u64; 36] {
+pub fn sparse_mulb_fp6_bls12_381(a: &[u64; 36], b: &[u64; 24]) -> [u64; 36] {
     let a1 = &a[0..12].try_into().unwrap();
     let a2 = &a[12..24].try_into().unwrap();
     let a3 = &a[24..36].try_into().unwrap();
@@ -184,7 +158,7 @@ pub fn sparse_mulc_fp6_bls12_381(a: &[u64; 36], b: &[u64; 24]) -> [u64; 36] {
 //       - c2 = a2·b1 + a3·b3·(1+u)
 //       - c3 = a1·b3 + a3·b1
 #[inline]
-pub fn sparse_muld_fp6_bls12_381(a: &[u64; 36], b: &[u64; 24]) -> [u64; 36] {
+pub fn sparse_mulc_fp6_bls12_381(a: &[u64; 36], b: &[u64; 24]) -> [u64; 36] {
     let a1 = &a[0..12].try_into().unwrap();
     let a2 = &a[12..24].try_into().unwrap();
     let a3 = &a[24..36].try_into().unwrap();
