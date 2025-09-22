@@ -144,9 +144,6 @@ impl Riscv2ZiskContext<'_> {
                 {
                     // rd(0) = rs1(0) + imm(0) = 0
                     self.nop(riscv_instruction, 4);
-                } else if riscv_instruction.imm == 0 && riscv_instruction.rs1 != 0 {
-                    // rd = rs1 + imm(0) = rs1
-                    self.copyb(riscv_instruction, 4, 1);
                 } else {
                     self.immediate_op(riscv_instruction, "add_w", 4);
                 }
@@ -257,17 +254,7 @@ impl Riscv2ZiskContext<'_> {
             "c.xor" => self.create_register_op(riscv_instruction, "xor", 2),
             "c.or" => self.create_register_op(riscv_instruction, "or", 2),
             "c.and" => self.create_register_op(riscv_instruction, "and", 2),
-            "c.addw" => {
-                if riscv_instruction.rs1 == 0 {
-                    // rd = rs1(0) + rs2 = rs2
-                    self.copyb(riscv_instruction, 2, 2);
-                } else if riscv_instruction.rs2 == 0 {
-                    // rd = rs1 + rs2(0) = rs1
-                    self.copyb(riscv_instruction, 2, 1);
-                } else {
-                    self.create_register_op(riscv_instruction, "add_w", 2);
-                }
-            }
+            "c.addw" => self.create_register_op(riscv_instruction, "add_w", 2),
             "c.subw" => self.create_register_op(riscv_instruction, "sub_w", 2),
 
             // C.I.2. Integer Computational (Register-Immediate)
@@ -298,9 +285,6 @@ impl Riscv2ZiskContext<'_> {
                 {
                     // rd(0) = rs1(0) + imm(0) = 0
                     self.nop(riscv_instruction, 2);
-                } else if riscv_instruction.imm == 0 && riscv_instruction.rs1 != 0 {
-                    // rd = rs1 + imm(0) = rs1
-                    self.copyb(riscv_instruction, 2, 1);
                 } else {
                     self.immediate_op(riscv_instruction, "add_w", 2)
                 }
