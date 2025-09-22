@@ -33,7 +33,7 @@ tracing = { workspace = true }
 rayon = { workspace = true }
 
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
-clap = "4.0"
+clap = { workspace = true }
 
 
 [features]

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use asm_runner::AsmRunnerOptions;
 use clap::Parser;
 use colored::Colorize;
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
@@ -7,13 +6,14 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use server::{ServerConfig, ZiskService};
+use server::ZiskServerParams;
+use server::ZiskService;
 use std::collections::HashMap;
 use std::fs;
 use std::{path::PathBuf, process};
 use zisk_common::init_tracing;
 
-use crate::commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field};
+use crate::commands::{get_proving_key, get_witness_computation_lib, Field};
 use crate::ux::print_banner;
 use crate::ZISK_VERSION_MESSAGE;
 
@@ -116,15 +116,6 @@ impl ZiskServer {
 
         print_banner();
 
-        let mpi_context = initialize_mpi()?;
-
-        proofman_common::initialize_logger(
-            proofman_common::VerboseMode::Info,
-            Some(mpi_context.world_rank),
-        );
-
-        self.port += mpi_context.local_rank as u16;
-
         if !self.elf.exists() {
             eprintln!("Error: ELF file '{}' not found.", self.elf.display());
             process::exit(1);
@@ -193,13 +184,6 @@ impl ZiskServer {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
-        let asm_runner_options = AsmRunnerOptions::new()
-            .with_verbose(self.verbose > 0)
-            .with_base_port(self.asm_port)
-            .with_world_rank(mpi_context.world_rank)
-            .with_local_rank(mpi_context.local_rank)
-            .with_unlock_mapped_memory(self.unlock_mapped_memory);
-
         let mut gpu_params = ParamsGPU::new(self.preallocate);
 
         if self.max_streams.is_some() {
@@ -212,26 +196,27 @@ impl ZiskServer {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let config = ServerConfig::new(
+        let server_params = ZiskServerParams::new(
             self.port,
             self.elf.clone(),
             get_witness_computation_lib(self.witness_lib.as_ref()),
             self.asm.clone(),
             asm_rom,
+            self.asm_port,
             custom_commits_map,
             emulator,
             proving_key,
             self.verbose,
             debug_info,
-            asm_runner_options,
             self.verify_constraints,
             self.aggregation,
             self.final_snark,
             gpu_params,
+            self.unlock_mapped_memory,
             self.shared_tables,
         );
 
-        if let Err(e) = ZiskService::new(config, mpi_context)?.run() {
+        if let Err(e) = ZiskService::new(&server_params)?.run() {
             eprintln!("Error starting server: {e}");
             process::exit(1);
         }

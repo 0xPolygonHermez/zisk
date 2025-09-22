@@ -115,9 +115,6 @@ pub struct ZiskExecutor<F: PrimeField64> {
     /// Planning information for main state machines.
     pub min_traces: Arc<RwLock<MinimalTraces>>,
 
-    /// Planning information for main state machines.
-    pub main_planning: RwLock<Vec<Plan>>,
-
     /// Planning information for secondary state machines.
     pub secn_planning: RwLock<Vec<Plan>>,
 
@@ -215,7 +212,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             asm_rom_path,
             zisk_rom,
             min_traces: Arc::new(RwLock::new(MinimalTraces::None)),
-            main_planning: RwLock::new(Vec::new()),
             secn_planning: RwLock::new(Vec::new()),
             main_instances: RwLock::new(HashMap::new()),
             secn_instances: RwLock::new(HashMap::new()),
@@ -286,6 +282,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     #[allow(clippy::type_complexity)]
     fn execute_with_assembly(
         &self,
+        pctx: &ProofCtx<F>,
         input_data_path: Option<PathBuf>,
         _caller_stats_id: u64,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<JoinHandle<AsmRunnerMO>>)
@@ -364,8 +361,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let stats = Arc::clone(&self.stats);
 
-        // Run the assembly ROM Histogram runner with the provided input data path only if the world rank is 0
-        let handle_rh = (self.world_rank == 0).then(|| {
+        // Run the ROM histogram only on partition 0 as it is always computed by this partition
+        let has_rom_sm = pctx.dctx_is_first_partition();
+
+        let handle_rh = (has_rom_sm).then(|| {
             let asm_shmem_rh = self.asm_shmem_rh.clone();
             let unlock_mapped_memory = self.unlock_mapped_memory;
             std::thread::spawn(move || {
@@ -394,7 +393,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.execution_result.lock().unwrap().executed_steps = steps;
 
         // If the world rank is 0, wait for the ROM Histogram thread to finish and set the handler
-        if self.world_rank == 0 {
+        if has_rom_sm {
             self.rom_sm.as_ref().unwrap().set_asm_runner_handler(
                 handle_rh.expect("Error during Assembly ROM Histogram thread execution"),
             );
@@ -567,13 +566,25 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// # Arguments
     /// * `pctx` - Proof context.
     /// * `main_planning` - Planning information for main state machines.
-    fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
-        for plan in main_planning.iter_mut() {
-            plan.set_global_id(pctx.add_instance_assign(
-                plan.airgroup_id,
-                plan.air_id,
-                plan.n_threads_witness,
-            ));
+    fn assign_main_instances(
+        &self,
+        pctx: &ProofCtx<F>,
+        global_ids: &RwLock<Vec<usize>>,
+        main_planning: Vec<Plan>,
+    ) {
+        let mut main_instances = self.main_instances.write().unwrap();
+
+        for mut plan in main_planning {
+            let global_id =
+                pctx.add_instance_assign(plan.airgroup_id, plan.air_id, plan.n_threads_witness);
+            plan.set_global_id(global_id);
+            global_ids.write().unwrap().push(global_id);
+            main_instances
+                .entry(global_id)
+                .or_insert_with(|| self.create_main_instance(plan, global_id));
+            if pctx.dctx_is_my_process_instance(global_id) {
+                pctx.set_witness_ready(global_id, false);
+            }
         }
     }
 
@@ -584,24 +595,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A main instance for the provided global ID.
-    fn create_main_instance(&self, global_id: usize) -> MainInstance<F> {
-        let mut main_planning_guard = self.main_planning.write().unwrap();
-
-        let plan_idx = main_planning_guard
-            .iter()
-            .position(|x| x.global_id.unwrap() == global_id)
-            .expect("Main instance not found");
-
-        let plan = main_planning_guard.remove(plan_idx);
-
-        let global_id = plan.global_id.unwrap();
-        let is_last_segment = *plan
-            .meta
-            .as_ref()
-            .and_then(|m| m.downcast_ref::<bool>())
-            .unwrap_or_else(|| panic!("create_main_instance: Invalid metadata format"));
-
-        MainInstance::new(InstanceCtx::new(global_id, plan), is_last_segment, self.std.clone())
+    fn create_main_instance(&self, plan: Plan, global_id: usize) -> MainInstance<F> {
+        MainInstance::new(InstanceCtx::new(global_id, plan), self.std.clone())
     }
 
     /// Counts metrics for secondary state machines based on minimal traces.
@@ -675,7 +670,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// # Arguments
     /// * `pctx` - Proof context.
     /// * `secn_planning` - Planning information for secondary state machines.
-    fn assign_secn_instances(&self, pctx: &ProofCtx<F>, secn_planning: &mut [Plan]) {
+    fn assign_secn_instances(
+        &self,
+        pctx: &ProofCtx<F>,
+        global_ids: &RwLock<Vec<usize>>,
+        secn_planning: &mut [Plan],
+    ) {
         for plan in secn_planning.iter_mut() {
             // If the node has rank 0 and the plan targets the ROM instance,
             // we need to add it to the proof context using a special method.
@@ -684,7 +684,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             {
                 // If this is the ROM instance, we need to add it to the proof context
                 // with the rank 0.
-                pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, plan.n_threads_witness)
+                pctx.add_instance_assign_first_partition(
+                    plan.airgroup_id,
+                    plan.air_id,
+                    plan.n_threads_witness,
+                )
             } else {
                 match plan.instance_type {
                     InstanceType::Instance => {
@@ -694,6 +698,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 }
             };
 
+            global_ids.write().unwrap().push(global_id);
             plan.set_global_id(global_id);
         }
     }
@@ -1100,7 +1105,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], trace_buffer)
         {
-            if pctx.dctx_is_my_instance(global_id) {
+            if pctx.dctx_is_my_process_instance(global_id) {
                 pctx.add_air_instance(air_instance, global_id);
             }
         }
@@ -1158,7 +1163,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // Reset the internal state of the executor
         *self.execution_result.lock().unwrap() = ZiskExecutionResult::default();
         *self.min_traces.write().unwrap() = MinimalTraces::None;
-        *self.main_planning.write().unwrap() = Vec::new();
         *self.secn_planning.write().unwrap() = Vec::new();
         self.main_instances.write().unwrap().clear();
         self.secn_instances.write().unwrap().clear();
@@ -1175,7 +1179,12 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of global IDs for the instances to compute witness for.
-    fn execute(&self, pctx: Arc<ProofCtx<F>>, input_data_path: Option<PathBuf>) -> Vec<usize> {
+    fn execute(
+        &self,
+        pctx: Arc<ProofCtx<F>>,
+        global_ids: &RwLock<Vec<usize>>,
+        input_data_path: Option<PathBuf>,
+    ) {
         #[cfg(feature = "stats")]
         let parent_stats_id = self.stats.lock().unwrap().get_id();
         #[cfg(feature = "stats")]
@@ -1201,6 +1210,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         {
             // If we are executing in assembly mode
             self.execute_with_assembly(
+                &pctx,
                 input_data_path,
                 #[cfg(feature = "stats")]
                 parent_stats_id,
@@ -1232,8 +1242,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         );
 
         timer_start_info!(PLAN);
-        let (mut main_planning, public_values) =
+        let (main_planning, public_values) =
             MainPlanner::plan::<F>(&min_traces, main_count, self.chunk_size);
+        *self.min_traces.write().unwrap() = min_traces;
+        self.assign_main_instances(&pctx, global_ids, main_planning);
 
         // Add to executor stats
         #[cfg(feature = "stats")]
@@ -1343,12 +1355,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             secn_planning.into_iter().flat_map(|(_, plans)| plans).collect::<Vec<_>>();
 
         // Assign the instances
-        self.assign_main_instances(&pctx, &mut main_planning);
-        self.assign_secn_instances(&pctx, &mut secn_planning);
+        self.assign_secn_instances(&pctx, global_ids, &mut secn_planning);
 
         // Get the global IDs of the instances to compute witness for
-        let main_global_ids =
-            main_planning.iter().map(|plan| plan.global_id.unwrap()).collect::<Vec<_>>();
         let secn_global_ids =
             secn_planning.iter().map(|plan| plan.global_id.unwrap()).collect::<Vec<_>>();
         let secn_global_ids_vec: Vec<usize> = secn_global_ids.to_vec();
@@ -1361,17 +1370,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         drop(publics);
 
         // Update internal state with the computed minimal traces and planning.
-        *self.min_traces.write().unwrap() = min_traces;
-        *self.main_planning.write().unwrap() = main_planning;
         *self.secn_planning.write().unwrap() = secn_planning;
-
-        let mut main_instances = self.main_instances.write().unwrap();
-
-        for global_id in &main_global_ids {
-            main_instances
-                .entry(*global_id)
-                .or_insert_with(|| self.create_main_instance(*global_id));
-        }
 
         let mut secn_instances = self.secn_instances.write().unwrap();
         for global_id in &secn_global_ids_vec {
@@ -1417,8 +1416,6 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 
         // #[cfg(feature = "stats")]
         // self.stats.lock().unwrap().store_stats();
-
-        [main_global_ids, secn_global_ids_vec].concat()
     }
 
     /// Computes the witness for the main and secondary state machines.
@@ -1566,7 +1563,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         for &global_id in global_ids {
             let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
             if MAIN_AIR_IDS.contains(&air_id) {
-                pctx.set_witness_ready(global_id, false);
+                continue;
             } else if air_id == ROM_AIR_IDS[0] {
                 if self.asm_runner_path.is_some() {
                     pctx.set_witness_ready(global_id, false);
