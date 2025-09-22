@@ -4,13 +4,11 @@ use crate::{
 };
 use zisk_common::ChunkId;
 use zisk_core::RAM_ADDR;
-pub struct MemHelpers {}
+
+#[derive(Default)]
+pub struct MemHelpers;
 
 impl MemHelpers {
-    pub fn new() -> Self {
-        MemHelpers {}
-    }
-
     #[inline(always)]
     pub fn main_step_to_mem_step(&self, step: u64, slot: u8) -> u64 {
         MEM_STEP_BASE + MEM_STEPS_BY_MAIN_STEP * step + slot as u64

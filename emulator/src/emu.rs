@@ -79,7 +79,7 @@ impl<'a> Emu<'a> {
     pub fn new(rom: &ZiskRom) -> Emu<'_> {
         Emu {
             rom,
-            mem_helpers: MemHelpers::new(),
+            mem_helpers: MemHelpers,
             ctx: EmuContext::default(),
             static_array: [0; MAX_OPERATION_DATA_SIZE],
         }

@@ -92,7 +92,7 @@ impl<F: PrimeField64> MainInstance<F> {
         let last_row_previous_segment =
             if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
 
-        let mem_helpers = MemHelpers::new();
+        let mem_helpers = MemHelpers;
 
         let initial_step = mem_helpers.main_step_to_special_mem_step(last_row_previous_segment);
 
