@@ -184,7 +184,6 @@ fn bench_process_rom_callback(c: &mut Criterion) {
             elf: Some("./benches/data/my.elf".to_string()),
             inputs: Some("./benches/data/input.bin".to_string()),
             log_metrics: true,
-            chunk_size: Some(1000000),
             ..Default::default()
         };
 
