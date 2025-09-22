@@ -12,7 +12,12 @@ use super::{
 };
 
 /// Family parameter (X²-1)/3
-const X2DIV3: [u64; 6] = [0x55555555, 0x396C8C005555E156, 0, 0, 0, 0];
+const X2DIV3_BIN_BE: [u8; 126] = [
+    1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
+];
 
 /// Check if a point `p` is on the BLS12-381 curve
 pub fn is_on_curve_bls12_381(p: &[u64; 12]) -> bool {
@@ -174,9 +179,28 @@ pub fn scalar_mul_bls12_381(p: &[u64; 12], k: &[u64; 6]) -> [u64; 12] {
     [q.x, q.y].concat().try_into().unwrap()
 }
 
+/// Scalar multiplication of a non-zero point by x
+pub fn scalar_mul_bin_bls12_381(p: &[u64; 12], k: &[u8]) -> [u64; 12] {
+    debug_assert!(k == X2DIV3_BIN_BE);
+
+    let x1: [u64; 6] = p[0..6].try_into().unwrap();
+    let y1: [u64; 6] = p[6..12].try_into().unwrap();
+    let p = SyscallPoint384 { x: x1, y: y1 };
+
+    let mut r = SyscallPoint384 { x: x1, y: y1 };
+    for &bit in k.iter().skip(1) {
+        syscall_bls12_381_curve_dbl(&mut r);
+        if bit == 1 {
+            let mut params = SyscallBls12_381CurveAddParams { p1: &mut r, p2: &p };
+            syscall_bls12_381_curve_add(&mut params);
+        }
+    }
+    [r.x, r.y].concat().try_into().unwrap()
+}
+
 /// Scalar multiplication of a non-zero point by (x²-1)/3
 pub fn scalar_mul_by_x2div3_bls12_381(p: &[u64; 12]) -> [u64; 12] {
-    scalar_mul_bls12_381(p, &X2DIV3)
+    scalar_mul_bin_bls12_381(p, &X2DIV3_BIN_BE)
 }
 
 /// Compute the sigma endomorphism σ defined as:
@@ -188,4 +212,41 @@ pub fn sigma_endomorphism_bls12_381(p: &[u64; 12]) -> [u64; 12] {
     x = mul_fp_bls12_381(&x, &GAMMA);
 
     [x, p[6..12].try_into().unwrap()].concat().try_into().unwrap()
+}
+
+// ========== Pointer-based API ==========
+
+/// # Safety
+///
+/// Addition of two non-zero and distinct points
+pub unsafe fn add_bls12_381_ptr(p1: *mut u64, p2: *const u64) {
+    let mut p1_point = SyscallPoint384 {
+        x: core::ptr::read(p1.cast::<[u64; 6]>()),
+        y: core::ptr::read(p1.add(6).cast::<[u64; 6]>()),
+    };
+    let p2_point = SyscallPoint384 {
+        x: core::ptr::read(p2.cast::<[u64; 6]>()),
+        y: core::ptr::read(p2.add(6).cast::<[u64; 6]>()),
+    };
+
+    let mut params = SyscallBls12_381CurveAddParams { p1: &mut p1_point, p2: &p2_point };
+    syscall_bls12_381_curve_add(&mut params);
+
+    core::ptr::write(p1.cast::<[u64; 6]>(), p1_point.x);
+    core::ptr::write(p1.add(6).cast::<[u64; 6]>(), p1_point.y);
+}
+
+/// # Safety
+///
+/// Doubling of a non-zero point
+pub unsafe fn dbl_bls12_381_ptr(p: *mut u64) {
+    let mut p_point = SyscallPoint384 {
+        x: core::ptr::read(p.cast::<[u64; 6]>()),
+        y: core::ptr::read(p.add(6).cast::<[u64; 6]>()),
+    };
+
+    syscall_bls12_381_curve_dbl(&mut p_point);
+
+    core::ptr::write(p.cast::<[u64; 6]>(), p_point.x);
+    core::ptr::write(p.add(6).cast::<[u64; 6]>(), p_point.y);
 }

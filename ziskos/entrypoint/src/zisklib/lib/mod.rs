@@ -9,7 +9,11 @@ mod sha256f_compress;
 mod utils;
 
 // For public consumption
-pub use bls12_381::curve::{add_bls12_381, dbl_bls12_381};
+pub use bls12_381::curve::*;
+pub use bls12_381::fp::*;
+pub use bls12_381::fp2::*;
+pub use bls12_381::fr::*;
+pub use bls12_381::pairing::pairing_verify_bls12_381;
 pub use bn254::curve::{add_bn254, mul_bn254, to_affine_bn254};
 pub use bn254::pairing::pairing_batch_bn254;
 pub use ecadd::ecadd;

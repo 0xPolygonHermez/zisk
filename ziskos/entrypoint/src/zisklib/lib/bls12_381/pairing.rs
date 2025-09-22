@@ -6,7 +6,7 @@ use super::{
     constants::P_MINUS_ONE,
     curve::{is_on_curve_bls12_381, is_on_subgroup_bls12_381},
     final_exp::final_exp_bls12_381,
-    miller_loop::{miller_loop_batch_bls12_381, miller_loop_bls12_381},
+    miller_loop::miller_loop_bls12_381,
     twist::{is_on_curve_twist_bls12_381, is_on_subgroup_twist_bls12_381},
 };
 
@@ -177,43 +177,23 @@ pub fn pairing_bls12_381(p: &[u64; 12], q: &[u64; 24]) -> ([u64; 72], u8) {
     (final_exp, 0)
 }
 
-/// Computes the optimal Ate pairing for a batch of G1 and G2 points over the bls12_381 curve
-/// and multiplies the results together, i.e.:
-///     e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) ∈ GT
-pub fn pairing_batch_bls12_381(g1_points: &[[u64; 12]], g2_points: &[[u64; 24]]) -> [u64; 72] {
-    // Since each e(Pi, Qi) := FinalExp(MillerLoop(Pi, Qi))
-    // We have:
-    //  e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) = FinalExp(MillerLoop(P₁, Q₁) · MillerLoop(P₂, Q₂) · ... · MillerLoop(Pₙ, Qₙ))
-    // We can compute the Miller loop for each pair, multiplying the results together
-    // and then just do the final exponentiation once at the end.
-
-    let num_points = g1_points.len();
-    assert_eq!(num_points, g2_points.len(), "Number of G1 and G2 points must be equal");
-
-    // Miller loop and multiplication
-    let mut g1_points_ml = Vec::with_capacity(num_points);
-    let mut g2_points_ml = Vec::with_capacity(num_points);
-    for (p, q) in g1_points.iter().zip(g2_points.iter()) {
-        // Is p = 𝒪 or q = 𝒪?
-        if *p == [0u64; 12] || *q == [0u64; 24] {
-            // MillerLoop(P, 𝒪) = MillerLoop(𝒪, Q) = 1; we can skip
-            continue;
-        }
-
-        g1_points_ml.push(*p);
-        g2_points_ml.push(*q);
+/// Checks whether the pairing of two G1 and two G2 points are equivalent, i.e.,
+///     e(P₁, Q₁) == e(P₂, Q₂)
+pub fn pairing_verify_bls12_381(
+    p1: &[u64; 12],
+    q1: &[u64; 24],
+    p2: &[u64; 12],
+    q2: &[u64; 24],
+) -> bool {
+    let (res, err) = pairing_bls12_381(p1, q1);
+    if err != 0 {
+        return false;
     }
 
-    if g1_points_ml.is_empty() {
-        // If all pairing computations were skipped, return 1
-        let mut one = [0; 72];
-        one[0] = 1;
-        return one;
+    let (res2, err2) = pairing_bls12_381(p2, q2);
+    if err2 != 0 {
+        return false;
     }
 
-    // Compute the Miller loop for the batch
-    let miller_loop = miller_loop_batch_bls12_381(&g1_points_ml, &g2_points_ml);
-
-    // Final exponentiation
-    final_exp_bls12_381(&miller_loop)
+    res == res2
 }

@@ -132,3 +132,99 @@ pub fn conjugate_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
     syscall_bls12_381_complex_sub(&mut params);
     from_syscall_complex(&f1)
 }
+
+// ========== Pointer-based API ==========
+
+/// # Safety
+///
+/// Addition in Fp2
+#[inline]
+pub unsafe fn add_fp2_bls12_381_ptr(a: *mut u64, b: *const u64) {
+    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
+    let b_in = core::slice::from_raw_parts(b, 12);
+
+    let result = add_fp2_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+
+    let out = core::slice::from_raw_parts_mut(a, 12);
+    out.copy_from_slice(&result);
+}
+
+/// # Safety
+///
+/// Doubling in Fp2
+#[inline]
+pub unsafe fn dbl_fp2_bls12_381_ptr(a: *mut u64) {
+    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
+
+    let result = dbl_fp2_bls12_381(a_in.try_into().unwrap());
+
+    let out = core::slice::from_raw_parts_mut(a, 12);
+    out.copy_from_slice(&result);
+}
+
+/// # Safety
+///
+/// Negation in Fp2
+#[inline]
+pub unsafe fn neg_fp2_bls12_381_ptr(a: *mut u64) {
+    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
+
+    let result = neg_fp2_bls12_381(a_in.try_into().unwrap());
+
+    let out = core::slice::from_raw_parts_mut(a, 12);
+    out.copy_from_slice(&result);
+}
+
+/// # Safety
+///
+/// Subtraction in Fp2
+#[inline]
+pub unsafe fn sub_fp2_bls12_381_ptr(a: *mut u64, b: *const u64) {
+    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
+    let b_in = core::slice::from_raw_parts(b, 12);
+
+    let result = sub_fp2_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+
+    let out = core::slice::from_raw_parts_mut(a, 12);
+    out.copy_from_slice(&result);
+}
+
+/// # Safety
+///
+/// Multiplication in Fp2
+#[inline]
+pub unsafe fn mul_fp2_bls12_381_ptr(a: *mut u64, b: *const u64) {
+    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
+    let b_in = core::slice::from_raw_parts(b, 12);
+
+    let result = mul_fp2_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+
+    let out = core::slice::from_raw_parts_mut(a, 12);
+    out.copy_from_slice(&result);
+}
+
+/// # Safety
+///
+/// Squaring in Fp2
+#[inline]
+pub unsafe fn square_fp2_bls12_381_ptr(a: *mut u64) {
+    let a_in = core::slice::from_raw_parts(a as *const u64, 12);
+
+    let result = square_fp2_bls12_381(a_in.try_into().unwrap());
+
+    let out = core::slice::from_raw_parts_mut(a, 12);
+    out.copy_from_slice(&result);
+}
+
+/// # Safety
+///
+/// Inversion of a non-zero element in Fp2
+#[inline]
+pub unsafe fn inv_fp2_bls12_381_ptr(a: *mut u64) {
+    let a_in = core::slice::from_raw_parts(a as *const u64, 12).try_into().unwrap();
+
+    let result = inv_fp2_bls12_381(&a_in);
+
+    let out = core::slice::from_raw_parts_mut(a, 12);
+    out.copy_from_slice(&result);
+}

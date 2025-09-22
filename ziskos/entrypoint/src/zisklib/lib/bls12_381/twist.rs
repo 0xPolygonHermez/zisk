@@ -3,16 +3,13 @@
 use crate::{fcall_msb_pos_384, zisklib::lib::utils::eq};
 
 use super::{
-    constants::{ETWISTED_B, EXT_U, EXT_U_INV, FROBENIUS_GAMMA13, FROBENIUS_GAMMA14},
+    constants::{ETWISTED_B, EXT_U, EXT_U_INV, FROBENIUS_GAMMA13, FROBENIUS_GAMMA14, X_ABS_BIN_BE},
     fp2::{
         add_fp2_bls12_381, conjugate_fp2_bls12_381, dbl_fp2_bls12_381, inv_fp2_bls12_381,
         mul_fp2_bls12_381, neg_fp2_bls12_381, scalar_mul_fp2_bls12_381, square_fp2_bls12_381,
         sub_fp2_bls12_381,
     },
 };
-
-/// Family parameter X
-const X_ABS: [u64; 6] = [0xD201000000010000, 0x0, 0x0, 0x0, 0x0, 0x0];
 
 /// Check if a point `p` is on the BLS12-381 twist
 pub fn is_on_curve_twist_bls12_381(p: &[u64; 24]) -> bool {
@@ -198,8 +195,22 @@ pub fn scalar_mul_twist_bls12_381(p: &[u64; 24], k: &[u64; 6]) -> [u64; 24] {
 }
 
 /// Scalar multiplication of a non-zero point by x
+pub fn scalar_mul_bin_twist_bls12_381(p: &[u64; 24], k: &[u8]) -> [u64; 24] {
+    // debug_assert!(k == X2DIV3_BIN_BE);
+
+    let mut r = *p;
+    for &bit in k.iter().skip(1) {
+        r = dbl_twist_bls12_381(&r);
+        if bit == 1 {
+            r = add_twist_bls12_381(&r, p);
+        }
+    }
+    r
+}
+
+/// Scalar multiplication of a non-zero point by x
 pub fn scalar_mul_by_abs_x_twist_bls12_381(p: &[u64; 24]) -> [u64; 24] {
-    scalar_mul_twist_bls12_381(p, &X_ABS)
+    scalar_mul_bin_twist_bls12_381(p, &X_ABS_BIN_BE)
 }
 
 /// Compute the untwist-frobenius-twist (utf) endomorphism ψ := 𝜑⁻¹𝜋ₚ𝜑 of a point `p`, where:
