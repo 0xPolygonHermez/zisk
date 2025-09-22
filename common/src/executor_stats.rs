@@ -68,6 +68,12 @@ impl ExecutorStats {
         self.last_id
     }
 
+    #[cfg(not(feature = "stats"))]
+    pub fn get_id(&mut self) -> u64 {
+        self.last_id += 1;
+        self.last_id
+    }
+
     #[cfg(feature = "stats")]
     fn _air_name(_airgroup_id: usize, air_id: usize) -> String {
         match air_id {

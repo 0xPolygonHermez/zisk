@@ -157,13 +157,17 @@ impl AsmRunnerMT {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
                     #[cfg(feature = "stats")]
-                    __stats.lock().unwrap().add_stat(
-                        parent_stats_id,
-                        0,
-                        "MT_CHUNK_DONE",
-                        0,
-                        ExecutorStatsEvent::Mark,
-                    );
+                    {
+                        let mut stats_guard = __stats.lock().unwrap();
+                        let stats_id = stats_guard.get_id();
+                        stats_guard.add_stat(
+                            parent_stats_id,
+                            stats_id,
+                            "MT_CHUNK_DONE",
+                            0,
+                            ExecutorStatsEvent::Mark,
+                        );
+                    }
 
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
