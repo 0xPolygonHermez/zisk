@@ -2,12 +2,12 @@
 //!
 //! This state machine processes binary-related operations.
 
-use std::sync::Arc;
-
+use crate::BinaryBasicFrops;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
+use std::sync::Arc;
 use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
@@ -17,22 +17,26 @@ pub struct BinaryAddSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
     range_id: usize,
+
+    /// The table ID for the FROPS
+    frops_table_id: usize,
 }
 
 impl<F: PrimeField64> BinaryAddSM<F> {
     /// Creates a new BinaryAdd State Machine instance.
     ///
-    /// # Arguments
-    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
+    /// # Arguments/// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
     ///   Machine.
     ///
     /// # Returns
     /// A new `BinaryAddSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_id = std.get_range(0, 0xFFFF, None);
+        let range_id = std.get_range_id(0, 0xFFFF, None);
 
+        // Get the Arithmetic FROPS table ID
+        let frops_table_id = std.get_virtual_table_id(BinaryBasicFrops::TABLE_ID);
         // Create the BinaryAdd state machine
-        Arc::new(Self { std, range_id })
+        Arc::new(Self { std, range_id, frops_table_id })
     }
 
     /// Processes a slice of operation data, generating a trace row and updating multiplicities.
@@ -134,7 +138,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         }
         multiplicities[0] += 4 * (num_rows - total_inputs) as u32;
 
-        self.std.range_checks(multiplicities, self.range_id);
+        self.std.range_checks(self.range_id, multiplicities);
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
@@ -143,5 +147,10 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             .for_each(|slot| *slot = BinaryAddTraceRow::<F> { ..Default::default() });
 
         AirInstance::new_from_trace(FromTrace::new(&mut add_trace))
+    }
+    pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
+        for row in frops_inputs {
+            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
+        }
     }
 }

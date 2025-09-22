@@ -30,14 +30,13 @@ name = "arith_eq_test_secp256k1"
 path = "src/arith_eq_test_secp256k1.rs"
 required-features = ["test_data"]
 
-
 [dependencies]
-zisk-core = { path = "../../core" }
-zisk-pil = { path = "../../pil" }
-precompiles-common = { path = "../common" }
-precompiles-helpers = { path = "../helpers" }
-zisk-common = { path = "../../common" }
-lib-c = { path = "../../lib-c" }
+zisk-core = { workspace = true }
+zisk-pil = { workspace = true }
+precompiles-common = { workspace = true }
+precompiles-helpers = { workspace = true }
+zisk-common = { workspace = true }
+lib-c = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }
@@ -46,6 +45,8 @@ proofman-util = { workspace = true }
 witness = { workspace = true }
 pil-std-lib = { workspace = true }
 
+sm-mem = { workspace = true }
+mem-common = { workspace = true }
 fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }

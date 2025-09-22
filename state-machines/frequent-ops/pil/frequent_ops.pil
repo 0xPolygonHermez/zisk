@@ -1,0 +1,17 @@
+
+
+airtemplate FrequentOps(int N = 2**24, int RC = 2, const int operation_bus_id = OPERATION_BUS_ID, 
+                        const string bin_file = "../src/frequent_ops_fixed.bin", const int table_id = -1) {
+
+    #pragma extern_fixed_file `${bin_file}`
+
+    col witness multiplicity;
+
+    col fixed OP;
+    col fixed A[RC];
+    col fixed B[RC];
+    col fixed C[RC];
+    col fixed FLAG;
+
+    lookup_proves(operation_bus_id, [OP, ...A, ...B, ...C, FLAG], mul: multiplicity, table_id: table_id);
+}

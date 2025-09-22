@@ -6,11 +6,15 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
+use fields::Goldilocks;
 use std::collections::VecDeque;
-use zisk_common::{BusDevice, BusDeviceMode, BusId, Counter, Metrics, OPERATION_BUS_ID, OP_TYPE};
+use zisk_common::{
+    BusDevice, BusDeviceMode, BusId, Counter, MemCollectorInfo, Metrics, A, B, OP,
+    OPERATION_BUS_ID, OP_TYPE,
+};
 use zisk_core::ZiskOperationType;
 
-use crate::ArithFullSM;
+use crate::{ArithFrops, ArithFullSM};
 
 /// The `ArithCounter` struct represents a counter that monitors and measures
 /// arithmetic-related operations on the data bus.
@@ -47,6 +51,10 @@ impl ArithCounterInputGen {
     pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
         (op_type == ZiskOperationType::Arith).then_some(self.counter.inst_count)
     }
+
+    pub fn frops_count(&self, op_type: ZiskOperationType) -> Option<u64> {
+        (op_type == ZiskOperationType::Arith).then_some(self.counter.frops_count)
+    }
 }
 
 impl Metrics for ArithCounterInputGen {
@@ -77,22 +85,32 @@ impl BusDevice<u64> for ArithCounterInputGen {
     /// # Arguments
     /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// A vector of derived inputs to be sent back to the bus.
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         const ARITH: u64 = ZiskOperationType::Arith as u64;
 
         if data[OP_TYPE] != ARITH {
-            return;
+            return true;
+        }
+
+        if ArithFrops::is_frequent_op(data[OP] as u8, data[A], data[B]) {
+            if self.mode == BusDeviceMode::Counter {
+                self.counter.update_frops(1);
+            };
+            return true;
         }
 
         debug_assert_eq!(data.len(), 4);
@@ -104,9 +122,9 @@ impl BusDevice<u64> for ArithCounterInputGen {
             self.measure(data);
         }
 
-        let bin_inputs = ArithFullSM::generate_inputs(data);
+        ArithFullSM::<Goldilocks>::generate_inputs(data, pending);
 
-        pending.extend(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)));
+        true
     }
 
     /// Returns the bus IDs associated with this counter.

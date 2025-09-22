@@ -2,6 +2,7 @@
 //! sent over the data bus. It is designed to be reusable across multiple state machines
 //! and collects metrics for specified `ZiskOperationType` instructions.
 
+use crate::MemCollectorInfo;
 use crate::{BusDevice, BusId, Counter, ExtOperationData, Metrics, OperationBusData};
 use std::{collections::VecDeque, ops::Add};
 use zisk_core::ZiskOperationType;
@@ -115,21 +116,24 @@ impl BusDevice<u64> for RegularCounters {
     /// # Arguments
     /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// An optional vector of tuples where:
-    /// - The first element is the bus ID.
-    /// - The second element is always empty indicating there are no derived inputs.
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
         debug_assert!(*bus_id == self.bus_id);
 
         self.measure(data);
+
+        true
     }
 
     /// Returns the bus IDs associated with this counter.

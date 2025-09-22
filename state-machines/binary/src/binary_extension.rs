@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
+use crate::{BinaryExtensionFrops, BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -38,10 +38,14 @@ pub struct BinaryExtensionSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
 
-    /// Reference to the Binary Extension Table State Machine.
-    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
-
+    /// The range check ID
     range_id: usize,
+
+    /// The table ID for the Binary Basic State Machine
+    table_id: usize,
+
+    /// The table ID for the Binary Extension FROPS
+    frops_table_id: usize,
 }
 
 impl<F: PrimeField64> BinaryExtensionSM<F> {
@@ -49,18 +53,20 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Arguments
     /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
-    /// * `binary_extension_table_sm` - An `Arc`-wrapped reference to the Binary Extension Table
-    ///   State Machine.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryExtensionSM`.
-    pub fn new(
-        std: Arc<Std<F>>,
-        binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
-    ) -> Arc<Self> {
-        let range_id = std.get_range(0, 0xFFFFFF, None);
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        // Get the range check ID
+        let range_id = std.get_range_id(0, 0xFFFFFF, None);
 
-        Arc::new(Self { std, binary_extension_table_sm, range_id })
+        // Get the table ID
+        let table_id = std.get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID);
+
+        // Get the FROPS table ID
+        let frops_table_id = std.get_virtual_table_id(BinaryExtensionFrops::TABLE_ID);
+
+        Arc::new(Self { std, range_id, table_id, frops_table_id })
     }
 
     /// Determines if the given opcode represents a shift operation.
@@ -104,11 +110,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// A `BinaryExtensionTraceRow` representing the processed trace.
-    pub fn process_slice(
-        &self,
-        input: &BinaryInput,
-        binary_extension_table_sm: &BinaryExtensionTableSM,
-    ) -> BinaryExtensionTraceRow<F> {
+    pub fn process_slice(&self, input: &BinaryInput) -> BinaryExtensionTraceRow<F> {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
 
@@ -300,7 +302,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 *a_byte as u64,
                 in2_low,
             );
-            binary_extension_table_sm.update_multiplicity(row, 1);
+            self.std.inc_virtual_row(self.table_id, row, 1);
         }
 
         // Return successfully
@@ -352,7 +354,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
             slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                *trace_row = self.process_slice(&inputs[i][j], &self.binary_extension_table_sm);
+                *trace_row = self.process_slice(&inputs[i][j]);
             });
         });
 
@@ -364,7 +366,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 let op_is_shift = Self::opcode_is_shift(opcode);
                 if op_is_shift {
                     let row = (input.b >> 8) & 0xFFFFFF;
-                    self.std.range_check(row as i64, 1, self.range_id);
+                    self.std.range_check(self.range_id, row as i64, 1);
                 }
             }
         }
@@ -387,9 +389,14 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 0,
                 0,
             );
-            self.binary_extension_table_sm.update_multiplicity(row, multiplicity);
+            self.std.inc_virtual_row(self.table_id, row, multiplicity);
         }
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
+    }
+    pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
+        for row in frops_inputs {
+            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
+        }
     }
 }

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::{MemInput, MemModule, MemPreviousSegment, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
+use crate::{MemInput, MemModule, MemPreviousSegment};
+use mem_common::{MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -45,6 +46,9 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
     fn get_addr_range(&self) -> (u32, u32) {
         (INPUT_DATA_W_ADDR_INIT, INPUT_DATA_W_ADDR_END)
     }
+    fn is_dual(&self) -> bool {
+        false
+    }
 
     // TODO PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs
     // memory only need to process these special inputs, but inputs no change. At end of
@@ -77,8 +81,8 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         let mut range_check_data: Vec<u32> = vec![0; 1 << 16];
 
         // range of instance
-        let range_id = self.std.get_range(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
-        self.std.range_check((previous_segment.addr - INPUT_DATA_W_ADDR_INIT) as i64, 1, range_id);
+        let range_id = self.std.get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
+        self.std.range_check(range_id, (previous_segment.addr - INPUT_DATA_W_ADDR_INIT) as i64, 1);
 
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
@@ -175,15 +179,15 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             trace[i].addr_changes = F::ZERO;
         }
 
-        self.std.range_check((INPUT_DATA_W_ADDR_END - last_addr) as i64, 1, range_id);
+        self.std.range_check(range_id, (INPUT_DATA_W_ADDR_END - last_addr) as i64, 1);
 
         // range of chunks
-        let range_id = self.std.get_range(0, (1 << 16) - 1, None);
+        let range_id = self.std.get_range_id(0, (1 << 16) - 1, None);
         for value_chunk in &value {
             let value = value_chunk.as_canonical_u64();
             range_check_data[value as usize] += padding_size as u32;
         }
-        self.std.range_checks(range_check_data, range_id);
+        self.std.range_checks(range_id, range_check_data);
 
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());

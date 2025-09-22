@@ -6,6 +6,7 @@ use std::{any::Any, collections::VecDeque};
 
 use super::{BusDevice, BusId};
 
+use crate::MemCollectorInfo;
 use crate::Metrics;
 
 #[derive(Debug, PartialEq)]
@@ -27,8 +28,9 @@ impl BusDevice<u64> for Box<dyn BusDeviceMetrics> {
         bus_id: &BusId,
         data: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
-        (**self).process_data(bus_id, data, pending);
+        mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
+        (**self).process_data(bus_id, data, pending, mem_collector_info)
     }
 
     fn bus_id(&self) -> Vec<BusId> {

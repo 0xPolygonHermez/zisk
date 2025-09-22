@@ -12,7 +12,7 @@ use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, MemCollectorInfo, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::Sha256fTrace;
@@ -24,9 +24,6 @@ use zisk_pil::Sha256fTrace;
 pub struct Sha256fInstance<F: PrimeField64> {
     /// Sha256f state machine.
     sha256f_sm: Arc<Sha256fSM<F>>,
-
-    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -43,21 +40,22 @@ impl<F: PrimeField64> Sha256fInstance<F> {
     /// # Returns
     /// A new `Sha256fInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(sha256f_sm: Arc<Sha256fSM<F>>, mut ictx: InstanceCtx) -> Self {
+    pub fn new(sha256f_sm: Arc<Sha256fSM<F>>, ictx: InstanceCtx) -> Self {
+        Self { sha256f_sm, ictx }
+    }
+
+    pub fn build_sha256f_collector(&self, chunk_id: ChunkId) -> Sha256fCollector {
         assert_eq!(
-            ictx.plan.air_id,
-            Sha256fTrace::<usize>::AIR_ID,
+            self.ictx.plan.air_id,
+            Sha256fTrace::<F>::AIR_ID,
             "Sha256fInstance: Unsupported air_id: {:?}",
-            ictx.plan.air_id
+            self.ictx.plan.air_id
         );
 
-        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
-
-        let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
-            .expect("Failed to downcast ictx.plan.meta to expected type");
-
-        Self { sha256f_sm, collect_info, ictx }
+        let meta = self.ictx.plan.meta.as_ref().unwrap();
+        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
+        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        Sha256fCollector::new(num_ops, collect_skipper)
     }
 }
 
@@ -91,8 +89,8 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
     ///
     /// # Returns
     /// A `CheckPoint` object representing the checkpoint of the execution plan.
-    fn check_point(&self) -> CheckPoint {
-        self.ictx.plan.check_point.clone()
+    fn check_point(&self) -> &CheckPoint {
+        &self.ictx.plan.check_point
     }
 
     /// Retrieves the type of this instance.
@@ -104,8 +102,21 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
     }
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
+        assert_eq!(
+            self.ictx.plan.air_id,
+            Sha256fTrace::<F>::AIR_ID,
+            "Sha256fInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let meta = self.ictx.plan.meta.as_ref().unwrap();
+        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
+        let (num_ops, collect_skipper) = collect_info[&chunk_id];
         Some(Box::new(Sha256fCollector::new(num_ops, collect_skipper)))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -132,7 +143,11 @@ impl Sha256fCollector {
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
     pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+        Self {
+            inputs: Vec::with_capacity(num_operations as usize),
+            num_operations,
+            collect_skipper,
+        }
     }
 }
 
@@ -142,29 +157,32 @@ impl BusDevice<PayloadType> for Sha256fCollector {
     /// # Arguments
     /// * `_bus_id` - The ID of the bus (unused in this implementation).
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
     /// A tuple where:
-    /// - The first element indicates whether further processing should continue.
-    /// - The second element contains derived inputs to be sent back to the bus (always empty).
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
         _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
-    ) {
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return;
+            return false;
         }
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Sha256 as u32 {
-            return;
+            return true;
         }
 
         if self.collect_skipper.should_skip() {
-            return;
+            return true;
         }
 
         let data: ExtOperationData<u64> =
@@ -174,6 +192,8 @@ impl BusDevice<PayloadType> for Sha256fCollector {
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }
+
+        self.inputs.len() < self.num_operations as usize
     }
 
     /// Returns the bus IDs associated with this instance.

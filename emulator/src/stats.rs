@@ -5,7 +5,12 @@
 //! * Registers read/write counters (total and per register)
 //! * Operations counters (total and per opcode)
 
-use zisk_core::{zisk_ops::ZiskOp, ZiskInst, M3, REGS_IN_MAIN_TOTAL_NUMBER};
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+};
+
+use zisk_core::{zisk_ops::ZiskOp, ZiskInst, ZiskOperationType, M3, REGS_IN_MAIN_TOTAL_NUMBER};
 
 const AREA_PER_SEC: f64 = 1000000_f64;
 const COST_MEM: f64 = 10_f64 / AREA_PER_SEC;
@@ -15,6 +20,8 @@ const COST_MEMA_W1: f64 = 40_f64 / AREA_PER_SEC;
 const COST_MEMA_W2: f64 = 80_f64 / AREA_PER_SEC;
 const COST_USUAL: f64 = 8_f64 / AREA_PER_SEC;
 const COST_STEP: f64 = 50_f64 / AREA_PER_SEC;
+
+const OP_DATA_BUFFER_DEFAULT_CAPACITY: usize = 128 * 1024 * 1024;
 
 /// Keeps counters for every type of memory operation (including registers).
 ///
@@ -34,6 +41,16 @@ pub struct MemoryOperations {
     mread_na2: u64,
     /// Counter of writes to non-aligned memory addresses (2)
     mwrite_na2: u64,
+    /// Counter of byte reads
+    mread_byte: u64,
+    /// Counter of byte writes where value was a byte (value & 0xFFFF_FFFF_FFFF_FF00 == 0)
+    mwrite_byte: u64,
+    /// Counter of byte writes where value was dirty (value & 0xFFFF_FFFF_FFFF_FF00 != 0)
+    mwrite_dirty_byte: u64,
+    /// Counter of byte writes where value was signextend (value & 0xFFFF_FFFF_FFFF_FF00 != 0xFFFF_FFFF_FFFF_FF00)
+    mwrite_dirty_s64_byte: u64,
+    mwrite_dirty_s32_byte: u64,
+    mwrite_dirty_s16_byte: u64,
 }
 
 /// Keeps statistics of the emulator operations
@@ -49,6 +66,10 @@ pub struct Stats {
     ops: [u64; 256],
     /// Counters of register accesses, one per register
     regs: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Flag to indicate whether to store operation data in a buffer
+    store_ops: bool,
+    /// Buffer to store operation data before writing to file
+    op_data_buffer: Vec<u8>,
 }
 
 impl Default for Stats {
@@ -60,6 +81,8 @@ impl Default for Stats {
             steps: 0,
             ops: [0; 256],
             regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
+            op_data_buffer: vec![],
+            store_ops: false,
         }
     }
 }
@@ -81,12 +104,15 @@ impl Stats {
             // Otherwise increase the non-aligned counter number 1
             else {
                 self.mops.mread_na1 += 1;
+                if width == 1 {
+                    self.mops.mread_byte += 1;
+                }
             }
         }
     }
 
     /// Called every time some data is writen to memory, if statistics are enabled
-    pub fn on_memory_write(&mut self, address: u64, width: u64) {
+    pub fn on_memory_write(&mut self, address: u64, width: u64, value: u64) {
         // If the memory is alligned to 8 bytes, i.e. last 3 bits are zero, then increase the
         // aligned memory read counter
         if ((address & M3) == 0) && (width == 8) {
@@ -101,6 +127,22 @@ impl Stats {
             // Otherwise increase the non-aligned counter number 1
             else {
                 self.mops.mwrite_na1 += 1;
+                if width == 1 {
+                    self.mops.mwrite_byte += 1;
+                    if (value & 0xFFFF_FFFF_FFFF_FF00) != 0 {
+                        self.mops.mwrite_dirty_byte += 1;
+                        if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFFFF_FFFF_FFFF_FF00 {
+                            self.mops.mwrite_dirty_s64_byte += 1;
+                        } else if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFFFF_FF00 {
+                            self.mops.mwrite_dirty_s32_byte += 1;
+                        } else if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFF00 {
+                            self.mops.mwrite_dirty_s16_byte += 1;
+                        }
+                    }
+                }
+            }
+            if ((address & M3) == 0) && (width == 8) {
+                self.mops.mwrite_a += 1;
             }
         }
     }
@@ -126,6 +168,14 @@ impl Stats {
     /// Called every time an operation is executed, if statistics are enabled
     pub fn on_op(&mut self, instruction: &ZiskInst, a: u64, b: u64) {
         // If the operation is a usual operation, then increase the usual counter
+        if self.store_ops
+            && (instruction.op_type == ZiskOperationType::Arith
+                || instruction.op_type == ZiskOperationType::Binary
+                || instruction.op_type == ZiskOperationType::BinaryE)
+        {
+            // store op, a and b values in file
+            self.store_op_data(instruction.op, a, b);
+        }
         if self.is_usual(instruction, a, b) {
             self.usual += 1;
         }
@@ -133,6 +183,48 @@ impl Stats {
         else {
             self.ops[instruction.op as usize] += 1;
         }
+    }
+    pub fn set_store_ops(&mut self, store: bool) {
+        self.store_ops = store;
+        self.op_data_buffer = Vec::with_capacity(OP_DATA_BUFFER_DEFAULT_CAPACITY);
+    }
+    /// Store operation data in memory buffer
+    fn store_op_data(&mut self, op: u8, a: u64, b: u64) {
+        // Reserve space for: 1 byte (op) + 8 bytes (a) + 8 bytes (b) = 17 bytes
+        self.op_data_buffer.reserve(17);
+
+        // Store op as single byte
+        self.op_data_buffer.push(op);
+
+        // Store a and b as little-endian u64
+        self.op_data_buffer.extend_from_slice(&a.to_le_bytes());
+        self.op_data_buffer.extend_from_slice(&b.to_le_bytes());
+    }
+
+    /// Write all buffered operation data to file
+    pub fn flush_op_data_to_file(&mut self, filename: &str) -> std::io::Result<()> {
+        if self.op_data_buffer.is_empty() {
+            return Ok(());
+        }
+
+        let file = File::create(filename)?;
+        let mut writer = BufWriter::new(file);
+        writer.write_all(&self.op_data_buffer)?;
+        writer.flush()?;
+
+        // Clear buffer after writing
+        self.op_data_buffer.clear();
+        Ok(())
+    }
+
+    /// Get the number of operations stored in buffer
+    pub fn get_buffered_ops_count(&self) -> usize {
+        self.op_data_buffer.len() / 17 // Each operation is 17 bytes
+    }
+
+    /// Clear the operation data buffer without writing to file
+    pub fn clear_op_buffer(&mut self) {
+        self.op_data_buffer.clear();
     }
 
     /// Returns true if the provided operation is a usual operation
@@ -241,6 +333,29 @@ impl Stats {
             memory_reads,
             memory_writes,
             memory_total
+        );
+        let mwrite_dirty_sext_byte = self.mops.mwrite_dirty_s64_byte
+            + self.mops.mwrite_dirty_s32_byte
+            + self.mops.mwrite_dirty_s16_byte;
+        output += &format!(
+            "    MemoryAlignByte: {} reads + {} writes / {} dirt_nosext_writes ({:.2}%) / {} dirt_sext_writes ({:.2}%) (64:{}, 32:{}, 16:{})\n",
+            self.mops.mread_byte,
+            self.mops.mwrite_byte,
+            self.mops.mwrite_dirty_byte - mwrite_dirty_sext_byte,
+            if self.mops.mwrite_byte == 0 {
+                0.0
+            } else {
+                (self.mops.mwrite_dirty_byte - mwrite_dirty_sext_byte) as f64 * 100.0 / self.mops.mwrite_byte as f64
+            },
+            mwrite_dirty_sext_byte,
+            if mwrite_dirty_sext_byte == 0 {
+                0.0
+            } else {
+                mwrite_dirty_sext_byte as f64 * 100.0 / self.mops.mwrite_byte as f64
+            },
+            self.mops.mwrite_dirty_s64_byte,
+            self.mops.mwrite_dirty_s32_byte,
+            self.mops.mwrite_dirty_s16_byte
         );
 
         // Build the operations usage counters and cost values

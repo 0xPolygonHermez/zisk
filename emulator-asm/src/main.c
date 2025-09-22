@@ -121,6 +121,7 @@ uint64_t assembly_duration;
 
 extern uint64_t MEM_STEP;
 extern uint64_t MEM_END;
+extern uint64_t MEM_ERROR;
 extern uint64_t MEM_TRACE_ADDRESS;
 extern uint64_t MEM_CHUNK_ADDRESS;
 extern uint64_t MEM_CHUNK_START_STEP;
@@ -128,6 +129,40 @@ extern uint64_t MEM_CHUNK_START_STEP;
 uint64_t realloc_counter = 0;
 
 extern void zisk_keccakf(uint64_t state[25]);
+/* Used for debugging
+extern uint64_t reg_0;
+extern uint64_t reg_1;
+extern uint64_t reg_2;
+extern uint64_t reg_3;
+extern uint64_t reg_4;
+extern uint64_t reg_5;
+extern uint64_t reg_6;
+extern uint64_t reg_7;
+extern uint64_t reg_8;
+extern uint64_t reg_9;
+extern uint64_t reg_10;
+extern uint64_t reg_11;
+extern uint64_t reg_12;
+extern uint64_t reg_13;
+extern uint64_t reg_14;
+extern uint64_t reg_15;
+extern uint64_t reg_16;
+extern uint64_t reg_17;
+extern uint64_t reg_18;
+extern uint64_t reg_19;
+extern uint64_t reg_20;
+extern uint64_t reg_21;
+extern uint64_t reg_22;
+extern uint64_t reg_23;
+extern uint64_t reg_24;
+extern uint64_t reg_25;
+extern uint64_t reg_26;
+extern uint64_t reg_27;
+extern uint64_t reg_28;
+extern uint64_t reg_29;
+extern uint64_t reg_30;
+extern uint64_t reg_31;
+*/
 
 bool is_power_of_two (uint64_t number) {
     return (number != 0) && ((number & (number - 1)) == 0);
@@ -216,6 +251,7 @@ int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, i
 
 // Configuration
 bool output = false;
+bool silent = false;
 bool metrics = false;
 bool trace = false;
 bool trace_trace = false;
@@ -354,7 +390,7 @@ int main(int argc, char *argv[])
         struct sockaddr_in address;
         int addrlen = sizeof(address);
         int client_fd;
-        printf("Waiting for incoming connections to port %u...\n", port);
+        if (!silent) printf("Waiting for incoming connections to port %u...\n", port);
         client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
         if (client_fd < 0)
         {
@@ -431,7 +467,7 @@ int main(int argc, char *argv[])
                         server_run();
 
                         response[0] = TYPE_MT_RESPONSE;
-                        response[1] = MEM_END ? 0 : 1;
+                        response[1] = (MEM_END && !MEM_ERROR) ? 0 : 1;
                         response[2] = trace_size;
                         response[3] = trace_used_size;
                         response[4] = 0;
@@ -665,7 +701,7 @@ int main(int argc, char *argv[])
                 }
                 case TYPE_SD_REQUEST:
                 {
-                    printf("SHUTDOWN received\n");
+                    if (!silent) printf("SHUTDOWN received\n");
                     bShutdown = true;
 
                     response[0] = TYPE_SD_RESPONSE;
@@ -757,7 +793,9 @@ void print_usage (void)
     printf("\t--chunk <chunk_number>\n");
     printf("\t--shutdown\n");
     printf("\t--mt <number_of_mt_requests>\n");
-    printf("\t-o output off\n");
+    printf("\t-o output on\n");
+    printf("\t--silent silent on\n");
+    printf("\t--shm_prefix <prefix> (default: ZISK)\n");
     printf("\t-m metrics on\n");
     printf("\t-t trace on\n");
     printf("\t-tt trace_trace on\n");
@@ -848,7 +886,12 @@ void parse_arguments(int argc, char *argv[])
             }
             if (strcmp(argv[i], "-o") == 0)
             {
-                output = false;
+                output = true;
+                continue;
+            }
+            if (strcmp(argv[i], "--silent") == 0)
+            {
+                silent = true;
                 continue;
             }
             if (strcmp(argv[i], "-m") == 0)
@@ -1304,6 +1347,7 @@ void configure (void)
         printf("\tsem_chunk_done=%s\n", sem_chunk_done_name);
         printf("\tsem_shutdown_done=%s\n", sem_shutdown_done_name);
         printf("\tmap_locked_flag=%d\n", map_locked_flag);
+        printf("\toutput=%u\n", output);
     }
 }
 
@@ -1635,6 +1679,67 @@ void client_run (void)
                 gettimeofday(&stop_time, NULL);
                 duration = TimeDiff(start_time, stop_time);
                 printf("client (MT)[%lu]: done in %lu us\n", i, duration);
+
+                // Pretend to spend some time processing the incoming data
+                usleep((1000000));
+
+                break;
+            }
+            case RomHistogram:
+            {
+                gettimeofday(&start_time, NULL);
+
+                // Prepare message to send
+                request[0] = TYPE_RH_REQUEST;
+                request[1] = 1ULL << 32; // max_steps
+                request[2] = 0;
+                request[3] = 0;
+                request[4] = 0;
+
+                // Send data to server
+                result = send(socket_fd, request, sizeof(request), 0);
+                if (result < 0)
+                {
+                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+
+                // Read server response
+                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+                if (bytes_received < 0)
+                {
+                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (bytes_received != sizeof(response))
+                {
+                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[0] != TYPE_RH_RESPONSE)
+                {
+                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[1] != 0)
+                {
+                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                printf("client (RH)[%lu]: done in %lu us\n", i, duration);
 
                 // Pretend to spend some time processing the incoming data
                 usleep((1000000));
@@ -2513,6 +2618,9 @@ void server_setup (void)
     if (call_chunk_done)
     {
         assert(strlen(sem_chunk_done_name) > 0);
+
+        sem_unlink(sem_chunk_done_name);
+
         sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0666, 0);
         if (sem_chunk_done == SEM_FAILED)
         {
@@ -2529,6 +2637,9 @@ void server_setup (void)
     /*********************/
     
     assert(strlen(sem_shutdown_done_name) > 0);
+
+    sem_unlink(sem_shutdown_done_name);
+    
     sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT, 0666, 0);
     if (sem_shutdown_done == SEM_FAILED)
     {
@@ -2597,7 +2708,7 @@ void server_run (void)
 
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
-    printf("trace_address=%lx\n", trace_address);
+    if (verbose) printf("trace_address=%lx\n", trace_address);
     emulator_start();
     gettimeofday(&stop_time,NULL);
     assembly_duration = TimeDiff(start_time, stop_time);
@@ -2610,10 +2721,11 @@ void server_run (void)
         uint64_t duration = assembly_duration;
         uint64_t steps = MEM_STEP;
         uint64_t end = MEM_END;
+        uint64_t error = MEM_ERROR;
         uint64_t step_duration_ns = steps == 0 ? 0 : (duration * 1000) / steps;
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
-        printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, max steps=%lu, chunk size=%lu\n",
+        printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, error=%lu, max steps=%lu, chunk size=%lu\n",
             duration,
             realloc_counter,
             steps,
@@ -2624,12 +2736,17 @@ void server_run (void)
             final_trace_size,
             final_trace_size_percentage,
             end,
+            error,
             max_steps,
             chunk_size);
         if (gen_method == RomHistogram)
         {
             printf("Rom histogram size=%lu\n", histogram_size);
         }
+    }
+    if (MEM_ERROR)
+    {
+        printf("Emulation ended with error code %lu\n", MEM_ERROR);
     }
 
     // Log output
@@ -2659,7 +2776,7 @@ void server_run (void)
     {
         uint64_t * pOutput = (uint64_t *)trace_address;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-        pOutput[1] = 0; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+        pOutput[1] = MEM_ERROR; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
         pOutput[2] = trace_size; // MT allocated size [8]
         //assert(final_trace_size > 32);
         if (gen_method == RomHistogram)
@@ -2874,9 +2991,44 @@ extern int _print_regs()
     // printf("\n");
 }
 
-extern int _print_pc (uint64_t pc, uint64_t c, uint64_t chunk_address)
+extern int _print_pc (uint64_t pc, uint64_t c)
 {
-    printf("print_pc() counter=%lu pc=%lx c=%lx chunk_address=%lx\n", print_pc_counter, pc, c, chunk_address);
+    printf("s=%lu pc=%lx c=%lx", print_pc_counter, pc, c);
+    /* Used for debugging
+    printf(" r0=%lx", reg_0);
+    printf(" r1=%lx", reg_1);
+    printf(" r2=%lx", reg_2);
+    printf(" r3=%lx", reg_3);
+    printf(" r4=%lx", reg_4);
+    printf(" r5=%lx", reg_5);
+    printf(" r6=%lx", reg_6);
+    printf(" r7=%lx", reg_7);
+    printf(" r8=%lx", reg_8);
+    printf(" r9=%lx", reg_9);
+    printf(" r10=%lx", reg_10);
+    printf(" r11=%lx", reg_11);
+    printf(" r12=%lx", reg_12);
+    printf(" r13=%lx", reg_13);
+    printf(" r14=%lx", reg_14);
+    printf(" r15=%lx", reg_15);
+    printf(" r16=%lx", reg_16);
+    printf(" r17=%lx", reg_17);
+    printf(" r18=%lx", reg_18);
+    printf(" r19=%lx", reg_19);
+    printf(" r20=%lx", reg_20);
+    printf(" r21=%lx", reg_21);
+    printf(" r22=%lx", reg_22);
+    printf(" r23=%lx", reg_23);
+    printf(" r24=%lx", reg_24);
+    printf(" r25=%lx", reg_25);
+    printf(" r26=%lx", reg_26);
+    printf(" r27=%lx", reg_27);
+    printf(" r28=%lx", reg_28);
+    printf(" r29=%lx", reg_29);
+    printf(" r30=%lx", reg_30);
+    printf(" r31=%lx", reg_31);
+    */
+    printf("\n");
     fflush(stdout);
     print_pc_counter++;
 }
@@ -3299,6 +3451,7 @@ void log_mem_op(void)
 
         for (uint64_t m=0; m<mem_op_trace_size; m++)
         {
+            uint64_t rest_are_zeros = (chunk[i] >> 49) & 0x1;
             uint64_t write = (chunk[i] >> 48) & 0x1;
             uint64_t width = (chunk[i] >> 32) & 0xF;
             uint64_t address = chunk[i] & 0xFFFFFFFF;
@@ -3308,10 +3461,11 @@ void log_mem_op(void)
                 ((address >= INPUT_ADDR) && (address < (INPUT_ADDR + MAX_INPUT_SIZE)));
             if (trace_trace || !inside_range)
             {
-                printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = write=%lx, width=%lx, address=%lx%s\n",
+                printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = rest_are_zeros=%lx, write=%lx, width=%lx, address=%lx%s\n",
                     c,
                     m,
                     chunk[i],
+                    rest_are_zeros,
                     write,
                     width,
                     address,

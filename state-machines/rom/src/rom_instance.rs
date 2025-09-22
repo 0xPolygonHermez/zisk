@@ -4,7 +4,10 @@
 
 use std::{
     collections::VecDeque,
-    sync::{atomic::AtomicU32, Arc},
+    sync::{
+        atomic::{AtomicBool, AtomicU32},
+        Arc,
+    },
     thread::JoinHandle,
 };
 
@@ -15,7 +18,7 @@ use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::sync::Mutex;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
-    InstanceType, Metrics, PayloadType, ROM_BUS_ID,
+    InstanceType, MemCollectorInfo, Metrics, PayloadType, ROM_BUS_ID,
 };
 use zisk_core::ZiskRom;
 
@@ -42,6 +45,11 @@ pub struct RomInstance {
 
     /// Optional handle for the ROM assembly runner thread.
     handle_rh: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
+
+    /// Cached result from the assembly runner thread.
+    asm_result: Mutex<Option<AsmRunnerRH>>,
+
+    calculated: AtomicBool,
 }
 
 impl RomInstance {
@@ -67,11 +75,29 @@ impl RomInstance {
             prog_inst_count: Mutex::new(prog_inst_count),
             counter_stats: Mutex::new(None),
             handle_rh: Mutex::new(handle_rh),
+            asm_result: Mutex::new(None),
+            calculated: AtomicBool::new(false),
         }
     }
 
+    pub fn skip_collector(&self) -> bool {
+        self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some()
+    }
+
     pub fn is_asm_execution(&self) -> bool {
-        self.handle_rh.lock().unwrap().is_some()
+        self.handle_rh.lock().unwrap().is_some() || self.asm_result.lock().unwrap().is_some()
+    }
+
+    pub fn build_rom_collector(&self, _chunk_id: ChunkId) -> Option<RomCollector> {
+        if self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some() {
+            return None;
+        }
+
+        Some(RomCollector::new(
+            self.counter_stats.lock().unwrap().is_some(),
+            self.bios_inst_count.lock().unwrap().clone(),
+            self.prog_inst_count.lock().unwrap().clone(),
+        ))
     }
 }
 
@@ -98,8 +124,18 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
     ) -> Option<AirInstance<F>> {
         // Case 1: Use ROM assembly output
         if self.is_asm_execution() {
-            let handle_rh = self.handle_rh.lock().unwrap().take().unwrap();
-            let result_rh = handle_rh.join().expect("Error during Rom Histogram thread execution");
+            // Check if we already have the result cached
+            if self.asm_result.lock().unwrap().is_none() {
+                // Join the thread and cache the result
+                let handle_rh = self.handle_rh.lock().unwrap().take().unwrap();
+                let result_rh =
+                    handle_rh.join().expect("Error during Rom Histogram thread execution");
+                *self.asm_result.lock().unwrap() = Some(result_rh);
+            }
+
+            // Use the cached result
+            let asm_result = self.asm_result.lock().unwrap();
+            let result_rh = asm_result.as_ref().unwrap();
 
             *self.bios_inst_count.lock().unwrap() =
                 Arc::new(create_atomic_vec(result_rh.asm_rowh_output.bios_inst_count.len()));
@@ -133,23 +169,28 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
             *self.counter_stats.lock().unwrap() = Some(counter_stats);
         }
 
-        Some(RomSM::compute_witness(
+        let air_instance = Some(RomSM::compute_witness(
             &self.zisk_rom,
             self.counter_stats.lock().unwrap().as_ref().unwrap(),
+            &self.calculated,
             trace_buffer,
-        ))
+        ));
+        self.calculated.store(true, std::sync::atomic::Ordering::Relaxed);
+        air_instance
     }
 
     fn reset(&self) {
         *self.counter_stats.lock().unwrap() = None;
+        *self.asm_result.lock().unwrap() = None;
+        self.calculated.store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Retrieves the checkpoint associated with this instance.
     ///
     /// # Returns
     /// A `CheckPoint` object representing the checkpoint of the execution plan.
-    fn check_point(&self) -> CheckPoint {
-        self.ictx.plan.check_point.clone()
+    fn check_point(&self) -> &CheckPoint {
+        &self.ictx.plan.check_point
     }
 
     /// Retrieves the type of this instance.
@@ -177,6 +218,10 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
             self.bios_inst_count.lock().unwrap().clone(),
             self.prog_inst_count.lock().unwrap().clone(),
         )))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -209,23 +254,26 @@ impl BusDevice<u64> for RomCollector {
     /// # Arguments
     /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// An optional vector of tuples where:
-    /// - The first element is the bus ID.
-    /// - The second element is always empty indicating there are no derived inputs.
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
         debug_assert!(*bus_id == ROM_BUS_ID);
 
         if !self.already_computed {
             self.rom_counter.measure(data);
         }
+
+        true
     }
 
     /// Returns the bus IDs associated with this counter.

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use asm_runner::AsmRunnerOptions;
 use clap::Parser;
 use colored::Colorize;
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
@@ -7,14 +6,14 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use server::{ServerConfig, ZiskService};
+use server::ZiskServerParams;
+use server::ZiskService;
 use std::collections::HashMap;
-use std::path::Path;
-use std::{env, fs};
+use std::fs;
 use std::{path::PathBuf, process};
 use zisk_common::init_tracing;
 
-use crate::commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field};
+use crate::commands::{get_proving_key, get_witness_computation_lib, Field};
 use crate::ux::print_banner;
 use crate::ZISK_VERSION_MESSAGE;
 
@@ -51,9 +50,6 @@ pub struct ZiskServer {
     #[clap(short = 's', long)]
     pub asm: Option<PathBuf>,
 
-    #[clap(short = 'c', long)]
-    pub chunk_size_bits: Option<u64>,
-
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
     pub emulator: bool,
@@ -88,11 +84,7 @@ pub struct ZiskServer {
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
 
-    // PRECOMPILES OPTIONS
-    /// Sha256f script path
-    pub sha256f_script: Option<PathBuf>,
-
-    #[clap(short = 'h', long, default_value_t = false)]
+    #[clap(short = 'c', long, default_value_t = false)]
     pub verify_constraints: bool,
 
     #[clap(short = 'a', long, default_value_t = false)]
@@ -113,6 +105,9 @@ pub struct ZiskServer {
 
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
+
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskServer {
@@ -120,15 +115,6 @@ impl ZiskServer {
         init_tracing(LOG_PATH);
 
         print_banner();
-
-        let mpi_context = initialize_mpi()?;
-
-        proofman_common::initialize_logger(
-            proofman_common::VerboseMode::Info,
-            Some(mpi_context.world_rank),
-        );
-
-        self.port += mpi_context.local_rank as u16;
 
         if !self.elf.exists() {
             eprintln!("Error: ELF file '{}' not found.", self.elf.display());
@@ -143,17 +129,6 @@ impl ZiskServer {
             Some(Some(debug_value)) => {
                 json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
             }
-        };
-
-        let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
-            sha256f_path.clone()
-        } else {
-            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{home_dir}/.zisk/bin/sha256f_script.json"));
-            if !script_path.exists() {
-                panic!("Sha256f script file not found at {script_path:?}");
-            }
-            script_path
         };
 
         let default_cache_path =
@@ -205,16 +180,9 @@ impl ZiskServer {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info(&sha256f_script);
+        self.print_command_info();
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
-
-        let asm_runner_options = AsmRunnerOptions::new()
-            .with_verbose(self.verbose > 0)
-            .with_base_port(self.asm_port)
-            .with_world_rank(mpi_context.world_rank)
-            .with_local_rank(mpi_context.local_rank)
-            .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
         let mut gpu_params = ParamsGPU::new(self.preallocate);
 
@@ -228,27 +196,27 @@ impl ZiskServer {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let config = ServerConfig::new(
+        let server_params = ZiskServerParams::new(
             self.port,
             self.elf.clone(),
             get_witness_computation_lib(self.witness_lib.as_ref()),
             self.asm.clone(),
             asm_rom,
+            self.asm_port,
             custom_commits_map,
             emulator,
             proving_key,
             self.verbose,
             debug_info,
-            sha256f_script,
-            self.chunk_size_bits,
-            asm_runner_options,
             self.verify_constraints,
             self.aggregation,
             self.final_snark,
             gpu_params,
+            self.unlock_mapped_memory,
+            self.shared_tables,
         );
 
-        if let Err(e) = ZiskService::new(config, mpi_context)?.run() {
+        if let Err(e) = ZiskService::new(&server_params)?.run() {
             eprintln!("Error starting server: {e}");
             process::exit(1);
         }
@@ -256,7 +224,7 @@ impl ZiskServer {
         Ok(())
     }
 
-    fn print_command_info(&self, sha256f_script: &Path) {
+    fn print_command_info(&self) {
         println!("{} Prove Server", format!("{: >12}", "Command").bright_green().bold());
         println!(
             "{} TCP server listening on 127.0.0.1:{}",
@@ -291,7 +259,6 @@ impl ZiskServer {
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
-        println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();

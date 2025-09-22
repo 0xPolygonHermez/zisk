@@ -5,7 +5,7 @@
 
 use std::{any::Any, collections::VecDeque};
 
-use zisk_common::{BusDevice, BusId, Metrics};
+use zisk_common::{BusDevice, BusId, MemCollectorInfo, Metrics};
 
 /// The `DummyCounter` struct serves as a placeholder counter that performs no actions
 /// when connected to the data bus.
@@ -42,7 +42,9 @@ impl BusDevice<u64> for DummyCounter {
         _bus_id: &BusId,
         _data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
+        true
     }
 
     /// Returns an empty vector as this counter is not associated with any bus IDs.

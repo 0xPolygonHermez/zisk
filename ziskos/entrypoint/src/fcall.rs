@@ -15,7 +15,7 @@ pub fn ziskos_fcall_get() -> u64 {
 #[macro_export]
 macro_rules! ziskos_fcall_param {
     ( $addr:expr, $words:literal) => {{
-        // Calcula l'índex basat en log2 del nombre de words
+        // Computes the index based on log2 of the number of words
         const fn words_to_port(words: usize) -> usize {
             match words {
                 1 => 0,     /* direct value */
@@ -31,7 +31,7 @@ macro_rules! ziskos_fcall_param {
                 48 => 10,   /* 48 x 8 = 384 */
                 64 => 11,   /* 64 x 8 = 512 */
                 80 => 12,   /* 80 x 8 = 640 */
-                96 => 13,   /* 256 x 8 = 2048 */
+                96 => 13,   /* 96 x 8 = 768 */
                 128 => 14,  /* 128 x 8 = 1024 */
                 256 => 15,  /* 256 x 8 = 2048 */
                 _ => panic!("number of words no supported, must be 2, 4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 128 or 256"),

@@ -16,7 +16,7 @@ use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
+    InstanceType, MemCollectorInfo, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
 
 use zisk_core::ZiskOperationType;
@@ -64,6 +64,18 @@ impl<F: PrimeField64> ArithEqInstance<F> {
 
         Self { arith_eq_sm, collect_info, ictx }
     }
+
+    pub fn build_arith_eq_collector(&self, chunk_id: ChunkId) -> ArithEqCollector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            ArithEqTrace::<F>::AIR_ID,
+            "ArithEqInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
+        ArithEqCollector::new(num_ops, collect_skipper)
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
@@ -96,8 +108,8 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     ///
     /// # Returns
     /// A `CheckPoint` object representing the checkpoint of the execution plan.
-    fn check_point(&self) -> CheckPoint {
-        self.ictx.plan.check_point.clone()
+    fn check_point(&self) -> &CheckPoint {
+        &self.ictx.plan.check_point
     }
 
     /// Retrieves the type of this instance.
@@ -111,6 +123,10 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(ArithEqCollector::new(num_ops, collect_skipper)))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -137,7 +153,11 @@ impl ArithEqCollector {
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
     pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+        Self {
+            inputs: Vec::with_capacity(num_operations as usize),
+            num_operations,
+            collect_skipper,
+        }
     }
 }
 
@@ -147,32 +167,34 @@ impl BusDevice<PayloadType> for ArithEqCollector {
     /// # Arguments
     /// * `_bus_id` - The ID of the bus (unused in this implementation).
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// A tuple where:
-    /// - The first element indicates whether further processing should continue.
-    /// - The second element contains derived inputs to be sent back to the bus (always empty).
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return;
+            return false;
         }
 
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
         if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::ArithEq as u32 {
-            return;
+            return true;
         }
 
         if self.collect_skipper.should_skip() {
-            return;
+            return true;
         }
 
         self.inputs.push(match data {
@@ -206,6 +228,8 @@ impl BusDevice<PayloadType> for ArithEqCollector {
             // Add here new operations
             _ => panic!("Expected ExtOperationData::OperationData"),
         });
+
+        self.inputs.len() < self.num_operations as usize
     }
 
     /// Returns the bus IDs associated with this instance.

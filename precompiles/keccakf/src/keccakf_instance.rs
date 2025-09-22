@@ -13,7 +13,7 @@ use std::{
 };
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, MemCollectorInfo, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;
@@ -60,6 +60,18 @@ impl<F: PrimeField64> KeccakfInstance<F> {
 
         Self { keccakf_sm, collect_info, ictx }
     }
+
+    pub fn build_keccakf_collector(&self, chunk_id: ChunkId) -> KeccakfCollector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            KeccakfTrace::<F>::AIR_ID,
+            "KeccakfInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
+        KeccakfCollector::new(num_ops, collect_skipper)
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
@@ -92,8 +104,8 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
     ///
     /// # Returns
     /// A `CheckPoint` object representing the checkpoint of the execution plan.
-    fn check_point(&self) -> CheckPoint {
-        self.ictx.plan.check_point.clone()
+    fn check_point(&self) -> &CheckPoint {
+        &self.ictx.plan.check_point
     }
 
     /// Retrieves the type of this instance.
@@ -114,6 +126,10 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
 
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(KeccakfCollector::new(num_ops, collect_skipper)))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -140,7 +156,11 @@ impl KeccakfCollector {
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
     pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+        Self {
+            inputs: Vec::with_capacity(num_operations as usize),
+            num_operations,
+            collect_skipper,
+        }
     }
 }
 
@@ -150,29 +170,32 @@ impl BusDevice<PayloadType> for KeccakfCollector {
     /// # Arguments
     /// * `_bus_id` - The ID of the bus (unused in this implementation).
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
     /// A tuple where:
-    /// - The first element indicates whether further processing should continue.
-    /// - The second element contains derived inputs to be sent back to the bus (always empty).
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
         _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
-    ) {
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return;
+            return false;
         }
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Keccak as u32 {
-            return;
+            return true;
         }
 
         if self.collect_skipper.should_skip() {
-            return;
+            return true;
         }
 
         let data: ExtOperationData<u64> =
@@ -182,6 +205,8 @@ impl BusDevice<PayloadType> for KeccakfCollector {
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }
+
+        self.inputs.len() < self.num_operations as usize
     }
 
     /// Returns the bus IDs associated with this instance.
