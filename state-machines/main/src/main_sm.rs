@@ -70,7 +70,9 @@ impl<F: PrimeField64> MainInstance<F> {
             .meta
             .as_ref()
             .and_then(|m| m.downcast_ref::<bool>())
-            .unwrap_or_else(|| panic!("create_main_instance: Invalid metadata format, expected bool"));
+            .unwrap_or_else(|| {
+                panic!("create_main_instance: Invalid metadata format, expected bool")
+            });
 
         // Determine the number of minimal traces per segment
         let num_within = MainTrace::<F>::NUM_ROWS / chunk_size as usize;
