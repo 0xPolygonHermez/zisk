@@ -2,6 +2,7 @@
 #define ARITH_HPP
 
 #include <stdint.h>
+#include <fplll.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,6 +20,7 @@ extern "C" {
 #define FCALL_BLS12_381_FP_INV_ID 10
 #define FCALL_BLS12_381_FP_SQRT_ID 11
 #define FCALL_BLS12_381_FP2_INV_ID 12
+#define FCALL_ID_SECP256K1_FN_DECOMPOSE 13
 
 // Fcall context
 struct FcallContext
@@ -60,6 +62,9 @@ int BN254TwistAddLineCoeffsCtx (
     struct FcallContext * ctx  // fcall context
 );
 int BN254TwistDblLineCoeffsCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int Secp256k1FnDecomposeCtx (
     struct FcallContext * ctx  // fcall context
 );
 int BLS12_381FpInvCtx (
@@ -105,6 +110,10 @@ int BN254TwistAddLineCoeffs (
 int BN254TwistDblLineCoeffs (
     const uint64_t * a, // 16 x 64 bits
           uint64_t * r  // 16 x 64 bits
+);
+int Secp256k1FnDecompose (
+    const uint64_t * a, // 8 x 64 bits
+          uint64_t * r  // 24 x 64 bits
 );
 int BLS12_381FpInv (
     const uint64_t * a, // 6 x 64 bits

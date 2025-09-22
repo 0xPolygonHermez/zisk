@@ -3,11 +3,12 @@ use crate::{
     point::SyscallPoint256,
     secp256k1_add::{syscall_secp256k1_add, SyscallSecp256k1AddParams},
     secp256k1_dbl::syscall_secp256k1_dbl,
+    zisklib::lib::secp256k1::field::secp256k1_fp_assert_nqr,
 };
 
 use super::{
     constants::{E_B, G_X, G_Y},
-    field::{secp256k1_fp_add, secp256k1_fp_mul, secp256k1_fp_sqrt, secp256k1_fp_square},
+    field::{secp256k1_fp_add, secp256k1_fp_mul, secp256k1_fp_square},
 };
 
 /// Given a x-coordinate `x_bytes` and a parity `y_is_odd`,
@@ -19,14 +20,23 @@ pub fn secp256k1_decompress(x_bytes: &[u8; 32], y_is_odd: bool) -> (([u8; 32], [
         x[3 - i / 8] |= (x_bytes[i] as u64) << (8 * (7 - (i % 8)));
     }
 
-    // Calculate the y-coordinate of the point: y = sqrt(x³ + 7)
-    let x_sq = secp256k1_fp_square(&x);
-    let x_cb = secp256k1_fp_mul(&x_sq, &x);
-    let y_sq = secp256k1_fp_add(&x_cb, &E_B);
-    let (y, has_sqrt) = secp256k1_fp_sqrt(&y_sq, y_is_odd as u64);
-    if !has_sqrt {
-        return (([0u8; 32], [0u8; 32]), false);
-    }
+    // Hint the y-coordinate and check that: y² = x³ + 7
+    let mut rhs = secp256k1_fp_square(&x);
+    rhs = secp256k1_fp_mul(&rhs, &x);
+    rhs = secp256k1_fp_add(&rhs, &E_B);
+    let y = match fcall_secp256k1_fp_sqrt(&rhs, y_is_odd as u64) {
+        // If the y exists, then confirm that y² = x³ + 7
+        Some(y) => {
+            let lhs = secp256k1_fp_square(&y);
+            assert_eq!(lhs, rhs);
+            y
+        }
+        // If the y does not exists, check that rhs is a non-quadratic residue
+        None => {
+            secp256k1_fp_assert_nqr(&rhs);
+            return (([0u8; 32], [0u8; 32]), false);
+        }
+    };
 
     // Check the received parity of the y-coordinate is correct
     let parity = (y[0] & 1) != 0;
@@ -41,13 +51,6 @@ pub fn secp256k1_decompress(x_bytes: &[u8; 32], y_is_odd: bool) -> (([u8; 32], [
     ((*x_bytes, y_bytes), true)
 }
 
-/// Given points `p1` and `p2`, performs the point addition `p1 + p2` and assigns the result to `p1`.
-/// It assumes that `p1` and `p2` are from the Secp256k1 curve, that `p1,p2 != 𝒪` and that `p2 != p1,-p1`
-fn add_points_assign(p1: &mut SyscallPoint256, p2: &SyscallPoint256) {
-    let mut params = SyscallSecp256k1AddParams { p1, p2 };
-    syscall_secp256k1_add(&mut params);
-}
-
 /// Given a point `p1`, performs the point doubling `2·p1` and assigns the result to `p1`.
 /// It assumes that `p1` is from the Secp256k1 curve and that `p1 != 𝒪`
 ///
@@ -57,18 +60,18 @@ fn double_point_assign(p1: &mut SyscallPoint256) {
 }
 
 /// Given points `p1` and `p2`, performs the point addition `p1 + p2` and assigns the result to `p1`.
-/// It assumes that `p1` and `p2` are from the Secp256k1 curve, that `p2 != 𝒪`
-fn add_points_complete_assign(
-    p1: &mut SyscallPoint256,
-    p1_is_infinity: &mut bool,
-    p2: &SyscallPoint256,
-) {
+/// It also returns a boolean indicating whether the addition resulted in the point at infinity (𝒪).
+/// It assumes that `p1` and `p2` are from the Secp256k1 curve and that `p1,p2 != 𝒪`
+fn add_points_assign(p1: &mut SyscallPoint256, p2: &SyscallPoint256) -> bool {
     if p1.x != p2.x {
-        add_points_assign(p1, p2);
+        let mut params = SyscallSecp256k1AddParams { p1, p2 };
+        syscall_secp256k1_add(&mut params);
+        false
     } else if p1.y == p2.y {
-        double_point_assign(p1);
+        syscall_secp256k1_dbl(p1);
+        false
     } else {
-        *p1_is_infinity = true;
+        true
     }
 }
 
@@ -81,8 +84,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
 ) -> (bool, SyscallPoint256) {
     // Start by precomputing g + p
     let mut gp = SyscallPoint256 { x: G_X, y: G_Y };
-    let mut gp_is_infinity = false;
-    add_points_complete_assign(&mut gp, &mut gp_is_infinity, p);
+    let gp_is_infinity = add_points_assign(&mut gp, p);
 
     // Hint the maximum length between the binary representations of k1 and k2
     // We will verify the output by recomposing both k1 and k2
@@ -108,7 +110,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
             res_is_infinity = false;
         } else {
             double_point_assign(&mut res);
-            add_points_complete_assign(&mut res, &mut res_is_infinity, p);
+            res_is_infinity = add_points_assign(&mut res, p)
         }
 
         // Update k2_rec
@@ -121,11 +123,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
             res_is_infinity = false;
         } else {
             double_point_assign(&mut res);
-            add_points_complete_assign(
-                &mut res,
-                &mut res_is_infinity,
-                &SyscallPoint256 { x: G_X, y: G_Y },
-            );
+            res_is_infinity = add_points_assign(&mut res, &SyscallPoint256 { x: G_X, y: G_Y });
         }
 
         // Update k1_rec
@@ -142,7 +140,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
             // If (g + p) is 𝒪, simply double res; otherwise double res and add (g + p)
             double_point_assign(&mut res);
             if !gp_is_infinity {
-                add_points_complete_assign(&mut res, &mut res_is_infinity, &gp);
+                res_is_infinity = add_points_assign(&mut res, &gp);
             }
         }
 
@@ -172,7 +170,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
                     res_is_infinity = false;
                 } else {
                     double_point_assign(&mut res);
-                    add_points_complete_assign(&mut res, &mut res_is_infinity, p);
+                    res_is_infinity = add_points_assign(&mut res, &p);
                 }
 
                 // Update k2_rec
@@ -185,11 +183,8 @@ pub fn secp256k1_double_scalar_mul_with_g(
                     res_is_infinity = false;
                 } else {
                     double_point_assign(&mut res);
-                    add_points_complete_assign(
-                        &mut res,
-                        &mut res_is_infinity,
-                        &SyscallPoint256 { x: G_X, y: G_Y },
-                    );
+                    res_is_infinity =
+                        add_points_assign(&mut res, &SyscallPoint256 { x: G_X, y: G_Y });
                 }
 
                 // Update k1_rec
@@ -206,7 +201,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
                     // If (g + p) is 𝒪, simply double res; otherwise double res and add (g + p)
                     double_point_assign(&mut res);
                     if !gp_is_infinity {
-                        add_points_complete_assign(&mut res, &mut res_is_infinity, &gp);
+                        res_is_infinity = add_points_assign(&mut res, &gp);
                     }
                 }
 
