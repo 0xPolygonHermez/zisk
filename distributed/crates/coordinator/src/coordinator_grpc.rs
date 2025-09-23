@@ -383,7 +383,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
                 }
             };
 
-            info!("Worker {} registered successfully, starting message loop", worker_id);
+            info!("Worker {} registered successfully", worker_id);
 
             // Now handle the rest of the stream messages
             loop {

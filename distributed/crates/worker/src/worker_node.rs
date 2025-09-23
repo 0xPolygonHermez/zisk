@@ -466,10 +466,10 @@ impl WorkerNodeGrpc {
             return Err(anyhow!("Expected ContributionParams for Partial Contribution task"));
         };
 
-        let job_id = JobId::from(request.job_id.clone());
+        let job_id = JobId::from(request.job_id);
         let block = BlockContext {
-            block_id: BlockId::from(params.block_id.clone()),
-            input_path: PathBuf::from(params.input_path.clone()),
+            block_id: BlockId::from(params.block_id),
+            input_path: PathBuf::from(params.input_path),
         };
 
         let job = self.worker.new_job(
