@@ -1563,7 +1563,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         for &global_id in global_ids {
             let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
             if MAIN_AIR_IDS.contains(&air_id) {
-                continue;
+                pctx.set_witness_ready(global_id, false);
             } else if air_id == ROM_AIR_IDS[0] {
                 if self.asm_runner_path.is_some() {
                     pctx.set_witness_ready(global_id, false);
