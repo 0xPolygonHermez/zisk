@@ -45,6 +45,34 @@ impl MessageSender for GrpcMessageSender {
     }
 }
 
+/// Simple drop guard that automatically unregisters worker when dropped
+struct ConnectionDropGuard {
+    worker_id: WorkerId,
+    coordinator: Arc<Coordinator>,
+}
+
+impl ConnectionDropGuard {
+    fn new(worker_id: WorkerId, coordinator: Arc<Coordinator>) -> Self {
+        Self { worker_id, coordinator }
+    }
+}
+
+impl Drop for ConnectionDropGuard {
+    fn drop(&mut self) {
+        let worker_id = self.worker_id.clone();
+        let coordinator_clone = self.coordinator.clone();
+
+        // Spawn async task to handle worker unregistration
+        tokio::spawn(async move {
+            if let Err(e) = coordinator_clone.unregister_worker(&worker_id).await {
+                error!("Failed to unregister worker {} on connection drop: {}", worker_id, e);
+            } else {
+                info!("{worker_id} unregistered successfully");
+            }
+        });
+    }
+}
+
 /// gRPC server implementation for the distributed proof coordination system.
 ///
 /// Serves as the network transport layer, exposing coordinator functionality through:
@@ -52,7 +80,7 @@ impl MessageSender for GrpcMessageSender {
 /// - Bidirectional streaming for worker communication
 /// - Authentication and authorization for admin endpoints
 pub struct CoordinatorGrpc {
-    coordinator_service: Arc<Coordinator>,
+    coordinator: Arc<Coordinator>,
 }
 
 impl CoordinatorGrpc {
@@ -62,7 +90,7 @@ impl CoordinatorGrpc {
     ///
     /// * `config` - Configuration parameters for the coordinator service.
     pub async fn new(config: Config) -> CoordinatorResult<Self> {
-        Ok(Self { coordinator_service: Arc::new(Coordinator::new(config)) })
+        Ok(Self { coordinator: Arc::new(Coordinator::new(config)) })
     }
 
     /// Checks if the request originates from localhost for admin endpoint security.
@@ -215,7 +243,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     ) -> Result<Response<StatusInfoResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let status_info = self.coordinator_service.handle_status_info().await;
+        let status_info = self.coordinator.handle_status_info().await;
 
         Ok(Response::new(status_info.into()))
     }
@@ -245,7 +273,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     ) -> Result<Response<JobsListResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let jobs_list = self.coordinator_service.handle_jobs_list().await;
+        let jobs_list = self.coordinator.handle_jobs_list().await;
 
         Ok(Response::new(jobs_list.into()))
     }
@@ -263,7 +291,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     ) -> Result<Response<WorkersListResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let workers_list = self.coordinator_service.handle_workers_list().await;
+        let workers_list = self.coordinator.handle_workers_list().await;
 
         Ok(Response::new(workers_list.into()))
     }
@@ -282,7 +310,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
         self.validate_admin_request(&request)?;
 
         let job_id = JobId::from(request.into_inner().job_id);
-        self.coordinator_service
+        self.coordinator
             .handle_job_status(&job_id)
             .await
             .map(|status_dto| Response::new(status_dto.into()))
@@ -302,7 +330,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     ) -> Result<Response<SystemStatusResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let system_status = self.coordinator_service.handle_system_status().await;
+        let system_status = self.coordinator.handle_system_status().await;
 
         Ok(Response::new(system_status.into()))
     }
@@ -321,7 +349,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
         self.validate_admin_request(&request)?;
 
         let launch_proof_request_dto = request.into_inner().into();
-        let result = self.coordinator_service.launch_proof(launch_proof_request_dto).await;
+        let result = self.coordinator.launch_proof(launch_proof_request_dto).await;
 
         result.map(|response_dto| Response::new(response_dto.into())).map_err(Status::from)
     }
@@ -331,12 +359,11 @@ impl ZiskDistributedApi for CoordinatorGrpc {
         &self,
         request: Request<Streaming<WorkerMessage>>,
     ) -> Result<Response<Self::WorkerStreamStream>, Status> {
-        let coordinator_service = self.coordinator_service.clone();
+        let coordinator_service = self.coordinator.clone();
         let mut in_stream = request.into_inner();
 
         let response_stream = Box::pin(stream! {
             // Create a channel for outbound messages to this worker (for backpressure)
-            // The sender will be held by GrpcMessageSender and used by CoordinatorService
             let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<CoordinatorMessage>();
             let grpc_msg_tx = Box::new(GrpcMessageSender::new(outbound_tx));
 
@@ -383,7 +410,10 @@ impl ZiskDistributedApi for CoordinatorGrpc {
                 }
             };
 
-            info!("Worker {} registered successfully", worker_id);
+            info!("{} registered successfully", worker_id);
+
+            // Create a connection drop guard that will unregister worker on drop
+            let _connection_guard = ConnectionDropGuard::new(worker_id.clone(), coordinator_service.clone());
 
             // Now handle the rest of the stream messages
             loop {

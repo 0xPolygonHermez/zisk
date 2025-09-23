@@ -182,7 +182,8 @@ fn print_command_info(
         "Logging".bright_green().bold(),
         worker_config.logging.level,
         worker_config.logging.format,
-        format!("(log file: {})", worker_config.logging.file_path.clone().unwrap_or_default()).bright_black()
+        format!("(log file: {})", worker_config.logging.file_path.clone().unwrap_or_default())
+            .bright_black()
     );
     println!(
         "{: >12} {}",
