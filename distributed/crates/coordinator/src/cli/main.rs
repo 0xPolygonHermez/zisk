@@ -8,6 +8,10 @@ mod handler_prove_block;
 #[command(name = "zisk-coordinator")]
 #[command(about = "The Coordinator for the Distributed ZisK Network")]
 struct ZiskCoordinatorArgs {
+    /// Path to configuration file
+    #[arg(long, help = "Path to configuration file (overrides CONFIG_PATH environment variable)")]
+    config: Option<String>,
+
     /// Port where the ZisK Coordinator gRPC server will listen for incoming connections.
     #[arg(short, long, help = "Port number to bind the ZisK Coordinator gRPC server to")]
     port: Option<u16>,
@@ -58,9 +62,6 @@ async fn main() -> Result<()> {
     // Parse command line arguments
     let args = ZiskCoordinatorArgs::parse();
 
-    // Initialize tracing
-    zisk_distributed_common::tracing::init()?;
-
     match args.command {
         Some(ZiskCoordinatorCommands::ProveBlock {
             coordinator_url,
@@ -74,7 +75,7 @@ async fn main() -> Result<()> {
         }
         None => {
             // No subcommand was provided → default to coordinator mode
-            handler_coordinator::handle(args.port, args.webhook_url).await
+            handler_coordinator::handle(args.config, args.port, args.webhook_url).await
         }
     }
 }

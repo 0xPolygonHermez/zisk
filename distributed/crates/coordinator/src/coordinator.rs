@@ -41,7 +41,7 @@ use dashmap::DashMap;
 use proofman::ContributionsInfo;
 use std::{collections::HashMap, path::PathBuf};
 use tokio::sync::RwLock;
-use tracing::{error, info, instrument, warn};
+use tracing::{error, info, warn};
 use zisk_distributed_common::{
     AggParamsDto, AggProofData, BlockId, ChallengesDto, ComputeCapacity, ContributionParamsDto,
     CoordinatorMessageDto, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
@@ -109,7 +109,6 @@ impl Coordinator {
     /// # Parameters
     ///
     /// * `config` - Configuration settings
-    #[instrument(skip(config))]
     pub fn new(config: Config) -> Self {
         let start_time_utc = Utc::now();
 

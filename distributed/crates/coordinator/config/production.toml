@@ -1,5 +1,5 @@
 [service]
-name = "coordinator-network"
+name = "ZisK Distributed Coordinator"
 environment = "production"
 
 [server]
@@ -14,7 +14,8 @@ file_output = true
 file_path = "/var/log/coordinator-network/server.log"
 
 [coordinator]
-max_workers_per_job = 20          # Maximum workers per single proof job
-max_total_workers = 5000          # Maximum total registered workers
-phase1_timeout_seconds = 600      # 10 minutes for phase 1
-phase2_timeout_seconds = 1200     # 20 minutes for phase 2
+shutdown_timeout_seconds = 30 # Graceful shutdown timeout in seconds
+max_workers_per_job = 20      # Maximum workers per single proof job
+max_total_workers = 5000      # Maximum total registered workers
+phase1_timeout_seconds = 600  # 10 minutes for phase 1
+phase2_timeout_seconds = 1200 # 20 minutes for phase 2

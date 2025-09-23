@@ -103,7 +103,6 @@ pub struct Worker {
     current_computation: Option<JoinHandle<()>>,
     prover_config: ProverConfig,
 
-    ////////////////////////////////////
     // It is important to keep the witness_lib declaration before the proofman declaration
     // to ensure that the witness library is dropped before the proofman.
     _witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
