@@ -178,11 +178,11 @@ fn print_command_info(
     println!("{: >12} {}", "Coordinator".bright_green().bold(), worker_config.coordinator.url);
     println!("{: >12} {}", "Environment".bright_green().bold(), worker_config.worker.environment);
     println!(
-        "{: >12} {}/{} {} ",
+        "{: >12} {}/{} {}",
         "Logging".bright_green().bold(),
         worker_config.logging.level,
         worker_config.logging.format,
-        worker_config.logging.file_path.clone().unwrap_or_default().bright_black()
+        format!("(log file: {})", worker_config.logging.file_path.clone().unwrap_or_default()).bright_black()
     );
     println!(
         "{: >12} {}",

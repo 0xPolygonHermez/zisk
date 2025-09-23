@@ -91,11 +91,11 @@ fn print_command_info(loaded_from_file: bool, config: &Config, addr: &str) {
     }
     println!("{: >12} {}", "Environment".bright_green().bold(), config.service.environment);
     println!(
-        "{: >12} {}/{} {} ",
+        "{: >12} {}/{} {}",
         "Logging".bright_green().bold(),
         config.logging.level,
         config.logging.format,
-        config.logging.file_path.clone().unwrap_or_default().bright_black()
+        format!("(log file: {})", config.logging.file_path.clone().unwrap_or_default()).bright_black()
     );
 
     println!("{: >12} {}", "Host/Port".bright_green().bold(), addr);
