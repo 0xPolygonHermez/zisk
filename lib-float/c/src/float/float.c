@@ -213,14 +213,14 @@ void _zisk_float (void)
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
                     if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2])) {
-                        fregs[rd] = F32_QUITE_NAN;
+                        fregs[rd] = F32_QUIET_NAN;
                         break;
                     }
                     if (F32_IS_ANY_INFINITE(fregs[rs1] || F32_IS_ANY_INFINITE(fregs[rs2]))) {
                         // if ((F32_IS_PLUS_ZERO(fregs[rs1]) || F32_IS_MINUS_ZERO(fregs[rs1])) ||
                         //     (F32_IS_PLUS_ZERO(fregs[rs2]) || F32_IS_MINUS_ZERO(fregs[rs2]))) {
                             // infinity * zero = NaN
-                            fregs[rd] = F32_QUITE_NAN;
+                            fregs[rd] = F32_QUIET_NAN;
                             softfloat_raiseFlags( softfloat_flag_invalid );
                             break;
                         //}
@@ -351,7 +351,7 @@ void _zisk_float (void)
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
                             if (F32_IS_NAN(fregs[rs1]) && F32_IS_NAN(fregs[rs2])) {
-                                fregs[rd] = F32_QUITE_NAN;
+                                fregs[rd] = F32_QUIET_NAN;
                                 //softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 break;
                             }
@@ -438,11 +438,11 @@ void _zisk_float (void)
                                 break;
                             }
                             if (F32_IS_QUIET_NAN(fregs[rs1])) {
-                                fregs[rd] = F32_QUITE_NAN;
+                                fregs[rd] = F32_QUIET_NAN;
                                 break;
                             }
                             if (F32_IS_SIGNALING_NAN(fregs[rs1])) {
-                                fregs[rd] = F32_QUITE_NAN;
+                                fregs[rd] = F32_QUIET_NAN;
                                 softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 break;
                             }
@@ -450,9 +450,9 @@ void _zisk_float (void)
                                 fregs[rd] = fregs[rs1];
                                 break;
                             }
-                            if (F32_IS_NEGATIVE(fregs[rs1]) /*|| F32_IS_MINUS_INFINITE(fregs[rs1])*/) {
+                            if (F32_IS_NEGATIVE(fregs[rs1])) {
                                 // square root of negative number = NaN
-                                fregs[rd] = F32_QUITE_NAN;
+                                fregs[rd] = F32_QUIET_NAN;
                                 softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 break;
                             }
@@ -472,6 +472,29 @@ void _zisk_float (void)
                         case 0 : { //("R", "fsqrt.d"),
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+                            if (F64_IS_PLUS_INFINITE(fregs[rs1])) {
+                                fregs[rd] = F64_PLUS_INFINITE;
+                                break;
+                            }
+                            if (F64_IS_QUIET_NAN(fregs[rs1])) {
+                                fregs[rd] = F64_QUIET_NAN;
+                                break;
+                            }
+                            if (F64_IS_SIGNALING_NAN(fregs[rs1])) {
+                                fregs[rd] = F64_QUIET_NAN;
+                                softfloat_exceptionFlags |= softfloat_flag_invalid;
+                                break;
+                            }
+                            if (F64_IS_MINUS_ZERO(fregs[rs1])) {
+                                fregs[rd] = fregs[rs1];
+                                break;
+                            }
+                            if (F64_IS_NEGATIVE(fregs[rs1])) {
+                                // square root of negative number = NaN
+                                fregs[rd] = F64_QUIET_NAN;
+                                softfloat_exceptionFlags |= softfloat_flag_invalid;
+                                break;
+                            }
                             uint64_t rm = (inst >> 12) & 0x7;
                             set_rounding_mode(rm);
                             fregs[rd] = (uint64_t)f64_sqrt( (float64_t){fregs[rs1]} ).v;

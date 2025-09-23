@@ -58,7 +58,12 @@ const uint64_t F32_QUIET_NAN_MASK = 0x00400000;
 #define F64_EXPONENT(a) (((a) & F64_EXPONENT_MASK) >> 52)
 #define F64_MANTISSA(a) ((a) & F64_MANTISSA_MASK)
 #define F64_IS_NAN(a) (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK && ((a) & F64_MANTISSA_MASK) != 0)
+#define F64_IS_PLUS_INFINITE(a) (((a) & F64_SIGN_BIT_MASK) == 0) && (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_MANTISSA_MASK) == 0)
 #define F64_IS_MINUS_INFINITE(a) (((a) & F64_SIGN_BIT_MASK) == F64_SIGN_BIT_MASK) && (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_MANTISSA_MASK) == 0)
+#define F64_IS_QUIET_NAN(a) (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_QUIET_NAN_MASK) != 0)
+#define F64_IS_SIGNALING_NAN(a) (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_QUIET_NAN_MASK) == 0)
+#define F64_IS_NEGATIVE(a) (((a) & F64_SIGN_BIT_MASK) != 0)
+#define F64_IS_MINUS_ZERO(a) (((a) & F64_SIGN_BIT_MASK) != 0) && (((a) & F64_EXPONENT_MASK) == 0) && (((a) & F64_MANTISSA_MASK) == 0)
 
 // Plus and minus infinity in IEEE 754 format
 const uint64_t F64_MINUS_INFINITE = 0xFFF0000000000000;
@@ -79,8 +84,8 @@ const uint32_t F32_ONE = 0x3F800000;
 const uint32_t F32_ZERO = 0x00000000;
 
 // NaN
-const uint64_t F64_NAN = 0x7FF8000000000000;
-const uint32_t F32_QUITE_NAN = 0x7FC00000;
+const uint64_t F64_QUIET_NAN = 0x7FF8000000000000;
+const uint32_t F32_QUIET_NAN = 0x7FC00000;
 
 void _zisk_float (void);
 
