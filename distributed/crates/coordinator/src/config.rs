@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::env;
+use zisk_distributed_common::Environment;
 use zisk_distributed_common::LoggingConfig;
 
 pub type Result<T> = std::result::Result<T, anyhow::Error>;
@@ -23,7 +24,7 @@ pub struct ServerConfig {
 pub struct ServiceConfig {
     pub name: String,
     pub version: String,
-    pub environment: String,
+    pub environment: Environment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

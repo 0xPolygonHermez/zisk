@@ -10,6 +10,7 @@ use rom_setup::{
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{collections::HashMap, fs};
+use zisk_distributed_common::Environment;
 use zisk_distributed_common::{ComputeCapacity, LoggingConfig, WorkerId};
 
 /// Worker Service Configuration
@@ -38,7 +39,7 @@ pub struct WorkerConfig {
     pub compute_capacity: ComputeCapacity,
 
     /// Environment (e.g., development, production)
-    pub environment: String,
+    pub environment: Environment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

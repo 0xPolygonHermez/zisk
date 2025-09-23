@@ -1,7 +1,29 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::{env, fmt};
+use std::{
+    env,
+    fmt::{self, Display},
+};
 use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Environment {
+    Development,
+    Staging,
+    Production,
+}
+
+impl Display for Environment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Environment::Development => "development",
+            Environment::Staging => "staging",
+            Environment::Production => "production",
+        };
+        write!(f, "{}", s)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoggingConfig {
