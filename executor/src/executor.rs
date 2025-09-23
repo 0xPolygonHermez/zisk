@@ -582,9 +582,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             main_instances
                 .entry(global_id)
                 .or_insert_with(|| self.create_main_instance(plan, global_id));
-            if pctx.dctx_is_my_process_instance(global_id) {
-                pctx.set_witness_ready(global_id, false);
-            }
         }
     }
 
