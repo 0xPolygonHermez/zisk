@@ -24,36 +24,40 @@ main() {
     rm -rf pil2-proofman-js
 
     # Clone pil2-compiler
-    ensure git clone https://github.com/0xPolygonHermez/pil2-compiler.git || return 1
-    cd pil2-compiler
-    # If PIL2_COMPILER_BRANCH is defined, check out the specified branch
-    if [[ -n "$PIL2_COMPILER_BRANCH" ]]; then
-        echo "Checking out branch '$PIL2_COMPILER_BRANCH' for pil2-compiler..."
-        ensure git checkout "$PIL2_COMPILER_BRANCH" || return 1
-    fi
-    rm -rf package-lock.json
-    rm -rf node_modules
-    cd ..
+    if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
+        warn "Skipping cloning pil2-compiler repository as DISABLE_CLONE_REPO is set to 1"
+    else
+        ensure git clone https://github.com/0xPolygonHermez/pil2-compiler.git || return 1
+        cd pil2-compiler
+        # If PIL2_COMPILER_BRANCH is defined, check out the specified branch
+        if [[ -n "$PIL2_COMPILER_BRANCH" ]]; then
+            echo "Checking out branch '$PIL2_COMPILER_BRANCH' for pil2-compiler..."
+            ensure git checkout "$PIL2_COMPILER_BRANCH" || return 1
+        fi
+        rm -rf package-lock.json
+        rm -rf node_modules
+        cd ..
 
-    ensure git clone https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
-    cd pil2-proofman
-    # If PIL2_PROOFMAN_BRANCH is defined, check out the specified branch
-    if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
-        echo "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
-        ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
-    fi
-    cd ..
+        ensure git clone https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
+        cd pil2-proofman
+        # If PIL2_PROOFMAN_BRANCH is defined, check out the specified branch
+        if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
+            echo "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
+            ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
+        fi
+        cd ..
 
-    ensure git clone https://github.com/0xPolygonHermez/pil2-proofman-js.git || return 1
-    cd pil2-proofman-js
-    # If PIL2_PROOFMAN_JS_BRANCH is defined, check out the specified branch
-    if [[ -n "$PIL2_PROOFMAN_JS_BRANCH" ]]; then
-        echo "Checking out branch '$PIL2_PROOFMAN_JS_BRANCH' for pil2-proofman-js..."
-        ensure git checkout "$PIL2_PROOFMAN_JS_BRANCH" || return 1
+        ensure git clone https://github.com/0xPolygonHermez/pil2-proofman-js.git || return 1
+        cd pil2-proofman-js
+        # If PIL2_PROOFMAN_JS_BRANCH is defined, check out the specified branch
+        if [[ -n "$PIL2_PROOFMAN_JS_BRANCH" ]]; then
+            echo "Checking out branch '$PIL2_PROOFMAN_JS_BRANCH' for pil2-proofman-js..."
+            ensure git checkout "$PIL2_PROOFMAN_JS_BRANCH" || return 1
+        fi
+        rm -rf package-lock.json
+        rm -rf node_modules
+        cd ..
     fi
-    rm -rf package-lock.json
-    rm -rf node_modules
-    cd ..
 
     step "Installing npm packages..."
     cd pil2-compiler
@@ -134,7 +138,7 @@ main() {
             check_setup_flags=-a
     fi
     ensure cargo-zisk check-setup $check_setup_flags || return 1
-    
+
     success "ZisK setup completed successfully!"
 }
 

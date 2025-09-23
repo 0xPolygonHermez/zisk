@@ -120,7 +120,7 @@ test_elf() {
         steps_dist=0
     fi
     total_steps=$(( 2 + num_inputs * $steps_no_dist + num_dist_inputs * $steps_dist ))
-    
+
     # Create directories for proof results
     PROOF_RESULTS_DIR="${WORKSPACE_DIR}/proof-results"
     rm -rf "${PROOF_RESULTS_DIR}"
@@ -135,8 +135,19 @@ test_elf() {
     MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $DISTRIBUTED_PROCESSES -x OMP_NUM_THREADS=$DISTRIBUTED_THREADS -x RAYON_NUM_THREADS=$DISTRIBUTED_THREADS"
 
     step "Cloning zisk-testvectors repository..."
-    rm -rf zisk-testvectors
-    ensure git clone https://github.com/0xPolygonHermez/zisk-testvectors.git || return 1
+    if [[ -n "$ZISK_TESTVECTORS_BRANCH" ]]; then
+        if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
+            warn "Skipping cloning zisk-testvectors repository as DISABLE_CLONE_REPO is set to 1"
+        else
+            rm -rf zisk-testvectors
+            ensure git clone https://github.com/0xPolygonHermez/zisk-testvectors.git || return 1
+            cd zisk-testvectors
+            ensure git checkout "$ZISK_TESTVECTORS_BRANCH" || return 1
+            cd ..
+        fi
+    else
+        info "Skipping cloning zisk-testvectors repository as ZISK_TESTVECTORS_BRANCH is not defined"
+    fi
     cd zisk-testvectors || return 1
 
     # Verify existence of all input files
@@ -198,7 +209,7 @@ test_elf() {
                     err "verify proof failed for ${input_file}"
                     return 1
                 fi
-            fi    
+            fi
         done
     else
         warn "non-distributed inputs variable is empty or not defined; skipping non-distributed proofs"
