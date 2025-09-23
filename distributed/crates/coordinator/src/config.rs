@@ -79,9 +79,9 @@ impl Config {
                 .add_source(config::File::with_name("config/local").required(false));
         }
 
-        // Override with environment variables (with CONSENSUS_ prefix)
+        // Override with environment variables (with DISTRIBUTED_ prefix)
         builder = builder.add_source(
-            config::Environment::with_prefix("CONSENSUS").separator("_").try_parsing(true),
+            config::Environment::with_prefix("DISTRIBUTED").separator("_").try_parsing(true),
         );
 
         // Override port if provided via function argument

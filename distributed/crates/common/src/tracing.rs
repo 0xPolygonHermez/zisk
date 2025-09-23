@@ -3,8 +3,8 @@ use std::env;
 use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
 
 pub fn init() -> Result<()> {
-    let log_level = env::var("CONSENSUS_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_string());
-    let log_format = env::var("CONSENSUS_LOGGING_FORMAT").unwrap_or_else(|_| "pretty".to_string());
+    let log_level = env::var("DISTRIBUTED_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_string());
+    let log_format = env::var("DISTRIBUTED_LOGGING_FORMAT").unwrap_or_else(|_| "pretty".to_string());
 
     let env_filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new(&log_level))
