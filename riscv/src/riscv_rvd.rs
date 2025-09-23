@@ -22,6 +22,7 @@ impl Rvd {
             },
             7 => { // Opcode 7
                 match (inst >> 12) & 0x7 {
+                    0 => ("INVALID", "reserved"),
                     2 => ("I", "flw"),
                     3 => ("I", "fld"),
                     _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 7 inst=0x{inst:x}"),
@@ -484,7 +485,7 @@ impl Rvd {
                     _ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 115 inst=0x{inst:x}"),
                 }
             },
-            _ => panic!("Rvd::get_type_and_name_32_bits() unknown opcode inst=0x{inst:x}"),
+            _ => ("INVALID", "reserved"),//panic!("Rvd::get_type_and_name_32_bits() unknown opcode inst=0x{inst:x}"),
         }
     }
 
@@ -524,13 +525,13 @@ impl Rvd {
     // CJ     Jump                 funct3   jump target               op
 
     pub fn get_type_and_name_16_bits(inst: u16) -> (&'static str, &'static str) {
-        //println!("Rvd::get_type_and_name() inst=0x{:x}", inst);
+        //println!("Rvd::get_type_and_name_16_bits() inst=0x{:x}", inst);
         // Return the type and name of the instruction
         match inst & 0x3 {
             // Check bits 1 and 0 = op2
             0x00 => {
                 if inst == 0x0000 {
-                    panic!("Rvd::get_type_and_name() invalid instruction 0x0000");
+                    panic!("Rvd::get_type_and_name_16_bits() invalid instruction 0x0000");
                 }
                 match (inst >> 13) & 0x7 {
                     // Check bits 15 to 13 = funct3
@@ -538,13 +539,11 @@ impl Rvd {
                     0x1 => ("CL", "c.fld"),       // Mapped to ld: ld rd′, offset(rs1′)
                     0x2 => ("CL", "c.lw"),        // Mapped to lw: lw rd′, offset(rs1′)
                     0x3 => ("CL", "c.ld"),        // Mapped to ld: ld rd′, offset(rs1′)
-                    0x4 => {
-                        panic!("Rvd::get_type_and_name() reserved instruction inst=0x{inst:x}")
-                    }
-                    0x5 => ("CS", "c.fsd"), // Mapped to sd: sd rs2′, offset(rs1′)
-                    0x6 => ("CS", "c.sw"),  // Mapped to sw: sw rs2′,offset(rs1′)
-                    0x7 => ("CS", "c.sd"),  // Mapped to sd: sd rs2′, offset(rs1′)
-                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                    0x4 => ("CINVALID", "c.reserved"), // Reserved
+                    0x5 => ("CS", "c.fsd"),       // Mapped to sd: sd rs2′, offset(rs1′)
+                    0x6 => ("CS", "c.sw"),        // Mapped to sw: sw rs2′,offset(rs1′)
+                    0x7 => ("CS", "c.sd"),        // Mapped to sd: sd rs2′, offset(rs1′)
+                    _ => panic!("Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}"),
                 }
             }
             0x01 => match (inst >> 13) & 0x7 {
@@ -575,24 +574,30 @@ impl Rvd {
                             0x1 => ("CA", "c.xor"), // Mapped to xor: xor rd′, rd′, rs2′
                             0x2 => ("CA", "c.or"),  // Mapped to or: or rd′, rd′, rs2′
                             0x3 => ("CA", "c.and"), // Mapped to and: and rd′, rd′, rs2′
-                            _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                            _ => panic!(
+                                "Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}"
+                            ),
                         },
                         0x01 => match (inst >> 5) & 0x3 {
                             0x0 => ("CA", "c.subw"), // Mapped to subw: subw rd′, rd′, rs2′
                             0x1 => ("CA", "c.addw"), // Mapped to addw: addw rd′, rd′,rs2′
                             0x2 | 0x3 => {
-                                panic!("Rvd::get_type_and_name() reserved inst=0x{inst:x}");
+                                panic!("Rvd::get_type_and_name_16_bits() reserved inst=0x{inst:x}");
                             }
-                            _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                            _ => panic!(
+                                "Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}"
+                            ),
                         },
-                        _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                        _ => {
+                            panic!("Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}")
+                        }
                     },
-                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                    _ => panic!("Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}"),
                 },
                 0x5 => ("CJ", "c.j"),    // Mapped to jal: jal x0, offset
                 0x6 => ("CB", "c.beqz"), // Mapped to beq: beq rs1′, x0, offset
                 0x7 => ("CB", "c.bnez"), // Mapped to bne: bne rs1′, x0, offset
-                _ => panic!("Rvd::get_type_and_name() invalid inst=0x{inst:x}"),
+                _ => panic!("Rvd::get_type_and_name_16_bits() invalid inst=0x{inst:x}"),
             },
             0x02 => {
                 match (inst >> 13) & 0x7 {
@@ -626,7 +631,7 @@ impl Rvd {
                                 }
                             }
                             _ => panic!(
-                                "Rvd::get_type_and_name() invalid instruction inst=0x{:x}",
+                                "Rvd::get_type_and_name_16_bits() invalid instruction inst=0x{:x}",
                                 inst
                             ),
                         }
@@ -634,10 +639,10 @@ impl Rvd {
                     0x5 => ("CSS", "c.fsdsp"), // Mapped to sd: sd rs2, offset(x2)
                     0x6 => ("CSS", "c.swsp"),  // Mapped to sw: sw rs2, offset(x2)
                     0x7 => ("CSS", "c.sdsp"),  // Mapped to sd: sd rs2, offset(x2)
-                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                    _ => panic!("Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}"),
                 }
             }
-            _ => panic!("Rvd::get_type_and_name() unknown opcode inst=0x{inst:x}"),
+            _ => panic!("Rvd::get_type_and_name_16_bits() unknown opcode inst=0x{inst:x}"),
         }
     }
 }

@@ -75,11 +75,11 @@ impl RiscvInstruction {
     }
 
     /// Creates a HALT instruction
-    pub fn halt(rvinst: u32) -> Self {
+    pub fn c_halt(rvinst: u32) -> Self {
         Self {
             rvinst,
-            t: "I".to_string(),
-            inst: "halt".to_string(),
+            t: "CINVALID".to_string(),
+            inst: "c.halt".to_string(),
             rd: 0,
             rs1: 0,
             rs2: 0,

@@ -177,7 +177,7 @@ impl Riscv2ZiskContext<'_> {
             // I.6 Privileged & System Instructions (Part of I Base)
             "ecall" => self.ecall(riscv_instruction),
             "ebreak" => self.nop(riscv_instruction, 4),
-            "mret" => self.nop(riscv_instruction, 4),
+            "mret" => self.halt_with_error(riscv_instruction, 4),
             "csrrw" => self.csrrw(riscv_instruction),
             "csrrs" => self.csrrs(riscv_instruction),
             "csrrc" => self.csrrc(riscv_instruction),
@@ -305,6 +305,7 @@ impl Riscv2ZiskContext<'_> {
 
             // C. Other
             "c.nop" => self.nop(riscv_instruction, 2),
+            "c.reserved" => self.halt_with_error(riscv_instruction, 2),
 
             // F: Single-Precision Floating-Point
             /////////////////////////////////////
@@ -379,7 +380,8 @@ impl Riscv2ZiskContext<'_> {
 
             // This instruction ends the emulation with an error and its opcode cannot be proven,
             // i.e. the proof generation would fail
-            "halt" => self.halt_with_error(riscv_instruction, 2),
+            "c.halt" => self.halt_with_error(riscv_instruction, 2),
+            "reserved" => self.halt_with_error(riscv_instruction, 4),
 
             _ => panic!(
                 "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
@@ -749,21 +751,6 @@ impl Riscv2ZiskContext<'_> {
         zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst, i.rd, i.rs1, i.imm));
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
-        zib.build();
-        self.insts.insert(self.s, zib);
-        self.s += inst_size;
-    }
-
-    pub fn copyb(&mut self, i: &RiscvInstruction, inst_size: u64, rs: u64) {
-        assert!(inst_size == 2 || inst_size == 4);
-        assert!(rs == 1 || rs == 2);
-        let mut zib = ZiskInstBuilder::new(self.s);
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", if rs == 1 { i.rs1 } else { i.rs2 } as u64, false);
-        zib.op("copyb").unwrap();
-        zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst, i.rd, i.rs1, i.imm));
-        zib.store("reg", i.rd as i64, false, false);
-        zib.j(inst_size as i32, inst_size as i32);
         zib.build();
         self.insts.insert(self.s, zib);
         self.s += inst_size;
