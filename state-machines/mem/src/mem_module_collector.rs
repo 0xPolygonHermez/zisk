@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::{MemInput, MemPreviousSegment};
-use mem_common::{MemHelpers, MemModuleCheckPoint};
+use mem_common::{MemHelpers, MemModuleCheckPoint, MEM_BYTES, MEM_BYTES_BITS};
 use zisk_common::{BusDevice, BusId, MemBusData, MemCollectorInfo, SegmentId, MEM_BUS_ID};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -27,6 +27,10 @@ pub struct MemModuleCollector {
     pub inputs: Vec<MemInput>,
     pub prev_segment: Option<MemPreviousSegment>,
     pub min_addr: u32,
+    pub filter_min_addr: u32,
+    pub filter_max_addr: u32,
+    pub aligned_min_addr: u32,
+    pub aligned_max_addr: u32,
     pub _segment_id: SegmentId,
     pub count: u32,
     pub to_count: u32,
@@ -50,11 +54,18 @@ impl MemModuleCollector {
         let count = mem_check_point.count;
         let to_count = mem_check_point.to_count;
         let skip = mem_check_point.from_skip;
+        let aligned_min_addr = std::cmp::max(min_addr, mem_check_point.from_addr);
+        let aligned_max_addr = mem_check_point.to_addr;
         Self {
-            inputs: Vec::with_capacity(count as usize),
+            // rows could be dual, dual inputs by row
+            inputs: Vec::with_capacity(count as usize * 2),
             mem_check_point: mem_check_point.clone(),
             prev_segment: None,
             min_addr,
+            aligned_min_addr,
+            aligned_max_addr,
+            filter_min_addr: aligned_min_addr << MEM_BYTES_BITS,
+            filter_max_addr: (aligned_max_addr << MEM_BYTES_BITS) + MEM_BYTES - 1,
             _segment_id: segment_id,
             count,
             to_count,
@@ -77,12 +88,10 @@ impl MemModuleCollector {
         }
     }
 
-    fn discard_addr(&mut self, addr_w: u32) -> bool {
+    fn discard_align_addr(&mut self, addr_w: u32) -> bool {
         // Check if the address is out of the range of the current checkpoint, or
         // out of memory area.
-        addr_w > self.mem_check_point.to_addr
-            || addr_w < self.min_addr
-            || addr_w < self.mem_check_point.from_addr
+        addr_w < self.aligned_min_addr || addr_w > self.filter_max_addr
     }
 
     #[inline(always)]
@@ -110,7 +119,7 @@ impl MemModuleCollector {
     ///
     /// # IMPORTANT
     /// - after each non_dual_action_addr call, we need to call process_addr_action
-    /// - assumes called previously the discard_addr to check if is out of range
+    /// - assumes called previously the discard_align_addr to check if is out of range
     fn non_dual_action_addr(&mut self, addr_w: u32) -> InputAction {
         if addr_w == self.mem_check_point.from_addr && self.skip > 0 {
             self.skip -= 1;
@@ -149,7 +158,7 @@ impl MemModuleCollector {
     ///
     /// # IMPORTANT
     /// - after each dual_action_addr call, we need to call process_addr_action
-    /// - assumes called previously the discard_addr to check if is out of range
+    /// - assumes called previously the discard_align_addr to check if is out of range
     fn dual_action_addr(&mut self, addr_w: u32, is_write: bool) -> InputAction {
         if addr_w == self.mem_check_point.from_addr && self.skip > 0 {
             // skip > 1 && !is_first_chunk
@@ -244,14 +253,14 @@ impl MemModuleCollector {
     ///
     /// # Parameters
     /// - `addr`: The unaligned memory address.
-    /// - `addr_w`: The memory address aligned to 8 bytes.
     /// - `bytes`: The number of bytes in the memory access.
     /// - `is_write`: Whether this is a write operation (true) or read operation (false).
     /// - `data`: The data associated with the memory access.
-    fn process_unaligned_data(&mut self, addr: u32, addr_w: u32, bytes: u8, data: &[u64]) {
+    fn process_unaligned_data(&mut self, addr: u32, bytes: u8, data: &[u64]) {
+        let addr_w = MemHelpers::get_addr_w(addr);
         if MemHelpers::is_double(addr, bytes) {
-            let discard_addr_1 = self.discard_addr(addr_w);
-            let discard_addr_2 = self.discard_addr(addr_w + 1);
+            let discard_addr_1 = self.discard_align_addr(addr_w);
+            let discard_addr_2 = self.discard_align_addr(addr_w + 1);
             if discard_addr_1 && discard_addr_2 {
                 return;
             }
@@ -270,7 +279,7 @@ impl MemModuleCollector {
                 self.process_unaligned_double_read(addr_w, data, discard_addr_1, discard_addr_2);
             }
         } else {
-            if self.discard_addr(addr_w) {
+            if self.discard_align_addr(addr_w) {
                 return;
             }
             let is_write = MemHelpers::is_write(MemBusData::get_op(data));
@@ -429,18 +438,16 @@ impl MemModuleCollector {
             }
         }
     }
-    fn bus_data_to_input(&mut self, data: &[u64]) {
+    fn bus_data_to_input(&mut self, addr: u32, data: &[u64]) {
         // decoding information in bus
 
-        let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);
-        let addr_w = MemHelpers::get_addr_w(addr);
-
         if MemHelpers::is_aligned(addr, bytes) {
             // Direct case when is aligned, calculated 8 bytes addres (addr_w) and check if is a
             // write or read.
 
-            if self.discard_addr(addr_w) {
+            let addr_w = MemHelpers::get_addr_w(addr);
+            if self.discard_align_addr(addr_w) {
                 return;
             }
 
@@ -458,7 +465,7 @@ impl MemModuleCollector {
             }
         } else {
             // If the access is unaligned (not aligned to 8 bytes or has a width different from 8 bytes).
-            self.process_unaligned_data(addr, addr_w, bytes, data);
+            self.process_unaligned_data(addr, bytes, data);
         }
     }
 
@@ -482,38 +489,11 @@ impl BusDevice<u64> for MemModuleCollector {
     ) -> bool {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
-        if self.count == 0 {
-            return false;
-        }
-
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);
-        let is_unaligned = !MemHelpers::is_aligned(addr, bytes);
-        let unaligned_double = is_unaligned && MemHelpers::is_double(addr, bytes);
-
-        let addr_w = MemHelpers::get_addr_w(addr);
-
-        if !unaligned_double
-            && (addr_w > self.mem_check_point.to_addr
-                || addr_w < self.min_addr
-                || addr_w < self.mem_check_point.from_addr)
-        {
-            return true;
+        if (addr + bytes as u32) > self.filter_min_addr && addr <= self.filter_max_addr {
+            self.bus_data_to_input(addr, data);
         }
-
-        if unaligned_double
-            && (addr_w > self.mem_check_point.to_addr
-                || addr_w < self.min_addr
-                || addr_w < self.mem_check_point.from_addr)
-            && ((addr_w + 1) > self.mem_check_point.to_addr
-                || (addr_w + 1) < self.min_addr
-                || (addr_w + 1) < self.mem_check_point.from_addr)
-        {
-            return true;
-        }
-
-        self.bus_data_to_input(data);
-
         true
     }
 
