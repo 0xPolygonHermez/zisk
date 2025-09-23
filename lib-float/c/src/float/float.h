@@ -30,7 +30,7 @@ static uint64_t myvalue = 0x3ff3333333333333; // 1.7
 
 // Sign, exponent and mantissa masks for single and double precision floats
 const uint64_t F64_SIGN_BIT_MASK = 0x8000000000000000;
-const uint64_t F32_SIGN_BIT_MASK = 0x80000000;
+const uint64_t F32_SIGN_BIT_MASK = 0xFFFFFFFF80000000;
 const uint64_t F64_EXPONENT_MASK = 0x7FF0000000000000;
 const uint64_t F32_EXPONENT_MASK = 0x7F800000;
 const uint64_t F64_MANTISSA_MASK = 0x000FFFFFFFFFFFFF;
@@ -46,7 +46,9 @@ const uint64_t F32_QUIET_NAN_MASK = 0x00400000;
 #define F32_EXPONENT(a) (((a) & F32_EXPONENT_MASK) >> 23)
 #define F32_MANTISSA(a) ((a) & F32_MANTISSA_MASK)
 #define F32_IS_NAN(a) (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK && ((a) & F32_MANTISSA_MASK) != 0)
+#define F32_IS_PLUS_INFINITE(a) (((a) & F32_SIGN_BIT_MASK) == 0) && (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) == 0)
 #define F32_IS_MINUS_INFINITE(a) (((a) & F32_SIGN_BIT_MASK) == F32_SIGN_BIT_MASK) && (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) == 0)
+#define F32_IS_ANY_INFINITE(a) (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) == 0)
 
 // Macro functions for extracting exponent, mantissa and checking for corner cases
 #define F64_EXPONENT(a) (((a) & F64_EXPONENT_MASK) >> 52)
@@ -68,9 +70,13 @@ const uint32_t F32_PLUS_ZERO = 0x00000000;
 
 // 1.0 and 0.0 in IEEE 754 format
 const uint64_t F64_ONE = 0x3FF0000000000000;
-const uint64_t F32_ONE = 0x3F800000;
 const uint64_t F64_ZERO = 0x0000000000000000;
+const uint32_t F32_ONE = 0x3F800000;
 const uint32_t F32_ZERO = 0x00000000;
+
+// NaN
+const uint64_t F64_NAN = 0x7FF8000000000000;
+const uint32_t F32_NAN = 0x7FC00000;
 
 void _zisk_float (void);
 
