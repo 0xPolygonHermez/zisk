@@ -387,6 +387,32 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+                            if (F64_IS_NAN(fregs[rs1]) && F64_IS_NAN(fregs[rs2])) {
+                                fregs[rd] = F64_QUIET_NAN;
+                                if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]))
+                                    softfloat_exceptionFlags |= softfloat_flag_invalid;
+                                break;
+                            }
+                            if (F64_IS_NAN(fregs[rs1])) {
+                                fregs[rd] = fregs[rs2];
+                                if (F64_IS_SIGNALING_NAN(fregs[rs1]))
+                                    softfloat_exceptionFlags |= softfloat_flag_invalid;
+                                break;
+                            }
+                            if (F64_IS_NAN(fregs[rs2])) {
+                                fregs[rd] = fregs[rs1];
+                                if (F64_IS_SIGNALING_NAN(fregs[rs2]))
+                                    softfloat_exceptionFlags |= softfloat_flag_invalid;
+                                break;
+                            }
+                            if (fregs[rs1] == F64_MINUS_ZERO && fregs[rs2] == F64_PLUS_ZERO) {
+                                fregs[rd] = F64_PLUS_ZERO;
+                                break;
+                            }
+                            if (fregs[rs1] == F64_PLUS_ZERO && fregs[rs2] == F64_MINUS_ZERO) {
+                                fregs[rd] = F64_PLUS_ZERO;
+                                break;
+                            }
                             fregs[rd] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? fregs[rs2] : fregs[rs1];
                             break;
                         }
