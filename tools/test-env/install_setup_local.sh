@@ -29,9 +29,9 @@ main() {
         return 1
     fi
 
-    ensure rm -rf "$HOME/.zisk/provingKey/" || return 1
     ensure mkdir -p "$HOME/.zisk" || return 1
-    ensure tar --overwrite -xf "${TAR_FILE}" -C "$HOME/.zisk" || return 1
+    ensure rm -rf "$HOME/.zisk/provingKey/" || return 1
+    ensure tar -xf "${TAR_FILE}" -C "$HOME/.zisk" || return 1
 
     step "Generating constant tree files..."
     ensure cargo-zisk check-setup -a || return 1

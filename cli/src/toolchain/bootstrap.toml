@@ -1,0 +1,13 @@
+change-id = "ignore"
+
+[build]
+extended = true
+tools = ["cargo", "cargo-clippy", "clippy", "rustfmt"]
+cargo-native-static = true
+
+[llvm]
+download-ci-llvm = false
+
+[rust]
+lld = true
+llvm-tools = true

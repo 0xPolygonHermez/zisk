@@ -13,7 +13,7 @@ use std::collections::HashMap;
 // The CSR precompiled addresses are defined in the `ZiskOS` `ziskos/entrypoint/src` files
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 
-const CSR_PRECOMPILED: [&str; 11] = [
+const CSR_PRECOMPILED: [&str; 17] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -25,6 +25,12 @@ const CSR_PRECOMPILED: [&str; 11] = [
     "bn254_complex_add",
     "bn254_complex_sub",
     "bn254_complex_mul",
+    "arith384_mod",
+    "bls12_381_curve_add",
+    "bls12_381_curve_dbl",
+    "bls12_381_complex_add",
+    "bls12_381_complex_sub",
+    "bls12_381_complex_mul",
 ];
 const CSR_PRECOMPILED_ADDR_START: u32 = 0x800;
 const CSR_PRECOMPILED_ADDR_END: u32 = CSR_PRECOMPILED_ADDR_START + CSR_PRECOMPILED.len() as u32;
@@ -61,7 +67,17 @@ impl Riscv2ZiskContext<'_> {
             //////////////////////////////////
 
             // I.1. Integer Computational (Register-Register)
-            "add" => self.create_register_op(riscv_instruction, "add", 4),
+            "add" => {
+                if riscv_instruction.rs1 == 0 {
+                    // rd = rs1(0) + rs2 = rs2
+                    self.copyb(riscv_instruction, 4, 2);
+                } else if riscv_instruction.rs2 == 0 {
+                    // rd = rs1 + rs2(0) = rs1
+                    self.copyb(riscv_instruction, 4, 1);
+                } else {
+                    self.create_register_op(riscv_instruction, "add", 4);
+                }
+            }
             "sub" => self.create_register_op(riscv_instruction, "sub", 4),
             "sll" => self.create_register_op(riscv_instruction, "sll", 4),
             "slt" => self.create_register_op(riscv_instruction, "lt", 4),
@@ -69,7 +85,17 @@ impl Riscv2ZiskContext<'_> {
             "xor" => self.create_register_op(riscv_instruction, "xor", 4),
             "srl" => self.create_register_op(riscv_instruction, "srl", 4),
             "sra" => self.create_register_op(riscv_instruction, "sra", 4),
-            "or" => self.create_register_op(riscv_instruction, "or", 4),
+            "or" => {
+                if riscv_instruction.rs1 == 0 {
+                    // rd = rs1(0) | rs2 = rs2
+                    self.copyb(riscv_instruction, 4, 2);
+                } else if riscv_instruction.rs2 == 0 {
+                    // rd = rs1 | rs2(0) = rs1
+                    self.copyb(riscv_instruction, 4, 1);
+                } else {
+                    self.create_register_op(riscv_instruction, "or", 4);
+                }
+            }
             "and" => self.create_register_op(riscv_instruction, "and", 4),
             "addw" => self.create_register_op(riscv_instruction, "add_w", 4),
             "subw" => self.create_register_op(riscv_instruction, "sub_w", 4),
@@ -79,8 +105,15 @@ impl Riscv2ZiskContext<'_> {
 
             // I.2. Integer Computational (Register-Immediate)
             "addi" => {
-                if riscv_instruction.is_nop() {
+                if riscv_instruction.rd == 0
+                    && riscv_instruction.rs1 == 0
+                    && riscv_instruction.rs2 == 0
+                {
+                    // r0 = r0 + imm(0) = 0
                     self.nop(riscv_instruction, 4);
+                } else if riscv_instruction.imm == 0 && riscv_instruction.rs1 != 0 {
+                    // rd = rs1 + imm(0) = rs1
+                    self.copyb(riscv_instruction, 4, 1);
                 } else {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 4);
                 }
@@ -94,7 +127,17 @@ impl Riscv2ZiskContext<'_> {
             "ori" => self.immediate_op_or_x0_copyb(riscv_instruction, "or", 4),
             "andi" => self.immediate_op(riscv_instruction, "and", 4),
             "auipc" => self.auipc(riscv_instruction),
-            "addiw" => self.immediate_op(riscv_instruction, "add_w", 4),
+            "addiw" => {
+                if riscv_instruction.rd == 0
+                    && riscv_instruction.rs1 == 0
+                    && riscv_instruction.imm == 0
+                {
+                    // rd(0) = rs1(0) + imm(0) = 0
+                    self.nop(riscv_instruction, 4);
+                } else {
+                    self.immediate_op(riscv_instruction, "add_w", 4);
+                }
+            }
             "slliw" => self.immediate_op(riscv_instruction, "sll_w", 4),
             "srliw" => self.immediate_op(riscv_instruction, "srl_w", 4),
             "sraiw" => self.immediate_op(riscv_instruction, "sra_w", 4),
@@ -206,18 +249,37 @@ impl Riscv2ZiskContext<'_> {
             "c.subw" => self.create_register_op(riscv_instruction, "sub_w", 2),
 
             // C.I.2. Integer Computational (Register-Immediate)
-            "c.addi" | "c.addi4spn" | "c.li" | "c.addi16sp" => {
-                if riscv_instruction.is_nop() {
+            "c.addi" => {
+                if riscv_instruction.rd == 0
+                    && riscv_instruction.rs1 == 0
+                    && riscv_instruction.rs2 == 0
+                {
                     self.nop(riscv_instruction, 2);
+                } else if riscv_instruction.imm == 0 && riscv_instruction.rs1 != 0 {
+                    // rd = rs1 + imm(0) = rs1
+                    self.copyb(riscv_instruction, 2, 1);
                 } else {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
                 }
+            }
+            "c.addi4spn" | "c.li" | "c.addi16sp" => {
+                self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
             }
             "c.slli" => self.immediate_op(riscv_instruction, "sll", 2),
             "c.srli" => self.immediate_op(riscv_instruction, "srl", 2),
             "c.srai" => self.immediate_op(riscv_instruction, "sra", 2),
             "c.andi" => self.immediate_op(riscv_instruction, "and", 2),
-            "c.addiw" => self.immediate_op(riscv_instruction, "add_w", 2),
+            "c.addiw" => {
+                if riscv_instruction.rd == 0
+                    && riscv_instruction.rs1 == 0
+                    && riscv_instruction.imm == 0
+                {
+                    // rd(0) = rs1(0) + imm(0) = 0
+                    self.nop(riscv_instruction, 2);
+                } else {
+                    self.immediate_op(riscv_instruction, "add_w", 2)
+                }
+            }
 
             // C.I.3. Control Transfer Instructions
             "c.jr" | "c.jalr" => self.jalr(riscv_instruction, 2),
@@ -311,6 +373,13 @@ impl Riscv2ZiskContext<'_> {
             "fnmsub.d" => self.float(riscv_instruction, "fnmsub.d", 4),
             "fmv.d.x" => self.float(riscv_instruction, "fmv.d.x", 4), // TODO: implement natively
             "fmv.x.d" => self.float(riscv_instruction, "fmv.x.d", 4), // TODO: implement natively
+
+            // Special ZisK instructions
+            ////////////////////////////
+
+            // This instruction ends the emulation with an error and its opcode cannot be proven,
+            // i.e. the proof generation would fail
+            "halt" => self.halt_with_error(riscv_instruction, 2),
 
             _ => panic!(
                 "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
@@ -559,6 +628,21 @@ impl Riscv2ZiskContext<'_> {
         self.s += inst_size;
     }
 
+    /// Creates a Zisk operation that simply sets the error to true and halts the execution
+    pub fn halt_with_error(&mut self, i: &RiscvInstruction, inst_size: u64) {
+        assert!(inst_size == 2 || inst_size == 4);
+        let mut zib = ZiskInstBuilder::new(self.s);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", 0, false);
+        zib.op("halt").unwrap();
+        zib.j(inst_size as i64, inst_size as i64);
+        zib.end();
+        zib.verbose(&i.inst.to_string());
+        zib.build();
+        self.insts.insert(self.s, zib);
+        self.s += inst_size;
+    }
+
     // lb rd, imm(rs1)
     //    signextend_b([%rs1], [a + imm]) -> [%rd]
 
@@ -650,6 +734,36 @@ impl Riscv2ZiskContext<'_> {
         }
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
+        zib.build();
+        self.insts.insert(self.s, zib);
+        self.s += inst_size;
+    }
+
+    pub fn copyb(&mut self, i: &RiscvInstruction, inst_size: u64, rs: u64) {
+        assert!(inst_size == 2 || inst_size == 4);
+        assert!(rs == 1 || rs == 2);
+        let mut zib = ZiskInstBuilder::new(self.s);
+        zib.src_a("imm", 0, false);
+        zib.src_b("reg", if rs == 1 { i.rs1 } else { i.rs2 } as u64, false);
+        zib.op("copyb").unwrap();
+        zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst, i.rd, i.rs1, i.imm));
+        zib.store("reg", i.rd as i64, false, false);
+        zib.j(inst_size as i64, inst_size as i64);
+        zib.build();
+        self.insts.insert(self.s, zib);
+        self.s += inst_size;
+    }
+
+    pub fn copyb(&mut self, i: &RiscvInstruction, inst_size: u64, rs: u64) {
+        assert!(inst_size == 2 || inst_size == 4);
+        assert!(rs == 1 || rs == 2);
+        let mut zib = ZiskInstBuilder::new(self.s);
+        zib.src_a("imm", 0, false);
+        zib.src_b("reg", if rs == 1 { i.rs1 } else { i.rs2 } as u64, false);
+        zib.op("copyb").unwrap();
+        zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst, i.rd, i.rs1, i.imm));
+        zib.store("reg", i.rd as i64, false, false);
+        zib.j(inst_size as i32, inst_size as i32);
         zib.build();
         self.insts.insert(self.s, zib);
         self.s += inst_size;

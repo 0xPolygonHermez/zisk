@@ -2,21 +2,22 @@
 #include <assert.h>
 #include <string.h>
 
+#define ST_INI 0
+#define ST_READ 1
+#define ST_WRITE 2
+#define ST_INI_TO_READ (ST_READ << ST_BITS_OFFSET)
+#define ST_INI_TO_WRITE (ST_WRITE << ST_BITS_OFFSET)
+#define ST_READ_TO_WRITE ((ST_WRITE - ST_READ) << ST_BITS_OFFSET)
+#define ST_X_TO_INI_MASK (0xFFFFFFFF >> (32 - ST_BITS_OFFSET))
+
 MemCounter::MemCounter(uint32_t id, std::shared_ptr<MemContext> context)
 :id(id), context(context), addr_mask(id * 8) {
     count = 0;
     queue_full = 0;
     first_chunk_us = 0;
     tot_wait_us = 0;
-    #ifdef USE_ADDR_COUNT_TABLE
     addr_count_table = (AddrCount *)malloc(ADDR_TABLE_SIZE * sizeof(AddrCount));
     explicit_bzero(addr_count_table, ADDR_TABLE_SIZE * sizeof(AddrCount));
-    // memset(addr_count_table, 0, ADDR_TABLE_SIZE * sizeof(AddrCount));
-    #else
-    addr_table = (uint32_t *)malloc(ADDR_TABLE_SIZE * sizeof(uint32_t));
-    memset(addr_table, 0, ADDR_TABLE_SIZE * sizeof(uint32_t));
-    #endif
-
 
     // no memset because informations is overrided.
     addr_slots = (uint32_t *)std::aligned_alloc(64, ADDR_SLOTS_SIZE * sizeof(uint32_t));
@@ -29,11 +30,7 @@ MemCounter::MemCounter(uint32_t id, std::shared_ptr<MemContext> context)
 }
 
 MemCounter::~MemCounter() {
-    #ifdef USE_ADDR_COUNT_TABLE
     free(addr_count_table);
-    #else
-    free(addr_table);
-    #endif
     free(addr_slots);
 }
 
@@ -64,10 +61,11 @@ void MemCounter::execute() {
 
         uint32_t chunk_id = 1;
 #ifdef MEM_CONTEXT_SEM
-        while ((chunk = context->get_chunk(id, chunk_id, elapsed_us)) != nullptr) {
+        while ((chunk = context->get_chunk(id, chunk_id, elapsed_us)) != nullptr)
 #else
-        while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr) {
+        while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr)
 #endif
+        {
             #ifdef COUNT_CHUNK_STATS
             wait_chunks_us[chunk_id] = elapsed_us;
             auto start_execute_us = get_usec();
@@ -99,7 +97,7 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
     current_chunk = chunk_id;
 
     for (const MemCountersBusData *chunk_eod = chunk_data + chunk_size; chunk_eod != chunk_data; chunk_data++) {
-        const uint8_t bytes = chunk_data->flags & 0xFF;
+        const uint8_t bytes = chunk_data->flags & 0x0F;
         const uint32_t addr = chunk_data->addr;
         switch (bytes) {
             case 1: // byte
@@ -117,17 +115,21 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
             if ((addr & ADDR_MASK) != addr_mask) {
                 continue;
             }
-            count_aligned(addr, chunk_id, 1);
+            incr_counter(addr, chunk_id, true, chunk_data->flags & MEM_WRITE_FLAG);
         } else {
             const uint32_t aligned_addr = addr & 0xFFFFFFF8;
 
             if ((aligned_addr & ADDR_MASK) == addr_mask) {
-                const int ops = 1 + (chunk_data->flags >> 16);
-                count_aligned(aligned_addr, chunk_id, ops);
+                #ifdef DEBUG_MEM
+                assert((ops == 1 || ops == 2) && "Invalid ops values (first address match)");
+                #endif
+                incr_counter(aligned_addr, chunk_id, false, chunk_data->flags & MEM_WRITE_FLAG);
             }
             else if ((bytes + (addr & 0x07)) > 8 && ((aligned_addr + 8) & ADDR_MASK) == addr_mask) {
-                const int ops = 1 + (chunk_data->flags >> 16);
-                count_aligned(aligned_addr + 8 , chunk_id, ops);
+                #ifdef DEBUG_MEM
+                assert((ops == 1 || ops == 2) && "Invalid ops values (second address match)");
+                #endif
+                incr_counter(aligned_addr + 8 , chunk_id, false, chunk_data->flags & MEM_WRITE_FLAG);
             }
         }
     }
@@ -145,60 +147,145 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
 #endif // MEM_STATS_ACTIVE
 }
 
-void MemCounter::count_aligned(uint32_t addr, uint32_t chunk_id, uint32_t count) {
+void MemCounter::incr_counter(uint32_t addr, uint32_t chunk_id, bool is_aligned, bool is_write) {
     uint32_t offset = addr_to_offset(addr, current_chunk);
-    #ifdef USE_ADDR_COUNT_TABLE
-    uint32_t pos = addr_count_table[offset].pos;
-    #else
-    uint32_t pos = addr_table[offset];
-    #endif
+    uint32_t pos = addr_count_table[offset].pos;    
+    bool is_ram = (addr >= RAM_ADDR);
     if (pos == 0) {
+        // It's the first time for this address
         uint32_t pos = get_next_slot_pos();
         addr_slots[pos] = 0;
         addr_slots[pos + 1] = pos;
         addr_slots[pos + 2] = chunk_id;
-        addr_slots[pos + 3] = count;
-        #ifdef USE_ADDR_COUNT_TABLE
+        addr_slots[pos + 3] = init_addr_count(is_aligned, is_write, is_ram);
         assert(offset < ADDR_TABLE_SIZE);
-        addr_count_table[offset].pos = pos + 2;
-        addr_count_table[offset].count = count;
-        #else
-        addr_table[offset] = pos + 2;
-        #endif
+        addr_count_table[offset].pos = pos + 2;        
+
         uint32_t page = offset >> ADDR_PAGE_BITS;
         first_offset[page] = std::min(first_offset[page], offset);
         last_offset[page] = std::max(last_offset[page], offset);
         ++addr_count;
     } else {
-        #ifdef USE_ADDR_COUNT_TABLE
-        addr_count_table[offset].count += count;
-        #endif
+        // check if we need to increase the counter of current active chunk
+
         if (addr_slots[pos] == chunk_id) {
-            addr_slots[pos + 1] += count;
+            update_addr_count(addr_slots[pos + 1], is_aligned, is_write, is_ram);
             return;
         }
+        // update addr_count_table because only the last pos remaining non update
+        // for this reason when calculate total take account the last position and
+        // its state.
+        addr_count_table[offset].count += get_pos_count(pos + 1);
+
         if ((pos % ADDR_SLOT_SIZE) == (ADDR_SLOT_SIZE - 2)) {
+
             uint32_t npos = get_next_slot_pos();
             uint32_t tpos = pos - ADDR_SLOT_SIZE + 2;
             addr_slots[npos] = tpos;
             addr_slots[npos + 1] = addr_slots[tpos + 1];
             addr_slots[npos + 2] = chunk_id;
-            addr_slots[npos + 3] = count;
+            addr_slots[npos + 3] = init_addr_count(is_aligned, is_write, is_ram);
             addr_slots[tpos + 1] = npos;
-            #ifdef USE_ADDR_COUNT_TABLE
             addr_count_table[offset].pos = npos + 2;
-            #else
-            addr_table[offset] = npos + 2;
-            #endif
             return;
         }
         addr_slots[pos + 2] = chunk_id;
-        addr_slots[pos + 3] = count;
-        #ifdef USE_ADDR_COUNT_TABLE
+        addr_slots[pos + 3] = init_addr_count(is_aligned, is_write, is_ram);
         addr_count_table[offset].pos = pos + 2;
-        #else
-        addr_table[offset] = pos + 2;
-        #endif
+    }
+}
+
+void MemCounter::update_addr_count(uint32_t &count, bool is_aligned, bool is_write, bool is_ram) {
+    if (!is_ram) {
+        count += (is_aligned || !is_write) ? 1 : 2;
+    } else if (is_aligned) {
+        count = incr_st_counter_aligned(count, is_write);
+    } else {
+        count = incr_st_counter_unaligned(count, is_write);
+    }
+}
+
+uint32_t MemCounter::init_addr_count(bool is_aligned, bool is_write, bool is_ram) {
+    if (!is_ram) {
+        return (is_aligned || !is_write) ? 1 : 2;
+    } else if (is_aligned) {
+        return is_write ? ST_INI_TO_WRITE : ST_INI_TO_READ;
+    }
+    return is_write ? 1 + ST_INI_TO_WRITE : ST_INI_TO_READ;
+}
+
+
+uint32_t MemCounter::incr_st_counter_aligned(uint32_t count, bool is_write) {
+    switch ((uint8_t)(count >> ST_BITS_OFFSET)) {
+        case ST_INI:
+            if (is_write) {
+                // this write could be compacted on dual operation write-read
+                // don't increase the count, just change the state
+                return count + ST_INI_TO_WRITE;
+            }
+            // this read could be compacted on dual operation read-read
+            // don't increase the count, just change the state
+            return count + ST_INI_TO_READ;
+        case ST_READ:
+            if (is_write) {
+                // this write means that the previous read cannot be compacted, increase
+                // the counter by this previous read and change state to write with
+                // hope that this write could be compacted on dual operation write-read
+                return (count & ST_X_TO_INI_MASK) + 1 + ST_INI_TO_WRITE;
+            }
+            // this read was compacted on dual operation read-read
+            // increase the count for this dual operation and reset the state
+            return (count & ST_X_TO_INI_MASK) + 1;
+        case ST_WRITE:
+            if (is_write) {
+                // this write means that the previous write cannot be compacted, increase
+                // the counter by this previous write and continue in same state
+                // hope that this write could be compacted on dual operation write-read
+                return count + 1;
+            }
+            // this read was compacted on dual operation read-read
+            // increase the count for this dual operation and reset the state
+            return (count & ST_X_TO_INI_MASK) + 1;
+        default: 
+            assert(false && "Invalid count state");
+    }
+}
+uint32_t MemCounter::incr_st_counter_unaligned(uint32_t count, bool is_write) {
+    // in this case the operation are:
+    //  - is_write = false => READ
+    //  - is_write = true  => READ + WRITE
+
+    switch ((uint8_t)(count >> ST_BITS_OFFSET)) {
+        case ST_INI:
+            if (is_write) {
+                // [read + write], the first read operation cannot be compacted, increase the
+                // counter by first read, and change state to write by second write.
+                return count + 1 + ST_INI_TO_WRITE;
+            } 
+            // this read could be compacted on dual operation read-read
+            // don't increase the count, just change the state
+            return count + ST_INI_TO_READ;
+        case ST_READ:
+            if (is_write) {
+                // [read + write], means that the previous read could be compacted, increase
+                // the counter by this read-read operation, change state to write by second write.
+                return count + 1 + ST_READ_TO_WRITE;
+            }
+            // this read was compacted on dual operation read-read
+            // increase the count for this dual operation and reset the state
+            return (count & ST_X_TO_INI_MASK) + 1;
+        case ST_WRITE:
+            if (is_write) {
+                // [read + write], this write means that the previous write cannot be compacted,
+                // increase the counter by this previous write and continue in same state
+                // hope that this write could be compacted on dual operation write-read
+                return count + 1;
+            }
+            // this read was compacted on dual operation read-read
+            // increase the count for this dual operation and reset the state
+            return (count & ST_X_TO_INI_MASK) + 1;
+        default: 
+            assert(false && "Invalid count state");        
     }
 }
 

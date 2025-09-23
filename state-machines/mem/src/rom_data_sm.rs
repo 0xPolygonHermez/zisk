@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use crate::{MemInput, MemModule, MemPreviousSegment, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
+use crate::{MemInput, MemModule, MemPreviousSegment};
 use fields::PrimeField64;
+use mem_common::{MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 #[cfg(feature = "debug_mem")]
@@ -68,6 +69,10 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
     fn get_addr_range(&self) -> (u32, u32) {
         (ROM_DATA_W_ADDR_INIT, ROM_DATA_W_ADDR_END)
     }
+    fn is_dual(&self) -> bool {
+        false
+    }
+
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.

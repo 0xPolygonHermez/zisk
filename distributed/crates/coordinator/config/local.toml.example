@@ -1,0 +1,11 @@
+# Development overrides
+# Copy this to local.toml and customize as needed
+
+[service]
+name = "distributed-network-dev"
+
+[server]
+port = 8081
+
+[logging]
+level = "trace"

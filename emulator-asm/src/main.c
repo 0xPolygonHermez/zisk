@@ -121,6 +121,7 @@ uint64_t assembly_duration;
 
 extern uint64_t MEM_STEP;
 extern uint64_t MEM_END;
+extern uint64_t MEM_ERROR;
 extern uint64_t MEM_TRACE_ADDRESS;
 extern uint64_t MEM_CHUNK_ADDRESS;
 extern uint64_t MEM_CHUNK_START_STEP;
@@ -128,6 +129,40 @@ extern uint64_t MEM_CHUNK_START_STEP;
 uint64_t realloc_counter = 0;
 
 extern void zisk_keccakf(uint64_t state[25]);
+/* Used for debugging
+extern uint64_t reg_0;
+extern uint64_t reg_1;
+extern uint64_t reg_2;
+extern uint64_t reg_3;
+extern uint64_t reg_4;
+extern uint64_t reg_5;
+extern uint64_t reg_6;
+extern uint64_t reg_7;
+extern uint64_t reg_8;
+extern uint64_t reg_9;
+extern uint64_t reg_10;
+extern uint64_t reg_11;
+extern uint64_t reg_12;
+extern uint64_t reg_13;
+extern uint64_t reg_14;
+extern uint64_t reg_15;
+extern uint64_t reg_16;
+extern uint64_t reg_17;
+extern uint64_t reg_18;
+extern uint64_t reg_19;
+extern uint64_t reg_20;
+extern uint64_t reg_21;
+extern uint64_t reg_22;
+extern uint64_t reg_23;
+extern uint64_t reg_24;
+extern uint64_t reg_25;
+extern uint64_t reg_26;
+extern uint64_t reg_27;
+extern uint64_t reg_28;
+extern uint64_t reg_29;
+extern uint64_t reg_30;
+extern uint64_t reg_31;
+*/
 
 bool is_power_of_two (uint64_t number) {
     return (number != 0) && ((number & (number - 1)) == 0);
@@ -432,7 +467,7 @@ int main(int argc, char *argv[])
                         server_run();
 
                         response[0] = TYPE_MT_RESPONSE;
-                        response[1] = MEM_END ? 0 : 1;
+                        response[1] = (MEM_END && !MEM_ERROR) ? 0 : 1;
                         response[2] = trace_size;
                         response[3] = trace_used_size;
                         response[4] = 0;
@@ -2686,10 +2721,11 @@ void server_run (void)
         uint64_t duration = assembly_duration;
         uint64_t steps = MEM_STEP;
         uint64_t end = MEM_END;
+        uint64_t error = MEM_ERROR;
         uint64_t step_duration_ns = steps == 0 ? 0 : (duration * 1000) / steps;
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
-        printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, max steps=%lu, chunk size=%lu\n",
+        printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, error=%lu, max steps=%lu, chunk size=%lu\n",
             duration,
             realloc_counter,
             steps,
@@ -2700,12 +2736,17 @@ void server_run (void)
             final_trace_size,
             final_trace_size_percentage,
             end,
+            error,
             max_steps,
             chunk_size);
         if (gen_method == RomHistogram)
         {
             printf("Rom histogram size=%lu\n", histogram_size);
         }
+    }
+    if (MEM_ERROR)
+    {
+        printf("Emulation ended with error code %lu\n", MEM_ERROR);
     }
 
     // Log output
@@ -2735,7 +2776,7 @@ void server_run (void)
     {
         uint64_t * pOutput = (uint64_t *)trace_address;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-        pOutput[1] = 0; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+        pOutput[1] = MEM_ERROR; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
         pOutput[2] = trace_size; // MT allocated size [8]
         //assert(final_trace_size > 32);
         if (gen_method == RomHistogram)
@@ -2950,9 +2991,44 @@ extern int _print_regs()
     // printf("\n");
 }
 
-extern int _print_pc (uint64_t pc, uint64_t c, uint64_t chunk_address)
+extern int _print_pc (uint64_t pc, uint64_t c)
 {
-    printf("print_pc() counter=%lu pc=%lx c=%lx chunk_address=%lx\n", print_pc_counter, pc, c, chunk_address);
+    printf("s=%lu pc=%lx c=%lx", print_pc_counter, pc, c);
+    /* Used for debugging
+    printf(" r0=%lx", reg_0);
+    printf(" r1=%lx", reg_1);
+    printf(" r2=%lx", reg_2);
+    printf(" r3=%lx", reg_3);
+    printf(" r4=%lx", reg_4);
+    printf(" r5=%lx", reg_5);
+    printf(" r6=%lx", reg_6);
+    printf(" r7=%lx", reg_7);
+    printf(" r8=%lx", reg_8);
+    printf(" r9=%lx", reg_9);
+    printf(" r10=%lx", reg_10);
+    printf(" r11=%lx", reg_11);
+    printf(" r12=%lx", reg_12);
+    printf(" r13=%lx", reg_13);
+    printf(" r14=%lx", reg_14);
+    printf(" r15=%lx", reg_15);
+    printf(" r16=%lx", reg_16);
+    printf(" r17=%lx", reg_17);
+    printf(" r18=%lx", reg_18);
+    printf(" r19=%lx", reg_19);
+    printf(" r20=%lx", reg_20);
+    printf(" r21=%lx", reg_21);
+    printf(" r22=%lx", reg_22);
+    printf(" r23=%lx", reg_23);
+    printf(" r24=%lx", reg_24);
+    printf(" r25=%lx", reg_25);
+    printf(" r26=%lx", reg_26);
+    printf(" r27=%lx", reg_27);
+    printf(" r28=%lx", reg_28);
+    printf(" r29=%lx", reg_29);
+    printf(" r30=%lx", reg_30);
+    printf(" r31=%lx", reg_31);
+    */
+    printf("\n");
     fflush(stdout);
     print_pc_counter++;
 }
@@ -3375,6 +3451,7 @@ void log_mem_op(void)
 
         for (uint64_t m=0; m<mem_op_trace_size; m++)
         {
+            uint64_t rest_are_zeros = (chunk[i] >> 49) & 0x1;
             uint64_t write = (chunk[i] >> 48) & 0x1;
             uint64_t width = (chunk[i] >> 32) & 0xF;
             uint64_t address = chunk[i] & 0xFFFFFFFF;
@@ -3384,10 +3461,11 @@ void log_mem_op(void)
                 ((address >= INPUT_ADDR) && (address < (INPUT_ADDR + MAX_INPUT_SIZE)));
             if (trace_trace || !inside_range)
             {
-                printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = write=%lx, width=%lx, address=%lx%s\n",
+                printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = rest_are_zeros=%lx, write=%lx, width=%lx, address=%lx%s\n",
                     c,
                     m,
                     chunk[i],
+                    rest_are_zeros,
                     write,
                     width,
                     address,

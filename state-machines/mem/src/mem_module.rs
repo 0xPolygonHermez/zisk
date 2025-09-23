@@ -18,4 +18,5 @@ pub trait MemModule<F: Clone>: Send + Sync {
         trace_buffer: Vec<F>,
     ) -> AirInstance<F>;
     fn get_addr_range(&self) -> (u32, u32);
+    fn is_dual(&self) -> bool;
 }

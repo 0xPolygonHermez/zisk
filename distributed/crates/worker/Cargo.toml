@@ -1,0 +1,44 @@
+[package]
+name = "zisk-distributed-worker"
+description = "Distributed Network Client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "zisk-worker"
+path = "src/cli/main.rs"
+
+[build-dependencies]
+vergen = { version = "8", default-features = false, features = [
+    "build",
+    "git",
+    "git2",
+] }
+
+[dependencies]
+zisk-distributed-common = { workspace = true }
+zisk-distributed-grpc-api = { workspace = true }
+
+cargo-zisk = { workspace = true }
+zisk-common = { workspace = true }
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+asm-runner = { workspace = true }
+fields = { workspace = true }
+witness = { workspace = true }
+rom-setup = { workspace = true }
+zisk-pil = { workspace = true }
+
+tonic = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+libloading = { workspace = true }
+borsh = { workspace = true }
+clap = { workspace = true }
+colored = { workspace = true }
+toml = { workspace = true }

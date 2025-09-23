@@ -16,6 +16,9 @@ main() {
     else
         total_steps=10
     fi
+    if [[ is_gha && "${PLATFORM}" == "darwin" ]]; then
+        total_steps=$((total_steps - 2))
+    fi
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
@@ -57,7 +60,9 @@ main() {
         return 1
     fi
 
-    if [[ "${PLATFORM}" == "linux" ]]; then
+    if [[ is_gha && "${PLATFORM}" == "darwin" ]]; then
+        warn "Skipping prove and verify steps on macOS as it's not supported in GHA"
+    else
         step "Generating program setup..."
         ensure cargo-zisk rom-setup -e "$ELF_PATH" 2>&1 | tee romsetup_output.log || return 1
         if ! grep -F "ROM setup successfully completed" romsetup_output.log; then

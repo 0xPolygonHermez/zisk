@@ -27,8 +27,9 @@ tracing = { workspace = true}
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 uuid = { version = "1.6", features = ["v4"] }
-clap = { version = "4.5.7", features = ["derive", "env"] }
+clap = { workspace = true }
 bytemuck = "1.23.1"
+zstd = "0.13"
 
 # Distributed mode (mpi) is only supported on Linux x86_64
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]

@@ -31,6 +31,7 @@ colored = { workspace = true }
 fields = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
+proofman-verifier = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
@@ -38,19 +39,16 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 libloading = { workspace = true }
 
+zstd = "0.13"
 bytemuck = "1.23.1"
-clap = { version = "4.5.7", features = ["derive", "env"] }
+clap = { workspace = true }
 dirs = "6"
 rand = "0.9"
 target-lexicon = "0.13"
-reqwest = { version = "0.12.4", features = [
-  "stream",
-  "json",
-  "rustls-tls",
-], default-features = false }
+reqwest = { workspace = true }
 tokio = { version = "1", features = ["full"] }
 indicatif = "0.17.8"
-futures = "0.3.30"
+futures = { workspace = true }
 yansi = "1.0.1"
 
 # Distributed mode (mpi) is only supported on Linux x86_64
@@ -62,6 +60,7 @@ default = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
 gpu = []
 stats = []
+verify = ["fields/verify"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }

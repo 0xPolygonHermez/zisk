@@ -49,6 +49,7 @@ pub enum OpType {
     PubOut,
     ArithEq,
     Fcall,
+    ArithEq384,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -63,6 +64,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::PubOut => ZiskOperationType::PubOut,
             OpType::ArithEq => ZiskOperationType::ArithEq,
             OpType::Fcall => ZiskOperationType::Fcall,
+            OpType::ArithEq384 => ZiskOperationType::ArithEq384,
         }
     }
 }
@@ -81,6 +83,7 @@ impl Display for OpType {
             Self::PubOut => write!(f, "PubOut"),
             Self::ArithEq => write!(f, "Arith256"),
             Self::Fcall => write!(f, "Fcall"),
+            Self::ArithEq384 => write!(f, "Arith384"),
         }
     }
 }
@@ -100,6 +103,7 @@ impl FromStr for OpType {
             "s" => Ok(Self::Sha256),
             "aeq" => Ok(Self::ArithEq),
             "fcall" => Ok(Self::Fcall),
+            "aeq384" => Ok(Self::ArithEq384),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -271,6 +275,7 @@ const KECCAK_COST: u64 = 167000;
 const SHA256_COST: u64 = 9000;
 const ARITH_EQ_COST: u64 = 1200;
 const FCALL_COST: u64 = INTERNAL_COST;
+const ARITH_EQ_384_COST: u64 = 2000;
 
 /// Table of Zisk opcode definitions: enum, name, type, cost, code and implementation functions
 /// This table is the backbone of the Zisk processor, it determines what functionality is supported,
@@ -342,27 +347,13 @@ define_ops! {
     (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, opc_bn254_complex_add, op_bn254_complex_add),
     (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, opc_bn254_complex_sub, op_bn254_complex_sub),
     (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, opc_bn254_complex_mul, op_bn254_complex_mul),
-    (FAddD, "fadd.d", Internal, INTERNAL_COST, 0xe0, 0, opc_fadd_d, op_fadd_d),
-    (FSubD, "fsub.d", Internal, INTERNAL_COST, 0xe1, 0, opc_fsub_d, op_fsub_d),
-    (FMulD, "fmul.d", Internal, INTERNAL_COST, 0xe2, 0, opc_fmul_d, op_fmul_d),
-    (FDivD, "fdiv.d", Internal, INTERNAL_COST, 0xe3, 0, opc_fdiv_d, op_fdiv_d),
-    (FSqrtD, "fsqrt.d", Internal, INTERNAL_COST, 0xe4, 0, opc_fsqrt_d, op_fsqrt_d),
-    (FMaxD, "fmax.d", Internal, INTERNAL_COST, 0xe5, 0, opc_fmax_d, op_fmax_d),
-    (FMinD, "fmin.d", Internal, INTERNAL_COST, 0xe6, 0, opc_fmin_d, op_fmin_d),
-    (FEqD, "feq.d", Internal, INTERNAL_COST, 0xe7, 0, opc_feq_d, op_feq_d),
-    (FLeD, "fle.d", Internal, INTERNAL_COST, 0xe8, 0, opc_fle_d, op_fle_d),
-    (FLtD, "flt.d", Internal, INTERNAL_COST, 0xe9, 0, opc_flt_d, op_flt_d),
-    (FClassD, "fclass.d", Internal, INTERNAL_COST, 0xea, 0, opc_fclass_d, op_fclass_d),
-    (FctvDS, "fcvt.d.s", Internal, INTERNAL_COST, 0xeb, 0, opc_fctv_d_s, op_fctv_d_s),
-    (FctvDW, "fcvt.d.w", Internal, INTERNAL_COST, 0xec, 0, opc_fctv_d_w, op_fctv_d_w),
-    (FctvDWU, "fcvt.d.wu", Internal, INTERNAL_COST, 0xed, 0, opc_fctv_d_wu, op_fctv_d_wu),
-    (FctvSD, "fcvt.s.d", Internal, INTERNAL_COST, 0xee, 0, opc_fctv_s_d, op_fctv_s_d),
-    (FctvWD, "fcvt.w.d", Internal, INTERNAL_COST, 0xef, 0, opc_fctv_w_d, op_fctv_w_d),
-    (FctvWUD, "fcvt.wu.d", Internal, INTERNAL_COST, 0xd0, 0, opc_fctv_wu_d, op_fctv_wu_d),
-    (FsgnjD, "fsgnj.d", Internal, INTERNAL_COST, 0xd1, 0, opc_fsgnj_d, op_fsgnj_d),
-    (FsgnjnD, "fsgnjn.d", Internal, INTERNAL_COST, 0xd2, 0, opc_fsgnjn_d, op_fsgnjn_d),
-    (FsgnjxD, "fsgnjx.d", Internal, INTERNAL_COST, 0xd3, 0, opc_fsgnjx_d, op_fsgnjx_d),
-
+    (Halt, "halt", Internal, INTERNAL_COST, 0xff, 144, opc_halt, op_halt),
+    (Arith384Mod, "arith384_mod", ArithEq384, ARITH_EQ_384_COST, 0xe2, 232, opc_arith384_mod, op_arith384_mod),
+    (Bls12_381CurveAdd, "bls12_381_curve_add", ArithEq384, ARITH_EQ_384_COST, 0xe3, 208, opc_bls12_381_curve_add, op_bls12_381_curve_add),
+    (Bls12_381CurveDbl, "bls12_381_curve_dbl", ArithEq384, ARITH_EQ_384_COST, 0xe4, 96, opc_bls12_381_curve_dbl, op_bls12_381_curve_dbl),
+    (Bls12_381ComplexAdd, "bls12_381_complex_add", ArithEq384, ARITH_EQ_384_COST, 0xe5, 208, opc_bls12_381_complex_add, op_bls12_381_complex_add),
+    (Bls12_381ComplexSub, "bls12_381_complex_sub", ArithEq384, ARITH_EQ_384_COST, 0xe6, 208, opc_bls12_381_complex_sub, op_bls12_381_complex_sub),
+    (Bls12_381ComplexMul, "bls12_381_complex_mul", ArithEq384, ARITH_EQ_384_COST, 0xe7, 208, opc_bls12_381_complex_mul, op_bls12_381_complex_mul),
 }
 
 /* INTERNAL operations */
@@ -1639,6 +1630,216 @@ pub fn op_bn254_complex_mul(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_bn254_complex_mul() is not implemented");
 }
 
+#[inline(always)]
+pub fn opc_arith384_mod(ctx: &mut InstContext) {
+    const WORDS: usize = 5 + 4 * 6;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 5, 4, 6, 0, &mut data, "arith384_mod");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 5 indirections
+        let (_, rest) = data.split_at(5);
+        let (a, rest) = rest.split_at(6);
+        let (b, rest) = rest.split_at(6);
+        let (c, module) = rest.split_at(6);
+        let mut d = [0u64; 6];
+
+        let a: &[u64; 6] = a.try_into().expect("opc_arith384_mod: a.len != 6");
+        let b: &[u64; 6] = b.try_into().expect("opc_arith384_mod: b.len != 6");
+        let c: &[u64; 6] = c.try_into().expect("opc_arith384_mod: c.len != 6");
+        let module: &[u64; 6] = module.try_into().expect("opc_arith384_mod: module.len != 6");
+
+        let mut d = [0u64; 6];
+
+        precompiles_helpers::arith384_mod(a, b, c, module, &mut d);
+
+        // [a,b,c,module,4:d]
+        for (i, d) in d.iter().enumerate() {
+            ctx.mem.write(data[4] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Arith384Mod can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_arith384_mod(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_arith384_mod() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 12;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_curve_add");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (p1, p2) = rest.split_at(12);
+
+        let p1: &[u64; 12] = p1.try_into().expect("opc_bls12_381_curve_add: p1.len != 12");
+        let p2: &[u64; 12] = p2.try_into().expect("opc_bls12_381_curve_add: p2.len != 12");
+        let mut p3 = [0u64; 12];
+
+        precompiles_helpers::bls12_381_curve_add(p1, p2, &mut p3);
+
+        // [0:p1,p2]
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bls12_381CurveAdd can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_curve_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_curve_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_curve_dbl(ctx: &mut InstContext) {
+    const WORDS: usize = 12;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 0, 1, 12, 0, &mut data, "bls12_381_curve_dbl");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        let p1: &[u64; 12] = &data;
+        let mut p3 = [0u64; 12];
+
+        precompiles_helpers::bls12_381_curve_dbl(p1, &mut p3);
+
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bls12_381CurveDbl can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_curve_dbl(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_curve_dbl() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_complex_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 12;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_add");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(12);
+
+        let f1: &[u64; 12] = f1.try_into().expect("opc_bls12_381_complex_add: f1.len != 12");
+        let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_add: f2.len != 12");
+        let mut f3 = [0u64; 12];
+
+        precompiles_helpers::bls12_381_complex_add(f1, f2, &mut f3);
+
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bls12_381ComplexAdd can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_complex_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_complex_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 12;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_sub");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(12);
+
+        let f1: &[u64; 12] = f1.try_into().expect("opc_bls12_381_complex_sub: f1.len != 12");
+        let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_sub: f2.len != 12");
+        let mut f3 = [0u64; 12];
+
+        precompiles_helpers::bls12_381_complex_sub(f1, f2, &mut f3);
+
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bls12_381ComplexSub can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_complex_sub(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_complex_sub() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 12;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_mul");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(12);
+
+        let f1: &[u64; 12] = f1.try_into().expect("opc_bls12_381_complex_mul: f1.len != 12");
+        let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_mul: f2.len != 12");
+        let mut f3 = [0u64; 12];
+
+        precompiles_helpers::bls12_381_complex_mul(f1, f2, &mut f3);
+
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bls12_381ComplexMul can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bls12_381_complex_mul(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bls12_381_complex_mul() is not implemented");
+}
+
 impl From<ZiskRequiredOperation> for ZiskOp {
     fn from(value: ZiskRequiredOperation) -> Self {
         ZiskOp::try_from_code(value.opcode).unwrap()
@@ -1786,363 +1987,16 @@ pub fn opc_fcall_get(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Implements fadd_d
+/// Implements halt
 #[inline(always)]
-pub fn op_fadd_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fadd_d() is not implemented");
+pub fn op_halt(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_halt() is not implemented");
 }
 
-/// InstContext-based wrapper over op_fadd_dt()
+/// InstContext-based wrapper over op_halt()
 #[inline(always)]
-pub fn opc_fadd_d(ctx: &mut InstContext) {
-    // ctx.c = fadd_d(ctx.a, ctx.b);
-
-    // println!("INT fadd_d({},{}) = {}", ctx.a, ctx.b, ctx.c);
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af + bf;
-    ctx.c = cf.to_bits();
-
-    // let a_sign: u64 = ctx.a >> 63;
-    // let a_exponent: u64 = (ctx.a >> 52) & 0x7FF;
-    // let a_mantissa: u64 = ctx.a & 0xFFFFFFFFFFFFF;
-    // let b_sign: u64 = ctx.b >> 63;
-    // let b_exponent: u64 = (ctx.b >> 52) & 0x7FF;
-    // let b_mantissa: u64 = ctx.b & 0xFFFFFFFFFFFFF;
-    // let c_sign: u64 = ctx.c >> 63;
-    // let c_exponent: u64 = (ctx.c >> 52) & 0x7FF;
-    // let c_mantissa: u64 = ctx.c & 0xFFFFFFFFFFFFF;
-
-    // println!(">>>>>> opc_fadd_d()\na: u64={:x} sign={}, exponent={}, mantissa=1.{}\nb: u64={:x} sign={}, exponent={}, mantissa=1.{}\nc: u64={:x} sign={}, exponent={}, mantissa=1.{}",
-    //     ctx.a, a_sign, a_exponent, a_mantissa,
-    //     ctx.b, b_sign, b_exponent, b_mantissa,
-    //     ctx.c, c_sign, c_exponent, c_mantissa
-    // );
-
-    ctx.flag = false;
-}
-
-/// Implements fsub_d
-#[inline(always)]
-pub fn op_fsub_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fsub_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_sub_d()
-#[inline(always)]
-pub fn opc_fsub_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af - bf;
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fmul_d
-#[inline(always)]
-pub fn op_fmul_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fmul_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fmul_d()
-#[inline(always)]
-pub fn opc_fmul_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af * bf;
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fdiv_d
-#[inline(always)]
-pub fn op_fdiv_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fdiv_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fdiv_d()
-#[inline(always)]
-pub fn opc_fdiv_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af - bf;
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fsqrt_d
-#[inline(always)]
-pub fn op_fsqrt_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fsqrt_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fsqrt_d()
-#[inline(always)]
-pub fn opc_fsqrt_d(ctx: &mut InstContext) {
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = bf.sqrt();
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fmax_d
-#[inline(always)]
-pub fn op_fmax_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fmax_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fmax_d()
-#[inline(always)]
-pub fn opc_fmax_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = if af > bf { af } else { bf };
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fmin_d
-#[inline(always)]
-pub fn op_fmin_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fmin_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fmin_d()
-#[inline(always)]
-pub fn opc_fmin_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = if af < bf { af } else { bf };
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements feq_d
-#[inline(always)]
-pub fn op_feq_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_feq_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_feq_d()
-#[inline(always)]
-pub fn opc_feq_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    if af == bf {
-        ctx.c = 1;
-        ctx.flag = true;
-    } else {
-        ctx.c = 0;
-        ctx.flag = false;
-    }
-}
-
-/// Implements fle_d
-#[inline(always)]
-pub fn op_fle_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fle_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fle_d()
-#[inline(always)]
-pub fn opc_fle_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    if af <= bf {
-        ctx.c = 1;
-        ctx.flag = true;
-    } else {
-        ctx.c = 0;
-        ctx.flag = false;
-    }
-}
-
-/// Implements flt_d
-#[inline(always)]
-pub fn op_flt_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_flt_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_flt_d()
-#[inline(always)]
-pub fn opc_flt_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    if af < bf {
-        ctx.c = 1;
-        ctx.flag = true;
-    } else {
-        ctx.c = 0;
-        ctx.flag = false;
-    }
-}
-
-/// Implements fcall_get, fcall result
-#[inline(always)]
-pub fn op_fclass_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fclass_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fcall_get()
-#[inline(always)]
-pub fn opc_fclass_d(ctx: &mut InstContext) {
-    // rd bit Meaning
-    // 0: rs1 is - infinite
-    // 1: rs1 is a negative normal number.
-    // 2: rs1 is a negative subnormal number.
-    // .
-    // 3: rs1 is - 0
-    // 4: rs1 is + 0.
-    // 5: rs1 is a positive subnormal number.
-    // 6: rs1 is a positive normal number.
-    // 7: rs1 is + infinite
-    // 8: rs1 is a signaling NaN.
-    // 9: rs1 is a quiet NaN.
-
+pub fn opc_halt(ctx: &mut InstContext) {
+    ctx.error = true;
     ctx.c = 0;
-    ctx.flag = false;
-}
-
-/// Implements fctv_d_s
-#[inline(always)]
-pub fn op_fctv_d_s(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fctv_d_s() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fctv_d_s()
-#[inline(always)]
-pub fn opc_fctv_d_s(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af;
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fctv_d_w
-#[inline(always)]
-pub fn op_fctv_d_w(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fctv_d_w() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fctv_d_w()
-#[inline(always)]
-pub fn opc_fctv_d_w(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af;
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fctv_d_wu
-#[inline(always)]
-pub fn op_fctv_d_wu(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fctv_d_wu() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fctv_d_wu()
-#[inline(always)]
-pub fn opc_fctv_d_wu(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af;
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fctv_s_d
-#[inline(always)]
-pub fn op_fctv_s_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fctv_s_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fctv_s_d()
-#[inline(always)]
-pub fn opc_fctv_s_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af;
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fctv_w_d
-#[inline(always)]
-pub fn op_fctv_w_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fctv_w_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fctv_w_d()
-#[inline(always)]
-pub fn opc_fctv_w_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af;
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fctv_wu_d
-#[inline(always)]
-pub fn op_fctv_wu_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fctv_wu_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fctv_wu_d()
-#[inline(always)]
-pub fn opc_fctv_wu_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af;
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fsgnj_d
-#[inline(always)]
-pub fn op_fsgnj_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fsgnj_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fsgnj_d()
-#[inline(always)]
-pub fn opc_fsgnj_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af;
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fsgnjn_d
-#[inline(always)]
-pub fn op_fsgnjn_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fsgnjn_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fsgnj_d()
-#[inline(always)]
-pub fn opc_fsgnjn_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af;
-    ctx.c = cf.to_bits();
-    ctx.flag = false;
-}
-
-/// Implements fsgnjx_d
-#[inline(always)]
-pub fn op_fsgnjx_d(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fsgnjx_d() is not implemented");
-}
-
-/// InstContext-based wrapper over op_fsgnjx_d()
-#[inline(always)]
-pub fn opc_fsgnjx_d(ctx: &mut InstContext) {
-    let af: f64 = f64::from_bits(ctx.a);
-    let bf: f64 = f64::from_bits(ctx.b);
-    let cf: f64 = af;
-    ctx.c = cf.to_bits();
     ctx.flag = false;
 }

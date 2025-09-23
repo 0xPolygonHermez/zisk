@@ -488,7 +488,7 @@ impl Rvd {
         }
     }
 
-    // Converta a compressed register index (e.g. rs1') to a full register index (e.g. rs1)
+    // Converts a compressed register index (e.g. rs1') to a full register index (e.g. rs1)
     // Source: https://www2.eecs.berkeley.edu/Pubs/TechRpts/2015/EECS-2015-209.pdf
     //     RVC Register Number 000 001 010 011 100 101 110 111
     // Integer Register Number  x8  x9 x10 x11 x12 x13 x14 x15

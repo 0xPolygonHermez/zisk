@@ -6,7 +6,9 @@ use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU, ProofOptions};
+use proofman_common::{
+    initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU, ProofOptions,
+};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -19,7 +21,7 @@ use zisk_common::{ExecutorStats, ZiskLibInitFn};
 use zisk_pil::*;
 
 use crate::{
-    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
+    commands::{get_proving_key, get_witness_computation_lib, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -93,9 +95,6 @@ pub struct ZiskStats {
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
-    #[clap(short = 'c', long)]
-    pub chunk_size_bits: Option<u64>,
-
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
 
@@ -103,8 +102,11 @@ pub struct ZiskStats {
     #[clap(long)]
     pub mpi_node: Option<usize>,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
+
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub shared_tables: bool,
 }
 
 impl ZiskStats {
@@ -190,32 +192,27 @@ impl ZiskStats {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let proofman;
-        let mpi_context = initialize_mpi()?;
+        let proofman = ProofMan::<Goldilocks>::new(
+            proving_key,
+            custom_commits_map,
+            true,
+            false,
+            false,
+            gpu_params,
+            self.verbose.into(),
+        )
+        .expect("Failed to initialize proofman");
 
-        proofman_common::initialize_logger(self.verbose.into(), Some(mpi_context.world_rank));
+        let mpi_ctx = proofman.get_mpi_ctx();
 
-        let world_ranks;
+        initialize_logger(self.verbose.into(), Some(mpi_ctx.rank));
 
-        let world_rank = mpi_context.world_rank;
-        let local_rank = mpi_context.local_rank;
+        let world_ranks = mpi_ctx.n_processes;
+
+        let world_rank = mpi_ctx.rank;
+        let local_rank = mpi_ctx.node_rank;
         #[cfg(distributed)]
         {
-            let world = mpi_context.universe.world();
-            world_ranks = world.size() as usize;
-
-            proofman = ProofMan::<Goldilocks>::new(
-                proving_key,
-                custom_commits_map,
-                true,
-                false,
-                false,
-                gpu_params,
-                self.verbose.into(),
-                Some(mpi_context.universe),
-            )
-            .expect("Failed to initialize proofman");
-
             let mut is_active = true;
 
             if let Some(mpi_node) = self.mpi_node {
@@ -230,9 +227,9 @@ impl ZiskStats {
             } else {
                 mpi::topology::Color::undefined()
             };
-            let _sub_comm = world.split_by_color(color);
+            let _sub_comm = mpi_ctx.world.split_by_color(color);
 
-            world.split_shared(world_rank);
+            mpi_ctx.world.split_shared(world_rank);
 
             if !is_active {
                 println!(
@@ -243,21 +240,6 @@ impl ZiskStats {
 
                 return Ok(());
             }
-        }
-
-        #[cfg(not(distributed))]
-        {
-            proofman = ProofMan::<Goldilocks>::new(
-                proving_key,
-                custom_commits_map,
-                true,
-                false,
-                false,
-                gpu_params,
-                self.verbose.into(),
-            )
-            .expect("Failed to initialize proofman");
-            world_ranks = 1;
         }
 
         let mut witness_lib;
@@ -272,7 +254,7 @@ impl ZiskStats {
 
         if self.asm.is_some() {
             // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_ctx.rank,);
 
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }
@@ -289,11 +271,11 @@ impl ZiskStats {
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,
-                    self.chunk_size_bits,
                     Some(world_rank),
                     Some(local_rank),
                     self.port,
                     self.unlock_mapped_memory,
+                    self.shared_tables,
                 )
                 .expect("Failed to initialize witness library");
 
@@ -504,6 +486,9 @@ impl ZiskStats {
             val if val == ROM_DATA_AIR_IDS[0] => "ROM_DATA".to_string(),
             val if val == INPUT_DATA_AIR_IDS[0] => "INPUT_DATA".to_string(),
             val if val == MEM_ALIGN_AIR_IDS[0] => "MEM_ALIGN".to_string(),
+            val if val == MEM_ALIGN_BYTE_AIR_IDS[0] => "MEM_ALIGN_BYTE".to_string(),
+            val if val == MEM_ALIGN_READ_BYTE_AIR_IDS[0] => "MEM_ALIGN_READ_BYTE".to_string(),
+            val if val == MEM_ALIGN_WRITE_BYTE_AIR_IDS[0] => "MEM_ALIGN_WRITE_BYTE".to_string(),
             // val if val == MEM_ALIGN_ROM_AIR_IDS[0] => "MEM_ALIGN_ROM".to_string(),
             val if val == ARITH_AIR_IDS[0] => "ARITH".to_string(),
             // val if val == ARITH_TABLE_AIR_IDS[0] => "ARITH_TABLE".to_string(),
