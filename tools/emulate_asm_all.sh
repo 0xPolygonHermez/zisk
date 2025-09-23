@@ -184,7 +184,7 @@ if [ ${#TESTED_FILES[@]} -gt 0 ]; then
     echo ""
 fi
 
-echo "Total files processed: $((PASSED_COUNTER + FAILED_COUNTER)) passed: ✅${PASSED_COUNTER} failed: ❌${FAILED_COUNTER}"
+echo "Total files processed: $((PASSED_COUNTER + FAILED_COUNTER)): ✅${PASSED_COUNTER} passed, ❌${FAILED_COUNTER} failed"
 
 if [ $FAILED_COUNTER -eq 0 ]; then
     echo "✅ All ELF files processed successfully."
