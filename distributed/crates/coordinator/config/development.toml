@@ -9,4 +9,4 @@ port = 50051
 [logging]
 level = "info"
 format = "pretty"
-file_output = false
+file_path = "coordinator.log"

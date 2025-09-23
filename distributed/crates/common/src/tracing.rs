@@ -4,7 +4,9 @@ use std::{
     env,
     fmt::{self, Display},
 };
-use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
+use tracing_subscriber::{
+    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -29,7 +31,6 @@ impl Display for Environment {
 pub struct LoggingConfig {
     pub level: String,
     pub format: LogFormat,
-    pub file_output: bool,
     pub file_path: Option<String>,
 }
 
@@ -78,35 +79,142 @@ pub fn init(logging_config: Option<&LoggingConfig>) -> Result<()> {
         .or_else(|_| EnvFilter::try_new(&log_level))
         .unwrap_or_else(|_| EnvFilter::new("info"));
 
-    match log_format {
-        LogFormat::Json => {
-            tracing_subscriber::fmt()
-                .json()
-                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
-                .with_current_span(true)
-                .with_thread_ids(true)
-                .with_thread_names(true)
-                .with_env_filter(env_filter)
-                .init();
+    // Apply console logging with optional file logging
+    if let Some(config) = logging_config {
+        if let Some(file_path) = &config.file_path {
+            // Create logs directory if it doesn't exist
+            std::fs::create_dir_all("./logs").unwrap_or(());
+            let file_appender = tracing_appender::rolling::daily("./logs", file_path);
+
+            // Use non-blocking appender for better performance
+            let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+            // Store the guard to prevent the background thread from being dropped
+            // In a real application, you'd want to keep this guard alive for the app's lifetime
+            std::mem::forget(_guard);
+
+            match log_format {
+                LogFormat::Json => {
+                    tracing_subscriber::registry()
+                        .with(
+                            tracing_subscriber::fmt::layer()
+                                .json()
+                                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                                .with_current_span(true)
+                                .with_thread_ids(true)
+                                .with_thread_names(true)
+                                .with_writer(std::io::stdout),
+                        )
+                        .with(
+                            tracing_subscriber::fmt::layer()
+                                .json()
+                                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                                .with_current_span(true)
+                                .with_thread_ids(true)
+                                .with_thread_names(true)
+                                .with_writer(non_blocking)
+                                .with_ansi(false),
+                        )
+                        .with(env_filter)
+                        .init();
+                }
+                LogFormat::Compact => {
+                    tracing_subscriber::registry()
+                        .with(
+                            tracing_subscriber::fmt::layer()
+                                .compact()
+                                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                                .with_target(true)
+                                .with_thread_ids(true)
+                                .with_writer(std::io::stdout),
+                        )
+                        .with(
+                            tracing_subscriber::fmt::layer()
+                                .compact()
+                                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                                .with_target(true)
+                                .with_thread_ids(true)
+                                .with_writer(non_blocking)
+                                .with_ansi(false),
+                        )
+                        .with(env_filter)
+                        .init();
+                }
+                LogFormat::Pretty => {
+                    tracing_subscriber::registry()
+                        .with(
+                            tracing_subscriber::fmt::layer()
+                                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                                .with_writer(std::io::stdout),
+                        )
+                        .with(
+                            tracing_subscriber::fmt::layer()
+                                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                                .with_writer(non_blocking)
+                                .with_ansi(false),
+                        )
+                        .with(env_filter)
+                        .init();
+                }
+            }
+        } else {
+            // Console output only
+            match log_format {
+                LogFormat::Json => {
+                    tracing_subscriber::fmt()
+                        .json()
+                        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                        .with_current_span(true)
+                        .with_thread_ids(true)
+                        .with_thread_names(true)
+                        .with_env_filter(env_filter)
+                        .init();
+                }
+                LogFormat::Compact => {
+                    tracing_subscriber::fmt()
+                        .compact()
+                        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                        .with_target(true)
+                        .with_thread_ids(true)
+                        .with_env_filter(env_filter)
+                        .init();
+                }
+                LogFormat::Pretty => {
+                    tracing_subscriber::fmt()
+                        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                        .with_env_filter(env_filter)
+                        .init();
+                }
+            }
         }
-        LogFormat::Compact => {
-            tracing_subscriber::fmt()
-                .compact()
-                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
-                .with_target(true)
-                .with_thread_ids(true)
-                .with_env_filter(env_filter)
-                .init();
-        }
-        LogFormat::Pretty => {
-            // Default to pretty format
-            tracing_subscriber::fmt()
-                // .pretty()
-                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
-                // .with_thread_ids(true)
-                // .with_thread_names(true)
-                .with_env_filter(env_filter)
-                .init();
+    } else {
+        // Console output only (no config provided)
+        match log_format {
+            LogFormat::Json => {
+                tracing_subscriber::fmt()
+                    .json()
+                    .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                    .with_current_span(true)
+                    .with_thread_ids(true)
+                    .with_thread_names(true)
+                    .with_env_filter(env_filter)
+                    .init();
+            }
+            LogFormat::Compact => {
+                tracing_subscriber::fmt()
+                    .compact()
+                    .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                    .with_target(true)
+                    .with_thread_ids(true)
+                    .with_env_filter(env_filter)
+                    .init();
+            }
+            LogFormat::Pretty => {
+                tracing_subscriber::fmt()
+                    .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                    .with_env_filter(env_filter)
+                    .init();
+            }
         }
     }
 
