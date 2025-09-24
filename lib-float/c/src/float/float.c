@@ -527,6 +527,40 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // fmax(+0.0, -0.0) = +0.0
+                            if (F32_IS_PLUS_ZERO(fregs[rs1]) && F32_IS_MINUS_ZERO(fregs[rs2])) {
+                                fregs[rd] = F32_MINUS_ZERO;
+                                break;
+                            }
+                            // fmax(-0.0, +0.0) = +0.0
+                            if (F32_IS_MINUS_ZERO(fregs[rs1]) && F32_IS_PLUS_ZERO(fregs[rs2])) {
+                                fregs[rd] = F32_MINUS_ZERO;
+                                break;
+                            }
+                            // fmax(NaN, NaN) = NaN
+                            if (F32_IS_NAN(fregs[rs1]) && F32_IS_NAN(fregs[rs2])) {
+                                fregs[rd] = F32_QUIET_NAN;
+                                if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]))
+                                    softfloat_exceptionFlags |= softfloat_flag_invalid;
+                                break;
+                            }
+                            // fmax(x, NaN) = x
+                            if (F32_IS_NAN(fregs[rs1])) {
+                                fregs[rd] = fregs[rs2];
+                                if (F32_IS_SIGNALING_NAN(fregs[rs1]))
+                                    softfloat_exceptionFlags |= softfloat_flag_invalid;
+                                break;
+                            }
+                            // fmax(NaN, x) = x
+                            if (F32_IS_NAN(fregs[rs2])) {
+                                fregs[rd] = fregs[rs1];
+                                if (F32_IS_SIGNALING_NAN(fregs[rs2]))
+                                    softfloat_exceptionFlags |= softfloat_flag_invalid;
+                                break;
+                            }
+
+                            // Call f32_lt()
                             fregs[rd] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? fregs[rs1] : fregs[rs2];
                             break;
                         }
