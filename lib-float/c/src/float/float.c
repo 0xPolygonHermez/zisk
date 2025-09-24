@@ -185,11 +185,46 @@ void _zisk_float (void)
                     break;
                 }
                 case 4 : { //("R", "fsub.s"),
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                    // NaN propagation: x - NaN = NaN, NaN - x = NaN, NaN - NaN = NaN
+                    if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]))
+                            softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // fsub.s(∞, ∞) = NaN    # Invalid Operation! (same-signed infinity)
+                    // fsub.s(∞, -∞) = ∞     # Valid operation
+                    // fsub.s(-∞, ∞) = -∞    # Valid operation
+                    // fsub.s(-∞, -∞) = NaN  # Invalid Operation! (same-signed infinity)
+                    if (F32_IS_PLUS_INFINITE(fregs[rs1]) && F32_IS_PLUS_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    if (F32_IS_PLUS_INFINITE(fregs[rs1]) && F32_IS_MINUS_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F32_PLUS_INFINITE;
+                        break;
+                    }
+                    if (F32_IS_MINUS_INFINITE(fregs[rs1]) && F32_IS_PLUS_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F32_MINUS_INFINITE;
+                        break;
+                    }
+                    if (F32_IS_MINUS_INFINITE(fregs[rs1]) && F32_IS_MINUS_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+
+                    // Get rounding mode
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
+
+                    // Call f32_sub()
                     fregs[rd] = (uint64_t)f32_sub( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     // if (softfloat_exceptionFlags & softfloat_flag_invalid) {
                     //     //if (fregs[rs1] == 0)
@@ -304,6 +339,15 @@ void _zisk_float (void)
                     // Call f64_mul()
                     fregs[rd] = (uint64_t)f64_mul( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
+                    // riscv-arch-test/riscv-test-suite/rv32i_m/D/src/fmul.d_b9-01.S
+
+                    // inst_1263:
+                    // // fs1 == 1 and fe1 == 0x000 and fm1 == 0x0000000000001 and fs2 == 1 and fe2 == 0x37c and fm2 == 0x9999999999998 and  fcsr == 0x0 and rm_val == 7   
+                    // /* opcode: fmul.d ; op1:f30; op2:f29; dest:f31; op1val:0x8000000000000001; op2val:0xb7c9999999999998;
+                    //    valaddr_reg:x3; val_offset:2526*FLEN/8; rmval:dyn; fcsr: 0;
+                    //    correctval:??; testreg:x2
+                    // */
+                    // TEST_FPRR_OP(fmul.d, f31, f30, f29, dyn, 0, 0, x3, 2526*FLEN/8, x4, x1, x2)
                 }
                 case 12 : { //("R", "fdiv.s"),
                     // Get registers
