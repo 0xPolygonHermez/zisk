@@ -9,7 +9,7 @@ extern "C" {
 #define FLOAT_ASSERT(condition) \
     do { \
         if (!(condition)) { \
-            *(uint64_t *)0x0 = 0; \
+            *(uint64_t *)0x0 = __LINE__; \
         } \
     } while (0)
 
@@ -1271,36 +1271,36 @@ void _zisk_float (void)
                             switch ((inst >> 20) & 0x1F) {
                                 case 0 : { //("R", "fclass.s"),
                                     uint64_t rd = (inst >> 7) & 0x1F;
-                                    uint64_t rs1 = (inst >> 15) & 0x1F;
-                                    fregs_x[rd] = 0;
-                                    if (fregs[rs1] == F32_MINUS_INFINITE)
-                                        fregs_x[rd] |= (1 << 0);
-                                    else if (fregs[rs1] == F32_PLUS_INFINITE)
-                                        fregs_x[rd] |= (1 << 7);
-                                    else if (fregs[rs1] == F32_MINUS_ZERO)
-                                        fregs_x[rd] |= (1 << 3);
-                                    else if (fregs[rs1] == F32_PLUS_ZERO)
-                                        fregs_x[rd] |= (1 << 4);
-                                    else if ( (fregs[rs1] & F32_EXPONENT_MASK) != 0 && (fregs[rs1] & F32_EXPONENT_MASK) != F32_EXPONENT_MASK ) // not zero or inf or NaN
-                                    {
-                                        if (fregs[rs1] & F32_SIGN_BIT_MASK)
-                                            fregs_x[rd] |= (1 << 1); // negative normal
+                                    if (rd != 0) {
+                                        uint64_t rs1 = (inst >> 15) & 0x1F;
+                                        if (F32_IS_MINUS_INFINITE(fregs[rs1]))
+                                            fregs_x[rd] = (1 << 0); // negative infinite
+                                        else if (F32_IS_PLUS_INFINITE(fregs[rs1]))
+                                            fregs_x[rd] = (1 << 7); // positive infinite
+                                        else if (F32_IS_MINUS_ZERO(fregs[rs1]))
+                                            fregs_x[rd] = (1 << 3); // negative zero
+                                        else if (F32_IS_PLUS_ZERO(fregs[rs1]))
+                                            fregs_x[rd] = (1 << 4); // positive zero
+                                        else if (F32_IS_QUIET_NAN(fregs[rs1]))
+                                            fregs_x[rd] = (1 << 9); // quiet NaN
+                                        else if (F32_IS_SIGNALING_NAN(fregs[rs1]))
+                                            fregs_x[rd] = (1 << 8); // signaling NaN
+                                        else if (F32_IS_SUBNORMAL(fregs[rs1]))
+                                        {
+                                            if (fregs[rs1] & F32_SIGN_BIT_MASK)
+                                                fregs_x[rd] = (1 << 2); // negative subnormal
+                                            else
+                                                fregs_x[rd] = (1 << 5); // positive subnormal
+                                        }
                                         else
-                                            fregs_x[rd] |= (1 << 6); // positive normal
+                                        {
+                                            FLOAT_ASSERT(F32_IS_NORMAL(fregs[rs1]));
+                                            if (fregs[rs1] & F32_SIGN_BIT_MASK)
+                                                fregs_x[rd] = (1 << 1); // negative normal
+                                            else
+                                                fregs_x[rd] = (1 << 6); // positive normal
+                                        }
                                     }
-                                    else if ( (fregs[rs1] & F32_EXPONENT_MASK) == 0 && (fregs[rs1] & F32_MANTISSA_MASK) != 0 ) // subnormal
-                                    {
-                                        if (fregs[rs1] & F32_SIGN_BIT_MASK)
-                                            fregs_x[rd] |= (1 << 2); // negative subnormal
-                                        else
-                                            fregs_x[rd] |= (1 << 5); // positive subnormal
-                                    }
-                                    else if ( ((fregs[rs1] & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && ((fregs[rs1] & F32_QUIET_NAN_MASK) == 0) )
-                                        fregs_x[rd] |= (1 << 8); // signaling NaN
-                                    else if ( ((fregs[rs1] & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && ((fregs[rs1] & F32_QUIET_NAN_MASK) != 0) )
-                                        fregs_x[rd] |= (1 << 9); // quiet NaN
-                                    else
-                                        ; // should not happen
                                     break;
                                 }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
@@ -1313,6 +1313,7 @@ void _zisk_float (void)
                             FLOAT_ASSERT(false);
                             break;
                     }
+                    break;
                 }
                 case 113 : {
                     switch ((inst >> 12) & 0x7) {
@@ -1348,36 +1349,36 @@ void _zisk_float (void)
                             switch ((inst >> 20) & 0x1F) {
                                 case 0 : { //("R", "fclass.d"),
                                     uint64_t rd = (inst >> 7) & 0x1F;
-                                    uint64_t rs1 = (inst >> 15) & 0x1F;
-                                    fregs_x[rd] = 0;
-                                    if (fregs[rs1] == F64_MINUS_INFINITE)
-                                        fregs_x[rd] |= (1 << 0);
-                                    else if (fregs[rs1] == F64_PLUS_INFINITE)
-                                        fregs_x[rd] |= (1 << 7);
-                                    else if (fregs[rs1] == F64_MINUS_ZERO)
-                                        fregs_x[rd] |= (1 << 3);
-                                    else if (fregs[rs1] == F64_PLUS_ZERO)
-                                        fregs_x[rd] |= (1 << 4);
-                                    else if ( (fregs[rs1] & F64_EXPONENT_MASK) != 0 && (fregs[rs1] & F64_EXPONENT_MASK) != F64_EXPONENT_MASK ) // not zero or inf or NaN
-                                    {
-                                        if (fregs[rs1] & F64_SIGN_BIT_MASK)
-                                            fregs_x[rd] |= (1 << 1); // negative normal
+                                    if (rd != 0) {
+                                        uint64_t rs1 = (inst >> 15) & 0x1F;
+                                        if (fregs[rs1] == F64_MINUS_INFINITE)
+                                            fregs_x[rd] = (1 << 0); // negative infinite
+                                        else if (fregs[rs1] == F64_PLUS_INFINITE)
+                                            fregs_x[rd] = (1 << 7); // positive infinite
+                                        else if (fregs[rs1] == F64_MINUS_ZERO)
+                                            fregs_x[rd] = (1 << 3); // negative zero
+                                        else if (fregs[rs1] == F64_PLUS_ZERO)
+                                            fregs_x[rd] = (1 << 4); // positive zero
+                                        else if (F64_IS_QUIET_NAN(fregs[rs1]))
+                                            fregs_x[rd] = (1 << 9); // quiet NaN
+                                        else if (F64_IS_SIGNALING_NAN(fregs[rs1]))
+                                            fregs_x[rd] = (1 << 8); // signaling NaN
+                                        else if (F64_IS_SUBNORMAL(fregs[rs1]))
+                                        {
+                                            if (fregs[rs1] & F64_SIGN_BIT_MASK)
+                                                fregs_x[rd] = (1 << 2); // negative subnormal
+                                            else
+                                                fregs_x[rd] = (1 << 5); // positive subnormal
+                                        }
                                         else
-                                            fregs_x[rd] |= (1 << 6); // positive normal
+                                        {
+                                            FLOAT_ASSERT(F64_IS_NORMAL(fregs[rs1]));
+                                            if (fregs[rs1] & F64_SIGN_BIT_MASK)
+                                                fregs_x[rd] = (1 << 1); // negative normal
+                                            else
+                                                fregs_x[rd] = (1 << 6); // positive normal
+                                        }
                                     }
-                                    else if ( (fregs[rs1] & F64_EXPONENT_MASK) == 0 && (fregs[rs1] & F64_MANTISSA_MASK) != 0 ) // subnormal
-                                    {
-                                        if (fregs[rs1] & F64_SIGN_BIT_MASK)
-                                            fregs_x[rd] |= (1 << 2); // negative subnormal
-                                        else
-                                            fregs_x[rd] |= (1 << 5); // positive subnormal
-                                    }
-                                    else if ( ((fregs[rs1] & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && ((fregs[rs1] & F64_QUIET_NAN_MASK) == 0) )
-                                        fregs_x[rd] |= (1 << 8); // signaling NaN
-                                    else if ( ((fregs[rs1] & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && ((fregs[rs1] & F64_QUIET_NAN_MASK) != 0) )
-                                        fregs_x[rd] |= (1 << 9); // quiet NaN
-                                    else
-                                        ; // should not happen
                                     break;
                                 }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=113 funct3=0 inst=0x{inst:x}"),
@@ -1390,6 +1391,7 @@ void _zisk_float (void)
                             FLOAT_ASSERT(false);
                             break;
                     }
+                    break;
                 }
                 case 120 : {
                     switch ((inst >> 12) & 0x7) {

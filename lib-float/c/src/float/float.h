@@ -58,6 +58,9 @@ const uint64_t F32_QUIET_NAN_MASK = 0x00400000;
 #define F32_IS_MINUS_ZERO(a) ( (((a) & F32_SIGN_BIT_MASK) != 0) && (((a) & F32_EXPONENT_MASK) == 0) && (((a) & F32_MANTISSA_MASK) == 0) )
 #define F32_IS_ANY_ZERO(a) ( (((a) & F32_EXPONENT_MASK) == 0) && (((a) & F32_MANTISSA_MASK) == 0) )
 
+#define F32_IS_NORMAL(a) ( ((a) & F32_EXPONENT_MASK) != 0 && ((a) & F32_EXPONENT_MASK) != F32_EXPONENT_MASK )
+#define F32_IS_SUBNORMAL(a) ( ((a) & F32_EXPONENT_MASK) == 0 && ((a) & F32_MANTISSA_MASK) != 0 )
+
 // Macro functions for extracting exponent, mantissa and checking for corner cases
 #define F64_EXPONENT(a) (((a) & F64_EXPONENT_MASK) >> 52)
 #define F64_MANTISSA(a) ((a) & F64_MANTISSA_MASK)
@@ -73,6 +76,9 @@ const uint64_t F32_QUIET_NAN_MASK = 0x00400000;
 #define F64_IS_PLUS_ZERO(a) ( (((a) & F64_SIGN_BIT_MASK) == 0) && (((a) & F64_EXPONENT_MASK) == 0) && (((a) & F64_MANTISSA_MASK) == 0) )
 #define F64_IS_MINUS_ZERO(a) ( (((a) & F64_SIGN_BIT_MASK) != 0) && (((a) & F64_EXPONENT_MASK) == 0) && (((a) & F64_MANTISSA_MASK) == 0) )
 #define F64_IS_ANY_ZERO(a) ( (((a) & F64_EXPONENT_MASK) == 0) && (((a) & F64_MANTISSA_MASK) == 0) )
+
+#define F64_IS_NORMAL(a) ( ((a) & F64_EXPONENT_MASK) != 0 && ((a) & F64_EXPONENT_MASK) != F64_EXPONENT_MASK )
+#define F64_IS_SUBNORMAL(a) ( ((a) & F64_EXPONENT_MASK) == 0 && ((a) & F64_MANTISSA_MASK) != 0 )
 
 // Plus and minus infinity in IEEE 754 format
 const uint64_t F64_MINUS_INFINITE = 0xFFF0000000000000;
