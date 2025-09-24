@@ -5,8 +5,8 @@
 use riscv::{riscv_interpreter, RiscvInstruction};
 
 use crate::{
-    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, CSR_ADDR, FLOAT_LIB_ADDR, FLOAT_LIB_SP,
-    FREG_INST, FREG_RA, FREG_X0, INPUT_ADDR, MTVEC, OUTPUT_ADDR, ROM_ENTRY, ROM_EXIT,
+    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, CSR_ADDR, FLOAT_LIB_ROM_ADDR,
+    FLOAT_LIB_SP, FREG_INST, FREG_RA, FREG_X0, INPUT_ADDR, MTVEC, OUTPUT_ADDR, ROM_ENTRY, ROM_EXIT,
 };
 
 use std::collections::HashMap;
@@ -2148,11 +2148,11 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     // Jump back to the zisk_float function address
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
-    zib.src_b("imm", FLOAT_LIB_ADDR, false);
+    zib.src_b("imm", FLOAT_LIB_ROM_ADDR, false);
     zib.op("copyb").unwrap();
     zib.set_pc();
     zib.j(0, 4);
-    zib.verbose(&format!("Float: jump to FLOAT_LIB_ADDR={FLOAT_LIB_ADDR:x}"));
+    zib.verbose(&format!("Float: jump to FLOAT_LIB_ROM_ADDR={FLOAT_LIB_ROM_ADDR:x}"));
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
