@@ -28,7 +28,7 @@ fn main() {
             // print!("Result: 0x{}", hex_string);
         }
         Err(e) => {
-            eprintln!("Error during emulation: {e:?}");
+            eprintln!("Error during emulation ================= : {e:?}");
             process::exit(1);
         }
     }
