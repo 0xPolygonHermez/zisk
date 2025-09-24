@@ -207,9 +207,11 @@ void _zisk_float (void)
                     break;
                 }
                 case 8 : { //("R", "fmul.s"),
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
+
                     // infinity * NaN = NaN
                     if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_NAN(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
@@ -243,8 +245,12 @@ void _zisk_float (void)
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
+
+                    // Get rounding mode
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
+
+                    // Call f32_mul()
                     fregs[rd] = (uint64_t)f32_mul( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     if ((softfloat_exceptionFlags & softfloat_flag_underflow) && ((fregs[rd] & F32_SIGN_BIT_MASK) == 0) && ((fregs[rd] & F32_EXPONENT_MASK) != 0)) {
                         softfloat_exceptionFlags &= ~softfloat_flag_underflow;
@@ -252,11 +258,50 @@ void _zisk_float (void)
                     break;
                 }
                 case 9 : { //("R", "fmul.d"),
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                    // infinity * NaN = NaN
+                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_NAN(fregs[rs2])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        if (F64_IS_SIGNALING_NAN(fregs[rs2]))
+                            softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // NaN * infinity = NaN
+                    if (F64_IS_NAN(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        if (F64_IS_SIGNALING_NAN(fregs[rs1]))
+                            softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // NaN * NaN = NaN
+                    if (F64_IS_NAN(fregs[rs1]) || F64_IS_NAN(fregs[rs2])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]))
+                            softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // zero * infinity = NaN
+                    if (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // infinity * zero = NaN
+                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+
+                    // Get rounding mode
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
+
+                    // Call f64_mul()
                     fregs[rd] = (uint64_t)f64_mul( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
