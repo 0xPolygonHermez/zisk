@@ -210,21 +210,45 @@ void _zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7;
-                    set_rounding_mode(rm);
-                    if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2])) {
+                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_NAN(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
-                    if (F32_IS_ANY_INFINITE(fregs[rs1] || F32_IS_ANY_INFINITE(fregs[rs2]))) {
-                        // if ((F32_IS_PLUS_ZERO(fregs[rs1]) || F32_IS_MINUS_ZERO(fregs[rs1])) ||
-                        //     (F32_IS_PLUS_ZERO(fregs[rs2]) || F32_IS_MINUS_ZERO(fregs[rs2]))) {
-                            // infinity * zero = NaN
-                            fregs[rd] = F32_QUIET_NAN;
-                            softfloat_raiseFlags( softfloat_flag_invalid );
-                            break;
-                        //}
+                    if (F32_IS_NAN(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
                     }
+                    if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]))
+                            softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // if (F32_IS_ANY_INFINITE(fregs[rs1] || F32_IS_ANY_INFINITE(fregs[rs2]))) {
+                    //     // if ((F32_IS_PLUS_ZERO(fregs[rs1]) || F32_IS_MINUS_ZERO(fregs[rs1])) ||
+                    //     //     (F32_IS_PLUS_ZERO(fregs[rs2]) || F32_IS_MINUS_ZERO(fregs[rs2]))) {
+                    //         // infinity * zero = NaN
+                    //         fregs[rd] = F32_QUIET_NAN;
+                    //         softfloat_raiseFlags( softfloat_flag_invalid );
+                    //         break;
+                    //     //}
+                    // }
+                    if (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
+                        // zero * infinity = NaN
+                        fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) {
+                        // infinity * zero = NaN
+                        fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    uint64_t rm = (inst >> 12) & 0x7;
+                    set_rounding_mode(rm);
                     fregs[rd] = (uint64_t)f32_mul( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     if ((softfloat_exceptionFlags & softfloat_flag_underflow) && ((fregs[rd] & F32_SIGN_BIT_MASK) == 0) && ((fregs[rd] & F32_EXPONENT_MASK) != 0)) {
                         softfloat_exceptionFlags &= ~softfloat_flag_underflow;
