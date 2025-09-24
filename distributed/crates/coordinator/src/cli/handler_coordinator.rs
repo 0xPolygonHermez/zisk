@@ -95,7 +95,7 @@ fn print_command_info(loaded_from_file: bool, config: &Config, addr: &str) {
         "Logging".bright_green().bold(),
         config.logging.level,
         config.logging.format,
-        format!("(log file: {})", config.logging.file_path.clone().unwrap_or_default())
+        format!("(log file: {})", config.logging.file_path.as_deref().unwrap_or_default())
             .bright_black()
     );
 
