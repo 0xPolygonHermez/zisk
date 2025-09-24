@@ -210,39 +210,35 @@ void _zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
+                    // infinity * NaN = NaN
                     if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_NAN(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
-                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        if (F32_IS_SIGNALING_NAN(fregs[rs2]))
+                            softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
+                    // NaN * infinity = NaN
                     if (F32_IS_NAN(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
-                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        if (F32_IS_SIGNALING_NAN(fregs[rs1]))
+                            softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
+                    // NaN * NaN = NaN
                     if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
-                    // if (F32_IS_ANY_INFINITE(fregs[rs1] || F32_IS_ANY_INFINITE(fregs[rs2]))) {
-                    //     // if ((F32_IS_PLUS_ZERO(fregs[rs1]) || F32_IS_MINUS_ZERO(fregs[rs1])) ||
-                    //     //     (F32_IS_PLUS_ZERO(fregs[rs2]) || F32_IS_MINUS_ZERO(fregs[rs2]))) {
-                    //         // infinity * zero = NaN
-                    //         fregs[rd] = F32_QUIET_NAN;
-                    //         softfloat_raiseFlags( softfloat_flag_invalid );
-                    //         break;
-                    //     //}
-                    // }
+                    // zero * infinity = NaN
                     if (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
-                        // zero * infinity = NaN
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
+                    // infinity * zero = NaN
                     if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) {
-                        // infinity * zero = NaN
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
