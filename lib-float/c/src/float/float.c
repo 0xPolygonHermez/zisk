@@ -167,11 +167,47 @@ void _zisk_float (void)
         case 83 : { // Opcode 83
             switch ((inst >> 25) & 0x7F) {
                 case 0 : { //("R", "fadd.s"),
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                    // NaN propagation: x + NaN = NaN, NaN + x = NaN, NaN + NaN = NaN
+                    if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]))
+                            softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+
+                    // fadd.s(∞, -∞) = NaN    # Invalid Operation! (opposite-signed infinity)
+                    // fadd.s(∞, ∞) = ∞       # Valid operation
+                    // fadd.s(-∞, -∞) = -∞    # Valid operation (opposite-signed infinity)
+                    // fadd.s(-∞, ∞) = NaN    # Invalid Operation!
+                    if (F32_IS_PLUS_INFINITE(fregs[rs1]) && F32_IS_PLUS_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F32_PLUS_INFINITE;
+                        break;
+                    }
+                    if (F32_IS_PLUS_INFINITE(fregs[rs1]) && F32_IS_MINUS_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    if (F32_IS_MINUS_INFINITE(fregs[rs1]) && F32_IS_PLUS_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    if (F32_IS_MINUS_INFINITE(fregs[rs1]) && F32_IS_MINUS_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F32_MINUS_INFINITE;
+                        break;
+                    }
+
+                    // Get rounding mode
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
+
+                    // Call f32_add()
                     fregs[rd] = (uint64_t)f32_add( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
                     break;
                 }

@@ -34,7 +34,16 @@
 //! `| Contains output data, which is written during`
 //! `| program execution and read during memory finalization`
 //! `|`
-//! `|--------------- AVAILABLE_MEM_ADDR                  (0xa0020000)`
+//! `|--------------- FLOAT_LIB_RAM_ADDR                  (0xa0020000)`
+//! `|`
+//! `| Contains float library memory, available for normal R/W`
+//! `| use during library execution.`
+//! `|`
+//! `|--------------- FLOAT_LIB_SP                        (0xa0030000 - 16)`
+//! `|`
+//! `| Contains float library stack
+//! `|`
+//! `|--------------- AVAILABLE_MEM_ADDR                  (0xa0030000)`
 //! `|`
 //! `| Contains program memory, available for normal R/W`
 //! `| use during program execution.`
@@ -101,7 +110,7 @@ pub const OUTPUT_ADDR: u64 = SYS_ADDR + SYS_SIZE;
 /// Size of the output RW memory
 pub const OUTPUT_MAX_SIZE: u64 = 0x10000; // 64K
 /// First general purpose RW memory address
-pub const AVAILABLE_MEM_ADDR: u64 = OUTPUT_ADDR + OUTPUT_MAX_SIZE;
+pub const AVAILABLE_MEM_ADDR: u64 = SYS_ADDR + 0x30000;
 /// Size of the general purpose RW memory address
 pub const AVAILABLE_MEM_SIZE: u64 = RAM_SIZE - OUTPUT_MAX_SIZE - SYS_SIZE;
 /// First BIOS instruction address, i.e. first instruction executed
@@ -113,7 +122,9 @@ pub const ROM_ADDR: u64 = 0x80000000;
 /// Maximum program ROM instruction address
 pub const ROM_ADDR_MAX: u64 = (ROM_ADDR + 0x08000000) - 1; // 128M
 /// First float library ROM instruction address
-pub const FLOAT_LIB_ADDR: u64 = ROM_ADDR + 0x08000000 - 0x100000; // 1M before ROM_ADDR_MAX = 0x87F00000
+pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + 0x08000000 - 0x100000; // 1M before ROM_ADDR_MAX = 0x87F00000
+/// First float library RAM address
+pub const FLOAT_LIB_RAM_ADDR: u64 = SYS_ADDR + 0x20000; // 0xa0020000
 /// Float library stack pointer address
 pub const FLOAT_LIB_SP: u64 = 0xa0030000 - 16;
 /// Zisk architecture ID
