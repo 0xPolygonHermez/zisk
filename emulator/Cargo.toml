@@ -24,6 +24,8 @@ data-bus = { workspace = true }
 rayon = { workspace = true }
 sm-mem = { workspace = true }
 mem-common = { workspace = true }
+sm-arith = { workspace = true }
+sm-binary = { workspace = true }
 
 fields = { workspace=true }
 clap = { workspace = true }
