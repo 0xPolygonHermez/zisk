@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "9afd28d6ebc7f5d463e3343fe57e925e1b3953cd4634d4271d915bae27db7cef";
+pub const PILOUT_HASH: &str = "163bcca4d46e9820bcb620f1da69250c790cb1de690f03c76877618f09a22d33";
 
 //AIRGROUP CONSTANTS
 
@@ -243,11 +243,11 @@ trace!(Sha256fTrace<F> {
 },  0, 16, 262144 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 18], __L1__: F,
+ RANGE: [F; 19], __L1__: F,
 },  0, 17, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 18],
+ mul: [F; 19],
 },  0, 17, 2097152 );
 
 trace!(VirtualTable0Fixed<F> {
@@ -271,7 +271,7 @@ trace!(RomRomTrace<F> {
 }, 0, 1, 2097152, 0 );
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31], im_direct: [FieldExtension<F>; 95],
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31], im_direct: [FieldExtension<F>; 96],
 });
 
 values!(MemAirValues<F> {
