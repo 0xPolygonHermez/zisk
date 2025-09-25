@@ -15,10 +15,12 @@ use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::prelude::*;
-use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx};
+use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx, SegmentId};
 use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuRegTrace};
+
+const MAX_SEGMENT_ID: usize = ((1 << 32) / MainTrace::<usize>::NUM_ROWS) - 1;
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
 pub struct MainInstance<F: PrimeField64> {
@@ -191,7 +193,7 @@ impl<F: PrimeField64> MainInstance<F> {
             &mut step_range_check,
             &mut large_range_checks,
         );
-        self.update_std_range_checks(step_range_check, &large_range_checks);
+        self.update_std_range_checks(segment_id, step_range_check, &large_range_checks);
 
         // Generate and add the AIR instance
         let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
@@ -325,13 +327,20 @@ impl<F: PrimeField64> MainInstance<F> {
             }
         }
     }
-    fn update_std_range_checks(&self, step_range_check: Vec<u32>, large_range_checks: &[u32]) {
+    fn update_std_range_checks(
+        &self,
+        segment_id: SegmentId,
+        step_range_check: Vec<u32>,
+        large_range_checks: &[u32],
+    ) {
         let range_id = self.std.get_range_id(0, MEM_REGS_MAX_DIFF as i64, None);
         self.std.range_checks(range_id, step_range_check);
 
         for range in large_range_checks {
             self.std.range_check(range_id, *range as i64, 1);
         }
+        let range_id = self.std.get_range_id(0, MAX_SEGMENT_ID as i64, None);
+        self.std.range_check(range_id, segment_id.as_usize() as i64, 1);
     }
 }
 
