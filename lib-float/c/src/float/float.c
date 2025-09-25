@@ -908,16 +908,17 @@ void _zisk_float (void)
                 case 33 : {
                     switch ((inst >> 20) & 0x1F) {
                         case 0 : { //("R", "fcvt.d.s"),
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            uint64_t rm = (inst >> 12) & 0x7;
-                            set_rounding_mode(rm);
+
+                            // Filter out invalid values
                             if (fregs[rs1] & 0xFFFFFFFF00000000) {
                                 fregs[rd] = F64_QUIET_NAN;
                                 break;
                             }
                             if (F32_IS_SIGNALING_NAN(fregs[rs1])) {
-                                fregs[rd] = F64_SIGNALING_NAN;
+                                fregs[rd] = F64_QUIET_NAN;
                                 softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 break;
                             }
@@ -934,15 +935,25 @@ void _zisk_float (void)
                                 break;
                             }
                             if (F32_IS_PLUS_ZERO(fregs[rs1])) {
-                                fregs[rd] = F64_PLUS_ZERO;
+                                fregs[rd] = F64_QUIET_NAN;
                                 break;
                             }
                             if (F32_IS_MINUS_ZERO(fregs[rs1])) {
-                                fregs[rd] = F64_MINUS_ZERO;
+                                fregs[rd] = F64_QUIET_NAN;
+                                break;
+                            }
+                            if (F32_IS_SUBNORMAL(fregs[rs1])) {
+                                fregs[rd] = F64_QUIET_NAN;
                                 break;
                             }
 
+                            // Get rounding mode
+                            uint64_t rm = (inst >> 12) & 0x7;
+                            set_rounding_mode(rm);
+
+                            // Call f32_to_f64()
                             fregs[rd] = (uint64_t)f32_to_f64( (float32_t){fregs[rs1]} ).v;
+
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=33 inst=0x{inst:x}"),
