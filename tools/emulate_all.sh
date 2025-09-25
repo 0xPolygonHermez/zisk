@@ -103,6 +103,7 @@ do
 
     # Compare output vs reference
     REFERENCE_FILE=${ELF_FILE%%my.elf}../ref/Reference-sail_c_simulator.signature
+    cp $REFERENCE_FILE .
     echo "Calling diff of output vs reference=${REFERENCE_FILE}"
     ELF_FILE_DIRECTORY=${ELF_FILE%%my.elf}
     if diff output $REFERENCE_FILE; then

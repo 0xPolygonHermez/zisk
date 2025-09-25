@@ -29,14 +29,14 @@ const uint64_t FREG_CSR = CSR_ADDR + 3 * 8;
 static uint64_t myvalue = 0x3ff3333333333333; // 1.7
 
 // Sign, exponent and mantissa masks for single and double precision floats
-const uint64_t F64_SIGN_BIT_MASK = 0x8000000000000000;
-const uint64_t F32_SIGN_BIT_MASK = 0xFFFFFFFF80000000;
-const uint64_t F64_EXPONENT_MASK = 0x7FF0000000000000;
-const uint64_t F32_EXPONENT_MASK = 0x7F800000;
-const uint64_t F64_MANTISSA_MASK = 0x000FFFFFFFFFFFFF;
-const uint64_t F32_MANTISSA_MASK = 0x007FFFFF;
+const uint64_t F64_SIGN_BIT_MASK  = 0x8000000000000000;
+const uint64_t F64_EXPONENT_MASK  = 0x7FF0000000000000;
+const uint64_t F64_MANTISSA_MASK  = 0x000FFFFFFFFFFFFF;
 const uint64_t F64_QUIET_NAN_MASK = 0x0008000000000000;
-const uint64_t F32_QUIET_NAN_MASK = 0x00400000;
+const uint64_t F32_SIGN_BIT_MASK  = 0xFFFFFFFF80000000;
+const uint64_t F32_EXPONENT_MASK  =         0x7F800000;
+const uint64_t F32_MANTISSA_MASK  =         0x007FFFFF;
+const uint64_t F32_QUIET_NAN_MASK =         0x00400000;
 
 // Negate a float by flipping its sign bit(s)
 #define NEG64(x) ((x) ^ F64_SIGN_BIT_MASK)
@@ -72,6 +72,7 @@ const uint64_t F32_QUIET_NAN_MASK = 0x00400000;
 #define F64_IS_QUIET_NAN(a) ( (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_QUIET_NAN_MASK) != 0) )
 #define F64_IS_SIGNALING_NAN(a) ( (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_MANTISSA_MASK) != 0) && (((a) & F64_QUIET_NAN_MASK) == 0) )
 
+#define F64_IS_POSITIVE(a) (((a) & F64_SIGN_BIT_MASK) == 0)
 #define F64_IS_NEGATIVE(a) (((a) & F64_SIGN_BIT_MASK) != 0)
 #define F64_IS_PLUS_ZERO(a) ( (((a) & F64_SIGN_BIT_MASK) == 0) && (((a) & F64_EXPONENT_MASK) == 0) && (((a) & F64_MANTISSA_MASK) == 0) )
 #define F64_IS_MINUS_ZERO(a) ( (((a) & F64_SIGN_BIT_MASK) != 0) && (((a) & F64_EXPONENT_MASK) == 0) && (((a) & F64_MANTISSA_MASK) == 0) )
@@ -100,6 +101,7 @@ const uint32_t F32_ZERO = 0x00000000;
 
 // NaN
 const uint64_t F64_QUIET_NAN = 0x7FF8000000000000;
+const uint64_t F64_SIGNALING_NAN = 0x7FFC000000000000;
 const uint32_t F32_QUIET_NAN = 0x7FC00000;
 
 void _zisk_float (void);

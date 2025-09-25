@@ -139,6 +139,7 @@ do
 
     # Compare output vs reference
     REFERENCE_FILE="$(realpath "${ELF_FILE_DIRECTORY}/../ref/Reference-sail_c_simulator.signature")"
+    cp $REFERENCE_FILE .
     echo "Comparing output with $REFERENCE_FILE"
     if diff output $REFERENCE_FILE; then
         PASSED_COUNTER=$((PASSED_COUNTER+1))
