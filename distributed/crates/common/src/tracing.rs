@@ -8,6 +8,9 @@ use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
 
+// Re-export the WorkerGuard type for convenience
+pub use tracing_appender::non_blocking::WorkerGuard;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Environment {
@@ -55,7 +58,17 @@ impl fmt::Display for LogFormat {
     }
 }
 
-pub fn init(logging_config: Option<&LoggingConfig>) -> Result<()> {
+/// Initialize the tracing subscriber with the given configuration.
+///
+/// # Returns
+///
+/// Returns `Ok(Some(WorkerGuard))` if file logging is enabled. The caller **must**
+/// keep this guard alive for the entire application lifetime to prevent log loss.
+/// If the guard is dropped, the background logging thread will shut down and
+/// buffered logs may be lost.
+///
+/// Returns `Ok(None)` if only console logging is configured.
+pub fn init(logging_config: Option<&LoggingConfig>) -> Result<Option<WorkerGuard>> {
     // Prioritize logging_config values over environment variables
     let log_level = if let Some(config) = logging_config {
         config.level.clone()
@@ -87,11 +100,7 @@ pub fn init(logging_config: Option<&LoggingConfig>) -> Result<()> {
             let file_appender = tracing_appender::rolling::daily("./logs", file_path);
 
             // Use non-blocking appender for better performance
-            let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-
-            // Store the guard to prevent the background thread from being dropped
-            // In a real application, you'd want to keep this guard alive for the app's lifetime
-            std::mem::forget(_guard);
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
             match log_format {
                 LogFormat::Json => {
@@ -157,6 +166,8 @@ pub fn init(logging_config: Option<&LoggingConfig>) -> Result<()> {
                         .init();
                 }
             }
+
+            return Ok(Some(guard));
         } else {
             // Console output only
             match log_format {
@@ -218,5 +229,5 @@ pub fn init(logging_config: Option<&LoggingConfig>) -> Result<()> {
         }
     }
 
-    Ok(())
+    Ok(None)
 }

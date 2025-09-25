@@ -117,8 +117,8 @@ async fn main() -> Result<()> {
         load_worker_config(cli.config, cli.coordinator_url, cli.worker_id, cli.compute_units)
             .await?;
 
-    // Initialize tracing
-    zisk_distributed_common::tracing::init(Some(&worker_config.logging))?;
+    // Initialize tracing - keep guard alive for application lifetime
+    let _log_guard = zisk_distributed_common::tracing::init(Some(&worker_config.logging))?;
 
     print_banner();
 
@@ -182,7 +182,7 @@ fn print_command_info(
         "Logging".bright_green().bold(),
         worker_config.logging.level,
         worker_config.logging.format,
-        format!("(log file: {})", worker_config.logging.file_path.clone().unwrap_or_default())
+        format!("(log file: {})", worker_config.logging.file_path.as_deref().unwrap_or_default())
             .bright_black()
     );
     println!(
