@@ -12,6 +12,9 @@ pub async fn handle(
     compute_capacity: u32,
     simulated_node: Option<u32>,
 ) -> Result<()> {
+    // Initialize tracing - keep guard alive for application lifetime
+    let _log_guard = zisk_distributed_common::tracing::init(None)?;
+
     // Connect to the coordinator
     info!("Connecting to ZisK Coordinator gRPC service on {}", coordinator_url);
 

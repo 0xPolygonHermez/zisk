@@ -1,0 +1,20 @@
+[service]
+name = "ZisK Distributed Coordinator"
+environment = "production"
+
+[server]
+host = "0.0.0.0"
+port = 50051
+# shutdown_timeout_seconds = 60
+
+[logging]
+level = "info"
+format = "json"
+file_path = "/var/log/distributed/coordinator.log"
+
+[coordinator]
+shutdown_timeout_seconds = 30 # Graceful shutdown timeout in seconds
+max_workers_per_job = 20      # Maximum workers per single proof job
+max_total_workers = 5000      # Maximum total registered workers
+phase1_timeout_seconds = 600  # 10 minutes for phase 1
+phase2_timeout_seconds = 1200 # 20 minutes for phase 2

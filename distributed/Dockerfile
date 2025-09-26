@@ -1,48 +1,105 @@
-FROM rust:1.75-bookworm as builder
+# Multi-stage Dockerfile with GPU support via ARG
+# Uses stable image versions and follows best practices
+
+# Build stage
+FROM rust:bookworm AS builder
+
+# Build arguments
+ARG GPU=false
+
+# Install build dependencies efficiently
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential pkg-config libssl-dev bash sudo curl gnupg ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy the entire workspace
+# Copy and install system dependencies (including GPU if needed)
+COPY tools/test-env/ ./tools/test-env/
+RUN chmod +x ./tools/test-env/*.sh && \
+    cd tools/test-env && \
+    if [ "$GPU" = "true" ]; then \
+    echo "Installing with GPU support..." && \
+    ./install_deps.sh --gpu; \
+    else \
+    echo "Installing without GPU support..." && \
+    ./install_deps.sh; \
+    fi
+
+# Copy source code and build binaries (.dockerignore will exclude unnecessary files)
 COPY . .
 
-# Build the distributed binaries
-RUN cargo build --release --bin coordinator --bin prover
+RUN ulimit -n 65535 && \
+    cargo build --release \
+    --package zisk-distributed-coordinator \
+    --package zisk-distributed-worker \
+    --package zisk-witness
 
-# Runtime stage
+# Runtime stage - minimal image
 FROM debian:bookworm-slim
 
-# Install necessary runtime dependencies
-RUN apt-get update && \
-    apt-get install -y ca-certificates tzdata && \
+# Build arguments for runtime stage
+ARG GPU=false
+
+# Install build tools needed for dependency script
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 bash sudo curl gnupg && \
     rm -rf /var/lib/apt/lists/*
 
-# Create app user
-RUN useradd -r -s /bin/false zisk
+# Copy dependency installation scripts to runtime
+COPY tools/test-env/ ./tools/test-env/
+RUN chmod +x ./tools/test-env/*.sh
 
-# Create log directory
-RUN mkdir -p /var/log/distributed && chown zisk:zisk /var/log/distributed
+# Install runtime dependencies (including GPU if needed)
+RUN cd tools/test-env && \
+    if [ "$GPU" = "true" ]; then \
+    echo "Installing runtime dependencies with GPU support..." && \
+    ./install_deps.sh --gpu; \
+    else \
+    echo "Installing runtime dependencies without GPU support..." && \
+    ./install_deps.sh; \
+    fi
 
-# Copy the binaries
-COPY --from=builder /app/target/release/coordinator /usr/local/bin/coordinator
-COPY --from=builder /app/target/release/prover /usr/local/bin/prover
+# Clean up installation scripts after use
+RUN rm -rf ./tools/test-env
 
-# Copy configuration files
-COPY distributed/crates/coordinator/config /etc/distributed/coordinator/
-COPY distributed/crates/prover/config /etc/distributed/prover/
+# Create non-root user for security
+RUN groupadd -r zisk && useradd -r -g zisk -d /app -s /bin/false zisk
 
-# Set permissions
-RUN chown -R zisk:zisk /etc/distributed
+WORKDIR /app
 
-# Switch to app user
+# Create directory structure with proper ownership
+RUN mkdir -p bin config/coordinator config/worker /var/log/distributed /app/.zisk/cache /app/.zisk/bin && \
+    chown -R zisk:zisk /var/log/distributed /app/.zisk /app/bin /app/config
+
+# Copy binaries from builder stage
+COPY --from=builder --chown=zisk:zisk /app/target/release/zisk-coordinator ./bin/
+COPY --from=builder --chown=zisk:zisk /app/target/release/zisk-worker ./bin/
+# Copy the witness library
+COPY --from=builder --chown=zisk:zisk /app/target/release/libzisk_witness.so ./bin/
+
+# Copy configuration files with proper ownership
+COPY --chown=zisk:zisk distributed/crates/coordinator/config/ ./config/coordinator/
+COPY --chown=zisk:zisk distributed/crates/worker/config/ ./config/worker/
+
+# Create compatibility copies in .zisk/bin after binaries are in place  
+RUN cp /app/bin/* /app/.zisk/bin/
+
+# Set up environment and permissions
+ENV PATH="/app/bin:$PATH" \
+    RUST_LOG="info"
+
+RUN chmod +x bin/*
+
+# Health check for monitoring
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD pgrep -f "zisk-" > /dev/null || exit 1
+
+# Switch to non-root user for security
 USER zisk
 
-# Set environment variables
-ENV CONFIG_PATH=/etc/distributed
-ENV DISTRIBUTED_LOGGING_FILE_OUTPUT=true
-ENV DISTRIBUTED_LOGGING_FILE_PATH=/var/log/distributed/app.log
-
-# Expose port (coordinator gRPC port)
+# Expose the default port
 EXPOSE 50051
 
-# Default to coordinator, but can be overridden
-CMD ["coordinator"]
+# Default command (can be overridden in docker-compose)
+CMD ["zisk-coordinator", "--config", "/app/config/coordinator/prod.toml"]

@@ -1,41 +1,55 @@
 use anyhow::Result;
+use cargo_zisk::ux::print_banner;
+use colored::Colorize;
 use std::net::TcpListener;
 use tonic::transport::Server;
 use tracing::{error, info};
 use zisk_distributed_coordinator::{create_shutdown_signal, Config, CoordinatorGrpc};
 use zisk_distributed_grpc_api::zisk_distributed_api_server::ZiskDistributedApiServer;
 
-pub async fn handle(port_override: Option<u16>, webhook_url: Option<String>) -> Result<()> {
+pub async fn handle(
+    config_file: Option<String>,
+    port: Option<u16>,
+    webhook_url: Option<String>,
+) -> Result<()> {
+    // Config file is now optional - if not provided, defaults will be used
+    let config_file = config_file.or_else(|| std::env::var("CONFIG_PATH").ok());
+
+    let loaded_from_file = config_file.is_some();
+
     // Load configuration
-    let config = Config::load(port_override, webhook_url)?;
+    let config = Config::load(config_file, port, webhook_url)?;
 
-    // Create coordinator service
-    let coordinator_service = CoordinatorGrpc::new(config.clone()).await?;
+    // Initialize tracing - keep guard alive for application lifetime
+    let _log_guard = zisk_distributed_common::tracing::init(Some(&config.logging))?;
 
-    // Use command line port if provided, otherwise use config port
-    let grpc_port = port_override.unwrap_or(config.server.port);
-
-    let addr = format!("{}:{}", config.server.host, grpc_port);
+    let addr = format!("{}:{}", config.server.host, config.server.port);
     let grpc_addr = addr.parse().map_err(|e| {
         error!("Failed to parse address '{}': {}", addr, e);
         anyhow::anyhow!("Invalid address format: {}", e)
     })?;
 
+    print_banner();
+    print_command_info(loaded_from_file, &config, &addr);
+
     // Verify the port is available before starting the coordinator grpc server
     if TcpListener::bind(&addr).is_err() {
         error!(
             "Port {} is already in use on {}. Coordinator gRPC server cannot start.",
-            grpc_port, config.server.host
+            config.server.port, config.server.host
         );
         error!("Please ensure no other service is using this port or configure a different port.");
-        return Err(anyhow::anyhow!("Port {} is already in use", grpc_port));
+        return Err(anyhow::anyhow!("Port {} is already in use", config.server.port));
     }
-
-    // Create shutdown signal handler
-    let shutdown_signal = create_shutdown_signal();
 
     // Start the gRPC server with graceful shutdown
     info!("Starting Coordinator Network gRPC service on {addr}");
+
+    // Create coordinator service
+    let coordinator_service = CoordinatorGrpc::new(config.clone()).await?;
+
+    // Create shutdown signal handler
+    let shutdown_signal = create_shutdown_signal();
 
     // Run the gRPC server with shutdown signal
     tokio::select! {
@@ -58,4 +72,34 @@ pub async fn handle(port_override: Option<u16>, webhook_url: Option<String>) -> 
     }
 
     Ok(())
+}
+
+fn print_command_info(loaded_from_file: bool, config: &Config, addr: &str) {
+    println!(
+        "{} zisk-coordinator ({} {})",
+        format!("{: >12}", "Command").bright_green().bold(),
+        config.service.name,
+        config.service.version
+    );
+    if !loaded_from_file {
+        eprintln!(
+            "{: >12} {}",
+            "Warning".bright_yellow().bold(),
+            "No configuration file provided. Using default development configuration."
+                .bright_yellow()
+        );
+    }
+    println!("{: >12} {}", "Environment".bright_green().bold(), config.service.environment);
+    println!(
+        "{: >12} {}/{} {}",
+        "Logging".bright_green().bold(),
+        config.logging.level,
+        config.logging.format,
+        format!("(log file: {})", config.logging.file_path.as_deref().unwrap_or_default())
+            .bright_black()
+    );
+
+    println!("{: >12} {}", "Host/Port".bright_green().bold(), addr);
+
+    println!();
 }

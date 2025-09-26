@@ -45,6 +45,56 @@ impl MessageSender for GrpcMessageSender {
     }
 }
 
+/// Simple drop guard that automatically unregisters worker when dropped
+struct ConnectionDropGuard {
+    worker_id: WorkerId,
+    coordinator: Arc<Coordinator>,
+}
+
+impl ConnectionDropGuard {
+    fn new(worker_id: WorkerId, coordinator: Arc<Coordinator>) -> Self {
+        Self { worker_id, coordinator }
+    }
+}
+
+impl Drop for ConnectionDropGuard {
+    fn drop(&mut self) {
+        let worker_id = self.worker_id.clone();
+        let coordinator = self.coordinator.clone();
+
+        // Spawn async cleanup on drop
+        tokio::spawn(async move {
+            cleanup_worker(coordinator, worker_id).await;
+        });
+    }
+}
+
+async fn cleanup_worker(coordinator: Arc<Coordinator>, worker_id: WorkerId) {
+    if let Err(e) = coordinator.unregister_worker(&worker_id).await {
+        error!("Failed to unregister worker {}: {}", worker_id, e);
+    } else {
+        info!("{worker_id} unregistered successfully");
+    }
+}
+
+/// Cleans up the worker and returns or yields from the current context
+///
+/// Usage:
+/// - `cleanup_worker!(coordinator, worker_id)` → returns `()` or yields `()` in a stream
+/// - `cleanup_worker!(coordinator, worker_id, Err(Status::invalid_argument("msg")))` → yields/returns a Result
+macro_rules! cleanup_worker {
+    // Without explicit value → return/yield ()
+    ($coordinator:expr, $worker:expr) => {{
+        cleanup_worker($coordinator.clone(), $worker.clone()).await;
+        return;
+    }};
+    // With explicit value → return/yield that value
+    ($coordinator:expr, $worker:expr, $val:expr) => {{
+        cleanup_worker($coordinator.clone(), $worker.clone()).await;
+        return $val;
+    }};
+}
+
 /// gRPC server implementation for the distributed proof coordination system.
 ///
 /// Serves as the network transport layer, exposing coordinator functionality through:
@@ -52,7 +102,7 @@ impl MessageSender for GrpcMessageSender {
 /// - Bidirectional streaming for worker communication
 /// - Authentication and authorization for admin endpoints
 pub struct CoordinatorGrpc {
-    coordinator_service: Arc<Coordinator>,
+    coordinator: Arc<Coordinator>,
 }
 
 impl CoordinatorGrpc {
@@ -62,7 +112,7 @@ impl CoordinatorGrpc {
     ///
     /// * `config` - Configuration parameters for the coordinator service.
     pub async fn new(config: Config) -> CoordinatorResult<Self> {
-        Ok(Self { coordinator_service: Arc::new(Coordinator::new(config)) })
+        Ok(Self { coordinator: Arc::new(Coordinator::new(config)) })
     }
 
     /// Checks if the request originates from localhost for admin endpoint security.
@@ -215,7 +265,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     ) -> Result<Response<StatusInfoResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let status_info = self.coordinator_service.handle_status_info().await;
+        let status_info = self.coordinator.handle_status_info().await;
 
         Ok(Response::new(status_info.into()))
     }
@@ -245,7 +295,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     ) -> Result<Response<JobsListResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let jobs_list = self.coordinator_service.handle_jobs_list().await;
+        let jobs_list = self.coordinator.handle_jobs_list().await;
 
         Ok(Response::new(jobs_list.into()))
     }
@@ -263,7 +313,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     ) -> Result<Response<WorkersListResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let workers_list = self.coordinator_service.handle_workers_list().await;
+        let workers_list = self.coordinator.handle_workers_list().await;
 
         Ok(Response::new(workers_list.into()))
     }
@@ -282,7 +332,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
         self.validate_admin_request(&request)?;
 
         let job_id = JobId::from(request.into_inner().job_id);
-        self.coordinator_service
+        self.coordinator
             .handle_job_status(&job_id)
             .await
             .map(|status_dto| Response::new(status_dto.into()))
@@ -302,7 +352,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     ) -> Result<Response<SystemStatusResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let system_status = self.coordinator_service.handle_system_status().await;
+        let system_status = self.coordinator.handle_system_status().await;
 
         Ok(Response::new(system_status.into()))
     }
@@ -321,7 +371,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
         self.validate_admin_request(&request)?;
 
         let launch_proof_request_dto = request.into_inner().into();
-        let result = self.coordinator_service.launch_proof(launch_proof_request_dto).await;
+        let result = self.coordinator.launch_proof(launch_proof_request_dto).await;
 
         result.map(|response_dto| Response::new(response_dto.into())).map_err(Status::from)
     }
@@ -331,40 +381,38 @@ impl ZiskDistributedApi for CoordinatorGrpc {
         &self,
         request: Request<Streaming<WorkerMessage>>,
     ) -> Result<Response<Self::WorkerStreamStream>, Status> {
-        let coordinator_service = self.coordinator_service.clone();
+        let coordinator = self.coordinator.clone();
         let mut in_stream = request.into_inner();
 
         let response_stream = Box::pin(stream! {
             // Create a channel for outbound messages to this worker (for backpressure)
-            // The sender will be held by GrpcMessageSender and used by CoordinatorService
             let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<CoordinatorMessage>();
             let grpc_msg_tx = Box::new(GrpcMessageSender::new(outbound_tx));
 
             // Clean registration handling - wait for worker to introduce itself
             let worker_id = match in_stream.next().await {
                 Some(Ok(WorkerMessage { payload: Some(worker_message::Payload::Register(req)) })) => {
-                    let requested_worker_id = WorkerId::from(req.worker_id.clone());
-                    let (accepted, message) = coordinator_service.handle_stream_registration(req.into(), grpc_msg_tx).await;
+                    let req_worker_id = WorkerId::from(req.worker_id.clone());
+                    let (accepted, message) =
+                        coordinator.handle_stream_registration(req.into(), grpc_msg_tx).await;
 
-                    if accepted {
-                        yield Self::registration_response(&requested_worker_id, accepted, message);
-                        requested_worker_id
-                    } else {
-                        yield Self::registration_response(&requested_worker_id, accepted, message);
-                        return;
-                    }
+
+                        yield Self::registration_response(&req_worker_id, accepted, message);
+
+                    if !accepted { return; }
+
+                    req_worker_id
                 }
                 Some(Ok(WorkerMessage { payload: Some(worker_message::Payload::Reconnect(req)) })) => {
-                    let requested_worker_id = WorkerId::from(req.worker_id.clone());
-                    let (accepted, message) = coordinator_service.handle_stream_reconnection(req.into(), grpc_msg_tx).await;
+                    let req_worker_id = WorkerId::from(req.worker_id.clone());
+                    let (accepted, message) =
+                        coordinator.handle_stream_reconnection(req.into(), grpc_msg_tx).await;
 
-                    if accepted {
-                        yield Self::registration_response(&requested_worker_id, accepted, message);
-                        requested_worker_id
-                    } else {
-                        yield Self::registration_response(&requested_worker_id, accepted, message);
-                        return;
-                    }
+                    yield Self::registration_response(&req_worker_id, accepted, message);
+
+                    if !accepted { return; }
+
+                    req_worker_id
                 }
                 Some(Ok(_)) => {
                     // First message was not registration or reconnection
@@ -383,38 +431,38 @@ impl ZiskDistributedApi for CoordinatorGrpc {
                 }
             };
 
-            info!("Worker {} registered successfully, starting message loop", worker_id);
+            info!("{worker_id} registered successfully");
 
-            // Now handle the rest of the stream messages
+            // Drop guard fallback for panic/task-abort safety
+            let _guard = ConnectionDropGuard::new(worker_id.clone(), coordinator.clone());
+
+            // Main stream loop
             loop {
                 tokio::select! {
-                    // Handle incoming messages from worker
-                    incoming_result = in_stream.next() => {
-                        match incoming_result {
+                    // Incoming worker messages
+                    incoming = in_stream.next() => {
+                        match incoming {
                             Some(Ok(message)) => {
-                                if let Err(e) = Self::handle_stream_message(&coordinator_service, &worker_id, message).await {
-                                    error!("Error handling worker message: {}", e);
-                                    yield Err(Status::from(e));
-                                    break;
+                                if let Err(e) = Self::handle_stream_message(&coordinator, &worker_id, message).await {
+                                    error!("Error handling worker {worker_id}: {e}");
+                                    cleanup_worker!(coordinator, worker_id, yield Err(Status::from(e)));
                                 }
                             }
                             Some(Err(e)) => {
-                                error!("Error receiving message from worker {worker_id}: {e}");
-                                yield Err(e);
-                                break;
+                                error!("Error receiving from {worker_id}: {e}");
+                                cleanup_worker!(coordinator, worker_id, yield Err(e));
                             }
                             None => {
-                                info!("Worker {} stream ended", worker_id);
-                                break;
+                                info!("Worker {worker_id} disconnected");
+                                cleanup_worker!(coordinator, worker_id);
                             }
                         }
                     }
-                    // Handle outgoing messages to worker
-                    outbound_result = outbound_rx.recv() => {
-                        match outbound_result {
-                            Some(message) => {
-                                yield Ok(message);
-                            }
+
+                    // Outbound messages to worker
+                    outbound = outbound_rx.recv() => {
+                        match outbound {
+                            Some(message) => yield Ok(message),
                             None => {
                                 // Channel closed, likely service shutdown
                                 info!("Outbound channel closed for worker {}", worker_id);
@@ -429,7 +477,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
             info!("Cleaning up worker {} connection", worker_id);
 
             // Perform async cleanup
-            if let Err(e) = coordinator_service.unregister_worker(&worker_id).await {
+            if let Err(e) = coordinator.unregister_worker(&worker_id).await {
                 error!("Failed to handle disconnect for worker {}: {}", worker_id, e);
             }
         });

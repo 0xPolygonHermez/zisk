@@ -1,0 +1,11 @@
+[service]
+name = "ZisK Distributed Coordinator"
+environment = "development"
+
+[server]
+host = "0.0.0.0"
+port = 50051
+
+[logging]
+level = "info"
+format = "pretty"

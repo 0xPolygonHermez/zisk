@@ -197,11 +197,20 @@ impl WorkersPool {
     ///
     /// - `worker_id`: Unique identifier for the worker to be removed.
     pub async fn unregister_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
-        self.workers.write().await.remove(worker_id).map(|_| ()).ok_or_else(|| {
-            let msg = format!("Worker {worker_id} not found for removal");
-            warn!("{}", msg);
-            CoordinatorError::NotFoundOrInaccessible
-        })
+        let mut workers = self.workers.write().await;
+        match workers.remove(worker_id) {
+            Some(_) => {
+                let total = workers.len(); // Get count from the current HashMap
+                drop(workers); // Release the lock before logging
+                info!("Unregistered worker: {} (total: {})", worker_id, total);
+                Ok(())
+            }
+            None => {
+                let msg = format!("Worker {worker_id} not found for removal");
+                warn!("{}", msg);
+                Err(CoordinatorError::NotFoundOrInaccessible)
+            }
+        }
     }
 
     /// Gets the current state of a specific worker.

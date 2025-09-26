@@ -41,7 +41,7 @@ use dashmap::DashMap;
 use proofman::ContributionsInfo;
 use std::{collections::HashMap, path::PathBuf};
 use tokio::sync::RwLock;
-use tracing::{error, info, instrument, warn};
+use tracing::{error, info, warn};
 use zisk_distributed_common::{
     AggParamsDto, AggProofData, BlockId, ChallengesDto, ComputeCapacity, ContributionParamsDto,
     CoordinatorMessageDto, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
@@ -109,7 +109,6 @@ impl Coordinator {
     /// # Parameters
     ///
     /// * `config` - Configuration settings
-    #[instrument(skip(config))]
     pub fn new(config: Config) -> Self {
         let start_time_utc = Utc::now();
 
@@ -251,16 +250,6 @@ impl Coordinator {
         // Check if we have enough capacity to compute the proof is already checked
         // in create_job > partition_and_allocate_by_capacity
 
-        // Check if input_path file exists
-        let input_path = PathBuf::from(&request.input_path);
-        if !input_path.exists() {
-            error!("Input path does not exist: {}", request.input_path);
-            return Err(CoordinatorError::InvalidArgument(format!(
-                "Input path does not exist: {}",
-                request.input_path
-            )));
-        }
-
         Ok(())
     }
 
@@ -308,12 +297,18 @@ impl Coordinator {
             .create_job(
                 request.block_id.clone(),
                 required_compute_capacity,
-                request.input_path,
+                request.input_path.clone(),
                 request.simulated_node,
             )
             .await?;
 
-        info!("Successfully started Prove job {}", job.job_id);
+        info!(
+            "[Job Started] Inputs={} | Capacity={} | Workers={} | {}",
+            request.input_path,
+            required_compute_capacity,
+            job.workers.len(),
+            job.job_id
+        );
 
         // Initialize job state
         job.change_state(JobState::Running(JobPhase::Contributions));
@@ -336,7 +331,7 @@ impl Coordinator {
             .await?;
         }
 
-        info!("Successfully started Phase1 for {} with {} workers", job_id, active_workers.len());
+        info!("[Phase1 started] {} with {} workers", job_id, active_workers.len());
 
         Ok(LaunchProofResponseDto { job_id })
     }
@@ -828,7 +823,7 @@ impl Coordinator {
         // Start Phase2 for all workers
         self.start_prove(&job_id, &active_workers, challenges_dto).await?;
 
-        info!("Successfully started Phase2 for {} with {} workers", job_id, active_workers.len());
+        info!("[Phase2 started] {} with {} workers", job_id, active_workers.len());
 
         Ok(())
     }
@@ -912,7 +907,7 @@ impl Coordinator {
             job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
 
         info!(
-            "Phase1 progress for {}: {}/{} workers completed",
+            "[Phase1 progress] {} with {}/{} workers completed",
             job.job_id,
             phase1_results_len,
             job.workers.len()
@@ -1267,7 +1262,7 @@ impl Coordinator {
         // Provide operational visibility into Phase 2 progress
         // This logging helps with monitoring long-running proof generation jobs
         info!(
-            "Phase2 progress for {}: {}/{} workers completed",
+            "[Phase2 progress] {} with {}/{} workers completed",
             job.job_id,
             phase2_results.len(),
             job.workers.len()
@@ -1444,7 +1439,7 @@ impl Coordinator {
 
         drop(job);
 
-        info!("Job completed successfully {}", job_id);
+        info!("[Job Finished] {}", job_id);
 
         self.post_launch_proof(job_id).await?;
 

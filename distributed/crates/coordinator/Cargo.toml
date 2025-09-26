@@ -14,6 +14,7 @@ path = "src/cli/main.rs"
 zisk-distributed-grpc-api = { workspace = true }
 zisk-distributed-common = { workspace = true }
 
+cargo-zisk = { workspace = true }
 proofman = { workspace = true }
 
 serde = { workspace = true }
@@ -29,6 +30,7 @@ tonic = { workspace = true }
 prost-types = { workspace = true }
 config = { workspace = true }
 reqwest = { workspace = true }
+colored = { workspace = true }
 dashmap = "6.1"
 
 signal-hook = { version = "0.3" }
