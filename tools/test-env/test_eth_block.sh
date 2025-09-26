@@ -29,7 +29,7 @@ main() {
 
     # export BLOCK_FOLDER_INPUTS
 
-    # echo "BLOCK_FOLDER_INPUTS=$BLOCK_FOLDER_INPUTS"    
+    # echo "BLOCK_FOLDER_INPUTS=$BLOCK_FOLDER_INPUTS"
 }
 
 main
