@@ -488,6 +488,11 @@ void _zisk_float (void)
                         fregs[rd] = F64_MINUS_INFINITE;
                         break;
                     }
+                    // +0 + -0 = +0
+                    if (F64_IS_PLUS_ZERO(fregs[rs1]) && F64_IS_MINUS_ZERO(fregs[rs2])) {
+                        fregs[rd] = F64_PLUS_ZERO;
+                        break;
+                    }
                     // 0 + x = x
                     if (F64_IS_ANY_ZERO(fregs[rs1])) {
                         fregs[rd] = fregs[rs2];
