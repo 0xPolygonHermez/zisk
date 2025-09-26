@@ -221,13 +221,13 @@ impl WorkerNodeGrpc {
 
         let (result_data, error_message) = match result {
             Ok(data) => {
-                if success == false {
+                if !success {
                     return Err(anyhow!("Inconsistent state: success is false but result is Ok"));
                 }
                 (data, String::new())
             }
             Err(e) => {
-                if success == true {
+                if success {
                     return Err(anyhow!("Inconsistent state: success is true but result is Err"));
                 }
                 (vec![], e.to_string())
