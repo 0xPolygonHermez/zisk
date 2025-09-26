@@ -5,7 +5,7 @@ source "./test_elf.sh"
 main() {
     info "▶️  Running $(basename "$0") script..."
 
-    ELF_FILE="${ETH_CLIENT_ELF}"
+    ELF_FILE="eth-client/elf/zec-keccakf-k256-sha2-bn254.elf"
     INPUTS_PATH="eth-client/inputs"
     test_elf "${ELF_FILE}" "${INPUTS_PATH}" "BLOCK_INPUTS" "BLOCK_INPUTS_DISTRIBUTED" "Ethereum blocks" || return 1
 
