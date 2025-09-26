@@ -10,19 +10,19 @@ The API uses bidirectional gRPC streaming for real-time communication between co
 
 ## Core gRPC Service
 
-### ProverStream (Bidirectional Streaming)
+### WorkerStream (Bidirectional Streaming)
 
 The primary communication channel between coordinator and workers:
 
 **Worker → Coordinator Messages:**
-- `ProverRegisterRequest` - Initial worker registration with compute capacity
-- `ProverReconnectRequest` - Reconnection with last known state  
+- `WorkerRegisterRequest` - Initial worker registration with compute capacity
+- `WorkerReconnectRequest` - Reconnection with last known state  
 - `ExecuteTaskResponse` - Task completion results (challenges, proofs, final proofs)
 - `HeartbeatAck` - Heartbeat acknowledgments
-- `ProverError` - Error reporting
+- `WorkerError` - Error reporting
 
 **Coordinator → Worker Messages:**
-- `ProverRegisterResponse` - Registration confirmation with assigned worker ID
+- `WorkerRegisterResponse` - Registration confirmation with assigned worker ID
 - `ExecuteTaskRequest` - Task assignment (contribution, prove, aggregate)
 - `Heartbeat` - Keep-alive messages
 - `JobCancelled` - Job cancellation notifications
@@ -46,7 +46,7 @@ These methods provide monitoring and control capabilities:
 - **`StatusInfo()`** - Service information including uptime, version, metrics
 - **`SystemStatus()`** - Overall system metrics (active jobs, worker counts, capacity)
 - **`JobsList(JobsListRequest)`** - List current and historical proof jobs
-- **`ProversList(ProversListRequest)`** - List connected workers and their states
+- **`WorkersList(WorkersListRequest)`** - List connected workers and their states
 - **`JobStatus(JobStatusRequest)`** - Get detailed status of a specific job
 - **`LaunchProof(LaunchProofRequest)`** - Start a new proof job
 
@@ -63,7 +63,7 @@ message ErrorResponse {
 
 Common error codes:
 - `JOB_NOT_FOUND` - Requested job doesn't exist
-- `PROVER_UNAVAILABLE` - No workers available for task
+- `WORKER_UNAVAILABLE` - No workers available for task
 - `SYSTEM_UNAVAILABLE` - System temporarily unavailable
 
 ## Protocol Testing with grpcurl
@@ -97,7 +97,7 @@ grpcurl -plaintext -d '{"active_only": true}' \
 
 # List available workers
 grpcurl -plaintext -d '{"available_only": true}' \
-  127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/ProversList
+  127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/WorkersList
 
 # Get specific job status
 grpcurl -plaintext -d '{"job_id": "job_123"}' \
@@ -110,12 +110,12 @@ grpcurl -plaintext -d '{"block_id": "block_456", "compute_capacity": 4, "input_p
 
 ### Streaming API Testing
 
-For testing the bidirectional `ProverStream`, you need a streaming-capable client. Example worker registration message:
+For testing the bidirectional `WorkerStream`, you need a streaming-capable client. Example worker registration message:
 
 ```json
 {
   "register": {
-    "prover_id": "test-worker-001", 
+    "worker_id": "test-worker-001", 
     "compute_capacity": {"compute_units": 8}
   }
 }
@@ -130,9 +130,9 @@ Import this crate in coordinator or worker implementations:
 ```rust
 use zisk_distributed_grpc_api::zisk_distributed_api::{
     ZiskDistributedApiServer, ZiskDistributedApiClient,
-    ProverMessage, CoordinatorMessage,
+    WorkerMessage, CoordinatorMessage,
     ExecuteTaskRequest, ExecuteTaskResponse,
-    ProverRegisterRequest, ProverRegisterResponse,
+    WorkerRegisterRequest, WorkerRegisterResponse,
     // ... other message types
 };
 ```
@@ -142,7 +142,7 @@ use zisk_distributed_grpc_api::zisk_distributed_api::{
 ```rust
 use tonic::transport::Channel;
 use zisk_distributed_grpc_api::zisk_distributed_api::{
-    ZiskDistributedApiClient, ProverMessage, ProverRegisterRequest
+    ZiskDistributedApiClient, WorkerMessage, WorkerRegisterRequest
 };
 
 async fn connect_worker() -> Result<(), Box<dyn std::error::Error>> {
@@ -153,9 +153,9 @@ async fn connect_worker() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = ZiskDistributedApiClient::new(channel);
     
     let outbound = async_stream::stream! {
-        yield ProverMessage {
-            message: Some(proofman_message::Message::Register(ProverRegisterRequest {
-                prover_id: Some("example-worker".to_string()),
+        yield WorkerMessage {
+            payload: Some(worker_message::Payload::Register(WorkerRegisterRequest {
+                worker_id: "example-worker".to_string(),
                 compute_capacity: Some(ComputeCapacity { 
                     compute_units: 4 
                 }),
@@ -163,7 +163,7 @@ async fn connect_worker() -> Result<(), Box<dyn std::error::Error>> {
         };
     };
     
-    let response = client.prover_stream(Request::new(outbound)).await?;
+    let response = client.worker_stream(Request::new(outbound)).await?;
     let mut inbound = response.into_inner();
     
     while let Some(coordinator_message) = inbound.message().await? {
@@ -181,9 +181,9 @@ The complete gRPC service definition is in `proto/zisk_distributed_api.proto` wi
 
 ### Key Message Types
 
-- `ProverMessage` / `CoordinatorMessage` - Top-level message envelopes
+- `WorkerMessage` / `CoordinatorMessage` - Top-level message envelopes
 - `ExecuteTaskRequest` / `ExecuteTaskResponse` - Task execution protocol
-- `ProverRegisterRequest` / `ProverRegisterResponse` - Worker registration
+- `WorkerRegisterRequest` / `WorkerRegisterResponse` - Worker registration
 - `ComputeCapacity` - Worker capacity specification
 - `JobStatus`, `SystemStatus` - Administrative data structures
 

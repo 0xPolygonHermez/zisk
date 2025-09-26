@@ -51,7 +51,6 @@ impl Config {
             .set_default("server.shutdown_timeout_seconds", 30)?
             .set_default("logging.level", "debug")?
             .set_default("logging.format", "pretty")?
-            .set_default("logging.file_output", false)?
             .set_default("coordinator.max_workers_per_job", 10)?
             .set_default("coordinator.max_total_workers", 1000)?
             .set_default("coordinator.phase1_timeout_seconds", 300)?

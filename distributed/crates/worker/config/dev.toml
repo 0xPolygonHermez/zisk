@@ -1,7 +1,7 @@
 [worker]
 # worker_id = "my-worker-001"
 compute_capacity.compute_units = 10
-environment = "development" #
+environment = "development"
 
 [coordinator]
 url = "http://127.0.0.1:50051"
@@ -11,6 +11,5 @@ reconnect_interval_seconds = 5
 heartbeat_timeout_seconds = 30
 
 [logging]
-level = "info"
+level = "debug"
 format = "pretty"
-file_output = false

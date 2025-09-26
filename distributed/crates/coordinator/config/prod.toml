@@ -10,8 +10,7 @@ port = 50051
 [logging]
 level = "info"
 format = "json"
-file_output = true
-file_path = "/var/log/coordinator-network/server.log"
+file_path = "/var/log/distributed/coordinator.log"
 
 [coordinator]
 shutdown_timeout_seconds = 30 # Graceful shutdown timeout in seconds

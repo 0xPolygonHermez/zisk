@@ -221,23 +221,27 @@ impl WorkerNodeGrpc {
 
         let (result_data, error_message) = match result {
             Ok(data) => {
-                assert!(success);
+                if success == false {
+                    return Err(anyhow!("Inconsistent state: success is false but result is Ok"));
+                }
                 (data, String::new())
             }
             Err(e) => {
-                assert!(!success);
+                if success == true {
+                    return Err(anyhow!("Inconsistent state: success is true but result is Err"));
+                }
                 (vec![], e.to_string())
             }
         };
 
-        let mut ch = Vec::new();
-        for cont in result_data {
-            ch.push(Challenges {
+        let challenges: Vec<Challenges> = result_data
+            .into_iter()
+            .map(|cont| Challenges {
                 worker_index: cont.worker_index,
                 airgroup_id: cont.airgroup_id as u32,
                 challenge: cont.challenge.to_vec(),
-            });
-        }
+            })
+            .collect();
 
         let message = WorkerMessage {
             payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
@@ -245,7 +249,7 @@ impl WorkerNodeGrpc {
                 job_id: job_id.as_string(),
                 task_type: TaskType::PartialContribution as i32,
                 success,
-                result_data: Some(ResultData::Challenges(ChallengesList { challenges: ch })),
+                result_data: Some(ResultData::Challenges(ChallengesList { challenges })),
                 error_message,
             })),
         };

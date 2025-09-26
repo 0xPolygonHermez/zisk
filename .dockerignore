@@ -1,0 +1,45 @@
+# Ignore build artifacts (these are rebuilt in container)
+target/
+build/
+
+# Ignore logs and temporary files  
+logs/
+tmp/
+*.log
+
+# Ignore test data (but keep source code that might be needed)
+proofs/
+
+# Ignore Git and development files
+.git/
+.gitignore
+debug.json
+book/
+zisk-provingkey-*.tar.gz
+
+# Ignore specific tools scripts (but keep tools/circuit and tools/test-env which are needed)
+tools/emulate_all.sh
+tools/emulate_asm_all.sh  
+tools/verify_all.sh
+tools/update-rust/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignore some compressed files
+*.zip
+
+# Ignore some lock files (except Cargo.lock which is needed)
+flake.lock
+
+# Ignore documentation files
+README.md
+LICENSE-*
+book.toml

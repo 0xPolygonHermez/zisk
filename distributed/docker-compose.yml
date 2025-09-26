@@ -5,37 +5,41 @@ services:
     build:
       context: ..
       dockerfile: distributed/Dockerfile
+      args:
+        GPU: false
     ports:
       - "50051:50051"
-    environment:
-      - DISTRIBUTED_LOGGING_LEVEL=info
-      - DISTRIBUTED_LOGGING_FORMAT=json
-      - DISTRIBUTED_SERVER_HOST=0.0.0.0
-      - DISTRIBUTED_SERVER_PORT=50051
-      - CONFIG_PATH=/etc/distributed/coordinator
     volumes:
       - ./logs:/var/log/distributed
+      # Uncomment to override config
+      # - ./crates/coordinator/config:/app/config/coordinator
+    environment:
+      - RUST_LOG=info
     restart: unless-stopped
-    command: ["coordinator"]
+    command: [ "zisk-coordinator", "--config", "/app/config/coordinator/prod.toml" ]
 
-  prover:
+  worker:
     build:
       context: ..
       dockerfile: distributed/Dockerfile
-    environment:
-      - DISTRIBUTED_LOGGING_LEVEL=info
-      - DISTRIBUTED_LOGGING_FORMAT=json
-      - DISTRIBUTED_SERVER_URL=http://coordinator:50051
-      - DISTRIBUTED_PROVER_ID=docker-prover-001
-      - CONFIG_PATH=/etc/distributed/prover
+      args:
+        GPU: false # Set to true if GPU support is needed
     volumes:
       - ./logs:/var/log/distributed
+      # Uncomment to override config
+      # - ./crates/worker/config:/app/config/worker
+      # Mount proving key and ELF directories if needed
+      # - ${ZISK_CACHE_FOLDER}:/app/.zisk/cache:ro
+      # - ${PROVING_KEY_PATH}:/app/proving-keys:ro
+      # - ${ELF_INPUTS_PATH}:/app/elf-inputs:ro
+    environment:
+      - RUST_LOG=info
     restart: unless-stopped
-    command: ["prover"]
+    command: [ "zisk-worker", "--config", "/app/config/worker/prod.toml" ]
     depends_on:
       - coordinator
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "prover"]
+      test: [ "CMD", "pgrep", "-f", "zisk-worker" ]
       interval: 30s
       timeout: 10s
       retries: 3
