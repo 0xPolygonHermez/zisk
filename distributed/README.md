@@ -53,20 +53,23 @@ docker network create zisk-net || true
 
 # 1. Start coordinator container (detached)
 LOGS_DIR="$(pwd)/../logs"
-docker run --rm --name zisk-coordinator \
+docker run -d --rm --name zisk-coordinator \
   --network zisk-net -p 50051:50051 \
   -v "$LOGS_DIR:/var/log/distributed" \
   -e RUST_LOG=info \
   zisk-distributed:latest \
   zisk-coordinator --config /app/config/coordinator/dev.toml
 
-# 2. Start worker container(s) - they connect to coordinator by container name
+# 2. View coordinator logs
+docker logs -f zisk-coordinator
+
+# 3. Start worker container(s) in a different terminal(s) - they connect to coordinator by container name
 # Replace paths with your actual directories
 LOGS_DIR="$(pwd)/../logs"
 PROVING_KEY_DIR="$(pwd)/../build/provingKey"
 ELF_DIR="$(pwd)/../../zisk-testvectors/eth-client/elf"
 INPUTS_DIR="$(pwd)/../../zisk-testvectors/eth-client/inputs"
-docker run --rm --name zisk-worker-1 \
+docker run -d --rm --name zisk-worker-1 \
   --network zisk-net --shm-size=20g \
   -v "$LOGS_DIR:/var/log/distributed" \
   -v "$HOME/.zisk/cache:/app/.zisk/cache:ro" \
@@ -78,11 +81,10 @@ docker run --rm --name zisk-worker-1 \
     --config /app/config/worker/dev.toml --coordinator-url http://zisk-coordinator:50051 \
     --elf /app/elf/zec.elf --proving-key /app/proving-keys --asm-port 15200
 
-# View logs
-docker logs -f zisk-coordinator
+# 4. View coordinator logs
 docker logs -f zisk-worker-1
 
-# Generate a proof inside the coordinator container
+# Generate a proof
 docker exec -it zisk-coordinator \
   zisk-coordinator prove-block --coordinator-url http://127.0.0.1:50051 \
   --input /app/inputs/21429992_1_0.bin --compute-capacity 10

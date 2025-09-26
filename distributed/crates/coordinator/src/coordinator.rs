@@ -250,16 +250,6 @@ impl Coordinator {
         // Check if we have enough capacity to compute the proof is already checked
         // in create_job > partition_and_allocate_by_capacity
 
-        // Check if input_path file exists
-        // let input_path = PathBuf::from(&request.input_path);
-        // if !input_path.exists() {
-        //     error!("Input path does not exist: {}", request.input_path);
-        //     return Err(CoordinatorError::InvalidArgument(format!(
-        //         "Input path does not exist: {}",
-        //         request.input_path
-        //     )));
-        // }
-
         Ok(())
     }
 
