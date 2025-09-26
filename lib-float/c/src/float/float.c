@@ -15,12 +15,13 @@ extern "C" {
 
 void set_rounding_mode (uint64_t rm);
 void update_rounding_mode (uint64_t * rm);
+void change_rounding_mode_sign (void);
 
 void _zisk_float (void)
 {
     // Before calling any softfloat function, set the rounding mode from the fcsr register
     // into the softfloat_roundingMode variable.
-    softfloat_roundingMode = (fcsr >> 5) & 0x7;
+    set_rounding_mode((fcsr >> 5) & 0x7);
 
     // Clear exception flags before operation
     softfloat_exceptionFlags = 0;
@@ -242,18 +243,159 @@ void _zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
+
+                    // NaN propagation
+                    if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]) || F32_IS_SIGNALING_NAN(fregs[rs3])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    if (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    if (F32_IS_QUIET_NAN(fregs[rs1]) || F32_IS_QUIET_NAN(fregs[rs2]) || F32_IS_QUIET_NAN(fregs[rs3])) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        break;
+                    }
+
+                    // Multiplication by zero
+                    // -(0*rs2 + rs3) = -rs3, -(rs1*0 + rs3) = -rs3
+                    if ((F32_IS_ANY_ZERO(fregs[rs1]) || F32_IS_ANY_ZERO(fregs[rs2])) && !F32_IS_ANY_ZERO(fregs[rs3])) {
+                        fregs[rd] = NEG32(fregs[rs3]);
+                        break;
+                    }
+
+                    // Addition of signed zeros
+                    // +0 + +0 = +0
+                    // +0 + -0 = +0
+                    // -0 + +0 = +0
+                    // -0 + -0 = -0
+                    if (F32_IS_ANY_ZERO(fregs[rs3])) {
+                        if (F32_IS_ANY_ZERO(fregs[rs1]) || F32_IS_ANY_ZERO(fregs[rs2])) { // Multiplication is +/-0
+                            if (F32_IS_POSITIVE(fregs[rs1]) != F32_IS_POSITIVE(fregs[rs2])) { // Multiplication is -0
+                                if (F32_IS_POSITIVE(fregs[rs3])) {
+                                    fregs[rd] = F32_PLUS_ZERO;
+                                } else {
+                                    fregs[rd] = F32_PLUS_ZERO;
+                                }
+                            } else { // Multiplication is +0
+                                if (F32_IS_POSITIVE(fregs[rs3])) {
+                                    fregs[rd] = F32_MINUS_ZERO;
+                                } else {
+                                    fregs[rd] = F32_PLUS_ZERO;
+                                }
+                            }                        
+                            break;
+                        }
+                    }
+                    // if (F32_IS_ANY_ZERO(fregs[rs1]) || F32_IS_ANY_ZERO(fregs[rs2])) {
+                    //     if (F32_IS_ANY_ZERO(fregs[rs3])) {
+                    //         if ((F32_IS_POSITIVE(fregs[rs1]) != F32_IS_POSITIVE(fregs[rs2])) && F32_IS_NEGATIVE(fregs[rs3])) {
+                    //             fregs[rd] = F32_PLUS_ZERO;
+                    //         } else {
+                    //             fregs[rd] = F32_MINUS_ZERO;
+                    //         }                        
+                    //         break;
+                    //     } else
+                    //         fregs[rd] = NEG32(fregs[rs3]);
+                    //     break;
+                    // }
+
+                    // Get rounding mode
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
-                    fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v);
+                    change_rounding_mode_sign();
+
+                    // Call f32_mulAdd()
+                    uint32_t result = f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
+                    if (result == F32_PLUS_ZERO)
+                        fregs[rd] = (uint64_t)F32_MINUS_ZERO;
+                    else if (result == F32_MINUS_ZERO)
+                        fregs[rd] = (uint64_t)F32_PLUS_ZERO;
+                    else
+                        fregs[rd] = (uint64_t)NEG32(result);
+                    // else
+                    // fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v);
                     break;
+                    // inst_12:
+                    // // rs1==f8, rs2==f20, rs3==f3, rd==f30,fs1 == 0 and fe1 == 0x00 and fm1 == 0x000000 and fs2 == 0 and fe2 == 0x00 and fm2 == 0x000000 and fs3 == 1 and fe3 == 0x00 and fm3 == 0x000000 and  fcsr == 0x0 and rm_val == 7   
+                    // /* opcode: fnmadd.s ; op1:f8; op2:f20; op3:f3; dest:f30; op1val:0x0; op2val:0x0;
+                    // op3val:0x80000000; valaddr_reg:x3; val_offset:36*FLEN/8; rmval:dyn;
+                    // testreg:x2; fcsr_val:0 */
+                    // TEST_FPR4_OP(fnmadd.s, f30, f8, f20, f3, dyn, 0, 0, x3, 36*FLEN/8, x4, x1, x2)
+                    // It results 80000000 instead of 00000000
                 }
                 case 1: { //=> ("R4", "fnmadd.d"), rd = -(rs1 x rs2) - rs3
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
+
+                    // NaN propagation
+                    if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]) || F64_IS_SIGNALING_NAN(fregs[rs3])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    if (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    if (F64_IS_QUIET_NAN(fregs[rs1]) || F64_IS_QUIET_NAN(fregs[rs2]) || F64_IS_QUIET_NAN(fregs[rs3])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        break;
+                    }
+
+                    // Multiplication by zero
+                    // -(0*rs2 + rs3) = -rs3, -(rs1*0 + rs3) = -rs3
+                    if ((F64_IS_ANY_ZERO(fregs[rs1]) || F64_IS_ANY_ZERO(fregs[rs2])) && !F64_IS_ANY_ZERO(fregs[rs3])) {
+                        fregs[rd] = NEG64(fregs[rs3]);
+                        break;
+                    }
+
+                    // Addition of signed zeros
+                    // +0 + +0 = +0
+                    // +0 + -0 = +0
+                    // -0 + +0 = +0
+                    // -0 + -0 = -0
+                    if (F64_IS_ANY_ZERO(fregs[rs3])) {
+                        if (F64_IS_ANY_ZERO(fregs[rs1]) || F64_IS_ANY_ZERO(fregs[rs2])) { // Multiplication is +/-0
+                            if (F64_IS_POSITIVE(fregs[rs1]) != F64_IS_POSITIVE(fregs[rs2])) { // Multiplication is -0
+                                if (F64_IS_POSITIVE(fregs[rs3])) {
+                                    fregs[rd] = F64_PLUS_ZERO;
+                                } else {
+                                    fregs[rd] = F64_PLUS_ZERO;
+                                }
+                            } else { // Multiplication is +0
+                                if (F64_IS_POSITIVE(fregs[rs3])) {
+                                    fregs[rd] = F64_MINUS_ZERO;
+                                } else {
+                                    fregs[rd] = F64_PLUS_ZERO;
+                                }
+                            }                        
+                            break;
+                        }
+                    }
+
+                    // Get rounding mode
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
+                    change_rounding_mode_sign();
+
+                    // Call f64_mulAdd()
                     fregs[rd] = (uint64_t)NEG64(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v);
                     break;
                 }
@@ -1696,6 +1838,18 @@ void update_rounding_mode (uint64_t * rm)
             // Invalid rounding mode, do nothing
             break;
     }
+}
+
+void change_rounding_mode_sign (void)
+{
+    // Change the sign of the rounding mode in softfloat_roundingMode
+    // This is a custom function not defined in RISC-V or SoftFloat specs.
+    // It flips between RDN (2) and RUP (3), and leaves other modes unchanged.
+    // This is done before calling SoftFloat functions which result will be negated.
+    if (softfloat_roundingMode == softfloat_round_max)
+        softfloat_roundingMode = softfloat_round_min;
+    else if (softfloat_roundingMode == softfloat_round_min)
+        softfloat_roundingMode = softfloat_round_max;
 }
 
 #ifdef __cplusplus

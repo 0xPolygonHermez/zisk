@@ -53,6 +53,7 @@ const uint64_t F32_QUIET_NAN_MASK =         0x00400000;
 #define F32_IS_QUIET_NAN(a) ( (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_QUIET_NAN_MASK) != 0) )
 #define F32_IS_SIGNALING_NAN(a) ( (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) != 0) && (((a) & F32_QUIET_NAN_MASK) == 0) )
 
+#define F32_IS_POSITIVE(a) (((a) & F32_SIGN_BIT_MASK) == 0)
 #define F32_IS_NEGATIVE(a) (((a) & F32_SIGN_BIT_MASK) != 0)
 #define F32_IS_PLUS_ZERO(a) ( (((a) & F32_SIGN_BIT_MASK) == 0) && (((a) & F32_EXPONENT_MASK) == 0) && (((a) & F32_MANTISSA_MASK) == 0) )
 #define F32_IS_MINUS_ZERO(a) ( (((a) & F32_SIGN_BIT_MASK) != 0) && (((a) & F32_EXPONENT_MASK) == 0) && (((a) & F32_MANTISSA_MASK) == 0) )
