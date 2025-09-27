@@ -279,7 +279,7 @@ url = "http://127.0.0.1:50051"
 [logging]
 level = "debug"
 format = "pretty"
-````
+```
 
 Example production configuration file:
 
