@@ -233,10 +233,10 @@ pub async fn load_worker_config(
     config: Option<String>,
     coordinator_url: Option<String>,
     worker_id: Option<String>,
-    compute_units: Option<u32>,
+    compute_capacity: Option<u32>,
 ) -> Result<(bool, WorkerServiceConfig)> {
     // Config file is now optional - if not provided, defaults will be used
-    let config = config.or_else(|| std::env::var("CONFIG_PATH").ok());
+    let config = config.or_else(|| std::env::var("ZISK_WORKER_CONFIG_PATH").ok());
 
     let loaded_from_file = config.is_some();
 
@@ -250,8 +250,7 @@ pub async fn load_worker_config(
         .set_default("connection.reconnect_interval_seconds", 5)?
         .set_default("connection.heartbeat_timeout_seconds", 30)?
         .set_default("logging.level", "debug")?
-        .set_default("logging.format", "pretty")?
-        .set_default("logging.file_output", false)?;
+        .set_default("logging.format", "pretty")?;
 
     if let Some(path) = config {
         builder = builder.add_source(config::File::with_name(&path));
@@ -265,8 +264,9 @@ pub async fn load_worker_config(
         builder = builder.set_override("worker.worker_id", worker_id)?;
     }
 
-    if let Some(compute_units) = compute_units {
-        builder = builder.set_override("worker.compute_capacity.compute_units", compute_units)?;
+    if let Some(compute_capacity) = compute_capacity {
+        builder =
+            builder.set_override("worker.compute_capacity.compute_units", compute_capacity)?;
     }
 
     let config = builder.build()?;

@@ -1,9 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::{
-    env,
-    fmt::{self, Display},
-};
+use std::fmt::{self, Display};
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
@@ -70,23 +67,11 @@ impl fmt::Display for LogFormat {
 /// Returns `Ok(None)` if only console logging is configured.
 pub fn init(logging_config: Option<&LoggingConfig>) -> Result<Option<WorkerGuard>> {
     // Prioritize logging_config values over environment variables
-    let log_level = if let Some(config) = logging_config {
-        config.level.clone()
-    } else {
-        env::var("DISTRIBUTED_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_string())
-    };
+    let log_level =
+        logging_config.map(|config| config.level.clone()).unwrap_or_else(|| "info".to_string());
 
-    let log_format = if let Some(config) = logging_config {
-        config.format.clone()
-    } else {
-        let format_str =
-            env::var("DISTRIBUTED_LOGGING_FORMAT").unwrap_or_else(|_| "pretty".to_string());
-        match format_str.as_str() {
-            "json" => LogFormat::Json,
-            "compact" => LogFormat::Compact,
-            _ => LogFormat::Pretty,
-        }
-    };
+    let log_format =
+        logging_config.map(|config| config.format.clone()).unwrap_or(LogFormat::Pretty);
 
     let env_filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new(&log_level))

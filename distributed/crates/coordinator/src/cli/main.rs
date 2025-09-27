@@ -9,7 +9,10 @@ mod handler_prove_block;
 #[command(about = "The Coordinator for the Distributed ZisK Network")]
 struct ZiskCoordinatorArgs {
     /// Path to configuration file
-    #[arg(long, help = "Path to configuration file (overrides CONFIG_PATH environment variable)")]
+    #[arg(
+        long,
+        help = "Path to configuration file (overrides ZISK_COORDINATOR_CONFIG_PATH environment variable if exists)"
+    )]
     config: Option<String>,
 
     /// Port where the ZisK Coordinator gRPC server will listen for incoming connections.

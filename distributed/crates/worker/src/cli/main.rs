@@ -26,7 +26,7 @@ struct Cli {
 
     /// Number of compute units to advertise (overrides config file)
     #[arg(long)]
-    compute_units: Option<u32>,
+    compute_capacity: Option<u32>,
 
     #[clap(
         short = 'j',
@@ -37,7 +37,10 @@ struct Cli {
     pub shared_tables: bool,
 
     /// Path to configuration file
-    #[arg(long, help = "Path to configuration file (overrides CONFIG_PATH environment variable)")]
+    #[arg(
+        long,
+        help = "Path to configuration file (overrides ZISK_WORKER_CONFIG_PATH environment variable)"
+    )]
     config: Option<String>,
 
     /// Witness computation dynamic library path
@@ -114,7 +117,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let (loaded_from_file, worker_config) =
-        load_worker_config(cli.config, cli.coordinator_url, cli.worker_id, cli.compute_units)
+        load_worker_config(cli.config, cli.coordinator_url, cli.worker_id, cli.compute_capacity)
             .await?;
 
     // Initialize tracing - keep guard alive for application lifetime

@@ -16,6 +16,10 @@ The process of generating a proof proceeds as follows:
    - **Aggregation:** A Worker aggregates the partial proofs and produces the final proof for the client.
 4. The Coordinator collects the final proof and returns it to the client.
 
+**Note:**
+- **Workers Selection:** The Coordinator selects Workers based on their reported compute capacity and availability. When a proof request is received, the Coordinator evaluates the required compute capacity and selects Workers sequentially from the pool of available Workers until the capacity is met. When a worker is assigned to a job, it is marked as busy and won't receive new tasks until it completes the current job.
+- **Aggregator Selection:** The first Worker to send its partial proof to the Coordinator is selected as the Aggregator to perform the aggregation of all partial proofs into the final proof. The other Workers are marked as available again after sending their partial proofs.
+
 ## Quick Start
 
 ### Manual Build and Run
@@ -28,7 +32,7 @@ cargo build --release --bin zisk-coordinator --bin zisk-worker
 cargo run --release --bin zisk-coordinator -- --port 50051
 
 # Run a worker node (in another terminal)
-cargo run --release --bin zisk-worker -- --coordinator-url http://127.0.0.1:50051 --witness-lib <path-to-libzisk_witness.so> --proving-key <path-to-provingKey> --elf <path-to-elf-file> --asm-port <port-number>
+cargo run --release --bin zisk-worker -- --coordinator-url http://127.0.0.1:50051 --witness-lib <path-to-libzisk_witness.so> --proving-key <path-to-provingKey-folder> --elf <path-to-elf-file> --asm-port <port-number>
 
 # Generate a proof (in another terminal)
 cargo run --release --bin zisk-coordinator prove-block --coordinator-url http://127.0.0.1:50051 --input <path-to-inputs> --compute-capacity 10
@@ -52,7 +56,7 @@ docker build --build-arg GPU=true -t zisk-distributed:gpu -f Dockerfile ..
 docker network create zisk-net || true
 
 # 1. Start coordinator container (detached)
-LOGS_DIR="$(pwd)/../logs"
+LOGS_DIR="<path-to-logs-folder>"
 docker run -d --rm --name zisk-coordinator \
   --network zisk-net -p 50051:50051 \
   -v "$LOGS_DIR:/var/log/distributed" \
@@ -65,10 +69,10 @@ docker logs -f zisk-coordinator
 
 # 3. Start worker container(s) in a different terminal(s) - they connect to coordinator by container name
 # Replace paths with your actual directories
-LOGS_DIR="$(pwd)/../logs"
-PROVING_KEY_DIR="$(pwd)/../build/provingKey"
-ELF_DIR="$(pwd)/../../zisk-testvectors/eth-client/elf"
-INPUTS_DIR="$(pwd)/../../zisk-testvectors/eth-client/inputs"
+LOGS_DIR="<path-to-logs-folder>"
+PROVING_KEY_DIR="<path-to-provingKey-folder>"
+ELF_DIR="<path-to-elf-folder>"
+INPUTS_DIR="<path-to-inputs-folder>"
 docker run -d --rm --name zisk-worker-1 \
   --network zisk-net --shm-size=20g \
   -v "$LOGS_DIR:/var/log/distributed" \
@@ -103,17 +107,45 @@ docker rm zisk-coordinator zisk-worker-1
   - Cache: `/app/.zisk/cache/` (mounted from host `$HOME/.zisk/cache`)
   - Logs: `/var/log/distributed/`
 
-## Configuration
+## Coordinator Configuration
 
-The system supports flexible configuration through TOML files and environment variables.
+The coordinator can be configured using either a **TOML configuration file** or **command-line arguments**.
+If no file is explicitly provided, the system falls back to the `ZISK_COORDINATOR_CONFIG_PATH` environment variable to locate one. If any of these not set, built-in defaults are used.
 
-### Coordinator Configuration
+**Example:**
 
-The coordinator can be configured through TOML configuration files and command line arguments.
+```bash
+# You can specify the configuration file path using a command line argument:
+cargo run --bin zisk-coordinator -- --config /path/to/my-config.toml
 
-#### Configuration Files
+# You can specify the configuration file path using an environment variable:
+export ZISK_COORDINATOR_CONFIG_PATH="/path/to/my-config.toml"
+cargo run --bin zisk-coordinator
+```
 
-Example development configuration (`development.toml`):
+The table below lists the available configuration options for the Coordinator:
+
+| TOML Key              | CLI Argument     | Environment Variable| Type | Default | Description |
+|-----------------------|--------------|---------------------|------|---------|-------------|
+| `service.name` | - | - | String | ZisK Distributed Coordinator | Service name |
+| `service.environment` | - | - | String | development | Service environment (development, staging, production) |
+| `server.host` | - | - | String | 0.0.0.0 | Server host |
+| `server.port` | `--port` | - | Number | 50051 | Server port |
+| `server.shutdown_timeout_seconds` | - | - | Number | 30 | Graceful shutdown timeout in seconds |
+| `logging.level` | - | - | String | debug | Logging level (error, warn, info, debug, trace) |
+| `logging.format` | - | - | String | pretty | Logging format (pretty, json, compact) |
+| `logging.file_path` | - | - | String | - | Log file path (enables file logging) |
+| `coordinator.max_workers_per_job` | - | - | Number | 10 | Maximum workers per proof job |
+| `coordinator.max_total_workers` | - | - | Number | 1000 | Maximum total registered workers |
+| `coordinator.phase1_timeout_seconds` | - | - | Number | 300 | Phase 1 timeout in seconds |
+| `coordinator.phase2_timeout_seconds` | - | - | Number | 600 | Phase 2 timeout in seconds |
+| `coordinator.webhook_url` | `--webhook-url` | - | String | - | Webhook URL to notify on job completion |
+
+
+### Configuration Files examples
+
+Example development configuration file:
+
 ```toml
 [service]
 name = "ZisK Distributed Coordinator"
@@ -124,12 +156,12 @@ host = "0.0.0.0"
 port = 50051
 
 [logging]
-level = "info"
+level = "debug"
 format = "pretty"
-file_path = "coordinator.log"
 ```
 
-Example production configuration (`production.toml`):
+Example production configuration file:
+
 ```toml
 [service]
 name = "ZisK Distributed Coordinator"  
@@ -142,18 +174,35 @@ port = 50051
 [logging]
 level = "info"
 format = "json"
-file_output = true
-file_path = "/var/log/coordinator-network/server.log"
+file_path = "/var/log/distributed/coordinator.log"
 
 [coordinator]
-shutdown_timeout_seconds = 30 # Graceful shutdown timeout
 max_workers_per_job = 20      # Maximum workers per proof job
 max_total_workers = 5000      # Maximum total registered workers  
 phase1_timeout_seconds = 600  # 10 minutes for phase 1
 phase2_timeout_seconds = 1200 # 20 minutes for phase 2
+webhook_url = "http://webhook.example.com/notify?job_id={$job_id}"
 ```
 
-#### Command Line Arguments
+### Webhook URL
+
+The Coordinator can notify an external service when a job finishes by sending a request to a configured webhook URL.
+The placeholder {$job_id} can be included in the URL and will be replaced with the finished job’s ID.
+If no placeholder is provided, the Coordinator automatically appends /{job_id} to the end of the URL.
+
+**Example:**
+
+```bash
+# Explicit placeholder
+zisk-coordinator --webhook-url 'http://example.com/notify?job_id={$job_id}'
+# → http://example.com/notify?job_id=12345
+
+# Without placeholder (ID is appended automatically)
+zisk-coordinator --webhook-url 'http://example.com/notify'
+# → http://example.com/notify/12345
+```
+
+### Command Line Arguments
 
 ```bash
 # Show help
@@ -166,27 +215,79 @@ cargo run --bin zisk-coordinator -- --port 50051
 cargo run --bin zisk-coordinator -- --config production.toml
 
 # Run with webhook URL  
-cargo run --bin zisk-coordinator -- --webhook-url http://webhook.example.com/notify
+cargo run --bin zisk-coordinator -- --webhook-url http://webhook.example.com/notify --port 50051
 ```
 
-### Worker Configuration
+## Worker Configuration
 
-#### Configuration File Generation
+The worker can be configured using either a **TOML configuration file** or **command-line arguments**.
+If no file is explicitly provided, the system falls back to the `ZISK_WORKER_CONFIG_PATH` environment variable to locate one. If none of these are set, built-in defaults are used.
 
-Workers support rich configuration through TOML files:
+**Example:**
 
 ```bash
-# Generate example configuration file
-cargo run --bin zisk-worker -- --generate-config
+# You can specify the configuration file path using a command line argument:
+cargo run --bin zisk-worker -- --config /path/to/my-config.toml
+
+# You can specify the configuration file path using an environment variable:
+export ZISK_WORKER_CONFIG_PATH="/path/to/my-config.toml"
+cargo run --bin zisk-worker
 ```
 
-This creates a `config.toml` file with documented options:
+The table below lists the available configuration options for the Worker:
+
+| TOML Key              | CLI Argument     | Environment Variable| Type | Default | Description |
+|-----------------------|--------------|---------------------|------|---------|-------------|
+| `worker.worker_id` | `--worker-id` | - | String | Auto-generated UUID | Unique worker identifier |
+| `worker.compute_capacity.compute_units` | `--compute-capacity` | - | Number | 10 | Worker compute capacity (in compute units) |
+| `worker.environment` | - | - | String | development | Service environment (development, staging, production) |
+| `coordinator.url` | `--coordinator-url` | - | String | - | Coordinator server URL |
+| `connection.reconnect_interval_seconds` | - | - | Number | 5 | Reconnection interval in seconds |
+| `connection.heartbeat_timeout_seconds` | - | - | Number | 30 | Heartbeat timeout in seconds |
+| `logging.level` | - | - | String | debug | Logging level (error, warn, info, debug, trace) |
+| `logging.format` | - | - | String | pretty | Logging format (pretty, json, compact) |
+| `logging.file_path` | - | - | String | - | Log file path (enables file logging) |
+| - | `--witness-lib` | - | String | | - | Path to witness computation dynamic library |
+| - | `--proving-key` | - | String | - | Path to setup folder |
+| - | `--elf` | - | String | - | Path to ELF file |
+| - | `--asm` | - | String | - | Path to ASM file (mutually exclusive with `--emulator`) |
+| - | `--emulator` | - | Boolean | false | Use prebuilt emulator (mutually exclusive with `--asm`) |
+| - | `--asm-port` | - | Number | 23115 | Base port for Assembly microservices |
+| - | `--shared-tables` | - | Boolean | false | Whether to share tables when worker is running in a cluster |
+| - | `-v`, `-vv`, `-vvv`, ... | - | Number | 0 | Verbosity level (0=error, 1=warn, 2=info, 3=debug, 4=trace) |
+| - | `-d`, `--debug` | - | String | - | Enable debug mode with optional component filter |
+| - | `--verify-constraints` | - | Boolean | false | Whether to verify constraints |
+| - | `--unlock-mapped-memory` | - | Boolean | false | | Unlock memory map for the ROM file (mutually exclusive with `--emulator`) |
+| - | `-f`, `--final-snark` | - | Boolean | false | Whether to generate the final SNARK |
+| - | `-r`, `--preallocate` | - | Boolean | false | GPU preallocation flag |
+| - | `-t`, `--max-streams` | | - | Number | - | Maximum number of GPU streams |
+| - | `-n`, `--number-threads-witness` | - | Number | - | Number of threads for witness computation |
+| - | `-x`, `--max-witness-stored` | - | Number | - | Maximum number of witnesses to store in memory |
+
+### Configuration Files examples
+
+Example development configuration file:
 
 ```toml
 [worker]
-# worker_id = "my-worker-001"
 compute_capacity.compute_units = 10
 environment = "development"
+
+[coordinator]
+url = "http://127.0.0.1:50051"
+
+[logging]
+level = "debug"
+format = "pretty"
+````
+
+Example production configuration file:
+
+```toml
+[worker]
+worker_id = "my-worker-001"
+compute_capacity.compute_units = 10
+environment = "production"
 
 [coordinator]
 url = "http://127.0.0.1:50051"
@@ -198,128 +299,8 @@ heartbeat_timeout_seconds = 30
 [logging]
 level = "info"
 format = "pretty"
-file_output = false
+file_path = "/var/log/distributed/worker-001.log"
 ```
-
-#### Environment Variables
-
-Worker configuration is primarily handled through TOML configuration files and CLI arguments. The current implementation does not use environment variables with the `DISTRIBUTED_` prefix, but relies on:
-- Configuration files (TOML)
-- Command-line argument overrides
-- The `CONFIG_PATH` environment variable for specifying config file location
-
-#### Command Line Arguments
-
-```bash
-# Show help and available options
-cargo run --bin zisk-worker -- --help
-
-# Override server URL
-cargo run --bin zisk-worker -- --coordinator-url "http://production-coordinator:8080"
-
-# Override worker ID  
-cargo run --bin zisk-worker -- --worker-id "production-worker-001"
-
-# Override compute capacity
-cargo run --bin zisk-worker -- --compute-units 16
-
-# Use custom configuration file
-cargo run --bin zisk-worker -- --config production-worker.toml
-
-# Combine multiple overrides
-cargo run --bin zisk-worker -- \
-  --coordinator-url "http://production-coordinator:8080" \
-  --compute-units 32 \
-  --worker-id "high-capacity-worker"
-```
-
-#### Configuration Priority
-
-Configuration values are resolved in this priority order:
-
-1. **Command line arguments** (highest priority)
-2. **Configuration file** (specified by `--config` or default `config.toml`)
-3. **Built-in defaults** (lowest priority)
-
-Note: The current implementation does not use environment variables for configuration overrides.
-
-#### Worker Configuration Reference
-
-| Configuration Key | CLI Argument | Environment Variable | Type | Default | Description |
-|------------------|--------------|---------------------|------|---------|-------------|
-| `coordinator.url` | `--coordinator-url` | - | String | `http://127.0.0.1:50051` | Coordinator server URL |
-| `worker.worker_id` | `--worker-id` | - | String | Auto-generated UUID | Unique worker identifier |
-| `worker.compute_capacity.compute_units` | `--compute-units` | - | Number | 10 | Available compute units |
-| `connection.reconnect_interval_seconds` | - | - | Number | 5 | Reconnection interval in seconds |
-| `connection.heartbeat_timeout_seconds` | - | - | Number | 30 | Heartbeat timeout in seconds |
-| `worker.environment` | - | - | String | "development" | Worker environment mode |
-
-#### Alternative Configuration File Path
-
-You can specify the configuration file path using an environment variable:
-
-```bash
-export CONFIG_PATH="/path/to/my-config.toml"
-cargo run --bin zisk-worker
-```
-
-## Deployment Scenarios
-
-### Development Setup
-
-Quick local testing with default settings:
-
-```bash
-# Terminal 1: Start coordinator
-cargo run --bin zisk-coordinator
-
-# Terminal 2: Start worker
-cargo run --bin zisk-worker
-
-# Terminal 3: Start additional worker with different ID
-cargo run --bin zisk-worker -- --worker-id "dev-worker-2" --compute-units 2
-```
-
-### Production Docker Deployment
-
-```bash
-# Create production configuration
-mkdir -p /etc/zisk-distributed
-cp distributed/docker-compose.yml /etc/zisk-distributed/
-cd /etc/zisk-distributed
-
-# Edit docker-compose.yml for production settings
-# - Change ports as needed
-# - Update logging configuration  
-# - Set appropriate compute_units for workers
-# - Configure persistent volumes for logs
-
-# Deploy
-docker-compose up -d --scale worker=8
-
-# Monitor
-docker-compose logs -f
-docker-compose ps
-```
-
-### Multi-Machine Deployment
-
-For distributed deployment across multiple machines:
-
-1. **Coordinator machine**:
-   ```bash
-   # Run coordinator with external binding
-   docker run -p 50051:50051 \
-     zisk-distributed coordinator
-   ```
-
-2. **Worker machines**:
-   ```bash
-   # Point workers to coordinator IP  
-   docker run \
-     -v /path/to/worker-config.toml:/app/config.toml \
-     zisk-distributed worker --config config.toml
-   ```
 
 ## Administrative Operations
 
@@ -343,21 +324,6 @@ grpcurl -plaintext -d '{"available_only": true}' \
   127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/WorkersList
 ```
 
-### Scaling Operations
-
-```bash
-# Scale up workers in Docker
-docker-compose up -d --scale worker=10
-
-# Scale down workers  
-docker-compose up -d --scale worker=2
-
-# Add worker on different machine
-docker run -d \
-  -v /path/to/worker-config.toml:/app/config.toml \
-  zisk-distributed worker --config config.toml
-```
-
 ## Troubleshooting
 
 ### Common Issues
@@ -368,7 +334,6 @@ docker run -d \
 - Ensure correct URL format: `http://host:port` (not `https://` for default setup)
 
 **Configuration not loading:**
-- Use `--generate-config` to create a valid example configuration
 - Verify TOML syntax with a TOML validator
 - Check file permissions on configuration files
 - Use CLI overrides to test specific values
@@ -380,7 +345,6 @@ docker run -d \
 - Confirm coordinator has active jobs to distribute
 
 **Port conflicts:**
-- Coordinator defaults to port 8080 in config, but Docker examples use 50051
 - Use `--port` flag or update configuration file to change ports
 - Check for other services using the same ports
 
@@ -396,7 +360,7 @@ cargo run --bin zisk-coordinator -- --config debug-coordinator.toml
 cargo run --bin zisk-worker -- --config debug-worker.toml
 ```
 
-Where `debug-coordinator.toml` contains:
+Where `debug-coordinator.toml` or `debug-worker.toml` contains:
 ```toml
 [logging]
 level = "debug"
@@ -412,7 +376,7 @@ Use CLI overrides to test specific values without modifying configuration files:
 cargo run --bin zisk-worker -- --coordinator-url http://test-coordinator:50051
 
 # Test with specific capacity and ID
-cargo run --bin zisk-worker -- --compute-units 8 --worker-id test-worker
+cargo run --bin zisk-worker -- --worker-id test-worker --compute-units 10
 
 # Test coordinator with different port
 cargo run --bin zisk-coordinator -- --port 9090
@@ -420,54 +384,9 @@ cargo run --bin zisk-coordinator -- --port 9090
 
 ### Log Files
 
-When file logging is enabled, logs are written to:
-- Coordinator: `/var/log/distributed/coordinator.log`
-- Worker: `/var/log/distributed/worker.log`
+When file logging is enabled, logs are written into specified paths in the configuration files. Ensure the application has write permissions to these paths.
 
-In Docker deployments, logs are accessible via:
-```bash
-docker-compose logs coordinator
-docker-compose logs worker
+```toml
+[logging]
+file_path = "/var/log/distributed/coordinator.log"
 ```
-
-## Development
-
-### Prerequisites
-
-- Rust 1.75+ (see `rust-toolchain.toml`)
-- Protocol Buffers compiler (`protoc`)
-- Docker & Docker Compose (optional, for containerized development)
-
-### Building from Source
-
-```bash
-# From workspace root
-cargo build --release
-
-# Build only distributed components
-cargo build --release --bin zisk-coordinator --bin zisk-worker
-
-# Run tests
-cargo test -p zisk-distributed-coordinator -p zisk-distributed-worker
-
-# Check formatting
-cargo fmt --check
-
-# Run lints
-cargo clippy -- -D warnings
-```
-
-### gRPC API Development
-
-For details on the gRPC protocol, message types, and API development, see [`crates/grpc-api/README.md`](crates/grpc-api/README.md).
-
-
-### TODO Webhook
-
-### How the Workers are selected for the `Partial Contributions` and `Prove` phases
-
-The Coordinator selects Workers based on their reported compute capacity and availability. When a proof request is received, the Coordinator evaluates the required compute capacity and selects Workers sequentially from the pool of available Workers until the capacity is met.
-
-### How the Aggregator Worker is selected for the `Aggregation` phase
-
-The first Worker to send its partial proof to the Coordinator is selected as the Aggregator to perform the aggregation of all partial proofs into the final proof.

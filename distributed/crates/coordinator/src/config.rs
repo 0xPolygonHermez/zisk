@@ -47,7 +47,7 @@ impl Config {
             .set_default("service.version", env!("CARGO_PKG_VERSION"))?
             .set_default("service.environment", "development")?
             .set_default("server.host", "0.0.0.0")?
-            .set_default("server.port", 8080)?
+            .set_default("server.port", 50051)?
             .set_default("server.shutdown_timeout_seconds", 30)?
             .set_default("logging.level", "debug")?
             .set_default("logging.format", "pretty")?
@@ -59,6 +59,9 @@ impl Config {
         if let Some(path) = config {
             builder = builder.add_source(config::File::with_name(&path));
         }
+
+        // Force version to always be the compiled version (cannot be overridden by config)
+        builder = builder.set_override("service.version", env!("CARGO_PKG_VERSION"))?;
 
         // Override port if provided via function argument
         if let Some(port) = port {

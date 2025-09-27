@@ -13,7 +13,7 @@ pub async fn handle(
     webhook_url: Option<String>,
 ) -> Result<()> {
     // Config file is now optional - if not provided, defaults will be used
-    let config_file = config_file.or_else(|| std::env::var("CONFIG_PATH").ok());
+    let config_file = config_file.or_else(|| std::env::var("ZISK_COORDINATOR_CONFIG_PATH").ok());
 
     let loaded_from_file = config_file.is_some();
 

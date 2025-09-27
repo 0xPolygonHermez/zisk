@@ -75,8 +75,6 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 
 ### Basic API Calls
 
-**Note**: Coordinator defaults to port `8080`, Docker deployment uses `50051`.
-
 ```bash
 # Health check
 grpcurl -plaintext 127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/HealthCheck
