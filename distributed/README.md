@@ -2,23 +2,29 @@
 
 A distributed proof generation system for the ZisK zkVM that orchestrates proof tasks across multiple worker nodes. The system enables horizontal scaling of proof generation workloads, allowing you to distribute computationally intensive proving operations across multiple machines for improved performance and throughput.
 
+## Architecture
+
 The system is composed of two main actors:
 
 - **Coordinator:** Manages incoming proof requests and splits the work, based on required compute capacity, across distributed available workers.  
 - **Worker:** Registers to the coordinator, reporting its compute capacity, and waits for tasks to be assigned. A **Worker** can be a single machine or a cluster of machines.
 
+## Proof Generation Process
+
 The process of generating a proof proceeds as follows:  
 1. The **Coordinator** starts on a host and listens for incoming proof requests.  
 2. **Worker** nodes connect to the Coordinator, registering their compute capacity and availability.  
-3. When a proof generation request is received, the Coordinator splits the work across multiple Workers according to the requested compute capacity. A job is divided into three phases:
-   - **Partial Contributions:** Worker computes its partial challenges.
-   - **Prove:** Workers compute the global challenge and their respective partial proofs.  
-   - **Aggregation:** A Worker aggregates the partial proofs and produces the final proof for the client.
+3. When a proof generation request is received, the Coordinator splits the work across multiple Workers according to the requested compute capacity. A proof generation job is divided into three phases:
+   - **Partial Contributions:** Each Worker computes its partial challenges.
+   - **Prove:** Workers compute the global challenge and generate their respective partial proofs.  
+   - **Aggregation:** A designated Worker aggregates all partial proofs and produces the final proof for the client.
 4. The Coordinator collects the final proof and returns it to the client.
 
-**Note:**
-- **Workers Selection:** The Coordinator selects Workers based on their reported compute capacity and availability. When a proof request is received, the Coordinator evaluates the required compute capacity and selects Workers sequentially from the pool of available Workers until the capacity is met. When a worker is assigned to a job, it is marked as busy and won't receive new tasks until it completes the current job.
-- **Aggregator Selection:** The first Worker to send its partial proof to the Coordinator is selected as the Aggregator to perform the aggregation of all partial proofs into the final proof. The other Workers are marked as available again after sending their partial proofs.
+### Key Concepts
+
+**Worker Selection:** The Coordinator selects Workers based on their reported compute capacity and availability. When a proof request is received, the Coordinator evaluates the required compute capacity and selects Workers sequentially from the pool of available Workers until the total capacity requirement is met. When a worker is assigned to a job, it is marked as busy and will not receive new tasks until it completes the current job.
+
+**Aggregator Selection:** The first Worker to send its partial proof to the Coordinator is selected as the Aggregator to perform the aggregation of all partial proofs into the final proof. The other Workers are marked as available again after sending their partial proofs.
 
 ## Quick Start
 
@@ -35,7 +41,7 @@ cargo run --release --bin zisk-coordinator
 cargo run --release --bin zisk-worker -- --witness-lib <path-to-libzisk_witness.so> --proving-key <path-to-provingKey-folder> --elf <path-to-elf-file> --asm-port <port-number>
 
 # Generate a proof (in another terminal)
-cargo run --release --bin zisk-coordinator prove-block --input <path-to-inputs> --compute-capacity 10
+cargo run --release --bin zisk-coordinator prove-block --input <path-to-input-file> --compute-capacity 10
 ```
 
 ### Docker Deployment
@@ -102,20 +108,30 @@ docker rm zisk-coordinator zisk-worker-1
   - Cache: `/app/.zisk/cache/` (mounted from host `$HOME/.zisk/cache`)
   - Logs: `/var/log/distributed/`
 
-## Coordinator Configuration
+## Coordinator
+
+The coordinator is responsible for managing the distributed proof generation process. It receives proof requests from clients and assigns work to available workers.
+
+To start a coordinator instance with default settings:
+
+```bash
+cargo run --release --bin zisk-coordinator
+```
+
+### Coordinator Configuration
 
 The coordinator can be configured using either a **TOML configuration file** or **command-line arguments**.
-If no file is explicitly provided, the system falls back to the `ZISK_COORDINATOR_CONFIG_PATH` environment variable to locate one. If any of these not set, built-in defaults are used.
+If no configuration file is explicitly provided, the system falls back to the `ZISK_COORDINATOR_CONFIG_PATH` environment variable to locate one. If neither the CLI argument nor environment variable is set, built-in defaults are used.
 
 **Example:**
 
 ```bash
 # You can specify the configuration file path using a command line argument:
-cargo run --bin zisk-coordinator -- --config /path/to/my-config.toml
+cargo run --release --bin zisk-coordinator -- --config /path/to/my-config.toml
 
 # You can specify the configuration file path using an environment variable:
 export ZISK_COORDINATOR_CONFIG_PATH="/path/to/my-config.toml"
-cargo run --bin zisk-coordinator
+cargo run --release --bin zisk-coordinator
 ```
 
 The table below lists the available configuration options for the Coordinator:
@@ -137,7 +153,7 @@ The table below lists the available configuration options for the Coordinator:
 | `coordinator.webhook_url` | `--webhook-url` | - | String | - | *Optional*. Webhook URL to notify on job completion |
 
 
-### Configuration Files examples
+#### Configuration Files examples
 
 Example development configuration file:
 
@@ -175,7 +191,7 @@ phase2_timeout_seconds = 1200 # 20 minutes for phase 2
 webhook_url = "http://webhook.example.com/notify?job_id={$job_id}"
 ```
 
-### Webhook URL
+#### Webhook URL
 
 The Coordinator can notify an external service when a job finishes by sending a request to a configured webhook URL.
 The placeholder {$job_id} can be included in the URL and will be replaced with the finished job’s ID.
@@ -197,32 +213,42 @@ zisk-coordinator --webhook-url 'http://example.com/notify'
 
 ```bash
 # Show help
-cargo run --bin zisk-coordinator -- --help
+cargo run --release --bin zisk-coordinator -- --help
 
 # Run coordinator with custom port
-cargo run --bin zisk-coordinator -- --port 50051
+cargo run --release --bin zisk-coordinator -- --port 50051
 
 # Run with specific configuration
-cargo run --bin zisk-coordinator -- --config production.toml
+cargo run --release --bin zisk-coordinator -- --config production.toml
 
 # Run with webhook URL  
-cargo run --bin zisk-coordinator -- --webhook-url http://webhook.example.com/notify --port 50051
+cargo run --release --bin zisk-coordinator -- --webhook-url http://webhook.example.com/notify --port 50051
 ```
 
-## Worker Configuration
+## Worker
+
+The worker is responsible for executing proof generation tasks assigned by the coordinator. It registers with the coordinator, reports its compute capacity, and waits for tasks to be assigned.
+
+To start a worker instance with default settings:
+
+```bash
+cargo run --release --bin zisk-worker --elf <path-to-elf-file>
+```
+
+### Worker Configuration
 
 The worker can be configured using either a **TOML configuration file** or **command-line arguments**.
-If no file is explicitly provided, the system falls back to the `ZISK_WORKER_CONFIG_PATH` environment variable to locate one. If none of these are set, built-in defaults are used.
+If no configuration file is explicitly provided, the system falls back to the `ZISK_WORKER_CONFIG_PATH` environment variable to locate one. If neither the CLI argument nor environment variable is set, built-in defaults are used.
 
 **Example:**
 
 ```bash
 # You can specify the configuration file path using a command line argument:
-cargo run --bin zisk-worker -- --config /path/to/my-config.toml
+cargo run --release --bin zisk-worker -- --config /path/to/my-config.toml
 
 # You can specify the configuration file path using an environment variable:
 export ZISK_WORKER_CONFIG_PATH="/path/to/my-config.toml"
-cargo run --bin zisk-worker
+cargo run --release --bin zisk-worker
 ```
 
 The table below lists the available configuration options for the Worker:
@@ -248,14 +274,14 @@ The table below lists the available configuration options for the Worker:
 | - | `-v`, `-vv`, `-vvv`, ... | - | Number | 0 | Verbosity level (0=error, 1=warn, 2=info, 3=debug, 4=trace) |
 | - | `-d`, `--debug` | - | String | - | Enable debug mode with optional component filter |
 | - | `--verify-constraints` | - | Boolean | false | Whether to verify constraints |
-| - | `--unlock-mapped-memory` | - | Boolean | false | | Unlock memory map for the ROM file (mutually exclusive with `--emulator`) |
+| - | `--unlock-mapped-memory` | - | Boolean | false | Unlock memory map for the ROM file (mutually exclusive with `--emulator`) |
 | - | `-f`, `--final-snark` | - | Boolean | false | Whether to generate the final SNARK |
 | - | `-r`, `--preallocate` | - | Boolean | false | GPU preallocation flag |
 | - | `-t`, `--max-streams` | | - | Number | - | Maximum number of GPU streams |
 | - | `-n`, `--number-threads-witness` | - | Number | - | Number of threads for witness computation |
 | - | `-x`, `--max-witness-stored` | - | Number | - | Maximum number of witnesses to store in memory |
 
-### Configuration Files examples
+#### Configuration Files examples
 
 Example development configuration file:
 
@@ -289,6 +315,16 @@ level = "info"
 format = "pretty"
 file_path = "/var/log/distributed/worker-001.log"
 ```
+
+## Launching a proof
+
+To launch a proof generation request, use the `prove-block` command of the `zisk-coordinator` binary, specifying the input file and desired compute capacity.
+
+```bash
+cargo run --release --bin zisk-coordinator -- prove-block --input <path_to_input_file> --compute-capacity 10
+```
+
+The `--compute-capacity` flag indicates the total compute units required to generate a proof. The coordinator will assign one or more workers to meet this capacity, distributing the workload if multiple workers are needed. Requests exceeding the combined capacity of available workers will not be processed and an error will be returned.
 
 ## Administrative Operations
 
@@ -342,10 +378,10 @@ Enable detailed logging for troubleshooting by modifying configuration files or 
 
 ```bash
 # Coordinator with debug logging (via config file)
-cargo run --bin zisk-coordinator -- --config debug-coordinator.toml
+cargo run --release --bin zisk-coordinator -- --config debug-coordinator.toml
 
 # Worker with debug logging (via config file)
-cargo run --bin zisk-worker -- --config debug-worker.toml
+cargo run --release --bin zisk-worker -- --config debug-worker.toml
 ```
 
 Where `debug-coordinator.toml` or `debug-worker.toml` contains:
@@ -361,13 +397,13 @@ Use CLI overrides to test specific values without modifying configuration files:
 
 ```bash
 # Test connection to different coordinator
-cargo run --bin zisk-worker -- --coordinator-url http://test-coordinator:50051
+cargo run --release --bin zisk-worker -- --coordinator-url http://test-coordinator:50051
 
 # Test with specific capacity and ID
-cargo run --bin zisk-worker -- --worker-id test-worker --compute-units 10
+cargo run --release --bin zisk-worker -- --worker-id test-worker --compute-units 10
 
 # Test coordinator with different port
-cargo run --bin zisk-coordinator -- --port 9090
+cargo run --release --bin zisk-coordinator -- --port 9090
 ```
 
 ### Log Files
