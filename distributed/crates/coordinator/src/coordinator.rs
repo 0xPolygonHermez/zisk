@@ -39,7 +39,7 @@ use crate::{
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use proofman::ContributionsInfo;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use zisk_distributed_common::{
@@ -1437,9 +1437,11 @@ impl Coordinator {
         job.final_proof = Some(proof_data.swap_remove(0));
         job.change_state(JobState::Completed);
 
+        let duration = Duration::from_millis(job.duration_ms.unwrap());
+
         drop(job);
 
-        info!("[Job Finished] {}", job_id);
+        info!("[Job Finished] {} (duration: {:.3}s)", job_id, duration.as_secs_f32());
 
         self.post_launch_proof(job_id).await?;
 
