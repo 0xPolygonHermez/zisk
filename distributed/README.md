@@ -29,13 +29,13 @@ The process of generating a proof proceeds as follows:
 cargo build --release --bin zisk-coordinator --bin zisk-worker
 
 # Run coordinator
-cargo run --release --bin zisk-coordinator -- --port 50051
+cargo run --release --bin zisk-coordinator
 
 # Run a worker node (in another terminal)
-cargo run --release --bin zisk-worker -- --coordinator-url http://127.0.0.1:50051 --witness-lib <path-to-libzisk_witness.so> --proving-key <path-to-provingKey-folder> --elf <path-to-elf-file> --asm-port <port-number>
+cargo run --release --bin zisk-worker -- --witness-lib <path-to-libzisk_witness.so> --proving-key <path-to-provingKey-folder> --elf <path-to-elf-file> --asm-port <port-number>
 
 # Generate a proof (in another terminal)
-cargo run --release --bin zisk-coordinator prove-block --coordinator-url http://127.0.0.1:50051 --input <path-to-inputs> --compute-capacity 10
+cargo run --release --bin zisk-coordinator prove-block --input <path-to-inputs> --compute-capacity 10
 ```
 
 ### Docker Deployment
@@ -58,7 +58,7 @@ docker network create zisk-net || true
 # 1. Start coordinator container (detached)
 LOGS_DIR="<path-to-logs-folder>"
 docker run -d --rm --name zisk-coordinator \
-  --network zisk-net -p 50051:50051 \
+  --network zisk-net \
   -v "$LOGS_DIR:/var/log/distributed" \
   -e RUST_LOG=info \
   zisk-distributed:latest \
@@ -90,8 +90,7 @@ docker logs -f zisk-worker-1
 
 # Generate a proof
 docker exec -it zisk-coordinator \
-  zisk-coordinator prove-block --coordinator-url http://127.0.0.1:50051 \
-  --input /app/inputs/21429992_1_0.bin --compute-capacity 10
+  zisk-coordinator prove-block --input /app/inputs/21429992_1_0.bin --compute-capacity 10
 
 # Stop containers
 docker stop zisk-coordinator zisk-worker-1
@@ -241,7 +240,7 @@ The table below lists the available configuration options for the Worker:
 | `worker.worker_id` | `--worker-id` | - | String | Auto-generated UUID | Unique worker identifier |
 | `worker.compute_capacity.compute_units` | `--compute-capacity` | - | Number | 10 | Worker compute capacity (in compute units) |
 | `worker.environment` | - | - | String | development | Service environment (development, staging, production) |
-| `coordinator.url` | `--coordinator-url` | - | String | - | Coordinator server URL |
+| `coordinator.url` | `--coordinator-url` | - | String | http://127.0.0.1:50051 | Coordinator server URL |
 | `connection.reconnect_interval_seconds` | - | - | Number | 5 | Reconnection interval in seconds |
 | `connection.heartbeat_timeout_seconds` | - | - | Number | 30 | Heartbeat timeout in seconds |
 | `logging.level` | - | - | String | debug | Logging level (error, warn, info, debug, trace) |
@@ -272,9 +271,6 @@ Example development configuration file:
 [worker]
 compute_capacity.compute_units = 10
 environment = "development"
-
-[coordinator]
-url = "http://127.0.0.1:50051"
 
 [logging]
 level = "debug"

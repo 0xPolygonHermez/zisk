@@ -7,7 +7,7 @@ use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
 use zisk_distributed_worker::{
-    config::{load_prover_config, load_worker_config, ProverServiceConfigDto, WorkerServiceConfig},
+    config::{ProverServiceConfigDto, WorkerServiceConfig},
     ProverConfig, WorkerNode,
 };
 
@@ -116,9 +116,13 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let (loaded_from_file, worker_config) =
-        load_worker_config(cli.config, cli.coordinator_url, cli.worker_id, cli.compute_capacity)
-            .await?;
+    let (loaded_from_file, worker_config) = WorkerServiceConfig::load(
+        cli.config,
+        cli.coordinator_url,
+        cli.worker_id,
+        cli.compute_capacity,
+    )
+    .await?;
 
     // Initialize tracing - keep guard alive for application lifetime
     let _log_guard = zisk_distributed_common::tracing::init(Some(&worker_config.logging))?;
@@ -145,7 +149,7 @@ async fn main() -> Result<()> {
         shared_tables: cli.shared_tables,
     };
 
-    let prover_config = load_prover_config(prover_config_dto)?;
+    let prover_config = ProverConfig::load(prover_config_dto)?;
 
     print_command_info(loaded_from_file, &prover_config, &worker_config, cli.debug.is_some());
 

@@ -5606,6 +5606,7 @@ dependencies = [
  "witness",
  "zisk-common",
  "zisk-distributed-common",
+ "zisk-distributed-coordinator",
  "zisk-distributed-grpc-api",
  "zisk-pil",
 ]

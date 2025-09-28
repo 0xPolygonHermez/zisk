@@ -44,7 +44,7 @@ enum ZiskCoordinatorCommands {
     ProveBlock {
         /// Coordinator URL
         #[arg(short, long)]
-        coordinator_url: String,
+        coordinator_url: Option<String>,
 
         /// Path to the input file
         /// NOTE: THIS IS A DEV FEATURE IT WILL BE REMOVED IN PRODUCTION
