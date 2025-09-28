@@ -127,14 +127,14 @@ The table below lists the available configuration options for the Coordinator:
 | `server.host` | - | - | String | 0.0.0.0 | Server host |
 | `server.port` | `--port` | - | Number | 50051 | Server port |
 | `server.shutdown_timeout_seconds` | - | - | Number | 30 | Graceful shutdown timeout in seconds |
-| `logging.level` | - | - | String | debug | Logging level (error, warn, info, debug, trace) |
+| `logging.level` | - | RUST_LOG | String | debug | Logging level (error, warn, info, debug, trace) |
 | `logging.format` | - | - | String | pretty | Logging format (pretty, json, compact) |
-| `logging.file_path` | - | - | String | - | Log file path (enables file logging) |
+| `logging.file_path` | - | - | String | - | *Optional*. Log file path (enables file logging) |
 | `coordinator.max_workers_per_job` | - | - | Number | 10 | Maximum workers per proof job |
 | `coordinator.max_total_workers` | - | - | Number | 1000 | Maximum total registered workers |
 | `coordinator.phase1_timeout_seconds` | - | - | Number | 300 | Phase 1 timeout in seconds |
 | `coordinator.phase2_timeout_seconds` | - | - | Number | 600 | Phase 2 timeout in seconds |
-| `coordinator.webhook_url` | `--webhook-url` | - | String | - | Webhook URL to notify on job completion |
+| `coordinator.webhook_url` | `--webhook-url` | - | String | - | *Optional*. Webhook URL to notify on job completion |
 
 
 ### Configuration Files examples
@@ -235,13 +235,13 @@ The table below lists the available configuration options for the Worker:
 | `coordinator.url` | `--coordinator-url` | - | String | http://127.0.0.1:50051 | Coordinator server URL |
 | `connection.reconnect_interval_seconds` | - | - | Number | 5 | Reconnection interval in seconds |
 | `connection.heartbeat_timeout_seconds` | - | - | Number | 30 | Heartbeat timeout in seconds |
-| `logging.level` | - | - | String | debug | Logging level (error, warn, info, debug, trace) |
+| `logging.level` | - | RUST_LOG | String | debug | Logging level (error, warn, info, debug, trace) |
 | `logging.format` | - | - | String | pretty | Logging format (pretty, json, compact) |
-| `logging.file_path` | - | - | String | - | Log file path (enables file logging) |
-| - | `--witness-lib` | - | String | | - | Path to witness computation dynamic library |
-| - | `--proving-key` | - | String | - | Path to setup folder |
+| `logging.file_path` | - | - | String | - | *Optional*. Log file path (enables file logging) |
+| - | `--witness-lib` | - | String | ~/.zisk/bin/libzisk_witness.so | Path to witness computation dynamic library |
+| - | `--proving-key` | - | String | ~/.zisk/provingKey | Path to setup folder |
 | - | `--elf` | - | String | - | Path to ELF file |
-| - | `--asm` | - | String | - | Path to ASM file (mutually exclusive with `--emulator`) |
+| - | `--asm` | - | String | ~/.zisk/cache | Path to ASM file (mutually exclusive with `--emulator`) |
 | - | `--emulator` | - | Boolean | false | Use prebuilt emulator (mutually exclusive with `--asm`) |
 | - | `--asm-port` | - | Number | 23115 | Base port for Assembly microservices |
 | - | `--shared-tables` | - | Boolean | false | Whether to share tables when worker is running in a cluster |
