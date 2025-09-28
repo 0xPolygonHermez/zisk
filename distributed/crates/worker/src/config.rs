@@ -79,11 +79,9 @@ impl WorkerServiceConfig {
         coordinator_url: Option<String>,
         worker_id: Option<String>,
         compute_capacity: Option<u32>,
-    ) -> Result<(bool, WorkerServiceConfig)> {
+    ) -> Result<Self> {
         // Config file is now optional - if not provided, defaults will be used
         let config = config.or_else(|| std::env::var("ZISK_WORKER_CONFIG_PATH").ok());
-
-        let loaded_from_file = config.is_some();
 
         // Generate a random worker ID
         let random_worker_id = format!("worker-{}", uuid::Uuid::new_v4().simple());
@@ -117,7 +115,7 @@ impl WorkerServiceConfig {
 
         let config = builder.build()?;
 
-        Ok((loaded_from_file, config.try_deserialize()?))
+        Ok(config.try_deserialize()?)
     }
 }
 

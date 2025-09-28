@@ -116,7 +116,7 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let (loaded_from_file, worker_config) = WorkerServiceConfig::load(
+    let worker_config = WorkerServiceConfig::load(
         cli.config,
         cli.coordinator_url,
         cli.worker_id,
@@ -151,14 +151,13 @@ async fn main() -> Result<()> {
 
     let prover_config = ProverConfig::load(prover_config_dto)?;
 
-    print_command_info(loaded_from_file, &prover_config, &worker_config, cli.debug.is_some());
+    print_command_info(&prover_config, &worker_config, cli.debug.is_some());
 
     let mut worker = WorkerNode::new(worker_config, prover_config).await?;
     worker.run().await
 }
 
 fn print_command_info(
-    loaded_from_file: bool,
     prover_config: &ProverConfig,
     worker_config: &WorkerServiceConfig,
     debug: bool,
@@ -168,14 +167,6 @@ fn print_command_info(
         format!("{: >12}", "Command").bright_green().bold(),
         env!("CARGO_PKG_VERSION")
     );
-    if !loaded_from_file {
-        eprintln!(
-            "{: >12} {}",
-            "Warning".bright_yellow().bold(),
-            "No configuration file provided. Using default development configuration."
-                .bright_yellow()
-        );
-    }
     println!("{: >12} {}", "Worker ID".bright_green().bold(), worker_config.worker.worker_id);
     println!(
         "{: >12} {}",
