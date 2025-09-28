@@ -3,13 +3,6 @@
 compute_capacity.compute_units = 10
 environment = "development"
 
-[coordinator]
-url = "http://127.0.0.1:50051"
-
-[connection]
-reconnect_interval_seconds = 5
-heartbeat_timeout_seconds = 30
-
 [logging]
 level = "debug"
 format = "pretty"

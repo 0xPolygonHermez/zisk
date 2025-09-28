@@ -43,14 +43,11 @@ cargo run --release --bin zisk-coordinator prove-block --input <path-to-inputs> 
 The easiest way to run the distributed system:
 
 ```bash
-# From the distributed directory
-cd distributed/
-
 # 0. Build the Docker image (CPU-only, default)
-docker build -t zisk-distributed:latest -f Dockerfile ..
+docker build -t zisk-distributed:latest -f distributed/Dockerfile .
 
 # 0b. Build with GPU support (if needed)
-docker build --build-arg GPU=true -t zisk-distributed:gpu -f Dockerfile ..
+docker build --build-arg GPU=true -t zisk-distributed:gpu -f distributed/Dockerfile .
 
 # Create a user-defined network so container names resolve via DNS
 docker network create zisk-net || true
@@ -81,9 +78,8 @@ docker run -d --rm --name zisk-worker-1 \
   -v "$ELF_DIR:/app/elf:ro" \
   -v "$INPUTS_DIR:/app/inputs:ro" \
   -e RUST_LOG=info \
-  zisk-distributed:latest zisk-worker \
-    --config /app/config/worker/dev.toml --coordinator-url http://zisk-coordinator:50051 \
-    --elf /app/elf/zec.elf --proving-key /app/proving-keys --asm-port 15200
+  zisk-distributed:latest zisk-worker --coordinator-url http://zisk-coordinator:50051 \
+    --elf /app/elf/zec.elf --proving-key /app/proving-keys
 
 # 4. View coordinator logs
 docker logs -f zisk-worker-1
@@ -149,10 +145,6 @@ Example development configuration file:
 [service]
 name = "ZisK Distributed Coordinator"
 environment = "development"
-
-[server]
-host = "0.0.0.0"
-port = 50051
 
 [logging]
 level = "debug"
