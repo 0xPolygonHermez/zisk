@@ -85,8 +85,12 @@ fn print_command_info(config: &Config, addr: &str) {
         "Logging".bright_green().bold(),
         config.logging.level,
         config.logging.format,
-        format!("(log file: {})", config.logging.file_path.as_deref().unwrap_or_default())
-            .bright_black()
+        config
+            .logging
+            .file_path
+            .as_deref()
+            .map(|p| format!("(log file: {})", p).bright_black().to_string())
+            .unwrap_or_default()
     );
 
     println!("{: >12} {}", "Host/Port".bright_green().bold(), addr);

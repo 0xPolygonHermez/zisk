@@ -180,8 +180,12 @@ fn print_command_info(
         "Logging".bright_green().bold(),
         worker_config.logging.level,
         worker_config.logging.format,
-        format!("(log file: {})", worker_config.logging.file_path.as_deref().unwrap_or_default())
-            .bright_black()
+        worker_config
+            .logging
+            .file_path
+            .as_deref()
+            .map(|p| format!("(log file: {})", p).bright_black().to_string())
+            .unwrap_or_default()
     );
     println!(
         "{: >12} {}",
