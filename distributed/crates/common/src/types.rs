@@ -312,6 +312,13 @@ impl Job {
     pub fn state(&self) -> &JobState {
         &self.state
     }
+
+    pub fn cleanup(&mut self) {
+        self.results.clear();
+        self.stats.clear();
+        self.challenges = None;
+        self.final_proof = None;
+    }
 }
 
 #[derive(Debug, Clone)]
