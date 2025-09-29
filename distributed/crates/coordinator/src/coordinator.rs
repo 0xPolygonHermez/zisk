@@ -401,6 +401,7 @@ impl Coordinator {
         hooks::save_proof(job_id.clone().as_str(), folder, &final_proof).await?;
 
         // Clean up process data for the job
+        drop(job);
         let mut job = job_entry.write().await;
         job.cleanup();
 
