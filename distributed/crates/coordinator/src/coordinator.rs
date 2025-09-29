@@ -366,6 +366,14 @@ impl Coordinator {
     ///   coordinator server --webhook-url 'http://example.com/notify'
     ///   # becomes 'http://example.com/notify/12345'
     pub async fn post_launch_proof(&self, job_id: &JobId) -> CoordinatorResult<()> {
+        // Save proof to disk
+        if let Some(job_entry) = self.jobs.get(job_id) {
+            let job = job_entry.read().await;
+            if let Some(final_proof) = &job.final_proof {
+                hooks::save_proof(job_id.as_str(), PathBuf::from("proofs"), final_proof).await?;
+            }
+        }
+
         // Check if webhook URL is configured
         if let Some(webhook_url) = &self.config.coordinator.webhook_url {
             let webhook_url = webhook_url.clone();

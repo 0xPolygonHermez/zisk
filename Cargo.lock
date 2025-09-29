@@ -5537,6 +5537,7 @@ version = "0.12.0"
 dependencies = [
  "anyhow",
  "async-stream",
+ "bytemuck",
  "cargo-zisk",
  "chrono",
  "clap",
@@ -5560,6 +5561,7 @@ dependencies = [
  "witness",
  "zisk-distributed-common",
  "zisk-distributed-grpc-api",
+ "zstd",
 ]
 
 [[package]]
