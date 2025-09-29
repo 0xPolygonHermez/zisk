@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use crate::NestedDeviceMetricsList;
 use crate::StaticDataBusCollect;
@@ -108,6 +109,7 @@ impl<F: PrimeField64> StateMachines<F> {
 pub struct StaticSMBundle<F: PrimeField64> {
     process_only_operation_bus: bool,
     sm: HashMap<usize, SMType<F>>,
+    publics: Arc<Mutex<Vec<(u64, u32)>>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
@@ -118,11 +120,16 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             sm: HashMap::from_iter(
                 sm.into_iter().map(|(air_ids, sm)| (sm.type_id(), (air_ids, sm))),
             ),
+            publics: Arc::new(Mutex::new(vec![])),
         }
     }
 
     pub fn get_mem_sm_id(&self) -> usize {
         1
+    }
+
+    pub fn get_publics(&self) -> Vec<(u64, u32)> {
+        self.publics.lock().unwrap().clone()
     }
 
     pub fn plan_sec(
@@ -222,6 +229,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             arith_eq_counter.expect("ArithEq counter not found"),
             arith_eq_384_counter.expect("ArithEq384 counter not found"),
             Some(0),
+            self.publics.clone(),
         )
     }
 

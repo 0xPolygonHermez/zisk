@@ -5,7 +5,7 @@
 
 use std::{any::Any, collections::VecDeque};
 
-use zisk_common::{BusDevice, BusId, MemCollectorInfo, Metrics};
+use crate::{BusDevice, BusId, MemCollectorInfo, Metrics};
 
 /// The `DummyCounter` struct serves as a placeholder counter that performs no actions
 /// when connected to the data bus.

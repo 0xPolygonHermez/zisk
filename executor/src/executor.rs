@@ -33,7 +33,6 @@ use sm_rom::{RomInstance, RomSM};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use witness::WitnessComponent;
 
-use crate::DummyCounter;
 use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{
@@ -285,8 +284,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         pctx: &ProofCtx<F>,
         input_data_path: Option<PathBuf>,
         _caller_stats_id: u64,
-    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<JoinHandle<AsmRunnerMO>>)
-    {
+    ) -> (MinimalTraces, NestedDeviceMetricsList, Option<JoinHandle<AsmRunnerMO>>) {
         #[cfg(feature = "stats")]
         let parent_stats_id = self.stats.lock().unwrap().get_id();
         #[cfg(feature = "stats")]
@@ -381,7 +379,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             })
         });
 
-        let (min_traces, main_count, secn_count) = self.run_mt_assembly();
+        let (min_traces, secn_count) = self.run_mt_assembly();
 
         // Store execute steps
         let steps = if let MinimalTraces::AsmEmuTrace(asm_min_traces) = &min_traces {
@@ -408,10 +406,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             ExecutorStatsEvent::End,
         );
 
-        (min_traces, main_count, secn_count, Some(handle_mo))
+        (min_traces, secn_count, Some(handle_mo))
     }
 
-    fn run_mt_assembly(&self) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
+    fn run_mt_assembly(&self) -> (MinimalTraces, NestedDeviceMetricsList) {
         #[cfg(feature = "stats")]
         let parent_stats_id = self.stats.lock().unwrap().get_id();
         #[cfg(feature = "stats")]
@@ -474,6 +472,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     ExecutorStatsEvent::End,
                 );
 
+                // TODO: HERE CREATE PLANS!
+
                 (self.chunk_id, self.data_bus)
             }
         }
@@ -509,7 +509,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 
-        let mut main_count = Vec::with_capacity(data_buses.len());
         let mut secn_count = HashMap::new();
 
         for (chunk_id, data_bus) in data_buses {
@@ -517,9 +516,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
             for (idx, counter) in databus_counters.into_iter() {
                 match idx {
-                    None => {
-                        main_count.push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))));
-                    }
+                    None => {}
                     Some(idx) => {
                         secn_count
                             .entry(idx)
@@ -530,7 +527,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             }
         }
 
-        (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_count)
+        (MinimalTraces::AsmEmuTrace(asm_runner_mt), secn_count)
     }
 
     fn run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>) -> MinimalTraces {
@@ -607,7 +604,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * A vector of secondary state machine metrics grouped by chunk ID. The vector is nested,
     ///   with the outer vector representing the secondary state machines and the inner vector
     ///   containing the metrics for each chunk.
-    fn count(&self, min_traces: &MinimalTraces) -> (DeviceMetricsList, NestedDeviceMetricsList) {
+    fn count(&self, min_traces: &MinimalTraces) -> NestedDeviceMetricsList {
         let min_traces = match min_traces {
             MinimalTraces::EmuTrace(min_traces) => min_traces,
             MinimalTraces::AsmEmuTrace(asm_min_traces) => &asm_min_traces.vec_chunks,
@@ -637,29 +634,23 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             })
             .collect();
 
-        let mut main_count = Vec::new();
         let mut secn_count = HashMap::new();
 
         for (chunk_id, counter_slice) in metrics_slices.into_iter().enumerate() {
             for (idx, counter) in counter_slice.into_iter() {
                 match idx {
-                    None => {
-                        main_count.push((
-                            ChunkId(chunk_id),
-                            counter.unwrap_or_else(|| Box::new(DummyCounter {})),
-                        ));
-                    }
                     Some(idx) => {
                         secn_count
                             .entry(idx)
                             .or_insert_with(Vec::new)
                             .push((ChunkId(chunk_id), counter.unwrap()));
                     }
+                    None => {}
                 }
             }
         }
 
-        (main_count, secn_count)
+        secn_count
     }
 
     /// Adds secondary state machine instances to the proof context and assigns global IDs.
@@ -1203,8 +1194,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 
         assert_eq!(self.asm_runner_path.is_some(), self.asm_rom_path.is_some());
 
-        let (min_traces, main_count, mut secn_count, handle_mo) = if self.asm_runner_path.is_some()
-        {
+        let (min_traces, mut secn_count, handle_mo) = if self.asm_runner_path.is_some() {
             // If we are executing in assembly mode
             self.execute_with_assembly(
                 &pctx,
@@ -1219,10 +1209,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             let min_traces = self.execute_with_emulator(input_data_path);
 
             timer_start_info!(COUNT);
-            let (main_count, secn_count) = self.count(&min_traces);
+            let secn_count = self.count(&min_traces);
             timer_stop_and_log_info!(COUNT);
 
-            (min_traces, main_count, secn_count, None)
+            (min_traces, secn_count, None)
         };
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
@@ -1239,10 +1229,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         );
 
         timer_start_info!(PLAN);
-        let (main_planning, public_values) =
-            MainPlanner::plan::<F>(&min_traces, main_count, self.chunk_size);
-        *self.min_traces.write().unwrap() = min_traces;
+        let main_planning = MainPlanner::plan::<F>(&min_traces, self.chunk_size);
         self.assign_main_instances(&pctx, global_ids, main_planning);
+        *self.min_traces.write().unwrap() = min_traces;
 
         // Add to executor stats
         #[cfg(feature = "stats")]
@@ -1361,6 +1350,8 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 
         // Add public values to the proof context
         let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
+        let public_values = self.sm_bundle.get_publics();
+        println!("Public values: {:?}", public_values);
         for (index, value) in public_values.iter() {
             publics.inputs[*index as usize] = F::from_u32(*value);
         }

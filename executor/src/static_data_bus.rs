@@ -2,9 +2,11 @@
 //! system. Subscribers, referred to as `BusDevice`, can listen to specific bus IDs or act as
 //! omnipresent devices that process all data sent to the bus. This module provides mechanisms to
 //! send data, route it to the appropriate subscribers, and manage device connections.
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
 
-use crate::DummyCounter;
 use data_bus::DataBusTrait;
 use mem_common::MemCounters;
 use precomp_arith_eq::ArithEqCounterInputGen;
@@ -13,11 +15,14 @@ use precomp_keccakf::KeccakfCounterInputGen;
 use precomp_sha256f::Sha256fCounterInputGen;
 use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
-use sm_main::MainCounter;
-use zisk_common::{BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
+use zisk_common::{
+    BusDevice, BusDeviceMetrics, BusId, DummyCounter, PayloadType, A, B, MEM_BUS_ID,
+    OPERATION_BUS_ID, OP_TYPE,
+};
 use zisk_core::{
-    ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID,
-    BINARY_OP_TYPE_ID, KECCAK_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+    ZiskOperationType, ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID,
+    BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, KECCAK_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID,
+    SHA256_OP_TYPE_ID,
 };
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -34,7 +39,6 @@ pub struct StaticDataBus<D> {
     process_only_operation_bus: bool,
 
     /// List of devices connected to the bus.
-    pub main_counter: MainCounter,
     pub mem_counter: (usize, Option<MemCounters>),
     pub binary_counter: (usize, BinaryCounter),
     pub arith_counter: (usize, ArithCounterInputGen),
@@ -43,6 +47,8 @@ pub struct StaticDataBus<D> {
     pub arith_eq_counter: (usize, ArithEqCounterInputGen),
     pub arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
     pub rom_counter_id: Option<usize>,
+
+    pub publics: Arc<Mutex<Vec<(u64, u32)>>>,
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>)>,
@@ -61,10 +67,10 @@ impl StaticDataBus<PayloadType> {
         arith_eq_counter: (usize, ArithEqCounterInputGen),
         arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
         rom_counter_id: Option<usize>,
+        publics: Arc<Mutex<Vec<(u64, u32)>>>,
     ) -> Self {
         Self {
             process_only_operation_bus,
-            main_counter: MainCounter::new(),
             mem_counter,
             binary_counter,
             arith_counter,
@@ -74,6 +80,7 @@ impl StaticDataBus<PayloadType> {
             arith_eq_384_counter,
             rom_counter_id,
             pending_transfers: VecDeque::new(),
+            publics,
         }
     }
 
@@ -106,12 +113,23 @@ impl StaticDataBus<PayloadType> {
                 _continue
             }
             OPERATION_BUS_ID => match payload[1] as u32 {
-                PUB_OUT_OP_TYPE_ID => self.main_counter.process_data(
-                    &bus_id,
-                    payload,
-                    &mut self.pending_transfers,
-                    None,
-                ),
+                PUB_OUT_OP_TYPE_ID => {
+                    const PUBOUT: u64 = ZiskOperationType::PubOut as u64;
+
+                    if payload[OP_TYPE] != PUBOUT {
+                        return true;
+                    }
+
+                    let pub_index = payload[A] << 1;
+                    let pub_value = payload[B];
+
+                    self.publics.lock().unwrap().push((pub_index, (pub_value & 0xFFFFFFFF) as u32));
+                    self.publics
+                        .lock()
+                        .unwrap()
+                        .push((pub_index + 1, ((pub_value >> 32) & 0xFFFFFFFF) as u32));
+                    true
+                }
                 BINARY_OP_TYPE_ID | BINARY_E_OP_TYPE_ID => self.binary_counter.1.process_data(
                     &bus_id,
                     payload,
@@ -168,7 +186,6 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
     }
 
     fn on_close(&mut self) {
-        self.main_counter.on_close();
         if let Some(mem_counter) = self.mem_counter.1.as_mut() {
             mem_counter.on_close();
         }
@@ -190,7 +207,6 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
 
         #[allow(clippy::type_complexity)]
         let mut counters: Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> = vec![
-            (None, Some(Box::new(self.main_counter))),
             (self.rom_counter_id, Some(Box::new(DummyCounter {}))),
             (Some(self.binary_counter.0), Some(Box::new(self.binary_counter.1))),
             (Some(self.arith_counter.0), Some(Box::new(self.arith_counter.1))),
