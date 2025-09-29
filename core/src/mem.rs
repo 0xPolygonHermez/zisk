@@ -19,6 +19,14 @@
 //! `| Contains program instructions.`
 //! `| Calls ecalls/system calls when required.`
 //! `|`
+//! `|--- FLOAT_LIB_ROM_ADDR: first float lib instruction (0x87F00000)`
+//! `|`
+//! `| Contains float library instructions. 1M before ROM_ADDR_MAX.`
+//! `|`
+//! `|------------- FLOAT_LIB_SP: float lib stack pointer (0xaffffff0)`
+//! `|`
+//! `| Initial value of the float library stack pointer.`
+//! `|`
 //! `|--------------- INPUT_ADDR                          (0x90000000)`
 //! `|`
 //! `| Contains program input data.`
@@ -124,9 +132,9 @@ pub const ROM_ADDR_MAX: u64 = (ROM_ADDR + 0x08000000) - 1; // 128M
 /// First float library ROM instruction address
 pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + 0x08000000 - 0x100000; // 1M before ROM_ADDR_MAX = 0x87F00000
 /// First float library RAM address
-pub const FLOAT_LIB_RAM_ADDR: u64 = SYS_ADDR + 0x20000; // 0xa0020000
+pub const FLOAT_LIB_RAM_ADDR: u64 = 0xb0000000 - 0x10000; // 0xafff0000
 /// Float library stack pointer address
-pub const FLOAT_LIB_SP: u64 = 0xa0030000 - 16;
+pub const FLOAT_LIB_SP: u64 = 0xb0000000 - 16; // 0xaffffff0
 /// Zisk architecture ID
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 /// UART memory address; single bytes written here will be copied to the standard output

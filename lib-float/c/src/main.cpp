@@ -23,9 +23,13 @@ int _zisk_main(int argc, char *argv[])
     //fregs[2] = F64_ONE;
     //uint64_t inst = 0x022081D3; // fadd.d f1, f2, f3
 
-    fregs[31] = F64_ONE;
-    fregs[31] = F64_ONE;
-    uint64_t inst = 0xa3ffa953; // feq.d x18, f31, f31
+    // fregs[31] = (uint64_t)0x807fffff;
+    // fregs[30] = 0x80444444;
+    fregs[31] = 0x8010000000000000;
+    fregs[30] = 0x88100000001fffff;
+    //uint64_t inst = 0xa3ffa953; // feq.d x18, f31, f31
+    //uint64_t inst = 0x09EF8ED3; // fsub.d f1, f31, f30
+    uint64_t inst = 0x03EF9ED3;
     *(uint64_t *)FREG_INST = inst;
     _zisk_float();
     uint64_t reg = fregs_x[18];
@@ -67,8 +71,14 @@ int main(int argc, char *argv[]) {
     int result_value = _zisk_main(argc, argv);
 
     for (int i = 0; i < 32; i++) {
-        printf("fregs_x[%2d] = 0x%016llx\n", i, regs[i]);
+        printf("fregs[%2d] = 0x%016llx\n", i, fregs[i]);
     }
+
+    for (int i = 0; i < 32; i++) {
+        printf("fregs_x[%2d] = 0x%016llx\n", i, fregs_x[i]);
+    }
+
+    printf("fcsr = 0x%016x\n", fcsr);
 
     // It's good practice to unmap the memory when you're done, though
     // the OS will automatically clean up on program exit.
