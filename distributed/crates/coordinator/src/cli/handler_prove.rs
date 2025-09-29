@@ -6,7 +6,7 @@ use zisk_distributed_grpc_api::{
     zisk_distributed_api_client::ZiskDistributedApiClient, LaunchProofRequest,
 };
 
-/// Handle the prove-block subcommand - makes RPC request to coordinator
+/// Handle the prove subcommand - makes RPC request to coordinator
 pub async fn handle(
     coordinator_url: Option<String>,
     input_path: String,

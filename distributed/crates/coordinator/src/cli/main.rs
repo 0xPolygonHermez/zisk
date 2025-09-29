@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 
 mod handler_coordinator;
-mod handler_prove_block;
+mod handler_prove;
 
 #[derive(Parser, Debug)]
 #[command(name = "zisk-coordinator")]
@@ -41,7 +41,7 @@ struct ZiskCoordinatorArgs {
 #[derive(Parser, Debug)]
 enum ZiskCoordinatorCommands {
     /// Prove a block with the specified input file and node
-    ProveBlock {
+    Prove {
         /// Coordinator URL
         #[arg(short, long)]
         coordinator_url: Option<String>,
@@ -66,15 +66,14 @@ async fn main() -> Result<()> {
     let args = ZiskCoordinatorArgs::parse();
 
     match args.command {
-        Some(ZiskCoordinatorCommands::ProveBlock {
+        Some(ZiskCoordinatorCommands::Prove {
             coordinator_url,
             input,
             compute_capacity,
             simulated_node,
         }) => {
-            // Run the "prove-block" subcommand
-            handler_prove_block::handle(coordinator_url, input, compute_capacity, simulated_node)
-                .await
+            // Run the "prove" subcommand
+            handler_prove::handle(coordinator_url, input, compute_capacity, simulated_node).await
         }
         None => {
             // No subcommand was provided → default to coordinator mode

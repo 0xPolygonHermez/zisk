@@ -41,7 +41,7 @@ cargo run --release --bin zisk-coordinator
 cargo run --release --bin zisk-worker -- --witness-lib <path-to-libzisk_witness.so> --proving-key <path-to-provingKey-folder> --elf <path-to-elf-file> --asm-port <port-number>
 
 # Generate a proof (in another terminal)
-cargo run --release --bin zisk-coordinator prove-block --input <path-to-input-file> --compute-capacity 10
+cargo run --release --bin zisk-coordinator prove --input <path-to-input-file> --compute-capacity 10
 ```
 
 ### Docker Deployment
@@ -92,7 +92,7 @@ docker logs -f zisk-worker-1
 
 # Generate a proof
 docker exec -it zisk-coordinator \
-  zisk-coordinator prove-block --input /app/inputs/21429992_1_0.bin --compute-capacity 10
+  zisk-coordinator prove --input /app/inputs/21429992_1_0.bin --compute-capacity 10
 
 # Stop containers
 docker stop zisk-coordinator zisk-worker-1
@@ -318,10 +318,10 @@ file_path = "/var/log/distributed/worker-001.log"
 
 ## Launching a proof
 
-To launch a proof generation request, use the `prove-block` command of the `zisk-coordinator` binary, specifying the input file and desired compute capacity.
+To launch a proof generation request, use the `prove` command of the `zisk-coordinator` binary, specifying the input file and desired compute capacity.
 
 ```bash
-cargo run --release --bin zisk-coordinator -- prove-block --input <path_to_input_file> --compute-capacity 10
+cargo run --release --bin zisk-coordinator -- prove --input <path_to_input_file> --compute-capacity 10
 ```
 
 The `--compute-capacity` flag indicates the total compute units required to generate a proof. The coordinator will assign one or more workers to meet this capacity, distributing the workload if multiple workers are needed. Requests exceeding the combined capacity of available workers will not be processed and an error will be returned.
