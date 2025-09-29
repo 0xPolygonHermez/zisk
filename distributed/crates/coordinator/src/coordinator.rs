@@ -1192,11 +1192,9 @@ impl Coordinator {
         // Reset worker statuses back to Idle
         self.workers_pool.mark_workers_with_state(&assigned_workers, WorkerState::Idle).await?;
 
-        info!(
-            "Completed simulated job {} and freed {} workers",
-            job.job_id,
-            assigned_workers.len()
-        );
+        let duration = Duration::from_millis(job.duration_ms.unwrap());
+
+        info!("[Simulated Job Finished] {} (duration: {:.3}s)", job.job_id, duration.as_secs_f32());
 
         Ok(())
     }
