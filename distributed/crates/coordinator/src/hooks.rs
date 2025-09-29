@@ -3,7 +3,10 @@ use std::io::{Cursor, Write};
 use std::path::PathBuf;
 use tokio::fs;
 use tracing::{error, info, warn};
-use zisk_distributed_common::JobId;
+use zisk_distributed_common::{
+    dto::{WebhookErrorDto, WebhookPayloadDto},
+    JobId,
+};
 use zstd::Encoder;
 
 use crate::coordinator_errors::{CoordinatorError, CoordinatorResult};
@@ -15,13 +18,47 @@ use crate::coordinator_errors::{CoordinatorError, CoordinatorResult};
 /// * `webhook_url` - The URL to send the webhook to. It can contain a placeholder `{$job_id}`
 ///   which will be replaced with the actual job ID.
 /// * `job_id` - The ID of the job that has completed or failed.
+/// * `duration_ms` - Duration of the job in milliseconds.
 /// * `proof_data` - Optional proof data to include in the webhook payload.
 /// * `success` - A boolean indicating whether the job completed successfully or failed.
 pub async fn send_completion_webhook(
     webhook_url: String,
     job_id: JobId,
+    duration_ms: u64,
     proof_data: Option<Vec<u64>>,
     success: bool,
+) -> Result<()> {
+    send_webhook_with_error(webhook_url, job_id, duration_ms, proof_data, success, None).await
+}
+
+/// Sends a webhook notification upon job failure with error details.
+///
+/// # Arguments
+///
+/// * `webhook_url` - The URL to send the webhook to.
+/// * `job_id` - The ID of the job that has failed.
+/// * `duration_ms` - Duration of the job in milliseconds.
+/// * `error_code` - Error code representing the type of failure.
+/// * `error_message` - Human-readable error message.
+pub async fn _send_failure_webhook(
+    webhook_url: String,
+    job_id: JobId,
+    duration_ms: u64,
+    error_code: String,
+    error_message: String,
+) -> Result<()> {
+    let error = WebhookErrorDto { code: error_code, message: error_message };
+    send_webhook_with_error(webhook_url, job_id, duration_ms, None, false, Some(error)).await
+}
+
+/// Internal function to send webhook notifications with optional error details.
+async fn send_webhook_with_error(
+    webhook_url: String,
+    job_id: JobId,
+    duration_ms: u64,
+    proof_data: Option<Vec<u64>>,
+    _success: bool, // Determined by presence of error
+    error: Option<WebhookErrorDto>,
 ) -> Result<()> {
     let client = reqwest::Client::new();
 
@@ -35,12 +72,11 @@ pub async fn send_completion_webhook(
         format!("{}/{}", webhook_url, job_id.as_str())
     };
 
-    let payload = serde_json::json!({
-        "job_id": job_id.as_string(),
-        "status": if success { "completed" } else { "failed" },
-        "proof": proof_data,
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-    });
+    let payload = if let Some(error) = error {
+        WebhookPayloadDto::failure(job_id.as_string(), duration_ms, error)
+    } else {
+        WebhookPayloadDto::success(job_id.as_string(), duration_ms, proof_data)
+    };
 
     let response = match client
         .post(&webhook_url)

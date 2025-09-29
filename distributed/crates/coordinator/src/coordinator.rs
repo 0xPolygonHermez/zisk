@@ -378,19 +378,29 @@ impl Coordinator {
         if let Some(webhook_url) = &self.config.coordinator.webhook_url {
             let webhook_url = webhook_url.clone();
 
-            let (final_proof, success) = {
+            let (final_proof, success, duration_ms) = {
                 let job_entry =
                     self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
                 let job = job_entry.read().await;
-                (job.final_proof.clone(), matches!(job.state(), JobState::Completed))
+                (
+                    job.final_proof.clone(),
+                    matches!(job.state(), JobState::Completed),
+                    job.duration_ms.unwrap_or(0),
+                )
             };
 
             let job_id = job_id.clone();
 
             // Spawn a non-blocking task
             tokio::spawn(async move {
-                if let Err(e) =
-                    hooks::send_completion_webhook(webhook_url, job_id, final_proof, success).await
+                if let Err(e) = hooks::send_completion_webhook(
+                    webhook_url,
+                    job_id,
+                    duration_ms,
+                    final_proof,
+                    success,
+                )
+                .await
                 {
                     error!("Failed to send webhook notification: {}", e);
                 }
