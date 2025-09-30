@@ -1,6 +1,7 @@
 use crate::{worker::ComputationResult, ProverConfig, Worker};
 use anyhow::{anyhow, Result};
 use proofman::{AggProofs, ContributionsInfo};
+use std::path::Path;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
@@ -475,10 +476,13 @@ impl WorkerNodeGrpc {
         };
 
         let job_id = JobId::from(request.job_id);
-        let block = BlockContext {
-            block_id: BlockId::from(params.block_id),
-            input_path: PathBuf::from(params.input_path),
-        };
+        let input_path =
+            self.worker_config.worker.inputs_folder.join(PathBuf::from(params.input_path));
+
+        // Validate that input_path is a subdirectory of inputs_folder
+        Self::validate_subdir(&self.worker_config.worker.inputs_folder, &input_path)?;
+
+        let block = BlockContext { block_id: BlockId::from(params.block_id), input_path };
 
         let job = self.worker.new_job(
             job_id,
@@ -495,6 +499,22 @@ impl WorkerNodeGrpc {
         );
 
         Ok(())
+    }
+
+    fn validate_subdir(base: &Path, candidate: &Path) -> Result<()> {
+        // Canonicalize to resolve symlinks, "..", etc.
+        let base = base.canonicalize().map_err(|e| anyhow!("Inputs folder error: {e}"))?;
+        let candidate = candidate.canonicalize().map_err(|e| anyhow!("Input path error: {e}"))?;
+
+        if candidate.starts_with(&base) {
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "Input path {:?} must be a subdirectory of inputs folder {:?}",
+                candidate,
+                base
+            ))
+        }
     }
 
     pub async fn prove(
