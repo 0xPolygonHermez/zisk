@@ -143,7 +143,7 @@ impl WorkerServiceConfig {
 
 /// Configuration for initializing a Prover Service
 #[derive(Debug, Clone)]
-pub struct ProverServiceConfigDto {
+pub struct ProverConfigDto {
     pub elf: PathBuf,
     pub witness_lib: Option<PathBuf>,
     pub asm: Option<PathBuf>,
@@ -161,28 +161,4 @@ pub struct ProverServiceConfigDto {
     pub number_threads_witness: Option<usize>,
     pub max_witness_stored: Option<usize>,
     pub shared_tables: bool,
-}
-
-impl Default for ProverServiceConfigDto {
-    fn default() -> Self {
-        Self {
-            elf: PathBuf::new(),
-            witness_lib: None,
-            asm: None,
-            emulator: false,
-            proving_key: None,
-            asm_port: None,
-            unlock_mapped_memory: false,
-            verbose: 0,
-            debug: None,
-            verify_constraints: false,
-            aggregation: false,
-            final_snark: false,
-            preallocate: false,
-            max_streams: None,
-            number_threads_witness: None,
-            max_witness_stored: None,
-            shared_tables: false,
-        }
-    }
 }

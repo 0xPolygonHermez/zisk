@@ -28,7 +28,7 @@ use witness::WitnessLibrary;
 
 use zisk_common::ZiskLibInitFn;
 
-use crate::config::ProverServiceConfigDto;
+use crate::config::ProverConfigDto;
 
 /// Result from computation tasks
 #[derive(Debug)]
@@ -92,7 +92,7 @@ pub struct ProverConfig {
 }
 
 impl ProverConfig {
-    pub fn load(mut prover_service_config: ProverServiceConfigDto) -> Result<Self> {
+    pub fn load(mut prover_service_config: ProverConfigDto) -> Result<Self> {
         if !prover_service_config.elf.exists() {
             return Err(anyhow::anyhow!(
                 "ELF file '{}' not found.",

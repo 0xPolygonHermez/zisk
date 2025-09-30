@@ -7,7 +7,7 @@ use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
 use zisk_distributed_worker::{
-    config::{ProverServiceConfigDto, WorkerServiceConfig},
+    config::{ProverConfigDto, WorkerServiceConfig},
     ProverConfig, WorkerNode,
 };
 
@@ -134,7 +134,7 @@ async fn main() -> Result<()> {
 
     print_banner();
 
-    let prover_config_dto = ProverServiceConfigDto {
+    let prover_config_dto = ProverConfigDto {
         elf: cli.elf.clone(),
         witness_lib: cli.witness_lib.clone(),
         asm: cli.asm.clone(),
