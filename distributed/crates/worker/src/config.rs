@@ -31,6 +31,9 @@ pub struct WorkerConfig {
 
     /// Environment (e.g., development, production)
     pub environment: Environment,
+
+    /// This is the path where the worker will look for input files to process. By default, it is the current directory.
+    pub inputs_folder: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,9 +82,20 @@ impl WorkerServiceConfig {
         coordinator_url: Option<String>,
         worker_id: Option<String>,
         compute_capacity: Option<u32>,
+        inputs_folder: Option<PathBuf>,
     ) -> Result<Self> {
         // Config file is now optional - if not provided, defaults will be used
         let config = config.or_else(|| std::env::var("ZISK_WORKER_CONFIG_PATH").ok());
+
+        // Check inputs folder exists if provided
+        if let Some(ref path) = inputs_folder {
+            if !path.exists() || !path.is_dir() {
+                anyhow::bail!(
+                    "Inputs folder does not exist or is not a directory: {}",
+                    path.display()
+                );
+            }
+        }
 
         // Generate a random worker ID
         let random_worker_id = format!("worker-{}", uuid::Uuid::new_v4().simple());
@@ -90,6 +104,7 @@ impl WorkerServiceConfig {
             .set_default("worker.worker_id", random_worker_id)?
             .set_default("worker.compute_capacity.compute_units", 10)?
             .set_default("worker.environment", "development")?
+            .set_default("worker.inputs_folder", ".")?
             .set_default("coordinator.url", zisk_distributed_coordinator::Config::default_url())?
             .set_default("connection.reconnect_interval_seconds", 5)?
             .set_default("connection.heartbeat_timeout_seconds", 30)?
@@ -111,6 +126,13 @@ impl WorkerServiceConfig {
         if let Some(compute_capacity) = compute_capacity {
             builder =
                 builder.set_override("worker.compute_capacity.compute_units", compute_capacity)?;
+        }
+
+        if let Some(inputs_folder) = inputs_folder {
+            builder = builder.set_override(
+                "worker.inputs_folder",
+                inputs_folder.to_string_lossy().to_string(),
+            )?;
         }
 
         let config = builder.build()?;

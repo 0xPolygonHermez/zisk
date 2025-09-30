@@ -112,6 +112,14 @@ load_env() {
         echo "$line"
     done
     echo
+
+    # Skip confirming env variables if DISABLE_ENV_CONFIRM is set to 1
+    if [[ "$DISABLE_ENV_CONFIRM" == "1" ]]; then
+        info "Skipping confirming env variables as DISABLE_ENV_CONFIRM is set to 1"
+        return 0
+    else
+        confirm_continue || return 0
+    fi
 }
 
 # confirm_continue: Ask the user for confirmation to continue

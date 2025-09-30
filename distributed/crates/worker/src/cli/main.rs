@@ -28,6 +28,10 @@ struct Cli {
     #[arg(long)]
     compute_capacity: Option<u32>,
 
+    /// This is the path where the worker will look for input files to process.
+    #[clap(short = 'i', long)]
+    inputs_folder: Option<PathBuf>,
+
     #[clap(
         short = 'j',
         long,
@@ -121,6 +125,7 @@ async fn main() -> Result<()> {
         cli.coordinator_url,
         cli.worker_id,
         cli.compute_capacity,
+        cli.inputs_folder,
     )
     .await?;
 

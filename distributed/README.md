@@ -38,10 +38,10 @@ cargo build --release --bin zisk-coordinator --bin zisk-worker
 cargo run --release --bin zisk-coordinator
 
 # Run a worker node (in another terminal)
-cargo run --release --bin zisk-worker -- --witness-lib <path-to-libzisk_witness.so> --proving-key <path-to-provingKey-folder> --elf <path-to-elf-file> --asm-port <port-number>
+cargo run --release --bin zisk-worker -- --elf <elf-file-path> --inputs-folder <inputs-folder>
 
 # Generate a proof (in another terminal)
-cargo run --release --bin zisk-coordinator prove --input <path-to-input-file> --compute-capacity 10
+cargo run --release --bin zisk-coordinator prove --input <input-filename> --compute-capacity 10
 ```
 
 ### Docker Deployment
@@ -59,7 +59,7 @@ docker build --build-arg GPU=true -t zisk-distributed:gpu -f distributed/Dockerf
 docker network create zisk-net || true
 
 # 1. Start coordinator container (detached)
-LOGS_DIR="<path-to-logs-folder>"
+LOGS_DIR="<logs-folder>"
 docker run -d --rm --name zisk-coordinator \
   --network zisk-net \
   -v "$LOGS_DIR:/var/log/distributed" \
@@ -72,10 +72,10 @@ docker logs -f zisk-coordinator
 
 # 3. Start worker container(s) in a different terminal(s) - they connect to coordinator by container name
 # Replace paths with your actual directories
-LOGS_DIR="<path-to-logs-folder>"
-PROVING_KEY_DIR="<path-to-provingKey-folder>"
-ELF_DIR="<path-to-elf-folder>"
-INPUTS_DIR="<path-to-inputs-folder>"
+LOGS_DIR="<logs-folder>"
+PROVING_KEY_DIR="<provingKey-folder>"
+ELF_DIR="<elf-folder>"
+INPUTS_DIR="<inputs-folder>"
 docker run -d --rm --name zisk-worker-1 \
   --network zisk-net --shm-size=20g \
   -v "$LOGS_DIR:/var/log/distributed" \
@@ -85,14 +85,14 @@ docker run -d --rm --name zisk-worker-1 \
   -v "$INPUTS_DIR:/app/inputs:ro" \
   -e RUST_LOG=info \
   zisk-distributed:latest zisk-worker --coordinator-url http://zisk-coordinator:50051 \
-    --elf /app/elf/zec.elf --proving-key /app/proving-keys
+    --elf /app/elf/zec.elf --proving-key /app/proving-keys --inputs-folder /app/inputs
 
 # 4. View coordinator logs
 docker logs -f zisk-worker-1
 
-# Generate a proof
+# Generate a proof (use filename only, not full path)
 docker exec -it zisk-coordinator \
-  zisk-coordinator prove --input /app/inputs/21429992_1_0.bin --compute-capacity 10
+  zisk-coordinator prove --input <input-filename> --compute-capacity 10
 
 # Stop containers
 docker stop zisk-coordinator zisk-worker-1
@@ -232,7 +232,7 @@ The worker is responsible for executing proof generation tasks assigned by the c
 To start a worker instance with default settings:
 
 ```bash
-cargo run --release --bin zisk-worker --elf <path-to-elf-file>
+cargo run --release --bin zisk-worker -- --elf <elf-file-path> --inputs-folder <inputs-folder>
 ```
 
 ### Worker Configuration
@@ -251,6 +251,23 @@ export ZISK_WORKER_CONFIG_PATH="/path/to/my-config.toml"
 cargo run --release --bin zisk-worker
 ```
 
+### Input Files Handling
+
+Workers need to know where to find input files for proof generation. The `--inputs-folder` parameter specifies the base directory where input files are stored:
+
+- **Default**: Current working directory (`.`) if not specified
+- **Usage**: When the coordinator sends a prove command with an input filename, the worker combines `--inputs-folder` + `filename` to locate the file
+- **Benefits**: Allows input files to be organized in a dedicated directory, separate from the worker executable
+
+**Example:**
+```bash
+# Worker with inputs in specific folder
+cargo run --release --bin zisk-worker -- --elf program.elf --inputs-folder /data/inputs/
+
+# Coordinator requests proof for "input.bin" -> Worker looks for "/data/inputs/input.bin"
+cargo run --release --bin zisk-coordinator -- prove --input input.bin --compute-capacity 10
+```
+
 The table below lists the available configuration options for the Worker:
 
 | TOML Key              | CLI Argument     | Environment Variable| Type | Default | Description |
@@ -258,6 +275,7 @@ The table below lists the available configuration options for the Worker:
 | `worker.worker_id` | `--worker-id` | - | String | Auto-generated UUID | Unique worker identifier |
 | `worker.compute_capacity.compute_units` | `--compute-capacity` | - | Number | 10 | Worker compute capacity (in compute units) |
 | `worker.environment` | - | - | String | development | Service environment (development, staging, production) |
+| `worker.inputs_folder` | `--inputs-folder` | - | String | . | Path to folder containing input files |
 | `coordinator.url` | `--coordinator-url` | - | String | http://127.0.0.1:50051 | Coordinator server URL |
 | `connection.reconnect_interval_seconds` | - | - | Number | 5 | Reconnection interval in seconds |
 | `connection.heartbeat_timeout_seconds` | - | - | Number | 30 | Heartbeat timeout in seconds |
@@ -302,6 +320,7 @@ Example production configuration file:
 worker_id = "my-worker-001"
 compute_capacity.compute_units = 10
 environment = "production"
+inputs_folder = "/app/inputs"
 
 [coordinator]
 url = "http://127.0.0.1:50051"
@@ -318,10 +337,10 @@ file_path = "/var/log/distributed/worker-001.log"
 
 ## Launching a proof
 
-To launch a proof generation request, use the `prove` command of the `zisk-coordinator` binary, specifying the input file and desired compute capacity.
+To launch a proof generation request, use the `prove` command of the `zisk-coordinator` binary, specifying the input filename and desired compute capacity.
 
 ```bash
-cargo run --release --bin zisk-coordinator -- prove --input <path_to_input_file> --compute-capacity 10
+cargo run --release --bin zisk-coordinator -- prove --input <input_filename> --compute-capacity 10
 ```
 
 The `--compute-capacity` flag indicates the total compute units required to generate a proof. The coordinator will assign one or more workers to meet this capacity, distributing the workload if multiple workers are needed. Requests exceeding the combined capacity of available workers will not be processed and an error will be returned.
@@ -368,6 +387,12 @@ grpcurl -plaintext -d '{"available_only": true}' \
 - Ensure worker ID is unique if running multiple workers
 - Confirm coordinator has active jobs to distribute
 
+**Input file not found errors:**
+- Verify the input file exists in the worker's `--inputs-folder` directory
+- Check file permissions - worker needs read access to input files
+- Ensure you're using the filename only (not full path) when launching proofs
+- Confirm `--inputs-folder` path is correct and accessible
+
 **Port conflicts:**
 - Use `--port` flag or update configuration file to change ports
 - Check for other services using the same ports
@@ -389,21 +414,6 @@ Where `debug-coordinator.toml` or `debug-worker.toml` contains:
 [logging]
 level = "debug"
 format = "pretty"
-```
-
-### Testing Configuration
-
-Use CLI overrides to test specific values without modifying configuration files:
-
-```bash
-# Test connection to different coordinator
-cargo run --release --bin zisk-worker -- --coordinator-url http://test-coordinator:50051
-
-# Test with specific capacity and ID
-cargo run --release --bin zisk-worker -- --worker-id test-worker --compute-units 10
-
-# Test coordinator with different port
-cargo run --release --bin zisk-coordinator -- --port 9090
 ```
 
 ### Log Files

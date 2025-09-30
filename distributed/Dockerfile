@@ -69,8 +69,8 @@ RUN groupadd -r zisk && useradd -r -g zisk -d /app -s /bin/false zisk
 WORKDIR /app
 
 # Create directory structure with proper ownership
-RUN mkdir -p bin config/coordinator config/worker /var/log/distributed /app/.zisk/cache /app/.zisk/bin && \
-    chown -R zisk:zisk /var/log/distributed /app/.zisk /app/bin /app/config
+RUN mkdir -p bin config/coordinator config/worker /app/proofs /var/log/distributed /app/.zisk/cache /app/.zisk/bin && \
+    chown -R zisk:zisk /var/log/distributed /app/.zisk /app/bin /app/config /app/proofs
 
 # Copy binaries from builder stage
 COPY --from=builder --chown=zisk:zisk /app/target/release/zisk-coordinator ./bin/

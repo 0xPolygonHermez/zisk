@@ -7,6 +7,7 @@ mod handler_prove;
 #[derive(Parser, Debug)]
 #[command(name = "zisk-coordinator")]
 #[command(about = "The Coordinator for the Distributed ZisK Network")]
+#[command(version)]
 struct ZiskCoordinatorArgs {
     /// Path to configuration file
     #[arg(

@@ -27,7 +27,6 @@ main() {
     step "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
-    confirm_continue || return 0
 
     cd "${WORKSPACE_DIR}"
 
