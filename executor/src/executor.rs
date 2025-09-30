@@ -33,7 +33,7 @@ use sm_rom::{RomInstance, RomSM};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use witness::WitnessComponent;
 
-use crate::DummyCounter;
+use crate::{DummyCounter, StaticDataBusCollect};
 use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{
@@ -916,7 +916,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         &self,
         pctx: Arc<ProofCtx<F>>,
         secn_instances: HashMap<usize, &Box<dyn Instance<F>>>,
-        execute: bool,
     ) {
         let min_traces = self.min_traces.read().unwrap();
 
@@ -941,6 +940,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let global_ids_map: HashMap<usize, usize> =
             global_ids.iter().enumerate().map(|(idx, &id)| (id, idx)).collect();
 
+        let frops_instance_id = self.std.get_virtual_table_id_unique(&vec![5010, 5011, 5012]);
+        let calculate_frops = pctx.dctx_is_my_process_instance(frops_instance_id.unwrap());
+
         // Create data buses for each chunk
         let data_buses = self
             .sm_bundle
@@ -949,8 +951,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 &secn_instances,
                 &chunks_to_execute,
                 self.std.clone(),
+                calculate_frops,
                 &self.executed_chunks,
-                execute,
             )
             .into_iter()
             .map(|db| Arc::new(Mutex::new(db)))
@@ -1440,7 +1442,6 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         }
         let frops_instance_id = frops_instance_id.unwrap();
         let is_mine = pctx.dctx_is_my_process_instance(frops_instance_id);
-        println!("FROPS instance ID: {:?} is mine", frops_instance_id);
 
         if !is_mine {
             return;
@@ -1462,21 +1463,29 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             }
         }
 
-        println!("Pre-calculating {} missing chunks", non_executed_chunks.len());
         if !non_executed_chunks.is_empty() {
             non_executed_chunks.par_iter().for_each(|chunk_id| {
-                let mut data_bus = self
-                    .sm_bundle
-                    .build_data_bus_collectors(
-                        &pctx,
-                        &HashMap::new(),
-                        &[vec![]],
-                        self.std.clone(),
-                        &self.executed_chunks,
-                        true,
-                    )
-                    .remove(0)
-                    .unwrap();
+                let mut data_bus = StaticDataBusCollect::new(
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    self.std.clone(),
+                    true,
+                );
+
                 let min_traces = match min_traces {
                     MinimalTraces::EmuTrace(v) => v,
                     MinimalTraces::AsmEmuTrace(a) => &a.vec_chunks,
@@ -1567,11 +1576,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                                 } else {
                                     let mut secn_instances = HashMap::new();
                                     secn_instances.insert(global_id, secn_instance);
-                                    self.witness_collect_instances(
-                                        pctx.clone(),
-                                        secn_instances,
-                                        false,
-                                    );
+                                    self.witness_collect_instances(pctx.clone(), secn_instances);
                                 }
                             }
                             self.witness_secn_instance(
@@ -1684,7 +1689,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         let pool = create_pool(n_cores);
         pool.install(|| {
             if !secn_instances.is_empty() {
-                self.witness_collect_instances(pctx.clone(), secn_instances, false);
+                self.witness_collect_instances(pctx.clone(), secn_instances);
             }
         });
 

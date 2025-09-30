@@ -234,14 +234,14 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
         chunks_to_execute: &[Vec<usize>],
         std: Arc<Std<F>>,
+        calculate_frops_: bool,
         executed_chunks: &[AtomicBool],
-        execute: bool,
     ) -> Vec<Option<StaticDataBusCollect<F, u64>>> {
         chunks_to_execute
             .par_iter()
             .enumerate()
             .map(|(chunk_id, global_idxs)| {
-                if global_idxs.is_empty() && !execute {
+                if global_idxs.is_empty() {
                     return None;
                 }
 
@@ -401,7 +401,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                 let mut keccakf_inputs_generator = None;
                 let mut sha256f_inputs_generator = None;
                 let mut arith_inputs_generator = None;
-                if !global_idxs.is_empty() && !execute {
+                if !global_idxs.is_empty() {
                     for (_, sm) in self.sm.values() {
                         match sm {
                             StateMachines::ArithSM(arith_sm) => {
@@ -429,13 +429,14 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     }
                 }
 
-                let calculate_frops =
-                    if executed_chunks[chunk_id].load(std::sync::atomic::Ordering::SeqCst) {
-                        false
-                    } else {
-                        executed_chunks[chunk_id].store(true, std::sync::atomic::Ordering::SeqCst);
-                        true
-                    };
+                let calculate_frops = if !calculate_frops_
+                    || executed_chunks[chunk_id].load(std::sync::atomic::Ordering::SeqCst)
+                {
+                    false
+                } else {
+                    executed_chunks[chunk_id].store(true, std::sync::atomic::Ordering::SeqCst);
+                    true
+                };
 
                 let data_bus = StaticDataBusCollect::new(
                     mem_collectors,
