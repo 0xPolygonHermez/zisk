@@ -107,8 +107,14 @@ impl ProverConfig {
                 json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
             }
         };
-        let default_cache_path =
-            std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
+
+        let home = std::env::var("HOME").map(PathBuf::from).map_err(|_| {
+            anyhow::anyhow!(
+                "HOME environment variable not set, cannot determine default cache path"
+            )
+        })?;
+
+        let default_cache_path = home.join(DEFAULT_CACHE_PATH);
         if !default_cache_path.exists() {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
                 if e.kind() != std::io::ErrorKind::AlreadyExists {
@@ -123,7 +129,23 @@ impl ProverConfig {
         if emulator {
             prover_service_config.asm = None;
         } else if prover_service_config.asm.is_none() {
-            let stem = prover_service_config.elf.file_stem().unwrap().to_str().unwrap();
+            let stem = prover_service_config
+                .elf
+                .file_stem()
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "ELF path '{}' does not have a file stem.",
+                        prover_service_config.elf.display()
+                    )
+                })?
+                .to_str()
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "ELF file stem for '{}' is not valid UTF-8.",
+                        prover_service_config.elf.display()
+                    )
+                })?;
+
             let hash = get_elf_data_hash(&prover_service_config.elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
             let new_filename = format!("{stem}-{hash}-mt.bin");
