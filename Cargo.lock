@@ -993,7 +993,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1335,7 +1335,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "num-bigint",
  "paste",
@@ -2646,7 +2646,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "colored",
  "fields",
@@ -2980,7 +2980,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "blake3",
  "borsh",
@@ -3013,7 +3013,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "borsh",
  "crossbeam-channel",
@@ -3038,7 +3038,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "fields",
  "proofman-common",
@@ -3050,7 +3050,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3061,7 +3061,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3070,7 +3070,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "colored",
  "fields",
@@ -3081,7 +3081,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "bytemuck",
  "fields",
@@ -4628,7 +4628,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -5321,7 +5321,7 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 [[package]]
 name = "witness"
 version = "0.12.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#85ca8b53de0728f5dc62d2bbed65d603cc016711"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Funique_tables#788be1f14db2cfde9451df7a1815730b03145fdf"
 dependencies = [
  "colored",
  "fields",
