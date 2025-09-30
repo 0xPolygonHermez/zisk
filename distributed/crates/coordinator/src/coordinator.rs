@@ -1451,7 +1451,7 @@ impl Coordinator {
         job.final_proof = Some(proof_data.swap_remove(0));
         job.change_state(JobState::Completed);
 
-        let duration = Duration::from_millis(job.duration_ms.unwrap());
+        let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
 
         drop(job);
 
