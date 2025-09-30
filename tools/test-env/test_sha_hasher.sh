@@ -16,11 +16,11 @@ main() {
     else
         total_steps=10
     fi
-    if [[ is_gha && "${PLATFORM}" == "darwin" ]]; then
+    if is_gha && [[ "${PLATFORM}" == "darwin" ]]; then
         total_steps=$((total_steps - 2))
     fi
 
-    if [[ "${PLATFORM}" == "linux" ]]; then
+    if ! is_gha || [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
     fi
 
@@ -59,7 +59,7 @@ main() {
         return 1
     fi
 
-    if [[ is_gha && "${PLATFORM}" == "darwin" ]]; then
+    if is_gha && [[ "${PLATFORM}" == "darwin" ]]; then
         warn "Skipping prove and verify steps on macOS as it's not supported in GHA"
     else
         step "Generating program setup..."
