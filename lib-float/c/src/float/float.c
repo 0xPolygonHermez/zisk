@@ -685,17 +685,17 @@ void _zisk_float (void)
                     // -(-∞ + -∞) = +∞
                     if (F32_IS_ANY_INFINITE(fregs[rs1]) || F32_IS_ANY_INFINITE(fregs[rs2])) { // Multiplication will result in infinity
                         if (F32_IS_POSITIVE(fregs[rs1]) == F32_IS_POSITIVE(fregs[rs2])) { // rs1 and rs2 have the same sign, so multiplication is positive infinity
-                            if (F32_IS_PLUS_INFINITE(fregs[rs3])) { // -(+∞ - +∞) = NaN
+                            if (F32_IS_MINUS_INFINITE(fregs[rs3])) { // -(+∞ + -∞) = NaN
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
-                            } else { // -(+∞ - -∞ or x) = -∞
+                            } else { // -(+∞ + +∞ or x) = -∞
                                 fregs[rd] = F32_MINUS_INFINITE;
                             }
                         } else { // rs1 and rs2 have different signs, so multiplication is negative infinity
-                            if (F32_IS_MINUS_INFINITE(fregs[rs3])) { // -(-∞ - -∞) = NaN
+                            if (F32_IS_PLUS_INFINITE(fregs[rs3])) { // -(-∞ + +∞) = NaN
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
-                            } else { // -(-∞ - +∞ or x) = +∞
+                            } else { // -(-∞ + -∞ or x) = +∞
                                 fregs[rd] = F32_PLUS_INFINITE;
                             }
                         }
@@ -732,18 +732,6 @@ void _zisk_float (void)
                             break;
                         }
                     }
-                    // if (F32_IS_ANY_ZERO(fregs[rs1]) || F32_IS_ANY_ZERO(fregs[rs2])) {
-                    //     if (F32_IS_ANY_ZERO(fregs[rs3])) {
-                    //         if ((F32_IS_POSITIVE(fregs[rs1]) != F32_IS_POSITIVE(fregs[rs2])) && F32_IS_NEGATIVE(fregs[rs3])) {
-                    //             fregs[rd] = F32_PLUS_ZERO;
-                    //         } else {
-                    //             fregs[rd] = F32_MINUS_ZERO;
-                    //         }                        
-                    //         break;
-                    //     } else
-                    //         fregs[rd] = NEG32(fregs[rs3]);
-                    //     break;
-                    // }
 
                     // Get rounding mode
                     uint64_t rm = (inst >> 12) & 0x7;
@@ -751,23 +739,8 @@ void _zisk_float (void)
                     change_rounding_mode_sign();
 
                     // Call f32_mulAdd()
-                    uint32_t result = f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
-                    if (result == F32_PLUS_ZERO)
-                        fregs[rd] = (uint64_t)F32_MINUS_ZERO;
-                    else if (result == F32_MINUS_ZERO)
-                        fregs[rd] = (uint64_t)F32_PLUS_ZERO;
-                    else
-                        fregs[rd] = (uint64_t)NEG32(result);
-                    // else
-                    // fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v);
+                    fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v);
                     break;
-                    // inst_12:
-                    // // rs1==f8, rs2==f20, rs3==f3, rd==f30,fs1 == 0 and fe1 == 0x00 and fm1 == 0x000000 and fs2 == 0 and fe2 == 0x00 and fm2 == 0x000000 and fs3 == 1 and fe3 == 0x00 and fm3 == 0x000000 and  fcsr == 0x0 and rm_val == 7   
-                    // /* opcode: fnmadd.s ; op1:f8; op2:f20; op3:f3; dest:f30; op1val:0x0; op2val:0x0;
-                    // op3val:0x80000000; valaddr_reg:x3; val_offset:36*FLEN/8; rmval:dyn;
-                    // testreg:x2; fcsr_val:0 */
-                    // TEST_FPR4_OP(fnmadd.s, f30, f8, f20, f3, dyn, 0, 0, x3, 36*FLEN/8, x4, x1, x2)
-                    // It results 80000000 instead of 00000000
                 }
                 case 1: { //=> ("R4", "fnmadd.d"), rd = -(rs1 x rs2) - rs3
                     uint64_t rd = (inst >> 7) & 0x1F;
