@@ -1664,6 +1664,9 @@ impl<'a> Emu<'a> {
         if options.stats {
             let report = self.ctx.stats.report();
             println!("{report}");
+            if let Some(csv_file) = &options.export_csv {
+                self.ctx.stats.report_to_csv(Some(csv_file));
+            }
             if let Some(store_op_output_file) = &options.store_op_output {
                 self.ctx.stats.flush_op_data_to_file(store_op_output_file).unwrap();
             }

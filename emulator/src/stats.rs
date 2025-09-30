@@ -53,6 +53,10 @@ pub struct MemoryOperations {
     mwrite_dirty_s64_byte: u64,
     mwrite_dirty_s32_byte: u64,
     mwrite_dirty_s16_byte: u64,
+    mread_aligned_word: u64,
+    mwrite_aligned_word: u64,
+    mread_unaligned_word: u64,
+    mwrite_unaligned_word: u64,
 }
 
 /// Keeps statistics of the emulator operations
@@ -108,6 +112,12 @@ impl Stats {
                 self.mops.mread_na1 += 1;
                 if width == 1 {
                     self.mops.mread_byte += 1;
+                } else if width == 4 {
+                    if (address & 0x3) == 0 {
+                        self.mops.mread_aligned_word += 1;
+                    } else {
+                        self.mops.mread_unaligned_word += 1;
+                    }
                 }
             }
         }
@@ -141,10 +151,13 @@ impl Stats {
                             self.mops.mwrite_dirty_s16_byte += 1;
                         }
                     }
+                } else if width == 4 {
+                    if (address & 0x3) == 0 {
+                        self.mops.mwrite_aligned_word += 1;
+                    } else {
+                        self.mops.mwrite_unaligned_word += 1;
+                    }
                 }
-            }
-            if ((address & M3) == 0) && (width == 8) {
-                self.mops.mwrite_a += 1;
             }
         }
     }
@@ -241,7 +254,7 @@ impl Stats {
         }
     }
 
-    /// Returns a string containing a human-readable text showing all caunters
+    /// Returns a string containing a human-readable text showing all counters
     pub fn report(&self) -> String {
         const AREA_PER_SEC: f64 = 1000000_f64;
 
@@ -360,6 +373,14 @@ impl Stats {
             self.mops.mwrite_dirty_s32_byte,
             self.mops.mwrite_dirty_s16_byte
         );
+        let mops_aligned_word = self.mops.mread_aligned_word + self.mops.mwrite_aligned_word;
+        let mops_unaligned_word = self.mops.mread_unaligned_word + self.mops.mwrite_unaligned_word;
+        output += &format!(
+            "    MemoryAlignWord: {} aligned_reads + {} aligned_writes / {mops_aligned_word} total aligned | {} unaligned_reads + {} unaligned_writes / {mops_unaligned_word} total unaligned | total {}\n",
+            self.mops.mread_aligned_word, self.mops.mwrite_aligned_word,
+            self.mops.mread_unaligned_word, self.mops.mwrite_unaligned_word,
+            mops_aligned_word + mops_unaligned_word
+        );
 
         // Build the operations usage counters and cost values
         output += "\nOpcodes:\n";
@@ -399,6 +420,118 @@ impl Stats {
         for (i, reg) in self.regs.iter().enumerate() {
             let per_thousand = reg * 1000 / total_regs;
             output += &format!("reg[{i}] = {reg} ({per_thousand}%o)\n");
+        }
+
+        output
+    }
+
+    /// Returns a csv with all counters
+    pub fn report_to_csv(&self, filename: Option<&str>) -> String {
+        // The result of this function is accumulated in this string
+        let mut output = String::new();
+
+        // Calculate some aggregated counters to be used in the logs
+        let total_mem_ops = self.mops.mread_na1
+            + self.mops.mread_na2
+            + self.mops.mread_a
+            + self.mops.mwrite_na1
+            + self.mops.mwrite_na2
+            + self.mops.mwrite_a;
+        let total_mem_align_steps = self.mops.mread_na1
+            + self.mops.mread_na2 * 2
+            + self.mops.mwrite_na1 * 2
+            + self.mops.mwrite_na2 * 4;
+
+        // Declare some total counters for the opcodes
+        let mut total_opcodes: u64 = 0;
+
+        for opcode in 0..256 {
+            total_opcodes += self.ops[opcode];
+        }
+
+        // Build the memory usage counters and cost values
+        output += &format!("main_steps;{}\n", self.steps);
+        output += &format!("mem_ops;{total_mem_ops}\n");
+        output += &format!("mem_align;{total_mem_align_steps}\n");
+        output += &format!("opcodes;{total_opcodes}\n");
+        output += &format!("frops;{}\n", self.frops);
+
+        let memory_reads = self.mops.mread_a + self.mops.mread_na1 + self.mops.mread_na2;
+        let memory_writes = self.mops.mwrite_a + self.mops.mwrite_na1 + self.mops.mwrite_na2;
+        let memory_total = memory_reads + memory_writes;
+
+        output += &format!("mem_ops;{memory_total}\n");
+        output += &format!(
+            "mem_total_ops;{}\n",
+            self.mops.mread_a
+                + self.mops.mread_na1
+                + self.mops.mread_na2 * 2
+                + self.mops.mwrite_a
+                + self.mops.mwrite_na1 * 2
+                + self.mops.mwrite_na2 * 4
+        );
+
+        output += &format!("mem_reads;{memory_reads}\n");
+        output += &format!(
+            "mem_total_reads_ops;{}\n",
+            self.mops.mread_a + self.mops.mread_na1 + self.mops.mread_na2 * 2
+        );
+        output += &format!("mem_aligned_reads;{}\n", self.mops.mread_a);
+        output += &format!("mem_unaligned_single_reads;{}\n", self.mops.mread_na1);
+        output += &format!("mem_unaligned_double_reads;{}\n", self.mops.mread_na2);
+        output += &format!("mem_byte_reads;{}\n", self.mops.mread_byte);
+        output += &format!("mem_aligned32_word_reads;{}\n", self.mops.mread_aligned_word);
+        output += &format!("mem_unaligned32_word_reads;{}\n", self.mops.mread_unaligned_word);
+
+        output += &format!("mem_writes;{memory_writes}\n");
+        output += &format!(
+            "mem_total_writes_ops;{}\n",
+            self.mops.mwrite_a + self.mops.mwrite_na1 + self.mops.mwrite_na2 * 2
+        );
+        output += &format!("mem_aligned_writes;{}\n", self.mops.mwrite_a);
+        output += &format!("mem_unaligned_single_writes;{}\n", self.mops.mwrite_na1);
+        output += &format!("mem_unaligned_double_writes;{}\n", self.mops.mwrite_na2);
+        output += &format!("mem_byte_writes;{}\n", self.mops.mwrite_byte);
+        output += &format!("mem_aligned32_word_writes;{}\n", self.mops.mwrite_aligned_word);
+        output += &format!("mem_unaligned32_word_writes;{}\n", self.mops.mwrite_unaligned_word);
+
+        let mwrite_dirty_sext_byte = self.mops.mwrite_dirty_s64_byte
+            + self.mops.mwrite_dirty_s32_byte
+            + self.mops.mwrite_dirty_s16_byte;
+
+        output += &format!("mem_byte_sext_dirty_write;{mwrite_dirty_sext_byte}\n");
+        output += &format!("mem_byte_s64_dirty_write;{}\n", self.mops.mwrite_dirty_s64_byte);
+        output += &format!("mem_byte_s32_dirty_write;{}\n", self.mops.mwrite_dirty_s32_byte);
+        output += &format!("mem_byte_s16_dirty_write;{}\n", self.mops.mwrite_dirty_s16_byte);
+        output += &format!(
+            "mem_byte_nosext_dirty_write;{}\n",
+            self.mops.mwrite_dirty_byte - mwrite_dirty_sext_byte
+        );
+
+        // Build the operations usage counters and cost values
+        for opcode in 0..256 {
+            // Get the Zisk instruction corresponding to this opcode
+            if let Ok(inst) = ZiskOp::try_from_code(opcode as u8) {
+                output += &format!("{};{}\n", inst.name(), self.ops[opcode]);
+            }
+        }
+
+        let mut total_regs = 0u64;
+        for reg in self.regs.iter() {
+            total_regs += reg;
+        }
+        output += &format!("total_regs;{total_regs}\n");
+        for (i, reg) in self.regs.iter().enumerate() {
+            output += &format!("reg_{i};{reg}\n");
+        }
+
+        // Save to file if filename is provided
+        if let Some(filename) = filename {
+            if filename == "-" {
+                println!("{}", output);
+            } else if let Err(e) = std::fs::write(filename, &output) {
+                eprintln!("Error writing CSV report to file {}: {}", filename, e);
+            }
         }
 
         output

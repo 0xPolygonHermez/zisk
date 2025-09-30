@@ -61,6 +61,8 @@ pub struct EmuOptions {
     /// Generates statistics about opcodes and memory usage.  Enabled with `-x`.
     #[clap(short = 'x', long, value_name = "STATS", default_value = "false")]
     pub stats: bool,
+    #[clap(short = 'E', long, value_name = "EXPORT_CSV")]
+    pub export_csv: Option<String>,
     /// Generates minimal traces.  Enabled with `-g`.
     #[clap(short = 'g', long, value_name = "MINIMAL_TRACES", default_value = "false")]
     pub generate_minimal_traces: bool,
@@ -87,6 +89,7 @@ impl Default for EmuOptions {
             log_metrics: false,
             tracerv: false,
             stats: false,
+            export_csv: None,
             generate_minimal_traces: false,
             store_op_output: None,
         }
@@ -108,6 +111,7 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "CHUNK_SIZE: {:?}", self.chunk_size)?;
         writeln!(f, "METRICS: {:?}", self.log_metrics)?;
         writeln!(f, "STATS: {:?}", self.stats)?;
+        writeln!(f, "EXPORT_CSV: {:?}", self.export_csv)?;
         writeln!(f, "TRACERV: {:?}", self.tracerv)?;
         writeln!(f, "LOG_STEP: {:?}", self.log_step)?;
         writeln!(f, "MINIMAL_TRACES: {:?}", self.generate_minimal_traces)?;
