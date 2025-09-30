@@ -521,8 +521,68 @@ void _zisk_float (void)
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
+
+                    // sNaN propagation
+                    if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]) || F64_IS_SIGNALING_NAN(fregs[rs3])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // infinity * zero = NaN
+                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // zero * infinity = NaN
+                    if (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // qNaN propagation
+                    if (F64_IS_QUIET_NAN(fregs[rs1]) || F64_IS_QUIET_NAN(fregs[rs2]) || F64_IS_QUIET_NAN(fregs[rs3])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        break;
+                    }
+
+                    // Subtraction of something to infinity, i.e. multiplication of at least one infinity
+                    // -(+∞ + +∞) = -∞
+                    // -(+∞ + -∞) = NaN
+                    // -(-∞ + +∞) = NaN
+                    // -(-∞ + -∞) = +∞
+                    if (F64_IS_ANY_INFINITE(fregs[rs1]) || F64_IS_ANY_INFINITE(fregs[rs2])) { // Multiplication will result in infinity
+                        if (F64_IS_POSITIVE(fregs[rs1]) == F64_IS_POSITIVE(fregs[rs2])) { // rs1 and rs2 have the same sign, so multiplication is positive infinity
+                            if (F64_IS_PLUS_INFINITE(fregs[rs3])) { // -(+∞ - +∞) = NaN
+                                fregs[rd] = F64_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                            } else { // -(+∞ - -∞ or x) = -∞
+                                fregs[rd] = F64_MINUS_INFINITE;
+                            }
+                        } else { // rs1 and rs2 have different signs, so multiplication is negative infinity
+                            if (F64_IS_MINUS_INFINITE(fregs[rs3])) { // -(-∞ - -∞) = NaN
+                                fregs[rd] = F64_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                            } else { // -(-∞ - +∞ or x) = +∞
+                                fregs[rd] = F64_PLUS_INFINITE;
+                            }
+                        }
+                        break;
+                    }
+
+                    // Multiplication by zero
+                    // -(0*rs2 - rs3) = -rs3, -(rs1*0 - rs3) = +rs3
+                    if ((F64_IS_ANY_ZERO(fregs[rs1]) || F64_IS_ANY_ZERO(fregs[rs2])) && !F64_IS_ANY_ZERO(fregs[rs3])) {
+                        fregs[rd] = fregs[rs3];
+                        break;
+                    }
+
+
+                    // Get rounding mode
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
+
+                    // Call f64_mulAdd()
                     fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){NEG64(fregs[rs1])}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v;
                     break;
                 }
