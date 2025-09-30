@@ -481,24 +481,51 @@ void _zisk_float (void)
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
 
-                    // NaN propagation
+                    // sNaN propagation
                     if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]) || F32_IS_SIGNALING_NAN(fregs[rs3])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
+                    // infinity * zero = NaN
                     if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
+                    // zero * infinity = NaN
                     if (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
+                    // qNaN propagation
                     if (F32_IS_QUIET_NAN(fregs[rs1]) || F32_IS_QUIET_NAN(fregs[rs2]) || F32_IS_QUIET_NAN(fregs[rs3])) {
                         fregs[rd] = F32_QUIET_NAN;
+                        break;
+                    }
+
+                    // Subtraction of something to infinity, i.e. multiplication of at least one infinity
+                    // -(+∞ + +∞) = -∞
+                    // -(+∞ + -∞) = NaN
+                    // -(-∞ + +∞) = NaN
+                    // -(-∞ + -∞) = +∞
+                    if (F32_IS_ANY_INFINITE(fregs[rs1]) || F32_IS_ANY_INFINITE(fregs[rs2])) { // Multiplication will result in infinity
+                        if (F32_IS_POSITIVE(fregs[rs1]) == F32_IS_POSITIVE(fregs[rs2])) { // rs1 and rs2 have the same sign, so multiplication is positive infinity
+                            if (F32_IS_PLUS_INFINITE(fregs[rs3])) { // -(+∞ - +∞) = NaN
+                                fregs[rd] = F32_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                            } else { // -(+∞ - -∞ or x) = -∞
+                                fregs[rd] = F32_MINUS_INFINITE;
+                            }
+                        } else { // rs1 and rs2 have different signs, so multiplication is negative infinity
+                            if (F32_IS_MINUS_INFINITE(fregs[rs3])) { // -(-∞ - -∞) = NaN
+                                fregs[rd] = F32_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                            } else { // -(-∞ - +∞ or x) = +∞
+                                fregs[rd] = F32_PLUS_INFINITE;
+                            }
+                        }
                         break;
                     }
 
