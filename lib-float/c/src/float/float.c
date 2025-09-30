@@ -17,6 +17,8 @@ void set_rounding_mode (uint64_t rm);
 void update_rounding_mode (uint64_t * rm);
 void change_rounding_mode_sign (void);
 
+//extern uint64_t zisk_float_calls;
+
 void _zisk_float (void)
 {
     // Before calling any softfloat function, set the rounding mode from the fcsr register
@@ -57,8 +59,117 @@ void _zisk_float (void)
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     uint64_t rm = (inst >> 12) & 0x7;
+
+                    // fmadd.s(∞, 0, 5.0) = NaN  # Invalid Operation! (∞ × 0 is undefined)
+                    // fmadd.s(0, ∞, 5.0) = NaN  # Invalid Operation!
+                    if ( (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) ||
+                         (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) ) {
+                        fregs[rd] = F32_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // NaN propagation
+                    if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2]) || F32_IS_NAN(fregs[rs3])) {
+                        if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]) || F32_IS_SIGNALING_NAN(fregs[rs3]))
+                            softfloat_raiseFlags( softfloat_flag_invalid );
+                        fregs[rd] = F32_QUIET_NAN;
+                        break;
+                    }
+                    // fmadd.s(∞, 1, 5.0) = ∞    # Valid (∞ + 5.0 = ∞)
+                    // fmadd.s(∞, 2, -∞) = NaN   # Invalid Operation! (∞ - ∞)
+                    // fmadd.s(∞, 1, ∞) = ∞      # Valid (∞ + ∞ = ∞)
+                    // fmadd.s(∞, -1, ∞) = NaN   # Invalid Operation! (-∞ + ∞)
+                    if ( F32_IS_PLUS_INFINITE(fregs[rs1]) ) {
+                        if ( F32_IS_POSITIVE(fregs[rs2]) ) {
+                            if ( F32_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F32_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F32_PLUS_INFINITE;
+                                break;
+                            }
+                        } else {
+                            if ( F32_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F32_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F32_MINUS_INFINITE;
+                                break;
+                            }
+                        }
+                    }
+                    if ( F32_IS_MINUS_INFINITE(fregs[rs1]) ) {
+                        if ( F32_IS_POSITIVE(fregs[rs2]) ) {
+                            if ( F32_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F32_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F32_MINUS_INFINITE;
+                                break;
+                            }
+                        } else {
+                            if ( F32_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F32_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F32_PLUS_INFINITE;
+                                break;
+                            }
+                        }
+                    }
+                    if ( F32_IS_PLUS_INFINITE(fregs[rs2]) ) {
+                        if ( F32_IS_POSITIVE(fregs[rs1]) ) {
+                            if ( F32_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F32_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F32_PLUS_INFINITE;
+                                break;
+                            }
+                        } else {
+                            if ( F32_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F32_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F32_MINUS_INFINITE;
+                                break;
+                            }
+                        }
+                    }
+                    if ( F32_IS_MINUS_INFINITE(fregs[rs2]) ) {
+                        if ( F32_IS_POSITIVE(fregs[rs1]) ) {
+                            if ( F32_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F32_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F32_MINUS_INFINITE;
+                                break;
+                            }
+                        } else {
+                            if ( F32_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F32_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F32_PLUS_INFINITE;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Get rounding mode
                     set_rounding_mode(rm);
+
+                    // Call f32_mulAdd()
                     fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
+                    //softfloat_exceptionFlags &= ~softfloat_flag_underflow;
                     break;
                 }
                 case 1: { //=> ("R4", "fmadd.d"), rd = (rs1 x rs2) + rs3
@@ -101,6 +212,14 @@ void _zisk_float (void)
                     //     break;
                     // }
 
+                    // fmadd.d(∞, 0, 5.0) = NaN  # Invalid Operation! (∞ × 0 is undefined)
+                    // fmadd.d(0, ∞, 5.0) = NaN  # Invalid Operation!
+                    if ( (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) ||
+                         (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) ) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
                     // NaN propagation
                     if (F64_IS_NAN(fregs[rs1]) || F64_IS_NAN(fregs[rs2]) || F64_IS_NAN(fregs[rs3])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]) || F64_IS_SIGNALING_NAN(fregs[rs3]))
@@ -108,18 +227,10 @@ void _zisk_float (void)
                         fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
-                    // fmadd.d(∞, 0, 5.0) = NaN  # Invalid Operation! (∞ × 0 is undefined)
-                    // fmadd.d(0, ∞, 5.0) = NaN  # Invalid Operation!
                     // fmadd.d(∞, 1, 5.0) = ∞    # Valid (∞ + 5.0 = ∞)
                     // fmadd.d(∞, 2, -∞) = NaN   # Invalid Operation! (∞ - ∞)
                     // fmadd.d(∞, 1, ∞) = ∞      # Valid (∞ + ∞ = ∞)
                     // fmadd.d(∞, -1, ∞) = NaN   # Invalid Operation! (-∞ + ∞)
-                    if ( (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) ||
-                         (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) ) {
-                        fregs[rd] = F64_QUIET_NAN;
-                        softfloat_raiseFlags( softfloat_flag_invalid );
-                        break;
-                    }
                     if ( F64_IS_PLUS_INFINITE(fregs[rs1]) ) {
                         if ( F64_IS_POSITIVE(fregs[rs2]) ) {
                             if ( F64_IS_MINUS_INFINITE(fregs[rs3]) ) {
@@ -143,6 +254,48 @@ void _zisk_float (void)
                     }
                     if ( F64_IS_MINUS_INFINITE(fregs[rs1]) ) {
                         if ( F64_IS_POSITIVE(fregs[rs2]) ) {
+                            if ( F64_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F64_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F64_MINUS_INFINITE;
+                                break;
+                            }
+                        } else {
+                            if ( F64_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F64_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F64_PLUS_INFINITE;
+                                break;  
+                            }
+                        }
+                    }
+                    if ( F64_IS_PLUS_INFINITE(fregs[rs2]) ) {
+                        if ( F64_IS_POSITIVE(fregs[rs1]) ) {
+                            if ( F64_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F64_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F64_PLUS_INFINITE;
+                                break;
+                            }
+                        } else {
+                            if ( F64_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                                fregs[rd] = F64_QUIET_NAN;
+                                softfloat_raiseFlags( softfloat_flag_invalid );
+                                break;
+                            } else {
+                                fregs[rd] = F64_MINUS_INFINITE;
+                                break;  
+                            }
+                        }
+                    }
+                    if ( F64_IS_MINUS_INFINITE(fregs[rs2]) ) {
+                        if ( F64_IS_POSITIVE(fregs[rs1]) ) {
                             if ( F64_IS_PLUS_INFINITE(fregs[rs3]) ) {
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
@@ -344,18 +497,20 @@ void _zisk_float (void)
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
+                    if (F64_IS_QUIET_NAN(fregs[rs1]) || F64_IS_QUIET_NAN(fregs[rs2]) || F64_IS_QUIET_NAN(fregs[rs3])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        break;
+                    }
+                    // infinity * zero = NaN
                     if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
+                    // zero * infinity = NaN
                     if (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
-                        break;
-                    }
-                    if (F64_IS_QUIET_NAN(fregs[rs1]) || F64_IS_QUIET_NAN(fregs[rs2]) || F64_IS_QUIET_NAN(fregs[rs3])) {
-                        fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
 
@@ -458,6 +613,14 @@ void _zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                    //if (zisk_float_calls == 0)
+                    // {
+                    //     fregs[rd] = zisk_float_calls;//0x12345678;
+                    //     zisk_float_calls++;
+                    //     break;
+                    // }
+                    // zisk_float_calls++;
 
                     // NaN propagation: x + NaN = NaN, NaN + x = NaN, NaN + NaN = NaN
                     if (F64_IS_NAN(fregs[rs1]) || F64_IS_NAN(fregs[rs2])) {
@@ -564,8 +727,42 @@ void _zisk_float (void)
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
+                    
+                    // NaN propagation
+                    if (F64_IS_NAN(fregs[rs1]) || F64_IS_NAN(fregs[rs2])) {
+                        if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]))
+                            softfloat_raiseFlags( softfloat_flag_invalid );
+                        fregs[rd] = F64_QUIET_NAN;
+                        break;
+                    }
+                    // -∞ - (-∞) → Invalid Operation → NaN
+                    if (F64_IS_MINUS_INFINITE(fregs[rs1]) && F64_IS_MINUS_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // ∞ - ∞ → Invalid Operation → NaN
+                    if (F64_IS_PLUS_INFINITE(fregs[rs1]) && F64_IS_PLUS_INFINITE(fregs[rs2])) {
+                        fregs[rd] = F64_QUIET_NAN;
+                        softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // ∞ - finite → ∞ (same sign as first ∞)
+                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && !F64_IS_ANY_INFINITE(fregs[rs2])) {
+                        fregs[rd] = fregs[rs1];
+                        break;
+                    }
+                    // finite - ∞ → ∞ (opposite sign of second ∞)
+                    if (!F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                        fregs[rd] = NEG64(fregs[rs2]);
+                        break;
+                    }
+
+                    // Get rounding mode
                     uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
+
+                    // Call f64_sub()
                     fregs[rd] = (uint64_t)f64_sub( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
                     break;
                 }
@@ -665,7 +862,15 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f64_mul()
+                    //bool both_non_zero = !F64_IS_ANY_ZERO(fregs[rs1]) && !F64_IS_ANY_ZERO(fregs[rs2]);
                     fregs[rd] = (uint64_t)f64_mul( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
+                    // if (both_non_zero && F64_IS_ANY_ZERO(fregs[rd])) {
+                    //     // It was an underflow, but we got a zero result. Clear the underflow flag.
+                    //     softfloat_exceptionFlags |= softfloat_flag_underflow;
+                    //     softfloat_exceptionFlags |= softfloat_flag_inexact;
+                    //     softfloat_exceptionFlags = 7;
+                    //     fregs[rd] = 0x12345678;
+                    // }
                     break;
                     // riscv-arch-test/riscv-test-suite/rv32i_m/D/src/fmul.d_b9-01.S
 
@@ -1856,6 +2061,8 @@ void change_rounding_mode_sign (void)
     else if (softfloat_roundingMode == softfloat_round_min)
         softfloat_roundingMode = softfloat_round_max;
 }
+
+//uint64_t zisk_float_calls = 0;
 
 #ifdef __cplusplus
 } // extern "C"
