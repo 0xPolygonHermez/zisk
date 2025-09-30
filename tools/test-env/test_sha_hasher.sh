@@ -16,13 +16,13 @@ main() {
     else
         total_steps=10
     fi
-    if [[ is_gha && "${PLATFORM}" == "darwin" ]]; then
+    if is_gha && [[ "${PLATFORM}" == "darwin" ]]; then
         total_steps=$((total_steps - 2))
     fi
 
-    if [[ "${PLATFORM}" == "linux" ]]; then
+    if ! is_gha || [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
-    fi   
+    fi
 
     step "Loading environment variables..."
     # Load environment variables from .env file
@@ -60,7 +60,7 @@ main() {
         return 1
     fi
 
-    if [[ is_gha && "${PLATFORM}" == "darwin" ]]; then
+    if is_gha && [[ "${PLATFORM}" == "darwin" ]]; then
         warn "Skipping prove and verify steps on macOS as it's not supported in GHA"
     else
         step "Generating program setup..."
@@ -73,7 +73,7 @@ main() {
         step "Verifying constraints..."
         if [[ "${BUILD_GPU}" == "1" ]]; then
             warn "Skipping verify constraints step for GPU mode (not supported yet)"
-        else    
+        else
             ensure cargo-zisk verify-constraints -e "$ELF_PATH" -i "$INPUT_BIN" 2>&1 | tee constraints_output.log || return 1
             if ! grep -F "All global constraints were successfully verified" constraints_output.log; then
                 err "verify constraints failed"

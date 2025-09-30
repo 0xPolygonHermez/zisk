@@ -87,9 +87,7 @@ test_elf() {
 
     info "Executing ${desc} script"
 
-    if [[ "${PLATFORM}" == "linux" ]]; then
-        is_proving_key_installed || return 1
-    fi
+    is_proving_key_installed || return 1
 
     info "Loading environment variables..."
     # Load environment variables from .env file

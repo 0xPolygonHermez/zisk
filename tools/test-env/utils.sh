@@ -10,7 +10,7 @@ if [ -t 1 ]; then
     RED=$(tput setaf 1)
     YELLOW=$(tput setaf 3)
     RESET=$(tput sgr0)
-else 
+else
     BOLD=""
     GREEN=""
     RED=""
@@ -143,7 +143,7 @@ is_proving_key_installed() {
         return 0
     else
         err "Proving key not installed. Please install it first."
-        return 1    
+        return 1
     fi
 }
 
@@ -229,7 +229,7 @@ get_shell_and_profile() {
 # get_platform: Sets PLATFORM based on the current system
 get_platform() {
     uname_s=$(uname -s)
-    PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")    
+    PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")
 }
 
 # get_var_from_cargo_toml: Extracts a variable value from Cargo.toml (with "gha_" prefix)
