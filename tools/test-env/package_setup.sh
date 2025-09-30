@@ -47,13 +47,12 @@ main() {
     current_step=1
     if [[ "$SETUP_ADD_DYLIBS" == "1" ]]; then
       total_steps=7
-    else  
+    else
       total_steps=5
     fi
 
     step "Loading environment variables..."
     load_env || return 1
-    confirm_continue || return 0
 
     cd "$(get_zisk_repo_dir)"
 
