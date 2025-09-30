@@ -19,7 +19,7 @@ use zisk_common::ExecutorStatsEvent;
 
 pub trait Task: Send + Sync + 'static {
     type Output: Send + 'static;
-    fn execute(self) -> Self::Output;
+    fn execute(self, exit: bool) -> Self::Output;
 }
 
 pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, Arc<EmuTrace>) -> T + Send + Sync + 'a>;
@@ -178,7 +178,7 @@ impl AsmRunnerMT {
                     let task = task_factory(chunk_id, emu_trace.clone());
                     emu_traces.push(emu_trace);
 
-                    handles.push(std::thread::spawn(move || task.execute()));
+                    handles.push(std::thread::spawn(move || task.execute(should_exit)));
 
                     if should_exit {
                         break 0;
