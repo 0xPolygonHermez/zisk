@@ -93,8 +93,11 @@ pub struct ZiskServer {
     #[clap(short = 'f', long, default_value_t = false)]
     pub final_snark: bool,
 
-    /// GPU PARAMS
     #[clap(short = 'r', long, default_value_t = false)]
+    pub rma: bool,
+
+    /// GPU PARAMS
+    #[clap(short = 'z', long, default_value_t = false)]
     pub preallocate: bool,
 
     #[clap(short = 't', long)]

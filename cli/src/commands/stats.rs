@@ -290,6 +290,7 @@ impl ZiskStats {
                             false,
                             false,
                             false,
+                            false,
                             self.minimal_memory,
                             false,
                             PathBuf::new(),

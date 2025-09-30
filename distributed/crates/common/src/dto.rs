@@ -154,6 +154,7 @@ pub struct AggParamsDto {
     pub final_proof: bool,
     pub verify_constraints: bool,
     pub aggregation: bool,
+    pub rma: bool,
     pub final_snark: bool,
     pub verify_proofs: bool,
     pub save_proofs: bool,

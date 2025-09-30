@@ -326,6 +326,7 @@ impl From<AggParamsDto> for AggParams {
             final_proof: dto.final_proof,
             verify_constraints: dto.verify_constraints,
             aggregation: dto.aggregation,
+            rma: dto.rma,
             final_snark: dto.final_snark,
             verify_proofs: dto.verify_proofs,
             save_proofs: dto.save_proofs,

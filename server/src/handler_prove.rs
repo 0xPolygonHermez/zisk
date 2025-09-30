@@ -26,6 +26,7 @@ use zisk_common::ExecutorStatsEvent;
 pub struct ZiskProveRequest {
     pub input: PathBuf,
     pub aggregation: bool,
+    pub rma: bool,
     pub final_snark: bool,
     pub verify_proofs: bool,
     pub minimal_memory: bool,
@@ -70,6 +71,7 @@ impl ZiskServiceProveHandler {
                         ProofOptions::new(
                             false,
                             request.aggregation,
+                            request.rma,
                             request.final_snark,
                             request.verify_proofs,
                             request.minimal_memory,
@@ -207,6 +209,7 @@ impl ZiskServiceProveHandler {
                 ProofOptions::new(
                     false,
                     request.aggregation,
+                    request.rma,
                     request.final_snark,
                     request.verify_proofs,
                     request.minimal_memory,

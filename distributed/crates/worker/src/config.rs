@@ -161,6 +161,8 @@ pub struct ProverServiceConfigDto {
     pub number_threads_witness: Option<usize>,
     pub max_witness_stored: Option<usize>,
     pub shared_tables: bool,
+    pub rma: bool,
+    pub minimal_memory: bool,
 }
 
 impl Default for ProverServiceConfigDto {
@@ -183,6 +185,8 @@ impl Default for ProverServiceConfigDto {
             number_threads_witness: None,
             max_witness_stored: None,
             shared_tables: false,
+            rma: false,
+            minimal_memory: false,
         }
     }
 }
