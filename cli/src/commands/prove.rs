@@ -83,7 +83,7 @@ pub struct ZiskProve {
     #[clap(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
 
-    #[clap(short = 'r', long, default_value_t = false)]
+    #[clap(short = 'z', long, default_value_t = false)]
     pub preallocate: bool,
 
     /// Base port for Assembly microservices (default: 23115).
@@ -126,6 +126,9 @@ pub struct ZiskProve {
 
     #[clap(short = 'j', long, default_value_t = false)]
     pub shared_tables: bool,
+
+    #[clap(short = 'r', long, default_value_t = false)]
+    pub rma: bool,
 }
 
 impl ZiskProve {
@@ -308,6 +311,7 @@ impl ZiskProve {
                             ProofOptions::new(
                                 false,
                                 self.aggregation,
+                                self.rma,
                                 self.final_snark,
                                 self.verify_proofs,
                                 self.minimal_memory,

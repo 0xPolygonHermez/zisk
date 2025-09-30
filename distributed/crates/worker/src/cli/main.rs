@@ -102,7 +102,7 @@ struct Cli {
     pub final_snark: bool,
 
     /// GPU parameters
-    #[clap(short = 'r', long, default_value_t = false)]
+    #[clap(short = 'z', long, default_value_t = false)]
     pub preallocate: bool,
 
     /// Maximum number of GPU streams
@@ -114,6 +114,12 @@ struct Cli {
 
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
+
+    #[clap(short = 'm', long, default_value_t = false)]
+    pub minimal_memory: bool,
+
+    #[clap(short = 'r', long, default_value_t = false)]
+    pub rma: bool,
 }
 
 #[tokio::main]
@@ -152,6 +158,8 @@ async fn main() -> Result<()> {
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
         shared_tables: cli.shared_tables,
+        rma: cli.rma,
+        minimal_memory: cli.minimal_memory,
     };
 
     let prover_config = ProverConfig::load(prover_config_dto)?;

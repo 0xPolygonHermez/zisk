@@ -375,7 +375,7 @@ The table below lists the available configuration options for the Worker:
 | - | `--verify-constraints` | - | Boolean | false | Whether to verify constraints |
 | - | `--unlock-mapped-memory` | - | Boolean | false | Unlock memory map for the ROM file (mutually exclusive with `--emulator`) |
 | - | `-f`, `--final-snark` | - | Boolean | false | Whether to generate the final SNARK |
-| - | `-r`, `--preallocate` | - | Boolean | false | GPU preallocation flag |
+| - | `-z`, `--preallocate` | - | Boolean | false | GPU preallocation flag |
 | - | `-t`, `--max-streams` | | - | Number | - | Maximum number of GPU streams |
 | - | `-n`, `--number-threads-witness` | - | Number | - | Number of threads for witness computation |
 | - | `-x`, `--max-witness-stored` | - | Number | - | Maximum number of witnesses to store in memory |

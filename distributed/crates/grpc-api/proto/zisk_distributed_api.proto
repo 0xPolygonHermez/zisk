@@ -240,12 +240,13 @@ message AggParams {
   bool final_proof = 3;
   bool verify_constraints = 4;
   bool aggregation = 5;
-  bool final_snark = 6;
-  bool verify_proofs = 7;
-  bool save_proofs = 8;
-  bool test_mode = 9;
-  string output_dir_path = 10;
-  bool minimal_memory = 11;
+  bool rma = 6;
+  bool final_snark = 7;
+  bool verify_proofs = 8;
+  bool save_proofs = 9;
+  bool test_mode = 10;
+  string output_dir_path = 11;
+  bool minimal_memory = 12;
 }
 
 message ExecuteTaskResponse {

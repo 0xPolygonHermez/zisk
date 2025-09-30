@@ -47,6 +47,9 @@ pub enum ClientCommand {
         #[clap(short = 'a', long, default_value_t = false)]
         aggregation: bool,
 
+        #[clap(short = 'r', long, default_value_t = false)]
+        rma: bool,
+        
         /// Use final snark
         #[clap(short = 'f', long, default_value_t = false)]
         final_snark: bool,
@@ -102,6 +105,7 @@ impl ZiskProveClient {
             ClientCommand::Prove {
                 input,
                 aggregation,
+                rma,
                 final_snark,
                 verify_proofs,
                 minimal_memory,
@@ -113,6 +117,7 @@ impl ZiskProveClient {
                 payload: ZiskProveRequest {
                     input: input.clone(),
                     aggregation: *aggregation,
+                    rma: *rma,
                     final_snark: *final_snark,
                     verify_proofs: *verify_proofs,
                     minimal_memory: *minimal_memory,
