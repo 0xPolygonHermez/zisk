@@ -39,7 +39,7 @@ use crate::{
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use proofman::ContributionsInfo;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use zisk_distributed_common::{
@@ -100,7 +100,7 @@ pub struct Coordinator {
     workers_pool: WorkersPool,
 
     /// Concurrent storage for active jobs with fine-grained locking.
-    jobs: DashMap<JobId, RwLock<Job>>,
+    jobs: DashMap<JobId, Arc<RwLock<Job>>>,
 }
 
 impl Coordinator {
@@ -317,7 +317,7 @@ impl Coordinator {
         let active_workers = self.select_workers_for_execution(&job)?;
 
         // Store job in jobs map with RwLock
-        self.jobs.insert(job_id.clone(), RwLock::new(job));
+        self.jobs.insert(job_id.clone(), Arc::new(RwLock::new(job)));
 
         // Send Phase1 tasks to selected workers
         if let Some(job_entry) = self.jobs.get(&job_id) {
@@ -366,28 +366,44 @@ impl Coordinator {
     ///   coordinator server --webhook-url 'http://example.com/notify'
     ///   # becomes 'http://example.com/notify/12345'
     pub async fn post_launch_proof(&self, job_id: &JobId) -> CoordinatorResult<()> {
+        let job_entry = {
+            let job_entry =
+                self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+            job_entry.clone()
+        };
+        let job = job_entry.read().await;
+
+        // Clone job.final_proof and error if does not exist
+        let final_proof = job.final_proof.clone().ok_or_else(|| {
+            CoordinatorError::Internal(
+                "Final proof is missing during post-launch processing".to_string(),
+            )
+        })?;
+
         // Check if webhook URL is configured
         if let Some(webhook_url) = &self.config.coordinator.webhook_url {
-            let webhook_url = webhook_url.clone();
-
-            let (final_proof, success) = {
-                let job_entry =
-                    self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
-                let job = job_entry.read().await;
-                (job.final_proof.clone(), matches!(job.state(), JobState::Completed))
-            };
-
-            let job_id = job_id.clone();
-
-            // Spawn a non-blocking task
-            tokio::spawn(async move {
-                if let Err(e) =
-                    hooks::send_completion_webhook(webhook_url, job_id, final_proof, success).await
-                {
-                    error!("Failed to send webhook notification: {}", e);
-                }
-            });
+            hooks::send_completion_webhook(
+                webhook_url.clone(),
+                job_id.clone(),
+                job.duration_ms.unwrap_or(0),
+                job.final_proof.clone(),
+                matches!(job.state(), JobState::Completed),
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to send webhook for job {}: {}", job_id, e);
+                CoordinatorError::Internal(e.to_string())
+            })?;
         }
+
+        // Save proof to disk
+        let folder = PathBuf::from("proofs");
+        hooks::save_proof(job_id.clone().as_str(), folder, &final_proof).await?;
+
+        // Clean up process data for the job
+        drop(job);
+        let mut job = job_entry.write().await;
+        job.cleanup();
 
         Ok(())
     }
@@ -1177,11 +1193,9 @@ impl Coordinator {
         // Reset worker statuses back to Idle
         self.workers_pool.mark_workers_with_state(&assigned_workers, WorkerState::Idle).await?;
 
-        info!(
-            "Completed simulated job {} and freed {} workers",
-            job.job_id,
-            assigned_workers.len()
-        );
+        let duration = Duration::from_millis(job.duration_ms.unwrap());
+
+        info!("[Simulated Job Finished] {} (duration: {:.3}s)", job.job_id, duration.as_secs_f32());
 
         Ok(())
     }
@@ -1437,9 +1451,11 @@ impl Coordinator {
         job.final_proof = Some(proof_data.swap_remove(0));
         job.change_state(JobState::Completed);
 
+        let duration = Duration::from_millis(job.duration_ms.unwrap());
+
         drop(job);
 
-        info!("[Job Finished] {}", job_id);
+        info!("[Job Finished] {} (duration: {:.3}s)", job_id, duration.as_secs_f32());
 
         self.post_launch_proof(job_id).await?;
 

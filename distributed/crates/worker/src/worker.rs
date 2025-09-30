@@ -1,5 +1,11 @@
 use anyhow::Result;
+use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
 use proofman::{AggProofs, ContributionsInfo};
+use rom_setup::{
+    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
+    DEFAULT_CACHE_PATH,
+};
+use std::fs;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
@@ -12,15 +18,17 @@ use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProvePhaseInputs;
 use proofman::{ProofInfo, ProofMan};
-use proofman_common::DebugInfo;
 use proofman_common::ParamsGPU;
 use proofman_common::ProofOptions;
+use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::{error, info};
 use witness::WitnessLibrary;
 
 use zisk_common::ZiskLibInitFn;
+
+use crate::config::ProverServiceConfigDto;
 
 /// Result from computation tasks
 #[derive(Debug)]
@@ -81,6 +89,108 @@ pub struct ProverConfig {
 
     /// Whether to use shared tables in the witness library
     pub shared_tables: bool,
+}
+
+impl ProverConfig {
+    pub fn load(mut prover_service_config: ProverServiceConfigDto) -> Result<Self> {
+        if !prover_service_config.elf.exists() {
+            return Err(anyhow::anyhow!(
+                "ELF file '{}' not found.",
+                prover_service_config.elf.display()
+            ));
+        }
+        let proving_key = get_proving_key(prover_service_config.proving_key.as_ref());
+        let debug_info = match &prover_service_config.debug {
+            None => DebugInfo::default(),
+            Some(None) => DebugInfo::new_debug(),
+            Some(Some(debug_value)) => {
+                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
+            }
+        };
+        let default_cache_path =
+            std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
+        if !default_cache_path.exists() {
+            if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
+                if e.kind() != std::io::ErrorKind::AlreadyExists {
+                    return Err(anyhow::anyhow!("Failed to create the cache directory: {e:?}"));
+                }
+            }
+        }
+
+        let emulator =
+            if cfg!(target_os = "macos") { true } else { prover_service_config.emulator };
+        let mut asm_rom = None;
+        if emulator {
+            prover_service_config.asm = None;
+        } else if prover_service_config.asm.is_none() {
+            let stem = prover_service_config.elf.file_stem().unwrap().to_str().unwrap();
+            let hash = get_elf_data_hash(&prover_service_config.elf)
+                .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
+            let new_filename = format!("{stem}-{hash}-mt.bin");
+            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
+            asm_rom = Some(default_cache_path.join(asm_rom_filename));
+            prover_service_config.asm = Some(default_cache_path.join(new_filename));
+        }
+        if let Some(asm_path) = &prover_service_config.asm {
+            if !asm_path.exists() {
+                return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_path.display()));
+            }
+        }
+
+        if let Some(asm_rom) = &asm_rom {
+            if !asm_rom.exists() {
+                return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
+            }
+        }
+        let blowup_factor = get_rom_blowup_factor(&proving_key);
+        let rom_bin_path = get_elf_bin_file_path(
+            &prover_service_config.elf.to_path_buf(),
+            &default_cache_path,
+            blowup_factor,
+        )?;
+        if !rom_bin_path.exists() {
+            let _ = gen_elf_hash(
+                &prover_service_config.elf.clone(),
+                rom_bin_path.as_path(),
+                blowup_factor,
+                false,
+            )
+            .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
+        }
+        let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
+        custom_commits_map.insert("rom".to_string(), rom_bin_path);
+        let mut gpu_params = ParamsGPU::new(prover_service_config.preallocate);
+        if prover_service_config.max_streams.is_some() {
+            gpu_params.with_max_number_streams(prover_service_config.max_streams.unwrap());
+        }
+        if prover_service_config.number_threads_witness.is_some() {
+            gpu_params.with_number_threads_pools_witness(
+                prover_service_config.number_threads_witness.unwrap(),
+            );
+        }
+        if prover_service_config.max_witness_stored.is_some() {
+            gpu_params.with_max_witness_stored(prover_service_config.max_witness_stored.unwrap());
+        }
+
+        Ok(ProverConfig {
+            elf: prover_service_config.elf.clone(),
+            witness_lib: get_witness_computation_lib(prover_service_config.witness_lib.as_ref()),
+            asm: prover_service_config.asm.clone(),
+            asm_rom,
+            custom_commits_map,
+            emulator,
+            proving_key,
+            verbose: prover_service_config.verbose,
+            debug_info,
+            asm_port: prover_service_config.asm_port,
+            unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
+            verify_constraints: prover_service_config.verify_constraints,
+            aggregation: prover_service_config.aggregation,
+            final_snark: prover_service_config.final_snark,
+            gpu_params,
+            shared_tables: prover_service_config.shared_tables,
+        })
+    }
 }
 
 /// Current job context

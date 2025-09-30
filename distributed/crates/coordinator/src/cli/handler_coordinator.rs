@@ -13,9 +13,7 @@ pub async fn handle(
     webhook_url: Option<String>,
 ) -> Result<()> {
     // Config file is now optional - if not provided, defaults will be used
-    let config_file = config_file.or_else(|| std::env::var("CONFIG_PATH").ok());
-
-    let loaded_from_file = config_file.is_some();
+    let config_file = config_file.or_else(|| std::env::var("ZISK_COORDINATOR_CONFIG_PATH").ok());
 
     // Load configuration
     let config = Config::load(config_file, port, webhook_url)?;
@@ -30,7 +28,7 @@ pub async fn handle(
     })?;
 
     print_banner();
-    print_command_info(loaded_from_file, &config, &addr);
+    print_command_info(&config, &addr);
 
     // Verify the port is available before starting the coordinator grpc server
     if TcpListener::bind(&addr).is_err() {
@@ -74,29 +72,25 @@ pub async fn handle(
     Ok(())
 }
 
-fn print_command_info(loaded_from_file: bool, config: &Config, addr: &str) {
+fn print_command_info(config: &Config, addr: &str) {
     println!(
         "{} zisk-coordinator ({} {})",
         format!("{: >12}", "Command").bright_green().bold(),
         config.service.name,
         config.service.version
     );
-    if !loaded_from_file {
-        eprintln!(
-            "{: >12} {}",
-            "Warning".bright_yellow().bold(),
-            "No configuration file provided. Using default development configuration."
-                .bright_yellow()
-        );
-    }
     println!("{: >12} {}", "Environment".bright_green().bold(), config.service.environment);
     println!(
         "{: >12} {}/{} {}",
         "Logging".bright_green().bold(),
         config.logging.level,
         config.logging.format,
-        format!("(log file: {})", config.logging.file_path.as_deref().unwrap_or_default())
-            .bright_black()
+        config
+            .logging
+            .file_path
+            .as_deref()
+            .map(|p| format!("(log file: {})", p).bright_black().to_string())
+            .unwrap_or_default()
     );
 
     println!("{: >12} {}", "Host/Port".bright_green().bold(), addr);

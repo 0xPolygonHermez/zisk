@@ -2,14 +2,17 @@ use anyhow::Result;
 use clap::Parser;
 
 mod handler_coordinator;
-mod handler_prove_block;
+mod handler_prove;
 
 #[derive(Parser, Debug)]
 #[command(name = "zisk-coordinator")]
 #[command(about = "The Coordinator for the Distributed ZisK Network")]
 struct ZiskCoordinatorArgs {
     /// Path to configuration file
-    #[arg(long, help = "Path to configuration file (overrides CONFIG_PATH environment variable)")]
+    #[arg(
+        long,
+        help = "Path to configuration file (overrides ZISK_COORDINATOR_CONFIG_PATH environment variable if exists)"
+    )]
     config: Option<String>,
 
     /// Port where the ZisK Coordinator gRPC server will listen for incoming connections.
@@ -38,10 +41,10 @@ struct ZiskCoordinatorArgs {
 #[derive(Parser, Debug)]
 enum ZiskCoordinatorCommands {
     /// Prove a block with the specified input file and node
-    ProveBlock {
+    Prove {
         /// Coordinator URL
         #[arg(short, long)]
-        coordinator_url: String,
+        coordinator_url: Option<String>,
 
         /// Path to the input file
         /// NOTE: THIS IS A DEV FEATURE IT WILL BE REMOVED IN PRODUCTION
@@ -63,15 +66,14 @@ async fn main() -> Result<()> {
     let args = ZiskCoordinatorArgs::parse();
 
     match args.command {
-        Some(ZiskCoordinatorCommands::ProveBlock {
+        Some(ZiskCoordinatorCommands::Prove {
             coordinator_url,
             input,
             compute_capacity,
             simulated_node,
         }) => {
-            // Run the "prove-block" subcommand
-            handler_prove_block::handle(coordinator_url, input, compute_capacity, simulated_node)
-                .await
+            // Run the "prove" subcommand
+            handler_prove::handle(coordinator_url, input, compute_capacity, simulated_node).await
         }
         None => {
             // No subcommand was provided → default to coordinator mode

@@ -7,7 +7,7 @@ use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
 use zisk_distributed_worker::{
-    config::{load_prover_config, load_worker_config, ProverServiceConfigDto, WorkerServiceConfig},
+    config::{ProverServiceConfigDto, WorkerServiceConfig},
     ProverConfig, WorkerNode,
 };
 
@@ -26,7 +26,7 @@ struct Cli {
 
     /// Number of compute units to advertise (overrides config file)
     #[arg(long)]
-    compute_units: Option<u32>,
+    compute_capacity: Option<u32>,
 
     #[clap(
         short = 'j',
@@ -37,7 +37,10 @@ struct Cli {
     pub shared_tables: bool,
 
     /// Path to configuration file
-    #[arg(long, help = "Path to configuration file (overrides CONFIG_PATH environment variable)")]
+    #[arg(
+        long,
+        help = "Path to configuration file (overrides ZISK_WORKER_CONFIG_PATH environment variable)"
+    )]
     config: Option<String>,
 
     /// Witness computation dynamic library path
@@ -113,9 +116,13 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let (loaded_from_file, worker_config) =
-        load_worker_config(cli.config, cli.coordinator_url, cli.worker_id, cli.compute_units)
-            .await?;
+    let worker_config = WorkerServiceConfig::load(
+        cli.config,
+        cli.coordinator_url,
+        cli.worker_id,
+        cli.compute_capacity,
+    )
+    .await?;
 
     // Initialize tracing - keep guard alive for application lifetime
     let _log_guard = zisk_distributed_common::tracing::init(Some(&worker_config.logging))?;
@@ -142,16 +149,15 @@ async fn main() -> Result<()> {
         shared_tables: cli.shared_tables,
     };
 
-    let prover_config = load_prover_config(prover_config_dto)?;
+    let prover_config = ProverConfig::load(prover_config_dto)?;
 
-    print_command_info(loaded_from_file, &prover_config, &worker_config, cli.debug.is_some());
+    print_command_info(&prover_config, &worker_config, cli.debug.is_some());
 
     let mut worker = WorkerNode::new(worker_config, prover_config).await?;
     worker.run().await
 }
 
 fn print_command_info(
-    loaded_from_file: bool,
     prover_config: &ProverConfig,
     worker_config: &WorkerServiceConfig,
     debug: bool,
@@ -161,14 +167,6 @@ fn print_command_info(
         format!("{: >12}", "Command").bright_green().bold(),
         env!("CARGO_PKG_VERSION")
     );
-    if !loaded_from_file {
-        eprintln!(
-            "{: >12} {}",
-            "Warning".bright_yellow().bold(),
-            "No configuration file provided. Using default development configuration."
-                .bright_yellow()
-        );
-    }
     println!("{: >12} {}", "Worker ID".bright_green().bold(), worker_config.worker.worker_id);
     println!(
         "{: >12} {}",
@@ -182,8 +180,12 @@ fn print_command_info(
         "Logging".bright_green().bold(),
         worker_config.logging.level,
         worker_config.logging.format,
-        format!("(log file: {})", worker_config.logging.file_path.as_deref().unwrap_or_default())
-            .bright_black()
+        worker_config
+            .logging
+            .file_path
+            .as_deref()
+            .map(|p| format!("(log file: {})", p).bright_black().to_string())
+            .unwrap_or_default()
     );
     println!(
         "{: >12} {}",

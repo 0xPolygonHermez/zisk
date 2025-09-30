@@ -37,6 +37,10 @@ pub struct CoordinatorConfig {
 }
 
 impl Config {
+    const DEFAULT_BIND_HOST: &'static str = "0.0.0.0";
+    const DEFAULT_HOST: &'static str = "127.0.0.1";
+    const DEFAULT_PORT: u16 = 50051;
+
     pub fn load(
         config: Option<String>,
         port: Option<u16>,
@@ -46,8 +50,8 @@ impl Config {
             .set_default("service.name", "ZisK Distributed Coordinator")?
             .set_default("service.version", env!("CARGO_PKG_VERSION"))?
             .set_default("service.environment", "development")?
-            .set_default("server.host", "0.0.0.0")?
-            .set_default("server.port", 8080)?
+            .set_default("server.host", Self::DEFAULT_BIND_HOST)?
+            .set_default("server.port", Self::DEFAULT_PORT)?
             .set_default("server.shutdown_timeout_seconds", 30)?
             .set_default("logging.level", "debug")?
             .set_default("logging.format", "pretty")?
@@ -59,6 +63,9 @@ impl Config {
         if let Some(path) = config {
             builder = builder.add_source(config::File::with_name(&path));
         }
+
+        // Force version to always be the compiled version (cannot be overridden by config)
+        builder = builder.set_override("service.version", env!("CARGO_PKG_VERSION"))?;
 
         // Override port if provided via function argument
         if let Some(port) = port {
@@ -73,5 +80,9 @@ impl Config {
         let config = builder.build()?;
 
         Ok(config.try_deserialize()?)
+    }
+
+    pub fn default_url() -> String {
+        format!("http://{}:{}", Self::DEFAULT_HOST, Self::DEFAULT_PORT)
     }
 }

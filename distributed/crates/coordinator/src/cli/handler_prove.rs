@@ -1,19 +1,22 @@
 use anyhow::Result;
 use tonic::transport::Channel;
 use tracing::{error, info};
+use zisk_distributed_coordinator::Config;
 use zisk_distributed_grpc_api::{
     zisk_distributed_api_client::ZiskDistributedApiClient, LaunchProofRequest,
 };
 
-/// Handle the prove-block subcommand - makes RPC request to coordinator
+/// Handle the prove subcommand - makes RPC request to coordinator
 pub async fn handle(
-    coordinator_url: String,
+    coordinator_url: Option<String>,
     input_path: String,
     compute_capacity: u32,
     simulated_node: Option<u32>,
 ) -> Result<()> {
     // Initialize tracing - keep guard alive for application lifetime
     let _log_guard = zisk_distributed_common::tracing::init(None)?;
+
+    let coordinator_url = coordinator_url.unwrap_or_else(Config::default_url);
 
     // Connect to the coordinator
     info!("Connecting to ZisK Coordinator gRPC service on {}", coordinator_url);

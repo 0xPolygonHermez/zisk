@@ -1,9 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::{
-    env,
-    fmt::{self, Display},
-};
+use std::fmt::{self, Display};
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
@@ -70,27 +67,30 @@ impl fmt::Display for LogFormat {
 /// Returns `Ok(None)` if only console logging is configured.
 pub fn init(logging_config: Option<&LoggingConfig>) -> Result<Option<WorkerGuard>> {
     // Prioritize logging_config values over environment variables
-    let log_level = if let Some(config) = logging_config {
-        config.level.clone()
-    } else {
-        env::var("DISTRIBUTED_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_string())
-    };
+    let log_level =
+        logging_config.map(|config| config.level.clone()).unwrap_or_else(|| "info".to_string());
 
-    let log_format = if let Some(config) = logging_config {
-        config.format.clone()
-    } else {
-        let format_str =
-            env::var("DISTRIBUTED_LOGGING_FORMAT").unwrap_or_else(|_| "pretty".to_string());
-        match format_str.as_str() {
-            "json" => LogFormat::Json,
-            "compact" => LogFormat::Compact,
-            _ => LogFormat::Pretty,
-        }
-    };
+    let log_format =
+        logging_config.map(|config| config.format.clone()).unwrap_or(LogFormat::Pretty);
 
-    let env_filter = EnvFilter::try_from_default_env()
+    let mut env_filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new(&log_level))
         .unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let trace_enabled =
+        log_level == "trace" || std::env::var("RUST_LOG").unwrap_or_default().contains("trace");
+
+    if trace_enabled {
+        // When trace is enabled, set gRPC libraries to debug (less verbose than trace)
+        for directive in ["h2=debug", "tonic=debug", "hyper=debug", "tower=debug"] {
+            env_filter = env_filter.add_directive(directive.parse().unwrap());
+        }
+    } else {
+        // When not in trace mode, suppress verbose gRPC logs
+        for directive in ["h2=info", "tonic=info", "hyper=info", "tower=info"] {
+            env_filter = env_filter.add_directive(directive.parse().unwrap());
+        }
+    }
 
     // Apply console logging with optional file logging
     if let Some(config) = logging_config {
