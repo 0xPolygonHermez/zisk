@@ -10,14 +10,7 @@ pub trait Task: Send + Sync + 'static {
     fn execute(self) -> Self::Output;
 }
 
-pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, Arc<EmuTrace>) -> T + Send + Sync + 'a>;
-
-#[derive(Debug)]
-pub enum MinimalTraces {
-    None,
-    EmuTrace(Vec<EmuTrace>),
-    AsmEmuTrace(AsmRunnerMT),
-}
+pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, EmuTrace) -> T + Send + Sync + 'a>;
 
 pub struct PreloadedMT {}
 

@@ -55,7 +55,7 @@ impl<F: PrimeField64> MainInstance<F> {
     pub fn compute_witness(
         &self,
         zisk_rom: &ZiskRom,
-        min_traces: &[EmuTrace],
+        min_traces: Vec<&Option<EmuTrace>>,
         chunk_size: u64,
         main_instance: &MainInstance<F>,
         trace_buffer: Vec<F>,
@@ -82,11 +82,13 @@ impl<F: PrimeField64> MainInstance<F> {
         // Determine trace slice for the current segment
         let start_idx = segment_id.as_usize() * num_within;
         let end_idx = (start_idx + num_within).min(min_traces.len());
-        let segment_min_traces = &min_traces[start_idx..end_idx];
+        let segment_min_traces = &min_traces[start_idx..end_idx]
+            .iter()
+            .map(|t| t.as_ref().expect("Wrong"))
+            .collect::<Vec<_>>();
 
         // Calculate total filled rows
-        let filled_rows: usize =
-            segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
+        let filled_rows: usize = segment_min_traces.iter().map(|t| t.steps as usize).sum();
 
         tracing::info!(
             "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
@@ -129,7 +131,7 @@ impl<F: PrimeField64> MainInstance<F> {
                 let (pc, regs) = Self::fill_partial_trace(
                     zisk_rom,
                     chunk,
-                    &segment_min_traces[chunk_id],
+                    segment_min_traces[chunk_id],
                     &mut reg_trace,
                     &mut step_range_check,
                     chunk_id == (end_idx - start_idx - 1),
@@ -169,7 +171,7 @@ impl<F: PrimeField64> MainInstance<F> {
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
-            Emu::intermediate_value(min_traces[start_idx - 1].last_c)
+            Emu::intermediate_value(min_traces[start_idx - 1].as_ref().unwrap().last_c)
         } else {
             [F::ZERO, F::ZERO]
         };

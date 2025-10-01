@@ -235,7 +235,7 @@ impl ZiskEmulator {
     /// I have a
     pub fn process_emu_traces<F: PrimeField, T, DB: DataBusTrait<u64, T>>(
         rom: &ZiskRom,
-        min_traces: &[EmuTrace],
+        min_traces: &[&EmuTrace],
         chunk_id: usize,
         data_bus: &mut DB,
     ) {

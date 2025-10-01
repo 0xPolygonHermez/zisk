@@ -22,13 +22,9 @@ pub trait Task: Send + Sync + 'static {
     fn execute(self, exit: bool) -> Self::Output;
 }
 
-pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, Arc<EmuTrace>) -> T + Send + Sync + 'a>;
+pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, EmuTrace) -> T + Send + Sync + 'a>;
 
-pub enum MinimalTraces {
-    None,
-    EmuTrace(Vec<EmuTrace>),
-    AsmEmuTrace(AsmRunnerMT),
-}
+pub const MAX_CHUNKS: usize = 1 << 16;
 
 pub struct PreloadedMT {
     pub output_shmem: AsmSharedMemory<AsmMTHeader>,
@@ -87,7 +83,7 @@ impl AsmRunnerMT {
         local_rank: i32,
         base_port: Option<u16>,
         _stats: Arc<Mutex<ExecutorStats>>,
-    ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
+    ) -> Result<Vec<T::Output>> {
         let __stats = Arc::clone(&_stats);
 
         #[cfg(feature = "stats")]
@@ -148,7 +144,7 @@ impl AsmRunnerMT {
         // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMTChunk;
 
-        let mut emu_traces = Vec::new();
+        let mut total_steps = 0;
         let mut handles = Vec::new();
 
         let __stats = Arc::clone(&_stats);
@@ -172,11 +168,11 @@ impl AsmRunnerMT {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
-                    let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
+                    let emu_trace = AsmMTChunk::to_emu_trace(&mut data_ptr);
                     let should_exit = emu_trace.end;
+                    total_steps += emu_trace.steps;
 
-                    let task = task_factory(chunk_id, emu_trace.clone());
-                    emu_traces.push(emu_trace);
+                    let task = task_factory(chunk_id, emu_trace);
 
                     handles.push(std::thread::spawn(move || task.execute(should_exit)));
 
@@ -208,7 +204,6 @@ impl AsmRunnerMT {
             tasks.push(handle.join().expect("Task panicked"));
         }
 
-        let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / start_time.elapsed().as_secs_f64()) / 1_000_000.0;
         info!("··· Assembly execution speed: {:.2} MHz", mhz);
 
@@ -222,12 +217,6 @@ impl AsmRunnerMT {
         assert!(response.trace_len > 0);
         assert!(response.trace_len <= response.allocated_len);
 
-        // Unwrap the Arc pointers
-        let emu_traces: Vec<EmuTrace> = emu_traces
-            .into_iter()
-            .map(|arc| Arc::try_unwrap(arc).map_err(|_| AsmRunError::ArcUnwrap))
-            .collect::<std::result::Result<_, _>>()?;
-
         #[cfg(feature = "stats")]
         _stats.lock().unwrap().add_stat(
             0,
@@ -237,6 +226,6 @@ impl AsmRunnerMT {
             ExecutorStatsEvent::End,
         );
 
-        Ok((AsmRunnerMT::new(emu_traces), tasks))
+        Ok(tasks)
     }
 }

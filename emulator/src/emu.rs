@@ -47,8 +47,8 @@ pub struct Emu<'a> {
 /// 1.a.- First, to generate the minimal trace (memory reads):
 ///
 /// ZiskExecutor::execute(&self, pctx: Arc<ProofCtx<F>>, input_data_path: Option<PathBuf>) -> Vec<usize>
-///     ZiskExecutor::execute_with_emulator(&self, input_data_path: Option<PathBuf>) -> MinimalTraces
-///         ZiskExecutor::run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>) -> MinimalTraces
+///     ZiskExecutor::execute_with_emulator(&self, input_data_path: Option<PathBuf>)
+///         ZiskExecutor::run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>)
 ///             ZiskEmulator::compute_minimal_traces(rom: &ZiskRom, inputs: &[u8], options: &EmuOptions, num_threads: usize,) -> Result<Vec<EmuTrace>, ZiskEmulatorErr>
 ///                 Emu::par_run(&mut self, inputs: Vec<u8>, options: &EmuOptions, par_options: &ParEmuOptions,) -> Vec<EmuTrace>
 ///                     Emu:: par_step_my_block(&mut self, emu_full_trace_vec: &mut EmuTrace)
@@ -2103,7 +2103,7 @@ impl<'a> Emu<'a> {
     /// Run a slice of the program to generate full traces
     pub fn process_emu_traces<T, DB: DataBusTrait<u64, T>>(
         &mut self,
-        vec_traces: &[EmuTrace],
+        vec_traces: &[&EmuTrace],
         chunk_id: usize,
         data_bus: &mut DB,
     ) {

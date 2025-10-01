@@ -5,9 +5,8 @@
 
 use std::any::Any;
 
-use asm_runner::MinimalTraces;
 use fields::PrimeField;
-use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
+use zisk_common::{CheckPoint, ChunkId, EmuTrace, InstanceType, Plan, SegmentId};
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 /// The `MainPlanner` struct generates execution plans for the Main State Machine.
@@ -28,15 +27,7 @@ impl MainPlanner {
     ///
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
-    pub fn plan<F: PrimeField>(min_traces: &MinimalTraces, min_traces_size: u64) -> Vec<Plan> {
-        let min_traces = match min_traces {
-            MinimalTraces::AsmEmuTrace(asm_min_traces) => &asm_min_traces.vec_chunks,
-            MinimalTraces::EmuTrace(vec_chunks) => vec_chunks,
-            MinimalTraces::None => {
-                panic!("Minimal traces are required for planning the main state machine.");
-            }
-        };
-
+    pub fn plan<F: PrimeField>(min_traces: &[&EmuTrace], min_traces_size: u64) -> Vec<Plan> {
         let num_rows = MainTrace::<F>::NUM_ROWS as u64;
 
         assert!(num_rows.is_power_of_two());
