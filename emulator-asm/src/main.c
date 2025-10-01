@@ -202,6 +202,10 @@ uint64_t print_pc_counter = 0;
 
 int map_locked_flag = MAP_LOCKED;
 
+#ifdef ASM_PRECOMPILE_CACHE
+bool precompile_cache_enabled = false;
+#endif
+
 void set_chunk_size (uint64_t new_chunk_size)
 {
     if (!is_power_of_two(new_chunk_size))
@@ -764,6 +768,13 @@ int main(int argc, char *argv[])
 
     server_cleanup();
 
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_enabled)
+    {
+        precompile_cache_cleanup();
+    }
+#endif
+
     fflush(stdout);
     fflush(stderr);
 
@@ -803,6 +814,10 @@ void print_usage (void)
     printf("\t-a chunk_address\n");
     printf("\t-v verbose on\n");
     printf("\t-u unlock physical memory in mmap\n");
+#ifdef ASM_PRECOMPILE_CACHE
+    printf("\t--precompile-cache-store store precompile results in cache file\n");
+    printf("\t--precompile-cache-load load precompile results from cache file\n");
+#endif
     printf("\t-h/--help print this\n");
 }
 
@@ -1111,6 +1126,21 @@ void parse_arguments(int argc, char *argv[])
                 }
                 continue;
             }
+#ifdef ASM_PRECOMPILE_CACHE
+            if (strcmp(argv[i], "--precompile-cache-store") == 0)
+            {
+                precompile_cache_enabled = true;
+                precompile_cache_store_init();
+                continue;
+            }
+            if (strcmp(argv[i], "--precompile-cache-load") == 0)
+            {
+                precompile_cache_enabled = true;
+                precompile_cache_load_init();
+                continue;
+            }
+
+#endif
             printf("ERROR: parse_arguments() Unrecognized argument: %s\n", argv[i]);
             print_usage();
             fflush(stdout);
@@ -1118,6 +1148,16 @@ void parse_arguments(int argc, char *argv[])
             exit(-1);
         }
     }
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_enabled == false)
+    {
+        printf("ERROR: parse_arguments() when in precompile cache mode, you need to use an argument: either --precompile-cache-store or --precompile-cache-load\n");
+        print_usage();
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+#endif
 
     // Check that only one generation method was selected as an argument
     if (number_of_selected_generation_methods != 1)
