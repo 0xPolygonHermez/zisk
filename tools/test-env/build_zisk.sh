@@ -22,7 +22,6 @@ main() {
     step "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
-    confirm_continue || return 0
 
     # If ZISK_GHA is set, force skip cloning pil2-proofman and use pil2-proofman dependency defined in zisk Cargo.toml
     if is_gha; then
@@ -33,14 +32,18 @@ main() {
 
     step "Cloning pil2-proofman repository..."
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
-        # Remove existing directory if it exists
-        rm -rf pil2-proofman
-        # Clone pil2-proofman repository
-        ensure git clone https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
-        cd pil2-proofman
-        info "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
-        ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
-        cd ..
+        if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
+            warn "Skipping cloning pil2-proofman repository as DISABLE_CLONE_REPO is set to 1"
+        else
+            # Remove existing directory if it exists
+            rm -rf pil2-proofman
+            # Clone pil2-proofman repository
+            ensure git clone https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
+            cd pil2-proofman
+            info "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
+            ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
+            cd ..
+        fi
     else
         info "Skipping cloning pil2-proofman repository as PIL2_PROOFMAN_BRANCH is not defined"
     fi
@@ -55,15 +58,19 @@ main() {
             return 1
         fi
         if [[ -n "$ZISK_BRANCH" ]]; then
-            info "Cloning ZisK repository..."
-            # Remove existing directory if it exists
-            rm -rf zisk
-            # Clone ZisK repository
-            ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
-            ensure cd zisk
-            # Check out the branch
-            info "Checking out branch '$ZISK_BRANCH'..."
-            ensure git checkout "$ZISK_BRANCH" || return 1
+            if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
+                warn "Skipping cloning ZisK repository as DISABLE_CLONE_REPO is set to 1"
+            else
+                info "Cloning ZisK repository..."
+                # Remove existing directory if it exists
+                rm -rf zisk
+                # Clone ZisK repository
+                ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
+                ensure cd zisk
+                # Check out the branch
+                info "Checking out branch '$ZISK_BRANCH'..."
+                ensure git checkout "$ZISK_BRANCH" || return 1
+            fi
         else
             info "Skipping cloning ZisK repository as ZISK_BRANCH is not defined"
             ensure cd zisk
@@ -75,28 +82,34 @@ main() {
 
         PIL2_PROOFMAN_DIR="${WORKSPACE_DIR}/pil2-proofman"
 
-        # Dependencies to be replaced
-        declare -A replacements=(
-            ["proofman"]="{ path = \"${PIL2_PROOFMAN_DIR}/proofman\" }"
-            ["proofman-common"]="{ path = \"${PIL2_PROOFMAN_DIR}/common\" }"
-            ["proofman-macros"]="{ path = \"${PIL2_PROOFMAN_DIR}/macros\" }"
-            ["proofman-util"]="{ path = \"${PIL2_PROOFMAN_DIR}/util\" }"
-            ["pil-std-lib"]="{ path = \"${PIL2_PROOFMAN_DIR}/pil2-components/lib/std/rs\" }"
-            ["witness"]="{ path = \"${PIL2_PROOFMAN_DIR}/witness\" }"
-            ["fields"]="{ path = \"${PIL2_PROOFMAN_DIR}/fields\" }"
-        )
+        replacements="
+            proofman          | { path = \"${PIL2_PROOFMAN_DIR}/proofman\" }
+            proofman-common   | { path = \"${PIL2_PROOFMAN_DIR}/common\" }
+            proofman-macros   | { path = \"${PIL2_PROOFMAN_DIR}/macros\" }
+            proofman-verifier | { path = \"${PIL2_PROOFMAN_DIR}/verifier\" }
+            proofman-util     | { path = \"${PIL2_PROOFMAN_DIR}/util\" }
+            pil-std-lib       | { path = \"${PIL2_PROOFMAN_DIR}/pil2-components/lib/std/rs\" }
+            witness           | { path = \"${PIL2_PROOFMAN_DIR}/witness\" }
+            fields            | { path = \"${PIL2_PROOFMAN_DIR}/fields\" }
+        "
 
-        # Iterate over the replacements and update the Cargo.toml file
-        for crate in "${!replacements[@]}"; do
-            # Define the pattern for the crate dependency
-            pattern="^$crate = \\{ git = \\\"https://github.com/0xPolygonHermez/pil2-proofman.git\\\", (tag|branch) = \\\".*\\\" *\\}"
+        if [[ "${PLATFORM}" == "linux" ]]; then
+            # GNU sed
+            SED_PARAMS=( -i -E )
+        else
+            # BSD sed (macOS)
+            SED_PARAMS=( -i "" -E )
+        fi
 
-            # Properly concatenate crate name with the replacement
-            replacement="$crate = ${replacements[$crate]}"
+        # Iterate through the list of replacements and update Cargo.toml
+        while IFS='|' read -r crate repl; do
+            [[ -z "$crate" ]] && continue
 
-            # Perform the replacement using sed
-            sed -i -E "s~$pattern~$replacement~" Cargo.toml
-        done
+            pattern="^${crate//[[:space:]]/} = \\{ git = \\\"https://github.com/0xPolygonHermez/pil2-proofman.git\\\", (tag|branch) = \\\".*\\\" *\\}"
+            replacement="${crate//[[:space:]]/} = ${repl}"
+
+            ensure sed "${SED_PARAMS[@]}" "s~${pattern}~${replacement}~" Cargo.toml
+        done <<< "$replacements"
     fi
 
     step  "Building ZisK tools..."
@@ -137,15 +150,21 @@ main() {
         return 1
     fi
 
-    ensure cp target/${TARGET}/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
-    ensure cp target/${TARGET}/release/ziskemu    "${ZISK_BIN_DIR}" || return 1
-    ensure cp target/${TARGET}/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/cargo-zisk       "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/ziskemu          "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/riscv2zisk       "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/zisk-coordinator "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/zisk-worker      "${ZISK_BIN_DIR}" || return 1
 
     if [[ "${PLATFORM}" == "linux" ]]; then
-        ensure cp target/${TARGET}/release/libzisk_witness.so "${ZISK_BIN_DIR}" || return 1
-        ensure cp ziskup/ziskup                     "${ZISK_BIN_DIR}" || return 1
-        ensure cp target/${TARGET}/release/libziskclib.a      "${ZISK_BIN_DIR}" || return 1
+        LIB_EXT="so"
+    else
+        LIB_EXT="dylib"
     fi
+
+    ensure cp target/${TARGET}/release/libzisk_witness.${LIB_EXT} "${ZISK_BIN_DIR}" || return 1
+    ensure cp ziskup/ziskup                     "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/libziskclib.a      "${ZISK_BIN_DIR}" || return 1
 
     step "Copying emulator-asm files..."
     if [[ "${PLATFORM}" == "linux" ]]; then

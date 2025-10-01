@@ -9,38 +9,34 @@
 #include <assert.h>
 #include <memory>   
 
-struct MemAlignCheckPoint {
-    uint32_t segment_id;
+struct MemAlignChunkCounters {
     uint32_t chunk_id;
-    uint32_t skip; // skip specified as unaligned ops
-    uint32_t count; // count as specified unaligned ops
-    uint32_t rows;  // rows
-    uint32_t offset; // row offset
+    uint32_t full_5;
+    uint32_t full_3;
+    uint32_t full_2;
+    uint32_t read_byte;
+    uint32_t write_byte;
 };
 
 class MemAlignCounter {
 private:
     std::shared_ptr<MemContext> context;
-    std::vector<MemAlignCheckPoint> checkpoints;
-    uint32_t count;
-    int32_t segment_id;
-    uint32_t available_rows;
-    uint32_t skip;
-    uint32_t rows;
+    std::vector<MemAlignChunkCounters> counters;
+    MemAlignChunkCounters total_counters;
     uint32_t elapsed_ms;
 public:
     uint64_t total_usleep;
-    MemAlignCounter (uint32_t rows, std::shared_ptr<MemContext> context);
-    void execute (void);
+    MemAlignCounter (std::shared_ptr<MemContext> context);
+    void execute ();
     void execute_chunk (uint32_t chunk_id, const MemCountersBusData *chunk_data, uint32_t chunk_size);
-    void add_mem_align_op(uint32_t chunk_id, uint32_t ops);
-    void open_chunk(uint32_t chunk_id, uint32_t ops = 0);
-    void open_segment(uint32_t chunk_id, uint32_t ops = 0);
     uint32_t size() {
-        return checkpoints.size();
+        return counters.size();
     }
-    const MemAlignCheckPoint *get_checkpoints() {
-        return checkpoints.data();
+    const MemAlignChunkCounters *get_counters() {
+        return counters.data();
+    }
+    const MemAlignChunkCounters *get_total_counters() {
+        return &total_counters;
     }
     uint32_t get_elapsed_ms() {
         return elapsed_ms;

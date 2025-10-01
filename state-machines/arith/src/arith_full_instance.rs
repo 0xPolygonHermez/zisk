@@ -13,7 +13,8 @@ use std::{
 };
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, MemCollectorInfo, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID,
+    OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
@@ -28,7 +29,7 @@ pub struct ArithFullInstance<F: PrimeField64> {
     arith_full_sm: Arc<ArithFullSM<F>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
+    collect_info: HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>,
 
     /// The instance context.
     ictx: InstanceCtx,
@@ -54,10 +55,16 @@ impl<F: PrimeField64> ArithFullInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, bool, CollectSkipper)>>()
+            .downcast::<HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { arith_full_sm, collect_info, ictx }
+    }
+
+    pub fn build_arith_collector(&self, chunk_id: ChunkId) -> ArithInstanceCollector {
+        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
+            self.collect_info[&chunk_id];
+        ArithInstanceCollector::new(num_ops, num_freq_ops, collect_skipper, force_execute_to_end)
     }
 }
 
@@ -116,8 +123,18 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(ArithInstanceCollector::new(num_ops, collect_skipper, force_execute_to_end)))
+        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
+            self.collect_info[&chunk_id];
+        Some(Box::new(ArithInstanceCollector::new(
+            num_ops,
+            num_freq_ops,
+            collect_skipper,
+            force_execute_to_end,
+        )))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -151,14 +168,15 @@ impl ArithInstanceCollector {
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
     pub fn new(
         num_operations: u64,
+        num_freq_ops: u64,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
     ) -> Self {
         Self {
-            inputs: Vec::new(),
+            inputs: Vec::with_capacity(num_operations as usize),
             num_operations,
             collect_skipper,
-            frops_inputs: Vec::new(),
+            frops_inputs: Vec::with_capacity(num_freq_ops as usize),
             force_execute_to_end,
         }
     }
@@ -175,11 +193,13 @@ impl BusDevice<u64> for ArithInstanceCollector {
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
         let instance_complete = self.inputs.len() == self.num_operations as usize;

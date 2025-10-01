@@ -5,7 +5,7 @@ source "./test_elf.sh"
 main() {
     info "▶️  Running $(basename "$0") script..."
 
-    ELF_FILE="eth-client/elf/zec-keccakf-k256-sha2-bn254.elf"
+    ELF_FILE="eth-client/elf/zec-keccakf-k256-sha2-bn254-bls12381-lto.elf"
     INPUTS_PATH="eth-client/inputs"
     test_elf "${ELF_FILE}" "${INPUTS_PATH}" "BLOCK_INPUTS" "BLOCK_INPUTS_DISTRIBUTED" "Ethereum blocks" || return 1
 
@@ -29,7 +29,7 @@ main() {
 
     # export BLOCK_FOLDER_INPUTS
 
-    # echo "BLOCK_FOLDER_INPUTS=$BLOCK_FOLDER_INPUTS"    
+    # echo "BLOCK_FOLDER_INPUTS=$BLOCK_FOLDER_INPUTS"
 }
 
 main

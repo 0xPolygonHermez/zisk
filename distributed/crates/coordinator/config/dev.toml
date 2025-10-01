@@ -1,0 +1,7 @@
+[service]
+name = "ZisK Distributed Coordinator"
+environment = "development"
+
+[logging]
+level = "info"
+format = "pretty"

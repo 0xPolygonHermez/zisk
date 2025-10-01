@@ -1,25 +1,21 @@
 name: Risc Oficial Tests Check
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - "emulator/**"
-      - "riscv/**"
-      - "core/**"
   pull_request:
     branches:
-      - "**"
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]+"
     paths:
       - "emulator/**"
       - "riscv/**"
       - "core/**"
-  workflow_dispatch:    
+  workflow_dispatch:
 
 jobs:
   docker-ziskof-check:
     name: Docker Risc Oficial Tests Check
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     container:
       image: hermeznetwork/ziskof:latest
     env:
@@ -28,7 +24,7 @@ jobs:
       CPLUS_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
-      TERM: xterm        
+      TERM: xterm
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -44,7 +40,7 @@ jobs:
       - name: Build ZisK
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./build_zisk.sh          
+          ./build_zisk.sh
 
       - name: Run tests
         run: |

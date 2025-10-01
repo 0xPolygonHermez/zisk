@@ -1,3 +1,6 @@
+use fields::PrimeField64;
+use pil_std_lib::Std;
+
 #[derive(Debug, Clone, Copy)]
 pub enum MemOp {
     OneRead,
@@ -46,12 +49,14 @@ impl MemAlignRomSM {
         (first_row_idx, op_size)
     }
 
-    pub fn get_rows(pc: u64, op_size: u64) -> Vec<u64> {
+    pub fn get_rows<F: PrimeField64>(std: &Std<F>, table_id: usize, pc: u64, op_size: u64) {
         // Check whether the row index is within the bounds
         debug_assert!(pc + op_size <= Self::TABLE_SIZE as u64);
 
         // Get the rows for the given program counter and operation size
-        (0..op_size).map(|i| pc + i).collect()
+        for i in 0..op_size {
+            std.inc_virtual_row(table_id, pc + i, 1);
+        }
     }
 
     fn get_first_row_idx(

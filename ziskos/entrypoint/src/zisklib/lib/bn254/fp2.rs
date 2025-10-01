@@ -4,7 +4,7 @@ use crate::{
     bn254_complex_add::{syscall_bn254_complex_add, SyscallBn254ComplexAddParams},
     bn254_complex_mul::{syscall_bn254_complex_mul, SyscallBn254ComplexMulParams},
     bn254_complex_sub::{syscall_bn254_complex_sub, SyscallBn254ComplexSubParams},
-    complex256::SyscallComplex256,
+    complex::SyscallComplex256,
     fcall_bn254_fp2_inv,
     zisklib::lib::utils::eq,
 };

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::{MemInput, MemModule, MemPreviousSegment, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
+use crate::{MemInput, MemModule, MemPreviousSegment};
+use mem_common::{MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -44,6 +45,9 @@ impl<F: PrimeField64> InputDataSM<F> {
 impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
     fn get_addr_range(&self) -> (u32, u32) {
         (INPUT_DATA_W_ADDR_INIT, INPUT_DATA_W_ADDR_END)
+    }
+    fn is_dual(&self) -> bool {
+        false
     }
 
     // TODO PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs

@@ -1,4 +1,4 @@
-pub const FCALL_PARAMS_MAX_SIZE: usize = 32;
+pub const FCALL_PARAMS_MAX_SIZE: usize = 48;
 pub const FCALL_RESULT_MAX_SIZE: usize = 32;
 
 // Definition of the fcall IDs, one per function

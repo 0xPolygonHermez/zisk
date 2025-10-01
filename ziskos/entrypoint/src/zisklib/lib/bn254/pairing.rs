@@ -199,7 +199,5 @@ pub fn pairing_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) -> [
     let miller_loop = miller_loop_batch_bn254(&g1_points_ml, &g2_points_ml);
 
     // Final exponentiation
-    let res = final_exp_bn254(&miller_loop);
-
-    res
+    final_exp_bn254(&miller_loop)
 }

@@ -10,7 +10,9 @@
 #include "../../lib-c/c/src/ec/ec.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
 #include "../../lib-c/c/src/arith256/arith256.hpp"
+#include "../../lib-c/c/src/arith384/arith384.hpp"
 #include "../../lib-c/c/src/bn254/bn254.hpp"
+#include "../../lib-c/c/src/bls12_381/bls12_381.hpp"
 #include "bcon/bcon_sha256.hpp"
 
 extern void zisk_sha256(uint64_t state[4], uint64_t input[8]);
@@ -446,6 +448,55 @@ extern int _opcode_arith256_mod(uint64_t * address)
     asm_call_metrics.arith256_mod_counter++;
     gettimeofday(&asm_call_stop, NULL);
     asm_call_metrics.arith256_mod_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_arith384_mod(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+
+    // Call arithmetic 256 module operation
+    uint64_t * a = (uint64_t *)address[0];
+    uint64_t * b = (uint64_t *)address[1];
+    uint64_t * c = (uint64_t *)address[2];
+    uint64_t * module = (uint64_t *)address[3];
+    uint64_t * d = (uint64_t *)address[4];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        printf("opcode_arith384_mod() calling Arith384Mod() counter=%lu address=%p\n", asm_call_metrics.arith384_mod_counter, address);
+#else
+        printf("opcode_arith384_mod() calling Arith384Mod() address=%p\n", address);
+#endif
+        printf("a = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", a[5], a[4], a[3], a[2], a[1], a[0], a[5], a[4], a[3], a[2], a[1], a[0]);
+        printf("b = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", b[5], b[4], b[3], b[2], b[1], b[0], b[5], b[4], b[3], b[2], b[1], b[0]);
+        printf("c = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", c[5], c[4], c[3], c[2], c[1], c[0], c[5], c[4], c[3], c[2], c[1], c[0]);
+        printf("module = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", module[5], module[4], module[3], module[2], module[1], module[0], module[5], module[4], module[3], module[2], module[1], module[0]);
+    }
+#endif
+
+    int result = Arith384Mod (a, b, c, module, d);
+    if (result != 0)
+    {
+        printf("_opcode_arith384_mod() failed callilng Arith384Mod() result=%d;", result);
+        exit(-1);
+    }
+
+#ifdef DEBUG
+    if (emu_verbose) printf("opcode_arith384_mod() called Arith384Mod()\n");
+    if (emu_verbose)
+    {
+        printf("d = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", d[5], d[4], d[3], d[2], d[1], d[0], d[5], d[4], d[3], d[2], d[1], d[0]);
+    }
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.arith384_mod_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.arith384_mod_duration += TimeDiff(asm_call_start, asm_call_stop);
 #endif
     return 0;
 }
@@ -921,6 +972,241 @@ extern int _opcode_bn254_complex_mul(uint64_t * address)
     asm_call_metrics.bn254_complex_mul_counter++;
     gettimeofday(&asm_call_stop, NULL);
     asm_call_metrics.bn254_complex_mul_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+/*************/
+/* BLS12_381 */
+/*************/
+
+extern int _opcode_bls12_381_curve_add(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        printf("_opcode_bls12_381_curve_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bl12_381_curve_add_counter, address, p1, p2);
+#else
+        printf("_opcode_bls12_381_curve_add() calling AddPointEcP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+#endif
+        printf("p1.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0], p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        printf("p2.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0], p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
+        printf("p2.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6], p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
+    }
+#endif
+    int result = BLS12_381CurveAddP (
+        p1, // p1 = [x1, y1] = 12x64bits
+        p2, // p2 = [x2, y2] = 12x64bits
+        p1 // p3 = [x3, y3] = 12x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_bls12_381_curve_add() failed callilng BLS12_381CurveAddP() result=%d;", result);
+        exit(-1);
+    }
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0], p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+    }
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.bls12_381_curve_add_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.bls12_381_curve_add_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_bls12_381_curve_dbl(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+
+    uint64_t * p1 = address;
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        printf("_opcode_bls12_381_curve_dbl() calling BLS12_381CurveDblP() counter=%lu address=%p p1_address=%p\n", asm_call_metrics.bls12_381_curve_dbl_counter, address, p1);
+#else
+        printf("_opcode_bls12_381_curve_dbl() calling BLS12_381CurveDblP() address=%p p1_address=%p\n", address, p1);
+#endif
+        printf("p1.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0], p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+    }
+#endif
+    int result = BLS12_381CurveDblP (
+        p1, // p1 = [x1, y1] = 12x64bits
+        p1 // p1 = [x1, y1] = 12x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_bls12_381_curve_dbl() failed callilng BLS12_381CurveDblP() result=%d;", result);
+        exit(-1);
+    }
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0], p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+    }
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.bls12_381_curve_dbl_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.bls12_381_curve_dbl_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_bls12_381_complex_add(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        printf("_opcode_bls12_381_complex_add() calling BLS12_381ComplexAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bls12_381_complex_add_counter, address, p1, p2);
+#else
+        printf("_opcode_bls12_381_complex_add() calling BLS12_381ComplexAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+#endif
+        printf("p1.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0], p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        printf("p2.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0], p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
+        printf("p2.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6], p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
+    }
+#endif
+    int result = BLS12_381ComplexAddP (
+        p1, // p1 = [x1, y1] = 12x64bits
+        p2, // p2 = [x2, y2] = 12x64bits
+        p1 // p3 = [x3, y3] = 12x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_bls12_381_complex_add() failed callilng BLS12_381ComplexAddP() result=%d;", result);
+        exit(-1);
+    }
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0], p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+    }
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.bls12_381_complex_add_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.bls12_381_complex_add_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_bls12_381_complex_sub(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        printf("_opcode_bls12_381_complex_sub() calling BLS12_381ComplexSubP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bls12_381_complex_sub_counter, address, p1, p2);
+#else
+        printf("_opcode_bls12_381_complex_sub() calling BLS12_381ComplexSubP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+#endif
+        printf("p1.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0], p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        printf("p2.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0], p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
+        printf("p2.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6], p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
+    }
+#endif
+    int result = BLS12_381ComplexSubP (
+        p1, // p1 = [x1, y1] = 12x64bits
+        p2, // p2 = [x2, y2] = 12x64bits
+        p1 // p3 = [x3, y3] = 12x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_bls12_381_complex_sub() failed callilng BLS12_381ComplexSubP() result=%d;", result);
+        exit(-1);
+    }
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0], p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+    }
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.bls12_381_complex_sub_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.bls12_381_complex_sub_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_bls12_381_complex_mul(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        printf("_opcode_bls12_381_complex_mul() calling BLS12_381ComplexMulP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bls12_381_complex_mul_counter, address, p1, p2);
+#else
+        printf("_opcode_bls12_381_complex_mul() calling BLS12_381ComplexMulP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+#endif
+        printf("p1.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0], p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        printf("p2.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0], p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
+        printf("p2.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6], p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
+    }
+#endif
+    int result = BLS12_381ComplexMulP (
+        p1, // p1 = [x1, y1] = 12x64bits
+        p2, // p2 = [x2, y2] = 12x64bits
+        p1 // p3 = [x3, y3] = 12x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_bls12_381_complex_mul() failed callilng BLS12_381ComplexMulP() result=%d;", result);
+        exit(-1);
+    }
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0], p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+    }
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.bls12_381_complex_mul_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.bls12_381_complex_mul_duration += TimeDiff(asm_call_start, asm_call_stop);
 #endif
     return 0;
 }

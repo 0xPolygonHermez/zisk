@@ -514,4 +514,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         global_init_mem(sel: 1, addr: ireg + REGS_IN_MAIN_FROM, value: zeros);
     }
 
+
+    // Main Segment constraint
+    range_check(main_segment, min: 0, max: ((2**32)/N) - 1);
 }

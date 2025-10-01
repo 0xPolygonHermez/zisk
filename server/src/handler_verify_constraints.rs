@@ -57,7 +57,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                     .verify_proof_constraints_from_lib(Some(request_input), &debug_info, false)
                     .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
                     .expect("Failed to generate proof");
-
+                proofman.set_barrier();
                 let elapsed = start.elapsed();
 
                 #[allow(clippy::type_complexity)]
@@ -96,7 +96,8 @@ impl ZiskServiceVerifyConstraintsHandler {
                 #[cfg(feature = "stats")]
                 {
                     let stats = result.1;
-                    stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
+                    let stats_id = stats.lock().unwrap().get_id();
+                    stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
                     stats.lock().unwrap().store_stats();
                 }
             }
@@ -117,5 +118,16 @@ impl ZiskServiceVerifyConstraintsHandler {
             }),
             Some(handle),
         )
+    }
+    pub fn process_handle(
+        request: ZiskVerifyConstraintsRequest,
+        proofman: Arc<ProofMan<Goldilocks>>,
+        debug_info: Arc<DebugInfo>,
+    ) {
+        proofman
+            .verify_proof_constraints_from_lib(Some(request.input), &debug_info, false)
+            .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
+            .expect("Failed to generate proof");
+        proofman.set_barrier();
     }
 }

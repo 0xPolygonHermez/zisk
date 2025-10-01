@@ -86,7 +86,7 @@ jobs:
           #   target: x86_64-pc-windows-msvc
           #   svm_target_platform: windows-amd64
           #   platform: win32
-          #   arch: amd64            
+          #   arch: amd64
     steps:
       - uses: actions/checkout@v4
 
@@ -103,9 +103,8 @@ jobs:
         shell: bash
         run: |
             if [[ "${{ matrix.platform }}" == "darwin" ]]; then
-                brew install libomp protobuf nasm open-mpi libffi
+                brew install jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium
             else
-                sudo rm -f /etc/apt/apt-mirrors.txt
                 sudo apt-get update
                 sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev \
                     libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
@@ -136,28 +135,29 @@ jobs:
         run: |
           mkdir -p zisk-dist/bin
 
-          if [[ "${PLATFORM_NAME}" == "linux" ]]; then
-          mkdir -p zisk-dist/zisk/emulator-asm/src
-          fi
+          LIB_EXT=$([[ "${PLATFORM_NAME}" == "darwin" ]] && echo "dylib" || echo "so")
 
-          cp ./target/${TARGET}/release/cargo-zisk zisk-dist/bin/
-          cp ./target/${TARGET}/release/ziskemu    zisk-dist/bin/
-          cp ./target/${TARGET}/release/riscv2zisk zisk-dist/bin/
-
-          if [[ "${PLATFORM_NAME}" == "linux" ]]; then
-          cp ./target/${TARGET}/release/libzisk_witness.so         zisk-dist/bin/
+          cp ./target/${TARGET}/release/cargo-zisk                 zisk-dist/bin/
+          cp ./target/${TARGET}/release/ziskemu                    zisk-dist/bin/
+          cp ./target/${TARGET}/release/riscv2zisk                 zisk-dist/bin/
+          cp ./target/${TARGET}/release/zisk-coordinator           zisk-dist/bin/
+          cp ./target/${TARGET}/release/zisk-worker                zisk-dist/bin/
+          cp ./target/${TARGET}/release/libzisk_witness.${LIB_EXT} zisk-dist/bin/
           cp ./ziskup/ziskup                                       zisk-dist/bin/
           cp ./target/${TARGET}/release/libziskclib.a              zisk-dist/bin/
-          cp -r ./emulator-asm/src                                 zisk-dist/zisk/emulator-asm/
-          cp -r ./lib-c/                                           zisk-dist/zisk
-          cp ./emulator-asm/Makefile                               zisk-dist/zisk/emulator-asm/
+
+          if [[ "${PLATFORM_NAME}" == "linux" ]]; then
+            mkdir -p zisk-dist/zisk/emulator-asm/src
+            cp -r ./emulator-asm/src                               zisk-dist/zisk/emulator-asm/
+            cp -r ./lib-c/                                         zisk-dist/zisk
+            cp ./emulator-asm/Makefile                             zisk-dist/zisk/emulator-asm/
           fi
 
           ARCHIVE_FILE="cargo_zisk_${PLATFORM_NAME}_${ARCH}.tar.gz"
           tar -czvf "$ARCHIVE_FILE" -C zisk-dist .
 
-          echo "file_name=$ARCHIVE_FILE" >> $GITHUB_OUTPUT       
-        
+          echo "file_name=$ARCHIVE_FILE" >> $GITHUB_OUTPUT
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         env:
@@ -168,4 +168,4 @@ jobs:
           draft: true
           make_latest: "false"
           files: |
-            ${{ steps.artifacts.outputs.file_name }}          
+            ${{ steps.artifacts.outputs.file_name }}
