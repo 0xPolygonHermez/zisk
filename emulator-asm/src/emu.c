@@ -61,6 +61,16 @@ void reset_asm_call_metrics (void)
     asm_call_metrics.bn254_complex_sub_duration = 0;
     asm_call_metrics.bn254_complex_mul_counter = 0;
     asm_call_metrics.bn254_complex_mul_duration = 0;
+    asm_call_metrics.bls12_381_curve_add_counter = 0;
+    asm_call_metrics.bls12_381_curve_add_duration = 0;
+    asm_call_metrics.bls12_381_curve_dbl_counter = 0;
+    asm_call_metrics.bls12_381_curve_dbl_duration = 0;
+    asm_call_metrics.bls12_381_complex_add_counter = 0;
+    asm_call_metrics.bls12_381_complex_add_duration = 0;
+    asm_call_metrics.bls12_381_complex_sub_counter = 0;
+    asm_call_metrics.bls12_381_complex_sub_duration = 0;
+    asm_call_metrics.bls12_381_complex_mul_counter = 0;
+    asm_call_metrics.bls12_381_complex_mul_duration = 0;
 }
 
 void print_asm_call_metrics (uint64_t total_duration)
@@ -216,6 +226,56 @@ void print_asm_call_metrics (uint64_t total_duration)
     printf("bn254_complex_mul: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bn254_complex_mul_counter,
         asm_call_metrics.bn254_complex_mul_duration,
+        duration,
+        percentage);
+
+    // Print bls12_381_curve_add metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.bls12_381_curve_add_duration * 1000) / total_duration;
+    duration = asm_call_metrics.bls12_381_curve_add_counter == 0 ? 0 : (asm_call_metrics.bls12_381_curve_add_duration * 1000) / asm_call_metrics.bls12_381_curve_add_counter;
+    asm_call_total_duration += asm_call_metrics.bls12_381_curve_add_duration;
+    printf("bls12_381_curve_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.bls12_381_curve_add_counter,
+        asm_call_metrics.bls12_381_curve_add_duration,
+        duration,
+        percentage);
+
+    // Print bls12_381_curve_dbl metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.bls12_381_curve_dbl_duration * 1000) / total_duration;
+    duration = asm_call_metrics.bls12_381_curve_dbl_counter == 0 ? 0 : (asm_call_metrics.bls12_381_curve_dbl_duration * 1000) / asm_call_metrics.bls12_381_curve_dbl_counter;
+    asm_call_total_duration += asm_call_metrics.bls12_381_curve_dbl_duration;
+    printf("bls12_381_curve_dbl: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.bls12_381_curve_dbl_counter,
+        asm_call_metrics.bls12_381_curve_dbl_duration,
+        duration,
+        percentage);
+
+    // Print bls12_381_complex_add metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.bls12_381_complex_add_duration * 1000) / total_duration;
+    duration = asm_call_metrics.bls12_381_complex_add_counter == 0 ? 0 : (asm_call_metrics.bls12_381_complex_add_duration * 1000) / asm_call_metrics.bls12_381_complex_add_counter;
+    asm_call_total_duration += asm_call_metrics.bls12_381_complex_add_duration;
+    printf("bls12_381_complex_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.bls12_381_complex_add_counter,
+        asm_call_metrics.bls12_381_complex_add_duration,
+        duration,
+        percentage);
+
+    // Print bls12_381_complex_sub metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.bls12_381_complex_sub_duration * 1000) / total_duration;
+    duration = asm_call_metrics.bls12_381_complex_sub_counter == 0 ? 0 : (asm_call_metrics.bls12_381_complex_sub_duration * 1000) / asm_call_metrics.bls12_381_complex_sub_counter;
+    asm_call_total_duration += asm_call_metrics.bls12_381_complex_sub_duration;
+    printf("bls12_381_complex_sub: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.bls12_381_complex_sub_counter,
+        asm_call_metrics.bls12_381_complex_sub_duration,
+        duration,
+        percentage);
+
+    // Print bls12_381_complex_mul metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.bls12_381_complex_mul_duration * 1000) / total_duration;
+    duration = asm_call_metrics.bls12_381_complex_mul_counter == 0 ? 0 : (asm_call_metrics.bls12_381_complex_mul_duration * 1000) / asm_call_metrics.bls12_381_complex_mul_counter;
+    asm_call_total_duration += asm_call_metrics.bls12_381_complex_mul_duration;
+    printf("bls12_381_complex_mul: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.bls12_381_complex_mul_counter,
+        asm_call_metrics.bls12_381_complex_mul_duration,
         duration,
         percentage);
 
