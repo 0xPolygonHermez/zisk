@@ -334,7 +334,7 @@ impl ZiskProve {
 
             #[allow(clippy::type_complexity)]
             let (result, _stats, _): (
-                ZiskExecutionResult,
+                Arc<Mutex<ZiskExecutionResult>>,
                 Arc<Mutex<ExecutorStats>>,
                 Arc<Mutex<HashMap<usize, Stats>>>,
             ) =
@@ -342,7 +342,7 @@ impl ZiskProve {
                     .get_execution_result()
                     .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
                     .downcast::<(
-                        ZiskExecutionResult,
+                        Arc<Mutex<ZiskExecutionResult>>,
                         Arc<Mutex<ExecutorStats>>,
                         Arc<Mutex<HashMap<usize, Stats>>>,
                     )>()
@@ -358,10 +358,10 @@ impl ZiskProve {
                 tracing::info!("      Proof ID: {}", proof_id);
             }
             tracing::info!("    ► Statistics");
-            tracing::info!("      time: {} seconds, steps: {}", elapsed, result.executed_steps);
+            tracing::info!("      time: {} seconds, steps: {}", elapsed, result.lock().unwrap().executed_steps);
 
             if let Some(proof_id) = proof_id {
-                let logs = ProofLog::new(result.executed_steps, proof_id, elapsed);
+                let logs = ProofLog::new(result.lock().unwrap().executed_steps, proof_id, elapsed);
                 let log_path = self.output_dir.join("result.json");
                 ProofLog::write_json_log(&log_path, &logs)
                     .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;

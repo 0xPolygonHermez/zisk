@@ -300,10 +300,10 @@ impl ZiskStats {
         };
 
         #[allow(clippy::type_complexity)]
-        let (_, stats, witness_stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize,Stats>>>) = *witness_lib
+        let (_, stats, witness_stats): (Arc<Mutex<ZiskExecutionResult>>, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize,Stats>>>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>)>()
+            .downcast::<(Arc<Mutex<ZiskExecutionResult>>, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
         if world_rank % 2 == 1 {

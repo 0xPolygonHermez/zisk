@@ -27,7 +27,7 @@ impl MainPlanner {
     ///
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
-    pub fn plan<F: PrimeField>(min_traces: &[&EmuTrace], min_traces_size: u64) -> Vec<Plan> {
+    pub fn plan<F: PrimeField>(min_traces: &Vec<EmuTrace>, min_traces_size: u64) -> Vec<Plan> {
         let num_rows = MainTrace::<F>::NUM_ROWS as u64;
 
         assert!(num_rows.is_power_of_two());

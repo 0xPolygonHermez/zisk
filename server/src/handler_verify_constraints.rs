@@ -62,7 +62,7 @@ impl ZiskServiceVerifyConstraintsHandler {
 
                 #[allow(clippy::type_complexity)]
                 let result: (
-                    ZiskExecutionResult,
+                    Arc<Mutex<ZiskExecutionResult>>,
                     Arc<Mutex<ExecutorStats>>,
                     Arc<Mutex<HashMap<usize, Stats>>>,
                 ) = *witness_lib
@@ -70,7 +70,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                     .ok_or_else(|| anyhow::anyhow!("No execution result found"))
                     .expect("Failed to get execution result")
                     .downcast::<(
-                        ZiskExecutionResult,
+                        Arc<Mutex<ZiskExecutionResult>>,
                         Arc<Mutex<ExecutorStats>>,
                         Arc<Mutex<HashMap<usize, Stats>>>,
                     )>()
@@ -86,7 +86,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                 tracing::info!(
                     "      time: {} seconds, steps: {}",
                     elapsed.as_secs_f32(),
-                    result.0.executed_steps
+                    result.0.lock().unwrap().executed_steps
                 );
 
                 is_busy.store(false, std::sync::atomic::Ordering::SeqCst);

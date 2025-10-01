@@ -2103,7 +2103,7 @@ impl<'a> Emu<'a> {
     /// Run a slice of the program to generate full traces
     pub fn process_emu_traces<T, DB: DataBusTrait<u64, T>>(
         &mut self,
-        vec_traces: &[&EmuTrace],
+        vec_traces: &[EmuTrace],
         chunk_id: usize,
         data_bus: &mut DB,
     ) {

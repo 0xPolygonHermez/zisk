@@ -22,7 +22,12 @@ pub trait Task: Send + Sync + 'static {
     fn execute(self, exit: bool) -> Self::Output;
 }
 
-pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, EmuTrace) -> T + Send + Sync + 'a>;
+pub enum MinimalTraces {
+    None,
+    EmuTrace(Vec<EmuTrace>),
+}
+
+pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, Arc<EmuTrace>) -> T + Send + Sync + 'a>;
 
 pub const MAX_CHUNKS: usize = 1 << 16;
 
@@ -52,27 +57,11 @@ impl PreloadedMT {
     }
 }
 
+#[derive(Default)]
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
-pub struct AsmRunnerMT {
-    pub vec_chunks: Vec<EmuTrace>,
-}
-
-impl Drop for AsmRunnerMT {
-    fn drop(&mut self) {
-        for chunk in &mut self.vec_chunks {
-            // Ensure that the memory reads are not dropped when the chunk is dropped
-            // This is necessary because the memory reads are stored in a Vec<u64> which is
-            // allocated in the shared memory and we need to avoid double freeing it.
-            std::mem::forget(std::mem::take(&mut chunk.mem_reads));
-        }
-    }
-}
+pub struct AsmRunnerMT;
 
 impl AsmRunnerMT {
-    pub fn new(vec_chunks: Vec<EmuTrace>) -> Self {
-        Self { vec_chunks }
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<T: Task>(
         preloaded: &mut PreloadedMT,
@@ -83,7 +72,7 @@ impl AsmRunnerMT {
         local_rank: i32,
         base_port: Option<u16>,
         _stats: Arc<Mutex<ExecutorStats>>,
-    ) -> Result<Vec<T::Output>> {
+    ) -> Result<(Vec<EmuTrace>, Vec<T::Output>)> {
         let __stats = Arc::clone(&_stats);
 
         #[cfg(feature = "stats")]
@@ -148,7 +137,7 @@ impl AsmRunnerMT {
         let mut handles = Vec::new();
 
         let __stats = Arc::clone(&_stats);
-
+        let mut emu_traces = Vec::new();
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
@@ -168,11 +157,12 @@ impl AsmRunnerMT {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
-                    let emu_trace = AsmMTChunk::to_emu_trace(&mut data_ptr);
+                    let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
                     let should_exit = emu_trace.end;
                     total_steps += emu_trace.steps;
 
-                    let task = task_factory(chunk_id, emu_trace);
+                    let task = task_factory(chunk_id, emu_trace.clone());
+                    emu_traces.push(emu_trace);
 
                     handles.push(std::thread::spawn(move || task.execute(should_exit)));
 
@@ -217,6 +207,12 @@ impl AsmRunnerMT {
         assert!(response.trace_len > 0);
         assert!(response.trace_len <= response.allocated_len);
 
+        // Unwrap the Arc pointers
+        let emu_traces: Vec<EmuTrace> = emu_traces
+            .into_iter()
+            .map(|arc| Arc::try_unwrap(arc).map_err(|_| AsmRunError::ArcUnwrap))
+            .collect::<std::result::Result<_, _>>()?;
+
         #[cfg(feature = "stats")]
         _stats.lock().unwrap().add_stat(
             0,
@@ -226,6 +222,6 @@ impl AsmRunnerMT {
             ExecutorStatsEvent::End,
         );
 
-        Ok(tasks)
+        Ok((emu_traces, tasks))
     }
 }

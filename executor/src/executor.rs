@@ -20,8 +20,7 @@
 //! maintaining clarity and modularity in the computation process.
 
 use asm_runner::{
-    write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory,
-    PreloadedMO, PreloadedMT, PreloadedRH, Task, TaskFactory, MAX_CHUNKS,
+    write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory, MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, Task, TaskFactory, MAX_CHUNKS
 };
 use core::panic;
 use fields::PrimeField64;
@@ -114,7 +113,7 @@ pub struct ZiskExecutor<F: PrimeField64> {
     pub asm_rom_path: Option<PathBuf>,
 
     /// Planning information for main state machines.
-    pub min_traces: Arc<RwLock<Vec<Option<EmuTrace>>>>,
+    pub min_traces: Arc<RwLock<MinimalTraces>>,
 
     pub num_chunks: Arc<AtomicUsize>,
 
@@ -214,7 +213,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             asm_runner_path: asm_path,
             asm_rom_path,
             zisk_rom,
-            min_traces: Arc::new(RwLock::new(vec![None; MAX_CHUNKS])),
+            min_traces: Arc::new(RwLock::new(MinimalTraces::None)),
             num_chunks: Arc::new(AtomicUsize::new(0)),
             secn_planning: RwLock::new(Vec::new()),
             main_instances: Arc::new(RwLock::new(HashMap::new())),
@@ -240,9 +239,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     #[allow(clippy::type_complexity)]
     pub fn get_execution_result(
         &self,
-    ) -> (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>) {
+    ) -> (Arc<Mutex<ZiskExecutionResult>>, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>) {
         (
-            self.execution_result.lock().unwrap().clone(),
+            self.execution_result.clone(),
             self.stats.clone(),
             self.witness_stats.clone(),
         )
@@ -414,7 +413,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let num_rows_within = MainTrace::<usize>::NUM_ROWS as u64 / self.chunk_size;
 
         let chunks_missing =
-            (0..10000).map(|_| Arc::new(AtomicU64::new(num_rows_within))).collect::<Vec<_>>();
+            Arc::new((0..10000).map(|_| AtomicU64::new(num_rows_within)).collect::<Vec<_>>());
 
         let last_global_id = Arc::new(AtomicI32::new(-1));
 
@@ -423,18 +422,19 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
         {
             chunk_id: ChunkId,
-            emu_trace: EmuTrace,
+            emu_trace: Arc<EmuTrace>,
             data_bus: DB,
             zisk_rom: Arc<ZiskRom>,
-            global_ids: Arc<RwLock<Vec<usize>>>,
-            last_global_id: Arc<AtomicI32>,
-            pctx: Arc<ProofCtx<F>>,
-            std: Arc<Std<F>>,
-            chunks_missing: Vec<Arc<AtomicU64>>,
-            main_instances: Arc<RwLock<HashMap<usize, MainInstance<F>>>>,
-            min_traces: Arc<RwLock<Vec<Option<EmuTrace>>>>,
-            execution_result: Arc<Mutex<ZiskExecutionResult>>,
-            num_chunks: Arc<AtomicUsize>,
+            phantom: std::marker::PhantomData<F>,
+            // global_ids: Arc<RwLock<Vec<usize>>>,
+            // last_global_id: Arc<AtomicI32>,
+            // pctx: Arc<ProofCtx<F>>,
+            // std: Arc<Std<F>>,
+            // chunks_missing: Arc<Vec<AtomicU64>>,
+            // main_instances: Arc<RwLock<HashMap<usize, MainInstance<F>>>>,
+            // min_traces: Arc<RwLock<Vec<Option<EmuTrace>>>>,
+            // execution_result: Arc<Mutex<ZiskExecutionResult>>,
+            // num_chunks: Arc<AtomicUsize>,
             _stats: Arc<Mutex<ExecutorStats>>,
             _parent_stats_id: u64,
         }
@@ -451,20 +451,20 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
                 let segment_id = self.chunk_id.0 / num_rows_within;
                 if self.chunk_id.0 % num_rows_within == 0 {
-                    self.pctx.add_instance_assign(
-                        MainTrace::<usize>::AIRGROUP_ID,
-                        MainTrace::<usize>::AIR_ID,
-                        4,
-                    );
+                    // self.pctx.add_instance_assign(
+                    //     MainTrace::<usize>::AIRGROUP_ID,
+                    //     MainTrace::<usize>::AIR_ID,
+                    //     4,
+                    // );
                 }
 
-                let global_id = segment_id;
+                // let global_id = segment_id;
 
                 if exit {
-                    self.last_global_id.store(global_id as i32, Ordering::SeqCst);
-                    let empty_chunks = num_rows_within - self.chunk_id.0 % num_rows_within;
-                    self.chunks_missing[segment_id]
-                        .fetch_sub(empty_chunks as u64, Ordering::SeqCst);
+                    // self.last_global_id.store(global_id as i32, Ordering::SeqCst);
+                    // let empty_chunks = num_rows_within - self.chunk_id.0 % num_rows_within;
+                    // self.chunks_missing[segment_id]
+                    //     .fetch_sub(empty_chunks as u64, Ordering::SeqCst);
                 }
 
                 #[cfg(feature = "stats")]
@@ -478,8 +478,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     ExecutorStatsEvent::Begin,
                 );
 
-                self.execution_result.lock().unwrap().executed_steps += self.emu_trace.steps;
-                self.num_chunks.fetch_add(1, Ordering::SeqCst);
+                // self.execution_result.lock().unwrap().executed_steps += self.emu_trace.steps;
+                // self.num_chunks.fetch_add(1, Ordering::SeqCst);
 
                 ZiskEmulator::process_emu_trace::<F, _, _>(
                     &self.zisk_rom,
@@ -500,64 +500,66 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     ExecutorStatsEvent::End,
                 );
 
-                self.min_traces.write().unwrap()[self.chunk_id.0] = Some(self.emu_trace);
-                let remaining = self.chunks_missing[segment_id].fetch_sub(1, Ordering::SeqCst);
+                // self.min_traces.write().unwrap()[self.chunk_id.0] = Some(self.emu_trace);
+                // let remaining = self.chunks_missing[segment_id].fetch_sub(1, Ordering::SeqCst);
 
-                if remaining == 1 {
-                    let last_segment =
-                        global_id as i32 == self.last_global_id.load(Ordering::SeqCst);
-                    let mut plan = Plan::new(
-                        MainTrace::<F>::AIRGROUP_ID,
-                        MainTrace::<F>::AIR_ID,
-                        Some(SegmentId(segment_id)),
-                        InstanceType::Instance,
-                        CheckPoint::Single(ChunkId(segment_id)),
-                        Some(Box::new(last_segment) as Box<dyn Any>),
-                        4,
-                    );
-                    plan.set_global_id(global_id);
-                    self.global_ids.write().unwrap().push(global_id);
-                    self.main_instances.write().unwrap().entry(global_id).or_insert_with(|| {
-                        MainInstance::new(InstanceCtx::new(global_id, plan), self.std.clone())
-                    });
-                    if self.pctx.dctx_is_my_process_instance(global_id)
-                        && (segment_id == 0
-                            || (self.min_traces.read().unwrap()[segment_id * num_rows_within - 1]
-                                .is_some()))
-                    {
-                        // self.pctx.set_witness_ready(global_id, false);
-                    }
-                }
+                // if remaining == 1 {
+                // let last_segment =
+                //     global_id as i32 == self.last_global_id.load(Ordering::SeqCst);
+                // let mut plan = Plan::new(
+                //     MainTrace::<F>::AIRGROUP_ID,
+                //     MainTrace::<F>::AIR_ID,
+                //     Some(SegmentId(segment_id)),
+                //     InstanceType::Instance,
+                //     CheckPoint::Single(ChunkId(segment_id)),
+                //     Some(Box::new(last_segment) as Box<dyn Any>),
+                //     4,
+                // );
+                // plan.set_global_id(global_id);
+                // self.global_ids.write().unwrap().push(global_id);
+                // self.main_instances.write().unwrap().entry(global_id).or_insert_with(|| {
+                //     MainInstance::new(InstanceCtx::new(global_id, plan), self.std.clone())
+                // });
+                // if self.pctx.dctx_is_my_process_instance(global_id)
+                //     && (segment_id == 0
+                //         || (self.min_traces.read().unwrap()[segment_id * num_rows_within - 1]
+                //             .is_some()))
+                // {
+                // self.pctx.set_witness_ready(global_id, false);
+                // }
+                // }
 
                 (self.chunk_id, self.data_bus)
             }
         }
 
-        let task_factory: TaskFactory<_> = Box::new(|chunk_id: ChunkId, emu_trace: EmuTrace| {
-            let data_bus = self.sm_bundle.build_data_bus_counters();
-            CounterTask {
-                chunk_id,
-                emu_trace,
-                data_bus,
-                zisk_rom: self.zisk_rom.clone(),
-                global_ids: global_ids.clone(),
-                std: self.std.clone(),
-                pctx: pctx.clone(),
-                last_global_id: last_global_id.clone(),
-                chunks_missing: chunks_missing.clone(),
-                main_instances: self.main_instances.clone(),
-                min_traces: self.min_traces.clone(),
-                execution_result: self.execution_result.clone(),
-                num_chunks: self.num_chunks.clone(),
-                _stats: self.stats.clone(),
-                #[cfg(feature = "stats")]
-                _parent_stats_id: parent_stats_id,
-                #[cfg(not(feature = "stats"))]
-                _parent_stats_id: 0,
-            }
-        });
+        let task_factory: TaskFactory<_> =
+            Box::new(|chunk_id: ChunkId, emu_trace: Arc<EmuTrace>| {
+                let data_bus = self.sm_bundle.build_data_bus_counters();
+                CounterTask {
+                    chunk_id,
+                    emu_trace,
+                    data_bus,
+                    phantom: std::marker::PhantomData::<F>,
+                    zisk_rom: self.zisk_rom.clone(),
+                    // global_ids: global_ids.clone(),
+                    // std: self.std.clone(),
+                    // pctx: pctx.clone(),
+                    // last_global_id: last_global_id.clone(),
+                    // chunks_missing: chunks_missing.clone(),
+                    // main_instances: self.main_instances.clone(),
+                    // min_traces: self.min_traces.clone(),
+                    // execution_result: self.execution_result.clone(),
+                    // num_chunks: self.num_chunks.clone(),
+                    _stats: self.stats.clone(),
+                    #[cfg(feature = "stats")]
+                    _parent_stats_id: parent_stats_id,
+                    #[cfg(not(feature = "stats"))]
+                    _parent_stats_id: 0,
+                }
+            });
 
-        let mut data_buses = AsmRunnerMT::run_and_count(
+        let (min_traces, mut data_buses) = AsmRunnerMT::run_and_count(
             self.asm_shmem_mt.lock().unwrap().as_mut().unwrap(),
             Self::MAX_NUM_STEPS,
             self.chunk_size,
@@ -568,6 +570,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             self.stats.clone(),
         )
         .expect("Error during ASM execution");
+
+        self.num_chunks.store(min_traces.len(), Ordering::SeqCst);
+
+        // let mut min_traces_guard = self.min_traces.write().unwrap();
+        // for (id, min_trace) in min_traces.into_iter().enumerate() {
+        //     min_traces_guard.insert(id, Some(min_trace));
+        // }
+        *self.min_traces.write().unwrap() = MinimalTraces::EmuTrace(min_traces);
 
         data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 
@@ -621,12 +631,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         self.execution_result.lock().unwrap().executed_steps = steps;
 
+        let mut min_traces_guard = self.min_traces.write().unwrap();
         self.num_chunks.store(min_traces.len(), Ordering::SeqCst);
 
-        let mut min_traces_guard = self.min_traces.write().unwrap();
-        for (id, min_trace) in min_traces.into_iter().enumerate() {
-            min_traces_guard.insert(id, Some(min_trace));
-        }
+        *min_traces_guard = MinimalTraces::EmuTrace(min_traces);
+        // for (id, min_trace) in min_traces.into_iter().enumerate() {
+        //     min_traces_guard.insert(id, Some(min_trace));
+        // }
     }
 
     /// Adds main state machine instances to the proof context and assigns global IDs.
@@ -677,11 +688,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ///   containing the metrics for each chunk.
     fn count(&self) -> NestedDeviceMetricsList {
         let min_traces_guard = self.min_traces.read().unwrap();
-        let min_traces: Vec<&EmuTrace> = min_traces_guard
-            .iter()
-            .take(self.num_chunks.load(Ordering::SeqCst))
-            .map(|t| t.as_ref().expect("plan: min_traces contains None"))
-            .collect();
+        let min_traces = match &*min_traces_guard {
+            MinimalTraces::EmuTrace(min_traces) => min_traces,
+            _ => unreachable!(),
+        };
+        // let min_traces: Vec<&EmuTrace> = min_traces_guard
+        //     .iter()
+        //     .take(self.num_chunks.load(Ordering::SeqCst))
+        //     .map(|t| t.as_ref().expect("plan: min_traces contains None"))
+        //     .collect();
 
         let metrics_slices: Vec<_> = min_traces
             .par_iter()
@@ -812,9 +827,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         );
 
         let min_traces_guard = self.min_traces.read().unwrap();
-        let min_traces_ = &*min_traces_guard;
-
-        let min_traces = min_traces_.iter().take(self.num_chunks.load(Ordering::SeqCst)).collect();
+        let min_traces = match &*min_traces_guard {
+            MinimalTraces::EmuTrace(min_traces) => min_traces,
+            _ => unreachable!(),
+        };
+        
+        // let min_traces_ = &*min_traces_guard;
+        // let min_traces = min_traces_.iter().take(self.num_chunks.load(Ordering::SeqCst)).collect();
 
         let air_instance = main_instance.compute_witness(
             &self.zisk_rom,
@@ -966,17 +985,26 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         pctx: Arc<ProofCtx<F>>,
         secn_instances: HashMap<usize, &Box<dyn Instance<F>>>,
     ) {
-        let min_traces = self.min_traces.read().unwrap();
+        let min_traces_guard = self.min_traces.read().unwrap();
 
-        let min_traces: Vec<&EmuTrace> = min_traces
-            .iter()
-            .take(self.num_chunks.load(Ordering::SeqCst))
-            .map(|t| t.as_ref().expect("min_traces contains None"))
-            .collect();
+        // let min_traces: Vec<&EmuTrace> = min_traces
+        //     .iter()
+        //     .take(self.num_chunks.load(Ordering::SeqCst))
+        //     .map(|t| t.as_ref().expect("min_traces contains None"))
+        //     .collect();
 
+        let min_traces = match &*min_traces_guard {
+            MinimalTraces::EmuTrace(min_traces) => min_traces,
+            _ => unreachable!(),
+        };
+
+        println!(
+            "self.num_chunks.load(Ordering::SeqCst) = {}",
+            self.num_chunks.load(Ordering::SeqCst)
+        );
         // Group the instances by the chunk they need to process
         let (chunks_to_execute, global_id_chunks) =
-            self.chunks_to_execute(&min_traces, &secn_instances);
+            self.chunks_to_execute(min_traces, &secn_instances);
 
         let ordered_chunks = self.order_chunks(&chunks_to_execute, &global_id_chunks);
         let global_ids: Vec<usize> = secn_instances.keys().copied().collect();
@@ -1045,12 +1073,16 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             let collect_start_times = collect_start_times.clone();
 
             handles.push(std::thread::spawn(move || {
-                let guard = min_traces_lock.read().unwrap();
-                let min_traces: Vec<&EmuTrace> = guard
-                    .iter()
-                    .take(num_chunks)
-                    .map(|t| t.as_ref().expect("min_traces contains None"))
-                    .collect();
+                let min_traces_guard = min_traces_lock.read().unwrap();
+                // let min_traces: Vec<&EmuTrace> = min_traces_guard
+                //     .iter()
+                //     .take(num_chunks)
+                //     .map(|t| t.as_ref().expect("min_traces contains None"))
+                //     .collect();
+                let min_traces = match &*min_traces_guard {
+                    MinimalTraces::EmuTrace(min_traces) => min_traces,
+                    _ => unreachable!(),
+                };
                 loop {
                     let next_chunk_id = next_chunk.fetch_add(1, Ordering::SeqCst);
                     if next_chunk_id >= ordered_chunks_clone.len() {
@@ -1068,7 +1100,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
                         ZiskEmulator::process_emu_traces::<F, _, _>(
                             &zisk_rom,
-                            &min_traces,
+                            min_traces,
                             chunk_id,
                             &mut data_bus,
                         );
@@ -1185,7 +1217,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     #[allow(clippy::borrowed_box)]
     fn chunks_to_execute(
         &self,
-        min_traces: &[&EmuTrace],
+        min_traces: &[EmuTrace],
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
     ) -> (Vec<Vec<usize>>, HashMap<usize, Vec<usize>>) {
         let mut chunks_to_execute = vec![Vec::new(); min_traces.len()];
@@ -1216,7 +1248,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     fn reset(&self) {
         // Reset the internal state of the executor
         *self.execution_result.lock().unwrap() = ZiskExecutionResult::default();
-        *self.min_traces.write().unwrap() = vec![None; MAX_CHUNKS];
+        *self.min_traces.write().unwrap() = MinimalTraces::None;
         self.num_chunks.store(0, Ordering::SeqCst);
         *self.secn_planning.write().unwrap() = Vec::new();
         self.main_instances.write().unwrap().clear();
@@ -1280,19 +1312,24 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             let secn_count = self.count();
             timer_stop_and_log_info!(COUNT);
 
-            timer_start_info!(MAIN_PLAN);
-            let min_traces_guard = self.min_traces.read().unwrap();
-            let min_traces: Vec<&EmuTrace> = min_traces_guard
-                .iter()
-                .take(self.num_chunks.load(Ordering::SeqCst))
-                .map(|t| t.as_ref().expect("plan: min_traces contains None"))
-                .collect();
-            let main_planning = MainPlanner::plan::<F>(&min_traces, self.chunk_size);
-            self.assign_main_instances(&pctx, global_ids.clone(), main_planning);
-            timer_stop_and_log_info!(MAIN_PLAN);
             (secn_count, None)
         };
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
+
+        timer_start_info!(MAIN_PLAN);
+        let min_traces_guard = self.min_traces.read().unwrap();
+        // let min_traces: Vec<&EmuTrace> = min_traces_guard
+        //     .iter()
+        //     .take(self.num_chunks.load(Ordering::SeqCst))
+        //     .map(|t| t.as_ref().expect("plan: min_traces contains None"))
+        //     .collect();
+        let min_traces = match &*min_traces_guard {
+            MinimalTraces::EmuTrace(min_traces) => min_traces,
+            _ => unreachable!(),
+        };
+        let main_planning = MainPlanner::plan::<F>(min_traces, self.chunk_size);
+        self.assign_main_instances(&pctx, global_ids.clone(), main_planning);
+        timer_stop_and_log_info!(MAIN_PLAN);
 
         timer_start_info!(SECN_PLAN);
 

@@ -93,7 +93,7 @@ impl ZiskServiceProveHandler {
                 if mpi_ctx.rank == 0 {
                     #[allow(clippy::type_complexity)]
                     let (result, _stats, _witness_stats): (
-                        ZiskExecutionResult,
+                        Arc<Mutex<ZiskExecutionResult>>,
                         Arc<Mutex<ExecutorStats>>,
                         Arc<Mutex<HashMap<usize, Stats>>>,
                     ) = *witness_lib
@@ -101,7 +101,7 @@ impl ZiskServiceProveHandler {
                         .ok_or_else(|| anyhow::anyhow!("No execution result found"))
                         .expect("Failed to get execution result")
                         .downcast::<(
-                            ZiskExecutionResult,
+                            Arc<Mutex<ZiskExecutionResult>>,
                             Arc<Mutex<ExecutorStats>>,
                             Arc<Mutex<HashMap<usize, Stats>>>,
                         )>()
@@ -121,7 +121,7 @@ impl ZiskServiceProveHandler {
                     tracing::info!(
                         "      time: {} seconds, steps: {}",
                         elapsed,
-                        result.executed_steps
+                        result.lock().unwrap().executed_steps
                     );
 
                     // Store the stats in stats.json
@@ -139,7 +139,7 @@ impl ZiskServiceProveHandler {
                     }
 
                     if let Some(proof_id) = proof_id {
-                        let logs = ProofLog::new(result.executed_steps, proof_id, elapsed);
+                        let logs = ProofLog::new(result.lock().unwrap().executed_steps, proof_id, elapsed);
                         let log_path =
                             request.folder.join(format!("{}-result.json", request.prefix));
                         println!("Writing proof log to: {}", log_path.display());
