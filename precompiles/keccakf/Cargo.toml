@@ -18,6 +18,8 @@ zisk-pil = { workspace = true }
 precompiles-common = { workspace = true }
 circuit = { workspace = true }
 precompiles-helpers = { workspace = true }
+sm-mem = { workspace = true }
+mem-common = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }
@@ -31,7 +33,7 @@ tracing = { workspace = true }
 rayon = { workspace = true }
 
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
-clap = "4.0"
+clap = { workspace = true }
 
 
 [features]

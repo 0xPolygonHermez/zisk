@@ -12,7 +12,6 @@ main() {
 
     step "Loading environment variables..."
     load_env || return 1
-    confirm_continue || return 0
 
     # If ZISK_SETUP_FILE is not set or empty, define it using version from cargo-zisk
     if [[ -z "$ZISK_SETUP_FILE" ]]; then
@@ -29,9 +28,9 @@ main() {
         return 1
     fi
 
-    ensure rm -rf "$HOME/.zisk/provingKey/" || return 1
     ensure mkdir -p "$HOME/.zisk" || return 1
-    ensure tar --overwrite -xf "${TAR_FILE}" -C "$HOME/.zisk" || return 1
+    ensure rm -rf "$HOME/.zisk/provingKey/" || return 1
+    ensure tar -xf "${TAR_FILE}" -C "$HOME/.zisk" || return 1
 
     step "Generating constant tree files..."
     ensure cargo-zisk check-setup -a || return 1
@@ -40,4 +39,3 @@ main() {
 }
 
 main
-

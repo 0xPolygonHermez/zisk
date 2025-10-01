@@ -6,7 +6,9 @@
 #include "ec/ec.hpp"
 #include "fcall/fcall.hpp"
 #include "arith256/arith256.hpp"
+#include "arith384/arith384.hpp"
 #include "bn254/bn254.hpp"
+#include "bls12_381/bls12_381.hpp"
 
 uint64_t TimeDiff(const struct timeval &startTime, const struct timeval &endTime)
 {
@@ -695,5 +697,160 @@ int main(int argc, char *argv[])
         uint64_t duration = TimeDiff(startTime);
         double tp = duration == 0 ? 0 : double(1000000)/duration;
         printf("Arith256Mod() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
+    }
+
+    /************/
+    /* Arith384 */
+    /************/
+
+    printf("clib arith 384:\n");
+
+    {
+
+        uint64_t a[6];
+        for (uint64_t i=0; i<6; i++) { a[i] = (uint64_t)rand(); }
+        uint64_t b[6];
+        for (uint64_t i=0; i<6; i++) { b[i] = (uint64_t)rand(); }
+        uint64_t c[6];
+        for (uint64_t i=0; i<6; i++) { c[i] = (uint64_t)rand(); }
+        uint64_t dl[6];
+        uint64_t dh[6];
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            int result = Arith384(a, b, c, dl, dh);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(1000000)/duration;
+        printf("Arith384() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
+    }
+
+    /*******************/
+    /* Arith384 module */
+    /*******************/
+
+    {
+        uint64_t a[6];
+        for (uint64_t i=0; i<6; i++) { a[i] = (uint64_t)rand(); }
+        uint64_t b[6];
+        for (uint64_t i=0; i<6; i++) { b[i] = (uint64_t)rand(); }
+        uint64_t c[6];
+        for (uint64_t i=0; i<6; i++) { c[i] = (uint64_t)rand(); }
+        uint64_t module[6];
+        for (uint64_t i=0; i<6; i++) { module[i] = (uint64_t)rand(); }
+        uint64_t d[6];
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            int result = Arith384Mod(a, b, c, module, d);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(1000000)/duration;
+        printf("Arith384Mod() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
+    }
+
+    printf("clib BLS12_381:\n");
+
+    /***********************/
+    /* BLS12_381 curve add */
+    /***********************/
+
+    {
+        uint64_t p1[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
+        uint64_t p2[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
+        uint64_t p3[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            int result = BLS12_381CurveAddP(p1, p2, p3);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(1000000)/duration;
+        printf("BLS12_381CurveAddP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
+    }
+
+    /**************************/
+    /* BLS12_381 curve double */
+    /**************************/
+
+    {
+        uint64_t p1[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
+        uint64_t p2[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            int result = BLS12_381CurveDblP(p1, p2);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(1000000)/duration;
+        printf("BLS12_381CurveDblP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
+    }
+
+    /*************************/
+    /* BLS12_381 complex add */
+    /*************************/
+
+    {
+        uint64_t p1[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
+        uint64_t p2[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
+        uint64_t p3[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            int result = BLS12_381ComplexAddP(p1, p2, p3);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(1000000)/duration;
+        printf("BLS12_381ComplexAddP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
+    }
+
+    /*************************/
+    /* BLS12_381 complex sub */
+    /*************************/
+
+    {
+        uint64_t p1[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
+        uint64_t p2[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
+        uint64_t p3[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            int result = BLS12_381ComplexSubP(p1, p2, p3);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(1000000)/duration;
+        printf("BLS12_381ComplexSubP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
+    }
+
+    /*************************/
+    /* BLS12_381 complex mul */
+    /*************************/
+
+    {
+        uint64_t p1[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
+        uint64_t p2[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
+        uint64_t p3[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            int result = BLS12_381ComplexMulP(p1, p2, p3);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(1000000)/duration;
+        printf("BLS12_381ComplexMulP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
     }
 }

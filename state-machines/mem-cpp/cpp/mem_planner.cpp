@@ -122,7 +122,7 @@ void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, 
                 }
                 while (cpos != 0) {
                     uint32_t chunk_id = workers[thread_index]->get_pos_value(cpos);
-                    uint32_t count = workers[thread_index]->get_pos_value(cpos+1);
+                    uint32_t count = workers[thread_index]->get_pos_count(cpos+1);
                     if (add_chunk(chunk_id, addr, count - skip, skip) == false) {
                         #ifdef MEM_PLANNER_STATS
                         update_segment_stats(addr_count, offset_count, first_segment_addr, last_segment_addr);
@@ -164,18 +164,20 @@ void MemPlanner::generate_locators(const std::vector<MemCounter *> &workers, Mem
             for (uint32_t thread_index = 0; thread_index < MAX_THREADS; ++thread_index) {
                 uint32_t pos = workers[thread_index]->get_addr_table(offset);
                 if (pos == 0) continue;
+                // the first locator must be open
                 if (inserted_first_locator == false) {
                     inserted_first_locator = true;
                     locators.push_locator(thread_index, offset, pos, 0);
                 }
                 uint32_t addr_count = workers[thread_index]->get_count_table(offset);
+
                 if (rows_available > addr_count) {
                     rows_available -= addr_count;
                     continue;
                 }
                 uint32_t cpos = workers[thread_index]->get_initial_pos(pos);
                 while (true) {
-                    count = workers[thread_index]->get_pos_value(cpos+1);
+                    count = workers[thread_index]->get_pos_count(cpos+1);
                     uint32_t initial_count = count;
                     while (count > 0) {
                         if (rows_available > count) {

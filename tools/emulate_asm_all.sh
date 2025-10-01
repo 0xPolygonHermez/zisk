@@ -113,10 +113,10 @@ do
 
     # Get the directory of the reference file to compare
     ELF_FILE_DIRECTORY=${ELF_FILE%%my.elf}
-    REFERENCE_FILE="$(realpath "${ELF_FILE_DIRECTORY}/../ref/Reference-sail_c_simulator.signature")"
 
     # Compile the assembly emulator derived from this ELF file
     cd emulator-asm
+    make clean
     make
 
     # Execute it and save output
@@ -134,6 +134,7 @@ do
     #kill $BG_PID
 
     # Compare output vs reference
+    REFERENCE_FILE="$(realpath "${ELF_FILE_DIRECTORY}/../ref/Reference-sail_c_simulator.signature")"
     echo "Comparing output with $REFERENCE_FILE"
     if diff output $REFERENCE_FILE; then
         PASSED_COUNTER=$((PASSED_COUNTER+1))

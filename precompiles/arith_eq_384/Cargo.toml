@@ -1,0 +1,67 @@
+[package]
+name = "precomp-arith-eq-384"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[[bin]]
+name = "arith_eq_384_generator"
+path = "src/arith_eq_384_generator.rs"
+
+[[bin]]
+name = "arith_eq_384_test_bigint"
+path = "src/arith_eq_384_test_bigint.rs"
+required-features = ["test_data"]
+
+[[bin]]
+name = "arith_eq_384_test_generator"
+path = "src/arith_eq_384_test_generator.rs"
+
+
+[dependencies]
+zisk-core = { workspace = true }
+zisk-pil = { workspace = true }
+precompiles-common = { workspace = true }
+precompiles-helpers = { workspace = true }
+precomp-arith-eq = { workspace = true }
+zisk-common = { workspace = true }
+lib-c = { workspace = true }
+
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+proofman-macros = { workspace = true }
+proofman-util = { workspace = true }
+witness = { workspace = true }
+pil-std-lib = { workspace = true }
+
+mem-common = { workspace = true }
+fields = { workspace=true }
+tracing = { workspace = true }
+rayon = { workspace = true }
+ark-ff = { workspace = true }
+ark-std = { workspace = true }
+ark-secp256k1 = { workspace = true }
+ark-bn254 = { workspace = true }
+ark-bls12-381 = { workspace = true }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.11.1"
+rustfmt-wrapper = "0.2.1"
+k256 = {version = "0.13", features = ["arithmetic"] }
+generic-array = "0.14"
+typenum = "1.16"
+lazy_static = "1.4"
+path-clean = "1.0"
+nom = "7"
+
+[features]
+default = []
+diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
+no_lib_link = ["proofman-common/no_lib_link"]
+test_data = []

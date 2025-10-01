@@ -68,6 +68,12 @@ impl ExecutorStats {
         self.last_id
     }
 
+    #[cfg(not(feature = "stats"))]
+    pub fn get_id(&mut self) -> u64 {
+        self.last_id += 1;
+        self.last_id
+    }
+
     #[cfg(feature = "stats")]
     fn _air_name(_airgroup_id: usize, air_id: usize) -> String {
         match air_id {
@@ -77,6 +83,9 @@ impl ExecutorStats {
             val if val == ROM_DATA_AIR_IDS[0] => "ROM_DATA".to_string(),
             val if val == INPUT_DATA_AIR_IDS[0] => "INPUT_DATA".to_string(),
             val if val == MEM_ALIGN_AIR_IDS[0] => "MEM_ALIGN".to_string(),
+            val if val == MEM_ALIGN_BYTE_AIR_IDS[0] => "MEM_ALIGN_BYTE".to_string(),
+            val if val == MEM_ALIGN_READ_BYTE_AIR_IDS[0] => "MEM_ALIGN_READ_BYTE".to_string(),
+            val if val == MEM_ALIGN_WRITE_BYTE_AIR_IDS[0] => "MEM_ALIGN_WRITE_BYTE".to_string(),
             // val if val == MEM_ALIGN_ROM_AIR_IDS[0] => "MEM_ALIGN_ROM".to_string(),
             val if val == ARITH_AIR_IDS[0] => "ARITH".to_string(),
             // val if val == ARITH_TABLE_AIR_IDS[0] => "ARITH_TABLE".to_string(),

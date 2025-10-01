@@ -4,7 +4,7 @@ use crate::{
     bn254_curve_add::{syscall_bn254_curve_add, SyscallBn254CurveAddParams},
     bn254_curve_dbl::syscall_bn254_curve_dbl,
     fcall_msb_pos_256,
-    point256::SyscallPoint256,
+    point::SyscallPoint256,
     zisklib::lib::utils::eq,
 };
 

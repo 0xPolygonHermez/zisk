@@ -28,14 +28,16 @@ print_proofs_result() {
             continue
         fi
 
-        # Extract raw time and drop fractional part
+        # Extract raw time and drop fractional part (portable sed on macOS/Linux)
+        # Matches: "time": 12.345
         local raw_time
-        raw_time=$(grep -Po '"time":\s*\K[0-9.]+' "$fullpath")
+        raw_time=$(sed -nE 's/.*"time"[[:space:]]*:[[:space:]]*([0-9.]+).*/\1/p' "$fullpath")
         local time_int="${raw_time%%.*}"
 
-        # Extract cycles
+        # Extract cycles: integer after "cycles":
         local cycles
-        cycles=$(grep -Po '"cycles":\s*\K[0-9]+' "$fullpath")
+        cycles=$(sed -nE 's/.*"cycles"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$fullpath")
+
 
         printf "| %-30s | %-10s | %-15s |\n" "$f" "$time_int" "$cycles"
     done
@@ -85,14 +87,11 @@ test_elf() {
 
     info "Executing ${desc} script"
 
-    if [[ "${PLATFORM}" == "linux" ]]; then
-        is_proving_key_installed || return 1
-    fi
+    is_proving_key_installed || return 1
 
     info "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
-    confirm_continue || return 0
 
     export ELF_FILE="$elf_file"
     export INPUTS_PATH="$inputs_path"
@@ -103,8 +102,8 @@ test_elf() {
     declare -a inputs=() dist_inputs=()
 
     # Get list of input files
-    mapfile -t inputs < <(get_var_list INPUTS)
-    mapfile -t dist_inputs < <(get_var_list INPUTS_DISTRIBUTED)
+    get_var_list_to_array inputs "INPUTS"
+    get_var_list_to_array dist_inputs "INPUTS_DISTRIBUTED"
 
     num_inputs=${#inputs[@]}
     num_dist_inputs=${#dist_inputs[@]}
@@ -118,7 +117,7 @@ test_elf() {
         steps_dist=0
     fi
     total_steps=$(( 2 + num_inputs * $steps_no_dist + num_dist_inputs * $steps_dist ))
-    
+
     # Create directories for proof results
     PROOF_RESULTS_DIR="${WORKSPACE_DIR}/proof-results"
     rm -rf "${PROOF_RESULTS_DIR}"
@@ -133,8 +132,19 @@ test_elf() {
     MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $DISTRIBUTED_PROCESSES -x OMP_NUM_THREADS=$DISTRIBUTED_THREADS -x RAYON_NUM_THREADS=$DISTRIBUTED_THREADS"
 
     step "Cloning zisk-testvectors repository..."
-    rm -rf zisk-testvectors
-    ensure git clone https://github.com/0xPolygonHermez/zisk-testvectors.git || return 1
+    if [[ -n "$ZISK_TESTVECTORS_BRANCH" ]]; then
+        if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
+            warn "Skipping cloning zisk-testvectors repository as DISABLE_CLONE_REPO is set to 1"
+        else
+            rm -rf zisk-testvectors
+            ensure git clone https://github.com/0xPolygonHermez/zisk-testvectors.git || return 1
+            cd zisk-testvectors
+            ensure git checkout "$ZISK_TESTVECTORS_BRANCH" || return 1
+            cd ..
+        fi
+    else
+        info "Skipping cloning zisk-testvectors repository as ZISK_TESTVECTORS_BRANCH is not defined"
+    fi
     cd zisk-testvectors || return 1
 
     # Verify existence of all input files
@@ -196,7 +206,7 @@ test_elf() {
                     err "verify proof failed for ${input_file}"
                     return 1
                 fi
-            fi    
+            fi
         done
     else
         warn "non-distributed inputs variable is empty or not defined; skipping non-distributed proofs"

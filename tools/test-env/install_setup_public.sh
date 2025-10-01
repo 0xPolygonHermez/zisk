@@ -11,7 +11,6 @@ main () {
     step "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
-    confirm_continue || return 0
 
     # If ZISK_SETUP_FILE is not set or empty, define it using version from cargo-zisk
     if [[ -z "$ZISK_SETUP_FILE" ]]; then
@@ -26,8 +25,8 @@ main () {
     ensure curl -L -#o "${ZISK_SETUP_FILE}" "https://storage.googleapis.com/zisk-setup/${ZISK_SETUP_FILE}" || return 1
 
     step "Installing public proving ${ZISK_SETUP_FILE}..."
-    rm -rf "$HOME/.zisk/provingKey/"
-    ensure tar --overwrite -xf "${ZISK_SETUP_FILE}" -C "$HOME/.zisk" || return 1
+    ensure rm -rf "$HOME/.zisk/provingKey/"
+    ensure tar -xf "${ZISK_SETUP_FILE}" -C "$HOME/.zisk" || return 1
 
     step "Generating constant tree files..."
     ensure cargo-zisk check-setup -a || return 1

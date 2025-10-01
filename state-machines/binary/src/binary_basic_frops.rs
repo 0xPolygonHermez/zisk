@@ -683,7 +683,7 @@ impl BinaryBasicFrops {
 }
 
 #[test]
-pub fn test_table_offsets() {
+pub fn test_binary_basic_table_offsets() {
     let mut fops = BinaryBasicFrops::new();
     fops.test_table_offsets();
 }

@@ -3,8 +3,8 @@
 use crate::BinaryBasicFrops;
 use std::collections::VecDeque;
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, MemCollectorInfo, OperationBusData, A, B,
+    OP, OPERATION_BUS_ID,
 };
 use zisk_core::zisk_ops::ZiskOp;
 
@@ -33,14 +33,15 @@ impl BinaryAddCollector {
     /// A new `BinaryAddCollector` instance initialized with the provided parameters.
     pub fn new(
         num_operations: usize,
+        num_freq_ops: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
     ) -> Self {
         Self {
-            inputs: Vec::new(),
+            inputs: Vec::with_capacity(num_operations),
             num_operations,
             collect_skipper,
-            frops_inputs: Vec::new(),
+            frops_inputs: Vec::with_capacity(num_freq_ops),
             force_execute_to_end,
         }
     }
@@ -57,11 +58,13 @@ impl BusDevice<u64> for BinaryAddCollector {
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
         let instance_complete = self.inputs.len() == self.num_operations;

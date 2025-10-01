@@ -112,6 +112,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
                 &bus_id,
                 payload,
                 &mut self.pending_transfers,
+                None,
             ) {
                 // Remove the device from the bus and update the mapping.
                 devices_idx.swap_remove(i);

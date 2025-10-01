@@ -75,6 +75,7 @@ pub const STORE_REG: u64 = 3;
 pub enum ZiskOperationType {
     None,
     Internal,
+    // ZisK Core Operations
     Arith,
     Binary,
     BinaryE,
@@ -82,23 +83,26 @@ pub enum ZiskOperationType {
     Sha256,
     PubOut,
     ArithEq,
+    ArithEq384, // Note: Add new core operations here
+    // ZisK Free Input Operations
     FcallParam,
     Fcall,
     FcallGet,
 }
 
-pub const NONE_OP_TYPE_ID: u32 = 0;
-pub const INTERNAL_OP_TYPE_ID: u32 = 1;
-pub const ARITH_OP_TYPE_ID: u32 = 2;
-pub const BINARY_OP_TYPE_ID: u32 = 3;
-pub const BINARY_E_OP_TYPE_ID: u32 = 4;
-pub const KECCAK_OP_TYPE_ID: u32 = 5;
-pub const SHA256_OP_TYPE_ID: u32 = 6;
-pub const PUB_OUT_OP_TYPE_ID: u32 = 7;
-pub const ARITH_EQ_OP_TYPE_ID: u32 = 8;
-pub const FCALL_PARAM_OP_TYPE_ID: u32 = 9;
-pub const FCALL_OP_TYPE_ID: u32 = 10;
-pub const FCALL_GET_OP_TYPE_ID: u32 = 11;
+pub const NONE_OP_TYPE_ID: u32 = ZiskOperationType::None as u32;
+pub const INTERNAL_OP_TYPE_ID: u32 = ZiskOperationType::Internal as u32;
+pub const ARITH_OP_TYPE_ID: u32 = ZiskOperationType::Arith as u32;
+pub const BINARY_OP_TYPE_ID: u32 = ZiskOperationType::Binary as u32;
+pub const BINARY_E_OP_TYPE_ID: u32 = ZiskOperationType::BinaryE as u32;
+pub const KECCAK_OP_TYPE_ID: u32 = ZiskOperationType::Keccak as u32;
+pub const SHA256_OP_TYPE_ID: u32 = ZiskOperationType::Sha256 as u32;
+pub const PUB_OUT_OP_TYPE_ID: u32 = ZiskOperationType::PubOut as u32;
+pub const ARITH_EQ_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq as u32;
+pub const ARITH_EQ_384_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq384 as u32;
+pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
+pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
+pub const FCALL_GET_OP_TYPE_ID: u32 = ZiskOperationType::FcallGet as u32;
 
 /// ZisK instruction definition
 ///

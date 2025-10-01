@@ -16,12 +16,14 @@ sm-arith = { workspace = true }
 sm-binary = { workspace = true }
 sm-main = { workspace = true }
 sm-mem = { workspace = true }
+mem-common = { workspace = true }
 sm-rom = { workspace = true }
 sm-frequent-ops = { workspace = true }
 data-bus = { workspace = true }
 precomp-keccakf = { workspace = true }
 precomp-sha256f = { workspace = true }
 precomp-arith-eq = { workspace = true }
+precomp-arith-eq-384 = { workspace = true }
 zisk-pil = { workspace = true }
 ziskemu = { workspace = true }
 zisk-core = { workspace = true }
