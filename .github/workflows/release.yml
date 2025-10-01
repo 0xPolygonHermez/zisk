@@ -77,7 +77,7 @@ jobs:
           #   svm_target_platform: macosx-amd64
           #   platform: darwin
           #   arch: amd64
-          - runner: macos-14
+          - runner: macos-latest
             target: aarch64-apple-darwin
             svm_target_platform: macosx-aarch64
             platform: darwin
