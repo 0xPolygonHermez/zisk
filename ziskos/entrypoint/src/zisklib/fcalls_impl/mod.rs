@@ -5,6 +5,8 @@ mod bls12_381_twist;
 mod bn254_fp;
 mod bn254_fp2;
 mod bn254_twist;
+mod division_long;
+mod division_short;
 mod msb_pos_256;
 mod msb_pos_384;
 mod proxy;

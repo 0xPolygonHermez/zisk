@@ -117,6 +117,7 @@ fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch 
 # External dependencies
 rayon = "1.10"
 num-bigint = "0.4"
+num-integer = "0.1"
 num-traits = "0.2"
 itertools = "0.14"
 colored = "3"

@@ -206,6 +206,8 @@ impl ZiskAsmContext {
                 | ZiskOp::Bls12_381ComplexAdd
                 | ZiskOp::Bls12_381ComplexSub
                 | ZiskOp::Bls12_381ComplexMul
+                | ZiskOp::Add256
+                | ZiskOp::Adc256
         )
     }
 }
@@ -511,6 +513,8 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_bls12_381_complex_add\n";
         *code += ".extern opcode_bls12_381_complex_sub\n";
         *code += ".extern opcode_bls12_381_complex_mul\n";
+        *code += ".extern opcode_add256\n";
+        *code += ".extern opcode_adc256\n";
         *code += ".extern chunk_done\n";
         *code += ".extern print_fcall_ctx\n";
         *code += ".extern print_pc\n";
@@ -6523,6 +6527,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::Add256 => unimplemented!(),
+            ZiskOp::Adc256 => unimplemented!(),
         }
     }
 

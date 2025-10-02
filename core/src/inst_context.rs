@@ -42,14 +42,14 @@ pub struct PrecompiledInstContext {
 #[derive(Debug)]
 pub struct FcallInstContext {
     /// Fcall parameters data
-    /// Maximum size is 32 u64's
+    /// Maximum size is FCALL_PARAMS_MAX_SIZE u64's
     pub parameters: [u64; FCALL_PARAMS_MAX_SIZE],
 
     /// Indicates how many parameters u64's contain valid data
     pub parameters_size: u64,
 
     /// Fcall result data
-    /// Maximum size is 32 u64's
+    /// Maximum size is FCALL_RESULT_MAX_SIZE u64's
     pub result: [u64; FCALL_RESULT_MAX_SIZE],
 
     /// Indicates how many result u64's contain valid data

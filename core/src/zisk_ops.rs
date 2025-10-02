@@ -50,6 +50,7 @@ pub enum OpType {
     ArithEq,
     Fcall,
     ArithEq384,
+    BigInt,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -65,6 +66,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::ArithEq => ZiskOperationType::ArithEq,
             OpType::Fcall => ZiskOperationType::Fcall,
             OpType::ArithEq384 => ZiskOperationType::ArithEq384,
+            OpType::BigInt => ZiskOperationType::BigInt,
         }
     }
 }
@@ -84,6 +86,7 @@ impl Display for OpType {
             Self::ArithEq => write!(f, "Arith256"),
             Self::Fcall => write!(f, "Fcall"),
             Self::ArithEq384 => write!(f, "Arith384"),
+            Self::BigInt => write!(f, "BigInt"),
         }
     }
 }
@@ -104,6 +107,7 @@ impl FromStr for OpType {
             "aeq" => Ok(Self::ArithEq),
             "fcall" => Ok(Self::Fcall),
             "aeq384" => Ok(Self::ArithEq384),
+            "bigint" => Ok(Self::BigInt),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -276,6 +280,7 @@ const SHA256_COST: u64 = 9000;
 const ARITH_EQ_COST: u64 = 1200;
 const FCALL_COST: u64 = INTERNAL_COST;
 const ARITH_EQ_384_COST: u64 = 2000;
+const BIGINT_COST: u64 = 1; // TODO: set proper cost
 
 /// Table of Zisk opcode definitions: enum, name, type, cost, code and implementation functions
 /// This table is the backbone of the Zisk processor, it determines what functionality is supported,
@@ -354,6 +359,8 @@ define_ops! {
     (Bls12_381ComplexAdd, "bls12_381_complex_add", ArithEq384, ARITH_EQ_384_COST, 0xe5, 208, opc_bls12_381_complex_add, op_bls12_381_complex_add),
     (Bls12_381ComplexSub, "bls12_381_complex_sub", ArithEq384, ARITH_EQ_384_COST, 0xe6, 208, opc_bls12_381_complex_sub, op_bls12_381_complex_sub),
     (Bls12_381ComplexMul, "bls12_381_complex_mul", ArithEq384, ARITH_EQ_384_COST, 0xe7, 208, opc_bls12_381_complex_mul, op_bls12_381_complex_mul),
+    (Add256, "add256", BigInt, BIGINT_COST, 0xe8, 96, opc_add256, op_add256),
+    (Adc256, "adc256", BigInt, BIGINT_COST, 0xe9, 96, opc_adc256, op_adc256),
 }
 
 /* INTERNAL operations */
@@ -1838,6 +1845,80 @@ pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_bls12_381_complex_mul(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_bls12_381_complex_mul() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_add256(ctx: &mut InstContext) {
+    const WORDS: usize = 4 + 2 * 4;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 4, 2, 4, 0, &mut data, "add256");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 4 indirections
+        let (_, rest) = data.split_at(4);
+        let (a, rest) = rest.split_at(4);
+        let (b, c) = rest.split_at(4);
+
+        let a: &[u64; 4] = a.try_into().expect("opc_add256: a.len != 4");
+        let b: &[u64; 4] = b.try_into().expect("opc_add256: b.len != 4");
+
+        let mut dl = [0u64; 4];
+        let mut dh = 0u64;
+
+        precompiles_helpers::add256(a, b, &mut dl, &mut dh);
+
+        // [a,b,2:dl,3:dh]
+        for (i, dl_item) in dl.iter().enumerate() {
+            ctx.mem.write(data[2] + (8 * i as u64), *dl_item, 8);
+        }
+        ctx.mem.write(data[3], dh, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+#[inline(always)]
+pub fn op_add256(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_add256() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_adc256(ctx: &mut InstContext) {
+    const WORDS: usize = 4 + 2 * 4;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 4, 2, 4, 0, &mut data, "adc256");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 4 indirections
+        let (_, rest) = data.split_at(4);
+        let (a, rest) = rest.split_at(4);
+        let (b, c) = rest.split_at(4);
+
+        let a: &[u64; 4] = a.try_into().expect("opc_adc256: a.len != 4");
+        let b: &[u64; 4] = b.try_into().expect("opc_adc256: b.len != 4");
+
+        let mut dl = [0u64; 4];
+        let mut dh = 0u64;
+
+        precompiles_helpers::adc256(a, b, &mut dl, &mut dh);
+
+        // [a,b,2:dl,3:dh]
+        for (i, dl_item) in dl.iter().enumerate() {
+            ctx.mem.write(data[2] + (8 * i as u64), *dl_item, 8);
+        }
+        ctx.mem.write(data[3], dh, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+#[inline(always)]
+pub fn op_adc256(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_adc256() is not implemented");
 }
 
 impl From<ZiskRequiredOperation> for ZiskOp {
