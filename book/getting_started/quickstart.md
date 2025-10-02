@@ -21,8 +21,8 @@ ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below
         ```
     - **macOS**:
         ```bash
-        brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
-        ```    
+        brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium
+        ```
 
 3. To install ZisK using ziskup, run the following command in your terminal:
     ```bash
@@ -48,7 +48,7 @@ This will create a project with the following structure:
     └── main.rs
 ```
 
-The example program takes a number `n` as input and computes the SHA-256 hash `n` times. 
+The example program takes a number `n` as input and computes the SHA-256 hash `n` times.
 
 The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20). This file is used in `main.rs` as input to calculate the hash.
 
