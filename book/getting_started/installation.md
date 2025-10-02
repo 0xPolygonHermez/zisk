@@ -6,7 +6,7 @@ ZisK can be installed from prebuilt binaries (recommended) or by building the Zi
 
 ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below).
 
->**Note:** Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
+**Note:** On **macOS**, proof generation is not yet optimized, so some proofs may take longer to generate.
 
 ### Required Tools
 
@@ -36,11 +36,11 @@ A way to achieve it is to edit the file `/etc/systemd/system.conf` and add the l
 
 macOS 14 or higher is required.
 
-You must have [Homebrew](https://brew.sh/) installed.
+You must have [Homebrew](https://brew.sh/) and [Xcode](https://developer.apple.com/xcode/) installed.
 
 Install all required dependencies with:
 ```bash
-brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium
 ```
 
 ## Installing ZisK
@@ -100,7 +100,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     cargo build --release
     ```
 
-    **Note**: If you encounter the following error during compilation:
+    **Note**: If you encounter the following error during compilation on Ubuntu:
     ```
     --- stderr
     /usr/lib/x86_64-linux-gnu/openmpi/include/mpi.h:237:10: fatal error: 'stddef.h' file not found
@@ -117,15 +117,19 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
         export C_INCLUDE_PATH=/usr/lib/gcc/x86_64-linux-gnu/13/include
         export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
         ```
-    3. Try building again        
+    3. Try building again
 
 3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
-    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so target/release/libziskclib.a precompiles/sha256f/src/sha256f_script.json $HOME/.zisk/bin
+    LIB_EXT=$([[ "$(uname)" == "Darwin" ]] && echo "dylib" || echo "so")
+    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/zisk-coordinator target/release/zisk-worker target/release/libzisk_witness.$LIB_EXT target/release/libziskclib.a $HOME/.zisk/bin
     ```
 
-4. Copy required files to support `cargo-zisk rom-setup` command:
+4. Copy required files for assembly rom setup:
+
+    **Note:** This is only needed on Linux x86_64, since assembly execution is not supported on macOS
+
     ```bash
     mkdir -p $HOME/.zisk/zisk/emulator-asm
     cp -r ./emulator-asm/src $HOME/.zisk/zisk/emulator-asm
@@ -134,10 +138,12 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     ```
 
 5. Add `~/.zisk/bin` to your system PATH:
-    For example, if you are using `bash`:
+
+    If you are using `bash` or `zsh`:
     ```bash
-    echo >>$HOME/.bashrc && echo "export PATH=\"\$PATH:$HOME/.zisk/bin\"" >> $HOME/.bashrc
-    source $HOME/.bashrc
+    PROFILE=$([[ "$(uname)" == "Darwin" ]] && echo ".zshenv" || echo ".bashrc")
+    echo >>$HOME/$PROFILE && echo "export PATH=\"\$PATH:$HOME/.zisk/bin\"" >> $HOME/$PROFILE
+    source $HOME/$PROFILE
     ```
 
 6. Install the ZisK Rust toolchain:
@@ -162,13 +168,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
 
 #### Build Setup
 
-The setup building process is highly intensive in terms of CPU and memory usage. You will need a machine with at least the following hardware requirements:
-
-* 32 CPUs
-* 512 GB of RAM
-* 100 GB of free disk space
-
-Please note that the process can be long, taking approximately 2–3 hours depending on the machine used.
+Please note that the process can be long, taking approximately 45-60 minutes depending on the machine used.
 
 [NodeJS](https://nodejs.org/en/download) version 20.x or higher is required to build the setup files.
 
@@ -182,45 +182,36 @@ Please note that the process can be long, taking approximately 2–3 hours depen
     ```bash
     (cd pil2-compiler && npm i)
     (cd pil2-proofman-js && npm i)
+    ```
 
 3. All subsequent commands must be executed from the `zisk` folder created in the previous section:
     ```bash
-    cd ~/zisk
+    cd zisk
     ```
 
-4. Adjust memory mapped areas and JavaScript heap size:
+4. Generate fixed data:
     ```bash
-    echo "vm.max_map_count=655300" | sudo tee -a /etc/sysctl.conf
-    sudo sysctl -w vm.max_map_count=655300
-    export NODE_OPTIONS="--max-old-space-size=230000"
+    cargo run --release --bin keccakf_fixed_gen
+    cargo run --release --bin arith_frops_fixed_gen
+    cargo run --release --bin binary_basic_frops_fixed_gen
+    cargo run --release --bin binary_extension_frops_fixed_gen
     ```
 
-5. Compile ZisK PIL: (Note that this command may take 20-30 minutes to complete)
+4. Compile ZisK PIL:
     ```bash
-    node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout
+    node ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
     ```
 
     This command will create the `pil/zisk.pilout` file
 
-6. Generate fixed data:
+7. Generate setup data: (this step may take 30-45 minutes):
     ```bash
-    cargo run --release --bin keccakf_fixed_gen
-    cargo run --release --bin sha256f_fixed_gen
-    mkdir -p build
-    mv precompiles/keccakf/src/keccakf_fixed.bin build 
-    mv precompiles/sha256f/src/sha256f_fixed.bin build
+    node ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r
     ```
 
-    These commands generate the `keccakf_fixed.bin` and `sha256f_fixed.bin` files in the `build` directory.
+    This command generates the `build/provingKey` directory.
 
-7. Generate setup data: (Note that this command may take 2–3 hours to complete):
-    ```bash
-    node --max-old-space-size=131072 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -i ./build/keccakf_fixed.bin ./build/sha256f_fixed.bin -r
-    ```
-
-    This command generates the `provingKey` directory.
-
-8. Copy (or move) the `provingKey` directory to `$HOME/.zisk` directory:
+8. Copy (or move) the `build/provingKey` directory to `$HOME/.zisk` directory:
 
     ```bash
     cp -R build/provingKey $HOME/.zisk

@@ -1,8 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{MemCounters, MemCountersCursor, MemPlanCalculator};
-use mem_common::{MemModuleCheckPoint, MemModuleSegmentCheckPoint};
-use proofman_common::PreCalculate;
+use crate::{MemCountersCursor, MemPlanCalculator};
+use mem_common::{MemCounters, MemModuleCheckPoint, MemModuleSegmentCheckPoint};
 use std::cmp::min;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 pub struct MemModulePlanner {
@@ -28,6 +27,7 @@ pub struct MemModulePlannerConfig {
     pub air_id: usize,
     pub addr_index: usize,
     pub from_addr: u32,
+    pub last_addr: u32,
     pub rows: u32,
     pub consecutive_addr: bool,
 }
@@ -38,7 +38,7 @@ impl MemModulePlanner {
     ) -> Self {
         Self {
             config,
-            last_addr: config.from_addr,
+            last_addr: config.last_addr,
             // first chunk is open
             rows_available: config.rows,
             segments: Vec::new(),
@@ -61,7 +61,6 @@ impl MemModulePlanner {
         while !self.cursor.end() {
             // searches for the first smallest element in the vector
             let (chunk_id, addr, count) = self.cursor.get_next();
-            // println!("COUNTER: 0x{:X} CHUNK: {} COUNT: {}", addr * 8, chunk_id, count);
             self.add_to_current_instance(chunk_id, addr, count);
         }
         self.close_last_segment();
@@ -244,8 +243,8 @@ impl MemPlanCalculator for MemModulePlanner {
                 Some(SegmentId(segment_id)),
                 InstanceType::Instance,
                 CheckPoint::Multiple(keys),
-                PreCalculate::Slow,
                 Some(Box::new(segment)),
+                8,
             ));
         }
         plans

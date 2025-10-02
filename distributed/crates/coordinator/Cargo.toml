@@ -1,0 +1,45 @@
+[package]
+name = "zisk-distributed-coordinator"
+description = "Core types and functionality for Distributed Network"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "zisk-coordinator"
+path = "src/cli/main.rs"
+
+[dependencies]
+zisk-distributed-grpc-api = { workspace = true }
+zisk-distributed-common = { workspace = true }
+
+cargo-zisk = { workspace = true }
+proofman = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+futures = { workspace = true }
+tonic = { workspace = true }
+prost-types = { workspace = true }
+config = { workspace = true }
+reqwest = { workspace = true }
+colored = { workspace = true }
+dashmap = "6.1"
+
+signal-hook = { version = "0.3" }
+signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
+
+futures-util = "0.3"
+async-stream = "0.3"
+bytemuck = { workspace = true }
+zstd = { workspace = true }
+
+witness = { workspace = true }
+clap = { workspace = true }

@@ -10,7 +10,10 @@
 
 use std::{
     path::PathBuf,
-    sync::{atomic::AtomicU32, Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, AtomicU32},
+        Arc, Mutex,
+    },
     thread::JoinHandle,
 };
 
@@ -83,6 +86,7 @@ impl RomSM {
     pub fn compute_witness<F: PrimeField64>(
         rom: &ZiskRom,
         counter_stats: &CounterStats,
+        calculated: &AtomicBool,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer);
@@ -103,10 +107,20 @@ impl RomSM {
                 if counter_stats.bios_inst_count.is_empty() {
                     multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
                 } else {
-                    multiplicity = counter_stats.bios_inst_count
-                        [((inst.paddr - ROM_ENTRY) as usize) >> 2]
-                        .load(std::sync::atomic::Ordering::Relaxed)
-                        as u64;
+                    match calculated.load(std::sync::atomic::Ordering::Relaxed) {
+                        true => {
+                            multiplicity = counter_stats.bios_inst_count
+                                [((inst.paddr - ROM_ENTRY) as usize) >> 2]
+                                .swap(0, std::sync::atomic::Ordering::Relaxed)
+                                as u64;
+                        }
+                        false => {
+                            multiplicity = counter_stats.bios_inst_count
+                                [((inst.paddr - ROM_ENTRY) as usize) >> 2]
+                                .load(std::sync::atomic::Ordering::Relaxed)
+                                as u64;
+                        }
+                    }
 
                     if multiplicity == 0 {
                         continue;
@@ -116,9 +130,20 @@ impl RomSM {
                     }
                 }
             } else {
-                multiplicity = counter_stats.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
-                    .load(std::sync::atomic::Ordering::Relaxed)
-                    as u64;
+                match calculated.load(std::sync::atomic::Ordering::Relaxed) {
+                    true => {
+                        multiplicity = counter_stats.prog_inst_count
+                            [(inst.paddr - ROM_ADDR) as usize]
+                            .swap(0, std::sync::atomic::Ordering::Relaxed)
+                            as u64
+                    }
+                    false => {
+                        multiplicity = counter_stats.prog_inst_count
+                            [(inst.paddr - ROM_ADDR) as usize]
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                            as u64
+                    }
+                }
                 if multiplicity == 0 {
                     continue;
                 }
@@ -143,37 +168,6 @@ impl RomSM {
 
         const MAIN_TRACE_LEN: u64 = MainTrace::<usize>::NUM_ROWS as u64;
 
-        // if asm_romh.bios_inst_count.is_empty() {
-        //     for (i, _) in rom.rom_entry_instructions.iter().enumerate() {
-        //         rom_trace[i].multiplicity = F::ONE;
-        //     }
-        // } else {
-        //     let extra = MAIN_TRACE_LEN - asm_romh.header.steps % MAIN_TRACE_LEN;
-
-        //     for (i, inst) in rom.rom_entry_instructions.iter().enumerate() {
-        //         let idx = ((inst.paddr - ROM_ENTRY) as usize) >> 2;
-
-        //         let mut multiplicity = asm_romh.bios_inst_count[idx];
-
-        //         if multiplicity != 0 {
-        //             if inst.paddr == ROM_EXIT {
-        //                 multiplicity += extra;
-        //             }
-        //             rom_trace[i].multiplicity = F::from_u64(multiplicity);
-        //         }
-        //     }
-        // }
-
-        // for (i, inst) in rom.rom_instructions.iter().enumerate() {
-        //     let idx = (inst.paddr - ROM_ADDR) as usize;
-        //     let multiplicity = asm_romh.prog_inst_count[idx];
-
-        //     if multiplicity != 0 {
-        //         rom_trace[i].multiplicity = F::from_u64(multiplicity);
-        //     }
-        // }
-
-        // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
             let inst = &rom.insts[key].i;

@@ -2,16 +2,15 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use zisk_common::{BusDevice, PayloadType, OPERATION_BUS_ID};
+use zisk_common::{BusDevice, PayloadType};
 
 use zisk_common::{
-    table_instance_array, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    InstanceInfo, Planner, TableInfo,
+    BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::{ArithEqLtTableTrace, ArithEqTrace};
+use zisk_pil::ArithEqTrace;
 
-use crate::{ArithEqCounterInputGen, ArithEqInstance, ArithEqLtTableSM, ArithEqPlanner, ArithEqSM};
+use crate::{ArithEqCounterInputGen, ArithEqInstance, ArithEqPlanner, ArithEqSM};
 
 /// The `Arith256Manager` struct represents the ArithEq manager,
 /// which is responsible for managing the ArithEq state machine.
@@ -19,7 +18,6 @@ use crate::{ArithEqCounterInputGen, ArithEqInstance, ArithEqLtTableSM, ArithEqPl
 pub struct ArithEqManager<F: PrimeField64> {
     /// ArithEq state machine
     arith_eq_sm: Arc<ArithEqSM<F>>,
-    arith_eq_lt_table_sm: Arc<ArithEqLtTableSM>,
 }
 
 impl<F: PrimeField64> ArithEqManager<F> {
@@ -28,14 +26,17 @@ impl<F: PrimeField64> ArithEqManager<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithEqManager`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let arith_eq_lt_table_sm = ArithEqLtTableSM::new();
-        let arith_eq_sm = ArithEqSM::new(std, arith_eq_lt_table_sm.clone());
+        let arith_eq_sm = ArithEqSM::new(std);
 
-        Arc::new(Self { arith_eq_sm, arith_eq_lt_table_sm })
+        Arc::new(Self { arith_eq_sm })
     }
 
     pub fn build_arith_eq_counter(&self) -> ArithEqCounterInputGen {
         ArithEqCounterInputGen::new(BusDeviceMode::Counter)
+    }
+
+    pub fn build_arith_eq_input_generator(&self) -> ArithEqCounterInputGen {
+        ArithEqCounterInputGen::new(BusDeviceMode::InputGenerator)
     }
 }
 
@@ -56,19 +57,12 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
         // Get the number of arith256s that a single arith256 instance can handle
         let num_available_ops = self.arith_eq_sm.num_available_ops;
 
-        Box::new(
-            ArithEqPlanner::new()
-                .add_instance(InstanceInfo::new(
-                    ArithEqTrace::<usize>::AIRGROUP_ID,
-                    ArithEqTrace::<usize>::AIR_ID,
-                    num_available_ops,
-                    ZiskOperationType::ArithEq,
-                ))
-                .add_table_instance(TableInfo::new(
-                    ArithEqLtTableTrace::<usize>::AIRGROUP_ID,
-                    ArithEqLtTableTrace::<usize>::AIR_ID,
-                )),
-        )
+        Box::new(ArithEqPlanner::new().add_instance(InstanceInfo::new(
+            ArithEqTrace::<usize>::AIRGROUP_ID,
+            ArithEqTrace::<usize>::AIR_ID,
+            num_available_ops,
+            ZiskOperationType::ArithEq,
+        )))
     }
 
     /// Builds an inputs data collector for arith_eq operations.
@@ -86,18 +80,6 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
         match ictx.plan.air_id {
             id if id == ArithEqTrace::<usize>::AIR_ID => {
                 Box::new(ArithEqInstance::new(self.arith_eq_sm.clone(), ictx))
-            }
-            id if id == ArithEqLtTableTrace::<usize>::AIR_ID => {
-                table_instance_array!(
-                    ArithEqLtTableInstance,
-                    ArithEqLtTableSM,
-                    ArithEqLtTableTrace
-                );
-                Box::new(ArithEqLtTableInstance::new(
-                    self.arith_eq_lt_table_sm.clone(),
-                    ictx,
-                    OPERATION_BUS_ID,
-                ))
             }
             _ => {
                 panic!("ArithEqBuilder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)

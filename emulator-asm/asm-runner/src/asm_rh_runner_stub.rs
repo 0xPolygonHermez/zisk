@@ -3,8 +3,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{AsmRHData, AsmRHHeader, AsmSharedMemory};
+use crate::AsmRHData;
 use anyhow::Result;
+use zisk_common::ExecutorStats;
+
+pub struct PreloadedRH {}
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
@@ -26,12 +29,13 @@ impl AsmRunnerRH {
     }
 
     pub fn run(
-        _: Arc<Mutex<Option<AsmSharedMemory<AsmRHHeader>>>>,
+        _: &mut Option<PreloadedRH>,
         _: u64,
         _: i32,
         _: i32,
         _: Option<u16>,
         _: bool,
+        _: Arc<Mutex<ExecutorStats>>,
     ) -> Result<AsmRunnerRH> {
         Err(anyhow::anyhow!(
             "AsmRunnerRH::run() is not supported on this platform. Only Linux x86_64 is supported."

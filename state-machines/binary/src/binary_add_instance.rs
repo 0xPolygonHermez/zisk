@@ -23,7 +23,7 @@ pub struct BinaryAddInstance<F: PrimeField64> {
     binary_add_sm: Arc<BinaryAddSM<F>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+    collect_info: HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -50,10 +50,27 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .downcast::<HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { binary_add_sm, collect_info, ictx }
+    }
+
+    pub fn build_binary_add_collector(&self, chunk_id: ChunkId) -> BinaryAddCollector {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            BinaryAddTrace::<F>::AIR_ID,
+            "BinaryAddInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
+            self.collect_info[&chunk_id];
+        BinaryAddCollector::new(
+            num_ops as usize,
+            num_freq_ops as usize,
+            collect_skipper,
+            force_execute_to_end,
+        )
     }
 }
 
@@ -80,7 +97,9 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| {
-                collector.as_any().downcast::<BinaryAddCollector>().unwrap().inputs
+                let _collector = collector.as_any().downcast::<BinaryAddCollector>().unwrap();
+                self.binary_add_sm.compute_frops(&_collector.frops_inputs);
+                _collector.inputs
             })
             .collect();
 
@@ -91,8 +110,8 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
     ///
     /// # Returns
     /// A `CheckPoint` object representing the checkpoint of the execution plan.
-    fn check_point(&self) -> CheckPoint {
-        self.ictx.plan.check_point.clone()
+    fn check_point(&self) -> &CheckPoint {
+        &self.ictx.plan.check_point
     }
 
     /// Retrieves the type of this instance.
@@ -117,7 +136,17 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
             "BinaryAddInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
-        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(BinaryAddCollector::new(num_ops as usize, collect_skipper)))
+        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
+            self.collect_info[&chunk_id];
+        Some(Box::new(BinaryAddCollector::new(
+            num_ops as usize,
+            num_freq_ops as usize,
+            collect_skipper,
+            force_execute_to_end,
+        )))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

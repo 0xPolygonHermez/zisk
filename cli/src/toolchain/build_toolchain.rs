@@ -47,27 +47,40 @@ impl BuildToolchainCmd {
             }
         };
         // Install our config.toml.
-        let config_toml = include_str!("config.toml");
-        let config_file = rust_dir.join("config.toml");
-        std::fs::write(&config_file, config_toml)
-            .with_context(|| format!("while writing configuration to {config_file:?}"))?;
+        let bootstrap_toml = include_str!("bootstrap.toml");
+        let bootstrap_file = rust_dir.join("bootstrap.toml");
+        std::fs::write(&bootstrap_file, bootstrap_toml)
+            .with_context(|| format!("while writing configuration to {bootstrap_file:?}"))?;
 
         // Work around target sanity check added in
         // rust-lang/rust@09c076810cb7649e5817f316215010d49e78e8d7.
         let temp_dir = std::env::temp_dir().join("rustc-targets");
         if !temp_dir.exists() {
-            std::fs::create_dir_all(&temp_dir)?;
+            std::fs::create_dir_all(&temp_dir)
+                .with_context(|| format!("while creating directory {temp_dir:?}"))?;
         }
 
-        std::fs::File::create(temp_dir.join("riscv64ima-zisk-zkvm-elf.json"))?;
+        std::fs::File::create(temp_dir.join("riscv64ima-zisk-zkvm-elf.json")).with_context(
+            || format!("while creating file {temp_dir:?}/riscv64ima-zisk-zkvm-elf.json"),
+        )?;
 
         // Build the toolchain.
         Command::new("python3")
             .env("RUST_TARGET_PATH", &temp_dir)
             .env("CARGO_TARGET_RISCV64IMA_ZISK_ZKVM_ELF_RUSTFLAGS", "-Cpasses=lower-atomic")
-            .args(["x.py", "build", "--stage", "2", "compiler/rustc", "library"])
+            .args([
+                "x.py",
+                "build",
+                "--stage",
+                "2",
+                "compiler/rustc",
+                "library",
+                "--target",
+                &format!("riscv64ima-zisk-zkvm-elf,{}", get_target(),),
+            ])
             .current_dir(&rust_dir)
-            .run()?;
+            .run()
+            .with_context(|| "while building the Rust toolchain")?;
 
         // Remove the existing toolchain from rustup, if it exists.
         match Command::new("rustup").args(["toolchain", "remove", RUSTUP_TOOLCHAIN_NAME]).run() {
@@ -95,7 +108,8 @@ impl BuildToolchainCmd {
         Command::new("rustup")
             .args(["toolchain", "link", RUSTUP_TOOLCHAIN_NAME])
             .arg(&toolchain_dir)
-            .run()?;
+            .run()
+            .with_context(|| "while linking the toolchain to rustup")?;
         println!("Successfully linked the toolchain to rustup.");
 
         // Compressing toolchain directory to tar.gz.
@@ -113,7 +127,8 @@ impl BuildToolchainCmd {
                 toolchain_dir.to_str().unwrap(),
                 ".",
             ])
-            .run()?;
+            .run()
+            .with_context(|| format!("while compressing the toolchain to {tar_gz_path}"))?;
         println!("Successfully compressed the toolchain to {tar_gz_path}.");
 
         Ok(())

@@ -1,15 +1,11 @@
-use crate::{MemAlignInput, MemAlignSM, MemHelpers};
+use crate::{MemAlignCollector, MemAlignSM};
 use mem_common::MemAlignCheckPoint;
 
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
-    BusDevice, BusId, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, MemBusData,
-    PayloadType, MEM_BUS_ID,
+    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 
 pub struct MemAlignInstance<F: PrimeField64> {
@@ -32,6 +28,10 @@ impl<F: PrimeField64> MemAlignInstance<F> {
 
         Self { ictx, checkpoint, mem_align_sm }
     }
+
+    pub fn build_mem_align_collector(&self, chunk_id: ChunkId) -> MemAlignCollector {
+        MemAlignCollector::new(&self.checkpoint[&chunk_id])
+    }
 }
 
 impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
@@ -48,7 +48,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
             .map(|(_, collector)| {
                 let collector = collector.as_any().downcast::<MemAlignCollector>().unwrap();
 
-                total_rows += collector.rows;
+                total_rows += collector.count();
 
                 collector.inputs
             })
@@ -56,8 +56,8 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize, trace_buffer))
     }
 
-    fn check_point(&self) -> CheckPoint {
-        self.ictx.plan.check_point.clone()
+    fn check_point(&self) -> &CheckPoint {
+        &self.ictx.plan.check_point
     }
 
     fn instance_type(&self) -> InstanceType {
@@ -74,76 +74,8 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(MemAlignCollector::new(&self.checkpoint[&chunk_id])))
     }
-}
 
-pub struct MemAlignCollector {
-    /// Collected inputs
-    inputs: Vec<MemAlignInput>,
-
-    pending_count: u32,
-    skip_pending: u32,
-    rows: u32,
-}
-
-impl MemAlignCollector {
-    pub fn new(mem_align_checkpoint: &MemAlignCheckPoint) -> Self {
-        Self {
-            inputs: Vec::new(),
-            skip_pending: mem_align_checkpoint.skip,
-            pending_count: mem_align_checkpoint.count,
-            rows: mem_align_checkpoint.rows,
-        }
-    }
-}
-
-impl BusDevice<u64> for MemAlignCollector {
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
-        debug_assert!(*bus_id == MEM_BUS_ID);
-
-        let addr = MemBusData::get_addr(data);
-        let bytes = MemBusData::get_bytes(data);
-        if MemHelpers::is_aligned(addr, bytes) {
-            return;
-        }
-        if self.skip_pending > 0 {
-            self.skip_pending -= 1;
-            return;
-        }
-
-        if self.pending_count == 0 {
-            return;
-        }
-        self.pending_count -= 1;
-        let is_write = MemHelpers::is_write(MemBusData::get_op(data));
-        let addr = MemBusData::get_addr(data);
-        let width = MemBusData::get_bytes(data);
-        let mem_values = MemBusData::get_mem_values(data);
-        let value = if is_write {
-            MemBusData::get_value(data)
-        } else {
-            MemHelpers::get_read_value(addr, width, mem_values)
-        };
-        self.inputs.push(MemAlignInput {
-            addr,
-            is_write,
-            width,
-            step: MemBusData::get_step(data),
-            value,
-            mem_values,
-        });
-    }
-
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![MEM_BUS_ID]
-    }
-
-    /// Provides a dynamic reference for downcasting purposes.
-    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }

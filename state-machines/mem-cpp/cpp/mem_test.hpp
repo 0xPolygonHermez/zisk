@@ -31,7 +31,11 @@ class MemTestChunk {
 public:
     std::shared_ptr<MemCountersBusData> chunk_data;
     uint32_t chunk_size;
-    MemTestChunk(MemCountersBusData *data, uint32_t size) : chunk_data(data), chunk_size(size) {}
+    MemTestChunk(MemCountersBusData *data, uint32_t size) 
+        : chunk_data(data, [](MemCountersBusData* p) { free(p); }), chunk_size(size) {}
+    ~MemTestChunk() {
+        // Memory is automatically freed by shared_ptr with custom deleter
+    }
 };
 
 class MemTest {
@@ -100,7 +104,7 @@ public:
             #endif
             if (chunk_id % 100 == 0) printf("Loaded chunk %d with size %d\n", chunk_id, chunk_size);
         }
-        printf("chunks: %ld  tot_chunks: %d tot_ops: %d tot_time:%ld (ms) Speed(Mhz): %04.2f\n", chunks.size(), tot_chunks, tot_ops, (chunks.size() * TIME_US_BY_CHUNK)/1000, (double)(1 << 18) / TIME_US_BY_CHUNK);
+        printf("chunks: %ld  tot_chunks: %d tot_ops: %d tot_time:%ld (ms) Speed(Mhz): %04.2f\n", chunks.size(), tot_chunks, tot_ops, (chunks.size() * TIME_US_BY_CHUNK)/1000, (double)(CHUNK_SIZE) / TIME_US_BY_CHUNK);
     }
     void execute(void) {
         printf("Starting...\n");
@@ -113,20 +117,30 @@ public:
             uint64_t chunk_ready = init + (uint64_t)(chunk_id+1) * TIME_US_BY_CHUNK;
             uint64_t current = get_usec();
             if (current < chunk_ready) {
-                usleep(chunk_ready - current);
+                uint64_t wait_time = chunk_ready - current;
+                // Optimization: busy wait for short delays
+                if (wait_time < 100) {
+                    // Busy wait for < 100μs (more accurate but consumes CPU)
+                    while (get_usec() < chunk_ready) {
+                        // Spin wait
+                    }
+                } else {
+                    // usleep for long delays (saves CPU)
+                    usleep(wait_time);
+                }
             }
             MemCountersBusData *data = chunk.chunk_data.get();
             uint32_t chunk_size = chunk.chunk_size;
 //            uint32_t j = chunk_size - 1;
 //            printf("CHUNK[%4d] 0:[%08X %d %c] ... %d:[%08X %d %c]\n", chunk_id,
-//                data[0].addr, data[0].flags & 0xFFFF, data[0].flags & 0x10000 ? 'R':'W', j,
-//                data[j].addr, data[j].flags & 0xFFFF, data[j].flags & 0x10000 ? 'R':'W');
+//                data[0].addr, data[0].flags & 0xFFFF, data[0].flags & MEM_WRITE_FLAG ? 'R':'W', j,
+//                data[j].addr, data[j].flags & 0xFFFF, data[j].flags & MEM_WRITE_FLAG ? 'R':'W');
             add_chunk_mem_count_and_plan(cp, data, chunk_size);
             ++chunk_id;
         }
         set_completed_mem_count_and_plan(cp);
         wait_mem_count_and_plan(cp);
-        // stats_mem_count_and_plan(cp);
+        stats_mem_count_and_plan(cp);
         destroy_mem_count_and_plan(cp);
     }
 };

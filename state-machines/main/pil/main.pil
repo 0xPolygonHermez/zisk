@@ -9,7 +9,8 @@ const int END_SP = 0;
 const int MAX_RANGE = (1 << 24) - 1;
 const int REG_BASE_ADDR = 0xA000_0000;
 
-airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id,
+airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, 
+                 const int operation_bus_id = OPERATION_BUS_ID,
                  const int MAIN_CONTINUATION_ID = 1000,
                  const int REGS_IN_MAIN_FROM = 1, const int REGS_IN_MAIN_TO = 31) {
 
@@ -513,4 +514,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         global_init_mem(sel: 1, addr: ireg + REGS_IN_MAIN_FROM, value: zeros);
     }
 
+
+    // Main Segment constraint
+    range_check(main_segment, min: 0, max: ((2**32)/N) - 1);
 }

@@ -158,7 +158,7 @@ pub fn sparse_mulb_fp6_bn254(a: &[u64; 24], b: &[u64; 16]) -> [u64; 24] {
 
     // c1 = a1·b1 + a3·b2·(9+u)
     let mut c1 = mul_fp2_bn254(a1, b1);
-    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(&a3, &mul_fp2_bn254(b2, &[9, 0, 0, 0, 1, 0, 0, 0])));
+    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a3, &mul_fp2_bn254(b2, &[9, 0, 0, 0, 1, 0, 0, 0])));
 
     // c2 = a1·b2 + a2·b1
     let mut c2 = mul_fp2_bn254(a1, b2);

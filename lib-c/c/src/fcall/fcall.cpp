@@ -1,6 +1,7 @@
 #include "fcall.hpp"
 #include "../common/utils.hpp"
 #include "../bn254/bn254_fe.hpp"
+#include "../bls12_381/bls12_381_fe.hpp"
 #include <stdint.h>
 
 int Fcall (
@@ -49,6 +50,36 @@ int Fcall (
         case FCALL_ID_BN254_TWIST_DBL_LINE_COEFFS:
         {
             iresult = BN254TwistDblLineCoeffsCtx(ctx);
+            break;
+        }
+        case FCALL_BLS12_381_FP_INV_ID:
+        {
+            iresult = BLS12_381FpInvCtx(ctx);
+            break;
+        }
+        case FCALL_BLS12_381_FP_SQRT_ID:
+        {
+            iresult = BLS12_381FpSqrtCtx(ctx);
+            break;
+        }
+        case FCALL_BLS12_381_FP2_INV_ID:
+        {
+            iresult = BLS12_381ComplexInvCtx(ctx);
+            break;
+        }
+        case FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID:
+        {
+            iresult = BLS12_381TwistAddLineCoeffsCtx(ctx);
+            break;
+        }
+        case FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID:
+        {
+            iresult = BLS12_381TwistDblLineCoeffsCtx(ctx);
+            break;
+        }
+        case FCALL_MSB_POS_384_ID:
+        {
+            iresult = MsbPos384Ctx(ctx);
             break;
         }
         default:
@@ -476,6 +507,304 @@ int BN254TwistDblLineCoeffsCtx (
     {
         iresult = 16;
         ctx->result_size = 16;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/***************************/
+/* BLS12_381 CURVE INVERSE */
+/***************************/
+
+int BLS12_381FpInv (
+    const uint64_t * _a, // 6 x 64 bits
+          uint64_t * _r  // 6 x 64 bits
+)
+{
+    RawBLS12_381_384::Element a;
+    array2fe(_a, a);
+    if (bls12_381.isZero(a))
+    {
+        printf("BLS12_381FpInv() Division by zero\n");
+        return -1;
+    }
+
+    RawBLS12_381_384::Element r;
+    bls12_381.inv(r, a);
+
+    fe2array(r, _r);
+
+    return 0;
+}
+
+int BLS12_381FpInvCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = BLS12_381FpInv(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 6;
+        ctx->result_size = 6;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/*******************************/
+/* BLS12_381 CURVE SQUARE ROOT */
+/*******************************/
+
+int BLS12_381FpSqrt (
+    const uint64_t * _a, // 6 x 64 bits
+          uint64_t * _r  // 6 x 64 bits
+)
+{
+    mpz_class a;
+    array2scalar6(_a, a);
+
+    // Attempt to compute the square root of a
+    mpz_class r;
+    mpz_powm(r.get_mpz_t(), a.get_mpz_t(), ScalarP_DIV_4.get_mpz_t(), ScalarP.get_mpz_t());
+
+    // Check if a is a quadratic residue
+    mpz_class square = (r * r) % ScalarP;
+    uint64_t a_is_gr = (square == a) ? 1 : 0;
+    _r[0] = a_is_gr;
+    if (!a_is_gr)
+    {
+        // To check that a is indeed a non-quadratic residue, we check that
+        // a * NQR is a quadratic residue for some fixed known non-quadratic residue NQR
+        mpz_class a_nqr = (a * ScalarNQR) % ScalarP;
+
+        // Compute the square root of a * NQR
+        mpz_powm(r.get_mpz_t(), a_nqr.get_mpz_t(), ScalarP_DIV_4.get_mpz_t(), ScalarP.get_mpz_t());
+    }
+
+    scalar2array6(r, &_r[1]);
+
+    return 0;
+}
+
+int BLS12_381FpSqrtCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = BLS12_381FpSqrt(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 7;
+        ctx->result_size = 7;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/*****************************/
+/* BLS12_381 COMPLEX INVERSE */
+/*****************************/
+
+// Inverse of a complex number a + ib is (a - ib) / (aa + bb):
+// (a + ib) * (a - ib) / (aa + bb) = (aa + iab - iab - iibb) / (aa + bb) = (aa + bb) / (aa + bb) = 1
+
+int BLS12_381ComplexInv (
+    const uint64_t * a, // 12 x 64 bits
+          uint64_t * r  // 12 x 64 bits
+)
+{
+    // There is no need to check for 0 since this must be done at the rust level
+
+    // Convert to field elements
+    RawBLS12_381_384::Element real, imaginary;
+    array2fe(a, real);
+    array2fe(a + 6, imaginary);
+
+    RawBLS12_381_384::Element r_real, r_imaginary;
+    BLS12_381ComplexInvFe(real, imaginary, r_real, r_imaginary);
+
+    fe2array(r_real, r);
+    fe2array(r_imaginary, r + 6);
+
+    return 0;
+}
+
+int BLS12_381ComplexInvCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = BLS12_381ComplexInv(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 12;
+        ctx->result_size = 12;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/***********************************/
+/* BLS12_381 TWIST ADD LINE COEFFS */
+/***********************************/
+
+int BLS12_381TwistAddLineCoeffs (
+    const uint64_t * a, // 48 x 64 bits
+          uint64_t * r  // 24 x 64 bits
+)
+{
+    // Convert to field elements
+    RawBLS12_381_384::Element x1_real, x1_imaginary, y1_real, y1_imaginary, x2_real, x2_imaginary, y2_real, y2_imaginary;
+    array2fe(a, x1_real);
+    array2fe(a + 6, x1_imaginary);
+    array2fe(a + 12, y1_real);
+    array2fe(a + 18, y1_imaginary);
+    array2fe(a + 24, x2_real);
+    array2fe(a + 30, x2_imaginary);
+    array2fe(a + 36, y2_real);
+    array2fe(a + 42, y2_imaginary);
+
+    // Compute 𝜆 = (y2 - y1)/(x2 - x1)
+    RawBLS12_381_384::Element lambda_real, lambda_imaginary, aux_real, aux_imaginary;
+    BLS12_381ComplexSubFe(x2_real, x2_imaginary, x1_real, x1_imaginary, lambda_real, lambda_imaginary); // 𝜆 = (x2 - x1)
+    BLS12_381ComplexInvFe(lambda_real, lambda_imaginary, lambda_real, lambda_imaginary); // 𝜆 = 1/(x2 - x1)
+    BLS12_381ComplexSubFe(y2_real, y2_imaginary, y1_real, y1_imaginary, aux_real, aux_imaginary); // aux = (y2 - y1)
+    BLS12_381ComplexMulFe(lambda_real, lambda_imaginary, aux_real, aux_imaginary, lambda_real, lambda_imaginary); // 𝜆 = aux*𝜆 = (y2 - y1)/(x2 - x1)
+
+    // Compute 𝜇 = y - 𝜆x
+    RawBLS12_381_384::Element mu_real, mu_imaginary;
+    BLS12_381ComplexMulFe(lambda_real, lambda_imaginary, x1_real, x1_imaginary, aux_real, aux_imaginary); // aux = 𝜆 - x1
+    BLS12_381ComplexSubFe(y1_real, y1_imaginary, aux_real, aux_imaginary, mu_real, mu_imaginary); // 𝜇 = y1 - aux = y1 - 𝜆x1
+
+    // Store the result
+    fe2array(lambda_real, r);
+    fe2array(lambda_imaginary, r + 6);
+    fe2array(mu_real, r + 12);
+    fe2array(mu_imaginary, r + 18);
+
+    return 0;
+}
+
+int BLS12_381TwistAddLineCoeffsCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = BLS12_381TwistAddLineCoeffs(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 24;
+        ctx->result_size = 24;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/**************************************/
+/* BLS12_381 TWIST DOUBLE LINE COEFFS */
+/**************************************/
+
+int BLS12_381TwistDblLineCoeffs (
+    const uint64_t * a, // 24 x 64 bits
+          uint64_t * r  // 24 x 64 bits
+)
+{
+    // Convert to field elements
+    RawBLS12_381_384::Element x_real, x_imaginary, y_real, y_imaginary;
+    array2fe(a, x_real);
+    array2fe(a + 6, x_imaginary);
+    array2fe(a + 12, y_real);
+    array2fe(a + 18, y_imaginary);
+
+
+    // Compute 𝜆 = 3x²/2y
+    RawBLS12_381_384::Element lambda_real, lambda_imaginary, aux_real, aux_imaginary, three;
+    BLS12_381ComplexAddFe(y_real, y_imaginary, y_real, y_imaginary, lambda_real, lambda_imaginary); // 𝜆 = 2y
+    BLS12_381ComplexInvFe(lambda_real, lambda_imaginary, lambda_real, lambda_imaginary); // 𝜆 = 1/2y
+    BLS12_381ComplexMulFe(x_real, x_imaginary, x_real, x_imaginary, aux_real, aux_imaginary); // aux = x²
+    BLS12_381ComplexMulFe(lambda_real, lambda_imaginary, aux_real, aux_imaginary, lambda_real, lambda_imaginary); // 𝜆 = x²/2y
+    bls12_381.fromUI(three, 3); // 𝜆 = 3x²/2y
+    bls12_381.mul(lambda_real, lambda_real, three);
+    bls12_381.mul(lambda_imaginary, lambda_imaginary, three);
+
+    // Compute 𝜇 = y - 𝜆x
+    RawBLS12_381_384::Element mu_real, mu_imaginary;
+    BLS12_381ComplexMulFe(lambda_real, lambda_imaginary, x_real, x_imaginary, aux_real, aux_imaginary); // aux = 𝜆x
+    BLS12_381ComplexSubFe(y_real, y_imaginary, aux_real, aux_imaginary, mu_real, mu_imaginary); // 𝜇 = y - 𝜆x
+
+    // Store the result
+    fe2array(lambda_real, r);
+    fe2array(lambda_imaginary, r + 6);
+    fe2array(mu_real, r + 12);
+    fe2array(mu_imaginary, r + 18);
+
+    return 0;
+}
+
+int BLS12_381TwistDblLineCoeffsCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = BLS12_381TwistDblLineCoeffs(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 24;
+        ctx->result_size = 24;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/***************/
+/* MSB POS 384 */
+/***************/
+
+int MsbPos384 (
+    const uint64_t * a, // 12 x 64 bits
+          uint64_t * r  // 2 x 64 bits
+)
+{
+    const uint64_t * x = a;
+    const uint64_t * y = &a[6];
+
+    for (int i=5; i>=0; i--)
+    {
+        if ((x[i] != 0) || (y[i] != 0))
+        {
+            uint64_t word = x[i] > y[i] ? x[i] : y[i];
+            r[0] = i;
+            r[1] = msb_pos(word);
+            return 0;
+        }
+    }
+    printf("MsbPos384() error: both x and y are zero\n");
+    exit(-1);
+}
+
+int MsbPos384Ctx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = MsbPos384(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 2;
+        ctx->result_size = 2;
     }
     else
     {

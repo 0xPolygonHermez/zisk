@@ -4,9 +4,10 @@
 
 use std::collections::VecDeque;
 
-use crate::BinaryInput;
+use crate::{BinaryBasicFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, MemCollectorInfo, OperationBusData, A, B,
+    OP, OPERATION_BUS_ID,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -14,12 +15,18 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 pub struct BinaryBasicCollector {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
+    /// Collected rows for FROPS
+    pub frops_inputs: Vec<u32>,
 
     pub num_operations: usize,
+
     pub collect_skipper: CollectSkipper,
 
     /// Flag to indicate that this instance comute add operations
     with_adds: bool,
+
+    /// Flag to indicate that force to execute to end of chunk
+    force_execute_to_end: bool,
 }
 
 impl BinaryBasicCollector {
@@ -31,8 +38,21 @@ impl BinaryBasicCollector {
     ///
     /// # Returns
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: usize, collect_skipper: CollectSkipper, with_adds: bool) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper, with_adds }
+    pub fn new(
+        num_operations: usize,
+        num_freq_ops: usize,
+        collect_skipper: CollectSkipper,
+        with_adds: bool,
+        force_execute_to_end: bool,
+    ) -> Self {
+        Self {
+            inputs: Vec::with_capacity(num_operations),
+            num_operations,
+            collect_skipper,
+            with_adds,
+            frops_inputs: Vec::with_capacity(num_freq_ops),
+            force_execute_to_end,
+        }
     }
 }
 
@@ -42,41 +62,57 @@ impl BusDevice<u64> for BinaryBasicCollector {
     /// # Arguments
     /// * `_bus_id` - The ID of the bus (unused in this implementation).
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// An optional vector of tuples where:
-    /// - The first element is the bus ID.
-    /// - The second element is always empty indicating there are no derived inputs.
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+        _mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
+        let instance_complete = self.inputs.len() == self.num_operations;
 
-        if self.inputs.len() >= self.num_operations {
-            return;
+        if instance_complete && !self.force_execute_to_end {
+            return false;
         }
 
-        let data: ExtOperationData<u64> =
+        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
+
+        let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
-        let op_type = OperationBusData::get_op_type(&data);
+        let op_type = OperationBusData::get_op_type(&op_data);
 
         if op_type as u32 != ZiskOperationType::Binary as u32 {
-            return;
+            return true;
         }
 
-        if !self.with_adds && OperationBusData::get_op(&data) == ZiskOp::Add.code() {
-            return;
+        if !self.with_adds && OperationBusData::get_op(&op_data) == ZiskOp::Add.code() {
+            return true;
         }
 
-        if self.collect_skipper.should_skip() {
-            return;
+        if self.collect_skipper.should_skip_query(frops_row == BinaryBasicFrops::NO_FROPS) {
+            return true;
         }
 
-        self.inputs.push(BinaryInput::from(&data));
+        if frops_row != BinaryBasicFrops::NO_FROPS {
+            self.frops_inputs.push(frops_row as u32);
+            return true;
+        }
+
+        if instance_complete {
+            // instance complete => no FROPS operation => discard, inputs complete
+            return true;
+        }
+        self.inputs.push(BinaryInput::from(&op_data));
+
+        self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
 
     /// Returns the bus IDs associated with this instance.

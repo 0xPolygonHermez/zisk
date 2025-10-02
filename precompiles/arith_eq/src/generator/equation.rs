@@ -461,13 +461,14 @@ impl Equation {
             self.generate_terms();
         }
 
+        let chunks_config = self.config.chunks;
         let mut out = self.generate_code_header()
             + &format!(
                 "\npub struct {struct_name} {{}}\n\nimpl {struct_name} {{\n\t#[allow(clippy::too_many_arguments)]\n\tpub fn calculate(icol: u8"
             );
         if args_order.is_empty() {
             for var in self.vars.iter() {
-                out += &format!(", {var}: &[i64;16]");
+                out += &format!(", {var}: &[i64;{chunks_config}]");
             }
         } else {
             let mut used = vec![false; self.vars.len()];
@@ -489,14 +490,14 @@ impl Equation {
                         "args_order:{args_order} with unknown argument {var} for {struct_name}"
                     ),
                 }
-                out += &format!(", {var}: &[i64;16]");
+                out += &format!(", {var}: &[i64;{chunks_config}]");
             }
             if count < self.vars.len() {
                 for (index, var) in self.vars.iter().enumerate() {
                     if used[index] {
                         continue;
                     }
-                    out += &format!(", {var}: &[i64;16]");
+                    out += &format!(", {var}: &[i64;{chunks_config}]");
                 }
             }
         }

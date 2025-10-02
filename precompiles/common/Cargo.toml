@@ -8,6 +8,7 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-zisk-core = { path = "../../core" }
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
 
 fields = { workspace = true }

@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  coordinator:
+    build:
+      context: ..
+      dockerfile: distributed/Dockerfile
+      args:
+        GPU: false
+    ports:
+      - "50051:50051"
+    volumes:
+      - ./logs:/var/log/distributed
+      # Uncomment to override config
+      # - ./crates/coordinator/config:/app/config/coordinator
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+    command: [ "zisk-coordinator", "--config", "/app/config/coordinator/prod.toml" ]
+
+  worker:
+    build:
+      context: ..
+      dockerfile: distributed/Dockerfile
+      args:
+        GPU: false # Set to true if GPU support is needed
+    volumes:
+      - ./logs:/var/log/distributed
+      # Uncomment to override config
+      # - ./crates/worker/config:/app/config/worker
+      # Mount proving key and ELF directories if needed
+      # - ${ZISK_CACHE_FOLDER}:/app/.zisk/cache:ro
+      # - ${PROVING_KEY_PATH}:/app/proving-keys:ro
+      # - ${ELF_INPUTS_PATH}:/app/elf-inputs:ro
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+    command: [ "zisk-worker", "--config", "/app/config/worker/prod.toml" ]
+    depends_on:
+      - coordinator
+    healthcheck:
+      test: [ "CMD", "pgrep", "-f", "zisk-worker" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  default:
+    name: zisk-distributed
+
+volumes:
+  logs:
+    driver: local

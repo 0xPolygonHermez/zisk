@@ -1,6 +1,7 @@
 #include "immutable_mem_planner.hpp"
 
-ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size):rows_by_segment(rows) {
+ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size):
+    rows_by_segment(rows) {
     #ifndef MEM_CHECK_POINT_MAP
     hash_table = new MemSegmentHashTable(MAX_CHUNKS);   // 2^18 * 2^18 = 2^36   // 2^14 * 2^18 = 2^32
     #endif
@@ -24,6 +25,7 @@ ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint
         msg << "MemPlanner::constructor: from_addr " << std::hex << from_addr << " not aligned to page " << std::dec << from_page;
         throw std::runtime_error(msg.str());
     }
+    initial_last_addr = MemCounter::page_to_addr(from_page);
     #ifndef MEM_CHECK_POINT_MAP
     chunk_table = (uint32_t *)malloc(MAX_CHUNKS * sizeof(uint32_t));
     memset(chunk_table, 0, MAX_CHUNKS * sizeof(uint32_t));
@@ -43,12 +45,11 @@ ImmutableMemPlanner::~ImmutableMemPlanner() {
     free(chunk_table);
     #endif
 }
-
 void ImmutableMemPlanner::execute(const std::vector<MemCounter *> &workers) {
     uint32_t addr = 0;
     uint32_t offset;
     uint32_t last_offset;
-    last_addr = MemCounter::page_to_addr(from_page);
+    last_addr = initial_last_addr;
     for (uint32_t page = from_page; page < to_page; ++page) {
         get_offset_limits(workers, page, offset, last_offset);
         // printf("##### page:%d offsets:0x%08X-0x%08X\n", page, offset, last_offset);
@@ -61,7 +62,7 @@ void ImmutableMemPlanner::execute(const std::vector<MemCounter *> &workers) {
                 uint32_t cpos = workers[i]->get_initial_pos(pos);
                 while (cpos != 0) {
                     uint32_t chunk_id = workers[i]->get_pos_value(cpos);
-                    uint32_t count = workers[i]->get_pos_value(cpos+1);
+                    uint32_t count = workers[i]->get_pos_count(cpos+1);
                     add_to_current_segment(chunk_id, addr, count);
                     if (cpos == pos) break;
                     cpos = workers[i]->get_next_pos(cpos+1);

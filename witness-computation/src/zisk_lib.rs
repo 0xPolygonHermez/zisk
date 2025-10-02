@@ -4,35 +4,40 @@
 //! This module leverages `WitnessLibrary` to orchestrate the setup of state machines,
 //! program conversion, and execution pipelines to generate required witnesses.
 
-use crate::StaticSMBundle;
-use executor::{/*DynSMBundle,*/ ZiskExecutor};
+use executor::{StateMachines, StaticSMBundle, ZiskExecutor};
 use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
+use proofman::register_std;
+use std::{any::Any, path::PathBuf, sync::Arc};
+use witness::{WitnessLibrary, WitnessManager};
+use zisk_core::{Riscv2zisk, CHUNK_SIZE};
+use zisk_pil::{
+    ARITH_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS,
+    BINARY_EXTENSION_AIR_IDS, INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
+    MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS,
+    ROM_DATA_AIR_IDS, SHA_256_F_AIR_IDS, ZISK_AIRGROUP_ID,
+};
+
 use precomp_arith_eq::ArithEqManager;
+use precomp_arith_eq_384::ArithEq384Manager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
-use proofman::register_std;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
-use std::{any::Any, path::PathBuf, sync::Arc};
-use witness::{WitnessLibrary, WitnessManager};
-use zisk_core::Riscv2zisk;
-
-const DEFAULT_CHUNK_SIZE_BITS: u64 = 18;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
-    sha256f_script_path: PathBuf,
-    executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
+    executor: Option<Arc<ZiskExecutor<F>>>,
     chunk_size: u64,
     world_rank: i32,
     local_rank: i32,
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
+    shared_tables: bool,
 }
 
 #[no_mangle]
@@ -42,27 +47,27 @@ fn init_library(
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
-    sha256f_script_path: PathBuf,
-    chunk_size_bits: Option<u64>,
     world_rank: Option<i32>,
     local_rank: Option<i32>,
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
+    shared_tables: bool,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, world_rank);
-    let chunk_size = 1 << chunk_size_bits.unwrap_or(DEFAULT_CHUNK_SIZE_BITS);
+
+    let chunk_size = CHUNK_SIZE;
 
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,
         asm_rom_path,
-        sha256f_script_path,
         executor: None,
         chunk_size,
         world_rank: world_rank.unwrap_or(0),
         local_rank: local_rank.unwrap_or(0),
         base_port,
         unlock_mapped_memory,
+        shared_tables,
     });
 
     Ok(result)
@@ -82,7 +87,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
     ///
     /// # Panics
     /// Panics if the `Riscv2zisk` conversion fails or if required paths cannot be resolved.
-    fn register_witness(&mut self, wcm: Arc<WitnessManager<F>>) {
+    fn register_witness(&mut self, wcm: &WitnessManager<F>) {
         // Step 1: Create an instance of the RISCV -> ZisK program converter
         let rv2zk = Riscv2zisk::new(self.elf_path.display().to_string());
 
@@ -91,43 +96,67 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let zisk_rom = Arc::new(zisk_rom);
 
         // Step 3: Initialize the secondary state machines
-        let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
-        register_std(&wcm, &std);
+        let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), self.shared_tables);
+        register_std(wcm, &std);
 
-        let rom_sm = RomSM::new(zisk_rom.clone(), None /*self.asm_rom_path.clone()*/);
+        let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
         let binary_sm = BinarySM::new(std.clone());
-        let arith_sm = ArithSM::new();
+        let arith_sm = ArithSM::new(std.clone());
         let mem_sm = Mem::new(std.clone());
-
         // Step 4: Initialize the precompiles state machines
-        let keccakf_sm = KeccakfManager::new(wcm.get_sctx());
-        let sha256f_sm = Sha256fManager::new(wcm.get_sctx(), self.sha256f_script_path.clone());
+        let keccakf_sm = KeccakfManager::new(wcm.get_sctx(), std.clone());
+        let sha256f_sm = Sha256fManager::new(std.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
+        let arith_eq_384_sm = ArithEq384Manager::new(std.clone());
 
-        // let sm_bundle = DynSMBundle::new(vec![
-        //     mem_sm.clone(),
-        //     rom_sm.clone(),
-        //     binary_sm.clone(),
-        //     arith_sm.clone(),
-        //     keccakf_sm.clone(),
-        //     sha256f_sm.clone(),
-        //     arith_eq_sm.clone(),
-        // ]);
+        let mem_instances = vec![
+            (ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, MEM_ALIGN_BYTE_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, MEM_ALIGN_WRITE_BYTE_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, MEM_ALIGN_READ_BYTE_AIR_IDS[0]),
+        ];
+
+        let binary_instances = vec![
+            (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, BINARY_ADD_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]),
+        ];
 
         let sm_bundle = StaticSMBundle::new(
             self.asm_path.is_some(),
-            mem_sm.clone(),
-            rom_sm.clone(),
-            binary_sm.clone(),
-            arith_sm.clone(),
-            // The precompiles state machines
-            keccakf_sm.clone(),
-            sha256f_sm.clone(),
-            arith_eq_sm.clone(),
+            vec![
+                (vec![(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])], StateMachines::RomSM(rom_sm.clone())),
+                (mem_instances, StateMachines::MemSM(mem_sm.clone())),
+                (binary_instances, StateMachines::BinarySM(binary_sm.clone())),
+                (
+                    vec![(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0])],
+                    StateMachines::ArithSM(arith_sm.clone()),
+                ),
+                // The precompiles state machines
+                (
+                    vec![(ZISK_AIRGROUP_ID, KECCAKF_AIR_IDS[0])],
+                    StateMachines::KeccakfManager(keccakf_sm.clone()),
+                ),
+                (
+                    vec![(ZISK_AIRGROUP_ID, SHA_256_F_AIR_IDS[0])],
+                    StateMachines::Sha256fManager(sha256f_sm.clone()),
+                ),
+                (
+                    vec![(ZISK_AIRGROUP_ID, ARITH_EQ_AIR_IDS[0])],
+                    StateMachines::ArithEqManager(arith_eq_sm.clone()),
+                ),
+                (
+                    vec![(ZISK_AIRGROUP_ID, ARITH_EQ_384_AIR_IDS[0])],
+                    StateMachines::ArithEq384Manager(arith_eq_384_sm.clone()),
+                ),
+            ],
         );
 
         // Step 5: Create the executor and register the secondary state machines
-        let executor: ZiskExecutor<F, StaticSMBundle<F>> = ZiskExecutor::new(
+        let executor: ZiskExecutor<F> = ZiskExecutor::new(
             self.elf_path.clone(),
             self.asm_path.clone(),
             self.asm_rom_path.clone(),

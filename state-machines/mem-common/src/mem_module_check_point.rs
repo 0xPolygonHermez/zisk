@@ -23,8 +23,7 @@ impl MemModuleCheckPoint {
     }
     pub fn add_rows(&mut self, addr: u32, count: u32) {
         // data is processed by order address, an only one address by chunk/step
-        // TODO: assert -> debug_assert
-        assert!(addr >= self.to_addr);
+        debug_assert!(addr >= self.to_addr);
 
         self.count += count;
 
