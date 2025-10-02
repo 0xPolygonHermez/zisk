@@ -12,7 +12,6 @@ main() {
 
     step "Loading environment variables..."
     load_env || return 1
-    confirm_continue || return 0
 
     cd "${WORKSPACE_DIR}"
 
@@ -24,43 +23,47 @@ main() {
     rm -rf pil2-proofman-js
 
     # Clone pil2-compiler
-    ensure git clone https://github.com/0xPolygonHermez/pil2-compiler.git || return 1
-    cd pil2-compiler
-    # If PIL2_COMPILER_BRANCH is defined, check out the specified branch
-    if [[ -n "$PIL2_COMPILER_BRANCH" ]]; then
-        echo "Checking out branch '$PIL2_COMPILER_BRANCH' for pil2-compiler..."
-        ensure git checkout "$PIL2_COMPILER_BRANCH" || return 1
-    fi
-    rm -rf package-lock.json
-    rm -rf node_modules
-    cd ..
+    if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
+        warn "Skipping cloning pil2-compiler repository as DISABLE_CLONE_REPO is set to 1"
+    else
+        ensure git clone https://github.com/0xPolygonHermez/pil2-compiler.git || return 1
+        cd pil2-compiler
+        # If PIL2_COMPILER_BRANCH is defined, check out the specified branch
+        if [[ -n "$PIL2_COMPILER_BRANCH" ]]; then
+            echo "Checking out branch '$PIL2_COMPILER_BRANCH' for pil2-compiler..."
+            ensure git checkout "$PIL2_COMPILER_BRANCH" || return 1
+        fi
+        rm -rf package-lock.json
+        rm -rf node_modules
+        cd ..
 
-    ensure git clone https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
-    cd pil2-proofman
-    # If PIL2_PROOFMAN_BRANCH is defined, check out the specified branch
-    if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
-        echo "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
-        ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
-    fi
-    cd ..
+        ensure git clone https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
+        cd pil2-proofman
+        # If PIL2_PROOFMAN_BRANCH is defined, check out the specified branch
+        if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
+            echo "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
+            ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
+        fi
+        cd ..
 
-    ensure git clone https://github.com/0xPolygonHermez/pil2-proofman-js.git || return 1
-    cd pil2-proofman-js
-    # If PIL2_PROOFMAN_JS_BRANCH is defined, check out the specified branch
-    if [[ -n "$PIL2_PROOFMAN_JS_BRANCH" ]]; then
-        echo "Checking out branch '$PIL2_PROOFMAN_JS_BRANCH' for pil2-proofman-js..."
-        ensure git checkout "$PIL2_PROOFMAN_JS_BRANCH" || return 1
+        ensure git clone https://github.com/0xPolygonHermez/pil2-proofman-js.git || return 1
+        cd pil2-proofman-js
+        # If PIL2_PROOFMAN_JS_BRANCH is defined, check out the specified branch
+        if [[ -n "$PIL2_PROOFMAN_JS_BRANCH" ]]; then
+            echo "Checking out branch '$PIL2_PROOFMAN_JS_BRANCH' for pil2-proofman-js..."
+            ensure git checkout "$PIL2_PROOFMAN_JS_BRANCH" || return 1
+        fi
+        rm -rf package-lock.json
+        rm -rf node_modules
+        cd ..
     fi
-    rm -rf package-lock.json
-    rm -rf node_modules
-    cd ..
 
     step "Installing npm packages..."
     cd pil2-compiler
     ensure npm i || return 1
     cd ..
 
-    cd pil2-proofman-js 
+    cd pil2-proofman-js
     ensure npm i || return 1
     cd ..
 
@@ -108,9 +111,9 @@ main() {
             # Add flags for recursive setup command
             setup_flags="-t ${WORKSPACE_DIR}/pil2-proofman/pil2-components/lib/std/pil -r"
             # Add -a flag  (aggregation) for check-setup command
-            check_setup_flags=-a
         fi
 
+        rm -rf build/provingKey
         ensure node "${WORKSPACE_DIR}/pil2-proofman-js/src/main_setup.js" \
             -a ./pil/zisk.pilout -b build \
             -u tmp/fixed ${setup_flags}
@@ -130,6 +133,9 @@ main() {
     fi
 
     step "Generate constant tree files..."
+    if [[ ${DISABLE_RECURSIVE_SETUP} != "1" ]];  then
+            check_setup_flags=-a
+    fi
     ensure cargo-zisk check-setup $check_setup_flags || return 1
 
     success "ZisK setup completed successfully!"

@@ -5,9 +5,9 @@ source ./utils.sh
 # ensure_sudo: Ensure the command is run with sudo if necessary
 ensure_sudo() {
     if [[ "$(id -u)" -ne 0 ]]; then
-        sudo $1 || return 1
+        sudo -- "$@" || return 1
     else
-        $1 || return 1
+        "$@" || return 1
     fi
 }
 
@@ -23,8 +23,8 @@ install_cuda() {
 
     echo "🔧 Installing NVIDIA CUDA toolkit ${CUDA_VER} for ${distro}..."
 
-    apt-get update
-    ensure_sudo "apt-get install -y --no-install-recommends gnupg2 curl ca-certificates software-properties-common" || return 1
+    ensure_sudo apt-get update
+    ensure_sudo apt-get install -y --no-install-recommends gnupg2 curl ca-certificates software-properties-common || return 1
 
     # Import NVIDIA GPG key into a keyring
     curl -fsSL \
@@ -37,8 +37,8 @@ install_cuda() {
       "deb [signed-by=${keyring}] https://developer.download.nvidia.com/compute/cuda/repos/${distro}/x86_64/ /" \
       | ( [[ "$(id -u)" -ne 0 ]] && sudo tee /etc/apt/sources.list.d/cuda.list || tee /etc/apt/sources.list.d/cuda.list )
 
-    apt-get update
-    ensure_sudo "apt-get install -y --no-install-recommends cuda-toolkit-${CUDA_VER} libcudnn8-dev" || return 1
+    ensure_sudo apt-get update
+    ensure_sudo apt-get install -y --no-install-recommends cuda-toolkit-${CUDA_VER} libcudnn8-dev || return 1
 
     # Clean up
     ensure_sudo apt-get clean
@@ -66,17 +66,17 @@ install_dependencies_linux() {
 
     step "Installing package dependencies for linux x86_64..."
 
-    apt-get update
-    ensure_sudo "apt-get install -y apt-utils dialog libterm-readline-perl-perl" || return 1
+    ensure_sudo apt-get update
+    ensure_sudo apt-get install -y apt-utils dialog libterm-readline-perl-perl || return 1
 
-    ensure_sudo "apt-get install -y curl git xz-utils jq build-essential qemu-system libomp-dev libgmp-dev \
+    ensure_sudo apt-get install -y curl git xz-utils jq build-essential qemu-system libomp-dev libgmp-dev \
         nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev \
         libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common \
-        sudo ca-certificates gnupg lsb-release wget libclang-dev clang" || return 1
+        sudo ca-certificates gnupg lsb-release wget libclang-dev clang || return 1
 
     step "Installing Node.js 20.x..."
     curl -fsSL https://deb.nodesource.com/setup_20.x | ( [[ "$(id -u)" -ne 0 ]] && sudo -E bash || bash )
-    ensure_sudo "apt-get install -y nodejs" || return 1
+    ensure_sudo apt-get install -y nodejs || return 1
 
     step "Installing Rust..."
     # Create the profile file if it doesn't exist
@@ -93,7 +93,7 @@ install_dependencies_linux() {
     fi
 
     step "Installing nano editor..."
-    ensure_sudo "apt-get install -y nano" || return 1
+    ensure_sudo apt-get install -y nano || return 1
 }
 
 # install_dependencies_darwin: Install package dependencies for macOS

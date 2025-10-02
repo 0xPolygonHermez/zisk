@@ -10,6 +10,8 @@ use std::{
     io::{BufWriter, Write},
 };
 
+use sm_arith::ArithFrops;
+use sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
 use zisk_core::{zisk_ops::ZiskOp, ZiskInst, ZiskOperationType, M3, REGS_IN_MAIN_TOTAL_NUMBER};
 
 const AREA_PER_SEC: f64 = 1000000_f64;
@@ -41,6 +43,16 @@ pub struct MemoryOperations {
     mread_na2: u64,
     /// Counter of writes to non-aligned memory addresses (2)
     mwrite_na2: u64,
+    /// Counter of byte reads
+    mread_byte: u64,
+    /// Counter of byte writes where value was a byte (value & 0xFFFF_FFFF_FFFF_FF00 == 0)
+    mwrite_byte: u64,
+    /// Counter of byte writes where value was dirty (value & 0xFFFF_FFFF_FFFF_FF00 != 0)
+    mwrite_dirty_byte: u64,
+    /// Counter of byte writes where value was signextend (value & 0xFFFF_FFFF_FFFF_FF00 != 0xFFFF_FFFF_FFFF_FF00)
+    mwrite_dirty_s64_byte: u64,
+    mwrite_dirty_s32_byte: u64,
+    mwrite_dirty_s16_byte: u64,
 }
 
 /// Keeps statistics of the emulator operations
@@ -48,8 +60,8 @@ pub struct MemoryOperations {
 pub struct Stats {
     /// Counters of memory read/write operations, both aligned and non-aligned
     mops: MemoryOperations,
-    /// Counter of usual operations
-    usual: u64,
+    /// Counter of FROPS (FRequentOPs)
+    frops: u64,
     /// Counter of steps
     steps: u64,
     /// Counters of operations, one per possible u8 opcode (many remain unused)
@@ -67,7 +79,7 @@ impl Default for Stats {
     fn default() -> Self {
         Self {
             mops: MemoryOperations::default(),
-            usual: 0,
+            frops: 0,
             steps: 0,
             ops: [0; 256],
             regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
@@ -94,12 +106,15 @@ impl Stats {
             // Otherwise increase the non-aligned counter number 1
             else {
                 self.mops.mread_na1 += 1;
+                if width == 1 {
+                    self.mops.mread_byte += 1;
+                }
             }
         }
     }
 
     /// Called every time some data is writen to memory, if statistics are enabled
-    pub fn on_memory_write(&mut self, address: u64, width: u64) {
+    pub fn on_memory_write(&mut self, address: u64, width: u64, value: u64) {
         // If the memory is alligned to 8 bytes, i.e. last 3 bits are zero, then increase the
         // aligned memory read counter
         if ((address & M3) == 0) && (width == 8) {
@@ -114,6 +129,22 @@ impl Stats {
             // Otherwise increase the non-aligned counter number 1
             else {
                 self.mops.mwrite_na1 += 1;
+                if width == 1 {
+                    self.mops.mwrite_byte += 1;
+                    if (value & 0xFFFF_FFFF_FFFF_FF00) != 0 {
+                        self.mops.mwrite_dirty_byte += 1;
+                        if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFFFF_FFFF_FFFF_FF00 {
+                            self.mops.mwrite_dirty_s64_byte += 1;
+                        } else if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFFFF_FF00 {
+                            self.mops.mwrite_dirty_s32_byte += 1;
+                        } else if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFF00 {
+                            self.mops.mwrite_dirty_s16_byte += 1;
+                        }
+                    }
+                }
+            }
+            if ((address & M3) == 0) && (width == 8) {
+                self.mops.mwrite_a += 1;
             }
         }
     }
@@ -147,8 +178,8 @@ impl Stats {
             // store op, a and b values in file
             self.store_op_data(instruction.op, a, b);
         }
-        if self.is_usual(instruction, a, b) {
-            self.usual += 1;
+        if self.is_frops(instruction, a, b) {
+            self.frops += 1;
         }
         // Otherwise, increase the counter corresponding to this opcode
         else {
@@ -199,14 +230,15 @@ impl Stats {
     }
 
     /// Returns true if the provided operation is a usual operation
-    fn is_usual(&self, instruction: &ZiskInst, a: u64, b: u64) -> bool {
-        // ecall/system call functions are not candidates to be usual
-        (instruction.op != 0xF1) &&
-        // Internal functions are not candidates to be usual
-        instruction.is_external_op &&
-        // If both a and b parameters have low values (they fit into a byte) then the operation can
-        // be efficiently proven using lookup tables
-        (a < 256) && (b < 256)
+    fn is_frops(&self, instruction: &ZiskInst, a: u64, b: u64) -> bool {
+        match instruction.op_type {
+            ZiskOperationType::Arith => ArithFrops::is_frequent_op(instruction.op, a, b),
+            ZiskOperationType::Binary => BinaryBasicFrops::is_frequent_op(instruction.op, a, b),
+            ZiskOperationType::BinaryE => {
+                BinaryExtensionFrops::is_frequent_op(instruction.op, a, b)
+            }
+            _ => false,
+        }
     }
 
     /// Returns a string containing a human-readable text showing all caunters
@@ -276,9 +308,9 @@ impl Stats {
         }
 
         // Calculate some costs
-        let cost_usual = self.usual as f64 * COST_USUAL;
+        let cost_frops = self.frops as f64 * COST_USUAL;
         let cost_main = self.steps as f64 * COST_STEP;
-        let total_cost = cost_main + cost_mem + cost_mem_align + total_opcode_cost + cost_usual;
+        let total_cost = cost_main + cost_mem + cost_mem_align + total_opcode_cost + cost_frops;
 
         // Build the memory usage counters and cost values
         output += &format!("\nTotal Cost: {total_cost:.2} sec\n");
@@ -289,7 +321,7 @@ impl Stats {
         output += &format!(
             "    Opcodes: {total_opcode_cost:.2} sec {total_opcode_steps} steps ({total_opcodes} ops)\n"
         );
-        output += &format!("    Usual: {:.2} sec {} steps\n", cost_usual, self.usual);
+        output += &format!("    Frops: {:.2} sec {} steps\n", cost_frops, self.frops);
         let memory_reads = self.mops.mread_a + self.mops.mread_na1 + self.mops.mread_na2;
         let memory_writes = self.mops.mwrite_a + self.mops.mwrite_na1 + self.mops.mwrite_na2;
         let memory_total = memory_reads + memory_writes;
@@ -304,6 +336,29 @@ impl Stats {
             memory_reads,
             memory_writes,
             memory_total
+        );
+        let mwrite_dirty_sext_byte = self.mops.mwrite_dirty_s64_byte
+            + self.mops.mwrite_dirty_s32_byte
+            + self.mops.mwrite_dirty_s16_byte;
+        output += &format!(
+            "    MemoryAlignByte: {} reads + {} writes / {} dirt_nosext_writes ({:.2}%) / {} dirt_sext_writes ({:.2}%) (64:{}, 32:{}, 16:{})\n",
+            self.mops.mread_byte,
+            self.mops.mwrite_byte,
+            self.mops.mwrite_dirty_byte - mwrite_dirty_sext_byte,
+            if self.mops.mwrite_byte == 0 {
+                0.0
+            } else {
+                (self.mops.mwrite_dirty_byte - mwrite_dirty_sext_byte) as f64 * 100.0 / self.mops.mwrite_byte as f64
+            },
+            mwrite_dirty_sext_byte,
+            if mwrite_dirty_sext_byte == 0 {
+                0.0
+            } else {
+                mwrite_dirty_sext_byte as f64 * 100.0 / self.mops.mwrite_byte as f64
+            },
+            self.mops.mwrite_dirty_s64_byte,
+            self.mops.mwrite_dirty_s32_byte,
+            self.mops.mwrite_dirty_s16_byte
         );
 
         // Build the operations usage counters and cost values

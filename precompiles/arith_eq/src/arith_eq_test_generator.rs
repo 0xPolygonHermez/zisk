@@ -13,22 +13,83 @@ use arith_eq_constants::ARITH_EQ_ROWS_BY_OP;
 // cargo run --release --features="test_data" --bin arith_eq_test_generator
 
 fn main() {
-    let mut index = 0;
-
     let mut code = String::new();
     code += "#![no_main]\n";
+    code += "#![cfg(all(target_os = \"zkvm\", target_vendor = \"zisk\"))]\n";
     code += "ziskos::entrypoint!(main);\n\n";
     code += "use ziskos::{\n";
     code += "\tarith256::*, arith256_mod::*, bn254_complex_add::*, bn254_complex_mul::*, bn254_complex_sub::*,\n";
-    code +=
-        "\tbn254_curve_add::*, bn254_curve_dbl::*, complex256::*, point256::*, secp256k1_add::*,\n";
+    code += "\tbn254_curve_add::*, bn254_curve_dbl::*, complex::*, point::*, secp256k1_add::*,\n";
     code += "\tsecp256k1_dbl::*,\n";
     code += "};\n\n";
     code += "fn main() {\n";
+    code += "\tlet mut a: [u64;4] = [0,0,0,0];\n";
+    code += "\tlet mut b: [u64;4] = [0,0,0,0];\n";
+    code += "\tlet mut c: [u64;4] = [0,0,0,0];\n";
+    code += "\tlet mut dl: [u64;4] = [0,0,0,0];\n";
+    code += "\tlet mut dh: [u64;4] = [0,0,0,0];\n\n";
+    code += "\tlet mut params = SyscallArith256Params {\n";
+    code += "\t\ta: &mut a,\n";
+    code += "\t\tb: &mut b,\n";
+    code += "\t\tc: &mut c,\n";
+    code += "\t\tdh: &mut dh,\n";
+    code += "\t\tdl: &mut dl,\n";
+    code += "\t};\n\n";
+
+    let mut index = 0;
+    while let Some((a, b, c, dh, dl)) = get_arith256_test_data(index) {
+        code += &format!(
+            "\t// arith256 test rows: {}-{}\n\n",
+            index * ARITH_EQ_ROWS_BY_OP,
+            (index + 1) * ARITH_EQ_ROWS_BY_OP - 1
+        );
+        code += &format!("\tparams.a = &{a:?};\n");
+        code += &format!("\tparams.b = &{b:?};\n");
+        code += &format!("\tparams.c = &{c:?};\n");
+        code += "\tsyscall_arith256(&mut params);\n";
+        code += &format!("\tlet expected_dh: [u64; 4] = {dh:?};\n");
+        code += &format!("\tlet expected_dl: [u64; 4] = {dl:?};\n");
+        code += "\tassert_eq!(params.dh, &expected_dh);\n";
+        code += "\tassert_eq!(params.dl, &expected_dl);\n\n";
+        index += 1;
+    }
+
+    code += "\tlet mut a:[u64;4] = [0,0,0,0];\n";
+    code += "\tlet mut b:[u64;4] = [0,0,0,0];\n";
+    code += "\tlet mut c:[u64;4] = [0,0,0,0];\n";
+    code += "\tlet mut module:[u64;4] = [0,0,0,0];\n";
+    code += "\tlet mut d:[u64;4] = [0,0,0,0];\n\n";
+    code += "\tlet mut params = SyscallArith256ModParams {\n";
+    code += "\t\ta: &mut a,\n";
+    code += "\t\tb: &mut b,\n";
+    code += "\t\tc: &mut c,\n";
+    code += "\t\tmodule: &mut module,\n";
+    code += "\t\td: &mut d,\n";
+    code += "\t};\n\n";
+
+    let initial_index = index;
+    while let Some((a, b, c, module, d)) = get_arith256_mod_test_data(index - initial_index) {
+        code += &format!(
+            "\t// arith256_mod test rows: {}-{}\n\n",
+            index * ARITH_EQ_ROWS_BY_OP,
+            (index + 1) * ARITH_EQ_ROWS_BY_OP - 1
+        );
+        code += &format!("\tparams.a = &{a:?};\n");
+        code += &format!("\tparams.b = &{b:?};\n");
+        code += &format!("\tparams.c = &{c:?};\n");
+        code += &format!("\tparams.module = &{module:?};\n");
+        code += "\tsyscall_arith256_mod(&mut params);\n";
+        code += &format!("\tlet expected_d: [u64; 4] = {d:?};\n");
+        code += "\tassert_eq!(params.d, &expected_d);\n\n";
+        index += 1;
+    }
+
     code += "\tlet mut p1 = SyscallPoint256 { x: [0,0,0,0], y: [0,0,0,0] };\n";
     code += "\tlet p2 = SyscallPoint256 { x: [0,0,0,0], y: [0,0,0,0] };\n";
     code += "\tlet mut params = SyscallSecp256k1AddParams { p1: &mut p1, p2: &p2 };\n";
-    while let Some((p1, p2, p3)) = get_secp256k1_add_test_data(index) {
+
+    let initial_index = index;
+    while let Some((p1, p2, p3)) = get_secp256k1_add_test_data(index - initial_index) {
         code += &format!(
             "\t// secp256k1_add test rows: {}-{}\n\n",
             index * ARITH_EQ_ROWS_BY_OP,
@@ -75,67 +136,6 @@ fn main() {
             &format!("\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n");
         code += "\tassert_eq!(&p1.x, &p3.x);\n";
         code += "\tassert_eq!(&p1.y, &p3.y);\n\n";
-        index += 1;
-    }
-
-    code += "\tlet mut a: [u64;4] = [0,0,0,0];\n";
-    code += "\tlet mut b: [u64;4] = [0,0,0,0];\n";
-    code += "\tlet mut c: [u64;4] = [0,0,0,0];\n";
-    code += "\tlet mut dl: [u64;4] = [0,0,0,0];\n";
-    code += "\tlet mut dh: [u64;4] = [0,0,0,0];\n\n";
-    code += "\tlet mut params = SyscallArith256Params {\n";
-    code += "\t\ta: &mut a,\n";
-    code += "\t\tb: &mut b,\n";
-    code += "\t\tc: &mut c,\n";
-    code += "\t\tdh: &mut dh,\n";
-    code += "\t\tdl: &mut dl,\n";
-    code += "\t};\n\n";
-
-    let initial_index = index;
-    while let Some((a, b, c, dh, dl)) = get_arith256_test_data(index - initial_index) {
-        code += &format!(
-            "\t// arith256 test rows: {}-{}\n\n",
-            index * ARITH_EQ_ROWS_BY_OP,
-            (index + 1) * ARITH_EQ_ROWS_BY_OP - 1
-        );
-        code += &format!("\tparams.a = &{a:?};\n");
-        code += &format!("\tparams.b = &{b:?};\n");
-        code += &format!("\tparams.c = &{c:?};\n");
-        code += "\tsyscall_arith256(&mut params);\n";
-        code += &format!("\tlet expected_dh: [u64; 4] = {dh:?};\n");
-        code += &format!("\tlet expected_dl: [u64; 4] = {dl:?};\n");
-        code += "\tassert_eq!(params.dh, &expected_dh);\n";
-        code += "\tassert_eq!(params.dl, &expected_dl);\n\n";
-        index += 1;
-    }
-
-    code += "\tlet mut a:[u64;4] = [0,0,0,0];\n";
-    code += "\tlet mut b:[u64;4] = [0,0,0,0];\n";
-    code += "\tlet mut c:[u64;4] = [0,0,0,0];\n";
-    code += "\tlet mut module:[u64;4] = [0,0,0,0];\n";
-    code += "\tlet mut d:[u64;4] = [0,0,0,0];\n\n";
-    code += "\tlet mut params = SyscallArith256ModParams {\n";
-    code += "\t\ta: &mut a,\n";
-    code += "\t\tb: &mut b,\n";
-    code += "\t\tc: &mut c,\n";
-    code += "\t\tmodule: &mut module,\n";
-    code += "\t\td: &mut d,\n";
-    code += "\t};\n\n";
-
-    let initial_index = index;
-    while let Some((a, b, c, module, d)) = get_arith256_mod_test_data(index - initial_index) {
-        code += &format!(
-            "\t// arith256_mod test rows: {}-{}\n\n",
-            index * ARITH_EQ_ROWS_BY_OP,
-            (index + 1) * ARITH_EQ_ROWS_BY_OP - 1
-        );
-        code += &format!("\tparams.a = &{a:?};\n");
-        code += &format!("\tparams.b = &{b:?};\n");
-        code += &format!("\tparams.c = &{c:?};\n");
-        code += &format!("\tparams.module = &{module:?};\n");
-        code += "\tsyscall_arith256_mod(&mut params);\n";
-        code += &format!("\tlet expected_d: [u64; 4] = {d:?};\n");
-        code += "\tassert_eq!(params.d, &expected_d);\n\n";
         index += 1;
     }
 

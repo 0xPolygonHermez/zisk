@@ -1,6 +1,7 @@
 use std::{any::Any, collections::VecDeque};
 
 use super::BusId;
+use crate::MemCollectorInfo;
 
 /// Represents a subscriber in the `DataBus` system.
 ///
@@ -25,6 +26,7 @@ pub trait BusDevice<D>: Any + Send + Sync {
         bus_id: &BusId,
         data: &[D],
         pending: &mut VecDeque<(BusId, Vec<D>)>,
+        mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool;
 
     /// Returns the bus IDs associated with this instance.
@@ -46,8 +48,9 @@ impl BusDevice<u64> for Box<dyn BusDevice<u64>> {
         bus_id: &BusId,
         data: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
-        (**self).process_data(bus_id, data, pending)
+        (**self).process_data(bus_id, data, pending, mem_collector_info)
     }
 
     fn bus_id(&self) -> Vec<BusId> {

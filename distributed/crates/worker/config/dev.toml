@@ -1,0 +1,8 @@
+[worker]
+# worker_id = "my-worker-001"
+compute_capacity.compute_units = 10
+environment = "development"
+
+[logging]
+level = "debug"
+format = "pretty"

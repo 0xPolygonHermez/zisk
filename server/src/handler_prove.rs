@@ -3,6 +3,7 @@ use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use proofman::ProofMan;
+use proofman::{ProofInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -61,9 +62,11 @@ impl ZiskServiceProveHandler {
             move || {
                 let start = std::time::Instant::now();
 
-                let (proof_id, vadcop_final_proof) = proofman
+                let mpi_ctx = proofman.get_mpi_ctx();
+
+                let result = proofman
                     .generate_proof_from_lib(
-                        Some(request_input),
+                        ProvePhaseInputs::Full(ProofInfo::new(Some(request_input), 1, vec![0], 0)),
                         ProofOptions::new(
                             false,
                             request.aggregation,
@@ -73,13 +76,21 @@ impl ZiskServiceProveHandler {
                             false,
                             request.folder.clone(),
                         ),
+                        ProvePhase::Full,
                     )
                     .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))
                     .expect("Failed to generate proof");
 
+                let (proof_id, vadcop_final_proof) =
+                    if let ProvePhaseResult::Full(proof_id, vadcop_final_proof) = result {
+                        (proof_id, vadcop_final_proof)
+                    } else {
+                        (None, None)
+                    };
+
                 let elapsed = start.elapsed();
 
-                if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
+                if mpi_ctx.rank == 0 {
                     #[allow(clippy::type_complexity)]
                     let (result, _stats, _witness_stats): (
                         ZiskExecutionResult,
@@ -96,7 +107,7 @@ impl ZiskServiceProveHandler {
                         )>()
                         .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
                         .expect("Failed to downcast execution result");
-
+                    proofman.set_barrier();
                     let elapsed = elapsed.as_secs_f64();
                     tracing::info!("");
                     tracing::info!(
@@ -116,7 +127,14 @@ impl ZiskServiceProveHandler {
                     // Store the stats in stats.json
                     #[cfg(feature = "stats")]
                     {
-                        _stats.lock().unwrap().add_stat(0, 0, "END", 0, ExecutorStatsEvent::Mark);
+                        let stats_id = _stats.lock().unwrap().get_id();
+                        _stats.lock().unwrap().add_stat(
+                            0,
+                            stats_id,
+                            "END",
+                            0,
+                            ExecutorStatsEvent::Mark,
+                        );
                         _stats.lock().unwrap().store_stats();
                     }
 
@@ -181,5 +199,24 @@ impl ZiskServiceProveHandler {
             }),
             Some(handle),
         )
+    }
+    pub fn process_handle(request: ZiskProveRequest, proofman: Arc<ProofMan<Goldilocks>>) {
+        proofman
+            .generate_proof_from_lib(
+                ProvePhaseInputs::Full(ProofInfo::new(Some(request.input), 1, vec![0], 0)),
+                ProofOptions::new(
+                    false,
+                    request.aggregation,
+                    request.final_snark,
+                    request.verify_proofs,
+                    request.minimal_memory,
+                    false,
+                    request.folder.clone(),
+                ),
+                ProvePhase::Full,
+            )
+            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))
+            .expect("Failed to generate proof");
+        proofman.set_barrier();
     }
 }

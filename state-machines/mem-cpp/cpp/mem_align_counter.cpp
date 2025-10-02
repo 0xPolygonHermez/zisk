@@ -7,23 +7,37 @@
 #include <assert.h>
 
 
-MemAlignCounter::MemAlignCounter(uint32_t rows, std::shared_ptr<MemContext> context) :context(context), rows(rows) {
-    count = 0;
-    available_rows = 0;
-    segment_id = -1;
-    skip = 0;
+#define FLAGS_1_BYTE_READ 1
+#define FLAGS_2_BYTES_READ 2
+#define FLAGS_4_BYTES_READ 4
+#define FLAGS_8_BYTES_READ 8
+#define FLAGS_1_BYTE_CLEAR_WRITE (MEM_WRITE_FLAG + MEM_WRITE_BYTE_CLEAR_FLAG + 1)
+#define FLAGS_1_BYTE_WRITE (MEM_WRITE_FLAG + 1)
+#define FLAGS_2_BYTES_WRITE (MEM_WRITE_FLAG + 2)
+#define FLAGS_4_BYTES_WRITE (MEM_WRITE_FLAG + 4)
+#define FLAGS_8_BYTES_WRITE (MEM_WRITE_FLAG + 8)
+
+MemAlignCounter::MemAlignCounter(std::shared_ptr<MemContext> context) :context(context) {
+    total_counters.chunk_id = 0xFFFFFFFF;
+    total_counters.full_5 = 0;
+    total_counters.full_3 = 0;
+    total_counters.full_2 = 0;
+    total_counters.read_byte = 0;
+    total_counters.write_byte = 0;
 }
 
-void MemAlignCounter::execute() {
+void MemAlignCounter::execute()
+{
     uint64_t init = get_usec();
     const MemChunk *chunk;
     uint32_t chunk_id = 0;
     int64_t elapsed_us = 0;
-#ifdef MEM_CONTEXT_SEM
-    while ((chunk = context->get_chunk(MAX_THREADS, chunk_id, elapsed_us)) != nullptr) {
-#else
-    while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr) {
-#endif
+    #ifdef MEM_CONTEXT_SEM
+    while ((chunk = context->get_chunk(MAX_THREADS, chunk_id, elapsed_us)) != nullptr)
+    #else
+    while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr) 
+    #endif
+    {
         execute_chunk(chunk_id, chunk->data, chunk->count);
         #ifdef COUNT_CHUNK_STATS
         #ifdef CHUNK_STATS
@@ -38,57 +52,93 @@ void MemAlignCounter::execute() {
 }
 
 void MemAlignCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chunk_data, uint32_t chunk_size) {
-    skip = 0;
+    uint32_t full_5 = 0;
+    uint32_t full_3 = 0;
+    uint32_t full_2 = 0;
+    uint32_t read_byte = 0;
+    uint32_t write_byte = 0;
+    
     for (uint32_t i = 0; i < chunk_size; i++) {
-        const uint8_t bytes = chunk_data[i].flags & 0xFF;
-        const uint32_t addr = chunk_data[i].addr;
-        assert(bytes == 1 || bytes == 2 || bytes == 4 || bytes == 8);
-        if (bytes != 8 || (addr & 0x07) != 0) {
-            uint32_t addr_count = (bytes + (addr & 0x07)) > 8 ? 2:1;
-            uint32_t ops_by_addr = (chunk_data[i].flags & 0x10000) ? 2:1;
-            uint32_t ops = addr_count * ops_by_addr + 1;
-            add_mem_align_op(chunk_id, ops);
-            skip = skip + 1;
+        switch (chunk_data[i].flags & 0xFF) {
+            // 1 byte read
+            case FLAGS_1_BYTE_READ:
+                read_byte += 1;
+                break;        
+            // 2 bytes read
+            case FLAGS_2_BYTES_READ:
+                if ((chunk_data[i].addr & 0x07) > 6) {
+                    full_3 += 1;
+                } else {
+                    full_2 += 1;
+                }
+                break;
+            // 4 bytes read
+            case FLAGS_4_BYTES_READ: 
+                if ((chunk_data[i].addr & 0x07) > 4) {
+                    full_3 += 1;
+                } else {
+                    full_2 += 1;
+                }
+                break;
+            // 8 bytes read
+            case FLAGS_8_BYTES_READ: 
+                if ((chunk_data[i].addr & 0x07) > 0) {
+                    full_3 += 1;
+                }
+                // if chunk_data[i].addr & 0x07 == 0 ==> aligned read 
+                break;
+            // 1 byte write (clear)
+            case FLAGS_1_BYTE_CLEAR_WRITE:
+                write_byte += 1;
+                break;        
+
+            // 1 byte write
+            case FLAGS_1_BYTE_WRITE:
+                full_3 += 1;
+                break;
+            // 2 bytes write
+            case FLAGS_2_BYTES_WRITE:
+                if ((chunk_data[i].addr & 0x07) > 6) {
+                    full_5 += 1;
+                } else {
+                    full_3 += 1;
+                }
+                break;
+            // 4 bytes write
+            case FLAGS_4_BYTES_WRITE:
+                if ((chunk_data[i].addr & 0x07) > 4) {
+                    full_5 += 1;
+                } else { 
+                    full_3 += 1;
+                }
+                break;
+            // 8 bytes write
+            case FLAGS_8_BYTES_WRITE:
+                if ((chunk_data[i].addr & 0x07) > 0) {
+                    full_5 += 1;
+                }
+                // if chunk_data[i].addr & 0x07 == 0 ==> aligned write
+                break;       
+            default:
+                printf("MemAlignCounter: Unknown flags: 0x%X\n", chunk_data[i].flags);
+                assert(false && "Unknown flags in MemAlignCounter");
         }
     }
-}
-
-void MemAlignCounter::add_mem_align_op(uint32_t chunk_id, uint32_t ops) {
-    if (available_rows < ops) {
-        open_segment(chunk_id, ops);
-    } else {
-        MemAlignCheckPoint &lcp = checkpoints.back();
-        if (lcp.chunk_id != chunk_id) {
-            open_chunk(chunk_id, ops);
-        } else {
-            lcp.count += 1;
-            lcp.rows += ops;
-        }
-    }
-    available_rows -= ops;
-}
-
-void MemAlignCounter::open_chunk(uint32_t chunk_id, uint32_t ops) {
-    uint32_t count = ops ? 1 : 0;
-    checkpoints.emplace_back(MemAlignCheckPoint{(uint32_t)segment_id, chunk_id, 0, count, ops, rows - available_rows});
-}
-
-void MemAlignCounter::open_segment(uint32_t chunk_id, uint32_t ops) {
-    uint32_t count = ops ? 1 : 0;
-    ++segment_id;
-    checkpoints.emplace_back(MemAlignCheckPoint{(uint32_t)segment_id, chunk_id, skip, count, ops, 0});
-    available_rows = rows;
+    total_counters.full_5 += full_5;
+    total_counters.full_3 += full_3;
+    total_counters.full_2 += full_2;
+    total_counters.read_byte += read_byte;
+    total_counters.write_byte += write_byte;
+    uint32_t total_counters_processed = full_2 + full_3 + full_5 + read_byte + write_byte;
+    if (total_counters_processed > 0) {
+        counters.push_back({chunk_id, full_5, full_3, full_2, read_byte, write_byte});
+    };
 }
 
 void MemAlignCounter::debug (void) {
     uint32_t index = 0;
-    uint32_t last_segment_id = 0;
-    for (auto &cp: checkpoints) {
-        if (cp.segment_id != last_segment_id) {
-            index = 0;
-            last_segment_id = cp.segment_id;
-        }
-        printf("MEM_ALIGN %d:%d #%d S:%d C:%d R:%d O:%d\n", cp.segment_id, cp.chunk_id, index++, cp.skip, cp.count, cp.rows, cp.offset);
+    for (auto &count: counters) {
+        printf("MEM_ALIGN_COUNTER #%d F5:%d F3:%d F2:%d RB:%d WB:%d\n", index++, count.full_5, count.full_3, count.full_2, count.read_byte, count.write_byte);
     }
 }
 
