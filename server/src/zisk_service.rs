@@ -347,6 +347,7 @@ impl ZiskService {
             params.final_snark,
             params.gpu_params.clone(),
             params.verbose.into(),
+            None,
         )
         .expect("Failed to initialize proofman");
 

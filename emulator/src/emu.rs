@@ -17,6 +17,7 @@ use zisk_core::{
     SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
     STORE_REG,
 };
+use zisk_pil::MainPackedTraceRow;
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -2244,6 +2245,58 @@ impl<'a> Emu<'a> {
         full_trace_step
     }
 
+    /// Performs one single step of the emulation
+    #[inline(always)]
+    pub fn step_slice_full_trace_packed<F: PrimeField64>(
+        &mut self,
+        mem_reads: &[u64],
+        mem_reads_index: &mut usize,
+        reg_trace: &mut EmuRegTrace,
+        step_range_check: Option<&mut [u32]>,
+    ) -> MainPackedTraceRow<F> {
+        if self.ctx.inst_ctx.pc == 0 {
+            println!("PC=0 CRASH (step:{})", self.ctx.inst_ctx.step);
+        }
+        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+
+        reg_trace.clear_reg_step_ranges();
+
+        self.source_a_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
+        self.source_b_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
+        // If this is a precompiled, get the required input data from mem_reads
+        self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
+        if instruction.input_size > 0 {
+            self.ctx.inst_ctx.precompiled.input_data.clear();
+            self.ctx.inst_ctx.precompiled.output_data.clear();
+            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            for _ in 0..number_of_mem_reads {
+                let mem_read = mem_reads[*mem_reads_index];
+                *mem_reads_index += 1;
+                self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
+            }
+        }
+
+        (instruction.func)(&mut self.ctx.inst_ctx);
+        self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
+
+        if let Some(step_range_check) = step_range_check {
+            reg_trace.update_step_range_check(step_range_check);
+        }
+
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
+        self.set_pc(instruction);
+        self.ctx.inst_ctx.end = instruction.end;
+
+        // Build and store the full trace
+        let full_trace_step =
+            Self::build_full_trace_step_packed(instruction, &self.ctx.inst_ctx, reg_trace);
+
+        self.ctx.inst_ctx.step += 1;
+
+        full_trace_step
+    }
+
     pub fn intermediate_value<F: PrimeField64>(value: u64) -> [F; 2] {
         [F::from_u64(value & 0xFFFFFFFF), F::from_u64((value >> 32) & 0xFFFFFFFF)]
     }
@@ -2361,6 +2414,105 @@ impl<'a> Emu<'a> {
                 F::from_u64(store_prev_value[1]),
             ],
         }
+    }
+
+    #[inline(always)]
+    pub fn build_full_trace_step_packed<F: PrimeField64>(
+        inst: &ZiskInst,
+        inst_ctx: &InstContext,
+        reg_trace: &EmuRegTrace,
+    ) -> MainPackedTraceRow<F> {
+        // Calculate intermediate values
+        let a = [inst_ctx.a & 0xFFFFFFFF, (inst_ctx.a >> 32) & 0xFFFFFFFF];
+        let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
+        let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
+        let store_prev_value = [
+            reg_trace.store_reg_prev_value & 0xFFFFFFFF,
+            (reg_trace.store_reg_prev_value >> 32) & 0xFFFFFFFF,
+        ];
+
+        let addr1 = (inst.b_offset_imm0 as i64
+            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
+
+        let jmp_offset1 = if inst.jmp_offset1 >= 0 {
+            F::from_u64(inst.jmp_offset1 as u64)
+        } else {
+            F::neg(F::from_u64((-inst.jmp_offset1) as u64))
+        };
+
+        let jmp_offset2 = if inst.jmp_offset2 >= 0 {
+            F::from_u64(inst.jmp_offset2 as u64)
+        } else {
+            F::neg(F::from_u64((-inst.jmp_offset2) as u64))
+        };
+
+        let store_offset = if inst.store_offset >= 0 {
+            F::from_u64(inst.store_offset as u64)
+        } else {
+            F::neg(F::from_u64((-inst.store_offset) as u64))
+        };
+
+        let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
+            F::from_u64(inst.a_offset_imm0)
+        } else {
+            F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64))
+        };
+
+        let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
+            F::from_u64(inst.b_offset_imm0)
+        } else {
+            F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64))
+        };
+
+        let mut packed_trace = MainPackedTraceRow::default();
+        packed_trace.set_a(0, a[0] as u32);
+        packed_trace.set_a(1, a[1] as u32);
+        packed_trace.set_b(0, b[0] as u32);
+        packed_trace.set_b(1, b[1] as u32);
+        packed_trace.set_c(0, c[0] as u32);
+        packed_trace.set_c(1, c[1] as u32);
+        packed_trace.set_flag(inst_ctx.flag as u8);
+        packed_trace.set_pc(inst.paddr as u32);
+        packed_trace.set_a_src_imm((inst.a_src == SRC_IMM) as u8);
+        packed_trace.set_a_src_mem((inst.a_src == SRC_MEM) as u8);
+        packed_trace.set_a_src_reg((inst.a_src == SRC_REG) as u8);
+        packed_trace.set_a_offset_imm0(a_offset_imm0.as_canonical_u64() as u32);
+        packed_trace.set_a_imm1(inst.a_use_sp_imm1 as u32);
+        packed_trace.set_a_src_step((inst.a_src == SRC_STEP) as u8);
+        packed_trace.set_b_src_imm((inst.b_src == SRC_IMM) as u8);
+        packed_trace.set_b_src_mem((inst.b_src == SRC_MEM) as u8);
+        packed_trace.set_b_src_reg((inst.b_src == SRC_REG) as u8);
+        packed_trace.set_b_offset_imm0(b_offset_imm0.as_canonical_u64() as u32);
+        packed_trace.set_b_imm1(inst.b_use_sp_imm1 as u32);
+        packed_trace.set_b_src_ind((inst.b_src == SRC_IND) as u8);
+        packed_trace.set_ind_width(inst.ind_width as u8);
+        packed_trace.set_is_external_op(inst.is_external_op as u8);
+        // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
+        // of the copyb, use to get free-input information
+        packed_trace.set_op(if inst.op == ZiskOp::Fcall.code()
+            || inst.op == ZiskOp::FcallGet.code()
+            || inst.op == ZiskOp::FcallParam.code()
+        {
+            ZiskOp::CopyB.code() as u8
+        } else {
+            inst.op as u8
+        });
+        packed_trace.set_store_ra(inst.store_ra as u8);
+        packed_trace.set_store_mem((inst.store == STORE_MEM) as u8);
+        packed_trace.set_store_reg((inst.store == STORE_REG) as u8);
+        packed_trace.set_store_ind((inst.store == STORE_IND) as u8);
+        packed_trace.set_store_offset(store_offset.as_canonical_u64());
+        packed_trace.set_set_pc(inst.set_pc as u8);
+        packed_trace.set_jmp_offset1(jmp_offset1.as_canonical_u64());
+        packed_trace.set_jmp_offset2(jmp_offset2.as_canonical_u64());
+        packed_trace.set_m32(inst.m32 as u8);
+        packed_trace.set_addr1(addr1 as u32);
+        packed_trace.set_a_reg_prev_mem_step(reg_trace.reg_prev_steps[0]);
+        packed_trace.set_b_reg_prev_mem_step(reg_trace.reg_prev_steps[1]);
+        packed_trace.set_store_reg_prev_mem_step(reg_trace.reg_prev_steps[2]);
+        packed_trace.set_store_reg_prev_value(0, store_prev_value[0] as u32);
+        packed_trace.set_store_reg_prev_value(1, store_prev_value[1] as u32);
+        packed_trace
     }
 
     /// Returns if the emulation ended

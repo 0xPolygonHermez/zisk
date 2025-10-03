@@ -240,6 +240,7 @@ impl ZiskProve {
             self.final_snark,
             gpu_params,
             self.verbose.into(),
+            None,
         )
         .expect("Failed to initialize proofman");
         let mpi_ctx = proofman.get_mpi_ctx();
