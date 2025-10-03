@@ -172,6 +172,8 @@ main() {
         ensure cp -r ./emulator-asm/src "${ZISK_DIR}/zisk/emulator-asm" || return 1
         ensure cp ./emulator-asm/Makefile "${ZISK_DIR}/zisk/emulator-asm" || return 1
         ensure cp -r ./lib-c "${ZISK_DIR}/zisk" || return 1
+        mkdir -p "${ZISK_DIR}/zisk/lib-float/c/lib"
+        ensure cp ./lib-float/c/lib/ziskfloat.elf "${ZISK_DIR}/zisk/lib-float/c/lib/" || return 1
     fi
 
     step "Adding ${ZISK_BIN_DIR} to PATH..."
