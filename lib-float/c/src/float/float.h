@@ -17,16 +17,13 @@ const uint64_t FREG_FIRST = SYS_ADDR + FREG_OFFSET * 8;
 const uint64_t FREG_F0 = FREG_FIRST;
 const uint64_t FREG_INST = FREG_FIRST + 33 * 8; // Floating-point instruction register (finst)
 const uint64_t FREG_X0 = FREG_FIRST + 35 * 8; // Integer register backup for floating-point instructions (fX0)
-
 const uint64_t CSR_ADDR = SYS_ADDR + 0x8000;
 const uint64_t FREG_CSR = CSR_ADDR + 3 * 8;
 
-
+// Array-like access to floating-point registers and control/status register: fregs[3], etc
 #define fregs ((volatile uint64_t *)FREG_F0)
 #define fregs_x ((volatile uint64_t *)FREG_X0)
 #define fcsr (*(volatile uint32_t *)FREG_CSR)
-
-static uint64_t myvalue = 0x3ff3333333333333; // 1.7
 
 // Sign, exponent and mantissa masks for single and double precision floats
 const uint64_t F64_SIGN_BIT_MASK  = 0x8000000000000000;
@@ -38,72 +35,71 @@ const uint64_t F32_EXPONENT_MASK  =         0x7F800000;
 const uint64_t F32_MANTISSA_MASK  =         0x007FFFFF;
 const uint64_t F32_QUIET_NAN_MASK =         0x00400000;
 
+// Common float values in IEEE 754 format
+const uint64_t F64_PLUS_ZERO      = 0x0000000000000000;
+const uint64_t F64_MINUS_ZERO     = 0x8000000000000000;
+const uint64_t F64_PLUS_ONE       = 0x3FF0000000000000;
+const uint64_t F64_MINUS_ONE      = 0xBFF0000000000000;
+const uint64_t F64_PLUS_INFINITE  = 0x7FF0000000000000;
+const uint64_t F64_MINUS_INFINITE = 0xFFF0000000000000;
+const uint64_t F64_QUIET_NAN      = 0x7FF8000000000000;
+const uint64_t F64_SIGNALING_NAN  = 0x7FFC000000000000;
+const uint32_t F32_PLUS_ZERO      =         0x00000000;
+const uint32_t F32_MINUS_ZERO     =         0x80000000;
+const uint32_t F32_PLUS_ONE       =         0x3F800000;
+const uint32_t F32_MINUS_ONE      =         0xBF800000;
+const uint32_t F32_MINUS_INFINITE =         0xFF800000;
+const uint32_t F32_PLUS_INFINITE  =         0x7F800000;
+const uint32_t F32_QUIET_NAN      =         0x7FC00000;
+const uint32_t F32_SIGNALING_NAN  =         0x7FE00000;
+
 // Negate a float by flipping its sign bit(s)
-#define NEG64(x) ((x) ^ F64_SIGN_BIT_MASK)
-#define NEG32(x) ((x) ^ F32_SIGN_BIT_MASK)
+#define F64_NEGATE(x) ( (x) ^ F64_SIGN_BIT_MASK )
+#define F32_NEGATE(x) ( (x) ^ F32_SIGN_BIT_MASK )
 
 // Macro functions for extracting exponent, mantissa and checking for corner cases
-#define F32_EXPONENT(a) (((a) & F32_EXPONENT_MASK) >> 23)
-#define F32_MANTISSA(a) ((a) & F32_MANTISSA_MASK)
-#define F32_IS_PLUS_INFINITE(a) ( (((a) & F32_SIGN_BIT_MASK) == 0) && (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) == 0) )
-#define F32_IS_MINUS_INFINITE(a) ( (((a) & F32_SIGN_BIT_MASK) == F32_SIGN_BIT_MASK) && (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) == 0) )
-#define F32_IS_ANY_INFINITE(a) ( (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) == 0) )
+#define F32_EXPONENT(a) ( ((a) & F32_EXPONENT_MASK) >> 23 )
+#define F32_MANTISSA(a) ( (a) & F32_MANTISSA_MASK )
 
-#define F32_IS_NAN(a) ( (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) != 0) )
+#define F32_IS_POSITIVE(a) ( ((a) & F32_SIGN_BIT_MASK) == 0 )
+#define F32_IS_NEGATIVE(a) ( ((a) & F32_SIGN_BIT_MASK) != 0 )
+
+#define F32_IS_ANY_INFINITE(a) ( (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) == 0) )
+#define F32_IS_PLUS_INFINITE(a) ( F32_IS_ANY_INFINITE(a) && F32_IS_POSITIVE(a) )
+#define F32_IS_MINUS_INFINITE(a) ( F32_IS_ANY_INFINITE(a) && F32_IS_NEGATIVE(a) )
+
+#define F32_IS_ANY_NAN(a) ( (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) != 0) )
 #define F32_IS_QUIET_NAN(a) ( (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_QUIET_NAN_MASK) != 0) )
 #define F32_IS_SIGNALING_NAN(a) ( (((a) & F32_EXPONENT_MASK) == F32_EXPONENT_MASK) && (((a) & F32_MANTISSA_MASK) != 0) && (((a) & F32_QUIET_NAN_MASK) == 0) )
 
-#define F32_IS_POSITIVE(a) (((a) & F32_SIGN_BIT_MASK) == 0)
-#define F32_IS_NEGATIVE(a) (((a) & F32_SIGN_BIT_MASK) != 0)
-#define F32_IS_PLUS_ZERO(a) ( (((a) & F32_SIGN_BIT_MASK) == 0) && (((a) & F32_EXPONENT_MASK) == 0) && (((a) & F32_MANTISSA_MASK) == 0) )
-#define F32_IS_MINUS_ZERO(a) ( (((a) & F32_SIGN_BIT_MASK) != 0) && (((a) & F32_EXPONENT_MASK) == 0) && (((a) & F32_MANTISSA_MASK) == 0) )
 #define F32_IS_ANY_ZERO(a) ( (((a) & F32_EXPONENT_MASK) == 0) && (((a) & F32_MANTISSA_MASK) == 0) )
+#define F32_IS_PLUS_ZERO(a) ( F32_IS_ANY_ZERO(a) && F32_IS_POSITIVE(a) )
+#define F32_IS_MINUS_ZERO(a) ( F32_IS_ANY_ZERO(a) && F32_IS_NEGATIVE(a) )
 
 #define F32_IS_NORMAL(a) ( ((a) & F32_EXPONENT_MASK) != 0 && ((a) & F32_EXPONENT_MASK) != F32_EXPONENT_MASK )
 #define F32_IS_SUBNORMAL(a) ( ((a) & F32_EXPONENT_MASK) == 0 && ((a) & F32_MANTISSA_MASK) != 0 )
 
 // Macro functions for extracting exponent, mantissa and checking for corner cases
-#define F64_EXPONENT(a) (((a) & F64_EXPONENT_MASK) >> 52)
-#define F64_MANTISSA(a) ((a) & F64_MANTISSA_MASK)
-#define F64_IS_PLUS_INFINITE(a) ( (((a) & F64_SIGN_BIT_MASK) == 0) && (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_MANTISSA_MASK) == 0) )
-#define F64_IS_MINUS_INFINITE(a) ( (((a) & F64_SIGN_BIT_MASK) == F64_SIGN_BIT_MASK) && (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_MANTISSA_MASK) == 0) )
-#define F64_IS_ANY_INFINITE(a) ( (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_MANTISSA_MASK) == 0) )
+#define F64_EXPONENT(a) ( ((a) & F64_EXPONENT_MASK) >> 52 )
+#define F64_MANTISSA(a) ( (a) & F64_MANTISSA_MASK )
 
-#define F64_IS_NAN(a) ( (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_MANTISSA_MASK) != 0) )
+#define F64_IS_POSITIVE(a) ( ((a) & F64_SIGN_BIT_MASK) == 0 )
+#define F64_IS_NEGATIVE(a) ( ((a) & F64_SIGN_BIT_MASK) != 0 )
+
+#define F64_IS_ANY_INFINITE(a) ( (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_MANTISSA_MASK) == 0) )
+#define F64_IS_PLUS_INFINITE(a) ( F64_IS_ANY_INFINITE(a) && F64_IS_POSITIVE(a) )
+#define F64_IS_MINUS_INFINITE(a) ( F64_IS_ANY_INFINITE(a) && F64_IS_NEGATIVE(a) )
+
+#define F64_IS_ANY_NAN(a) ( (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_MANTISSA_MASK) != 0) )
 #define F64_IS_QUIET_NAN(a) ( (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_QUIET_NAN_MASK) != 0) )
 #define F64_IS_SIGNALING_NAN(a) ( (((a) & F64_EXPONENT_MASK) == F64_EXPONENT_MASK) && (((a) & F64_MANTISSA_MASK) != 0) && (((a) & F64_QUIET_NAN_MASK) == 0) )
 
-#define F64_IS_POSITIVE(a) (((a) & F64_SIGN_BIT_MASK) == 0)
-#define F64_IS_NEGATIVE(a) (((a) & F64_SIGN_BIT_MASK) != 0)
-#define F64_IS_PLUS_ZERO(a) ( (((a) & F64_SIGN_BIT_MASK) == 0) && (((a) & F64_EXPONENT_MASK) == 0) && (((a) & F64_MANTISSA_MASK) == 0) )
-#define F64_IS_MINUS_ZERO(a) ( (((a) & F64_SIGN_BIT_MASK) != 0) && (((a) & F64_EXPONENT_MASK) == 0) && (((a) & F64_MANTISSA_MASK) == 0) )
 #define F64_IS_ANY_ZERO(a) ( (((a) & F64_EXPONENT_MASK) == 0) && (((a) & F64_MANTISSA_MASK) == 0) )
+#define F64_IS_PLUS_ZERO(a) ( F64_IS_ANY_ZERO(a) && F64_IS_POSITIVE(a) )
+#define F64_IS_MINUS_ZERO(a) ( F64_IS_ANY_ZERO(a) && F64_IS_NEGATIVE(a) )
 
 #define F64_IS_NORMAL(a) ( ((a) & F64_EXPONENT_MASK) != 0 && ((a) & F64_EXPONENT_MASK) != F64_EXPONENT_MASK )
 #define F64_IS_SUBNORMAL(a) ( ((a) & F64_EXPONENT_MASK) == 0 && ((a) & F64_MANTISSA_MASK) != 0 )
-
-// Plus and minus infinity in IEEE 754 format
-const uint64_t F64_MINUS_INFINITE = 0xFFF0000000000000;
-const uint64_t F64_PLUS_INFINITE = 0x7FF0000000000000;
-const uint32_t F32_MINUS_INFINITE = 0xFF800000;
-const uint32_t F32_PLUS_INFINITE = 0x7F800000;
-
-// Plus and minus zero in IEEE 754 format
-const uint64_t F64_MINUS_ZERO = 0x8000000000000000;
-const uint64_t F64_PLUS_ZERO = 0x0000000000000000;
-const uint32_t F32_MINUS_ZERO = 0x80000000;
-const uint32_t F32_PLUS_ZERO = 0x00000000;
-
-// 1.0 and 0.0 in IEEE 754 format
-const uint64_t F64_ONE = 0x3FF0000000000000;
-const uint64_t F64_ZERO = 0x0000000000000000;
-const uint32_t F32_ONE = 0x3F800000;
-const uint32_t F32_ZERO = 0x00000000;
-
-// NaN
-const uint64_t F64_QUIET_NAN = 0x7FF8000000000000;
-const uint64_t F64_SIGNALING_NAN = 0x7FFC000000000000;
-const uint32_t F32_QUIET_NAN = 0x7FC00000;
 
 void _zisk_float (void);
 

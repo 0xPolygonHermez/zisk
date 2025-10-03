@@ -69,7 +69,7 @@ void _zisk_float (void)
                         break;
                     }
                     // NaN propagation
-                    if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2]) || F32_IS_NAN(fregs[rs3])) {
+                    if (F32_IS_ANY_NAN(fregs[rs1]) || F32_IS_ANY_NAN(fregs[rs2]) || F32_IS_ANY_NAN(fregs[rs3])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]) || F32_IS_SIGNALING_NAN(fregs[rs3]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
@@ -221,7 +221,7 @@ void _zisk_float (void)
                         break;
                     }
                     // NaN propagation
-                    if (F64_IS_NAN(fregs[rs1]) || F64_IS_NAN(fregs[rs2]) || F64_IS_NAN(fregs[rs3])) {
+                    if (F64_IS_ANY_NAN(fregs[rs1]) || F64_IS_ANY_NAN(fregs[rs2]) || F64_IS_ANY_NAN(fregs[rs3])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]) || F64_IS_SIGNALING_NAN(fregs[rs3]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
@@ -340,7 +340,7 @@ void _zisk_float (void)
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     
                     // NaN propagation
-                    if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2]) || F32_IS_NAN(fregs[rs3])) {
+                    if (F32_IS_ANY_NAN(fregs[rs1]) || F32_IS_ANY_NAN(fregs[rs2]) || F32_IS_ANY_NAN(fregs[rs3])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]) || F32_IS_SIGNALING_NAN(fregs[rs3]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
@@ -393,7 +393,7 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f32_mulAdd()
-                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){NEG32(fregs[rs3])} ).v;
+                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){F32_NEGATE(fregs[rs3])} ).v;
                     break;
                 }
                 case 1: { //=> ("R4", "fmsub.d"), rd = (rs1 x rs2) - rs3
@@ -403,7 +403,7 @@ void _zisk_float (void)
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     
                     // NaN propagation
-                    if (F64_IS_NAN(fregs[rs1]) || F64_IS_NAN(fregs[rs2]) || F64_IS_NAN(fregs[rs3])) {
+                    if (F64_IS_ANY_NAN(fregs[rs1]) || F64_IS_ANY_NAN(fregs[rs2]) || F64_IS_ANY_NAN(fregs[rs3])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]) || F64_IS_SIGNALING_NAN(fregs[rs3]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
@@ -463,7 +463,7 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f64_mulAdd()
-                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){NEG64(fregs[rs3])} ).v;
+                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){F64_NEGATE(fregs[rs3])} ).v;
                     break;
                 }
                 default: //_ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 71 inst=0x{inst:x}"),
@@ -565,7 +565,7 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f32_mulAdd()
-                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){NEG32(fregs[rs1])}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
+                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){F32_NEGATE(fregs[rs1])}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
 
                     break;
                 }
@@ -636,7 +636,7 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f64_mulAdd()
-                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){NEG64(fregs[rs1])}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v;
+                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){F64_NEGATE(fregs[rs1])}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v;
                     break;
                 }
                 default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 75 inst=0x{inst:x}"),
@@ -705,7 +705,7 @@ void _zisk_float (void)
                     // Multiplication by zero
                     // -(0*rs2 + rs3) = -rs3, -(rs1*0 + rs3) = -rs3
                     if ((F32_IS_ANY_ZERO(fregs[rs1]) || F32_IS_ANY_ZERO(fregs[rs2])) && !F32_IS_ANY_ZERO(fregs[rs3])) {
-                        fregs[rd] = NEG32(fregs[rs3]);
+                        fregs[rd] = F32_NEGATE(fregs[rs3]);
                         break;
                     }
 
@@ -739,7 +739,7 @@ void _zisk_float (void)
                     change_rounding_mode_sign();
 
                     // Call f32_mulAdd()
-                    fregs[rd] = (uint64_t)NEG32(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v);
+                    fregs[rd] = (uint64_t)F32_NEGATE(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v);
                     break;
                 }
                 case 1: { //=> ("R4", "fnmadd.d"), rd = -(rs1 x rs2) - rs3
@@ -774,7 +774,7 @@ void _zisk_float (void)
                     // Multiplication by zero
                     // -(0*rs2 + rs3) = -rs3, -(rs1*0 + rs3) = -rs3
                     if ((F64_IS_ANY_ZERO(fregs[rs1]) || F64_IS_ANY_ZERO(fregs[rs2])) && !F64_IS_ANY_ZERO(fregs[rs3])) {
-                        fregs[rd] = NEG64(fregs[rs3]);
+                        fregs[rd] = F64_NEGATE(fregs[rs3]);
                         break;
                     }
 
@@ -808,7 +808,7 @@ void _zisk_float (void)
                     change_rounding_mode_sign();
 
                     // Call f64_mulAdd()
-                    fregs[rd] = (uint64_t)NEG64(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v);
+                    fregs[rd] = (uint64_t)F64_NEGATE(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v);
                     break;
                 }
                 default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 79 inst=0x{inst:x}"),
@@ -827,7 +827,7 @@ void _zisk_float (void)
                     uint64_t rs2 = (inst >> 20) & 0x1F;
 
                     // NaN propagation: x + NaN = NaN, NaN + x = NaN, NaN + NaN = NaN
-                    if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2])) {
+                    if (F32_IS_ANY_NAN(fregs[rs1]) || F32_IS_ANY_NAN(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
@@ -880,7 +880,7 @@ void _zisk_float (void)
                     // zisk_float_calls++;
 
                     // NaN propagation: x + NaN = NaN, NaN + x = NaN, NaN + NaN = NaN
-                    if (F64_IS_NAN(fregs[rs1]) || F64_IS_NAN(fregs[rs2])) {
+                    if (F64_IS_ANY_NAN(fregs[rs1]) || F64_IS_ANY_NAN(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
@@ -939,7 +939,7 @@ void _zisk_float (void)
                     uint64_t rs2 = (inst >> 20) & 0x1F;
 
                     // NaN propagation: x - NaN = NaN, NaN - x = NaN, NaN - NaN = NaN
-                    if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2])) {
+                    if (F32_IS_ANY_NAN(fregs[rs1]) || F32_IS_ANY_NAN(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
@@ -986,7 +986,7 @@ void _zisk_float (void)
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     
                     // NaN propagation
-                    if (F64_IS_NAN(fregs[rs1]) || F64_IS_NAN(fregs[rs2])) {
+                    if (F64_IS_ANY_NAN(fregs[rs1]) || F64_IS_ANY_NAN(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
@@ -1011,7 +1011,7 @@ void _zisk_float (void)
                     }
                     // finite - ∞ → ∞ (opposite sign of second ∞)
                     if (!F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
-                        fregs[rd] = NEG64(fregs[rs2]);
+                        fregs[rd] = F64_NEGATE(fregs[rs2]);
                         break;
                     }
 
@@ -1030,21 +1030,21 @@ void _zisk_float (void)
                     uint64_t rs2 = (inst >> 20) & 0x1F;
 
                     // infinity * NaN = NaN
-                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_NAN(fregs[rs2])) {
+                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_NAN(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
                         break;
                     }
                     // NaN * infinity = NaN
-                    if (F32_IS_NAN(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F32_IS_ANY_NAN(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs1]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
                         break;
                     }
                     // NaN * NaN = NaN
-                    if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2])) {
+                    if (F32_IS_ANY_NAN(fregs[rs1]) || F32_IS_ANY_NAN(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
@@ -1081,21 +1081,21 @@ void _zisk_float (void)
                     uint64_t rs2 = (inst >> 20) & 0x1F;
 
                     // infinity * NaN = NaN
-                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_NAN(fregs[rs2])) {
+                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_NAN(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
                     // NaN * infinity = NaN
-                    if (F64_IS_NAN(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F64_IS_ANY_NAN(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
                     // NaN * NaN = NaN
-                    if (F64_IS_NAN(fregs[rs1]) || F64_IS_NAN(fregs[rs2])) {
+                    if (F64_IS_ANY_NAN(fregs[rs1]) || F64_IS_ANY_NAN(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
@@ -1152,21 +1152,21 @@ void _zisk_float (void)
                         break;
                     }
                     // infinity / NaN = NaN
-                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_NAN(fregs[rs2])) {
+                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_NAN(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
                         break;
                     }
                     // NaN / infinity = NaN
-                    if (F32_IS_NAN(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F32_IS_ANY_NAN(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs1]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
                         break;
                     }
                     // NaN / NaN = NaN
-                    if (F32_IS_NAN(fregs[rs1]) || F32_IS_NAN(fregs[rs2])) {
+                    if (F32_IS_ANY_NAN(fregs[rs1]) || F32_IS_ANY_NAN(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
@@ -1200,21 +1200,21 @@ void _zisk_float (void)
                         break;
                     }
                     // infinity / NaN = NaN
-                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_NAN(fregs[rs2])) {
+                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_NAN(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
                     // NaN / infinity = NaN
-                    if (F64_IS_NAN(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F64_IS_ANY_NAN(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
                     // NaN / NaN = NaN
-                    if (F64_IS_NAN(fregs[rs1]) || F64_IS_NAN(fregs[rs2])) {
+                    if (F64_IS_ANY_NAN(fregs[rs1]) || F64_IS_ANY_NAN(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
@@ -1329,21 +1329,21 @@ void _zisk_float (void)
                                 break;
                             }
                             // fmax(NaN, NaN) = NaN
-                            if (F32_IS_NAN(fregs[rs1]) && F32_IS_NAN(fregs[rs2])) {
+                            if (F32_IS_ANY_NAN(fregs[rs1]) && F32_IS_ANY_NAN(fregs[rs2])) {
                                 if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = F32_QUIET_NAN;
                                 break;
                             }
                             // fmax(x, NaN) = x
-                            if (F32_IS_NAN(fregs[rs1])) {
+                            if (F32_IS_ANY_NAN(fregs[rs1])) {
                                 if (F32_IS_SIGNALING_NAN(fregs[rs1]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = fregs[rs2];
                                 break;
                             }
                             // fmax(NaN, x) = x
-                            if (F32_IS_NAN(fregs[rs2])) {
+                            if (F32_IS_ANY_NAN(fregs[rs2])) {
                                 if (F32_IS_SIGNALING_NAN(fregs[rs2]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = fregs[rs1];
@@ -1373,21 +1373,21 @@ void _zisk_float (void)
                                 break;
                             }
                             // fmax(NaN, NaN) = NaN
-                            if (F32_IS_NAN(fregs[rs1]) && F32_IS_NAN(fregs[rs2])) {
+                            if (F32_IS_ANY_NAN(fregs[rs1]) && F32_IS_ANY_NAN(fregs[rs2])) {
                                 if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = F32_QUIET_NAN;
                                 break;
                             }
                             // fmax(x, NaN) = x
-                            if (F32_IS_NAN(fregs[rs1])) {
+                            if (F32_IS_ANY_NAN(fregs[rs1])) {
                                 if (F32_IS_SIGNALING_NAN(fregs[rs1]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = fregs[rs2];
                                 break;
                             }
                             // fmax(NaN, x) = x
-                            if (F32_IS_NAN(fregs[rs2])) {
+                            if (F32_IS_ANY_NAN(fregs[rs2])) {
                                 if (F32_IS_SIGNALING_NAN(fregs[rs2]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = fregs[rs1];
@@ -1410,19 +1410,19 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            if (F64_IS_NAN(fregs[rs1]) && F64_IS_NAN(fregs[rs2])) {
+                            if (F64_IS_ANY_NAN(fregs[rs1]) && F64_IS_ANY_NAN(fregs[rs2])) {
                                 if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = F64_QUIET_NAN;
                                 break;
                             }
-                            if (F64_IS_NAN(fregs[rs1])) {
+                            if (F64_IS_ANY_NAN(fregs[rs1])) {
                                 if (F64_IS_SIGNALING_NAN(fregs[rs1]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = fregs[rs2];
                                 break;
                             }
-                            if (F64_IS_NAN(fregs[rs2])) {
+                            if (F64_IS_ANY_NAN(fregs[rs2])) {
                                 if (F64_IS_SIGNALING_NAN(fregs[rs2]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = fregs[rs1];
@@ -1443,19 +1443,19 @@ void _zisk_float (void)
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
-                            if (F64_IS_NAN(fregs[rs1]) && F64_IS_NAN(fregs[rs2])) {
+                            if (F64_IS_ANY_NAN(fregs[rs1]) && F64_IS_ANY_NAN(fregs[rs2])) {
                                 if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = F64_QUIET_NAN;
                                 break;
                             }
-                            if (F64_IS_NAN(fregs[rs1])) {
+                            if (F64_IS_ANY_NAN(fregs[rs1])) {
                                 if (F64_IS_SIGNALING_NAN(fregs[rs1]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = fregs[rs2];
                                 break;
                             }
-                            if (F64_IS_NAN(fregs[rs2])) {
+                            if (F64_IS_ANY_NAN(fregs[rs2])) {
                                 if (F64_IS_SIGNALING_NAN(fregs[rs2]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 fregs[rd] = fregs[rs1];
@@ -1721,7 +1721,7 @@ void _zisk_float (void)
                             // the RISC-V spec. See section 20.7, table 28.
                             if (softfloat_exceptionFlags & softfloat_flag_invalid) {
                                 // If input is NaN, output is all 1's
-                                if (F32_IS_NAN(fregs[rs1]))
+                                if (F32_IS_ANY_NAN(fregs[rs1]))
                                     fregs_x[rd] = 0x7FFFFFFF;
                                 // If input is negative and out of range, output is 0
                                 else if (fregs[rs1] & F32_SIGN_BIT_MASK)
@@ -1748,7 +1748,7 @@ void _zisk_float (void)
                             // the RISC-V spec. See section 20.7, table 28.
                             if (softfloat_exceptionFlags & softfloat_flag_invalid) {
                                 // If input is NaN, output is all 1's
-                                if (F32_IS_NAN(fregs[rs1]))
+                                if (F32_IS_ANY_NAN(fregs[rs1]))
                                     fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
                                 // If input is negative and out of range, output is 0
                                 else if (fregs[rs1] & F32_SIGN_BIT_MASK)
@@ -1775,7 +1775,7 @@ void _zisk_float (void)
                             // the RISC-V spec. See section 20.7, table 28.
                             if (softfloat_exceptionFlags & softfloat_flag_invalid) {
                                 // If input is NaN, output is all 1's
-                                if (F32_IS_NAN(fregs[rs1]))
+                                if (F32_IS_ANY_NAN(fregs[rs1]))
                                     fregs_x[rd] = 0x7FFFFFFFFFFFFFFF;
                                 // If input is negative and out of range, output is all 1's
                                 else if (fregs[rs1] & F32_SIGN_BIT_MASK)
@@ -1799,7 +1799,7 @@ void _zisk_float (void)
                             // the RISC-V spec. See section 20.7, table 28.
                             if (softfloat_exceptionFlags & softfloat_flag_invalid) {
                                 // If input is NaN, output is all 1's
-                                if (F32_IS_NAN(fregs[rs1]))
+                                if (F32_IS_ANY_NAN(fregs[rs1]))
                                     fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
                                 // If input is negative and out of range, output is 0
                                 else if (fregs[rs1] & F32_SIGN_BIT_MASK)
@@ -1831,7 +1831,7 @@ void _zisk_float (void)
                             // the RISC-V spec. See section 20.7, table 28.
                             if (softfloat_exceptionFlags & softfloat_flag_invalid) {
                                 // If input is NaN, output is all 1's
-                                if (F64_IS_NAN(fregs[rs1]))
+                                if (F64_IS_ANY_NAN(fregs[rs1]))
                                     fregs_x[rd] = 0x7FFFFFFF;
                                 // If input is negative and out of range, output is 0
                                 else if (fregs[rs1] & F64_SIGN_BIT_MASK)
@@ -1858,7 +1858,7 @@ void _zisk_float (void)
                             // the RISC-V spec. See section 20.7, table 28.
                             if (softfloat_exceptionFlags & softfloat_flag_invalid) {
                                 // If input is NaN, output is all 1's
-                                if (F64_IS_NAN(fregs[rs1]))
+                                if (F64_IS_ANY_NAN(fregs[rs1]))
                                     fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
                                 // If input is negative and out of range, output is 0
                                 else if (fregs[rs1] & F64_SIGN_BIT_MASK)
@@ -1885,7 +1885,7 @@ void _zisk_float (void)
                             // the RISC-V spec. See section 20.7, table 28.
                             if (softfloat_exceptionFlags & softfloat_flag_invalid) {
                                 // If input is NaN, output is all 1's
-                                if (F64_IS_NAN(fregs[rs1]))
+                                if (F64_IS_ANY_NAN(fregs[rs1]))
                                     fregs_x[rd] = 0x7FFFFFFFFFFFFFFF;
                                 // If input is negative and out of range, output is all 1's
                                 else if (fregs[rs1] & F64_SIGN_BIT_MASK)
@@ -1909,7 +1909,7 @@ void _zisk_float (void)
                             // the RISC-V spec. See section 20.7, table 28.
                             if (softfloat_exceptionFlags & softfloat_flag_invalid) {
                                 // If input is NaN, output is all 1's
-                                if (F64_IS_NAN(fregs[rs1]))
+                                if (F64_IS_ANY_NAN(fregs[rs1]))
                                     fregs_x[rd] = 0xFFFFFFFFFFFFFFFF;
                                 // If input is negative and out of range, output is 0
                                 else if (fregs[rs1] & F64_SIGN_BIT_MASK)
