@@ -4,9 +4,9 @@
 use std::path::Path;
 
 use crate::{
-    zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskRom, FREE_INPUT_ADDR, M64, P2_32,
-    ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskRom, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
+    M64, P2_32, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -3311,6 +3311,46 @@ impl ZiskRom2Asm {
         /****************/
         *code += unusual_code.as_str();
 
+        /**********************/
+        /* READ_ONLY ROM DATA */
+        /**********************/
+
+        *code += "\n";
+        *code += ".global write_ro_data\n";
+        *code += "write_ro_data:\n";
+
+        Self::push_external_registers(&mut ctx, code);
+
+        // Create a new read section for every RO data entry of the rom
+        for i in 0..rom.ro_data.len() {
+            for j in 0..rom.ro_data[i].data.len() {
+                let address = rom.ro_data[i].from + j as u64;
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_ADDRESS,
+                    address,
+                    ctx.comment_str(&format!("address = {:x}", address))
+                );
+                *code += &format!(
+                    "\tmov byte {}[{}], 0x{:x} {}\n",
+                    ctx.ptr,
+                    REG_ADDRESS,
+                    rom.ro_data[i].data[j],
+                    ctx.comment_str(&format!(
+                        "ro_data[{:x}] = {:x}",
+                        address, rom.ro_data[i].data[j]
+                    ))
+                );
+            }
+        }
+
+        Self::pop_external_registers(&mut ctx, code);
+        *code += "\tret\n\n";
+
+        /*****************/
+        /* BRANCH TABLES */
+        /*****************/
+
         // For all program addresses in the vector, create an assembly set of instructions with a
         // map label
         *code += "\n";
@@ -3343,7 +3383,8 @@ impl ZiskRom2Asm {
                 //   4N + 3
                 // 4(N+1)
                 //   ...
-                if (*key > ROM_ADDR) && (*key != (previous_key + 1)) {
+                if (*key > ROM_ADDR) && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
+                {
                     for _ in previous_key + 1..*key {
                         *code += "\t.quad 0\n";
                     }
@@ -6653,10 +6694,17 @@ impl ZiskRom2Asm {
 
     fn jumpt_to_dynamic_pc(ctx: &mut ZiskAsmContext, code: &mut String) {
         *code += &ctx.full_line_comment("jump to dynamic pc".to_string());
+        // When executing program code, it can dynamically jump to any BIOS instruction
+        // (low address) or to any program code address (high address).
+        // When executing zisk float library code, it can dynamically jump to any BIOS instruction
+        // (low address) or to any float library code address (high address) but not to program
+        // code addresses.
+        let high_address =
+            if ctx.pc < FLOAT_LIB_ROM_ADDR { ctx.min_program_pc } else { FLOAT_LIB_ROM_ADDR };
         *code += &format!(
             "\tmov {}, 0x{:x} {}\n",
             REG_ADDRESS,
-            ctx.min_program_pc,
+            high_address,
             ctx.comment_str("is pc a low address?")
         );
         *code += &format!("\tcmp {REG_PC}, {REG_ADDRESS}\n");
@@ -6670,8 +6718,8 @@ impl ZiskRom2Asm {
         *code += &format!(
             "\tlea {}, [map_pc_{:x}] {}\n",
             REG_ADDRESS,
-            ctx.min_program_pc,
-            ctx.comment_str(&format!("address = map[0x{:x}]", ctx.min_program_pc))
+            high_address,
+            ctx.comment_str(&format!("address = map[0x{:x}]", high_address))
         );
         *code += &format!(
             "\tmov {}, [{} + {}*{}] {}\n",
