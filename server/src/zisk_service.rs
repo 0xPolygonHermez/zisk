@@ -16,8 +16,7 @@ use proofman_common::{initialize_logger, DebugInfo, ParamsGPU};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use uuid::Uuid;
-use witness::WitnessLibrary;
-use zisk_common::{info_file, ZiskLibInitFn};
+use zisk_common::{info_file, ZiskLib, ZiskLibInitFn};
 
 use anyhow::Result;
 
@@ -329,7 +328,7 @@ pub struct ZiskService {
     config: Arc<ServerConfig>,
     // It is important to keep the witness_lib declaration before the proofman declaration
     // to ensure that the witness library is dropped before the proofman.
-    witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+    witness_lib: Arc<Box<dyn ZiskLib<Goldilocks>>>,
     proofman: Arc<ProofMan<Goldilocks>>,
     asm_services: Option<AsmServices>,
     is_busy: Arc<AtomicBool>,
@@ -397,7 +396,7 @@ impl ZiskService {
 
         proofman.register_witness(witness_lib.as_mut(), library);
 
-        let witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync> = Arc::from(witness_lib);
+        let witness_lib = Arc::new(witness_lib);
 
         let config = ServerConfig::new(
             port,
