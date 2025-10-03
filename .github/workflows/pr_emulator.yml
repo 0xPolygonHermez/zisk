@@ -36,7 +36,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_deps.sh
           # Riscof dependencies
-          apt-get install -y gcc-riscv64-unknown-elf libsodium23 libomp5
+          apt-get install -y libsodium23 libomp5
 
       - name: Build ZisK
         run: |
