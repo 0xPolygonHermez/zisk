@@ -16,7 +16,7 @@ Install the following repositories:
 ```bash
 git clone https://github.com/0xPolygonHermez/pil2-compiler.git
 git clone https://github.com/0xPolygonHermez/pil2-proofman-js.git
-git clone https://github.com/0xPolygonHermez/pil2-components.git
+git clone https://github.com/0xPolygonHermez/
 git clone https://github.com/0xPolygonHermez/pil2-proofman.git
 ```
 
