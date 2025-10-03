@@ -141,7 +141,7 @@ impl ZiskProve {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
             Some(Some(debug_value)) => {
-                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
+                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())?
             }
         };
 
@@ -282,7 +282,7 @@ impl ZiskProve {
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }
 
-        proofman.register_witness(&mut *witness_lib, library);
+        proofman.register_witness(&mut *witness_lib, library)?;
 
         let start = std::time::Instant::now();
 

@@ -203,7 +203,7 @@ impl ZiskExecute {
 
         match self.field {
             Field::Goldilocks => {
-                proofman.register_witness(&mut *witness_lib, library);
+                proofman.register_witness(&mut *witness_lib, library)?;
 
                 proofman
                     .execute_from_lib(self.input.clone(), self.output_path.clone())

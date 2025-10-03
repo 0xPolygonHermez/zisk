@@ -49,8 +49,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
         let num_available_sha256fs = Sha256fTraceType::<F>::NUM_ROWS / CLOCKS - 1;
         let num_non_usable_rows = Sha256fTraceType::<F>::NUM_ROWS % CLOCKS;
 
-        let a_range_id = std.get_range_id(0, (1 << 3) - 1, None);
-        let e_range_id = std.get_range_id(0, (1 << 3) - 1, None);
+        let a_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
+        let e_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
 
         Arc::new(Self { std, num_available_sha256fs, num_non_usable_rows, a_range_id, e_range_id })
     }

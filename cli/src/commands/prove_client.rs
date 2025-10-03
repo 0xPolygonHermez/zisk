@@ -49,7 +49,7 @@ pub enum ClientCommand {
 
         #[clap(short = 'r', long, default_value_t = false)]
         rma: bool,
-        
+
         /// Use final snark
         #[clap(short = 'f', long, default_value_t = false)]
         final_snark: bool,

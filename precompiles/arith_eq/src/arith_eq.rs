@@ -65,12 +65,14 @@ impl<F: PrimeField64> ArithEqSM<F> {
         // Compute some useful values
         let num_available_ops = ArithEqTraceType::<F>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP;
         let p2_22 = 1 << 22;
-        let q_hsc_range_id = std.get_range_id(0, p2_22 - 1, None);
-        let chunk_range_id = std.get_range_id(0, 0xFFFF, None);
-        let carry_range_id = std.get_range_id(-(p2_22 - 1), p2_22, None);
+        let q_hsc_range_id = std.get_range_id(0, p2_22 - 1, None).expect("Failed to get range ID");
+        let chunk_range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
+        let carry_range_id =
+            std.get_range_id(-(p2_22 - 1), p2_22, None).expect("Failed to get range ID");
 
         // Get the table ID
-        let table_id = std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID);
+        let table_id =
+            std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
 
         Arc::new(Self {
             std,

@@ -64,13 +64,17 @@ impl<F: PrimeField64> ArithFullSM<F> {
     /// An `Arc`-wrapped instance of `ArithFullSM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Get the Arithmetic table ID
-        let table_id = std.get_virtual_table_id(ArithTableSM::TABLE_ID);
+        let table_id =
+            std.get_virtual_table_id(ArithTableSM::TABLE_ID).expect("Failed to get table ID");
 
         // Get the Arithmetic Range table ID
-        let range_table_id = std.get_virtual_table_id(ArithRangeTableSM::TABLE_ID);
+        let range_table_id = std
+            .get_virtual_table_id(ArithRangeTableSM::TABLE_ID)
+            .expect("Failed to get range table ID");
 
         // Get the Arithmetic FROPS table ID
-        let frops_table_id = std.get_virtual_table_id(ArithFrops::TABLE_ID);
+        let frops_table_id =
+            std.get_virtual_table_id(ArithFrops::TABLE_ID).expect("Failed to get FROPS table ID");
 
         Arc::new(Self { std, table_id, range_table_id, frops_table_id })
     }

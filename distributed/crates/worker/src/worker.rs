@@ -122,7 +122,7 @@ impl ProverConfig {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
             Some(Some(debug_value)) => {
-                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
+                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())?
             }
         };
 
@@ -322,7 +322,7 @@ impl Worker {
             Some(asm_services)
         };
 
-        proofman.register_witness(&mut *witness_lib, library);
+        proofman.register_witness(&mut *witness_lib, library)?;
 
         let witness_lib = Arc::from(witness_lib);
 
@@ -655,6 +655,7 @@ impl Worker {
                     agg_params.final_proof,
                     &options,
                 )
+                .unwrap() // TODO: Handle error gracefully
                 .map(|proof| proof.into_iter().map(|p| p.proof).collect())
                 .unwrap_or_default();
 

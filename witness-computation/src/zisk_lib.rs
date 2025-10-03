@@ -13,7 +13,7 @@ use precomp_big_int::Add256Manager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
 use proofman::register_std;
-use proofman_common::PackedInfo;
+use proofman_common::{PackedInfo, ProofmanResult};
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -86,7 +86,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
     ///
     /// # Panics
     /// Panics if the `Riscv2zisk` conversion fails or if required paths cannot be resolved.
-    fn register_witness(&mut self, wcm: &WitnessManager<F>) {
+    fn register_witness(&mut self, wcm: &WitnessManager<F>) -> ProofmanResult<()> {
         let world_rank = wcm.get_world_rank();
         let local_rank = wcm.get_local_rank();
 
@@ -100,7 +100,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let zisk_rom = Arc::new(zisk_rom);
 
         // Step 3: Initialize the secondary state machines
-        let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), self.shared_tables);
+        let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), self.shared_tables)?;
         register_std(wcm, &std);
 
         let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
@@ -186,6 +186,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         wcm.register_component(executor.clone());
 
         self.executor = Some(executor);
+        Ok(())
     }
 
     fn get_packed_info(&self) -> HashMap<(usize, usize), PackedInfo> {

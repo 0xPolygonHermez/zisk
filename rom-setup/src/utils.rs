@@ -81,7 +81,8 @@ pub fn get_elf_bin_file_path_with_hash(
 }
 
 pub fn get_rom_blowup_factor(proving_key_path: &Path) -> u64 {
-    let global_info = GlobalInfo::new(proving_key_path);
+    let global_info =
+        GlobalInfo::new(proving_key_path).expect("Failed to load global info from proving key");
     let (airgroup_id, air_id) = global_info.get_air_id("Zisk", "Rom");
     let setup_path = global_info.get_air_setup_path(airgroup_id, air_id, &ProofType::Basic);
     let stark_info_path = setup_path.display().to_string() + ".starkinfo.json";
