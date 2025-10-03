@@ -96,23 +96,23 @@ zisk-distributed-grpc-api = { path = "distributed/crates/grpc-api" }
 zisk-distributed-prover = { path = "distributed/crates/worker" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
+# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
+# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
+# proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
+# proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
+# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
+# pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
+# witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
+# fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.12.0" }
 # Proofman Local development
-# proofman = { path = "../pil2-proofman/proofman" }
-# proofman-common = { path = "../pil2-proofman/common" }
-# proofman-macros = { path = "../pil2-proofman/macros" }
-# proofman-verifier = { path = "../pil2-proofman/verifier" }
-# proofman-util = { path = "../pil2-proofman/util" }
-# pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
-# witness = { path = "../pil2-proofman/witness" }
-# fields = { path = "../pil2-proofman/fields" }
+proofman = { path = "../pil2-proofman/proofman" }
+proofman-common = { path = "../pil2-proofman/common" }
+proofman-macros = { path = "../pil2-proofman/macros" }
+proofman-verifier = { path = "../pil2-proofman/verifier" }
+proofman-util = { path = "../pil2-proofman/util" }
+pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
+witness = { path = "../pil2-proofman/witness" }
+fields = { path = "../pil2-proofman/fields" }
 
 # External dependencies
 rayon = "1.10"

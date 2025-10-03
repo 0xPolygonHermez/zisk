@@ -7,7 +7,6 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use clap::Parser;
 use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -16,11 +15,10 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, fs, path::PathBuf};
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_common::{ExecutorStats, ZiskLibInitFn};
+use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLibInitFn};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -229,11 +227,11 @@ impl ZiskVerifyConstraints {
         let elapsed = start.elapsed();
 
         #[allow(clippy::type_complexity)]
-        let (result, _stats, _): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>) = *witness_lib
-            .get_execution_result()
-            .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>)>()
-            .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+        let (result, _stats, _witness_stats): (
+            ZiskExecutionResult,
+            ExecutorStats,
+            HashMap<usize, Stats>,
+        ) = witness_lib.get_execution_result().expect("Failed to get execution result");
 
         tracing::info!("");
         tracing::info!(

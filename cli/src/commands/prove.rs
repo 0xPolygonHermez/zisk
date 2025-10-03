@@ -7,7 +7,6 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use bytemuck::cast_slice;
 use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -20,7 +19,6 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use std::io::Write;
-use std::sync::{Arc, Mutex};
 use std::{
     collections::HashMap,
     fs::{self, File},
@@ -28,7 +26,7 @@ use std::{
 };
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
+use zisk_common::{ExecutorStats, ProofLog, Stats, ZiskExecutionResult, ZiskLibInitFn};
 use zstd::stream::write::Encoder;
 
 // Structure representing the 'prove' subcommand of cargo.
@@ -333,20 +331,11 @@ impl ZiskProve {
             let elapsed = start.elapsed();
 
             #[allow(clippy::type_complexity)]
-            let (result, _stats, _): (
+            let (result, _stats, _witness_stats): (
                 ZiskExecutionResult,
-                Arc<Mutex<ExecutorStats>>,
-                Arc<Mutex<HashMap<usize, Stats>>>,
-            ) =
-                *witness_lib
-                    .get_execution_result()
-                    .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-                    .downcast::<(
-                        ZiskExecutionResult,
-                        Arc<Mutex<ExecutorStats>>,
-                        Arc<Mutex<HashMap<usize, Stats>>>,
-                    )>()
-                    .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+                ExecutorStats,
+                HashMap<usize, Stats>,
+            ) = witness_lib.get_execution_result().expect("Failed to get execution result");
 
             let elapsed = elapsed.as_secs_f64();
             tracing::info!("");

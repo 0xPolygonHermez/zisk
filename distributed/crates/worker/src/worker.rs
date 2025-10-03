@@ -24,9 +24,8 @@ use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::{error, info};
-use witness::WitnessLibrary;
 
-use zisk_common::ZiskLibInitFn;
+use zisk_common::{ZiskLib, ZiskLibInitFn};
 
 use crate::config::ProverServiceConfigDto;
 
@@ -237,7 +236,7 @@ pub struct Worker {
 
     // It is important to keep the witness_lib declaration before the proofman declaration
     // to ensure that the witness library is dropped before the proofman.
-    _witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+    _witness_lib: Arc<Box<dyn ZiskLib<Goldilocks>>>,
     _asm_services: Option<AsmServices>,
 
     proofman: Arc<ProofMan<Goldilocks>>,
@@ -306,7 +305,7 @@ impl Worker {
 
         proofman.register_witness(witness_lib.as_mut(), library);
 
-        let witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync> = Arc::from(witness_lib);
+        let witness_lib = Arc::from(witness_lib);
 
         Ok(Self {
             _worker_id: worker_id,
