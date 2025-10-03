@@ -148,11 +148,11 @@ jobs:
 
           if [[ "${PLATFORM_NAME}" == "linux" ]]; then
             mkdir -p zisk-dist/zisk/emulator-asm/src
-            cp -r ./emulator-asm/src                               zisk-dist/zisk/emulator-asm/
+            cp -r ./emulator-asm/src                               zisk-dist/zisk/emulator-asm
             cp -r ./lib-c/                                         zisk-dist/zisk
-            cp ./emulator-asm/Makefile                             zisk-dist/zisk/emulator-asm/
+            cp ./emulator-asm/Makefile                             zisk-dist/zisk/emulator-asm
             mkdir -p zisk-dist/zisk/lib-float/c/lib/
-            cp ./lib-float/c/lib/ziskfloat.elf                     zisk-dist/zisk/lib-float/c/lib/"
+            cp ./lib-float/c/lib/ziskfloat.elf                     zisk-dist/zisk/lib-float/c/lib
           fi
 
           ARCHIVE_FILE="cargo_zisk_${PLATFORM_NAME}_${ARCH}.tar.gz"
