@@ -4,15 +4,12 @@ use crate::{
     ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode, ZiskService,
 };
 use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::DebugInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
-use witness::WitnessLibrary;
-use zisk_common::ExecutorStats;
+use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLib};
 
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
@@ -40,7 +37,7 @@ impl ZiskServiceVerifyConstraintsHandler {
         request: ZiskVerifyConstraintsRequest,
         // It is important to keep the witness_lib declaration before the proofman declaration
         // to ensure that the witness library is dropped before the proofman.
-        witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+        witness_lib: Arc<Box<dyn ZiskLib<Goldilocks>>>,
         proofman: Arc<ProofMan<Goldilocks>>,
         is_busy: Arc<std::sync::atomic::AtomicBool>,
         debug_info: Arc<DebugInfo>,
@@ -61,21 +58,11 @@ impl ZiskServiceVerifyConstraintsHandler {
                 let elapsed = start.elapsed();
 
                 #[allow(clippy::type_complexity)]
-                let result: (
+                let (result, _stats, _witness_stats): (
                     ZiskExecutionResult,
-                    Arc<Mutex<ExecutorStats>>,
-                    Arc<Mutex<HashMap<usize, Stats>>>,
-                ) = *witness_lib
-                    .get_execution_result()
-                    .ok_or_else(|| anyhow::anyhow!("No execution result found"))
-                    .expect("Failed to get execution result")
-                    .downcast::<(
-                        ZiskExecutionResult,
-                        Arc<Mutex<ExecutorStats>>,
-                        Arc<Mutex<HashMap<usize, Stats>>>,
-                    )>()
-                    .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
-                    .expect("Failed to downcast execution result");
+                    ExecutorStats,
+                    HashMap<usize, Stats>,
+                ) = witness_lib.get_execution_result().expect("Failed to get execution result");
 
                 println!();
                 tracing::info!(
@@ -86,7 +73,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                 tracing::info!(
                     "      time: {} seconds, steps: {}",
                     elapsed.as_secs_f32(),
-                    result.0.executed_steps
+                    result.executed_steps
                 );
 
                 is_busy.store(false, std::sync::atomic::Ordering::SeqCst);

@@ -2,7 +2,6 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use clap::Parser;
 use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -14,10 +13,8 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, fs, path::PathBuf, thread, time::Instant};
-use zisk_common::{ExecutorStats, ZiskLibInitFn};
-// use zisk_common::ExecutorStatsEnum;
+use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLibInitFn};
 use zisk_pil::*;
 
 use crate::{
@@ -300,11 +297,11 @@ impl ZiskStats {
         };
 
         #[allow(clippy::type_complexity)]
-        let (_, stats, witness_stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize,Stats>>>) = *witness_lib
-            .get_execution_result()
-            .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>)>()
-            .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+        let (_, stats, witness_stats): (
+            ZiskExecutionResult,
+            ExecutorStats,
+            HashMap<usize, Stats>,
+        ) = witness_lib.get_execution_result().expect("Failed to get execution result");
 
         if world_rank % 2 == 1 {
             thread::sleep(std::time::Duration::from_millis(2000));
@@ -318,7 +315,7 @@ impl ZiskStats {
 
         Self::print_stats(&witness_stats);
 
-        stats.lock().unwrap().print_stats();
+        stats.print_stats();
 
         if self.asm.is_some() {
             // Shut down ASM microservices
@@ -373,8 +370,7 @@ impl ZiskStats {
     ///
     /// # Arguments
     /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
-    pub fn print_stats(executor_stats: &Mutex<HashMap<usize, Stats>>) {
-        let air_stats = executor_stats.lock().unwrap();
+    pub fn print_stats(air_stats: &HashMap<usize, Stats>) {
         println!("    Number of airs: {}", air_stats.len());
         println!();
         println!("    Stats by Air:");

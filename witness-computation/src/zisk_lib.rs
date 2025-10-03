@@ -8,8 +8,9 @@ use executor::{StateMachines, StaticSMBundle, ZiskExecutor};
 use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
 use proofman::register_std;
-use std::{any::Any, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
+use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary};
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 use zisk_pil::{
     ARITH_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS,
@@ -52,7 +53,7 @@ fn init_library(
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
     shared_tables: bool,
-) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
+) -> Result<Box<dyn ZiskLib<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, world_rank);
 
     let chunk_size = CHUNK_SIZE;
@@ -178,15 +179,18 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         self.executor = Some(executor);
     }
+}
 
+impl ZiskWitnessLibrary<Goldilocks> for WitnessLib<Goldilocks> {
     /// Returns the execution result of the witness computation.
     ///
     /// # Returns
     /// * `u16` - The execution result code.
-    fn get_execution_result(&self) -> Option<Box<dyn std::any::Any>> {
-        match &self.executor {
-            None => Some(Box::new(0u64) as Box<dyn Any>),
-            Some(executor) => Some(Box::new(executor.get_execution_result()) as Box<dyn Any>),
-        }
+    fn get_execution_result(
+        &self,
+    ) -> Option<(ZiskExecutionResult, ExecutorStats, HashMap<usize, Stats>)> {
+        self.executor.as_ref().map(|executor| executor.get_execution_result())
     }
 }
+
+impl ZiskLib<Goldilocks> for WitnessLib<Goldilocks> {}

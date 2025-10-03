@@ -21,7 +21,7 @@ struct ExecutorStatsEntry {
     timestamp: Instant,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExecutorStats {
     start_time: Instant,
     last_id: u64,
