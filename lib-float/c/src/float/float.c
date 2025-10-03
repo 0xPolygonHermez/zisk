@@ -1,4 +1,3 @@
-//#include <stdint.h>
 #include "softfloat.h"
 #include "float.h"
 
@@ -17,12 +16,10 @@ void set_rounding_mode (uint64_t rm);
 void update_rounding_mode (uint64_t * rm);
 void change_rounding_mode_sign (void);
 
-//extern uint64_t zisk_float_calls;
-
 void _zisk_float (void)
 {
-    // Before calling any softfloat function, set the rounding mode from the fcsr register
-    // into the softfloat_roundingMode variable.
+    // Before calling any softfloat function, get the rounding mode from the fcsr register
+    // (bits 7-5) and set it into the softfloat_roundingMode variable (bits 2-0).
     set_rounding_mode((fcsr >> 5) & 0x7);
 
     // Clear exception flags before operation
@@ -33,37 +30,35 @@ void _zisk_float (void)
     {
         // The instructions flw/fld/fsw/fsd are handled in the main emulator loop, since they don't
         // require any floating-point operations; they just load/store from/to memory binary data.
-
+        //
         // case 7 : { // Opcode 7
         //     switch ((inst >> 12) & 0x7) {
         //         case 2: //("R", "flw"),
         //         case 3: //("R", "fld"),
-        //         default: // panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 7 inst=0x{inst:x}"),
         //     }
         // }
-
         // case 39 : // Opcode 39
         // {
         //     switch ((inst >> 12) & 0x7) {
         //         case 2: //("S", "fsw"),
         //         case 3: //("S", "fsd"),
-        //         default: // panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 39 inst=0x{inst:x}"),
         //     }
         // }
 
         case 67 : { // Opcode 67
             switch ((inst >> 25) & 0x3) {
                 case 0: { //("R4", "fmadd.s"), rd = (rs1 x rs2) + rs3
+
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
-                    uint64_t rm = (inst >> 12) & 0x7;
 
                     // fmadd.s(∞, 0, 5.0) = NaN  # Invalid Operation! (∞ × 0 is undefined)
                     // fmadd.s(0, ∞, 5.0) = NaN  # Invalid Operation!
-                    if ( (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) ||
-                         (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) ) {
+                    if ( (F32_IS_ANY_INFINITY(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) ||
+                         (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITY(fregs[rs2])) ) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
@@ -79,9 +74,9 @@ void _zisk_float (void)
                     // fmadd.s(∞, 2, -∞) = NaN   # Invalid Operation! (∞ - ∞)
                     // fmadd.s(∞, 1, ∞) = ∞      # Valid (∞ + ∞ = ∞)
                     // fmadd.s(∞, -1, ∞) = NaN   # Invalid Operation! (-∞ + ∞)
-                    if ( F32_IS_PLUS_INFINITE(fregs[rs1]) ) {
+                    if ( F32_IS_PLUS_INFINITY(fregs[rs1]) ) {
                         if ( F32_IS_POSITIVE(fregs[rs2]) ) {
-                            if ( F32_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                            if ( F32_IS_MINUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -90,7 +85,7 @@ void _zisk_float (void)
                                 break;
                             }
                         } else {
-                            if ( F32_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                            if ( F32_IS_PLUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -100,9 +95,9 @@ void _zisk_float (void)
                             }
                         }
                     }
-                    if ( F32_IS_MINUS_INFINITE(fregs[rs1]) ) {
+                    if ( F32_IS_MINUS_INFINITY(fregs[rs1]) ) {
                         if ( F32_IS_POSITIVE(fregs[rs2]) ) {
-                            if ( F32_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                            if ( F32_IS_PLUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -111,7 +106,7 @@ void _zisk_float (void)
                                 break;
                             }
                         } else {
-                            if ( F32_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                            if ( F32_IS_MINUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -121,9 +116,9 @@ void _zisk_float (void)
                             }
                         }
                     }
-                    if ( F32_IS_PLUS_INFINITE(fregs[rs2]) ) {
+                    if ( F32_IS_PLUS_INFINITY(fregs[rs2]) ) {
                         if ( F32_IS_POSITIVE(fregs[rs1]) ) {
-                            if ( F32_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                            if ( F32_IS_MINUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -132,7 +127,7 @@ void _zisk_float (void)
                                 break;
                             }
                         } else {
-                            if ( F32_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                            if ( F32_IS_PLUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -142,9 +137,9 @@ void _zisk_float (void)
                             }
                         }
                     }
-                    if ( F32_IS_MINUS_INFINITE(fregs[rs2]) ) {
+                    if ( F32_IS_MINUS_INFINITY(fregs[rs2]) ) {
                         if ( F32_IS_POSITIVE(fregs[rs1]) ) {
-                            if ( F32_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                            if ( F32_IS_PLUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -153,7 +148,7 @@ void _zisk_float (void)
                                 break;
                             }
                         } else {
-                            if ( F32_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                            if ( F32_IS_MINUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -165,14 +160,17 @@ void _zisk_float (void)
                     }
 
                     // Get rounding mode
+                    uint64_t rm = (inst >> 12) & 0x7;
                     set_rounding_mode(rm);
 
                     // Call f32_mulAdd()
                     fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
-                    //softfloat_exceptionFlags &= ~softfloat_flag_underflow;
+
                     break;
                 }
                 case 1: { //=> ("R4", "fmadd.d"), rd = (rs1 x rs2) + rs3
+
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -214,12 +212,13 @@ void _zisk_float (void)
 
                     // fmadd.d(∞, 0, 5.0) = NaN  # Invalid Operation! (∞ × 0 is undefined)
                     // fmadd.d(0, ∞, 5.0) = NaN  # Invalid Operation!
-                    if ( (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) ||
-                         (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) ) {
+                    if ( (F64_IS_ANY_INFINITY(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) ||
+                         (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITY(fregs[rs2])) ) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
+
                     // NaN propagation
                     if (F64_IS_ANY_NAN(fregs[rs1]) || F64_IS_ANY_NAN(fregs[rs2]) || F64_IS_ANY_NAN(fregs[rs3])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]) || F64_IS_SIGNALING_NAN(fregs[rs3]))
@@ -227,13 +226,14 @@ void _zisk_float (void)
                         fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
+
                     // fmadd.d(∞, 1, 5.0) = ∞    # Valid (∞ + 5.0 = ∞)
                     // fmadd.d(∞, 2, -∞) = NaN   # Invalid Operation! (∞ - ∞)
                     // fmadd.d(∞, 1, ∞) = ∞      # Valid (∞ + ∞ = ∞)
                     // fmadd.d(∞, -1, ∞) = NaN   # Invalid Operation! (-∞ + ∞)
-                    if ( F64_IS_PLUS_INFINITE(fregs[rs1]) ) {
+                    if ( F64_IS_PLUS_INFINITY(fregs[rs1]) ) {
                         if ( F64_IS_POSITIVE(fregs[rs2]) ) {
-                            if ( F64_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                            if ( F64_IS_MINUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -242,7 +242,7 @@ void _zisk_float (void)
                                 break;
                             }
                         } else {
-                            if ( F64_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                            if ( F64_IS_PLUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -252,9 +252,9 @@ void _zisk_float (void)
                             }
                         }
                     }
-                    if ( F64_IS_MINUS_INFINITE(fregs[rs1]) ) {
+                    if ( F64_IS_MINUS_INFINITY(fregs[rs1]) ) {
                         if ( F64_IS_POSITIVE(fregs[rs2]) ) {
-                            if ( F64_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                            if ( F64_IS_PLUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -263,7 +263,7 @@ void _zisk_float (void)
                                 break;
                             }
                         } else {
-                            if ( F64_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                            if ( F64_IS_MINUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -273,9 +273,9 @@ void _zisk_float (void)
                             }
                         }
                     }
-                    if ( F64_IS_PLUS_INFINITE(fregs[rs2]) ) {
+                    if ( F64_IS_PLUS_INFINITY(fregs[rs2]) ) {
                         if ( F64_IS_POSITIVE(fregs[rs1]) ) {
-                            if ( F64_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                            if ( F64_IS_MINUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -284,7 +284,7 @@ void _zisk_float (void)
                                 break;
                             }
                         } else {
-                            if ( F64_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                            if ( F64_IS_PLUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -294,9 +294,9 @@ void _zisk_float (void)
                             }
                         }
                     }
-                    if ( F64_IS_MINUS_INFINITE(fregs[rs2]) ) {
+                    if ( F64_IS_MINUS_INFINITY(fregs[rs2]) ) {
                         if ( F64_IS_POSITIVE(fregs[rs1]) ) {
-                            if ( F64_IS_PLUS_INFINITE(fregs[rs3]) ) {
+                            if ( F64_IS_PLUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -305,7 +305,7 @@ void _zisk_float (void)
                                 break;
                             }
                         } else {
-                            if ( F64_IS_MINUS_INFINITE(fregs[rs3]) ) {
+                            if ( F64_IS_MINUS_INFINITY(fregs[rs3]) ) {
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                                 break;
@@ -334,6 +334,8 @@ void _zisk_float (void)
         case 71 : { // Opcode 71
             switch ((inst >> 25) & 0x3) {
                 case 0: { //("R4", "fmsub.s"), rd = (rs1 x rs2) - rs3
+
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -349,24 +351,24 @@ void _zisk_float (void)
                     
                     // fmsub.s(∞, 0, 5.0) = NaN  # Invalid Operation! (∞ × 0 is undefined)
                     // fmsub.s(0, ∞, 5.0) = NaN  # Invalid Operation!
-                    if ( (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) ||
-                         (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) ) {
+                    if ( (F32_IS_ANY_INFINITY(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) ||
+                         (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITY(fregs[rs2])) ) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
 
                     // Infinity multiplication and subtraction: +/-∞ - +/-∞
-                    if (F32_IS_ANY_INFINITE(fregs[rs1]) || F32_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F32_IS_ANY_INFINITY(fregs[rs1]) || F32_IS_ANY_INFINITY(fregs[rs2])) {
                         if (F32_IS_POSITIVE(fregs[rs1]) == F32_IS_POSITIVE(fregs[rs2])) { // rs1 and rs2 have the same sign, so multiplication is positive infinity
-                            if (F32_IS_PLUS_INFINITE(fregs[rs3])) { // ∞ - ∞ = NaN
+                            if (F32_IS_PLUS_INFINITY(fregs[rs3])) { // ∞ - ∞ = NaN
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                             } else { // ∞ - -∞ = ∞
                                 fregs[rd] = F32_PLUS_INFINITE;
                             }
                         } else { // rs1 and rs2 have different signs, so multiplication is negative infinity
-                            if (F32_IS_MINUS_INFINITE(fregs[rs3])) { // -∞ - -∞ = NaN
+                            if (F32_IS_MINUS_INFINITY(fregs[rs3])) { // -∞ - -∞ = NaN
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                             } else { // -∞ - ∞ = -∞
@@ -379,8 +381,8 @@ void _zisk_float (void)
                     // Infinity subtraction
                     // fmsub.s(2.0, 3.0, ∞) = (2.0 × 3.0) - ∞ = 6.0 - ∞ = -∞
                     // fmsub.s(2.0, 3.0, -∞) = (2.0 × 3.0) - (-∞) = 6.0 + ∞ = +∞
-                    if (!F32_IS_ANY_INFINITE(fregs[rs1]) && !F32_IS_ANY_INFINITE(fregs[rs2]) && F32_IS_ANY_INFINITE(fregs[rs3])) {
-                        if (F32_IS_PLUS_INFINITE(fregs[rs3])) {
+                    if (!F32_IS_ANY_INFINITY(fregs[rs1]) && !F32_IS_ANY_INFINITY(fregs[rs2]) && F32_IS_ANY_INFINITY(fregs[rs3])) {
+                        if (F32_IS_PLUS_INFINITY(fregs[rs3])) {
                             fregs[rd] = F32_MINUS_INFINITE;
                         } else {
                             fregs[rd] = F32_PLUS_INFINITE;
@@ -397,6 +399,8 @@ void _zisk_float (void)
                     break;
                 }
                 case 1: { //=> ("R4", "fmsub.d"), rd = (rs1 x rs2) - rs3
+
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -409,26 +413,33 @@ void _zisk_float (void)
                         fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
+
                     // fmsub.d(∞, 0, 5.0) = NaN  # Invalid Operation! (∞ × 0 is undefined)
                     // fmsub.d(0, ∞, 5.0) = NaN  # Invalid Operation!
-                    if ( (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) ||
-                         (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) ) {
+                    if ( (F64_IS_ANY_INFINITY(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) ||
+                         (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITY(fregs[rs2])) ) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
 
                     // Infinity multiplication and subtraction
-                    if (F64_IS_ANY_INFINITE(fregs[rs1]) || F64_IS_ANY_INFINITE(fregs[rs2])) {
+                    // Conflicting infinities (same sign):
+                    //   fmsub.d(∞, 1.0, ∞) = (∞ × 1.0) - ∞ = ∞ - ∞ = NaN (Invalid Operation)
+                    //   fmsub.d(-∞, 1.0, -∞) = (-∞ × 1.0) - (-∞) = -∞ + ∞ = NaN (Invalid Operation)
+                    // Conflicting infinities (different signs):
+                    //   fmsub.d(∞, 1.0, -∞) = (∞ × 1.0) - (-∞) = ∞ + ∞ = ∞
+                    //   fmsub.d(-∞, 1.0, ∞) = (-∞ × 1.0) - ∞ = -∞ - ∞ = -∞
+                    if (F64_IS_ANY_INFINITY(fregs[rs1]) || F64_IS_ANY_INFINITY(fregs[rs2])) {
                         if (F64_IS_POSITIVE(fregs[rs1]) == F64_IS_POSITIVE(fregs[rs2])) { // rs1 and rs2 have the same sign, so multiplication is positive infinity
-                            if (F64_IS_PLUS_INFINITE(fregs[rs3])) { // ∞ - ∞ = NaN
+                            if (F64_IS_PLUS_INFINITY(fregs[rs3])) { // ∞ - ∞ = NaN
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                             } else { // ∞ - -∞ = ∞
                                 fregs[rd] = F64_PLUS_INFINITE;
                             }
                         } else { // rs1 and rs2 have different signs, so multiplication is negative infinity
-                            if (F64_IS_MINUS_INFINITE(fregs[rs3])) { // -∞ - -∞ = NaN
+                            if (F64_IS_MINUS_INFINITY(fregs[rs3])) { // -∞ - -∞ = NaN
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                             } else { // -∞ - ∞ = -∞
@@ -438,25 +449,17 @@ void _zisk_float (void)
                         break;
                     }   
 
-                    // Infinity subtraction
-                    // fmsub.d(2.0, 3.0, ∞) = (2.0 × 3.0) - ∞ = 6.0 - ∞ = -∞
-                    // fmsub.d(2.0, 3.0, -∞) = (2.0 × 3.0) - (-∞) = 6.0 + ∞ = +∞
-                    if (!F64_IS_ANY_INFINITE(fregs[rs1]) && !F64_IS_ANY_INFINITE(fregs[rs2]) && F64_IS_ANY_INFINITE(fregs[rs3])) {
-                        if (F64_IS_PLUS_INFINITE(fregs[rs3])) {
+                    // Infinity subtraction:
+                    //   fmsub.d(2.0, 3.0, ∞) = (2.0 × 3.0) - ∞ = 6.0 - ∞ = -∞
+                    //   fmsub.d(2.0, 3.0, -∞) = (2.0 × 3.0) - (-∞) = 6.0 + ∞ = +∞
+                    if (!F64_IS_ANY_INFINITY(fregs[rs1]) && !F64_IS_ANY_INFINITY(fregs[rs2]) && F64_IS_ANY_INFINITY(fregs[rs3])) {
+                        if (F64_IS_PLUS_INFINITY(fregs[rs3])) {
                             fregs[rd] = F64_MINUS_INFINITE;
                         } else {
                             fregs[rd] = F64_PLUS_INFINITE;
                         }
                         break;
                     }
-
-                    // Conflicting infinities (same sign)
-                    // fmsub.d(∞, 1.0, ∞) = (∞ × 1.0) - ∞ = ∞ - ∞ = NaN (Invalid Operation)
-                    // fmsub.d(-∞, 1.0, -∞) = (-∞ × 1.0) - (-∞) = -∞ + ∞ = NaN (Invalid Operation)
-
-                    // Conflicting infinities (different signs)  
-                    // fmsub.d(∞, 1.0, -∞) = (∞ × 1.0) - (-∞) = ∞ + ∞ = ∞
-                    // fmsub.d(-∞, 1.0, ∞) = (-∞ × 1.0) - ∞ = -∞ - ∞ = -∞
 
                     // Get rounding mode
                     uint64_t rm = (inst >> 12) & 0x7;
@@ -476,6 +479,8 @@ void _zisk_float (void)
         case 75 : { // Opcode 75
             switch ((inst >> 25) & 0x3) {
                 case 0: { //("R4", "fnmsub.s"), rd = -(rs1 x rs2) + rs3
+
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -488,13 +493,13 @@ void _zisk_float (void)
                         break;
                     }
                     // infinity * zero = NaN
-                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) {
+                    if (F32_IS_ANY_INFINITY(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
                     // zero * infinity = NaN
-                    if (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
@@ -510,16 +515,16 @@ void _zisk_float (void)
                     // -(+∞ + -∞) = NaN
                     // -(-∞ + +∞) = NaN
                     // -(-∞ + -∞) = +∞
-                    if (F32_IS_ANY_INFINITE(fregs[rs1]) || F32_IS_ANY_INFINITE(fregs[rs2])) { // Multiplication will result in infinity
+                    if (F32_IS_ANY_INFINITY(fregs[rs1]) || F32_IS_ANY_INFINITY(fregs[rs2])) { // Multiplication will result in infinity
                         if (F32_IS_POSITIVE(fregs[rs1]) == F32_IS_POSITIVE(fregs[rs2])) { // rs1 and rs2 have the same sign, so multiplication is positive infinity
-                            if (F32_IS_PLUS_INFINITE(fregs[rs3])) { // -(+∞ - +∞) = NaN
+                            if (F32_IS_PLUS_INFINITY(fregs[rs3])) { // -(+∞ - +∞) = NaN
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                             } else { // -(+∞ - -∞ or x) = -∞
                                 fregs[rd] = F32_MINUS_INFINITE;
                             }
                         } else { // rs1 and rs2 have different signs, so multiplication is negative infinity
-                            if (F32_IS_MINUS_INFINITE(fregs[rs3])) { // -(-∞ - -∞) = NaN
+                            if (F32_IS_MINUS_INFINITY(fregs[rs3])) { // -(-∞ - -∞) = NaN
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                             } else { // -(-∞ - +∞ or x) = +∞
@@ -570,6 +575,8 @@ void _zisk_float (void)
                     break;
                 }
                 case 1: { //=> ("R4", "fnmsub.d"), rd = -(rs1 x rs2) + rs3
+
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -582,13 +589,13 @@ void _zisk_float (void)
                         break;
                     }
                     // infinity * zero = NaN
-                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) {
+                    if (F64_IS_ANY_INFINITY(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
                     // zero * infinity = NaN
-                    if (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
@@ -604,16 +611,16 @@ void _zisk_float (void)
                     // -(+∞ + -∞) = NaN
                     // -(-∞ + +∞) = NaN
                     // -(-∞ + -∞) = +∞
-                    if (F64_IS_ANY_INFINITE(fregs[rs1]) || F64_IS_ANY_INFINITE(fregs[rs2])) { // Multiplication will result in infinity
+                    if (F64_IS_ANY_INFINITY(fregs[rs1]) || F64_IS_ANY_INFINITY(fregs[rs2])) { // Multiplication will result in infinity
                         if (F64_IS_POSITIVE(fregs[rs1]) == F64_IS_POSITIVE(fregs[rs2])) { // rs1 and rs2 have the same sign, so multiplication is positive infinity
-                            if (F64_IS_PLUS_INFINITE(fregs[rs3])) { // -(+∞ - +∞) = NaN
+                            if (F64_IS_PLUS_INFINITY(fregs[rs3])) { // -(+∞ - +∞) = NaN
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                             } else { // -(+∞ - -∞ or x) = -∞
                                 fregs[rd] = F64_MINUS_INFINITE;
                             }
                         } else { // rs1 and rs2 have different signs, so multiplication is negative infinity
-                            if (F64_IS_MINUS_INFINITE(fregs[rs3])) { // -(-∞ - -∞) = NaN
+                            if (F64_IS_MINUS_INFINITY(fregs[rs3])) { // -(-∞ - -∞) = NaN
                                 fregs[rd] = F64_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                             } else { // -(-∞ - +∞ or x) = +∞
@@ -629,7 +636,6 @@ void _zisk_float (void)
                         fregs[rd] = fregs[rs3];
                         break;
                     }
-
 
                     // Get rounding mode
                     uint64_t rm = (inst >> 12) & 0x7;
@@ -649,6 +655,8 @@ void _zisk_float (void)
         case 79 : { // Opcode 79
             switch ((inst >> 25) & 0x3) {
                 case 0: { //("R4", "fnmadd.s"), rd = -(rs1 x rs2) - rs3
+
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -661,13 +669,13 @@ void _zisk_float (void)
                         break;
                     }
                     // infinity * zero = NaN
-                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) {
+                    if (F32_IS_ANY_INFINITY(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
                     // zero * infinity = NaN
-                    if (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
@@ -683,16 +691,16 @@ void _zisk_float (void)
                     // -(+∞ + -∞) = NaN
                     // -(-∞ + +∞) = NaN
                     // -(-∞ + -∞) = +∞
-                    if (F32_IS_ANY_INFINITE(fregs[rs1]) || F32_IS_ANY_INFINITE(fregs[rs2])) { // Multiplication will result in infinity
+                    if (F32_IS_ANY_INFINITY(fregs[rs1]) || F32_IS_ANY_INFINITY(fregs[rs2])) { // Multiplication will result in infinity
                         if (F32_IS_POSITIVE(fregs[rs1]) == F32_IS_POSITIVE(fregs[rs2])) { // rs1 and rs2 have the same sign, so multiplication is positive infinity
-                            if (F32_IS_MINUS_INFINITE(fregs[rs3])) { // -(+∞ + -∞) = NaN
+                            if (F32_IS_MINUS_INFINITY(fregs[rs3])) { // -(+∞ + -∞) = NaN
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                             } else { // -(+∞ + +∞ or x) = -∞
                                 fregs[rd] = F32_MINUS_INFINITE;
                             }
                         } else { // rs1 and rs2 have different signs, so multiplication is negative infinity
-                            if (F32_IS_PLUS_INFINITE(fregs[rs3])) { // -(-∞ + +∞) = NaN
+                            if (F32_IS_PLUS_INFINITY(fregs[rs3])) { // -(-∞ + +∞) = NaN
                                 fregs[rd] = F32_QUIET_NAN;
                                 softfloat_raiseFlags( softfloat_flag_invalid );
                             } else { // -(-∞ + -∞ or x) = +∞
@@ -743,6 +751,8 @@ void _zisk_float (void)
                     break;
                 }
                 case 1: { //=> ("R4", "fnmadd.d"), rd = -(rs1 x rs2) - rs3
+
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -759,13 +769,13 @@ void _zisk_float (void)
                         break;
                     }
                     // infinity * zero = NaN
-                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) {
+                    if (F64_IS_ANY_INFINITY(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
                     // zero * infinity = NaN
-                    if (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
@@ -821,6 +831,7 @@ void _zisk_float (void)
         case 83 : { // Opcode 83
             switch ((inst >> 25) & 0x7F) {
                 case 0 : { //("R", "fadd.s"),
+
                     // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
@@ -834,25 +845,26 @@ void _zisk_float (void)
                         break;
                     }
 
-                    // fadd.s(∞, -∞) = NaN    # Invalid Operation! (opposite-signed infinity)
-                    // fadd.s(∞, ∞) = ∞       # Valid operation
-                    // fadd.s(-∞, -∞) = -∞    # Valid operation (opposite-signed infinity)
-                    // fadd.s(-∞, ∞) = NaN    # Invalid Operation!
-                    if (F32_IS_PLUS_INFINITE(fregs[rs1]) && F32_IS_PLUS_INFINITE(fregs[rs2])) {
+                    // Infinity addition rules:
+                    //   fadd.s(∞, -∞) = NaN    # Invalid Operation! (opposite-signed infinity)
+                    //   fadd.s(∞, ∞) = ∞       # Valid operation
+                    //   fadd.s(-∞, -∞) = -∞    # Valid operation (opposite-signed infinity)
+                    //   fadd.s(-∞, ∞) = NaN    # Invalid Operation!
+                    if (F32_IS_PLUS_INFINITY(fregs[rs1]) && F32_IS_PLUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_PLUS_INFINITE;
                         break;
                     }
-                    if (F32_IS_PLUS_INFINITE(fregs[rs1]) && F32_IS_MINUS_INFINITE(fregs[rs2])) {
+                    if (F32_IS_PLUS_INFINITY(fregs[rs1]) && F32_IS_MINUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
-                    if (F32_IS_MINUS_INFINITE(fregs[rs1]) && F32_IS_PLUS_INFINITE(fregs[rs2])) {
+                    if (F32_IS_MINUS_INFINITY(fregs[rs1]) && F32_IS_PLUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
-                    if (F32_IS_MINUS_INFINITE(fregs[rs1]) && F32_IS_MINUS_INFINITE(fregs[rs2])) {
+                    if (F32_IS_MINUS_INFINITY(fregs[rs1]) && F32_IS_MINUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_MINUS_INFINITE;
                         break;
                     }
@@ -866,18 +878,11 @@ void _zisk_float (void)
                     break;
                 }
                 case 1 : { //("R", "fadd.d"),
+
                     // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
-
-                    //if (zisk_float_calls == 0)
-                    // {
-                    //     fregs[rd] = zisk_float_calls;//0x12345678;
-                    //     zisk_float_calls++;
-                    //     break;
-                    // }
-                    // zisk_float_calls++;
 
                     // NaN propagation: x + NaN = NaN, NaN + x = NaN, NaN + NaN = NaN
                     if (F64_IS_ANY_NAN(fregs[rs1]) || F64_IS_ANY_NAN(fregs[rs2])) {
@@ -886,39 +891,43 @@ void _zisk_float (void)
                         fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
-                    // fadd.d(∞, -∞) = NaN    # Invalid Operation! (opposite-signed infinity)
-                    // fadd.d(∞, ∞) = ∞       # Valid operation
-                    // fadd.d(-∞, -∞) = -∞    # Valid operation (opposite-signed infinity)
-                    // fadd.d(-∞, ∞) = NaN    # Invalid Operation!
-                    if (F64_IS_PLUS_INFINITE(fregs[rs1]) && F64_IS_PLUS_INFINITE(fregs[rs2])) {
+
+                    // Infinity addition rules:
+                    //   fadd.d(∞, -∞) = NaN    # Invalid Operation! (opposite-signed infinity)
+                    //   fadd.d(∞, ∞) = ∞       # Valid operation
+                    //   fadd.d(-∞, -∞) = -∞    # Valid operation (opposite-signed infinity)
+                    //   fadd.d(-∞, ∞) = NaN    # Invalid Operation!
+                    if (F64_IS_PLUS_INFINITY(fregs[rs1]) && F64_IS_PLUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_PLUS_INFINITE;
                         break;
                     }
-                    if (F64_IS_PLUS_INFINITE(fregs[rs1]) && F64_IS_MINUS_INFINITE(fregs[rs2])) {
+                    if (F64_IS_PLUS_INFINITY(fregs[rs1]) && F64_IS_MINUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
-                    if (F64_IS_MINUS_INFINITE(fregs[rs1]) && F64_IS_PLUS_INFINITE(fregs[rs2])) {
+                    if (F64_IS_MINUS_INFINITY(fregs[rs1]) && F64_IS_PLUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
-                    if (F64_IS_MINUS_INFINITE(fregs[rs1]) && F64_IS_MINUS_INFINITE(fregs[rs2])) {
+                    if (F64_IS_MINUS_INFINITY(fregs[rs1]) && F64_IS_MINUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_MINUS_INFINITE;
                         break;
                     }
-                    // +0 + -0 = +0
+
+                    // Zero addition rules:                    
+                    //   +0 + -0 = +0
+                    //   0 + x = x
+                    //   x + 0 = x
                     if (F64_IS_PLUS_ZERO(fregs[rs1]) && F64_IS_MINUS_ZERO(fregs[rs2])) {
                         fregs[rd] = F64_PLUS_ZERO;
                         break;
                     }
-                    // 0 + x = x
                     if (F64_IS_ANY_ZERO(fregs[rs1])) {
                         fregs[rd] = fregs[rs2];
                         break;
                     }
-                    // x + 0 = x
                     if (F64_IS_ANY_ZERO(fregs[rs2])) {
                         fregs[rd] = fregs[rs1];
                         break;
@@ -933,6 +942,7 @@ void _zisk_float (void)
                     break;
                 }
                 case 4 : { //("R", "fsub.s"),
+
                     // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
@@ -945,24 +955,26 @@ void _zisk_float (void)
                         fregs[rd] = F32_QUIET_NAN;
                         break;
                     }
-                    // fsub.s(∞, ∞) = NaN    # Invalid Operation! (same-signed infinity)
-                    // fsub.s(∞, -∞) = ∞     # Valid operation
-                    // fsub.s(-∞, ∞) = -∞    # Valid operation
-                    // fsub.s(-∞, -∞) = NaN  # Invalid Operation! (same-signed infinity)
-                    if (F32_IS_PLUS_INFINITE(fregs[rs1]) && F32_IS_PLUS_INFINITE(fregs[rs2])) {
+
+                    // Infinity subtraction rules:
+                    //   fsub.s(∞, ∞) = NaN    # Invalid Operation! (same-signed infinity)
+                    //   fsub.s(∞, -∞) = ∞     # Valid operation
+                    //   fsub.s(-∞, ∞) = -∞    # Valid operation
+                    //   fsub.s(-∞, -∞) = NaN  # Invalid Operation! (same-signed infinity)
+                    if (F32_IS_PLUS_INFINITY(fregs[rs1]) && F32_IS_PLUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
-                    if (F32_IS_PLUS_INFINITE(fregs[rs1]) && F32_IS_MINUS_INFINITE(fregs[rs2])) {
+                    if (F32_IS_PLUS_INFINITY(fregs[rs1]) && F32_IS_MINUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_PLUS_INFINITE;
                         break;
                     }
-                    if (F32_IS_MINUS_INFINITE(fregs[rs1]) && F32_IS_PLUS_INFINITE(fregs[rs2])) {
+                    if (F32_IS_MINUS_INFINITY(fregs[rs1]) && F32_IS_PLUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_MINUS_INFINITE;
                         break;
                     }
-                    if (F32_IS_MINUS_INFINITE(fregs[rs1]) && F32_IS_MINUS_INFINITE(fregs[rs2])) {
+                    if (F32_IS_MINUS_INFINITY(fregs[rs1]) && F32_IS_MINUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
@@ -974,13 +986,12 @@ void _zisk_float (void)
 
                     // Call f32_sub()
                     fregs[rd] = (uint64_t)f32_sub( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
-                    // if (softfloat_exceptionFlags & softfloat_flag_invalid) {
-                    //     //if (fregs[rs1] == 0)
-                    //         fregs[rd] = 0x7fc00000;
-                    // };
+
                     break;
                 }
                 case 5 : { //("R", "fsub.d"),
+
+                    // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -993,24 +1004,24 @@ void _zisk_float (void)
                         break;
                     }
                     // -∞ - (-∞) → Invalid Operation → NaN
-                    if (F64_IS_MINUS_INFINITE(fregs[rs1]) && F64_IS_MINUS_INFINITE(fregs[rs2])) {
+                    if (F64_IS_MINUS_INFINITY(fregs[rs1]) && F64_IS_MINUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
                     // ∞ - ∞ → Invalid Operation → NaN
-                    if (F64_IS_PLUS_INFINITE(fregs[rs1]) && F64_IS_PLUS_INFINITE(fregs[rs2])) {
+                    if (F64_IS_PLUS_INFINITY(fregs[rs1]) && F64_IS_PLUS_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
                     // ∞ - finite → ∞ (same sign as first ∞)
-                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && !F64_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F64_IS_ANY_INFINITY(fregs[rs1]) && !F64_IS_ANY_INFINITY(fregs[rs2])) {
                         fregs[rd] = fregs[rs1];
                         break;
                     }
                     // finite - ∞ → ∞ (opposite sign of second ∞)
-                    if (!F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (!F64_IS_ANY_INFINITY(fregs[rs1]) && F64_IS_ANY_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_NEGATE(fregs[rs2]);
                         break;
                     }
@@ -1021,23 +1032,25 @@ void _zisk_float (void)
 
                     // Call f64_sub()
                     fregs[rd] = (uint64_t)f64_sub( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
+
                     break;
                 }
                 case 8 : { //("R", "fmul.s"),
+
                     // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
 
                     // infinity * NaN = NaN
-                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_NAN(fregs[rs2])) {
+                    if (F32_IS_ANY_INFINITY(fregs[rs1]) && F32_IS_ANY_NAN(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
                         break;
                     }
                     // NaN * infinity = NaN
-                    if (F32_IS_ANY_NAN(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F32_IS_ANY_NAN(fregs[rs1]) && F32_IS_ANY_INFINITY(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs1]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
@@ -1051,13 +1064,13 @@ void _zisk_float (void)
                         break;
                     }
                     // zero * infinity = NaN
-                    if (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
                     // infinity * zero = NaN
-                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) {
+                    if (F32_IS_ANY_INFINITY(fregs[rs1]) && F32_IS_ANY_ZERO(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
@@ -1072,23 +1085,25 @@ void _zisk_float (void)
                     if ((softfloat_exceptionFlags & softfloat_flag_underflow) && ((fregs[rd] & F32_SIGN_BIT_MASK) == 0) && ((fregs[rd] & F32_EXPONENT_MASK) != 0)) {
                         softfloat_exceptionFlags &= ~softfloat_flag_underflow;
                     }
+
                     break;
                 }
                 case 9 : { //("R", "fmul.d"),
+
                     // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
                     uint64_t rs2 = (inst >> 20) & 0x1F;
 
                     // infinity * NaN = NaN
-                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_NAN(fregs[rs2])) {
+                    if (F64_IS_ANY_INFINITY(fregs[rs1]) && F64_IS_ANY_NAN(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
                     // NaN * infinity = NaN
-                    if (F64_IS_ANY_NAN(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F64_IS_ANY_NAN(fregs[rs1]) && F64_IS_ANY_INFINITY(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
@@ -1102,13 +1117,13 @@ void _zisk_float (void)
                         break;
                     }
                     // zero * infinity = NaN
-                    if (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
                     }
                     // infinity * zero = NaN
-                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) {
+                    if (F64_IS_ANY_INFINITY(fregs[rs1]) && F64_IS_ANY_ZERO(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
@@ -1119,27 +1134,12 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f64_mul()
-                    //bool both_non_zero = !F64_IS_ANY_ZERO(fregs[rs1]) && !F64_IS_ANY_ZERO(fregs[rs2]);
                     fregs[rd] = (uint64_t)f64_mul( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
-                    // if (both_non_zero && F64_IS_ANY_ZERO(fregs[rd])) {
-                    //     // It was an underflow, but we got a zero result. Clear the underflow flag.
-                    //     softfloat_exceptionFlags |= softfloat_flag_underflow;
-                    //     softfloat_exceptionFlags |= softfloat_flag_inexact;
-                    //     softfloat_exceptionFlags = 7;
-                    //     fregs[rd] = 0x12345678;
-                    // }
+                    
                     break;
-                    // riscv-arch-test/riscv-test-suite/rv32i_m/D/src/fmul.d_b9-01.S
-
-                    // inst_1263:
-                    // // fs1 == 1 and fe1 == 0x000 and fm1 == 0x0000000000001 and fs2 == 1 and fe2 == 0x37c and fm2 == 0x9999999999998 and  fcsr == 0x0 and rm_val == 7   
-                    // /* opcode: fmul.d ; op1:f30; op2:f29; dest:f31; op1val:0x8000000000000001; op2val:0xb7c9999999999998;
-                    //    valaddr_reg:x3; val_offset:2526*FLEN/8; rmval:dyn; fcsr: 0;
-                    //    correctval:??; testreg:x2
-                    // */
-                    // TEST_FPRR_OP(fmul.d, f31, f30, f29, dyn, 0, 0, x3, 2526*FLEN/8, x4, x1, x2)
                 }
                 case 12 : { //("R", "fdiv.s"),
+
                     // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
@@ -1152,14 +1152,14 @@ void _zisk_float (void)
                         break;
                     }
                     // infinity / NaN = NaN
-                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_NAN(fregs[rs2])) {
+                    if (F32_IS_ANY_INFINITY(fregs[rs1]) && F32_IS_ANY_NAN(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
                         break;
                     }
                     // NaN / infinity = NaN
-                    if (F32_IS_ANY_NAN(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F32_IS_ANY_NAN(fregs[rs1]) && F32_IS_ANY_INFINITY(fregs[rs2])) {
                         if (F32_IS_SIGNALING_NAN(fregs[rs1]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
@@ -1173,7 +1173,7 @@ void _zisk_float (void)
                         break;
                     }
                     // infinity / infinity = NaN
-                    if (F32_IS_ANY_INFINITE(fregs[rs1]) && F32_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F32_IS_ANY_INFINITY(fregs[rs1]) && F32_IS_ANY_INFINITY(fregs[rs2])) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
@@ -1185,9 +1185,11 @@ void _zisk_float (void)
 
                     // Call f64_div()
                     fregs[rd] = (uint64_t)f32_div( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ).v;
+
                     break;
                 }
                 case 13 : { //("R", "fdiv.d"),
+
                     // Get registers
                     uint64_t rd = (inst >> 7) & 0x1F;
                     uint64_t rs1 = (inst >> 15) & 0x1F;
@@ -1200,14 +1202,14 @@ void _zisk_float (void)
                         break;
                     }
                     // infinity / NaN = NaN
-                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_NAN(fregs[rs2])) {
+                    if (F64_IS_ANY_INFINITY(fregs[rs1]) && F64_IS_ANY_NAN(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs2]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
                     // NaN / infinity = NaN
-                    if (F64_IS_ANY_NAN(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F64_IS_ANY_NAN(fregs[rs1]) && F64_IS_ANY_INFINITY(fregs[rs2])) {
                         if (F64_IS_SIGNALING_NAN(fregs[rs1]))
                             softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
@@ -1221,7 +1223,7 @@ void _zisk_float (void)
                         break;
                     }
                     // infinity / infinity = NaN
-                    if (F64_IS_ANY_INFINITE(fregs[rs1]) && F64_IS_ANY_INFINITE(fregs[rs2])) {
+                    if (F64_IS_ANY_INFINITY(fregs[rs1]) && F64_IS_ANY_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
                         break;
@@ -1233,38 +1235,54 @@ void _zisk_float (void)
 
                     // Call f64_div()
                     fregs[rd] = (uint64_t)f64_div( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ).v;
+
                     break;
                 }
                 case 16 : {
                     switch ((inst >> 12) & 0x7) {
                         case 0 : { //("R", "fsgnj.s"), takes sign bit of rs2 and copies rs1 to rd
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Set sign bit of rd to sign bit of rs2, and the rest to rs1
                             if (fregs[rs2] & F32_SIGN_BIT_MASK)
                                 fregs[rd] = fregs[rs1] | F32_SIGN_BIT_MASK;
                             else
                                 fregs[rd] = fregs[rs1] & (~F32_SIGN_BIT_MASK);
+
                             break;
                         }
                         case 1 : { //("R", "fsgnjn.s"), negates sign bit of rs2 and copies rs1 to rd
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Set sign bit of rd to negated sign bit of rs2, and the rest to rs1
                             if (fregs[rs2] & F32_SIGN_BIT_MASK)
                                 fregs[rd] = fregs[rs1] & (~F32_SIGN_BIT_MASK);
                             else
                                 fregs[rd] = fregs[rs1] | F32_SIGN_BIT_MASK;
+
                             break;
                         }
                         case 2 : { //("R", "fsgnjx.s"), XORs sign bits of rs1 and rs2 and copies rs1 to rd
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Set sign bit of rd to XOR of sign bits of rs1 and rs2, and the rest to rs1
                             if (fregs[rs2] & F32_SIGN_BIT_MASK)
                                 fregs[rd] = fregs[rs1] ^ F32_SIGN_BIT_MASK;
                             else
                                 fregs[rd] = fregs[rs1];
+
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=16 inst=0x{inst:x}"),
@@ -1276,33 +1294,48 @@ void _zisk_float (void)
                 case 17 : {
                     switch ((inst >> 12) & 0x7) {
                         case 0 : { //("R", "fsgnj.d"), takes sign bit of rs2 and copies rs1 to rd
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Set sign bit of rd to sign bit of rs2, and the rest to rs1
                             if (fregs[rs2] & F64_SIGN_BIT_MASK)
                                 fregs[rd] = fregs[rs1] | F64_SIGN_BIT_MASK;
                             else
                                 fregs[rd] = fregs[rs1] & (~F64_SIGN_BIT_MASK);
+
                             break;
                         }
                         case 1 : { //("R", "fsgnjn.d"), negates sign bit of rs2 and copies rs1 to rd
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Set sign bit of rd to negated sign bit of rs2, and the rest to rs1
                             if (fregs[rs2] & F64_SIGN_BIT_MASK)
                                 fregs[rd] = fregs[rs1] & (~F64_SIGN_BIT_MASK);
                             else
                                 fregs[rd] = fregs[rs1] | F64_SIGN_BIT_MASK;
+
                             break;
                         }
                         case 2 : { //("R", "fsgnjx.d"), XORs sign bits of rs1 and rs2 and copies rs1 to rd
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Set sign bit of rd to XOR of sign bits of rs1 and rs2, and the rest to rs1
                             if (fregs[rs2] & F64_SIGN_BIT_MASK)
                                 fregs[rd] = fregs[rs1] ^ F64_SIGN_BIT_MASK;
                             else
                                 fregs[rd] = fregs[rs1];
+                            
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=17 inst=0x{inst:x}"),
@@ -1314,6 +1347,8 @@ void _zisk_float (void)
                 case 20 : {
                     switch ((inst >> 12) & 0x7) {
                         case 0 : { //("R", "fmin.s"),
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -1352,12 +1387,16 @@ void _zisk_float (void)
 
                             // Call f32_lt()
                             fregs[rd] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? fregs[rs1] : fregs[rs2];
+
                             break;
                         }
                         case 1 : { //("R", "fmax.s"),
+
                             // The value -0.0 is considered to be less than the value +0.0. If both inputs are NaNs, the result is the
                             // canonical NaN. If only one operand is a NaN, the result is the non-NaN operand. Signaling NaN inputs
                             // set the invalid operation exception flag, even when the result is not NaN.
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
@@ -1396,6 +1435,7 @@ void _zisk_float (void)
 
                             // Call f32_lt()
                             fregs[rd] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? fregs[rs2] : fregs[rs1];
+
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=20 inst=0x{inst:x}"),
@@ -1407,9 +1447,13 @@ void _zisk_float (void)
                 case 21 : {
                     switch ((inst >> 12) & 0x7) {
                         case 0 : { //("R", "fmin.d"),
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // NaN propagation
                             if (F64_IS_ANY_NAN(fregs[rs1]) && F64_IS_ANY_NAN(fregs[rs2])) {
                                 if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
@@ -1428,6 +1472,10 @@ void _zisk_float (void)
                                 fregs[rd] = fregs[rs1];
                                 break;
                             }
+
+                            // Zero minimum rules:
+                            //   fmin(+0.0, -0.0) = -0.0
+                            //   fmin(-0.0, +0.0) = -0.0
                             if (fregs[rs1] == F64_MINUS_ZERO && fregs[rs2] == F64_PLUS_ZERO) {
                                 fregs[rd] = F64_MINUS_ZERO;
                                 break;
@@ -1436,13 +1484,20 @@ void _zisk_float (void)
                                 fregs[rd] = F64_MINUS_ZERO;
                                 break;
                             }
+
+                            // Call f64_lt()
                             fregs[rd] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? fregs[rs1] : fregs[rs2];
+
                             break;
                         }
                         case 1 : { //("R", "fmax.d"),
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // NaN propagation
                             if (F64_IS_ANY_NAN(fregs[rs1]) && F64_IS_ANY_NAN(fregs[rs2])) {
                                 if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]))
                                     softfloat_exceptionFlags |= softfloat_flag_invalid;
@@ -1461,6 +1516,10 @@ void _zisk_float (void)
                                 fregs[rd] = fregs[rs1];
                                 break;
                             }
+
+                            // Zero maximum rules:
+                            //   fmax(+0.0, -0.0) = +0.0
+                            //   fmax(-0.0, +0.0) = +0.0
                             if (fregs[rs1] == F64_MINUS_ZERO && fregs[rs2] == F64_PLUS_ZERO) {
                                 fregs[rd] = F64_PLUS_ZERO;
                                 break;
@@ -1469,7 +1528,10 @@ void _zisk_float (void)
                                 fregs[rd] = F64_PLUS_ZERO;
                                 break;
                             }
+
+                            // Call f64_lt()
                             fregs[rd] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? fregs[rs2] : fregs[rs1];
+
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=21 inst=0x{inst:x}"),
@@ -1481,11 +1543,12 @@ void _zisk_float (void)
                 case 32 : {
                     switch ((inst >> 20) & 0x1F) {
                         case 1 : { //("R", "fcvt.s.d"),
+
                             // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
 
-                            // Get value
+                            // NaN propagation
                             if (F64_IS_QUIET_NAN(fregs[rs1])) {
                                 fregs[rd] = F32_QUIET_NAN;
                             }
@@ -1506,6 +1569,7 @@ void _zisk_float (void)
 
                             // Extend to 64 bits
                             fregs[rd] |= 0xFFFFFFFF00000000;
+
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=32 inst=0x{inst:x}"),
@@ -1517,11 +1581,12 @@ void _zisk_float (void)
                 case 33 : {
                     switch ((inst >> 20) & 0x1F) {
                         case 0 : { //("R", "fcvt.d.s"),
+
                             // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
 
-                            // Filter out invalid values
+                            // Filter out invalid and infinity values
                             if (fregs[rs1] & 0xFFFFFFFF00000000) {
                                 fregs[rd] = F64_QUIET_NAN;
                                 break;
@@ -1535,11 +1600,11 @@ void _zisk_float (void)
                                 fregs[rd] = F64_QUIET_NAN;
                                 break;
                             }
-                            if (F32_IS_PLUS_INFINITE(fregs[rs1])) {
+                            if (F32_IS_PLUS_INFINITY(fregs[rs1])) {
                                 fregs[rd] = F64_PLUS_INFINITE;
                                 break;
                             }
-                            if (F32_IS_MINUS_INFINITE(fregs[rs1])) {
+                            if (F32_IS_MINUS_INFINITY(fregs[rs1])) {
                                 fregs[rd] = F64_MINUS_INFINITE;
                                 break;
                             }
@@ -1574,9 +1639,13 @@ void _zisk_float (void)
                 case 44 : {
                     switch ((inst >> 20) & 0x1F) {
                         case 0 : { //("R", "fsqrt.s"),
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            if (F32_IS_PLUS_INFINITE(fregs[rs1])) {
+
+                            // Filter out invalid and infinity values
+                            if (F32_IS_PLUS_INFINITY(fregs[rs1])) {
                                 fregs[rd] = F32_PLUS_INFINITE;
                                 break;
                             }
@@ -1599,9 +1668,14 @@ void _zisk_float (void)
                                 softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 break;
                             }
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             set_rounding_mode(rm);
+
+                            // Call f32_sqrt()
                             fregs[rd] = (uint64_t)f32_sqrt( (float32_t){fregs[rs1]} ).v;
+
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=44 inst=0x{inst:x}"),
@@ -1613,9 +1687,13 @@ void _zisk_float (void)
                 case 45 : {
                     switch ((inst >> 20) & 0x1F) {
                         case 0 : { //("R", "fsqrt.d"),
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
-                            if (F64_IS_PLUS_INFINITE(fregs[rs1])) {
+
+                            // Filter out invalid and infinity values
+                            if (F64_IS_PLUS_INFINITY(fregs[rs1])) {
                                 fregs[rd] = F64_PLUS_INFINITE;
                                 break;
                             }
@@ -1638,9 +1716,14 @@ void _zisk_float (void)
                                 softfloat_exceptionFlags |= softfloat_flag_invalid;
                                 break;
                             }
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             set_rounding_mode(rm);
+
+                            // Call f64_sqrt()
                             fregs[rd] = (uint64_t)f64_sqrt( (float64_t){fregs[rs1]} ).v;
+
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=45 inst=0x{inst:x}"),
@@ -1652,24 +1735,39 @@ void _zisk_float (void)
                 case 80 : {
                     switch ((inst >> 12) & 0x7) {
                         case 2 : { //("R", "feq.s"),
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Call f32_eq()
                             fregs_x[rd] = f32_eq( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? 1 : 0;
+
                             break;
                         }
                         case 1 : { //("R", "flt.s"),
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Call f32_lt()
                             fregs_x[rd] = f32_lt( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? 1 : 0;
+
                             break;
                         }
                         case 0 : { //("R", "fle.s"),
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Call f32_le()
                             fregs_x[rd] = f32_le( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]} ) ? 1 : 0;
+
                             break;
                         }
                         default: // => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=80 inst=0x{inst:x}"),
@@ -1681,24 +1779,39 @@ void _zisk_float (void)
                 case 81 : {
                     switch ((inst >> 12) & 0x7) {
                         case 2 : { //("R", "feq.d"),
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Call f64_eq()
                             fregs_x[rd] = f64_eq( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? 1 : 0;
+
                             break;
                         }
                         case 1 : { //("R", "flt.d"),
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Call f64_lt()
                             fregs_x[rd] = f64_lt( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? 1 : 0;
+
                             break;
                         }
                         case 0 : { //("R", "fle.d"),
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
                             uint64_t rs2 = (inst >> 20) & 0x1F;
+
+                            // Call f64_le()
                             fregs_x[rd] = f64_le( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]} ) ? 1 : 0;
+
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=81 inst=0x{inst:x}"),
@@ -1710,10 +1823,16 @@ void _zisk_float (void)
                 case 96: {
                     switch ((inst >> 20) & 0x1F) {
                         case 0 : { //("R", "fcvt.w.s"), converts float(rs1) to int32_t(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
+
+                            // Call f32_to_i32()
                             fregs_x[rd] = (uint64_t)f32_to_i32( (float32_t){fregs[rs1]}, rm, true );
 
                             // If the instruction was invalid, i.e. the input is NaN or the
@@ -1737,10 +1856,16 @@ void _zisk_float (void)
                             break;
                         }
                         case 1 : { //("R", "fcvt.wu.s"), converts float(rs1) to uint32_t(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
+
+                            // Call f32_to_ui32()
                             fregs_x[rd] = (uint64_t)f32_to_ui32( (float32_t){fregs[rs1]}, rm, true );
 
                             // If the instruction was invalid, i.e. the input is NaN or the
@@ -1764,10 +1889,16 @@ void _zisk_float (void)
                             break;
                         }
                         case 2 : { //("R", "fcvt.l.s"), converts float(rs1) to int64_t(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
+
+                            // Call f32_to_i64()
                             fregs_x[rd] = (uint64_t)f32_to_i64( (float32_t){fregs[rs1]}, rm, true );
 
                             // If the instruction was invalid, i.e. the input is NaN or the
@@ -1788,10 +1919,16 @@ void _zisk_float (void)
                             break;
                         }
                         case 3 : { //("R", "fcvt.lu.s"), converts float(rs1) to uint64_t(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
+
+                            // Call f32_to_ui64()
                             fregs_x[rd] = (uint64_t)f32_to_ui64( (float32_t){fregs[rs1]}, rm, true );
 
                             // If the instruction was invalid, i.e. the input is NaN or the
@@ -1820,10 +1957,16 @@ void _zisk_float (void)
                 case 97 : {
                     switch ((inst >> 20) & 0x1F) {
                         case 0 : { //("R", "fcvt.w.d"), converts double(rs1) to int32_t(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
+
+                            // Call f64_to_i32()
                             fregs_x[rd] = (uint64_t)f64_to_i32( (float64_t){fregs[rs1]}, rm, true );
 
                             // If the instruction was invalid, i.e. the input is NaN or the
@@ -1847,10 +1990,16 @@ void _zisk_float (void)
                             break;
                         }
                         case 1 : { //("R", "fcvt.wu.d"), converts double(rs1) to uint32_t(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
+
+                            // Call f64_to_ui32()
                             fregs_x[rd] = (uint64_t)f64_to_ui32( (float64_t){fregs[rs1]}, rm, true );
 
                             // If the instruction was invalid, i.e. the input is NaN or the
@@ -1874,10 +2023,16 @@ void _zisk_float (void)
                             break;
                         }
                         case 2 : { //("R", "fcvt.l.d"), converts double(rs1) to int64_t(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
+
+                            // Call f64_to_i64()
                             fregs_x[rd] = (int64_t)f64_to_i64( (float64_t){fregs[rs1]}, rm, true );
 
                             // If the instruction was invalid, i.e. the input is NaN or the
@@ -1898,10 +2053,16 @@ void _zisk_float (void)
                             break;
                         }
                         case 3 : { //("R", "fcvt.lu.d"), converts double(rs1) to uint64_t(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             update_rounding_mode(&rm);
+
+                            // Call f64_to_ui64()
                             fregs_x[rd] = f64_to_ui64( (float64_t){fregs[rs1]}, rm, true );
 
                             // If the instruction was invalid, i.e. the input is NaN or the
@@ -1930,35 +2091,63 @@ void _zisk_float (void)
                 case 104 : {
                     switch ((inst >> 20) & 0x1F) {
                         case 0 : { //("R", "fcvt.s.w"), converts int32_t(rs1) to float(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             set_rounding_mode(rm);
+
+                            // Call f32_to_i32()
                             fregs[rd] = (uint64_t)i32_to_f32( (int32_t)(fregs_x[rs1]) ).v;
+
                             break;
                         }
                         case 1 : { //("R", "fcvt.s.wu"), converts uint32_t(rs1) to float(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             set_rounding_mode(rm);
+
+                            // Call f32_to_ui32()
                             fregs[rd] = (uint64_t)ui32_to_f32( (uint32_t)(fregs_x[rs1]) ).v;
+
                             break;
                         }
                         case 2 : { //("R", "fcvt.s.l"), converts int64_t(rs1) to float(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             set_rounding_mode(rm);
+
+                            // Call f32_to_i64()
                             fregs[rd] = (uint64_t)i64_to_f32( (int64_t)(fregs_x[rs1]) ).v;
+
                             break;
                         }
                         case 3 : { //("R", "fcvt.s.lu"), converts uint64_t(rs1) to float(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             set_rounding_mode(rm);
+
+                            // Call f32_to_ui64()
                             fregs[rd] = (uint64_t)ui64_to_f32( (uint64_t)(fregs_x[rs1]) ).v;
+
                             break;
                         }
                         default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=104 inst=0x{inst:x}"),
@@ -1970,35 +2159,63 @@ void _zisk_float (void)
                 case 105 : {
                     switch ((inst >> 20) & 0x1F) {
                         case 0 : { //("R", "fcvt.d.w"), converts int32_t(rs1) to double(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             set_rounding_mode(rm);
+
+                            // Call f32_to_i32()
                             fregs[rd] = (uint64_t)i32_to_f64( (int32_t)(fregs_x[rs1]) ).v;
+
                             break;
                         }
                         case 1 : { //("R", "fcvt.d.wu"), converts uint32_t(rs1) to double(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             set_rounding_mode(rm);
+
+                            // Call f32_to_ui32()
                             fregs[rd] = (uint64_t)ui32_to_f64( (uint32_t)(fregs_x[rs1]) ).v;
+
                             break;
                         }
                         case 2 : { //("R", "fcvt.d.l"), converts int64_t(rs1) to double(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             set_rounding_mode(rm);
+
+                            // Call f32_to_i64()
                             fregs[rd] = (uint64_t)i64_to_f64( (int64_t)(fregs_x[rs1]) ).v;
+
                             break;
                         }
                         case 3 : { //("R", "fcvt.d.lu"), converts uint64_t(rs1) to double(rd)
+
+                            // Get registers
                             uint64_t rd = (inst >> 7) & 0x1F;
                             uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                            // Get rounding mode
                             uint64_t rm = (inst >> 12) & 0x7;
                             set_rounding_mode(rm);
+
+                            // Call f32_to_ui64()
                             fregs[rd] = (uint64_t)ui64_to_f64( (uint64_t)(fregs_x[rs1]) ).v;
+
                             break;
                         }
                         default: // => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=105 inst=0x{inst:x}"),
@@ -2012,9 +2229,14 @@ void _zisk_float (void)
                         case 0 : {
                             switch ((inst >> 20) & 0x1F) {
                                 case 0 : { //("R", "fmv.x.w"), copies fregs(rs1) to regs(rd)
+
+                                    // Get registers
                                     uint64_t rd = (inst >> 7) & 0x1F;
                                     uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                                    // Copy value
                                     fregs_x[rd] = fregs[rs1];
+
                                     break;
                                 }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
@@ -2040,12 +2262,15 @@ void _zisk_float (void)
                         case 1 : {
                             switch ((inst >> 20) & 0x1F) {
                                 case 0 : { //("R", "fclass.s"),
+                                    // Get register
                                     uint64_t rd = (inst >> 7) & 0x1F;
+
+                                    // Skip if rd == x0
                                     if (rd != 0) {
                                         uint64_t rs1 = (inst >> 15) & 0x1F;
-                                        if (F32_IS_MINUS_INFINITE(fregs[rs1]))
+                                        if (F32_IS_MINUS_INFINITY(fregs[rs1]))
                                             fregs_x[rd] = (1 << 0); // negative infinite
-                                        else if (F32_IS_PLUS_INFINITE(fregs[rs1]))
+                                        else if (F32_IS_PLUS_INFINITY(fregs[rs1]))
                                             fregs_x[rd] = (1 << 7); // positive infinite
                                         else if (F32_IS_MINUS_ZERO(fregs[rs1]))
                                             fregs_x[rd] = (1 << 3); // negative zero
@@ -2071,6 +2296,7 @@ void _zisk_float (void)
                                                 fregs_x[rd] = (1 << 6); // positive normal
                                         }
                                     }
+
                                     break;
                                 }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
@@ -2090,9 +2316,14 @@ void _zisk_float (void)
                         case 0 : {
                             switch ((inst >> 20) & 0x1F) {
                                 case 0 : { //("R", "fmv.x.d"), copies fregs(rs1) to regs(rd)
+
+                                    // Get registers
                                     uint64_t rd = (inst >> 7) & 0x1F;
                                     uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                                    // Copy value
                                     fregs_x[rd] = fregs[rs1];
+
                                     break;
                                 }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
@@ -2118,7 +2349,11 @@ void _zisk_float (void)
                         case 1 : {
                             switch ((inst >> 20) & 0x1F) {
                                 case 0 : { //("R", "fclass.d"),
+
+                                    // Get register
                                     uint64_t rd = (inst >> 7) & 0x1F;
+
+                                    // Skip if rd == x0
                                     if (rd != 0) {
                                         uint64_t rs1 = (inst >> 15) & 0x1F;
                                         if (fregs[rs1] == F64_MINUS_INFINITE)
@@ -2149,6 +2384,7 @@ void _zisk_float (void)
                                                 fregs_x[rd] = (1 << 6); // positive normal
                                         }
                                     }
+
                                     break;
                                 }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=113 funct3=0 inst=0x{inst:x}"),
@@ -2168,9 +2404,14 @@ void _zisk_float (void)
                         case 0 : {
                             switch ((inst >> 20) & 0x1F) {
                                 case 0 : { //("R", "fmv.w.x"), copies regs(rs1) to fregs(rd)
+
+                                    // Get registers
                                     uint64_t rd = (inst >> 7) & 0x1F;
                                     uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                                    // Copy value
                                     fregs[rd] = fregs_x[rs1];
+
                                     break;
                                 }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=120 funct3=0 inst=0x{inst:x}"),
@@ -2190,9 +2431,14 @@ void _zisk_float (void)
                         case 0 : {
                             switch ((inst >> 20) & 0x1F) {
                                 case 0 : { //("R", "fmv.d.x"), copies regs(rs1) to fregs(rd)
+
+                                    // Get registers
                                     uint64_t rd = (inst >> 7) & 0x1F;
                                     uint64_t rs1 = (inst >> 15) & 0x1F;
+
+                                    // Copy value
                                     fregs[rd] = fregs_x[rs1];
+
                                     break;
                                 }
                                 default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=121 funct3=0 inst=0x{inst:x}"),
@@ -2226,7 +2472,6 @@ void _zisk_float (void)
 
     // Update flags: copy flags from the library state register to fcsr
     fcsr = (fcsr & ~0x1F) | (softfloat_exceptionFlags & 0x1F);
-    //fcsr = (softfloat_exceptionFlags & 0x1F) | ((softfloat_roundingMode & 0x7) << 5);
 }
 
 void set_rounding_mode (uint64_t rm)
@@ -2286,6 +2531,7 @@ void set_rounding_mode (uint64_t rm)
 
 void update_rounding_mode (uint64_t * rm)
 {
+    // Update the rounding mode in case it is dynamic (7)
     switch (*rm & 0x7)
     {
         case 0: // RNE
@@ -2318,8 +2564,6 @@ void change_rounding_mode_sign (void)
     else if (softfloat_roundingMode == softfloat_round_min)
         softfloat_roundingMode = softfloat_round_max;
 }
-
-//uint64_t zisk_float_calls = 0;
 
 #ifdef __cplusplus
 } // extern "C"
