@@ -26,9 +26,10 @@ pub async fn send_completion_webhook(
     job_id: JobId,
     duration_ms: u64,
     proof_data: Option<Vec<u64>>,
-    success: bool,
+    executed_steps: Option<u64>,
 ) -> Result<()> {
-    send_webhook_with_error(webhook_url, job_id, duration_ms, proof_data, success, None).await
+    send_webhook_with_error(webhook_url, job_id, duration_ms, proof_data, executed_steps, None)
+        .await
 }
 
 /// Sends a webhook notification upon job failure with error details.
@@ -48,7 +49,7 @@ pub async fn _send_failure_webhook(
     error_message: String,
 ) -> Result<()> {
     let error = WebhookErrorDto { code: error_code, message: error_message };
-    send_webhook_with_error(webhook_url, job_id, duration_ms, None, false, Some(error)).await
+    send_webhook_with_error(webhook_url, job_id, duration_ms, None, Some(0), Some(error)).await
 }
 
 /// Internal function to send webhook notifications with optional error details.
@@ -57,7 +58,7 @@ async fn send_webhook_with_error(
     job_id: JobId,
     duration_ms: u64,
     proof_data: Option<Vec<u64>>,
-    _success: bool, // Determined by presence of error
+    executed_steps: Option<u64>,
     error: Option<WebhookErrorDto>,
 ) -> Result<()> {
     let client = reqwest::Client::new();
@@ -75,7 +76,7 @@ async fn send_webhook_with_error(
     let payload = if let Some(error) = error {
         WebhookPayloadDto::failure(job_id.as_string(), duration_ms, error)
     } else {
-        WebhookPayloadDto::success(job_id.as_string(), duration_ms, proof_data)
+        WebhookPayloadDto::success(job_id.as_string(), duration_ms, proof_data, executed_steps)
     };
 
     let response = match client
@@ -125,6 +126,7 @@ pub async fn save_proof(
     id: &str,
     proof_folder: PathBuf,
     proof_data: &[u64],
+    with_zip: bool,
 ) -> CoordinatorResult<()> {
     // Ensure the proofs directory exists
     fs::create_dir_all(&proof_folder).await.map_err(|e| {
@@ -140,10 +142,12 @@ pub async fn save_proof(
     while fs::try_exists(&raw_path).await.map_err(|e| {
         error!("Failed to check proof file existence: {}", e);
         CoordinatorError::Internal(e.to_string())
-    })? || fs::try_exists(&zip_path).await.map_err(|e| {
-        error!("Failed to check compressed file existence: {}", e);
-        CoordinatorError::Internal(e.to_string())
-    })? {
+    })? || (with_zip
+        && fs::try_exists(&zip_path).await.map_err(|e| {
+            error!("Failed to check compressed file existence: {}", e);
+            CoordinatorError::Internal(e.to_string())
+        })?)
+    {
         raw_path = proof_folder.join(format!("proof_{}_{}.fri", id, counter));
         zip_path = raw_path.with_extension("fri.compressed");
         counter += 1;
@@ -158,16 +162,20 @@ pub async fn save_proof(
         CoordinatorError::Internal(e.to_string())
     })?;
 
-    // Compress proof data and write to file
-    let zip_size = save_zip_proof(proof_bytes, &zip_path, 1).await?;
-
     // Calculate compression statistics
     let raw_size = proof_bytes.len();
-    let ratio = zip_size as f64 / raw_size as f64;
 
     info!("Final proof compression completed:");
     info!("  Raw: {} ({} bytes)", raw_path.display(), raw_size);
-    info!("  Compressed: {} ({} bytes, ratio: {:.2}x)", zip_path.display(), zip_size, ratio);
+
+    if with_zip {
+        // Compress proof data and write to file
+        let zip_size = save_zip_proof(proof_bytes, &zip_path, 1).await?;
+
+        let ratio = zip_size as f64 / raw_size as f64;
+
+        info!("  Compressed: {} ({} bytes, ratio: {:.2}x)", zip_path.display(), zip_size, ratio);
+    }
 
     Ok(())
 }
