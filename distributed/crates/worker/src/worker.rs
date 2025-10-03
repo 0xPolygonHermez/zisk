@@ -272,6 +272,7 @@ impl Worker {
             config.final_snark,
             config.gpu_params.clone(),
             config.verbose.into(),
+            None,
         )
         .expect("Failed to initialize proofman");
 

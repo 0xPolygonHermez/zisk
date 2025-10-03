@@ -197,6 +197,7 @@ impl ZiskStats {
             false,
             gpu_params,
             self.verbose.into(),
+            None,
         )
         .expect("Failed to initialize proofman");
 
