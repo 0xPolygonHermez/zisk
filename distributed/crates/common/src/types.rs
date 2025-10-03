@@ -237,6 +237,7 @@ pub struct Job {
     pub challenges: Option<Vec<ContributionsInfo>>,
     pub execution_mode: JobExecutionMode,
     pub final_proof: Option<Vec<u64>>,
+    pub executed_steps: Option<u64>,
 }
 
 impl Job {
@@ -263,6 +264,7 @@ impl Job {
             challenges: None,
             execution_mode,
             final_proof: None,
+            executed_steps: None,
         }
     }
 

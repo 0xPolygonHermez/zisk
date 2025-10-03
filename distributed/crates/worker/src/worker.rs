@@ -32,9 +32,22 @@ use crate::config::ProverServiceConfigDto;
 /// Result from computation tasks
 #[derive(Debug)]
 pub enum ComputationResult {
-    Challenge { job_id: JobId, success: bool, result: Result<Vec<ContributionsInfo>> },
-    Proofs { job_id: JobId, success: bool, result: Result<Vec<AggProofs>> },
-    AggProof { job_id: JobId, success: bool, result: Result<Option<Vec<Vec<u64>>>> },
+    Challenge {
+        job_id: JobId,
+        success: bool,
+        result: Result<Vec<ContributionsInfo>>,
+    },
+    Proofs {
+        job_id: JobId,
+        success: bool,
+        result: Result<Vec<AggProofs>>,
+    },
+    AggProof {
+        job_id: JobId,
+        success: bool,
+        result: Result<Option<Vec<Vec<u64>>>>,
+        executed_steps: u64,
+    },
 }
 
 pub struct ProverConfig {
@@ -303,7 +316,7 @@ impl Worker {
         )
         .expect("Failed to initialize witness library");
 
-        proofman.register_witness(witness_lib.as_mut(), library);
+        proofman.register_witness(&mut *witness_lib, library);
 
         let witness_lib = Arc::from(witness_lib);
 
@@ -609,6 +622,7 @@ impl Worker {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let proofman = self.proofman.clone();
+        let witness_lib = self._witness_lib.clone();
 
         tokio::spawn(async move {
             let job = job.lock().await;
@@ -628,7 +642,7 @@ impl Worker {
 
             let options = Self::get_proof_options_aggregation(&agg_params);
 
-            let result = proofman
+            let result: Vec<Vec<u64>> = proofman
                 .receive_aggregated_proofs(
                     agg_proofs,
                     agg_params.last_proof,
@@ -638,10 +652,19 @@ impl Worker {
                 .map(|proof| proof.into_iter().map(|p| p.proof).collect())
                 .unwrap_or_default();
 
+            let executed_steps = match witness_lib.get_execution_result() {
+                Some((exec_result, _exec_stats, _witness_stats)) => exec_result.executed_steps,
+                None => {
+                    error!("Failed to get execution result from witness library for {job_id}");
+                    0
+                }
+            };
+
             let _ = tx.send(ComputationResult::AggProof {
                 job_id,
                 success: true,
                 result: Ok(Some(result)),
+                executed_steps,
             });
         })
     }
