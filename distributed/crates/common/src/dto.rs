@@ -6,6 +6,7 @@
 
 use crate::{BlockId, ComputeCapacity, JobId, JobPhase, JobState, WorkerId, WorkerState};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 pub struct StatusInfoDto {
     pub service_name: String,
@@ -189,4 +190,48 @@ pub struct WorkerErrorDto {
     pub worker_id: WorkerId,
     pub job_id: JobId,
     pub error_message: String,
+}
+
+/// Error information for webhook notifications
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookErrorDto {
+    pub code: String,
+    pub message: String,
+}
+
+/// Webhook payload for job completion notifications
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WebhookPayloadDto {
+    pub job_id: String,
+    pub success: bool,
+    pub duration_ms: u64,
+    pub proof: Option<Vec<u64>>,
+    pub timestamp: String,
+    pub error: Option<WebhookErrorDto>,
+}
+
+impl WebhookPayloadDto {
+    /// Creates a successful webhook payload
+    pub fn success(job_id: String, duration_ms: u64, proof: Option<Vec<u64>>) -> Self {
+        Self {
+            job_id,
+            success: true,
+            duration_ms,
+            proof,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            error: None,
+        }
+    }
+
+    /// Creates a failed webhook payload with error details
+    pub fn failure(job_id: String, duration_ms: u64, error: WebhookErrorDto) -> Self {
+        Self {
+            job_id,
+            success: false,
+            duration_ms,
+            proof: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            error: Some(error),
+        }
+    }
 }

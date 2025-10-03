@@ -10,7 +10,7 @@ if [ -t 1 ]; then
     RED=$(tput setaf 1)
     YELLOW=$(tput setaf 3)
     RESET=$(tput sgr0)
-else 
+else
     BOLD=""
     GREEN=""
     RED=""
@@ -112,6 +112,14 @@ load_env() {
         echo "$line"
     done
     echo
+
+    # Skip confirming env variables if DISABLE_ENV_CONFIRM is set to 1
+    if [[ "$DISABLE_ENV_CONFIRM" == "1" ]]; then
+        info "Skipping confirming env variables as DISABLE_ENV_CONFIRM is set to 1"
+        return 0
+    else
+        confirm_continue || return 1
+    fi
 }
 
 # confirm_continue: Ask the user for confirmation to continue
@@ -143,7 +151,7 @@ is_proving_key_installed() {
         return 0
     else
         err "Proving key not installed. Please install it first."
-        return 1    
+        return 1
     fi
 }
 
@@ -229,7 +237,7 @@ get_shell_and_profile() {
 # get_platform: Sets PLATFORM based on the current system
 get_platform() {
     uname_s=$(uname -s)
-    PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")    
+    PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")
 }
 
 # get_var_from_cargo_toml: Extracts a variable value from Cargo.toml (with "gha_" prefix)

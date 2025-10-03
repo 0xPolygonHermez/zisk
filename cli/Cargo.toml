@@ -39,8 +39,8 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 libloading = { workspace = true }
 
-zstd = "0.13"
-bytemuck = "1.23.1"
+zstd = { workspace = true }
+bytemuck = { workspace = true }
 clap = { workspace = true }
 dirs = "6"
 rand = "0.9"

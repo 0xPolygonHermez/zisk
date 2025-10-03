@@ -1,16 +1,8 @@
-use crate::ProverConfig;
-
 use anyhow::Result;
-use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
-use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
-use rom_setup::{
-    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
-    DEFAULT_CACHE_PATH,
-};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::{collections::HashMap, fs};
-use zisk_distributed_common::{ComputeCapacity, WorkerId};
+use zisk_distributed_common::Environment;
+use zisk_distributed_common::{ComputeCapacity, LoggingConfig, WorkerId};
 
 /// Worker Service Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,39 +16,9 @@ pub struct WorkerServiceConfig {
     /// Connection configuration
     #[serde(default)]
     pub connection: ConnectionConfig,
-}
 
-impl WorkerServiceConfig {
-    /// Load configuration from a specific file
-    pub fn load_from_file(path: &str) -> Result<Self> {
-        let content = std::fs::read_to_string(path)?;
-        let config: WorkerServiceConfig = toml::from_str(&content)?;
-        Ok(config)
-    }
-
-    /// Apply CLI overrides to the configuration
-    pub fn apply_cli_overrides(
-        &mut self,
-        coordinator_url: Option<String>,
-        worker_id: Option<String>,
-        compute_units: Option<u32>,
-    ) {
-        if let Some(url) = coordinator_url {
-            self.coordinator.url = url;
-        }
-
-        if let Some(worker_id) = worker_id {
-            self.worker.worker_id = WorkerId::from(worker_id);
-        }
-
-        if let Some(compute_units) = compute_units {
-            self.worker.compute_capacity.compute_units = compute_units;
-        }
-    }
-
-    pub fn worker_id(&self) -> WorkerId {
-        self.worker.worker_id.clone()
-    }
+    /// Logging configuration
+    pub logging: LoggingConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +28,12 @@ pub struct WorkerConfig {
 
     /// Compute capacity configuration
     pub compute_capacity: ComputeCapacity,
+
+    /// Environment (e.g., development, production)
+    pub environment: Environment,
+
+    /// This is the path where the worker will look for input files to process. By default, it is the current directory.
+    pub inputs_folder: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +73,71 @@ impl Default for ConnectionConfig {
             reconnect_interval_seconds: Self::DEFAULT_RECONNECT_INTERVAL,
             heartbeat_timeout_seconds: Self::DEFAULT_HEARTBEAT_TIMEOUT,
         }
+    }
+}
+
+impl WorkerServiceConfig {
+    pub async fn load(
+        config: Option<String>,
+        coordinator_url: Option<String>,
+        worker_id: Option<String>,
+        compute_capacity: Option<u32>,
+        inputs_folder: Option<PathBuf>,
+    ) -> Result<Self> {
+        // Config file is now optional - if not provided, defaults will be used
+        let config = config.or_else(|| std::env::var("ZISK_WORKER_CONFIG_PATH").ok());
+
+        // Check inputs folder exists if provided
+        if let Some(ref path) = inputs_folder {
+            if !path.exists() || !path.is_dir() {
+                anyhow::bail!(
+                    "Inputs folder does not exist or is not a directory: {}",
+                    path.display()
+                );
+            }
+        }
+
+        // Generate a random worker ID
+        let random_worker_id = format!("worker-{}", uuid::Uuid::new_v4().simple());
+
+        let mut builder = config::Config::builder()
+            .set_default("worker.worker_id", random_worker_id)?
+            .set_default("worker.compute_capacity.compute_units", 10)?
+            .set_default("worker.environment", "development")?
+            .set_default("worker.inputs_folder", ".")?
+            .set_default("coordinator.url", zisk_distributed_coordinator::Config::default_url())?
+            .set_default("connection.reconnect_interval_seconds", 5)?
+            .set_default("connection.heartbeat_timeout_seconds", 30)?
+            .set_default("logging.level", "debug")?
+            .set_default("logging.format", "pretty")?;
+
+        if let Some(path) = config {
+            builder = builder.add_source(config::File::with_name(&path));
+        }
+
+        if let Some(coordinator_url) = coordinator_url {
+            builder = builder.set_override("coordinator.url", coordinator_url)?;
+        }
+
+        if let Some(worker_id) = worker_id {
+            builder = builder.set_override("worker.worker_id", worker_id)?;
+        }
+
+        if let Some(compute_capacity) = compute_capacity {
+            builder =
+                builder.set_override("worker.compute_capacity.compute_units", compute_capacity)?;
+        }
+
+        if let Some(inputs_folder) = inputs_folder {
+            builder = builder.set_override(
+                "worker.inputs_folder",
+                inputs_folder.to_string_lossy().to_string(),
+            )?;
+        }
+
+        let config = builder.build()?;
+
+        Ok(config.try_deserialize()?)
     }
 }
 
@@ -152,142 +185,4 @@ impl Default for ProverServiceConfigDto {
             shared_tables: false,
         }
     }
-}
-
-/// Builds the [`WorkerServiceConfig`] and [`ProverServiceConfig`] from the given inputs.
-pub async fn build_worker_and_prover_config(
-    mut prover_service_config: ProverServiceConfigDto,
-    config_path: &str,
-    coordinator_url: Option<String>,
-    worker_id: Option<String>,
-    compute_units: Option<u32>,
-) -> Result<(WorkerServiceConfig, ProverConfig)> {
-    // Validate ELF file
-    if !prover_service_config.elf.exists() {
-        return Err(anyhow::anyhow!(
-            "ELF file '{}' not found.",
-            prover_service_config.elf.display()
-        ));
-    }
-
-    let proving_key = get_proving_key(prover_service_config.proving_key.as_ref());
-
-    let debug_info = match &prover_service_config.debug {
-        None => DebugInfo::default(),
-        Some(None) => DebugInfo::new_debug(),
-        Some(Some(debug_value)) => {
-            json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
-        }
-    };
-
-    let default_cache_path =
-        std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
-
-    if !default_cache_path.exists() {
-        if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
-            if e.kind() != std::io::ErrorKind::AlreadyExists {
-                return Err(anyhow::anyhow!("Failed to create the cache directory: {e:?}"));
-            }
-        }
-    }
-
-    let emulator = if cfg!(target_os = "macos") { true } else { prover_service_config.emulator };
-
-    let mut asm_rom = None;
-    if emulator {
-        prover_service_config.asm = None;
-    } else if prover_service_config.asm.is_none() {
-        let stem = prover_service_config.elf.file_stem().unwrap().to_str().unwrap();
-        let hash = get_elf_data_hash(&prover_service_config.elf)
-            .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
-        let new_filename = format!("{stem}-{hash}-mt.bin");
-        let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
-        asm_rom = Some(default_cache_path.join(asm_rom_filename));
-        prover_service_config.asm = Some(default_cache_path.join(new_filename));
-    }
-
-    if let Some(asm_path) = &prover_service_config.asm {
-        if !asm_path.exists() {
-            return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_path.display()));
-        }
-    }
-
-    if let Some(asm_rom) = &asm_rom {
-        if !asm_rom.exists() {
-            return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
-        }
-    }
-
-    let blowup_factor = get_rom_blowup_factor(&proving_key);
-
-    let rom_bin_path = get_elf_bin_file_path(
-        &prover_service_config.elf.to_path_buf(),
-        &default_cache_path,
-        blowup_factor,
-    )?;
-
-    if !rom_bin_path.exists() {
-        let _ = gen_elf_hash(
-            &prover_service_config.elf.clone(),
-            rom_bin_path.as_path(),
-            blowup_factor,
-            false,
-        )
-        .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
-    }
-
-    let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
-    custom_commits_map.insert("rom".to_string(), rom_bin_path);
-
-    let mut gpu_params = ParamsGPU::new(prover_service_config.preallocate);
-
-    if prover_service_config.max_streams.is_some() {
-        gpu_params.with_max_number_streams(prover_service_config.max_streams.unwrap());
-    }
-    if prover_service_config.number_threads_witness.is_some() {
-        gpu_params.with_number_threads_pools_witness(
-            prover_service_config.number_threads_witness.unwrap(),
-        );
-    }
-    if prover_service_config.max_witness_stored.is_some() {
-        gpu_params.with_max_witness_stored(prover_service_config.max_witness_stored.unwrap());
-    }
-
-    let service_config = ProverConfig {
-        elf: prover_service_config.elf.clone(),
-        witness_lib: get_witness_computation_lib(prover_service_config.witness_lib.as_ref()),
-        asm: prover_service_config.asm.clone(),
-        asm_rom,
-        custom_commits_map,
-        emulator,
-        proving_key,
-        verbose: prover_service_config.verbose,
-        debug_info,
-        asm_port: prover_service_config.asm_port,
-        unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
-        verify_constraints: prover_service_config.verify_constraints,
-        aggregation: prover_service_config.aggregation,
-        final_snark: prover_service_config.final_snark,
-        gpu_params,
-        shared_tables: prover_service_config.shared_tables,
-    };
-
-    // Load gRPC configuration
-    let mut grpc_config = if std::path::Path::new(config_path).exists() {
-        WorkerServiceConfig::load_from_file(config_path)?
-    } else {
-        return Err(anyhow::anyhow!("Configuration file '{}' not found.", config_path));
-    };
-
-    // Apply CLI overrides if provided
-    grpc_config.apply_cli_overrides(coordinator_url, worker_id, compute_units);
-
-    // Validate required fields
-    if grpc_config.coordinator.url.is_empty() {
-        return Err(anyhow::anyhow!(
-            "Coordinator URL is required. Set it in config file or use --coordinator-url"
-        ));
-    }
-
-    Ok((grpc_config, service_config))
 }

@@ -117,13 +117,13 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
         export C_INCLUDE_PATH=/usr/lib/gcc/x86_64-linux-gnu/13/include
         export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
         ```
-    3. Try building again        
+    3. Try building again
 
 3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
     LIB_EXT=$([[ "$(uname)" == "Darwin" ]] && echo "dylib" || echo "so")
-    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.$LIB_EXT target/release/libziskclib.a $HOME/.zisk/bin
+    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/zisk-coordinator target/release/zisk-worker target/release/libzisk_witness.$LIB_EXT target/release/libziskclib.a $HOME/.zisk/bin
     ```
 
 4. Copy required files for assembly rom setup:

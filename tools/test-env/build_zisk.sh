@@ -22,7 +22,6 @@ main() {
     step "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
-    confirm_continue || return 0
 
     # If ZISK_GHA is set, force skip cloning pil2-proofman and use pil2-proofman dependency defined in zisk Cargo.toml
     if is_gha; then
@@ -33,14 +32,18 @@ main() {
 
     step "Cloning pil2-proofman repository..."
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
-        # Remove existing directory if it exists
-        rm -rf pil2-proofman
-        # Clone pil2-proofman repository
-        ensure git clone https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
-        cd pil2-proofman
-        info "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
-        ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
-        cd ..
+        if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
+            warn "Skipping cloning pil2-proofman repository as DISABLE_CLONE_REPO is set to 1"
+        else
+            # Remove existing directory if it exists
+            rm -rf pil2-proofman
+            # Clone pil2-proofman repository
+            ensure git clone https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
+            cd pil2-proofman
+            info "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
+            ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
+            cd ..
+        fi
     else
         info "Skipping cloning pil2-proofman repository as PIL2_PROOFMAN_BRANCH is not defined"
     fi
@@ -55,15 +58,19 @@ main() {
             return 1
         fi
         if [[ -n "$ZISK_BRANCH" ]]; then
-            info "Cloning ZisK repository..."
-            # Remove existing directory if it exists
-            rm -rf zisk
-            # Clone ZisK repository
-            ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
-            ensure cd zisk
-            # Check out the branch
-            info "Checking out branch '$ZISK_BRANCH'..."
-            ensure git checkout "$ZISK_BRANCH" || return 1
+            if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
+                warn "Skipping cloning ZisK repository as DISABLE_CLONE_REPO is set to 1"
+            else
+                info "Cloning ZisK repository..."
+                # Remove existing directory if it exists
+                rm -rf zisk
+                # Clone ZisK repository
+                ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
+                ensure cd zisk
+                # Check out the branch
+                info "Checking out branch '$ZISK_BRANCH'..."
+                ensure git checkout "$ZISK_BRANCH" || return 1
+            fi
         else
             info "Skipping cloning ZisK repository as ZISK_BRANCH is not defined"
             ensure cd zisk
@@ -143,15 +150,17 @@ main() {
         return 1
     fi
 
-    ensure cp target/${TARGET}/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
-    ensure cp target/${TARGET}/release/ziskemu    "${ZISK_BIN_DIR}" || return 1
-    ensure cp target/${TARGET}/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/cargo-zisk       "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/ziskemu          "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/riscv2zisk       "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/zisk-coordinator "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/zisk-worker      "${ZISK_BIN_DIR}" || return 1
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         LIB_EXT="so"
     else
         LIB_EXT="dylib"
-    fi        
+    fi
 
     ensure cp target/${TARGET}/release/libzisk_witness.${LIB_EXT} "${ZISK_BIN_DIR}" || return 1
     ensure cp ziskup/ziskup                     "${ZISK_BIN_DIR}" || return 1
