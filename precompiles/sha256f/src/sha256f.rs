@@ -33,8 +33,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
     /// A new `Sha256fSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_sha256fs = Sha256fTrace::<usize>::NUM_ROWS / CLOCKS - 1;
-        let num_non_usable_rows = Sha256fTrace::<usize>::NUM_ROWS % CLOCKS;
+        let num_available_sha256fs = Sha256fTrace::<F>::NUM_ROWS / CLOCKS - 1;
+        let num_non_usable_rows = Sha256fTrace::<F>::NUM_ROWS % CLOCKS;
 
         let a_range_id = std.get_range_id(0, (1 << 3) - 1, None);
         let e_range_id = std.get_range_id(0, (1 << 3) - 1, None);
@@ -355,7 +355,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         );
 
         timer_start_trace!(SHA256F_TRACE);
-        let mut trace_rows = sha256f_trace.row_slice_mut();
+        let mut trace_rows = sha256f_trace.buffer.as_mut_slice();
         let mut par_traces = Vec::new();
         let mut inputs_indexes = Vec::new();
         for (i, inputs) in inputs.iter().enumerate() {
@@ -428,8 +428,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         const CLOCKS_OP: usize = CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT + CLOCKS_MIXING;
         // The last (CLOCKS + NUM_NON_USABLE_ROWS) have CLK_0 desactivated, so
         // a trace full of zeroes passes the constraints
-        sha256f_trace.row_slice_mut()
-            [num_rows_filled..(num_rows - self.num_non_usable_rows - CLOCKS)]
+        sha256f_trace.buffer[num_rows_filled..(num_rows - self.num_non_usable_rows - CLOCKS)]
             .par_iter_mut()
             .enumerate()
             .for_each(|(elem, row)| {

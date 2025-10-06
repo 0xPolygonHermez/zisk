@@ -82,13 +82,13 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
     /// A boxed implementation of `Instance` for binary operations.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            BinaryTrace::<usize>::AIR_ID => {
+            BinaryTrace::<F>::AIR_ID => {
                 Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), ictx))
             }
-            BinaryExtensionTrace::<usize>::AIR_ID => {
+            BinaryExtensionTrace::<F>::AIR_ID => {
                 Box::new(BinaryExtensionInstance::new(self.binary_extension_sm.clone(), ictx))
             }
-            BinaryAddTrace::<usize>::AIR_ID => {
+            BinaryAddTrace::<F>::AIR_ID => {
                 Box::new(BinaryAddInstance::new(self.binary_add_sm.clone(), ictx))
             }
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),

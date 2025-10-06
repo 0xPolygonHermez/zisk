@@ -10,17 +10,17 @@
 use std::sync::Arc;
 
 use crate::MainCounter;
-use fields::PrimeField64;
+use fields::{Goldilocks, PrimeField64};
 use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::prelude::*;
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx, SegmentId};
 use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
-use zisk_pil::{MainAirValues, MainPackedTrace, MainPackedTraceRow, MainTrace, MainTraceRow};
+use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuRegTrace};
 
-const MAX_SEGMENT_ID: usize = ((1 << 32) / MainTrace::<usize>::NUM_ROWS) - 1;
+const MAX_SEGMENT_ID: usize = ((1 << 32) / MainTrace::<Goldilocks>::NUM_ROWS) - 1;
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
 pub struct MainInstance<F: PrimeField64> {
@@ -62,7 +62,7 @@ impl<F: PrimeField64> MainInstance<F> {
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         // Create the main trace buffer
-        let mut main_trace = MainPackedTrace::new_from_vec(trace_buffer);
+        let mut main_trace = MainTrace::new_from_vec(trace_buffer);
 
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
@@ -127,7 +127,7 @@ impl<F: PrimeField64> MainInstance<F> {
                 let mut step_range_check = vec![0; max_range as usize];
                 let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
                 let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
-                let (pc, regs) = Self::fill_partial_trace_packed(
+                let (pc, regs) = Self::fill_partial_trace(
                     zisk_rom,
                     chunk,
                     &segment_min_traces[chunk_id],
@@ -150,7 +150,7 @@ impl<F: PrimeField64> MainInstance<F> {
         // are only a few values that exceed this limit, for this reason, are stored in a vector
 
         let mut reg_steps = [initial_step; REGS_IN_MAIN];
-        let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk_packed(
+        let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk(
             num_rows,
             &fill_trace_outputs,
             &mut main_trace,
@@ -163,10 +163,8 @@ impl<F: PrimeField64> MainInstance<F> {
         // Pad remaining rows with the last valid row
         // In padding row must be clear of registers access, if not need to calculate previous
         // register step and range check conntribution
-        let last_row = main_trace.row_slice_mut()[filled_rows - 1];
-        main_trace.row_slice_mut()[filled_rows..num_rows]
-            .par_iter_mut()
-            .for_each(|row| *row = last_row);
+        let last_row = main_trace.buffer[filled_rows - 1];
+        main_trace.buffer[filled_rows..num_rows].par_iter_mut().for_each(|row| *row = last_row);
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
@@ -180,11 +178,11 @@ impl<F: PrimeField64> MainInstance<F> {
 
         air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(*is_last_segment);
-        air_values.segment_initial_pc = F::from_u32(main_trace.row_slice()[0].get_pc());
+        air_values.segment_initial_pc = main_trace.buffer[0].pc;
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
-        air_values.segment_last_c[0] = F::from_u32(last_row.get_c(0));
-        air_values.segment_last_c[1] = F::from_u32(last_row.get_c(1));
+        air_values.segment_last_c[0] = last_row.c[0];
+        air_values.segment_last_c[1] = last_row.c[1];
 
         Self::update_reg_airvalues(
             &mut air_values,
@@ -211,7 +209,7 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Returns
     /// The next program counter value after processing the minimal trace.
-    fn _fill_partial_trace(
+    fn fill_partial_trace(
         zisk_rom: &ZiskRom,
         main_trace: &mut [MainTraceRow<F>],
         min_trace: &EmuTrace,
@@ -242,38 +240,7 @@ impl<F: PrimeField64> MainInstance<F> {
         )
     }
 
-    fn fill_partial_trace_packed(
-        zisk_rom: &ZiskRom,
-        main_trace: &mut [MainPackedTraceRow<F>],
-        min_trace: &EmuTrace,
-        reg_trace: &mut EmuRegTrace,
-        step_range_check: &mut [u32],
-        last_reg_values: bool,
-    ) -> (u64, Vec<u64>) {
-        // Initialize the emulator with the start state of the emu trace
-        let mut emu = Emu::from_emu_trace_start(zisk_rom, &min_trace.start_state);
-        let mut mem_reads_index: usize = 0;
-
-        for trace in main_trace {
-            *trace = emu.step_slice_full_trace_packed(
-                &min_trace.mem_reads,
-                &mut mem_reads_index,
-                reg_trace,
-                Some(step_range_check),
-            );
-        }
-
-        (
-            emu.ctx.inst_ctx.pc,
-            if last_reg_values {
-                emu.ctx.inst_ctx.regs[REGS_IN_MAIN_FROM..=REGS_IN_MAIN_TO].to_vec()
-            } else {
-                vec![]
-            },
-        )
-    }
-
-    fn _complete_trace_with_initial_reg_steps_per_chunk(
+    fn complete_trace_with_initial_reg_steps_per_chunk(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
         main_trace: &mut MainTrace<F>,
@@ -304,67 +271,16 @@ impl<F: PrimeField64> MainInstance<F> {
                     }
                     match slot {
                         0 => {
-                            main_trace.row_slice_mut()[row].a_reg_prev_mem_step =
+                            main_trace.buffer[row].a_reg_prev_mem_step =
                                 F::from_u64(reg_prev_mem_step)
                         }
                         1 => {
-                            main_trace.row_slice_mut()[row].b_reg_prev_mem_step =
+                            main_trace.buffer[row].b_reg_prev_mem_step =
                                 F::from_u64(reg_prev_mem_step)
                         }
                         2 => {
-                            main_trace.row_slice_mut()[row].store_reg_prev_mem_step =
+                            main_trace.buffer[row].store_reg_prev_mem_step =
                                 F::from_u64(reg_prev_mem_step)
-                        }
-                        _ => panic!("Invalid slot {slot}"),
-                    }
-                    // TODO: range_check mem_step - reg_prev_mem_step
-                }
-            }
-        }
-        large_range_checks
-    }
-
-    fn complete_trace_with_initial_reg_steps_per_chunk_packed(
-        num_rows: usize,
-        fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
-        main_trace: &mut MainPackedTrace<F>,
-        step_range_check: &mut [u32],
-        reg_steps: &mut [u64; REGS_IN_MAIN],
-    ) -> Vec<u32> {
-        let mut large_range_checks: Vec<u32> = vec![];
-        let max_range = step_range_check.len() as u64;
-        for (index, (_, _, reg_trace, _)) in fill_trace_outputs.iter().enumerate().skip(1) {
-            #[allow(clippy::needless_range_loop)]
-            for reg_index in 0..REGS_IN_MAIN {
-                let reg_prev_mem_step = if fill_trace_outputs[index - 1].2.reg_steps[reg_index] == 0
-                {
-                    reg_steps[reg_index]
-                } else {
-                    fill_trace_outputs[index - 1].2.reg_steps[reg_index]
-                };
-                reg_steps[reg_index] = reg_prev_mem_step;
-                if reg_trace.first_step_uses[reg_index].is_some() {
-                    let mem_step = reg_trace.first_step_uses[reg_index].unwrap();
-                    let slot = MemHelpers::mem_step_to_slot(mem_step);
-                    let row = MemHelpers::mem_step_to_row(mem_step) % num_rows;
-                    let range = mem_step - reg_prev_mem_step - 1;
-                    if range >= max_range {
-                        large_range_checks.push(range as u32);
-                    } else {
-                        step_range_check[range as usize] += 1;
-                    }
-                    match slot {
-                        0 => {
-                            main_trace.row_slice_mut()[row]
-                                .set_a_reg_prev_mem_step(reg_prev_mem_step);
-                        }
-                        1 => {
-                            main_trace.row_slice_mut()[row]
-                                .set_b_reg_prev_mem_step(reg_prev_mem_step);
-                        }
-                        2 => {
-                            main_trace.row_slice_mut()[row]
-                                .set_store_reg_prev_mem_step(reg_prev_mem_step);
                         }
                         _ => panic!("Invalid slot {slot}"),
                     }

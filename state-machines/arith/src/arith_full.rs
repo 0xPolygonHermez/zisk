@@ -93,7 +93,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
 
         // Split the arith_trace.buffer into slices matching each inner vector’s length.
         let flat_inputs: Vec<_> = inputs.iter().flatten().collect(); // Vec<&OperationData<u64>>
-        let flat_buffer = arith_trace.row_slice_mut();
+        let flat_buffer = arith_trace.buffer.as_mut_slice();
         let chunk_size = total_inputs.div_ceil(rayon::current_num_threads());
 
         flat_buffer.par_chunks_mut(chunk_size).zip(flat_inputs.par_chunks(chunk_size)).for_each(
@@ -125,9 +125,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
             t.op = F::from_u8(padding_opcode);
             t.fab = F::ONE;
 
-            arith_trace.row_slice_mut()[padding_offset..num_rows]
-                .par_iter_mut()
-                .for_each(|elem| *elem = t);
+            arith_trace.buffer[padding_offset..num_rows].par_iter_mut().for_each(|elem| *elem = t);
 
             range_table_inputs.multi_use_chunk_range_check(padding_rows * 10, 0, 0);
             range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 26, 0);

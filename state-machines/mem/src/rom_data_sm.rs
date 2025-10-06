@@ -45,7 +45,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     pub fn save_to_file(trace: &RomDataTrace<F>, file_name: &str) {
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = RomDataTrace::<usize>::NUM_ROWS;
+        let num_rows = RomDataTrace::NUM_ROWS;
 
         for i in 0..num_rows {
             let addr = F::as_canonical_u64(&trace[i].addr) * 8;
@@ -88,7 +88,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = RomDataTrace::<F>::new_from_vec(trace_buffer);
+        let mut trace = RomDataTrace::new_from_vec(trace_buffer);
         let num_rows = RomDataTrace::<F>::NUM_ROWS;
         assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_rows,

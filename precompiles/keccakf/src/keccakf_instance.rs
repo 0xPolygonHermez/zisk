@@ -47,7 +47,7 @@ impl<F: PrimeField64> KeccakfInstance<F> {
     pub fn new(keccakf_sm: Arc<KeccakfSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            KeccakfTrace::<usize>::AIR_ID,
+            KeccakfTrace::<F>::AIR_ID,
             "KeccakfInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );

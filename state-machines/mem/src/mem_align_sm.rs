@@ -785,7 +785,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         used_rows: usize,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = MemAlignTrace::<F>::new_from_vec(trace_buffer);
+        let mut trace = MemAlignTrace::new_from_vec(trace_buffer);
         let mut reg_range_check = vec![0u32; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
@@ -797,7 +797,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
             used_rows as f64 / num_rows as f64 * 100.0
         );
 
-        let mut trace_rows = trace.row_slice_mut();
+        let mut trace_rows = &mut trace.buffer[..];
         let mut par_traces = Vec::new();
         let mut inputs_indexes = Vec::new();
         let mut total_index = 0;
@@ -828,7 +828,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         });
 
         // Iterate over all traces to set range checks
-        trace.row_slice_mut()[0..total_index].iter_mut().for_each(|row| {
+        trace.buffer[0..total_index].iter_mut().for_each(|row| {
             for j in 0..CHUNK_NUM {
                 let element = row.reg[j].as_canonical_u64() as usize;
                 reg_range_check[element] += 1;
@@ -839,9 +839,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let padding_row = MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
 
         // Store the padding rows
-        trace.row_slice_mut()[total_index..num_rows]
-            .par_iter_mut()
-            .for_each(|slot| *slot = padding_row);
+        trace.buffer[total_index..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 
         // Compute the program multiplicity
         self.std.inc_virtual_row(self.table_id, MemAlignRomSM::PADDING_ROW, padding_size as u64);

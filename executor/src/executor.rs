@@ -1624,7 +1624,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let file_name = pctx.get_custom_commits_fixed_buffer("rom", false)?;
 
-        let setup = sctx.get_setup(RomRomTrace::<usize>::AIRGROUP_ID, RomRomTrace::<usize>::AIR_ID);
+        let setup = sctx.get_setup(RomRomTrace::<F>::AIRGROUP_ID, RomRomTrace::<F>::AIR_ID);
         let blowup_factor =
             1 << (setup.stark_info.stark_struct.n_bits_ext - setup.stark_info.stark_struct.n_bits);
 
