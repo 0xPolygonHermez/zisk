@@ -17,7 +17,7 @@ use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::prelude::*;
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx, SegmentId};
 use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
-use zisk_pil::{MainAirValues, MainPackedTrace, MainTrace, MainPackedTraceRow, MainTraceRow};
+use zisk_pil::{MainAirValues, MainPackedTrace, MainPackedTraceRow, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuRegTrace};
 
 const MAX_SEGMENT_ID: usize = ((1 << 32) / MainTrace::<usize>::NUM_ROWS) - 1;
@@ -355,13 +355,16 @@ impl<F: PrimeField64> MainInstance<F> {
                     }
                     match slot {
                         0 => {
-                            main_trace.row_slice_mut()[row].set_a_reg_prev_mem_step(reg_prev_mem_step);
+                            main_trace.row_slice_mut()[row]
+                                .set_a_reg_prev_mem_step(reg_prev_mem_step);
                         }
                         1 => {
-                            main_trace.row_slice_mut()[row].set_b_reg_prev_mem_step(reg_prev_mem_step);
+                            main_trace.row_slice_mut()[row]
+                                .set_b_reg_prev_mem_step(reg_prev_mem_step);
                         }
                         2 => {
-                            main_trace.row_slice_mut()[row].set_store_reg_prev_mem_step(reg_prev_mem_step);
+                            main_trace.row_slice_mut()[row]
+                                .set_store_reg_prev_mem_step(reg_prev_mem_step);
                         }
                         _ => panic!("Invalid slot {slot}"),
                     }
