@@ -3,7 +3,7 @@ use crate::fcall_division_short;
 use super::{add_short, mul_short, U256};
 
 /// Division of a large number (represented as an array of U256) by a short U256 number
-/// 
+///
 /// It assumes that a > 0, b > 1
 pub fn div_short(a: &[U256], b: &U256) -> (Vec<U256>, U256) {
     let len_a = a.len();

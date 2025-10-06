@@ -6,7 +6,7 @@ use crate::{
 use super::U256;
 
 /// Doubling of a large number (represented as an array of U256)
-/// 
+///
 /// It assumes that a > 0
 pub fn double(a: &[U256]) -> Vec<U256> {
     let len_a = a.len();

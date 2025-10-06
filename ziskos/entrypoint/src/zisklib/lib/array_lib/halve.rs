@@ -3,7 +3,7 @@ use crate::fcall_division_short;
 use super::{add_short, double, U256};
 
 /// Halving of a large number (represented as an array of U256)
-/// 
+///
 /// It assumes that a > 0
 pub fn halve(a: &[U256]) -> Vec<U256> {
     let len_a = a.len();

@@ -7,7 +7,7 @@ use crate::{
 use super::U256;
 
 /// Multiplication of two large numbers (represented as arrays of U256)
-/// 
+///
 /// It assumes that a,b > 0 and len(b) > 1
 pub fn mul_long(a: &[U256], b: &[U256]) -> Vec<U256> {
     let len_a = a.len();

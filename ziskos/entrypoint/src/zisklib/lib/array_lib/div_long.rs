@@ -3,7 +3,7 @@ use crate::fcall_division_long;
 use super::{add_agtb, mul_long, U256};
 
 /// Division of two large numbers (represented as arrays of U256)
-/// 
+///
 /// It assumes that a > 0 and len(b) > 1
 pub fn div_long(a: &[U256], b: &[U256]) -> (Vec<U256>, Vec<U256>) {
     let len_a = a.len();

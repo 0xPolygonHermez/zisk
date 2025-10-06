@@ -3,7 +3,7 @@ use crate::arith256::{syscall_arith256, SyscallArith256Params};
 use super::U256;
 
 /// Multiplication of a large number (represented as an array of U256) by a short U256 number
-/// 
+///
 /// It assumes that a,b > 0
 pub fn mul_short(a: &[U256], b: &U256) -> Vec<U256> {
     let len_a = a.len();

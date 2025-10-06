@@ -6,7 +6,7 @@ use crate::{
 use super::U256;
 
 /// Addition of two large numbers (represented as arrays of U256)
-/// 
+///
 /// It assumes that a,b > 0 and len(a) >= len(b)
 pub fn add_agtb(a: &[U256], b: &[U256]) -> Vec<U256> {
     let len_a = a.len();
@@ -30,7 +30,7 @@ pub fn add_agtb(a: &[U256], b: &[U256]) -> Vec<U256> {
         if carry == 1 {
             // Compute a[i] + b[i] + carry
             let mut params =
-                SyscallAdc256Params { a: &a[i], b: &b[i],  dl: &mut out[i], dh: &mut carry };
+                SyscallAdc256Params { a: &a[i], b: &b[i], dl: &mut out[i], dh: &mut carry };
             syscall_adc256(&mut params);
         } else {
             // Compute a[i] + b[i]

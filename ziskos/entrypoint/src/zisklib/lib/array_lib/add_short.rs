@@ -6,7 +6,7 @@ use crate::{
 use super::U256;
 
 /// Addition of one large number (represented as an array of U256) and a short U256 number
-/// 
+///
 /// It assumes that a,b > 0
 pub fn add_short(a: &[U256], b: &U256) -> Vec<U256> {
     let len_a = a.len();
@@ -28,7 +28,7 @@ pub fn add_short(a: &[U256], b: &U256) -> Vec<U256> {
         if carry == 1 {
             // Compute a[i] + carry
             let mut params =
-                SyscallAdc256Params { a: &a[i], b: &U256::ZERO, dl: &mut out[i], dh: &mut carry};
+                SyscallAdc256Params { a: &a[i], b: &U256::ZERO, dl: &mut out[i], dh: &mut carry };
             syscall_adc256(&mut params);
         } else {
             // No carry, just copy the rest of a

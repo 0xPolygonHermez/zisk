@@ -3,7 +3,7 @@ use std::vec;
 use super::{div_long, div_short, halve, mul_long, mul_short, square, U256};
 
 /// Modular exponentiation of three large numbers (represented as arrays of U256): base^exp (mod modulus)
-/// 
+///
 /// It assumes that modulus > 0 and len(base),len(exp) > 0 (these are handled by the host library)
 pub fn modexp(base: &[U256], exp: &[U256], modulus: &[U256]) -> Vec<U256> {
     let len_b = base.len();
@@ -126,10 +126,10 @@ pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64]) -> Vec<u64> {
     let base_u256 = U256::slice_from_flat(&padded_base);
     let exp_u256 = U256::slice_from_flat(&padded_exp);
     let modulus_u256 = U256::slice_from_flat(&padded_modulus);
-    
+
     // Call the main modexp function
     let result_u256 = modexp(&base_u256, &exp_u256, &modulus_u256);
-    
+
     // Convert result back to u64 array
     U256::slice_to_flat(&result_u256).to_vec()
 }
