@@ -1,15 +1,9 @@
 use anyhow::Result;
-use std::io::{Cursor, Write};
-use std::path::PathBuf;
-use tokio::fs;
 use tracing::{error, info, warn};
 use zisk_distributed_common::{
     dto::{WebhookErrorDto, WebhookPayloadDto},
     JobId,
 };
-use zstd::Encoder;
-
-use crate::coordinator_errors::{CoordinatorError, CoordinatorResult};
 
 /// Sends a webhook notification upon job completion or failure.
 ///
@@ -107,123 +101,4 @@ async fn send_webhook_with_error(
     }
 
     Ok(())
-}
-
-/// Saves the final proof data to disk with unique filename generation.
-///
-/// Creates a unique filename to avoid overwriting existing proof files by appending
-/// a counter suffix (_2, _3, etc.) if the initial filename already exists.
-///
-/// # Arguments
-///
-/// * `job_id` - The ID of the job whose proof is being saved
-/// * `proof_data` - The proof data as a vector of u64 values
-///
-/// # Returns
-///
-/// Returns `Ok(())` on success, or a `CoordinatorError` on failure
-pub async fn save_proof(
-    id: &str,
-    proof_folder: PathBuf,
-    proof_data: &[u64],
-    with_zip: bool,
-) -> CoordinatorResult<()> {
-    // Ensure the proofs directory exists
-    fs::create_dir_all(&proof_folder).await.map_err(|e| {
-        error!("Failed to create proofs directory: {}", e);
-        CoordinatorError::Internal(e.to_string())
-    })?;
-
-    // Generate unique filename to avoid overwriting existing files
-    let mut raw_path = proof_folder.join(format!("proof_{}.fri", id));
-    let mut zip_path = raw_path.with_extension("fri.compressed");
-    let mut counter = 2;
-
-    while fs::try_exists(&raw_path).await.map_err(|e| {
-        error!("Failed to check proof file existence: {}", e);
-        CoordinatorError::Internal(e.to_string())
-    })? || (with_zip
-        && fs::try_exists(&zip_path).await.map_err(|e| {
-            error!("Failed to check compressed file existence: {}", e);
-            CoordinatorError::Internal(e.to_string())
-        })?)
-    {
-        raw_path = proof_folder.join(format!("proof_{}_{}.fri", id, counter));
-        zip_path = raw_path.with_extension("fri.compressed");
-        counter += 1;
-    }
-
-    // Convert Vec<u64> to bytes safely
-    let proof_bytes = bytemuck::cast_slice::<u64, u8>(proof_data);
-
-    // Write raw proof file
-    fs::write(&raw_path, proof_bytes).await.map_err(|e| {
-        error!("Failed to write proof file: {}", e);
-        CoordinatorError::Internal(e.to_string())
-    })?;
-
-    // Calculate compression statistics
-    let raw_size = proof_bytes.len();
-
-    info!("Final proof compression completed:");
-    info!("  Raw: {} ({} bytes)", raw_path.display(), raw_size);
-
-    if with_zip {
-        // Compress proof data and write to file
-        let zip_size = save_zip_proof(proof_bytes, &zip_path, 1).await?;
-
-        let ratio = zip_size as f64 / raw_size as f64;
-
-        info!("  Compressed: {} ({} bytes, ratio: {:.2}x)", zip_path.display(), zip_size, ratio);
-    }
-
-    Ok(())
-}
-
-/// Compresses data using zstd and writes it to a file.
-///
-/// # Arguments
-///
-/// * `data` - The raw data to compress
-/// * `output_path` - Path where the compressed file will be written
-/// * `compression_level` - Compression level (1 = fastest, 22 = best compression)
-///
-/// # Returns
-///
-/// Returns the compressed size in bytes, or a `CoordinatorError` on failure
-async fn save_zip_proof(
-    data: &[u8],
-    zip_path: &std::path::Path,
-    compression_level: i32,
-) -> CoordinatorResult<usize> {
-    // Compress data in memory using zstd
-    let mut compressed_buffer = Cursor::new(Vec::new());
-    {
-        let mut encoder = Encoder::new(&mut compressed_buffer, compression_level).map_err(|e| {
-            error!("Failed to create zstd encoder: {}", e);
-            CoordinatorError::Internal(e.to_string())
-        })?;
-
-        encoder.write_all(data).map_err(|e| {
-            error!("Failed to write data to compressor: {}", e);
-            CoordinatorError::Internal(e.to_string())
-        })?;
-
-        encoder.finish().map_err(|e| {
-            error!("Failed to finish compression: {}", e);
-            CoordinatorError::Internal(e.to_string())
-        })?;
-    }
-
-    // Extract compressed data and get size
-    let compressed_data = compressed_buffer.into_inner();
-    let compressed_size = compressed_data.len();
-
-    // Write compressed data to file
-    fs::write(zip_path, &compressed_data).await.map_err(|e| {
-        error!("Failed to write compressed file: {}", e);
-        CoordinatorError::Internal(e.to_string())
-    })?;
-
-    Ok(compressed_size)
 }

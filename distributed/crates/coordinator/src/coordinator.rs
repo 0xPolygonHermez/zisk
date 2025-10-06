@@ -398,7 +398,12 @@ impl Coordinator {
 
         // Save proof to disk
         let folder = PathBuf::from("proofs");
-        hooks::save_proof(job_id.clone().as_str(), folder, &final_proof, true).await?;
+        zisk_common::save_proof(job_id.clone().as_str(), folder, &final_proof, true).map_err(
+            |e| {
+                error!("Failed to save proof for job {}: {}", job_id, e);
+                CoordinatorError::Internal(e.to_string())
+            },
+        )?;
 
         // Clean up process data for the job
         drop(job);
