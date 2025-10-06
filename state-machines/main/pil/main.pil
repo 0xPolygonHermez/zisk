@@ -92,75 +92,114 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     // Registers
 
     col witness a[RC];
+    @witness_bits{ name: "a", bits: 32 }
+
     col witness b[RC];
+    @witness_bits{ name: "b", bits: 32 }
+
     col witness c[RC];
+    @witness_bits{ name: "c", bits: 32 }
+
     col witness flag;                  // Conditional flag modified by operations
+    @witness_bits{ name: "flag", bits: 1 }
 
     col witness pc;                    // Program counter
+    @witness_bits{ name: "pc", bits: 32 }
 
     // Source A
 
     col witness a_src_imm;             // Selector indicating that 'a' uses an immediate value.
+    @witness_bits{ name: "a_src_imm", bits: 1 }
     col witness a_src_mem;             // Selector indicating that 'a' is read from memory.
+    @witness_bits{ name: "a_src_mem", bits: 1 }
     col witness a_offset_imm0;         // Depending on the flag values, this witness contains either
                                        // the lower 32-bit part of an immediate value or the memory
                                        // address offset.
+    @witness_bits{ name: "a_offset_imm0", bits: 64, signed: 1 }
     if (stack_enabled == 1) {
         col witness air.sp;
+        @witness_bits{ name: "sp", bits: 32 }
         col witness air.a_src_sp;
+        @witness_bits{ name: "a_src_sp", bits: 1 }
         col witness air.a_use_sp_imm1;
+        @witness_bits{ name: "a_use_sp_imm1", bits: 32 }
     } else {
         col witness air.a_imm1;        // The higher 32-bit part of a immediate value
+        @witness_bits{ name: "a_imm1", bits: 32 }
     }
     col witness a_src_step;            // Selector to load the `step` in register `a`
+    @witness_bits{ name: "a_src_step", bits: 1 }
 
     // Source B
 
     col witness b_src_imm;             // Selector indicating that 'b' uses an immediate value.
+    @witness_bits{ name: "b_src_imm", bits: 1 }
     col witness b_src_mem;             // Selector indicating that 'b' is read from memory.
+    @witness_bits{ name: "b_src_mem", bits: 1 }
     col witness b_offset_imm0;         // Depending on the flag values, this witness contains either
                                        // the lower 32-bit part of an immediate value or the memory
                                        // address offset.
+    @witness_bits{ name: "b_offset_imm0", bits: 64, signed: 1 }
 
     if (stack_enabled) {
         col witness air.b_use_sp_imm1;
+        @witness_bits{ name: "b_use_sp_imm1", bits: 32 }
     } else {
         col witness air.b_imm1;        // The higher 32-bit part of a immediate value
+        @witness_bits{ name: "b_imm1", bits: 32 }
     }
     col witness b_src_ind;             // Selector to indicate take value in a as address to
                                        // read b form memory (b = mem[a])
+    @witness_bits{ name: "b_src_ind", bits: 1 }
     col witness ind_width;             // bytes: 8, 4, 2, 1
+    @witness_bits{ name: "ind_width", bits: 4 }
 
     // Operations related
 
     col witness is_external_op;        // [is_external_op == 1] => operation op sent to bus
+    @witness_bits{ name: "is_external_op", bits: 1 }
     col witness op;                    // [is_external_op == 0 && op=0] ==>  a=last_c, flag=1
                                        // [is_external_op == 0 && op=0] ==>  b=last_c, flag=0
                                        // else then this op is sent to the bus.
+    @witness_bits{ name: "op", bits: 8 }
 
     // Destination C
 
     col witness store_ra;              // Store the return address instead of the C register.
+    @witness_bits{ name: "store_ra", bits: 1 }
 
     col witness store_mem;             // Selector for store c to memory
+    @witness_bits{ name: "store_mem", bits: 1 }
+    
     col witness store_ind;             // Selector for store c to memory address in a
+    @witness_bits{ name: "store_ind", bits: 1 }
 
     col witness store_offset;          // Memory address offset used on c
+    @witness_bits{ name: "store_offset", bits: 64, signed: 1 }
 
     col witness set_pc;                // Selector to set to pc the value in c
+    @witness_bits{ name: "set_pc", bits: 1 }
 
     if (stack_enabled) {
         col witness air.store_use_sp;  // Selector to calculate store address use sp
+        @witness_bits{ name: "store_use_sp", bits: 1 }
         col witness air.set_sp;        // Selector to set result as new value of sp
+        @witness_bits{ name: "set_sp", bits: 1 }
         col witness air.inc_sp;        // Increment of sp (negative or positive)
+        @witness_bits{ name: "inc_sp", bits: 64, signed: 1 }
     }
 
 
     col witness jmp_offset1;           // Next default pc if flag = 0
+    @witness_bits{ name: "jmp_offset1", bits: 64, signed: 1 }
+
     col witness jmp_offset2;           // Next default pc if flag = 1
+    @witness_bits{ name: "jmp_offset2", bits: 64, signed: 1 }
+
     col witness m32;                   // Selector to indicate the high part of operands (a,b) send
                                        // to bus must be 0, because it's a 32 bits operation. Used
                                        // to avoid sent to bus dirty values.
+    @witness_bits{ name: "m32", bits: 1 }
 
     const expr sel_mem_b;
     sel_mem_b = b_src_mem + b_src_ind;
@@ -170,8 +209,11 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
 
     if (stack_enabled) {
         col witness air.addr0;
+        @witness_bits{ name: "addr0", bits: 32 }
         col witness air.addr1;
+        @witness_bits{ name: "addr1", bits: 32 }
         col witness air.addr2;
+        @witness_bits{ name: "addr2", bits: 32 }
 
         addr0 === a_offset_imm0 + a_use_sp_imm1 * sp;
         addr1 === b_offset_imm0 + b_src_ind * (a[0] + 2**32 * a[1]) +  b_use_sp_imm1 * sp;
@@ -179,6 +221,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     } else {
         const expr air.addr0;
         col witness air.addr1;
+        @witness_bits{ name: "addr1", bits: 32 }
         const expr air.addr2;
         addr0 = a_offset_imm0;
         addr1 === b_offset_imm0 + b_src_ind * (a[0] + 2**32 * a[1]);
@@ -247,12 +290,19 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     //   only the main state machine can 'prove' such memory access.
 
     col witness a_reg_prev_mem_step;      // Previous mem_step where register a_offset_imm0 is used
+    @witness_bits{ name: "a_reg_prev_mem_step", bits: 40 }
     col witness b_reg_prev_mem_step;      // Previous mem_step where register b_offset_imm0 is used
+    @witness_bits{ name: "b_reg_prev_mem_step", bits: 40 }
     col witness store_reg_prev_mem_step;  // Previous mem_step where register store_offset is used
+    @witness_bits{ name: "store_reg_prev_mem_step", bits: 40 }
     col witness store_reg_prev_value[RC]; // Previous value of register store_offset is used
+    @witness_bits{ name: "store_reg_prev_value", bits: 32 }
     col witness a_src_reg;                // Selector indicating that 'a' is read from register
+    @witness_bits{ name: "a_src_reg", bits: 1 }
     col witness b_src_reg;                // Selector indicating that 'b' is read from register
+    @witness_bits{ name: "b_src_reg", bits: 1 }
     col witness store_reg;                // Selector to store result to register
+    @witness_bits{ name: "store_reg", bits: 1 }
 
     // Calculate the memory step from the main step
 

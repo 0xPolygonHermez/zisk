@@ -8,9 +8,13 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
 
 
     col witness addr; // n-byte address, real address = addr * bytes
+    @witness_bits{ name: "addr", bits: 29 }
     col witness step[reads_by_row];
+    @witness_bits{ name: "step", bits: 40 }
     col witness sel[reads_by_row]; // one-hot encoding of the read in the row
+    @witness_bits{ name: "sel", bits: 1 }
     col witness value[RC];
+    @witness_bits{ name: "value", bits: 32 }
 
     for (int i = 0; i < reads_by_row; i++) {
         sel[i] * (1 - sel[i]) === 0;

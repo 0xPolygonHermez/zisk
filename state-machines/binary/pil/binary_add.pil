@@ -6,9 +6,13 @@ const int ADD_OP = 0x0C;
 airtemplate BinaryAdd(const int N = 2**21, const int operation_bus_id = OPERATION_BUS_ID, const int RC = 2, const int operation_code = ADD_OP) {
 
     col witness a[RC];
+    @witness_bits{ name: "a", bits: 32 }
     col witness b[RC];
+    @witness_bits{ name: "b", bits: 32 }
     col witness c_chunks[RC*2];
+    @witness_bits{ name: "c_chunks", bits: 16 }
     col witness cout[RC];
+    @witness_bits{ name: "cout", bits: 1 }
     const expr c[RC];
 
     for (int i = 0; i < RC; i++) {
@@ -24,5 +28,6 @@ airtemplate BinaryAdd(const int N = 2**21, const int operation_bus_id = OPERATIO
     }
 
     col witness multiplicity;
+    @witness_bits{ name: "multiplicity", bits: 1 }
     lookup_proves(operation_bus_id, [operation_code, ...a, ...b, ...c, 0], multiplicity);
 }
