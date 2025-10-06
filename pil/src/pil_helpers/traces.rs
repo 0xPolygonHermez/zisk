@@ -11,7 +11,6 @@ pub use proofman_macros::trace_row;
 pub use proofman_macros::values;
 use fields::PrimeField64;
 use std::fmt;
-use rayon::prelude::*;
 
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
