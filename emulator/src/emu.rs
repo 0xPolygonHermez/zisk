@@ -2494,9 +2494,9 @@ impl<'a> Emu<'a> {
                 || inst.op == ZiskOp::FcallGet.code()
                 || inst.op == ZiskOp::FcallParam.code()
             {
-                ZiskOp::CopyB.code() as u8
+                ZiskOp::CopyB.code()
             } else {
-                inst.op as u8
+                inst.op
             },
         );
         packed_trace.set_store_ra(inst.store_ra as u8);
