@@ -2489,14 +2489,16 @@ impl<'a> Emu<'a> {
         packed_trace.set_is_external_op(inst.is_external_op as u8);
         // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
         // of the copyb, use to get free-input information
-        packed_trace.set_op(if inst.op == ZiskOp::Fcall.code()
-            || inst.op == ZiskOp::FcallGet.code()
-            || inst.op == ZiskOp::FcallParam.code()
-        {
-            ZiskOp::CopyB.code() as u8
-        } else {
-            inst.op as u8
-        });
+        packed_trace.set_op(
+            if inst.op == ZiskOp::Fcall.code()
+                || inst.op == ZiskOp::FcallGet.code()
+                || inst.op == ZiskOp::FcallParam.code()
+            {
+                ZiskOp::CopyB.code() as u8
+            } else {
+                inst.op as u8
+            },
+        );
         packed_trace.set_store_ra(inst.store_ra as u8);
         packed_trace.set_store_mem((inst.store == STORE_MEM) as u8);
         packed_trace.set_store_reg((inst.store == STORE_REG) as u8);

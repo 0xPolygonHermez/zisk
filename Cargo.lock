@@ -5476,6 +5476,8 @@ dependencies = [
 name = "zisk-common"
 version = "0.13.0"
 dependencies = [
+ "anyhow",
+ "bytemuck",
  "fields",
  "libc",
  "mpi",
@@ -5488,6 +5490,7 @@ dependencies = [
  "witness",
  "zisk-core",
  "zisk-pil",
+ "zstd",
 ]
 
 [[package]]
@@ -5534,7 +5537,6 @@ version = "0.13.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "bytemuck",
  "cargo-zisk",
  "chrono",
  "clap",
@@ -5556,9 +5558,9 @@ dependencies = [
  "tracing",
  "uuid",
  "witness",
+ "zisk-common",
  "zisk-distributed-common",
  "zisk-distributed-grpc-api",
- "zstd",
 ]
 
 [[package]]
