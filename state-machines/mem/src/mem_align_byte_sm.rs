@@ -138,9 +138,7 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignByteTrace<F>> for MemAlignByteT
         let padding_size = num_rows - padding_row;
         if padding_size > 0 {
             let padding = trace[padding_row];
-            trace.row_slice_mut()[padding_row + 1..num_rows]
-                .par_iter_mut()
-                .for_each(|slot| *slot = padding);
+            trace.buffer[padding_row + 1..num_rows].par_iter_mut().for_each(|slot| *slot = padding);
         }
         let mut air_values = MemAlignByteAirValues::<F>::new();
         air_values.padding_size = F::from_usize(padding_size);
@@ -221,9 +219,7 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignReadByteTrace<F>> for MemAlignR
         let padding_size = num_rows - padding_row;
         if padding_size > 0 {
             let padding = trace[padding_row];
-            trace.row_slice_mut()[padding_row + 1..num_rows]
-                .par_iter_mut()
-                .for_each(|slot| *slot = padding);
+            trace.buffer[padding_row + 1..num_rows].par_iter_mut().for_each(|slot| *slot = padding);
         }
         let mut air_values = MemAlignReadByteAirValues::<F>::new();
         air_values.padding_size = F::from_usize(padding_size);
@@ -311,9 +307,7 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignWriteByteTrace<F>>
         let padding_size = num_rows - padding_row;
         if padding_size > 0 {
             let padding = trace[padding_row];
-            trace.row_slice_mut()[padding_row + 1..num_rows]
-                .par_iter_mut()
-                .for_each(|slot| *slot = padding);
+            trace.buffer[padding_row + 1..num_rows].par_iter_mut().for_each(|slot| *slot = padding);
         }
         let mut air_values = MemAlignWriteByteAirValues::<F>::new();
         air_values.padding_size = F::from_usize(padding_size);

@@ -58,12 +58,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let circuit_size = keccakf_program.len();
 
         // Compute some useful values
-        let num_available_circuits = (KeccakfTrace::<usize>::NUM_ROWS - 1) / circuit_size;
+        let num_available_circuits = (KeccakfTrace::<F>::NUM_ROWS - 1) / circuit_size;
         let num_available_keccakfs = NUM_KECCAKF_PER_CIRCUIT * num_available_circuits;
 
         // Get the fixed columns
-        let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
-        let air_id = KeccakfTrace::<usize>::AIR_ID;
+        let airgroup_id = KeccakfTrace::<F>::AIRGROUP_ID;
+        let air_id = KeccakfTrace::<F>::AIR_ID;
         let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
         let keccakf_fixed = KeccakfFixed::from_vec(fixed_pols);
 
@@ -273,7 +273,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let program = &self.program;
         let gates = &self.gates;
 
-        let trace_rows = trace.row_slice_mut();
+        let trace_rows = trace.buffer.as_mut_slice();
 
         let row0 = trace_rows[0];
 

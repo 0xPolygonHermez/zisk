@@ -115,13 +115,12 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         // Split the add_e_trace.buffer into slices matching each inner vector’s length.
         let flat_inputs: Vec<_> = inputs.iter().flatten().collect();
-        let trace_rows = add_trace.row_slice_mut();
         let mut range_checks: Vec<[u64; 4]> = vec![[0u64; 4]; flat_inputs.len()];
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         flat_inputs
             .into_par_iter()
-            .zip(trace_rows.par_iter_mut())
+            .zip(add_trace.buffer.par_iter_mut())
             .zip(range_checks.par_iter_mut())
             .for_each(|((input, trace_row), range_check)| {
                 let (row, checks) = self.process_slice(input);
@@ -142,7 +141,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
-        add_trace.row_slice_mut()[total_inputs..num_rows]
+        add_trace.buffer[total_inputs..num_rows]
             .par_iter_mut()
             .for_each(|slot| *slot = BinaryAddTraceRow::<F> { ..Default::default() });
 

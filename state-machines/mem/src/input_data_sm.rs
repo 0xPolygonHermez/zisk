@@ -69,13 +69,14 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = InputDataTrace::<F>::new_from_vec(trace_buffer);
+        let mut trace = InputDataTrace::new_from_vec(trace_buffer);
 
+        let num_rows = InputDataTrace::<F>::NUM_ROWS;
         debug_assert!(
-            !mem_ops.is_empty() && mem_ops.len() <= trace.num_rows(),
+            !mem_ops.is_empty() && mem_ops.len() <= num_rows,
             "InputDataSM: mem_ops.len()={} out of range {}",
             mem_ops.len(),
-            trace.num_rows()
+            num_rows
         );
 
         let mut range_check_data: Vec<u32> = vec![0; 1 << 16];
@@ -92,16 +93,16 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         for mem_op in mem_ops.iter() {
             let distance = mem_op.addr - last_addr;
 
-            if i >= trace.num_rows {
+            if i >= num_rows {
                 break;
             }
 
             if distance > 1 {
                 // check if has enough rows to complete the internal reads + regular memory
                 let mut internal_reads = distance - 1;
-                let incomplete = (i + internal_reads as usize) >= trace.num_rows;
+                let incomplete = (i + internal_reads as usize) >= num_rows;
                 if incomplete {
-                    internal_reads = (trace.num_rows - i) as u32;
+                    internal_reads = (num_rows - i) as u32;
                 }
 
                 trace[i].addr_changes = F::ONE;
@@ -162,8 +163,8 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         let is_free_read = F::from_bool(last_addr == INPUT_DATA_W_ADDR_INIT);
         let value = trace[last_row_idx].value_word;
 
-        let padding_size = trace.num_rows() - count;
-        for i in count..trace.num_rows() {
+        let padding_size = num_rows - count;
+        for i in count..num_rows {
             last_step += 1;
 
             // TODO CHECK

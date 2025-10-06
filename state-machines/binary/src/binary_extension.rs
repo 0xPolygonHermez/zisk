@@ -331,7 +331,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             "{} <= {} ({})",
             total_inputs,
             num_rows,
-            BinaryExtensionTrace::<usize>::NUM_ROWS
+            BinaryExtensionTrace::<F>::NUM_ROWS
         );
 
         tracing::info!(
@@ -344,7 +344,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // Split the binary_e_trace.buffer into slices matching each inner vector’s length.
         let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
         let mut slices = Vec::with_capacity(inputs.len());
-        let mut rest = binary_e_trace.row_slice_mut();
+        let mut rest = &mut binary_e_trace.buffer[..];
         for size in sizes {
             let (head, tail) = rest.split_at_mut(size);
             slices.push(head);
@@ -376,7 +376,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         let padding_row =
             BinaryExtensionTraceRow::<F> { op: F::from_u8(SE_W_OP), ..Default::default() };
 
-        binary_e_trace.row_slice_mut()[total_inputs..num_rows]
+        binary_e_trace.buffer[total_inputs..num_rows]
             .par_iter_mut()
             .for_each(|slot| *slot = padding_row);
 

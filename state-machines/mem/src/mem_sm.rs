@@ -49,7 +49,7 @@ impl<F: PrimeField64> MemSM<F> {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::<usize>::NUM_ROWS;
+        let num_rows = MemTrace::NUM_ROWS;
 
         for i in 0..num_rows {
             let addr = trace[i].addr.as_canonical_biguint().to_bigint().unwrap() * 8;
@@ -87,7 +87,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = MemTrace::<F>::new_from_vec(trace_buffer);
+        let mut trace = MemTrace::new_from_vec(trace_buffer);
 
         let std = self.std.clone();
 
@@ -167,7 +167,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                 }
             }
 
-            if i >= trace.num_rows {
+            if i >= trace.num_rows() {
                 break;
             }
 
@@ -244,9 +244,9 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             trace[last_row_idx].step_dual
         };
 
-        let padding_size = trace.num_rows - count;
+        let padding_size = trace.num_rows() - count;
         let padding_increment = [F::ZERO, F::ZERO];
-        for i in count..trace.num_rows {
+        for i in count..trace.num_rows() {
             trace[i].addr = addr;
             trace[i].step = step;
             trace[i].sel = F::ZERO;

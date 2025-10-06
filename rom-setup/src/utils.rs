@@ -65,7 +65,7 @@ pub fn get_elf_bin_file_path_with_hash(
     }
     let pilout_hash = PILOUT_HASH;
 
-    let n = RomRomTrace::<usize>::NUM_ROWS;
+    let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
 
     let rom_cache_file_name =
         format!("{}_{}_{}_{}.bin", hash, pilout_hash, &n.to_string(), &blowup_factor.to_string());

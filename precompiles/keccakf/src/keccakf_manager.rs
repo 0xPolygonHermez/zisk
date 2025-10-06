@@ -59,8 +59,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager<F> {
         let num_available_keccakfs = self.keccakf_sm.num_available_keccakfs;
 
         Box::new(KeccakfPlanner::new().add_instance(InstanceInfo::new(
-            KeccakfTrace::<usize>::AIRGROUP_ID,
-            KeccakfTrace::<usize>::AIR_ID,
+            KeccakfTrace::<F>::AIRGROUP_ID,
+            KeccakfTrace::<F>::AIR_ID,
             num_available_keccakfs,
             ZiskOperationType::Keccak,
         )))
@@ -79,7 +79,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager<F> {
     /// Panics if the provided `air_id` is not supported.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            id if id == KeccakfTrace::<usize>::AIR_ID => {
+            id if id == KeccakfTrace::<F>::AIR_ID => {
                 Box::new(KeccakfInstance::new(self.keccakf_sm.clone(), ictx))
             }
             _ => {

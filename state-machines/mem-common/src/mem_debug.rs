@@ -3,6 +3,7 @@ use std::{
     io::{BufWriter, Write},
 };
 
+use fields::Goldilocks;
 use zisk_common::MemBusData;
 use zisk_pil::MemTrace;
 
@@ -304,7 +305,7 @@ impl MemDebug {
         println!("[MemDebug] writing information {file_name} .....");
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::<usize>::NUM_ROWS;
+        let num_rows = MemTrace::<Goldilocks>::NUM_ROWS;
         for (i, op) in self.ops.iter().enumerate() {
             let extra = if (i % num_rows) == 0 {
                 format!(" ======= INSTANCE {} ==========", i / num_rows)
@@ -333,7 +334,7 @@ impl MemDebug {
         println!("[MemDebug] writing information {file_name} .....");
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::<usize>::NUM_ROWS;
+        let num_rows = MemTrace::<Goldilocks>::NUM_ROWS;
         for (i, op) in self.ops.iter().enumerate() {
             if (i % num_rows) == 0 {
                 writeln!(writer, " ======= INSTANCE {} ==========", i / num_rows).unwrap();

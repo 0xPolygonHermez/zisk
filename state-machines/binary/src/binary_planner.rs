@@ -7,6 +7,7 @@
 use std::any::Any;
 
 use crate::BinaryCounter;
+use fields::Goldilocks;
 use zisk_common::{
     plan_with_frops, BusDeviceMetrics, ChunkId, InstFropsCount, InstanceType, Metrics, Plan,
     Planner,
@@ -28,7 +29,8 @@ impl BinaryPlanner {
         if rows == 0 {
             0
         } else {
-            ((rows - 1 / BinaryTrace::<usize>::NUM_ROWS) + 1) * BinaryTrace::<usize>::ROW_SIZE
+            ((rows - 1 / BinaryTrace::<Goldilocks>::NUM_ROWS) + 1)
+                * BinaryTrace::<Goldilocks>::ROW_SIZE
         }
     }
 
@@ -36,7 +38,8 @@ impl BinaryPlanner {
         if rows == 0 {
             0
         } else {
-            ((rows - 1 / BinaryAddTrace::<usize>::NUM_ROWS) + 1) * BinaryAddTrace::<usize>::ROW_SIZE
+            ((rows - 1 / BinaryAddTrace::<Goldilocks>::NUM_ROWS) + 1)
+                * BinaryAddTrace::<Goldilocks>::ROW_SIZE
         }
     }
 
@@ -52,15 +55,15 @@ impl BinaryPlanner {
             })
             .collect();
 
-        let extension_num_rows = BinaryExtensionTrace::<usize>::NUM_ROWS;
+        let extension_num_rows = BinaryExtensionTrace::<Goldilocks>::NUM_ROWS;
 
         let plans: Vec<_> = plan_with_frops(&extension_counters, extension_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new(collect_info);
                 Plan::new(
-                    BinaryExtensionTrace::<usize>::AIRGROUP_ID,
-                    BinaryExtensionTrace::<usize>::AIR_ID,
+                    BinaryExtensionTrace::<Goldilocks>::AIRGROUP_ID,
+                    BinaryExtensionTrace::<Goldilocks>::AIR_ID,
                     None,
                     InstanceType::Instance,
                     check_point,
@@ -90,15 +93,15 @@ impl BinaryPlanner {
             })
             .collect();
 
-        let basic_num_rows = BinaryTrace::<usize>::NUM_ROWS;
+        let basic_num_rows = BinaryTrace::<Goldilocks>::NUM_ROWS;
 
         let plans: Vec<_> = plan_with_frops(&basic_counters, basic_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new((with_adds, collect_info));
                 Plan::new(
-                    BinaryTrace::<usize>::AIRGROUP_ID,
-                    BinaryTrace::<usize>::AIR_ID,
+                    BinaryTrace::<Goldilocks>::AIRGROUP_ID,
+                    BinaryTrace::<Goldilocks>::AIR_ID,
                     None,
                     InstanceType::Instance,
                     check_point,
@@ -119,15 +122,15 @@ impl BinaryPlanner {
             })
             .collect();
 
-        let add_num_rows = BinaryAddTrace::<usize>::NUM_ROWS;
+        let add_num_rows = BinaryAddTrace::<Goldilocks>::NUM_ROWS;
 
         plan_with_frops(&add_counters, add_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new(collect_info);
                 Plan::new(
-                    BinaryAddTrace::<usize>::AIRGROUP_ID,
-                    BinaryAddTrace::<usize>::AIR_ID,
+                    BinaryAddTrace::<Goldilocks>::AIRGROUP_ID,
+                    BinaryAddTrace::<Goldilocks>::AIR_ID,
                     None,
                     InstanceType::Instance,
                     check_point,
