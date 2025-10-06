@@ -61,16 +61,25 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = OPERATION_B
 
     // Primary columns
     col witness m_op;              // micro operation code of the binary table (e.g. add)
+    @witness_bits{ name: "m_op", bits: 5 }
     col witness mode32;            // 1 if the operation is 32 bits, 0 otherwise
+    @witness_bits{ name: "mode32", bits: 1 }
     col witness free_in_a[bytes];  // input1
+    @witness_bits{ name: "free_in_a", bits: 8 }
     col witness free_in_b[bytes];  // input2
+    @witness_bits{ name: "free_in_b", bits: 8 }
     col witness free_in_c[bytes];  // output
+    @witness_bits{ name: "free_in_c", bits: 8 }
     col witness carry[bytes];      // bytes chunks carries [0,cout:0],[cin:0,cout:1],...,[cin:bytes-2,cout:bytes-1]
+    @witness_bits{ name: "carry", bits: 1 }
 
     // Secondary columns
     col witness use_last_carry;    // 1 if the operation uses the last carry as its result
+    @witness_bits{ name: "use_last_carry", bits: 1 }
     col witness op_is_min_max;     // 1 if the operation is any of the MIN/MAX operations
+    @witness_bits{ name: "op_is_min_max", bits: 1 }
     col witness has_initial_carry; // 1 if the operation has an initial carry
+    @witness_bits{ name: "has_initial_carry", bits: 1 }
 
     const expr mode64 = 1 - mode32;
     const expr cout32 = carry[half_bytes-1];
@@ -82,9 +91,13 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = OPERATION_B
 
     // Auxiliary columns (primarily used to optimize lookups, but can be substituted with expressions)
     col witness cout;
+    @witness_bits{ name: "cout", bits: 1 }
     col witness result_is_a;
+    @witness_bits{ name: "result_is_a", bits: 1 }
     col witness use_last_carry_mode32;
+    @witness_bits{ name: "use_last_carry_mode32", bits: 1 }
     col witness use_last_carry_mode64;
+    @witness_bits{ name: "use_last_carry_mode64", bits: 1 }
     cout === mode64 * (cout64 - cout32) + cout32;
     result_is_a === op_is_min_max * cout;
     use_last_carry_mode32 === mode32 * use_last_carry;
@@ -112,8 +125,11 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = OPERATION_B
 
     // More auxiliary columns
     col witness m_op_or_ext;
+    @witness_bits{ name: "m_op_or_ext", bits: 5 }
     col witness free_in_a_or_c[half_bytes];
+    @witness_bits{ name: "free_in_a_or_c", bits: 8 }
     col witness free_in_b_or_zero[half_bytes];
+    @witness_bits{ name: "free_in_b_or_zero", bits: 8 }
     m_op_or_ext === mode64 * (m_op - EXT_32_OP) + EXT_32_OP;
     int j = 0;
     for (int i = 1; i < bytes; i++) {
@@ -171,5 +187,6 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = OPERATION_B
     expr op = m_op + 0x20 * mode32;
 
     col witness multiplicity;
+    @witness_bits{ name: "multiplicity", bits: 1 }
     lookup_proves(OPERATION_BUS_ID, [op, ...a, ...b, ...c, cout - result_is_a], multiplicity);
 }
