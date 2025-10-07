@@ -2,34 +2,24 @@
 
 use crate::{
     add_end_and_lib,
-    elf_extraction::{collect_elf_payload, merge_adjacent_ro_sections, ElfPayload},
+    elf_extraction::{collect_elf_payload, collect_elf_payload_from_bytes, merge_adjacent_ro_sections, ElfPayload},
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
     AsmGenerationMethod, RoData, ZiskInst, ZiskRom, ZiskRom2Asm, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
 use rayon::prelude::*;
 use std::{
     error::Error,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
-    // Get the path to float library
-    let default_float_library_path = std::env::var("HOME")
-        .ok()
-        .map(PathBuf::from)
-        .unwrap()
-        .join(".zisk/zisk/lib-float/c/lib/ziskfloat.elf");
-
-    let float_library_path = if default_float_library_path.exists() {
-        default_float_library_path
-    } else {
-        PathBuf::from("./lib-float/c/lib/ziskfloat.elf")
-    };
+    // Load the embedded float library
+    const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../lib-float/c/lib/ziskfloat.elf");
 
     // Extract all relevant sections from the ELF file
     let payloads: Vec<ElfPayload> =
-        vec![collect_elf_payload(elf_file)?, collect_elf_payload(Path::new(&float_library_path))?];
+        vec![collect_elf_payload(elf_file)?, collect_elf_payload_from_bytes(FLOAT_LIB_DATA)?];
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
