@@ -21,10 +21,14 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
         .unwrap()
         .join(".zisk/zisk/lib-float/c/lib/ziskfloat.elf");
 
+    let local_float_library_path = PathBuf::from("./lib-float/c/lib/ziskfloat.elf");
+
     let float_library_path = if default_float_library_path.exists() {
         default_float_library_path
+    } else if local_float_library_path.exists() {
+        local_float_library_path
     } else {
-        PathBuf::from("./lib-float/c/lib/ziskfloat.elf")
+        panic!("elf2rom() could not find the float library.  Please run from the zisk root directory, or set the HOME environment variable to point to a directory containing .zisk/zisk/lib-float/c/lib/ziskfloat.elf");
     };
 
     // Extract all relevant sections from the ELF file
