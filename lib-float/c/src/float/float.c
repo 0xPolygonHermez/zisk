@@ -854,7 +854,7 @@ void _zisk_float (void)
                     change_rounding_mode_sign();
 
                     // Call f32_mulAdd()
-                    uint64_t result = (uint64_t)F32_NEGATE(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v);
+                    uint64_t result = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
 
                     if (softfloat_exceptionFlags & softfloat_flag_inexact) {
                         if (F32_IS_SUBNORMAL(result)) {
@@ -869,8 +869,12 @@ void _zisk_float (void)
                             softfloat_exceptionFlags &= ~softfloat_flag_underflow;
                         }
                     }
-                    
-                    fregs[rd] = result;
+
+                    if ((result == F32_PLUS_ZERO) && !(softfloat_exceptionFlags & softfloat_flag_inexact))
+                        fregs[rd] = F32_PLUS_ZERO;
+                    else
+                        fregs[rd] = F32_NEGATE(result);
+
                     break;
                 }
                 case 1: { //=> ("R4", "fnmadd.d"), rd = -(rs1 x rs2) - rs3
@@ -958,10 +962,11 @@ void _zisk_float (void)
                         }
                     }
 
-                    // if (result == F64_PLUS_ZERO) // -0 must be converted to +0
-                    //     fregs[rd] = F64_PLUS_ZERO;
-                    // else
-                    fregs[rd] = F64_NEGATE(result);
+                    if ((result == F64_PLUS_ZERO) && !(softfloat_exceptionFlags & softfloat_flag_inexact))
+                        fregs[rd] = F64_PLUS_ZERO;
+                    else
+                        fregs[rd] = F64_NEGATE(result);
+
                     break;
                 }
                 default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 79 inst=0x{inst:x}"),
