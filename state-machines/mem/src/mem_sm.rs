@@ -1,15 +1,15 @@
 use std::sync::Arc;
 use zisk_common::SegmentId;
 use zisk_pil::MemAirValues;
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 use zisk_pil::MemTrace;
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 use zisk_pil::MemTracePacked;
 
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 type MemTraceType<F> = MemTracePacked<F>;
 
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 type MemTraceType<F> = MemTrace<F>;
 #[cfg(feature = "debug_mem")]
 use {

@@ -9,19 +9,19 @@ use pil_std_lib::Std;
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 use zisk_pil::{MemAlignTracePacked, MemAlignTraceRowPacked};
 
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 type MemAlignTraceRowType<F> = MemAlignTraceRowPacked<F>;
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 type MemAlignTraceType<F> = MemAlignTracePacked<F>;
 
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 type MemAlignTraceRowType<F> = MemAlignTraceRow<F>;
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 type MemAlignTraceType<F> = MemAlignTrace<F>;
 
 const RC: usize = 2;

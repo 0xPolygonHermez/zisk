@@ -4,19 +4,19 @@ use std::sync::Arc;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 use zisk_pil::{ArithEqTrace, ArithEqTraceRow};
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 use zisk_pil::{ArithEqTracePacked, ArithEqTraceRowPacked};
 
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 type ArithEqTraceRowType<F> = ArithEqTraceRowPacked<F>;
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 type ArithEqTraceType<F> = ArithEqTracePacked<F>;
 
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 type ArithEqTraceRowType<F> = ArithEqTraceRow<F>;
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 type ArithEqTraceType<F> = ArithEqTrace<F>;
 
 use crate::{
