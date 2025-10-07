@@ -63,16 +63,16 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             let _b = b & 0xFFFF_FFFF;
             let c = _a + _b + cin;
             let _c = c & 0xFFFF_FFFF;
-            row.a[i] = F::from_u64(_a);
-            row.b[i] = F::from_u64(_b);
+            row.set_a(i, _a as u32);
+            row.set_b(i, _b as u32);
             let c_chunks = [_c & 0xFFFF, _c >> 16];
-            row.c_chunks[i * 2] = F::from_u64(c_chunks[0]);
-            row.c_chunks[i * 2 + 1] = F::from_u64(c_chunks[1]);
+            row.set_c_chunks(i * 2, c_chunks[0] as u16);
+            row.set_c_chunks(i * 2 + 1, c_chunks[1] as u16);
             if c > MASK_U32 {
-                row.cout[i] = F::ONE;
+                row.set_cout(i, true);
                 cin = 1
             } else {
-                row.cout[i] = F::ZERO;
+                row.set_cout(i, false);
                 cin = 0
             };
             range_checks[i * 2] = c_chunks[0];
@@ -81,7 +81,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             b >>= 32;
         }
         // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
-        row.multiplicity = F::ONE;
+        row.set_multiplicity(true);
 
         // Return
         (row, range_checks)

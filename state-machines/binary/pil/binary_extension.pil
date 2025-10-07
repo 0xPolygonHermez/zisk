@@ -77,7 +77,7 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = OP
     col witness in2_low;       // Note:  if in2_low∊[0,2^5-1], else in2_low∊[0,2^6-1] (checked by the table)
     @witness_bits{ name: "in2_low", bits: 6 }
     col witness out[bytes][2];
-    @witness_bits{ name: "out", bits: 8 }
+    @witness_bits{ name: "out", bits: 32 }
     col witness op_is_shift;   // 1 if op is shift, 0 otherwise
     @witness_bits{ name: "op_is_shift", bits: 1 }
 

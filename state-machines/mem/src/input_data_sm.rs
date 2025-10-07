@@ -105,26 +105,26 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
                     internal_reads = (num_rows - i) as u32;
                 }
 
-                trace[i].addr_changes = F::ONE;
+                trace[i].set_addr_changes(true);
                 last_addr += 1;
-                trace[i].addr = F::from_u32(last_addr);
+                trace[i].set_addr(last_addr);
 
                 // the step, value of internal reads isn't relevant
                 last_step = 0;
-                trace[i].step = F::ZERO;
-                trace[i].sel = F::ZERO;
+                trace[i].set_step(0);
+                trace[i].set_sel(false);
 
                 // setting value to zero, is not relevant for internal reads
                 last_value = 0;
                 for j in 0..4 {
-                    trace[i].value_word[j] = F::ZERO;
+                    trace[i].set_value_word(j, 0);
                 }
                 i += 1;
 
                 for _j in 1..internal_reads {
                     trace[i] = trace[i - 1];
                     last_addr += 1;
-                    trace[i].addr = F::from_u32(last_addr);
+                    trace[i].set_addr(last_addr);
 
                     i += 1;
                 }
@@ -134,20 +134,20 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
                 }
             }
 
-            trace[i].addr = F::from_u32(mem_op.addr);
-            trace[i].step = F::from_u64(mem_op.step);
-            trace[i].sel = F::ONE;
-            trace[i].is_free_read = F::from_bool(mem_op.addr == INPUT_DATA_W_ADDR_INIT);
+            trace[i].set_addr(mem_op.addr);
+            trace[i].set_step(mem_op.step);
+            trace[i].set_sel(true);
+            trace[i].set_is_free_read(mem_op.addr == INPUT_DATA_W_ADDR_INIT);
 
             let value = mem_op.value;
             let value_words = self.get_u16_values(value);
             for j in 0..4 {
                 range_check_data[value_words[j] as usize] += 1;
-                trace[i].value_word[j] = F::from_u16(value_words[j]);
+                trace[i].set_value_word(j, value_words[j]);
             }
 
             let addr_changes = last_addr != mem_op.addr;
-            trace[i].addr_changes = F::from_bool(addr_changes);
+            trace[i].set_addr_changes(addr_changes);
 
             last_addr = mem_op.addr;
             last_step = mem_op.step;
@@ -159,9 +159,8 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         // STEP3. Add dummy rows to the output vector to fill the remaining rows
         //PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0
         let last_row_idx = count - 1;
-        let addr = trace[last_row_idx].addr;
-        let is_free_read = F::from_bool(last_addr == INPUT_DATA_W_ADDR_INIT);
-        let value = trace[last_row_idx].value_word;
+        let addr = trace[last_row_idx].get_addr();
+        let is_free_read = last_addr == INPUT_DATA_W_ADDR_INIT;
 
         let padding_size = num_rows - count;
         for i in count..num_rows {
@@ -171,21 +170,24 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             // trace[i].mem_segment = segment_id_field;
             // trace[i].mem_last_segment = is_last_segment_field;
 
-            trace[i].addr = addr;
-            trace[i].step = F::from_u64(last_step);
-            trace[i].sel = F::ZERO;
-            trace[i].value_word = value;
-            trace[i].is_free_read = is_free_read;
+            trace[i].set_addr(addr);
+            trace[i].set_step(last_step);
+            trace[i].set_sel(false);
+            for j in 0..4 {
+                let value = trace[last_row_idx].get_value_word(j);
+                trace[i].set_value_word(j, value);
+            }
+            trace[i].set_is_free_read(is_free_read);
 
-            trace[i].addr_changes = F::ZERO;
+            trace[i].set_addr_changes(false);
         }
 
         self.std.range_check(range_id, (INPUT_DATA_W_ADDR_END - last_addr) as i64, 1);
 
         // range of chunks
         let range_id = self.std.get_range_id(0, (1 << 16) - 1, None);
-        for value_chunk in &value {
-            let value = value_chunk.as_canonical_u64();
+        for j in 0..4 {
+            let value = trace[last_row_idx].get_value_word(j);
             range_check_data[value as usize] += padding_size as u32;
         }
         self.std.range_checks(range_id, range_check_data);

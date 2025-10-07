@@ -48,9 +48,9 @@ impl<F: PrimeField64> RomDataSM<F> {
         let num_rows = RomDataTrace::NUM_ROWS;
 
         for i in 0..num_rows {
-            let addr = F::as_canonical_u64(&trace[i].addr) * 8;
-            let step = F::as_canonical_u64(&trace[i].step);
-            let sel = F::as_canonical_u64(&trace[i].sel);
+            let addr = trace[i].get_addr() * 8;
+            let step = trace[i].get_step();
+            let sel = trace[i].get_sel();
             // TODO: chunk_size * 4 = 20
             writeln!(
                 writer,
@@ -138,35 +138,36 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
                     internal_reads = (num_rows - i) as u32;
                 }
 
-                trace[i].addr_changes = F::ONE;
+                trace[i].set_addr_changes(true);
                 last_addr += 1;
-                trace[i].addr = F::from_u32(last_addr);
-                trace[i].value = [F::ZERO, F::ZERO];
-                trace[i].sel = F::ZERO;
+                trace[i].set_addr(last_addr);
+                trace[i].set_value(0, 0);
+                trace[i].set_value(1, 0);
+                trace[i].set_sel(false);
                 // the step, value of internal reads isn't relevant
-                trace[i].step = F::ZERO;
+                trace[i].set_step(0);
                 i += 1;
 
                 for _j in 1..internal_reads {
                     trace[i] = trace[i - 1];
                     last_addr += 1;
-                    trace[i].addr = F::from_u32(last_addr);
+                    trace[i].set_addr(last_addr);
                     i += 1;
                 }
                 if incomplete {
                     break;
                 }
             }
-            trace[i].addr = F::from_u32(mem_op.addr);
-            trace[i].step = F::from_u64(mem_op.step);
-            trace[i].sel = F::ONE;
+            trace[i].set_addr(mem_op.addr);
+            trace[i].set_step(mem_op.step);
+            trace[i].set_sel(true);
 
             let (low_val, high_val) = self.get_u32_values(mem_op.value);
-            trace[i].value = [F::from_u32(low_val), F::from_u32(high_val)];
+            trace[i].set_value(0, low_val);
+            trace[i].set_value(1, high_val);
 
             let addr_changes = last_addr != mem_op.addr;
-            trace[i].addr_changes =
-                if addr_changes || (i == 0 && segment_id == 0) { F::ONE } else { F::ZERO };
+            trace[i].set_addr_changes(addr_changes || (i == 0 && segment_id == 0));
 
             last_addr = mem_op.addr;
             last_step = mem_op.step;
@@ -180,8 +181,8 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         let last_row_idx = count - 1;
         if count < num_rows {
             trace[count] = trace[last_row_idx];
-            trace[count].addr_changes = F::ZERO;
-            trace[count].sel = F::ZERO;
+            trace[count].set_addr_changes(false);
+            trace[count].set_sel(false);
 
             for i in count + 1..num_rows {
                 trace[i] = trace[i - 1];
