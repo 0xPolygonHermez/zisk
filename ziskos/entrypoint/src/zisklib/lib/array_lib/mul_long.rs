@@ -4,7 +4,7 @@ use crate::{
     arith256::{syscall_arith256, SyscallArith256Params},
 };
 
-use super::U256;
+use super::{U256, div_short, div_long};
 
 /// Multiplication of two large numbers (represented as arrays of U256)
 ///
@@ -123,4 +123,30 @@ pub fn mul_long(a: &[U256], b: &[U256]) -> Vec<U256> {
     }
 
     out
+}
+
+pub fn mul_and_reduce(a: &[U256], b: &[U256], modulus: &[U256], out: &mut [U256]) {
+    let len_m = modulus.len();
+    #[cfg(debug_assertions)]
+    {
+        assert_ne!(len_m, 0, "Input 'modulus' must have at least one limb");
+        assert_ne!(modulus.last().unwrap(), &U256::ZERO, "Input 'modulus' must not have leading zeros");
+    }
+
+    let product = mul_long(a, b);
+    let len_prod = product.len();
+    if len_prod < len_m || (len_prod == len_m && product.as_slice() < modulus) {
+        // If product < modulus, then the result is just product
+        out[..len_prod].copy_from_slice(&product);
+        out[len_prod..].fill(U256::ZERO);
+    } else if len_m == 1 {
+        // If modulus has only one limb, we can use short division
+        out[0] = div_short(&product, &modulus[0]).1;
+        out[1..].fill(U256::ZERO);
+    } else {
+        let (_, r) = div_long(&product, modulus);
+        let len_r = r.len();
+        out[..len_r].copy_from_slice(&r);
+        out[len_r..].fill(U256::ZERO);
+    }
 }

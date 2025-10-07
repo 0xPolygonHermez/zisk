@@ -4,7 +4,7 @@ use crate::{
     arith256::{syscall_arith256, SyscallArith256Params},
 };
 
-use super::U256;
+use super::{U256, div_short, div_long};
 
 /// Squaring of a large number (represented as an array of U256)
 //                                        a3    a2    a1      a0
@@ -170,4 +170,31 @@ pub fn square(a: &[U256]) -> Vec<U256> {
     }
 
     out
+}
+
+pub fn square_and_reduce(a: &[U256], modulus: &[U256], out: &mut [U256]) {
+    let len_m = modulus.len();
+    #[cfg(debug_assertions)]
+    {
+        assert_ne!(len_m, 0, "Input 'modulus' must have at least one limb");
+        assert_ne!(modulus.last().unwrap(), &U256::ZERO, "Input 'modulus' must not have leading zeros");
+    }
+
+    let a_squared = square(a);
+    let len_sq = a_squared.len();
+
+    if len_sq < len_m || (len_sq == len_m && a_squared.as_slice() < modulus) {
+        // If a_squared < modulus, then the result is just a_squared
+        out[..len_sq].copy_from_slice(&a_squared);
+        out[len_sq..].fill(U256::ZERO);
+    } else if len_m == 1 {
+        // If modulus has only one limb, we can use short division
+        out[0] = div_short(&a_squared, &modulus[0]).1;
+        out[1..].fill(U256::ZERO);
+    } else {
+        let (_, r) = div_long(&a_squared, modulus);
+        let len_r = r.len();
+        out[..len_r].copy_from_slice(&r);
+        out[len_r..].fill(U256::ZERO);
+    }
 }
