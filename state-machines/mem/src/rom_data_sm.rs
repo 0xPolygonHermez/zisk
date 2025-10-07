@@ -14,15 +14,15 @@ use std::{
 use zisk_common::SegmentId;
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
 use zisk_pil::RomDataAirValues;
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 use zisk_pil::RomDataTrace;
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 use zisk_pil::RomDataTracePacked;
 
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 type RomDataTraceType<F> = RomDataTracePacked<F>;
 
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 type RomDataTraceType<F> = RomDataTrace<F>;
 
 pub const ROM_DATA_W_ADDR_INIT: u32 = ROM_ADDR as u32 >> MEM_BYTES_BITS;

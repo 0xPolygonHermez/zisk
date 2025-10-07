@@ -20,19 +20,19 @@ use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::MainAirValues;
 use ziskemu::{Emu, EmuRegTrace};
 
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 use zisk_pil::{MainTrace, MainTraceRow};
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 use zisk_pil::{MainTracePacked, MainTraceRowPacked};
 
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 type MainTraceRowType<F> = MainTraceRowPacked<F>;
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 type MainTraceType<F> = MainTracePacked<F>;
 
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 type MainTraceRowType<F> = MainTraceRow<F>;
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 type MainTraceType<F> = MainTrace<F>;
 
 /// Represents an instance of the main state machine,

@@ -9,15 +9,15 @@ use proofman_common::{AirInstance, FromTrace};
 use zisk_common::SegmentId;
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::InputDataAirValues;
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 use zisk_pil::InputDataTrace;
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 use zisk_pil::InputDataTracePacked;
 
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 type InputDataTraceType<F> = InputDataTracePacked<F>;
 
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 type InputDataTraceType<F> = InputDataTrace<F>;
 
 pub const INPUT_DATA_W_ADDR_INIT: u32 = INPUT_ADDR as u32 >> MEM_BYTES_BITS;

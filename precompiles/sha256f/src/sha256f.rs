@@ -7,19 +7,19 @@ use rayon::prelude::*;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 use zisk_pil::{Sha256fTrace, Sha256fTraceRow};
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 use zisk_pil::{Sha256fTracePacked, Sha256fTraceRowPacked};
 
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 type Sha256fTraceRowType<F> = Sha256fTraceRowPacked<F>;
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "packed"))]
 type Sha256fTraceType<F> = Sha256fTracePacked<F>;
 
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 type Sha256fTraceRowType<F> = Sha256fTraceRow<F>;
-#[cfg(not(feature = "gpu"))]
+#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
 type Sha256fTraceType<F> = Sha256fTrace<F>;
 
 use super::{sha256f_constants::*, Sha256fInput};
