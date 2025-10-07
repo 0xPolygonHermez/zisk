@@ -18,7 +18,20 @@ use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
-use zisk_pil::*;
+#[cfg(not(feature = "gpu"))]
+use zisk_pil::{ArithTrace, ArithTraceRow};
+#[cfg(feature = "gpu")]
+use zisk_pil::{ArithTracePacked, ArithTraceRowPacked};
+
+#[cfg(feature = "gpu")]
+type ArithTraceRowType<F> = ArithTraceRowPacked<F>;
+#[cfg(feature = "gpu")]
+type ArithTraceType<F> = ArithTracePacked<F>;
+
+#[cfg(not(feature = "gpu"))]
+type ArithTraceRowType<F> = ArithTraceRow<F>;
+#[cfg(not(feature = "gpu"))]
+type ArithTraceType<F> = ArithTrace<F>;
 
 const CHUNK_SIZE: u64 = 0x10000;
 const EXTENSION: u64 = 0xFFFFFFFF;
@@ -74,7 +87,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         inputs: &[Vec<OperationData<u64>>],
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut arith_trace = ArithTrace::new_from_vec(trace_buffer);
+        let mut arith_trace = ArithTraceType::new_from_vec(trace_buffer);
 
         let num_rows = arith_trace.num_rows();
 
@@ -120,7 +133,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         let padding_rows: usize = num_rows.saturating_sub(padding_offset);
 
         if padding_rows > 0 {
-            let mut row: ArithTraceRow<F> = Default::default();
+            let mut row = ArithTraceRowType::<F>::default();
             let padding_opcode = ZiskOp::Muluh.code();
             row.set_op(padding_opcode);
             row.set_fab(1);
@@ -219,7 +232,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         table_inputs: &mut ArithTableInputs,
         aop: &mut ArithOperation,
         input: &[u64; 4],
-    ) -> ArithTraceRow<F> {
+    ) -> ArithTraceRowType<F> {
         let input_data = ExtOperationData::OperationData(*input);
 
         let opcode = OperationBusData::get_op(&input_data);
@@ -227,7 +240,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         let b = OperationBusData::get_b(&input_data);
 
         aop.calculate(opcode, a, b);
-        let mut row: ArithTraceRow<F> = Default::default();
+        let mut row = ArithTraceRowType::<F>::default();
         for i in [0, 2] {
             row.set_a(i, aop.a[i] as u16);
             row.set_b(i, aop.b[i] as u16);

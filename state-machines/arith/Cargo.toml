@@ -33,6 +33,7 @@ static_assertions = { workspace = true }
 
 [features]
 default = []
+gpu = ["proofman-common/gpu"]
 diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 generate_code_arith_range_table = []
 no_lib_link = ["proofman-common/no_lib_link"]

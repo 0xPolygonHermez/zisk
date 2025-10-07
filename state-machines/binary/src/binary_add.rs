@@ -8,7 +8,20 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use std::sync::Arc;
+#[cfg(not(feature = "gpu"))]
 use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
+#[cfg(feature = "gpu")]
+use zisk_pil::{BinaryAddTracePacked, BinaryAddTraceRowPacked};
+
+#[cfg(feature = "gpu")]
+type BinaryAddTraceRowType<F> = BinaryAddTraceRowPacked<F>;
+#[cfg(feature = "gpu")]
+type BinaryAddTraceType<F> = BinaryAddTracePacked<F>;
+
+#[cfg(not(feature = "gpu"))]
+type BinaryAddTraceRowType<F> = BinaryAddTraceRow<F>;
+#[cfg(not(feature = "gpu"))]
+type BinaryAddTraceType<F> = BinaryAddTrace<F>;
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 
@@ -48,9 +61,9 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(&self, input: &[u64; 2]) -> (BinaryAddTraceRow<F>, [u64; 4]) {
+    pub fn process_slice(&self, input: &[u64; 2]) -> (BinaryAddTraceRowType<F>, [u64; 4]) {
         // Create an empty trace
-        let mut row: BinaryAddTraceRow<F> = Default::default();
+        let mut row: BinaryAddTraceRowType<F> = Default::default();
 
         // Execute the opcode
         let mut a = input[0];
@@ -99,7 +112,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         inputs: &[Vec<[u64; 2]>],
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut add_trace = BinaryAddTrace::new_from_vec(trace_buffer);
+        let mut add_trace = BinaryAddTraceType::new_from_vec(trace_buffer);
 
         let num_rows = add_trace.num_rows();
 
@@ -141,9 +154,10 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
+        let padding_row = BinaryAddTraceRowType::<F>::default();
         add_trace.buffer[total_inputs..num_rows]
             .par_iter_mut()
-            .for_each(|slot| *slot = BinaryAddTraceRow::<F> { ..Default::default() });
+            .for_each(|slot| *slot = padding_row);
 
         AirInstance::new_from_trace(FromTrace::new(&mut add_trace))
     }

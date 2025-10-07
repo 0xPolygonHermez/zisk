@@ -6,7 +6,20 @@ use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqLtTableSM;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+#[cfg(not(feature = "gpu"))]
 use zisk_pil::{ArithEq384Trace, ArithEq384TraceRow};
+#[cfg(feature = "gpu")]
+use zisk_pil::{ArithEq384TracePacked, ArithEq384TraceRowPacked};
+
+#[cfg(feature = "gpu")]
+type ArithEq384TraceRowType<F> = ArithEq384TraceRowPacked<F>;
+#[cfg(feature = "gpu")]
+type ArithEq384TraceType<F> = ArithEq384TracePacked<F>;
+
+#[cfg(not(feature = "gpu"))]
+type ArithEq384TraceRowType<F> = ArithEq384TraceRow<F>;
+#[cfg(not(feature = "gpu"))]
+type ArithEq384TraceType<F> = ArithEq384Trace<F>;
 
 use crate::{
     arith_eq_384_constants::*, executors, Arith384ModInput, ArithEq384Input,
@@ -51,8 +64,8 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     /// A new `ArithEq384SM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_ops = ArithEq384Trace::<F>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1;
-        let num_non_usable_rows = ArithEq384Trace::<F>::NUM_ROWS % ARITH_EQ_384_ROWS_BY_OP;
+        let num_available_ops = ArithEq384TraceType::<F>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1;
+        let num_non_usable_rows = ArithEq384TraceType::<F>::NUM_ROWS % ARITH_EQ_384_ROWS_BY_OP;
         let q_hsc_range_id = std.get_range_id(0, ARITH_EQ_384_Q_HSC_MAX, None);
         let chunk_range_id = std.get_range_id(0, ARITH_EQ_384_CHUNK_MAX as i64, None);
         let carry_range_id = std.get_range_id(ARITH_EQ_384_CARRY_MIN, ARITH_EQ_384_CARRY_MAX, None);
@@ -71,7 +84,10 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         })
     }
 
-    fn expand_addr_step_on_trace(data: &ArithEq384StepAddr, trace: &mut [ArithEq384TraceRow<F>]) {
+    fn expand_addr_step_on_trace(
+        data: &ArithEq384StepAddr,
+        trace: &mut [ArithEq384TraceRowType<F>],
+    ) {
         trace[0].set_step_addr(data.main_step);
         trace[1].set_step_addr(data.addr_op as u64);
         trace[2].set_step_addr(data.addr_x1 as u64);
@@ -88,7 +104,11 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         }
     }
 
-    fn process_arith384_mod(&self, input: &Arith384ModInput, trace: &mut [ArithEq384TraceRow<F>]) {
+    fn process_arith384_mod(
+        &self,
+        input: &Arith384ModInput,
+        trace: &mut [ArithEq384TraceRowType<F>],
+    ) {
         let data = executors::Arith384Mod::execute(&input.a, &input.b, &input.c, &input.module);
         self.expand_data_on_trace(&data, trace, SEL_OP_ARITH384_MOD);
         Self::expand_addr_step_on_trace(
@@ -116,7 +136,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     fn process_bls12_381_curve_add(
         &self,
         input: &Bls12_381CurveAddInput,
-        trace: &mut [ArithEq384TraceRow<F>],
+        trace: &mut [ArithEq384TraceRowType<F>],
     ) {
         let data = executors::Bls12_381Curve::execute_add(&input.p1, &input.p2);
         self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_CURVE_ADD);
@@ -139,7 +159,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     fn process_bls12_381_curve_dbl(
         &self,
         input: &Bls12_381CurveDblInput,
-        trace: &mut [ArithEq384TraceRow<F>],
+        trace: &mut [ArithEq384TraceRowType<F>],
     ) {
         let data = executors::Bls12_381Curve::execute_dbl(&input.p1);
         self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_CURVE_DBL);
@@ -162,7 +182,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     fn process_bls12_381_complex_add(
         &self,
         input: &Bls12_381ComplexAddInput,
-        trace: &mut [ArithEq384TraceRow<F>],
+        trace: &mut [ArithEq384TraceRowType<F>],
     ) {
         let data = executors::Bls12_381Complex::execute_add(&input.f1, &input.f2);
         self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_ADD);
@@ -185,7 +205,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     fn process_bls12_381_complex_sub(
         &self,
         input: &Bls12_381ComplexSubInput,
-        trace: &mut [ArithEq384TraceRow<F>],
+        trace: &mut [ArithEq384TraceRowType<F>],
     ) {
         let data = executors::Bls12_381Complex::execute_sub(&input.f1, &input.f2);
         self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_SUB);
@@ -208,7 +228,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     fn process_bls12_381_complex_mul(
         &self,
         input: &Bls12_381ComplexMulInput,
-        trace: &mut [ArithEq384TraceRow<F>],
+        trace: &mut [ArithEq384TraceRowType<F>],
     ) {
         let data = executors::Bls12_381Complex::execute_mul(&input.f1, &input.f2);
         self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_MUL);
@@ -241,7 +261,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     fn expand_data_on_trace(
         &self,
         data: &executors::ArithEq384Data,
-        trace: &mut [ArithEq384TraceRow<F>],
+        trace: &mut [ArithEq384TraceRowType<F>],
         sel_op: usize,
     ) {
         let mut x1_x2_different = false;
@@ -366,7 +386,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         inputs: &[Vec<ArithEq384Input>],
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = ArithEq384Trace::new_from_vec(trace_buffer);
+        let mut trace = ArithEq384TraceType::new_from_vec(trace_buffer);
         let num_rows = trace.num_rows();
         let num_available_ops = self.num_available_ops;
 
@@ -442,7 +462,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         self.std.range_check(self.chunk_range_id, 0, chunk_range_mult);
         self.std.range_check(self.carry_range_id, 0, carry_range_mult);
 
-        let padding_row = ArithEq384TraceRow::default();
+        let padding_row = ArithEq384TraceRowType::default();
 
         trace.buffer[num_rows_filled..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 

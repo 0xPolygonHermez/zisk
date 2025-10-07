@@ -8,7 +8,17 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_common::SegmentId;
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
-use zisk_pil::{InputDataAirValues, InputDataTrace};
+use zisk_pil::InputDataAirValues;
+#[cfg(not(feature = "gpu"))]
+use zisk_pil::InputDataTrace;
+#[cfg(feature = "gpu")]
+use zisk_pil::InputDataTracePacked;
+
+#[cfg(feature = "gpu")]
+type InputDataTraceType<F> = InputDataTracePacked<F>;
+
+#[cfg(not(feature = "gpu"))]
+type InputDataTraceType<F> = InputDataTrace<F>;
 
 pub const INPUT_DATA_W_ADDR_INIT: u32 = INPUT_ADDR as u32 >> MEM_BYTES_BITS;
 pub const INPUT_DATA_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 >> MEM_BYTES_BITS;
@@ -69,9 +79,9 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = InputDataTrace::new_from_vec(trace_buffer);
+        let mut trace = InputDataTraceType::new_from_vec(trace_buffer);
 
-        let num_rows = InputDataTrace::<F>::NUM_ROWS;
+        let num_rows = InputDataTraceType::<F>::NUM_ROWS;
         debug_assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_rows,
             "InputDataSM: mem_ops.len()={} out of range {}",

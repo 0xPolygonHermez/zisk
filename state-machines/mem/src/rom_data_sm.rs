@@ -13,7 +13,17 @@ use std::{
 };
 use zisk_common::SegmentId;
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
-use zisk_pil::{RomDataAirValues, RomDataTrace};
+use zisk_pil::RomDataAirValues;
+#[cfg(not(feature = "gpu"))]
+use zisk_pil::RomDataTrace;
+#[cfg(feature = "gpu")]
+use zisk_pil::RomDataTracePacked;
+
+#[cfg(feature = "gpu")]
+type RomDataTraceType<F> = RomDataTracePacked<F>;
+
+#[cfg(not(feature = "gpu"))]
+type RomDataTraceType<F> = RomDataTrace<F>;
 
 pub const ROM_DATA_W_ADDR_INIT: u32 = ROM_ADDR as u32 >> MEM_BYTES_BITS;
 pub const ROM_DATA_W_ADDR_END: u32 = ROM_ADDR_MAX as u32 >> MEM_BYTES_BITS;
@@ -88,8 +98,8 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = RomDataTrace::new_from_vec(trace_buffer);
-        let num_rows = RomDataTrace::<F>::NUM_ROWS;
+        let mut trace = RomDataTraceType::new_from_vec(trace_buffer);
+        let num_rows = RomDataTraceType::<F>::NUM_ROWS;
         assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_rows,
             "RomDataSM: mem_ops.len()={} out of range {}",

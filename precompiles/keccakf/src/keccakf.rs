@@ -9,7 +9,21 @@ use circuit::{Gate, GateOperation, PinId};
 use precompiles_helpers::keccakf_topology;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{KeccakfFixed, KeccakfTrace, KeccakfTraceRow};
+use zisk_pil::KeccakfFixed;
+#[cfg(not(feature = "gpu"))]
+use zisk_pil::{KeccakfTrace, KeccakfTraceRow};
+#[cfg(feature = "gpu")]
+use zisk_pil::{KeccakfTracePacked, KeccakfTraceRowPacked};
+
+#[cfg(feature = "gpu")]
+type KeccakfTraceRowType<F> = KeccakfTraceRowPacked<F>;
+#[cfg(feature = "gpu")]
+type KeccakfTraceType<F> = KeccakfTracePacked<F>;
+
+#[cfg(not(feature = "gpu"))]
+type KeccakfTraceRowType<F> = KeccakfTraceRow<F>;
+#[cfg(not(feature = "gpu"))]
+type KeccakfTraceType<F> = KeccakfTrace<F>;
 
 use crate::KeccakfInput;
 
@@ -58,12 +72,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let circuit_size = keccakf_program.len();
 
         // Compute some useful values
-        let num_available_circuits = (KeccakfTrace::<F>::NUM_ROWS - 1) / circuit_size;
+        let num_available_circuits = (KeccakfTraceType::<F>::NUM_ROWS - 1) / circuit_size;
         let num_available_keccakfs = NUM_KECCAKF_PER_CIRCUIT * num_available_circuits;
 
         // Get the fixed columns
-        let airgroup_id = KeccakfTrace::<F>::AIRGROUP_ID;
-        let air_id = KeccakfTrace::<F>::AIR_ID;
+        let airgroup_id = KeccakfTraceType::<F>::AIRGROUP_ID;
+        let air_id = KeccakfTraceType::<F>::AIR_ID;
         let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
         let keccakf_fixed = KeccakfFixed::from_vec(fixed_pols);
 
@@ -92,7 +106,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     #[inline(always)]
     pub fn process_trace<'a, I>(
         &self,
-        trace: &mut KeccakfTrace<F>,
+        trace: &mut KeccakfTraceType<F>,
         num_rows_constants: usize,
         inputs: I,
         num_inputs: usize,
@@ -222,7 +236,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     for k in rem_inputs..NUM_KECCAKF_PER_CIRCUIT {
                         let pos = block + k;
                         for l in 0..MEM_BITS_IN_PARALLEL {
-                            trace[pos + 1].val[l] = trace[pos].val[l];
+                            let val = trace[pos].get_val(l);
+                            trace[pos + 1].set_val(l, val);
                         }
                     }
                 }
@@ -506,7 +521,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         });
 
         fn update_bit_val<F: PrimeField64>(
-            trace: &mut KeccakfTrace<F>,
+            trace: &mut KeccakfTraceType<F>,
             pos: usize,
             bit: u64,
             circuit_pos: usize,
@@ -525,8 +540,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
         }
 
         fn set_col<F: PrimeField64>(
-            trace: &mut [KeccakfTraceRow<F>],
-            set_col_fn: impl Fn(&mut KeccakfTraceRow<F>, usize, u8),
+            trace: &mut [KeccakfTraceRowType<F>],
+            set_col_fn: impl Fn(&mut KeccakfTraceRowType<F>, usize, u8),
             index: usize,
             value: u64,
         ) {
@@ -540,8 +555,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
         }
 
         fn get_col<F: PrimeField64>(
-            trace: &[KeccakfTraceRow<F>],
-            get_col_fn: impl Fn(&KeccakfTraceRow<F>, usize) -> u8,
+            trace: &[KeccakfTraceRowType<F>],
+            get_col_fn: impl Fn(&KeccakfTraceRowType<F>, usize) -> u8,
             row_index: usize,
         ) -> u64 {
             let mut value = 0;
@@ -554,8 +569,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
         }
 
         fn get_col_row<F: PrimeField64>(
-            trace_row: &KeccakfTraceRow<F>,
-            get_col_fn: impl Fn(&KeccakfTraceRow<F>, usize) -> u8,
+            trace_row: &KeccakfTraceRowType<F>,
+            get_col_fn: impl Fn(&KeccakfTraceRowType<F>, usize) -> u8,
         ) -> u64 {
             let mut value = 0;
             for i in 0..CHUNKS_KECCAKF {
@@ -579,7 +594,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         timer_start_trace!(KECCAKF_TRACE);
-        let mut keccakf_trace = KeccakfTrace::new_from_vec_zeroes(trace_buffer);
+        let mut keccakf_trace = KeccakfTraceType::new_from_vec_zeroes(trace_buffer);
         let num_rows = keccakf_trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace
@@ -609,7 +624,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         // Set a = 0b00..00, b = 0b11..11 and c = 0b00..00 at the first row
         // Set, e.g., the operation to be an XOR and set d = 0b11..11 = b = a ^ b ^ c
-        let mut row: KeccakfTraceRow<F> = Default::default();
+        let mut row: KeccakfTraceRowType<F> = Default::default();
         let zeros = 0u64;
         let ones = MASK_BITS_KECCAKF;
         let gate_op = self.keccakf_fixed[0].GATE_OP.as_canonical_u64();
@@ -641,7 +656,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         timer_start_trace!(KECCAKF_PADDING);
         // A row with all zeros satisfies the constraints (since XOR(0,0,0) = 0)
-        let padding_row: KeccakfTraceRow<F> = Default::default();
+        let padding_row: KeccakfTraceRowType<F> = Default::default();
         for i in (num_rows_constants + self.circuit_size * self.num_available_circuits)..num_rows {
             let gate_op = self.keccakf_fixed[i].GATE_OP.as_canonical_u64();
             // Sanity check
