@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use crate::MainCounter;
-use fields::{Goldilocks, PrimeField64};
+use fields::PrimeField64;
 use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
@@ -20,7 +20,6 @@ use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuRegTrace};
 
-const MAX_SEGMENT_ID: usize = ((1 << 32) / MainTrace::<Goldilocks>::NUM_ROWS) - 1;
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
 pub struct MainInstance<F: PrimeField64> {
@@ -31,6 +30,8 @@ pub struct MainInstance<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> MainInstance<F> {
+    const MAX_SEGMENT_ID: usize = ((1 << 32) / MainTrace::<F>::NUM_ROWS) - 1;
+
     /// Creates a new `MainInstance`.
     ///
     /// # Arguments
@@ -77,8 +78,8 @@ impl<F: PrimeField64> MainInstance<F> {
             });
 
         // Determine the number of minimal traces per segment
-        let num_within = MainTrace::<F>::NUM_ROWS / chunk_size as usize;
-        let num_rows = MainTrace::<F>::NUM_ROWS;
+        let num_rows = main_trace.num_rows();
+        let num_within = num_rows / chunk_size as usize;
 
         // Determine trace slice for the current segment
         let start_idx = segment_id.as_usize() * num_within;
@@ -339,7 +340,7 @@ impl<F: PrimeField64> MainInstance<F> {
         for range in large_range_checks {
             self.std.range_check(range_id, *range as i64, 1);
         }
-        let range_id = self.std.get_range_id(0, MAX_SEGMENT_ID as i64, None);
+        let range_id = self.std.get_range_id(0, Self::MAX_SEGMENT_ID as i64, None);
         self.std.range_check(range_id, segment_id.as_usize() as i64, 1);
     }
 }
