@@ -4,10 +4,10 @@ use std::sync::Arc;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-#[cfg(feature = "gpu")]
-use zisk_pil::{ArithEqTracePacked, ArithEqTraceRowPacked};
 #[cfg(not(feature = "gpu"))]
 use zisk_pil::{ArithEqTrace, ArithEqTraceRow};
+#[cfg(feature = "gpu")]
+use zisk_pil::{ArithEqTracePacked, ArithEqTraceRowPacked};
 
 #[cfg(feature = "gpu")]
 type ArithEqTraceRowType<F> = ArithEqTraceRowPacked<F>;
@@ -141,7 +141,11 @@ impl<F: PrimeField64> ArithEqSM<F> {
             trace,
         );
     }
-    fn process_secp256k1_add(&self, input: &Secp256k1AddInput, trace: &mut [ArithEqTraceRowType<F>]) {
+    fn process_secp256k1_add(
+        &self,
+        input: &Secp256k1AddInput,
+        trace: &mut [ArithEqTraceRowType<F>],
+    ) {
         let data = executors::Secp256k1::execute_add(&input.p1, &input.p2);
         self.expand_data_on_trace(&data, trace, SEL_OP_SECP256K1_ADD);
         Self::expand_addr_step_on_trace(
@@ -159,7 +163,11 @@ impl<F: PrimeField64> ArithEqSM<F> {
             trace,
         );
     }
-    fn process_secp256k1_dbl(&self, input: &Secp256k1DblInput, trace: &mut [ArithEqTraceRowType<F>]) {
+    fn process_secp256k1_dbl(
+        &self,
+        input: &Secp256k1DblInput,
+        trace: &mut [ArithEqTraceRowType<F>],
+    ) {
         let data = executors::Secp256k1::execute_dbl(&input.p1);
         self.expand_data_on_trace(&data, trace, SEL_OP_SECP256K1_DBL);
         Self::expand_addr_step_on_trace(
