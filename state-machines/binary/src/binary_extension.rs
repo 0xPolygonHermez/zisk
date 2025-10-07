@@ -12,7 +12,20 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
+#[cfg(feature = "gpu")]
+use zisk_pil::{BinaryExtensionTracePacked, BinaryExtensionTraceRowPacked};
+#[cfg(not(feature = "gpu"))]
 use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
+
+#[cfg(feature = "gpu")]
+type BinaryExtensionTraceRowType<F> = BinaryExtensionTraceRowPacked<F>;
+#[cfg(feature = "gpu")]
+type BinaryExtensionTraceType<F> = BinaryExtensionTracePacked<F>;
+
+#[cfg(not(feature = "gpu"))]
+type BinaryExtensionTraceRowType<F> = BinaryExtensionTraceRow<F>;
+#[cfg(not(feature = "gpu"))]
+type BinaryExtensionTraceType<F> = BinaryExtensionTrace<F>;
 
 // Constants for bit masks and operations.
 const MASK_32: u64 = 0xFFFFFFFF;
@@ -110,12 +123,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// A `BinaryExtensionTraceRow` representing the processed trace.
-    pub fn process_slice(&self, input: &BinaryInput) -> BinaryExtensionTraceRow<F> {
+    pub fn process_slice(&self, input: &BinaryInput) -> BinaryExtensionTraceRowType<F> {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
 
         // Create an empty trace
-        let mut row = BinaryExtensionTraceRow::default();
+        let mut row = BinaryExtensionTraceRowType::default();
         row.set_op(input.op);
 
         // Set if the opcode is a shift operation
@@ -326,7 +339,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut binary_e_trace = BinaryExtensionTrace::new_from_vec(trace_buffer);
+        let mut binary_e_trace = BinaryExtensionTraceType::new_from_vec(trace_buffer);
 
         let num_rows = binary_e_trace.num_rows();
 
@@ -336,7 +349,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             "{} <= {} ({})",
             total_inputs,
             num_rows,
-            BinaryExtensionTrace::<F>::NUM_ROWS
+            BinaryExtensionTraceType::<F>::NUM_ROWS
         );
 
         tracing::info!(
@@ -378,7 +391,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
-        let mut padding_row = BinaryExtensionTraceRow::default();
+        let mut padding_row = BinaryExtensionTraceRowType::default();
         padding_row.set_op(SE_W_OP);
 
         binary_e_trace.buffer[total_inputs..num_rows]

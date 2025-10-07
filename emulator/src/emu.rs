@@ -17,7 +17,6 @@ use zisk_core::{
     FREG_RA, FREG_X0, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
     STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
-use zisk_pil::MainTraceRow;
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -2255,7 +2254,7 @@ impl<'a> Emu<'a> {
         inst: &ZiskInst,
         inst_ctx: &InstContext,
         reg_trace: &EmuRegTrace,
-    ) -> MainTraceRow<F> {
+    ) -> EmuFullTraceStep<F> {
         // Calculate intermediate values
         let a: [u32; 2] =
             [(inst_ctx.a & 0xFFFFFFFF) as u32, ((inst_ctx.a >> 32) & 0xFFFFFFFF) as u32];
@@ -2300,7 +2299,7 @@ impl<'a> Emu<'a> {
             F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
         };
 
-        let mut trace = MainTraceRow::default();
+        let mut trace = EmuFullTraceStep::default();
         trace.set_a(0, a[0]);
         trace.set_a(1, a[1]);
         trace.set_b(0, b[0]);

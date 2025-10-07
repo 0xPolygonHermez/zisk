@@ -17,8 +17,23 @@ use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::prelude::*;
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx, SegmentId};
 use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
-use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
+use zisk_pil::MainAirValues;
 use ziskemu::{Emu, EmuRegTrace};
+
+#[cfg(not(feature = "gpu"))]
+use zisk_pil::{MainTrace, MainTraceRow};
+#[cfg(feature = "gpu")]
+use zisk_pil::{MainTracePacked, MainTraceRowPacked};
+
+#[cfg(feature = "gpu")]
+type MainTraceRowType<F> = MainTraceRowPacked<F>;
+#[cfg(feature = "gpu")]
+type MainTraceType<F> = MainTracePacked<F>;
+
+#[cfg(not(feature = "gpu"))]
+type MainTraceRowType<F> = MainTraceRow<F>;
+#[cfg(not(feature = "gpu"))]
+type MainTraceType<F> = MainTrace<F>;
 
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
@@ -30,7 +45,7 @@ pub struct MainInstance<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> MainInstance<F> {
-    const MAX_SEGMENT_ID: usize = ((1 << 32) / MainTrace::<F>::NUM_ROWS) - 1;
+    const MAX_SEGMENT_ID: usize = ((1 << 32) / MainTraceType::<F>::NUM_ROWS) - 1;
 
     /// Creates a new `MainInstance`.
     ///
@@ -63,7 +78,7 @@ impl<F: PrimeField64> MainInstance<F> {
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         // Create the main trace buffer
-        let mut main_trace = MainTrace::new_from_vec(trace_buffer);
+        let mut main_trace = MainTraceType::new_from_vec(trace_buffer);
 
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
@@ -179,11 +194,11 @@ impl<F: PrimeField64> MainInstance<F> {
 
         air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(*is_last_segment);
-        air_values.segment_initial_pc = main_trace.buffer[0].pc;
+        air_values.segment_initial_pc = F::from_u32(main_trace[0].get_pc());
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
-        air_values.segment_last_c[0] = last_row.c[0];
-        air_values.segment_last_c[1] = last_row.c[1];
+        air_values.segment_last_c[0] = F::from_u32(last_row.get_c(0));
+        air_values.segment_last_c[1] = F::from_u32(last_row.get_c(1));
 
         Self::update_reg_airvalues(
             &mut air_values,
@@ -212,7 +227,7 @@ impl<F: PrimeField64> MainInstance<F> {
     /// The next program counter value after processing the minimal trace.
     fn fill_partial_trace(
         zisk_rom: &ZiskRom,
-        main_trace: &mut [MainTraceRow<F>],
+        main_trace: &mut [MainTraceRowType<F>],
         min_trace: &EmuTrace,
         reg_trace: &mut EmuRegTrace,
         step_range_check: &mut [u32],
@@ -244,7 +259,7 @@ impl<F: PrimeField64> MainInstance<F> {
     fn complete_trace_with_initial_reg_steps_per_chunk(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
-        main_trace: &mut MainTrace<F>,
+        main_trace: &mut MainTraceType<F>,
         step_range_check: &mut [u32],
         reg_steps: &mut [u64; REGS_IN_MAIN],
     ) -> Vec<u32> {
@@ -272,16 +287,13 @@ impl<F: PrimeField64> MainInstance<F> {
                     }
                     match slot {
                         0 => {
-                            main_trace.buffer[row].a_reg_prev_mem_step =
-                                F::from_u64(reg_prev_mem_step)
+                            main_trace.buffer[row].set_a_reg_prev_mem_step(reg_prev_mem_step);
                         }
                         1 => {
-                            main_trace.buffer[row].b_reg_prev_mem_step =
-                                F::from_u64(reg_prev_mem_step)
+                            main_trace.buffer[row].set_b_reg_prev_mem_step(reg_prev_mem_step);
                         }
                         2 => {
-                            main_trace.buffer[row].store_reg_prev_mem_step =
-                                F::from_u64(reg_prev_mem_step)
+                            main_trace.buffer[row].set_store_reg_prev_mem_step(reg_prev_mem_step);
                         }
                         _ => panic!("Invalid slot {slot}"),
                     }

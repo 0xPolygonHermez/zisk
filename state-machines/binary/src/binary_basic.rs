@@ -13,7 +13,20 @@ use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
+#[cfg(not(feature = "gpu"))]
 use zisk_pil::{BinaryTrace, BinaryTraceRow};
+#[cfg(feature = "gpu")]
+use zisk_pil::{BinaryTracePacked, BinaryTraceRowPacked};
+
+#[cfg(feature = "gpu")]
+type BinaryTraceRowType<F> = BinaryTraceRowPacked<F>;
+#[cfg(feature = "gpu")]
+type BinaryTraceType<F> = BinaryTracePacked<F>;
+
+#[cfg(not(feature = "gpu"))]
+type BinaryTraceRowType<F> = BinaryTraceRow<F>;
+#[cfg(not(feature = "gpu"))]
+type BinaryTraceType<F> = BinaryTrace<F>;
 
 const BYTES: usize = 8;
 const HALF_BYTES: usize = BYTES / 2;
@@ -148,9 +161,9 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
     /// # Returns
     /// A `BinaryTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(&self, input: &BinaryInput) -> BinaryTraceRow<F> {
+    pub fn process_slice(&self, input: &BinaryInput) -> BinaryTraceRowType<F> {
         // Create an empty trace
-        let mut row: BinaryTraceRow<F> = Default::default();
+        let mut row: BinaryTraceRowType<F> = Default::default();
 
         // Execute the opcode
         let opcode = input.op;
@@ -898,7 +911,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut binary_trace = BinaryTrace::new_from_vec(trace_buffer);
+        let mut binary_trace = BinaryTraceType::new_from_vec(trace_buffer);
 
         let num_rows = binary_trace.num_rows();
 
@@ -931,7 +944,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
-        let mut padding_row = BinaryTraceRow::default();
+        let mut padding_row = BinaryTraceRowType::default();
         padding_row.set_m_op(AND_OP);
         padding_row.set_m_op_or_ext(AND_OP);
 

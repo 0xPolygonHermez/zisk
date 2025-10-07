@@ -1,6 +1,16 @@
 use std::sync::Arc;
 use zisk_common::SegmentId;
-use zisk_pil::{MemAirValues, MemTrace};
+use zisk_pil::MemAirValues;
+#[cfg(not(feature = "gpu"))]
+use zisk_pil::MemTrace;
+#[cfg(feature = "gpu")]
+use zisk_pil::MemTracePacked;
+
+#[cfg(feature = "gpu")]
+type MemTraceType<F> = MemTracePacked<F>;
+
+#[cfg(not(feature = "gpu"))]
+type MemTraceType<F> = MemTrace<F>;
 #[cfg(feature = "debug_mem")]
 use {
     num_bigint::ToBigInt,
@@ -87,7 +97,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = MemTrace::new_from_vec(trace_buffer);
+        let mut trace = MemTraceType::new_from_vec(trace_buffer);
 
         let std = self.std.clone();
 
