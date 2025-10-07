@@ -2,15 +2,14 @@
 
 use crate::{
     add_end_and_lib,
-    elf_extraction::{collect_elf_payload, collect_elf_payload_from_bytes, merge_adjacent_ro_sections, ElfPayload},
+    elf_extraction::{
+        collect_elf_payload, collect_elf_payload_from_bytes, merge_adjacent_ro_sections, ElfPayload,
+    },
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
     AsmGenerationMethod, RoData, ZiskInst, ZiskRom, ZiskRom2Asm, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
 use rayon::prelude::*;
-use std::{
-    error::Error,
-    path::Path,
-};
+use std::{error::Error, path::Path};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
