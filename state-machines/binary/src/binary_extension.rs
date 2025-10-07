@@ -12,10 +12,10 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
-#[cfg(feature = "gpu")]
-use zisk_pil::{BinaryExtensionTracePacked, BinaryExtensionTraceRowPacked};
 #[cfg(not(feature = "gpu"))]
 use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
+#[cfg(feature = "gpu")]
+use zisk_pil::{BinaryExtensionTracePacked, BinaryExtensionTraceRowPacked};
 
 #[cfg(feature = "gpu")]
 type BinaryExtensionTraceRowType<F> = BinaryExtensionTraceRowPacked<F>;
