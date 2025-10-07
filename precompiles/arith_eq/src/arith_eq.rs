@@ -69,19 +69,19 @@ impl<F: PrimeField64> ArithEqSM<F> {
         })
     }
     fn expand_addr_step_on_trace(data: &ArithEqStepAddr, trace: &mut [ArithEqTraceRow<F>]) {
-        trace[0].step_addr = F::from_u64(data.main_step);
-        trace[1].step_addr = F::from_u32(data.addr_op);
-        trace[2].step_addr = F::from_u32(data.addr_x1);
-        trace[3].step_addr = F::from_u32(data.addr_y1);
-        trace[4].step_addr = F::from_u32(data.addr_x2);
-        trace[5].step_addr = F::from_u32(data.addr_y2);
-        trace[6].step_addr = F::from_u32(data.addr_x3);
-        trace[7].step_addr = F::from_u32(data.addr_y3);
+        trace[0].set_step_addr(data.main_step);
+        trace[1].set_step_addr(data.addr_op as u64);
+        trace[2].set_step_addr(data.addr_x1 as u64);
+        trace[3].set_step_addr(data.addr_y1 as u64);
+        trace[4].set_step_addr(data.addr_x2 as u64);
+        trace[5].set_step_addr(data.addr_y2 as u64);
+        trace[6].set_step_addr(data.addr_x3 as u64);
+        trace[7].set_step_addr(data.addr_y3 as u64);
         for (i, addr_ind) in data.addr_ind.iter().enumerate() {
-            trace[i + 8].step_addr = F::from_u32(*addr_ind);
+            trace[i + 8].set_step_addr(*addr_ind as u64);
         }
         for i in 0..(ARITH_EQ_ROWS_BY_OP - 8 - data.addr_ind.len()) {
-            trace[i + 8 + data.addr_ind.len()].step_addr = F::ZERO;
+            trace[i + 8 + data.addr_ind.len()].set_step_addr(0);
         }
     }
 
@@ -281,9 +281,13 @@ impl<F: PrimeField64> ArithEqSM<F> {
     }
 
     #[inline(always)]
-    fn to_ranged_field(&self, value: i64, range_id: usize) -> F {
+    fn to_ranged_field(&self, value: i64, range_id: usize) -> u64 {
         self.std.range_check(range_id, value, 1);
-        F::from_i64(value)
+        if value >= 0 {
+            value as u64
+        } else {
+            (F::ORDER_U64 as i64 + value) as u64
+        }
     }
 
     fn expand_data_on_trace(
@@ -301,40 +305,43 @@ impl<F: PrimeField64> ArithEqSM<F> {
             for j in 0..3 {
                 // first position without carry
                 let carry_0 = if i == 0 { 0 } else { data.cout[i * 2 - 1][j] };
-                trace[i].carry[j][0] = self.to_ranged_field(carry_0, self.carry_range_id);
-                trace[i].carry[j][1] =
-                    self.to_ranged_field(data.cout[i * 2][j], self.carry_range_id);
+                trace[i].set_carry(j, 0, self.to_ranged_field(carry_0, self.carry_range_id));
+                trace[i].set_carry(
+                    j,
+                    1,
+                    self.to_ranged_field(data.cout[i * 2][j], self.carry_range_id),
+                );
             }
             let q_range_id = if i == ARITH_EQ_ROWS_BY_OP - 1 {
                 self.q_hsc_range_id
             } else {
                 self.chunk_range_id
             };
-            trace[i].x1 = self.to_ranged_field(data.x1[i], self.chunk_range_id);
-            trace[i].y1 = self.to_ranged_field(data.y1[i], self.chunk_range_id);
-            trace[i].x2 = self.to_ranged_field(data.x2[i], self.chunk_range_id);
-            trace[i].y2 = self.to_ranged_field(data.y2[i], self.chunk_range_id);
-            trace[i].x3 = self.to_ranged_field(data.x3[i], self.chunk_range_id);
-            trace[i].y3 = self.to_ranged_field(data.y3[i], self.chunk_range_id);
-            trace[i].q0 = self.to_ranged_field(data.q0[i], q_range_id);
-            trace[i].q1 = self.to_ranged_field(data.q1[i], q_range_id);
-            trace[i].q2 = self.to_ranged_field(data.q2[i], q_range_id);
-            trace[i].s = self.to_ranged_field(data.s[i], self.chunk_range_id);
+            trace[i].set_x1(self.to_ranged_field(data.x1[i], self.chunk_range_id) as u16);
+            trace[i].set_y1(self.to_ranged_field(data.y1[i], self.chunk_range_id) as u16);
+            trace[i].set_x2(self.to_ranged_field(data.x2[i], self.chunk_range_id) as u16);
+            trace[i].set_y2(self.to_ranged_field(data.y2[i], self.chunk_range_id) as u16);
+            trace[i].set_x3(self.to_ranged_field(data.x3[i], self.chunk_range_id) as u16);
+            trace[i].set_y3(self.to_ranged_field(data.y3[i], self.chunk_range_id) as u16);
+            trace[i].set_q0(self.to_ranged_field(data.q0[i], q_range_id) as u32);
+            trace[i].set_q1(self.to_ranged_field(data.q1[i], q_range_id) as u32);
+            trace[i].set_q2(self.to_ranged_field(data.q2[i], q_range_id) as u32);
+            trace[i].set_s(self.to_ranged_field(data.s[i], self.chunk_range_id) as u32);
 
             // TODO Range check
             for j in 0..ARITH_EQ_OP_NUM {
                 let selected = j == sel_op;
-                trace[i].sel_op[j] = F::from_bool(selected);
+                trace[i].set_sel_op(j, selected);
                 if i == 0 {
-                    trace[i].sel_op_clk0[j] = F::from_bool(selected);
+                    trace[i].set_sel_op_clk0(j, selected);
                 } else {
-                    trace[i].sel_op_clk0[j] = F::ZERO;
+                    trace[i].set_sel_op_clk0(j, false);
                 }
             }
             match sel_op {
                 SEL_OP_ARITH256_MOD => {
                     let x3_lt = data.x3[i] < data.y2[i] || (data.x3[i] == data.y2[i] && prev_x3_lt);
-                    trace[i].x3_lt = F::from_bool(x3_lt);
+                    trace[i].set_x3_lt(x3_lt);
                     let row = ArithEqLtTableSM::calculate_table_row(
                         prev_x3_lt,
                         x3_lt,
@@ -343,12 +350,12 @@ impl<F: PrimeField64> ArithEqSM<F> {
                     self.std.inc_virtual_row(self.table_id, row as u64, 1);
                     prev_x3_lt = x3_lt;
 
-                    trace[i].y3_lt = F::ZERO;
+                    trace[i].set_y3_lt(false);
                 }
                 SEL_OP_SECP256K1_ADD | SEL_OP_SECP256K1_DBL => {
                     let x3_lt = data.x3[i] < SECP256K1_PRIME_CHUNKS[i]
                         || (data.x3[i] == SECP256K1_PRIME_CHUNKS[i] && prev_x3_lt);
-                    trace[i].x3_lt = F::from_bool(x3_lt);
+                    trace[i].set_x3_lt(x3_lt);
                     let row = ArithEqLtTableSM::calculate_table_row(
                         prev_x3_lt,
                         x3_lt,
@@ -359,7 +366,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
                     let y3_lt = data.y3[i] < SECP256K1_PRIME_CHUNKS[i]
                         || (data.y3[i] == SECP256K1_PRIME_CHUNKS[i] && prev_y3_lt);
-                    trace[i].y3_lt = F::from_bool(y3_lt);
+                    trace[i].set_y3_lt(y3_lt);
                     let row = ArithEqLtTableSM::calculate_table_row(
                         prev_y3_lt,
                         y3_lt,
@@ -375,7 +382,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
                 | SEL_OP_BN254_COMPLEX_MUL => {
                     let x3_lt = data.x3[i] < BN254_PRIME_CHUNKS[i]
                         || (data.x3[i] == BN254_PRIME_CHUNKS[i] && prev_x3_lt);
-                    trace[i].x3_lt = F::from_bool(x3_lt);
+                    trace[i].set_x3_lt(x3_lt);
                     let row = ArithEqLtTableSM::calculate_table_row(
                         prev_x3_lt,
                         x3_lt,
@@ -386,7 +393,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
                     let y3_lt = data.y3[i] < BN254_PRIME_CHUNKS[i]
                         || (data.y3[i] == BN254_PRIME_CHUNKS[i] && prev_y3_lt);
-                    trace[i].y3_lt = F::from_bool(y3_lt);
+                    trace[i].set_y3_lt(y3_lt);
                     let row = ArithEqLtTableSM::calculate_table_row(
                         prev_y3_lt,
                         y3_lt,
@@ -396,25 +403,27 @@ impl<F: PrimeField64> ArithEqSM<F> {
                     prev_y3_lt = y3_lt;
                 }
                 _ => {
-                    trace[i].x3_lt = F::ZERO;
-                    trace[i].y3_lt = F::ZERO;
+                    trace[i].set_x3_lt(false);
+                    trace[i].set_y3_lt(false);
                 }
             }
             if (sel_op == SEL_OP_SECP256K1_ADD) || (sel_op == SEL_OP_BN254_CURVE_ADD) {
                 if x1_x2_different {
-                    trace[i].x_are_different = F::ONE;
-                    trace[i].x_delta_chunk_inv = F::ZERO;
+                    trace[i].set_x_are_different(true);
+                    trace[i].set_x_delta_chunk_inv(0);
                 } else if data.x1[i] != data.x2[i] {
                     x1_x2_different = true;
-                    trace[i].x_are_different = F::ONE;
-                    trace[i].x_delta_chunk_inv = F::inverse(&F::from_i64(data.x2[i] - data.x1[i]));
+                    trace[i].set_x_are_different(true);
+                    trace[i].set_x_delta_chunk_inv(
+                        F::inverse(&F::from_i64(data.x2[i] - data.x1[i])).as_canonical_u64(),
+                    );
                 } else {
-                    trace[i].x_delta_chunk_inv = F::ZERO;
-                    trace[i].x_are_different = F::ZERO;
+                    trace[i].set_x_are_different(false);
+                    trace[i].set_x_delta_chunk_inv(0);
                 }
             } else {
-                trace[i].x_are_different = F::ZERO;
-                trace[i].x_delta_chunk_inv = F::ZERO;
+                trace[i].set_x_are_different(false);
+                trace[i].set_x_delta_chunk_inv(0);
             }
         }
     }
@@ -486,7 +495,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         self.std.range_check(self.chunk_range_id, 0, 157 * padding_ops);
         self.std.range_check(self.carry_range_id, 0, 96 * padding_ops);
 
-        let padding_row = ArithEqTraceRow::<F> { ..Default::default() };
+        let padding_row = ArithEqTraceRow::default();
 
         trace.buffer[num_rows_needed..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 

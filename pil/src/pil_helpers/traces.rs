@@ -276,7 +276,7 @@ trace_row!(BinaryExtensionFixedRow<F> {
 pub type BinaryExtensionFixed<F> = GenericTrace<F, BinaryExtensionFixedRow<F>, 4194304, 0, 12>;
 
 trace_row!(BinaryExtensionTraceRow<F> {
- op:ubit(6), in1:[u8; 8], in2_low:ubit(6), out:[[u8; 2]; 8], op_is_shift:bit, in2:[u32; 2], multiplicity:bit,
+ op:ubit(6), in1:[u8; 8], in2_low:ubit(6), out:[[u32; 2]; 8], op_is_shift:bit, in2:[u32; 2], multiplicity:bit,
 });
 pub type BinaryExtensionTrace<F> = GenericTrace<F, BinaryExtensionTraceRow<F>, 4194304, 0, 12>;
 

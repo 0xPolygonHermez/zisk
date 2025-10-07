@@ -115,12 +115,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
 
         // Create an empty trace
-        let mut row =
-            BinaryExtensionTraceRow::<F> { op: F::from_u8(input.op), ..Default::default() };
+        let mut row = BinaryExtensionTraceRow::default();
+        row.set_op(input.op);
 
         // Set if the opcode is a shift operation
         let op_is_shift = Self::opcode_is_shift(opcode);
-        row.op_is_shift = F::from_bool(op_is_shift);
+        row.set_op_is_shift(op_is_shift);
 
         // Set if the opcode is a shift word operation
         let op_is_shift_word = Self::opcode_is_shift_word(opcode);
@@ -132,21 +132,26 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // Split a in bytes and store them in in1
         let a_bytes: [u8; 8] = a_val.to_le_bytes();
         for (i, value) in a_bytes.iter().enumerate() {
-            row.in1[i] = F::from_u8(*value);
+            row.set_in1(i, *value);
         }
 
         // Store b low part into in2_low
         let in2_low: u64 = if op_is_shift { b_val & 0xFF } else { 0 };
-        row.in2_low = F::from_u64(in2_low);
+        row.set_in2_low(in2_low as u8);
 
         // Store b lower bits when shifting, depending on operation size
         let b_low = if op_is_shift_word { b_val & LS_5_BITS } else { b_val & LS_6_BITS };
 
         // Store b into in2
-        let in2_0: u64 = if op_is_shift { (b_val >> 8) & 0xFFFFFF } else { b_val & 0xFFFFFFFF };
-        let in2_1: u64 = (b_val >> 32) & 0xFFFFFFFF;
-        row.in2[0] = F::from_u64(in2_0);
-        row.in2[1] = F::from_u64(in2_1);
+        let in2_0: u32 = if op_is_shift {
+            ((b_val >> 8) & 0xFFFFFF) as u32
+        } else {
+            (b_val & 0xFFFFFFFF) as u32
+        };
+        let in2_1: u32 = ((b_val >> 32) & 0xFFFFFFFF) as u32;
+
+        row.set_in2(0, in2_0);
+        row.set_in2(1, in2_1);
 
         // Calculate the trace output
         let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
@@ -287,13 +292,13 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         }
 
         // Convert the trace output to field elements
-        for j in 0..8 {
-            row.out[j as usize][0] = F::from_u64(t_out[j as usize][0]);
-            row.out[j as usize][1] = F::from_u64(t_out[j as usize][1]);
+        for (j, out) in t_out.iter().enumerate() {
+            row.set_out(j, 0, out[0] as u32);
+            row.set_out(j, 1, out[1] as u32);
         }
 
         // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
-        row.multiplicity = F::ONE;
+        row.set_multiplicity(true);
 
         for (i, a_byte) in a_bytes.iter().enumerate() {
             let row = BinaryExtensionTableSM::calculate_table_row(
@@ -373,8 +378,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
-        let padding_row =
-            BinaryExtensionTraceRow::<F> { op: F::from_u8(SE_W_OP), ..Default::default() };
+        let mut padding_row = BinaryExtensionTraceRow::default();
+        padding_row.set_op(SE_W_OP);
 
         binary_e_trace.buffer[total_inputs..num_rows]
             .par_iter_mut()

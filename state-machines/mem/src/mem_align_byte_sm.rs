@@ -84,16 +84,16 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignByteTrace<F>> for MemAlignByteT
         addr_w: u32,
         step: u64,
     ) {
-        self.sel_high_4b = F::from_bool(sel_high_4b);
-        self.sel_high_2b = F::from_bool(sel_high_2b);
-        self.sel_high_b = F::from_bool(sel_high_b);
-        self.direct_value = F::from_u32(direct_value);
-        self.composed_value = F::from_u32(composed_value);
-        self.value_16b = F::from_u16(value_16b);
-        self.value_8b = F::from_u8(value_8b);
-        self.byte_value = F::from_u8(byte_value);
-        self.addr_w = F::from_u32(addr_w);
-        self.step = F::from_u64(step);
+        self.set_sel_high_4b(sel_high_4b);
+        self.set_sel_high_2b(sel_high_2b);
+        self.set_sel_high_b(sel_high_b);
+        self.set_direct_value(direct_value);
+        self.set_composed_value(composed_value);
+        self.set_value_16b(value_16b);
+        self.set_value_8b(value_8b);
+        self.set_byte_value(byte_value);
+        self.set_addr_w(addr_w);
+        self.set_step(step);
     }
     #[inline(always)]
     fn set_write_fields(
@@ -103,12 +103,16 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignByteTrace<F>> for MemAlignByteT
         written_byte_value: u8,
         mem_write_values: [u32; 2],
     ) {
-        self.is_write = F::from_bool(is_write);
-        self.written_composed_value = F::from_u32(written_composed_value);
-        self.written_byte_value = F::from_u8(written_byte_value);
-        self.bus_byte = if is_write { self.written_byte_value } else { self.byte_value };
-        self.mem_write_values =
-            [F::from_u32(mem_write_values[0]), F::from_u32(mem_write_values[1])];
+        self.set_is_write(is_write);
+        self.set_written_composed_value(written_composed_value);
+        self.set_written_byte_value(written_byte_value);
+        self.set_bus_byte(if is_write {
+            self.get_written_byte_value()
+        } else {
+            self.get_byte_value()
+        });
+        self.set_mem_write_values(0, mem_write_values[0]);
+        self.set_mem_write_values(1, mem_write_values[1]);
     }
     #[inline(always)]
     fn valid_for_read() -> bool {
@@ -171,16 +175,16 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignReadByteTrace<F>> for MemAlignR
         addr_w: u32,
         step: u64,
     ) {
-        self.sel_high_4b = F::from_bool(sel_high_4b);
-        self.sel_high_2b = F::from_bool(sel_high_2b);
-        self.sel_high_b = F::from_bool(sel_high_b);
-        self.direct_value = F::from_u32(direct_value);
-        self.composed_value = F::from_u32(composed_value);
-        self.value_16b = F::from_u16(value_16b);
-        self.value_8b = F::from_u8(value_8b);
-        self.byte_value = F::from_u8(byte_value);
-        self.addr_w = F::from_u32(addr_w);
-        self.step = F::from_u64(step);
+        self.set_sel_high_4b(sel_high_4b);
+        self.set_sel_high_2b(sel_high_2b);
+        self.set_sel_high_b(sel_high_b);
+        self.set_direct_value(direct_value);
+        self.set_composed_value(composed_value);
+        self.set_value_16b(value_16b);
+        self.set_value_8b(value_8b);
+        self.set_byte_value(byte_value);
+        self.set_addr_w(addr_w);
+        self.set_step(step);
     }
     #[inline(always)]
     fn set_write_fields(
@@ -254,16 +258,16 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignWriteByteTrace<F>>
         addr_w: u32,
         step: u64,
     ) {
-        self.sel_high_4b = F::from_bool(sel_high_4b);
-        self.sel_high_2b = F::from_bool(sel_high_2b);
-        self.sel_high_b = F::from_bool(sel_high_b);
-        self.direct_value = F::from_u32(direct_value);
-        self.composed_value = F::from_u32(composed_value);
-        self.value_16b = F::from_u16(value_16b);
-        self.value_8b = F::from_u8(value_8b);
-        self.byte_value = F::from_u8(byte_value);
-        self.addr_w = F::from_u32(addr_w);
-        self.step = F::from_u64(step);
+        self.set_sel_high_4b(sel_high_4b);
+        self.set_sel_high_2b(sel_high_2b);
+        self.set_sel_high_b(sel_high_b);
+        self.set_direct_value(direct_value);
+        self.set_composed_value(composed_value);
+        self.set_value_16b(value_16b);
+        self.set_value_8b(value_8b);
+        self.set_byte_value(byte_value);
+        self.set_addr_w(addr_w);
+        self.set_step(step);
     }
     #[inline(always)]
     fn set_write_fields(
@@ -273,10 +277,10 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignWriteByteTrace<F>>
         written_byte_value: u8,
         mem_write_values: [u32; 2],
     ) {
-        self.written_composed_value = F::from_u32(written_composed_value);
-        self.written_byte_value = F::from_u8(written_byte_value);
-        self.mem_write_values =
-            [F::from_u32(mem_write_values[0]), F::from_u32(mem_write_values[1])];
+        self.set_written_composed_value(written_composed_value);
+        self.set_written_byte_value(written_byte_value);
+        self.set_mem_write_values(0, mem_write_values[0]);
+        self.set_mem_write_values(1, mem_write_values[1]);
     }
     #[inline(always)]
     fn valid_for_read() -> bool {
