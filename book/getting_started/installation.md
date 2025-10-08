@@ -40,7 +40,7 @@ You must have [Homebrew](https://brew.sh/) and [Xcode](https://developer.apple.c
 
 Install all required dependencies with:
 ```bash
-brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium
+brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium riscv-tools
 ```
 
 ## Installing ZisK

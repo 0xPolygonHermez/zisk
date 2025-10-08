@@ -164,7 +164,23 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f32_mulAdd()
-                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
+                    uint64_t result = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
+
+                    if (softfloat_exceptionFlags & softfloat_flag_inexact) {
+                        if (F32_IS_SUBNORMAL(result)) {
+                            // According to the RISC-V spec, if the result is subnormal and inexact,
+                            // the underflow flag must be set.
+                            // https://github.com/riscv-software-src/riscv-isa-sim/issues/123
+                            softfloat_exceptionFlags |= softfloat_flag_underflow;
+                        }
+                        else if (F32_IS_NORMAL(result) && (softfloat_exceptionFlags & softfloat_flag_inexact)) {
+                            // According to the RISC-V spec, if the result is normal and inexact,
+                            // the underflow flag must be cleared.
+                            softfloat_exceptionFlags &= ~softfloat_flag_underflow;
+                        }
+                    }
+                    
+                    fregs[rd] = result;
 
                     break;
                 }
@@ -321,7 +337,24 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f64_mulAdd()
-                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v;
+                    uint64_t result = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v;
+
+                    if (softfloat_exceptionFlags & softfloat_flag_inexact) {
+                        if (F64_IS_SUBNORMAL(result)) {
+                            // According to the RISC-V spec, if the result is subnormal and inexact,
+                            // the underflow flag must be set.
+                            // https://github.com/riscv-software-src/riscv-isa-sim/issues/123
+                            softfloat_exceptionFlags |= softfloat_flag_underflow;
+                        }
+                        else if (F64_IS_NORMAL(result) && (softfloat_exceptionFlags & softfloat_flag_inexact)) {
+                            // According to the RISC-V spec, if the result is normal and inexact,
+                            // the underflow flag must be cleared.
+                            softfloat_exceptionFlags &= ~softfloat_flag_underflow;
+                        }
+                    }
+
+                    fregs[rd] = result;
+
                     break;
                 }
                 default: //_ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 67 inst=0x{inst:x}"),
@@ -342,9 +375,8 @@ void _zisk_float (void)
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     
                     // NaN propagation
-                    if (F32_IS_ANY_NAN(fregs[rs1]) || F32_IS_ANY_NAN(fregs[rs2]) || F32_IS_ANY_NAN(fregs[rs3])) {
-                        if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]) || F32_IS_SIGNALING_NAN(fregs[rs3]))
-                            softfloat_raiseFlags( softfloat_flag_invalid );
+                    if (F32_IS_SIGNALING_NAN(fregs[rs1]) || F32_IS_SIGNALING_NAN(fregs[rs2]) || F32_IS_SIGNALING_NAN(fregs[rs3])) {
+                        softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F32_QUIET_NAN;
                         break;
                     }
@@ -355,6 +387,12 @@ void _zisk_float (void)
                          (F32_IS_ANY_ZERO(fregs[rs1]) && F32_IS_ANY_INFINITY(fregs[rs2])) ) {
                         fregs[rd] = F32_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    
+                    // qNaN propagation
+                    if (F32_IS_ANY_NAN(fregs[rs1]) || F32_IS_ANY_NAN(fregs[rs2]) || F32_IS_ANY_NAN(fregs[rs3])) {
+                        fregs[rd] = F32_QUIET_NAN;
                         break;
                     }
 
@@ -395,7 +433,23 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f32_mulAdd()
-                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){F32_NEGATE(fregs[rs3])} ).v;
+                    uint64_t result = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){F32_NEGATE(fregs[rs3])} ).v;
+
+                    if (softfloat_exceptionFlags & softfloat_flag_inexact) {
+                        if (F32_IS_SUBNORMAL(result)) {
+                            // According to the RISC-V spec, if the result is subnormal and inexact,
+                            // the underflow flag must be set.
+                            // https://github.com/riscv-software-src/riscv-isa-sim/issues/123
+                            softfloat_exceptionFlags |= softfloat_flag_underflow;
+                        }
+                        else if (F32_IS_NORMAL(result) && (softfloat_exceptionFlags & softfloat_flag_inexact)) {
+                            // According to the RISC-V spec, if the result is normal and inexact,
+                            // the underflow flag must be cleared.
+                            softfloat_exceptionFlags &= ~softfloat_flag_underflow;
+                        }
+                    }
+                    
+                    fregs[rd] = result;
                     break;
                 }
                 case 1: { //=> ("R4", "fmsub.d"), rd = (rs1 x rs2) - rs3
@@ -406,10 +460,9 @@ void _zisk_float (void)
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
                     
-                    // NaN propagation
-                    if (F64_IS_ANY_NAN(fregs[rs1]) || F64_IS_ANY_NAN(fregs[rs2]) || F64_IS_ANY_NAN(fregs[rs3])) {
-                        if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]) || F64_IS_SIGNALING_NAN(fregs[rs3]))
-                            softfloat_raiseFlags( softfloat_flag_invalid );
+                    // sNaN propagation
+                    if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]) || F64_IS_SIGNALING_NAN(fregs[rs3])) {
+                        softfloat_raiseFlags( softfloat_flag_invalid );
                         fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
@@ -420,6 +473,12 @@ void _zisk_float (void)
                          (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITY(fregs[rs2])) ) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    
+                    // qNaN propagation
+                    if (F64_IS_ANY_NAN(fregs[rs1]) || F64_IS_ANY_NAN(fregs[rs2]) || F64_IS_ANY_NAN(fregs[rs3])) {
+                        fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
 
@@ -466,7 +525,23 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f64_mulAdd()
-                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){F64_NEGATE(fregs[rs3])} ).v;
+                    uint64_t result = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){F64_NEGATE(fregs[rs3])} ).v;
+
+                    if (softfloat_exceptionFlags & softfloat_flag_inexact) {
+                        if (F64_IS_SUBNORMAL(result)) {
+                            // According to the RISC-V spec, if the result is subnormal and inexact,
+                            // the underflow flag must be set.
+                            // https://github.com/riscv-software-src/riscv-isa-sim/issues/123
+                            softfloat_exceptionFlags |= softfloat_flag_underflow;
+                        }
+                        else if (F64_IS_NORMAL(result) && (softfloat_exceptionFlags & softfloat_flag_inexact)) {
+                            // According to the RISC-V spec, if the result is normal and inexact,
+                            // the underflow flag must be cleared.
+                            softfloat_exceptionFlags &= ~softfloat_flag_underflow;
+                        }
+                    }
+
+                    fregs[rd] = result;
                     break;
                 }
                 default: //_ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 71 inst=0x{inst:x}"),
@@ -570,7 +645,23 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f32_mulAdd()
-                    fregs[rd] = (uint64_t)f32_mulAdd( (float32_t){F32_NEGATE(fregs[rs1])}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
+                    uint64_t result = (uint64_t)f32_mulAdd( (float32_t){F32_NEGATE(fregs[rs1])}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
+
+                    if (softfloat_exceptionFlags & softfloat_flag_inexact) {
+                        if (F32_IS_SUBNORMAL(result)) {
+                            // According to the RISC-V spec, if the result is subnormal and inexact,
+                            // the underflow flag must be set.
+                            // https://github.com/riscv-software-src/riscv-isa-sim/issues/123
+                            softfloat_exceptionFlags |= softfloat_flag_underflow;
+                        }
+                        else if (F32_IS_NORMAL(result) && (softfloat_exceptionFlags & softfloat_flag_inexact)) {
+                            // According to the RISC-V spec, if the result is normal and inexact,
+                            // the underflow flag must be cleared.
+                            softfloat_exceptionFlags &= ~softfloat_flag_underflow;
+                        }
+                    }
+                    
+                    fregs[rd] = result;
 
                     break;
                 }
@@ -642,7 +733,23 @@ void _zisk_float (void)
                     set_rounding_mode(rm);
 
                     // Call f64_mulAdd()
-                    fregs[rd] = (uint64_t)f64_mulAdd( (float64_t){F64_NEGATE(fregs[rs1])}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v;
+                    uint64_t result = (uint64_t)f64_mulAdd( (float64_t){F64_NEGATE(fregs[rs1])}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v;
+
+                    if (softfloat_exceptionFlags & softfloat_flag_inexact) {
+                        if (F64_IS_SUBNORMAL(result)) {
+                            // According to the RISC-V spec, if the result is subnormal and inexact,
+                            // the underflow flag must be set.
+                            // https://github.com/riscv-software-src/riscv-isa-sim/issues/123
+                            softfloat_exceptionFlags |= softfloat_flag_underflow;
+                        }
+                        else if (F64_IS_NORMAL(result) && (softfloat_exceptionFlags & softfloat_flag_inexact)) {
+                            // According to the RISC-V spec, if the result is normal and inexact,
+                            // the underflow flag must be cleared.
+                            softfloat_exceptionFlags &= ~softfloat_flag_underflow;
+                        }
+                    }
+                    
+                    fregs[rd] = result;
                     break;
                 }
                 default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 75 inst=0x{inst:x}"),
@@ -747,7 +854,27 @@ void _zisk_float (void)
                     change_rounding_mode_sign();
 
                     // Call f32_mulAdd()
-                    fregs[rd] = (uint64_t)F32_NEGATE(f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v);
+                    uint64_t result = (uint64_t)f32_mulAdd( (float32_t){fregs[rs1]}, (float32_t){fregs[rs2]}, (float32_t){fregs[rs3]} ).v;
+
+                    if (softfloat_exceptionFlags & softfloat_flag_inexact) {
+                        if (F32_IS_SUBNORMAL(result)) {
+                            // According to the RISC-V spec, if the result is subnormal and inexact,
+                            // the underflow flag must be set.
+                            // https://github.com/riscv-software-src/riscv-isa-sim/issues/123
+                            softfloat_exceptionFlags |= softfloat_flag_underflow;
+                        }
+                        else if (F32_IS_NORMAL(result) && (softfloat_exceptionFlags & softfloat_flag_inexact)) {
+                            // According to the RISC-V spec, if the result is normal and inexact,
+                            // the underflow flag must be cleared.
+                            softfloat_exceptionFlags &= ~softfloat_flag_underflow;
+                        }
+                    }
+
+                    if ((result == F32_PLUS_ZERO) && !(softfloat_exceptionFlags & softfloat_flag_inexact))
+                        fregs[rd] = F32_PLUS_ZERO;
+                    else
+                        fregs[rd] = F32_NEGATE(result);
+
                     break;
                 }
                 case 1: { //=> ("R4", "fnmadd.d"), rd = -(rs1 x rs2) - rs3
@@ -758,14 +885,10 @@ void _zisk_float (void)
                     uint64_t rs2 = (inst >> 20) & 0x1F;
                     uint64_t rs3 = (inst >> 27) & 0x1F;
 
-                    // NaN propagation
+                    // sNaN propagation
                     if (F64_IS_SIGNALING_NAN(fregs[rs1]) || F64_IS_SIGNALING_NAN(fregs[rs2]) || F64_IS_SIGNALING_NAN(fregs[rs3])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
-                        break;
-                    }
-                    if (F64_IS_QUIET_NAN(fregs[rs1]) || F64_IS_QUIET_NAN(fregs[rs2]) || F64_IS_QUIET_NAN(fregs[rs3])) {
-                        fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
                     // infinity * zero = NaN
@@ -778,6 +901,11 @@ void _zisk_float (void)
                     if (F64_IS_ANY_ZERO(fregs[rs1]) && F64_IS_ANY_INFINITY(fregs[rs2])) {
                         fregs[rd] = F64_QUIET_NAN;
                         softfloat_raiseFlags( softfloat_flag_invalid );
+                        break;
+                    }
+                    // qNaN propagation
+                    if (F64_IS_QUIET_NAN(fregs[rs1]) || F64_IS_QUIET_NAN(fregs[rs2]) || F64_IS_QUIET_NAN(fregs[rs3])) {
+                        fregs[rd] = F64_QUIET_NAN;
                         break;
                     }
 
@@ -818,7 +946,27 @@ void _zisk_float (void)
                     change_rounding_mode_sign();
 
                     // Call f64_mulAdd()
-                    fregs[rd] = (uint64_t)F64_NEGATE(f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v);
+                    uint64_t result = (uint64_t)f64_mulAdd( (float64_t){fregs[rs1]}, (float64_t){fregs[rs2]}, (float64_t){fregs[rs3]} ).v;
+
+                    if (softfloat_exceptionFlags & softfloat_flag_inexact) {
+                        if (F64_IS_SUBNORMAL(result)) {
+                            // According to the RISC-V spec, if the result is subnormal and inexact,
+                            // the underflow flag must be set.
+                            // https://github.com/riscv-software-src/riscv-isa-sim/issues/123
+                            softfloat_exceptionFlags |= softfloat_flag_underflow;
+                        }
+                        else if (F64_IS_NORMAL(result) && (softfloat_exceptionFlags & softfloat_flag_inexact)) {
+                            // According to the RISC-V spec, if the result is normal and inexact,
+                            // the underflow flag must be cleared.
+                            softfloat_exceptionFlags &= ~softfloat_flag_underflow;
+                        }
+                    }
+
+                    if ((result == F64_PLUS_ZERO) && !(softfloat_exceptionFlags & softfloat_flag_inexact))
+                        fregs[rd] = F64_PLUS_ZERO;
+                    else
+                        fregs[rd] = F64_NEGATE(result);
+
                     break;
                 }
                 default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 79 inst=0x{inst:x}"),

@@ -7,15 +7,33 @@ use crate::{
     AsmGenerationMethod, RoData, ZiskInst, ZiskRom, ZiskRom2Asm, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
 use rayon::prelude::*;
-use std::{error::Error, path::Path};
+use std::{
+    error::Error,
+    path::{Path, PathBuf},
+};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
+    // Get the path to float library
+    let default_float_library_path = std::env::var("HOME")
+        .ok()
+        .map(PathBuf::from)
+        .unwrap()
+        .join(".zisk/zisk/lib-float/c/lib/ziskfloat.elf");
+
+    let local_float_library_path = PathBuf::from("./lib-float/c/lib/ziskfloat.elf");
+
+    let float_library_path = if default_float_library_path.exists() {
+        default_float_library_path
+    } else if local_float_library_path.exists() {
+        local_float_library_path
+    } else {
+        panic!("elf2rom() could not find the float library.  Please run from the zisk root directory, or set the HOME environment variable to point to a directory containing .zisk/zisk/lib-float/c/lib/ziskfloat.elf");
+    };
+
     // Extract all relevant sections from the ELF file
-    let payloads: Vec<ElfPayload> = vec![
-        collect_elf_payload(elf_file)?,
-        collect_elf_payload(Path::new("lib-float/c/lib/ziskfloat.elf"))?,
-    ];
+    let payloads: Vec<ElfPayload> =
+        vec![collect_elf_payload(elf_file)?, collect_elf_payload(Path::new(&float_library_path))?];
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
