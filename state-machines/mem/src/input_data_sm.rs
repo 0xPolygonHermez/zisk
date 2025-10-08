@@ -79,7 +79,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = InputDataTraceType::new_from_vec(trace_buffer);
+        let mut trace = InputDataTraceType::<F>::new_from_vec(trace_buffer);
 
         let num_rows = InputDataTraceType::<F>::NUM_ROWS;
         debug_assert!(

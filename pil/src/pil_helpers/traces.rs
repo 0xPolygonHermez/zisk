@@ -108,275 +108,275 @@ values!(ZiskProofValues<F> {
 trace_row!(MainFixedRow<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
 });
-pub type MainFixed<F> = GenericTrace<F, MainFixedRow<F>, 4194304, 0, 0>;
+pub type MainFixed<F> = GenericTrace<MainFixedRow<F>, 4194304, 0, 0>;
 
 trace_row!(MainTraceRow<F> {
  a:[u32; 2], b:[u32; 2], c:[u32; 2], flag:bit, pc:u32, a_src_imm:bit, a_src_mem:bit, a_offset_imm0:u64, a_imm1:u32, a_src_step:bit, b_src_imm:bit, b_src_mem:bit, b_offset_imm0:u64, b_imm1:u32, b_src_ind:bit, ind_width:ubit(4), is_external_op:bit, op:u8, store_ra:bit, store_mem:bit, store_ind:bit, store_offset:u64, set_pc:bit, jmp_offset1:u64, jmp_offset2:u64, m32:bit, addr1:u32, a_reg_prev_mem_step:ubit(40), b_reg_prev_mem_step:ubit(40), store_reg_prev_mem_step:ubit(40), store_reg_prev_value:[u32; 2], a_src_reg:bit, b_src_reg:bit, store_reg:bit,
 });
-pub type MainTrace<F> = GenericTrace<F, MainTraceRow<F>, 4194304, 0, 0>;
+pub type MainTrace<F> = GenericTrace<MainTraceRow<F>, 4194304, 0, 0>;
 
 
-pub type MainTracePacked<F> = GenericTrace<F, MainTraceRowPacked<F>, 4194304, 0, 0>;
+pub type MainTracePacked<F> = GenericTrace<MainTraceRowPacked<F>, 4194304, 0, 0>;
 
 
 trace_row!(RomFixedRow<F> {
  __L1__: F,
 });
-pub type RomFixed<F> = GenericTrace<F, RomFixedRow<F>, 2097152, 0, 1>;
+pub type RomFixed<F> = GenericTrace<RomFixedRow<F>, 2097152, 0, 1>;
 
 trace_row!(RomTraceRow<F> {
  multiplicity:F,
 });
-pub type RomTrace<F> = GenericTrace<F, RomTraceRow<F>, 2097152, 0, 1>;
+pub type RomTrace<F> = GenericTrace<RomTraceRow<F>, 2097152, 0, 1>;
 
 
 trace_row!(MemFixedRow<F> {
  SEGMENT_L1: F, __L1__: F,
 });
-pub type MemFixed<F> = GenericTrace<F, MemFixedRow<F>, 4194304, 0, 2>;
+pub type MemFixed<F> = GenericTrace<MemFixedRow<F>, 4194304, 0, 2>;
 
 trace_row!(MemTraceRow<F> {
  addr:ubit(29), step:ubit(40), sel:bit, addr_changes:bit, step_dual:ubit(40), sel_dual:bit, value:[u32; 2], wr:bit, previous_step:ubit(40), increment:[ubit(18); 2], read_same_addr:bit,
 });
-pub type MemTrace<F> = GenericTrace<F, MemTraceRow<F>, 4194304, 0, 2>;
+pub type MemTrace<F> = GenericTrace<MemTraceRow<F>, 4194304, 0, 2>;
 
 
-pub type MemTracePacked<F> = GenericTrace<F, MemTraceRowPacked<F>, 4194304, 0, 2>;
+pub type MemTracePacked<F> = GenericTrace<MemTraceRowPacked<F>, 4194304, 0, 2>;
 
 
 trace_row!(RomDataFixedRow<F> {
  SEGMENT_L1: F, __L1__: F,
 });
-pub type RomDataFixed<F> = GenericTrace<F, RomDataFixedRow<F>, 2097152, 0, 3>;
+pub type RomDataFixed<F> = GenericTrace<RomDataFixedRow<F>, 2097152, 0, 3>;
 
 trace_row!(RomDataTraceRow<F> {
  addr:ubit(29), step:ubit(40), sel:bit, addr_changes:bit, value:[u32; 2],
 });
-pub type RomDataTrace<F> = GenericTrace<F, RomDataTraceRow<F>, 2097152, 0, 3>;
+pub type RomDataTrace<F> = GenericTrace<RomDataTraceRow<F>, 2097152, 0, 3>;
 
 
-pub type RomDataTracePacked<F> = GenericTrace<F, RomDataTraceRowPacked<F>, 2097152, 0, 3>;
+pub type RomDataTracePacked<F> = GenericTrace<RomDataTraceRowPacked<F>, 2097152, 0, 3>;
 
 
 trace_row!(InputDataFixedRow<F> {
  SEGMENT_L1: F, __L1__: F,
 });
-pub type InputDataFixed<F> = GenericTrace<F, InputDataFixedRow<F>, 2097152, 0, 4>;
+pub type InputDataFixed<F> = GenericTrace<InputDataFixedRow<F>, 2097152, 0, 4>;
 
 trace_row!(InputDataTraceRow<F> {
  addr:ubit(29), step:ubit(40), sel:bit, addr_changes:bit, value_word:[u16; 4], is_free_read:bit,
 });
-pub type InputDataTrace<F> = GenericTrace<F, InputDataTraceRow<F>, 2097152, 0, 4>;
+pub type InputDataTrace<F> = GenericTrace<InputDataTraceRow<F>, 2097152, 0, 4>;
 
 
-pub type InputDataTracePacked<F> = GenericTrace<F, InputDataTraceRowPacked<F>, 2097152, 0, 4>;
+pub type InputDataTracePacked<F> = GenericTrace<InputDataTraceRowPacked<F>, 2097152, 0, 4>;
 
 
 trace_row!(MemAlignFixedRow<F> {
  L1: F, __L1__: F,
 });
-pub type MemAlignFixed<F> = GenericTrace<F, MemAlignFixedRow<F>, 2097152, 0, 5>;
+pub type MemAlignFixed<F> = GenericTrace<MemAlignFixedRow<F>, 2097152, 0, 5>;
 
 trace_row!(MemAlignTraceRow<F> {
  addr:ubit(29), offset:ubit(3), width:ubit(4), wr:bit, pc:u8, reset:bit, sel_up_to_down:bit, sel_down_to_up:bit, reg:[u8; 8], sel:[bit; 8], step:ubit(40), delta_addr:u64, sel_prove:bit, value:[u32; 2],
 });
-pub type MemAlignTrace<F> = GenericTrace<F, MemAlignTraceRow<F>, 2097152, 0, 5>;
+pub type MemAlignTrace<F> = GenericTrace<MemAlignTraceRow<F>, 2097152, 0, 5>;
 
 
-pub type MemAlignTracePacked<F> = GenericTrace<F, MemAlignTraceRowPacked<F>, 2097152, 0, 5>;
+pub type MemAlignTracePacked<F> = GenericTrace<MemAlignTraceRowPacked<F>, 2097152, 0, 5>;
 
 
 trace_row!(MemAlignByteFixedRow<F> {
  __L1__: F,
 });
-pub type MemAlignByteFixed<F> = GenericTrace<F, MemAlignByteFixedRow<F>, 4194304, 0, 6>;
+pub type MemAlignByteFixed<F> = GenericTrace<MemAlignByteFixedRow<F>, 4194304, 0, 6>;
 
 trace_row!(MemAlignByteTraceRow<F> {
  sel_high_4b:bit, sel_high_2b:bit, sel_high_b:bit, direct_value:u32, composed_value:u32, written_composed_value:u32, written_byte_value:u8, value_16b:u16, value_8b:u8, byte_value:u8, addr_w:ubit(29), step:ubit(40), is_write:bit, mem_write_values:[u32; 2], bus_byte:u8,
 });
-pub type MemAlignByteTrace<F> = GenericTrace<F, MemAlignByteTraceRow<F>, 4194304, 0, 6>;
+pub type MemAlignByteTrace<F> = GenericTrace<MemAlignByteTraceRow<F>, 4194304, 0, 6>;
 
 
-pub type MemAlignByteTracePacked<F> = GenericTrace<F, MemAlignByteTraceRowPacked<F>, 4194304, 0, 6>;
+pub type MemAlignByteTracePacked<F> = GenericTrace<MemAlignByteTraceRowPacked<F>, 4194304, 0, 6>;
 
 
 trace_row!(MemAlignReadByteFixedRow<F> {
  __L1__: F,
 });
-pub type MemAlignReadByteFixed<F> = GenericTrace<F, MemAlignReadByteFixedRow<F>, 4194304, 0, 7>;
+pub type MemAlignReadByteFixed<F> = GenericTrace<MemAlignReadByteFixedRow<F>, 4194304, 0, 7>;
 
 trace_row!(MemAlignReadByteTraceRow<F> {
  sel_high_4b:bit, sel_high_2b:bit, sel_high_b:bit, direct_value:u32, composed_value:u32, value_16b:u16, value_8b:u8, byte_value:u8, addr_w:ubit(29), step:ubit(40),
 });
-pub type MemAlignReadByteTrace<F> = GenericTrace<F, MemAlignReadByteTraceRow<F>, 4194304, 0, 7>;
+pub type MemAlignReadByteTrace<F> = GenericTrace<MemAlignReadByteTraceRow<F>, 4194304, 0, 7>;
 
 
-pub type MemAlignReadByteTracePacked<F> = GenericTrace<F, MemAlignReadByteTraceRowPacked<F>, 4194304, 0, 7>;
+pub type MemAlignReadByteTracePacked<F> = GenericTrace<MemAlignReadByteTraceRowPacked<F>, 4194304, 0, 7>;
 
 
 trace_row!(MemAlignWriteByteFixedRow<F> {
  __L1__: F,
 });
-pub type MemAlignWriteByteFixed<F> = GenericTrace<F, MemAlignWriteByteFixedRow<F>, 4194304, 0, 8>;
+pub type MemAlignWriteByteFixed<F> = GenericTrace<MemAlignWriteByteFixedRow<F>, 4194304, 0, 8>;
 
 trace_row!(MemAlignWriteByteTraceRow<F> {
  sel_high_4b:bit, sel_high_2b:bit, sel_high_b:bit, direct_value:u32, composed_value:u32, written_composed_value:u32, written_byte_value:u8, value_16b:u16, value_8b:u8, byte_value:u8, addr_w:ubit(29), step:ubit(40), mem_write_values:[u32; 2],
 });
-pub type MemAlignWriteByteTrace<F> = GenericTrace<F, MemAlignWriteByteTraceRow<F>, 4194304, 0, 8>;
+pub type MemAlignWriteByteTrace<F> = GenericTrace<MemAlignWriteByteTraceRow<F>, 4194304, 0, 8>;
 
 
-pub type MemAlignWriteByteTracePacked<F> = GenericTrace<F, MemAlignWriteByteTraceRowPacked<F>, 4194304, 0, 8>;
+pub type MemAlignWriteByteTracePacked<F> = GenericTrace<MemAlignWriteByteTraceRowPacked<F>, 4194304, 0, 8>;
 
 
 trace_row!(ArithFixedRow<F> {
  __L1__: F,
 });
-pub type ArithFixed<F> = GenericTrace<F, ArithFixedRow<F>, 2097152, 0, 9>;
+pub type ArithFixed<F> = GenericTrace<ArithFixedRow<F>, 2097152, 0, 9>;
 
 trace_row!(ArithTraceRow<F> {
  carry:[u64; 7], a:[u16; 4], b:[u16; 4], c:[u16; 4], d:[u16; 4], na:bit, nb:bit, nr:bit, np:bit, sext:bit, m32:bit, div:bit, fab:u64, na_fb:u64, nb_fa:u64, main_div:bit, main_mul:bit, signed:bit, div_by_zero:bit, div_overflow:bit, inv_sum_all_bs:u64, op:u8, bus_res1:u32, multiplicity:bit, range_ab:ubit(7), range_cd:ubit(7),
 });
-pub type ArithTrace<F> = GenericTrace<F, ArithTraceRow<F>, 2097152, 0, 9>;
+pub type ArithTrace<F> = GenericTrace<ArithTraceRow<F>, 2097152, 0, 9>;
 
 
-pub type ArithTracePacked<F> = GenericTrace<F, ArithTraceRowPacked<F>, 2097152, 0, 9>;
+pub type ArithTracePacked<F> = GenericTrace<ArithTraceRowPacked<F>, 2097152, 0, 9>;
 
 
 trace_row!(BinaryFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryFixed<F> = GenericTrace<F, BinaryFixedRow<F>, 4194304, 0, 10>;
+pub type BinaryFixed<F> = GenericTrace<BinaryFixedRow<F>, 4194304, 0, 10>;
 
 trace_row!(BinaryTraceRow<F> {
  m_op:ubit(5), mode32:bit, free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[bit; 8], use_last_carry:bit, op_is_min_max:bit, has_initial_carry:bit, cout:bit, result_is_a:bit, use_last_carry_mode32:bit, use_last_carry_mode64:bit, m_op_or_ext:ubit(5), free_in_a_or_c:[u8; 4], free_in_b_or_zero:[u8; 4], multiplicity:bit,
 });
-pub type BinaryTrace<F> = GenericTrace<F, BinaryTraceRow<F>, 4194304, 0, 10>;
+pub type BinaryTrace<F> = GenericTrace<BinaryTraceRow<F>, 4194304, 0, 10>;
 
 
-pub type BinaryTracePacked<F> = GenericTrace<F, BinaryTraceRowPacked<F>, 4194304, 0, 10>;
+pub type BinaryTracePacked<F> = GenericTrace<BinaryTraceRowPacked<F>, 4194304, 0, 10>;
 
 
 trace_row!(BinaryAddFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryAddFixed<F> = GenericTrace<F, BinaryAddFixedRow<F>, 4194304, 0, 11>;
+pub type BinaryAddFixed<F> = GenericTrace<BinaryAddFixedRow<F>, 4194304, 0, 11>;
 
 trace_row!(BinaryAddTraceRow<F> {
  a:[u32; 2], b:[u32; 2], c_chunks:[u16; 4], cout:[bit; 2], multiplicity:bit,
 });
-pub type BinaryAddTrace<F> = GenericTrace<F, BinaryAddTraceRow<F>, 4194304, 0, 11>;
+pub type BinaryAddTrace<F> = GenericTrace<BinaryAddTraceRow<F>, 4194304, 0, 11>;
 
 
-pub type BinaryAddTracePacked<F> = GenericTrace<F, BinaryAddTraceRowPacked<F>, 4194304, 0, 11>;
+pub type BinaryAddTracePacked<F> = GenericTrace<BinaryAddTraceRowPacked<F>, 4194304, 0, 11>;
 
 
 trace_row!(BinaryExtensionFixedRow<F> {
  __L1__: F,
 });
-pub type BinaryExtensionFixed<F> = GenericTrace<F, BinaryExtensionFixedRow<F>, 4194304, 0, 12>;
+pub type BinaryExtensionFixed<F> = GenericTrace<BinaryExtensionFixedRow<F>, 4194304, 0, 12>;
 
 trace_row!(BinaryExtensionTraceRow<F> {
  op:ubit(6), in1:[u8; 8], in2_low:ubit(6), out:[[u32; 2]; 8], op_is_shift:bit, in2:[u32; 2], multiplicity:bit,
 });
-pub type BinaryExtensionTrace<F> = GenericTrace<F, BinaryExtensionTraceRow<F>, 4194304, 0, 12>;
+pub type BinaryExtensionTrace<F> = GenericTrace<BinaryExtensionTraceRow<F>, 4194304, 0, 12>;
 
 
-pub type BinaryExtensionTracePacked<F> = GenericTrace<F, BinaryExtensionTraceRowPacked<F>, 4194304, 0, 12>;
+pub type BinaryExtensionTracePacked<F> = GenericTrace<BinaryExtensionTraceRowPacked<F>, 4194304, 0, 12>;
 
 
 trace_row!(ArithEqFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type ArithEqFixed<F> = GenericTrace<F, ArithEqFixedRow<F>, 1048576, 0, 13>;
+pub type ArithEqFixed<F> = GenericTrace<ArithEqFixedRow<F>, 1048576, 0, 13>;
 
 trace_row!(ArithEqTraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 9], sel_op_clk0:[bit; 9], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
-pub type ArithEqTrace<F> = GenericTrace<F, ArithEqTraceRow<F>, 1048576, 0, 13>;
+pub type ArithEqTrace<F> = GenericTrace<ArithEqTraceRow<F>, 1048576, 0, 13>;
 
 
-pub type ArithEqTracePacked<F> = GenericTrace<F, ArithEqTraceRowPacked<F>, 1048576, 0, 13>;
+pub type ArithEqTracePacked<F> = GenericTrace<ArithEqTraceRowPacked<F>, 1048576, 0, 13>;
 
 
 trace_row!(ArithEq384FixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type ArithEq384Fixed<F> = GenericTrace<F, ArithEq384FixedRow<F>, 1048576, 0, 14>;
+pub type ArithEq384Fixed<F> = GenericTrace<ArithEq384FixedRow<F>, 1048576, 0, 14>;
 
 trace_row!(ArithEq384TraceRow<F> {
  x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 6], sel_op_clk0:[bit; 6], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
-pub type ArithEq384Trace<F> = GenericTrace<F, ArithEq384TraceRow<F>, 1048576, 0, 14>;
+pub type ArithEq384Trace<F> = GenericTrace<ArithEq384TraceRow<F>, 1048576, 0, 14>;
 
 
-pub type ArithEq384TracePacked<F> = GenericTrace<F, ArithEq384TraceRowPacked<F>, 1048576, 0, 14>;
+pub type ArithEq384TracePacked<F> = GenericTrace<ArithEq384TraceRowPacked<F>, 1048576, 0, 14>;
 
 
 trace_row!(KeccakfFixedRow<F> {
  L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
 });
-pub type KeccakfFixed<F> = GenericTrace<F, KeccakfFixedRow<F>, 2097152, 0, 15>;
+pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 2097152, 0, 15>;
 
 trace_row!(KeccakfTraceRow<F> {
  free_in_a:[ubit(7); 9], free_in_b:[ubit(7); 9], free_in_c:[ubit(7); 9], free_in_d:[ubit(7); 9], bit:[bit; 4], val:[u64; 4], step_addr:ubit(40), in_use_clk_0:bit, in_use:bit,
 });
-pub type KeccakfTrace<F> = GenericTrace<F, KeccakfTraceRow<F>, 2097152, 0, 15>;
+pub type KeccakfTrace<F> = GenericTrace<KeccakfTraceRow<F>, 2097152, 0, 15>;
 
 
-pub type KeccakfTracePacked<F> = GenericTrace<F, KeccakfTraceRowPacked<F>, 2097152, 0, 15>;
+pub type KeccakfTracePacked<F> = GenericTrace<KeccakfTraceRowPacked<F>, 2097152, 0, 15>;
 
 
 trace_row!(Sha256fFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type Sha256fFixed<F> = GenericTrace<F, Sha256fFixedRow<F>, 262144, 0, 16>;
+pub type Sha256fFixed<F> = GenericTrace<Sha256fFixedRow<F>, 262144, 0, 16>;
 
 trace_row!(Sha256fTraceRow<F> {
  a:[bit; 32], e:[bit; 32], w:[bit; 32], new_a_carry_bits:u8, new_e_carry_bits:u8, new_w_carry_bits:ubit(4), step_addr:ubit(40), in_use_clk_0:bit, in_use:bit,
 });
-pub type Sha256fTrace<F> = GenericTrace<F, Sha256fTraceRow<F>, 262144, 0, 16>;
+pub type Sha256fTrace<F> = GenericTrace<Sha256fTraceRow<F>, 262144, 0, 16>;
 
 
-pub type Sha256fTracePacked<F> = GenericTrace<F, Sha256fTraceRowPacked<F>, 262144, 0, 16>;
+pub type Sha256fTracePacked<F> = GenericTrace<Sha256fTraceRowPacked<F>, 262144, 0, 16>;
 
 
 trace_row!(SpecifiedRangesFixedRow<F> {
  RANGE: [F; 19], __L1__: F,
 });
-pub type SpecifiedRangesFixed<F> = GenericTrace<F, SpecifiedRangesFixedRow<F>, 2097152, 0, 17>;
+pub type SpecifiedRangesFixed<F> = GenericTrace<SpecifiedRangesFixedRow<F>, 2097152, 0, 17>;
 
 trace_row!(SpecifiedRangesTraceRow<F> {
  mul:[F; 19],
 });
-pub type SpecifiedRangesTrace<F> = GenericTrace<F, SpecifiedRangesTraceRow<F>, 2097152, 0, 17>;
+pub type SpecifiedRangesTrace<F> = GenericTrace<SpecifiedRangesTraceRow<F>, 2097152, 0, 17>;
 
 
 trace_row!(VirtualTable0FixedRow<F> {
  UID: [F; 11], column: [F; 63], __L1__: F,
 });
-pub type VirtualTable0Fixed<F> = GenericTrace<F, VirtualTable0FixedRow<F>, 2097152, 0, 18>;
+pub type VirtualTable0Fixed<F> = GenericTrace<VirtualTable0FixedRow<F>, 2097152, 0, 18>;
 
 trace_row!(VirtualTable0TraceRow<F> {
  multiplicity:[F; 11],
 });
-pub type VirtualTable0Trace<F> = GenericTrace<F, VirtualTable0TraceRow<F>, 2097152, 0, 18>;
+pub type VirtualTable0Trace<F> = GenericTrace<VirtualTable0TraceRow<F>, 2097152, 0, 18>;
 
 
 trace_row!(VirtualTable1FixedRow<F> {
  UID: [F; 8], column: [F; 64], __L1__: F,
 });
-pub type VirtualTable1Fixed<F> = GenericTrace<F, VirtualTable1FixedRow<F>, 2097152, 0, 19>;
+pub type VirtualTable1Fixed<F> = GenericTrace<VirtualTable1FixedRow<F>, 2097152, 0, 19>;
 
 trace_row!(VirtualTable1TraceRow<F> {
  multiplicity:[F; 8],
 });
-pub type VirtualTable1Trace<F> = GenericTrace<F, VirtualTable1TraceRow<F>, 2097152, 0, 19>;
+pub type VirtualTable1Trace<F> = GenericTrace<VirtualTable1TraceRow<F>, 2097152, 0, 19>;
 
 
 trace_row!(RomRomTraceRow<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
 });
-pub type RomRomTrace<F> = GenericTrace<F, RomRomTraceRow<F>, 2097152, 0, 1, 0>;
+pub type RomRomTrace<F> = GenericTrace<RomRomTraceRow<F>, 2097152, 0, 1, 0>;
 
 
 values!(MainAirValues<F> {
