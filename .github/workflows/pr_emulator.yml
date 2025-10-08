@@ -10,7 +10,7 @@ on:
       - "emulator/**"
       - "riscv/**"
       - "core/**"
-      - "libfloat/**"
+      - "lib-float/**"
   workflow_dispatch:
 
 jobs:
