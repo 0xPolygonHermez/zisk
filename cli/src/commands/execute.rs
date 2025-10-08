@@ -154,6 +154,42 @@ impl ZiskExecute {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
+        let mpi_info = ProofMan::<Goldilocks>::get_mpi_info();
+
+        initialize_logger(self.verbose.into(), Some(mpi_info.rank));
+
+        let asm_services = AsmServices::new(mpi_info.rank, mpi_info.node_rank, self.port);
+        let asm_runner_options = AsmRunnerOptions::new()
+            .with_verbose(self.verbose > 0)
+            .with_base_port(self.port)
+            .with_world_rank(mpi_info.rank)
+            .with_local_rank(mpi_info.node_rank)
+            .with_unlock_mapped_memory(self.unlock_mapped_memory);
+
+        if self.asm.is_some() {
+            // Start ASM microservices
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_info.rank,);
+
+            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
+        }
+
+        let library =
+            unsafe { Library::new(get_witness_computation_lib(self.witness_lib.as_ref()))? };
+        let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
+            unsafe { library.get(b"init_library")? };
+        let mut witness_lib = witness_lib_constructor(
+            self.verbose.into(),
+            self.elf.clone(),
+            self.asm.clone(),
+            asm_rom,
+            Some(mpi_info.rank),
+            Some(mpi_info.node_rank),
+            self.port,
+            self.unlock_mapped_memory,
+            self.shared_tables,
+        )
+        .expect("Failed to initialize witness library");
+
         let proofman = ProofMan::<Goldilocks>::new(
             proving_key,
             custom_commits_map,
@@ -162,51 +198,12 @@ impl ZiskExecute {
             false,
             ParamsGPU::default(),
             self.verbose.into(),
-            None,
+            witness_lib.get_packed_info(),
         )
         .expect("Failed to initialize proofman");
 
-        let mut witness_lib;
-
-        let mpi_ctx = proofman.get_mpi_ctx();
-
-        initialize_logger(self.verbose.into(), Some(mpi_ctx.rank));
-
-        let asm_services = AsmServices::new(mpi_ctx.rank, mpi_ctx.node_rank, self.port);
-        let asm_runner_options = AsmRunnerOptions::new()
-            .with_verbose(self.verbose > 0)
-            .with_base_port(self.port)
-            .with_world_rank(mpi_ctx.rank)
-            .with_local_rank(mpi_ctx.node_rank)
-            .with_unlock_mapped_memory(self.unlock_mapped_memory);
-
-        if self.asm.is_some() {
-            // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_ctx.rank,);
-
-            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
-        }
-
         match self.field {
             Field::Goldilocks => {
-                let library = unsafe {
-                    Library::new(get_witness_computation_lib(self.witness_lib.as_ref()))?
-                };
-                let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
-                    unsafe { library.get(b"init_library")? };
-                witness_lib = witness_lib_constructor(
-                    self.verbose.into(),
-                    self.elf.clone(),
-                    self.asm.clone(),
-                    asm_rom,
-                    Some(mpi_ctx.rank),
-                    Some(mpi_ctx.node_rank),
-                    self.port,
-                    self.unlock_mapped_memory,
-                    self.shared_tables,
-                )
-                .expect("Failed to initialize witness library");
-
                 proofman.register_witness(&mut *witness_lib, library);
 
                 proofman
@@ -217,7 +214,7 @@ impl ZiskExecute {
 
         if self.asm.is_some() {
             // Shut down ASM microservices
-            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_ctx.rank);
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_info.rank);
             asm_services.stop_asm_services()?;
         }
 

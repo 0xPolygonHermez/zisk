@@ -50,6 +50,6 @@ harness = false
 [features]
 default = []
 gpu = ["proofman-common/gpu"]
-packed = ["zisk-common/packed"]
+packed = ["proofman-common/packed"]
 # sp = []
 no_lib_link = ["zisk-pil/no_lib_link"]
