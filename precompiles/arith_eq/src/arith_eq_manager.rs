@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use fields::{Goldilocks, PrimeField64};
+use fields::PrimeField64;
 use pil_std_lib::Std;
 use zisk_common::{BusDevice, PayloadType};
 
@@ -58,8 +58,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
         let num_available_ops = self.arith_eq_sm.num_available_ops;
 
         Box::new(ArithEqPlanner::new().add_instance(InstanceInfo::new(
-            ArithEqTrace::<Goldilocks>::AIRGROUP_ID,
-            ArithEqTrace::<Goldilocks>::AIR_ID,
+            ArithEqTrace::<F>::AIRGROUP_ID,
+            ArithEqTrace::<F>::AIR_ID,
             num_available_ops,
             ZiskOperationType::ArithEq,
         )))
