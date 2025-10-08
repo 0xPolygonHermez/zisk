@@ -3322,25 +3322,78 @@ impl ZiskRom2Asm {
         Self::push_external_registers(&mut ctx, code);
 
         // Create a new read section for every RO data entry of the rom
+        let mut total_ro_data_len: usize = 0;
         for i in 0..rom.ro_data.len() {
-            for j in 0..rom.ro_data[i].data.len() {
-                let address = rom.ro_data[i].from + j as u64;
-                *code += &format!(
-                    "\tmov {}, 0x{:x} {}\n",
-                    REG_ADDRESS,
-                    address,
-                    ctx.comment_str(&format!("address = {:x}", address))
+            let mut address = rom.ro_data[i].from;
+            let ro_data_len = rom.ro_data[i].data.len();
+            total_ro_data_len += ro_data_len;
+            println!(
+                "ZiskRom2Asm::save_to_asm() ro_data[{}] len={} total_len={} address={:x}",
+                i, ro_data_len, total_ro_data_len, address
+            );
+            let mut written_bytes = 0;
+            while written_bytes + 8 <= ro_data_len {
+                let value = u64::from_le_bytes(
+                    rom.ro_data[i].data[written_bytes..written_bytes + 8].try_into().unwrap(),
                 );
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
+                *code += &format!(
+                    "\tmov qword {}[{}], {} {}\n",
+                    ctx.ptr,
+                    REG_ADDRESS,
+                    REG_VALUE,
+                    ctx.comment_str(&format!("ro_data[{:x}] = {:x}", address, value))
+                );
+                address += 8;
+                written_bytes += 8;
+            }
+            while written_bytes + 4 <= ro_data_len {
+                let value = u32::from_le_bytes(
+                    rom.ro_data[i].data[written_bytes..written_bytes + 4].try_into().unwrap(),
+                );
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
+                *code += &format!(
+                    "\tmov dword {}[{}], {} {}\n",
+                    ctx.ptr,
+                    REG_ADDRESS,
+                    REG_VALUE,
+                    ctx.comment_str(&format!("ro_data[{:x}] = {:x}", address, value))
+                );
+                address += 4;
+                written_bytes += 4;
+            }
+            while written_bytes + 2 <= ro_data_len {
+                let value = u16::from_le_bytes(
+                    rom.ro_data[i].data[written_bytes..written_bytes + 2].try_into().unwrap(),
+                );
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
+                *code += &format!(
+                    "\tmov word {}[{}], {} {}\n",
+                    ctx.ptr,
+                    REG_ADDRESS,
+                    REG_VALUE,
+                    ctx.comment_str(&format!("ro_data[{:x}] = {:x}", address, value))
+                );
+                address += 2;
+                written_bytes += 2;
+            }
+            while written_bytes + 1 <= ro_data_len {
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
                 *code += &format!(
                     "\tmov byte {}[{}], 0x{:x} {}\n",
                     ctx.ptr,
                     REG_ADDRESS,
-                    rom.ro_data[i].data[j],
+                    rom.ro_data[i].data[written_bytes],
                     ctx.comment_str(&format!(
                         "ro_data[{:x}] = {:x}",
-                        address, rom.ro_data[i].data[j]
+                        address, rom.ro_data[i].data[written_bytes]
                     ))
                 );
+                address += 1;
+                written_bytes += 1;
             }
         }
 
