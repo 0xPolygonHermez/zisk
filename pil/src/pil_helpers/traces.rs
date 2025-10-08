@@ -7,6 +7,7 @@
 
 use proofman_common as common;
 use proofman_common::GenericTrace;
+use proofman_common::PackedInfoConst;
 pub use proofman_macros::trace_row;
 pub use proofman_macros::values;
 use fields::PrimeField64;
@@ -15,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "cad9e4cb34b48a3d982740e91bb5d5bd28c6c2e92f3e02406c647727e0a72cca";
+pub const PILOUT_HASH: &str = "48a6ce23af5b77f1cfe9df02c29e4ef288282fd4c2255be3f5bd04449672a86d";
 
 //AIRGROUP CONSTANTS
 
@@ -276,7 +277,7 @@ trace_row!(BinaryExtensionFixedRow<F> {
 pub type BinaryExtensionFixed<F> = GenericTrace<BinaryExtensionFixedRow<F>, 4194304, 0, 12>;
 
 trace_row!(BinaryExtensionTraceRow<F> {
- op:ubit(6), in1:[u8; 8], in2_low:ubit(6), out:[[u32; 2]; 8], op_is_shift:bit, in2:[u32; 2], multiplicity:bit,
+ op:ubit(6), in1:[u8; 8], in2_low:u8, out:[[u32; 2]; 8], op_is_shift:bit, in2:[u32; 2], multiplicity:bit,
 });
 pub type BinaryExtensionTrace<F> = GenericTrace<BinaryExtensionTraceRow<F>, 4194304, 0, 12>;
 
@@ -486,3 +487,86 @@ values!(VirtualTable0AirGroupValues<F> {
 values!(VirtualTable1AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
+
+pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
+    (0, 0, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 14,
+        unpack_info: &[32, 32, 32, 32, 32, 32, 1, 32, 1, 1, 64, 32, 1, 1, 1, 64, 32, 1, 4, 1, 8, 1, 1, 1, 64, 1, 64, 64, 1, 32, 40, 40, 40, 32, 32, 1, 1, 1],
+    }),
+    (0, 2, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 4,
+        unpack_info: &[29, 40, 1, 1, 40, 1, 32, 32, 1, 40, 18, 18, 1],
+    }),
+    (0, 3, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 3,
+        unpack_info: &[29, 40, 1, 1, 32, 32],
+    }),
+    (0, 4, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 3,
+        unpack_info: &[29, 40, 1, 1, 16, 16, 16, 16, 1],
+    }),
+    (0, 5, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 5,
+        unpack_info: &[29, 3, 4, 1, 8, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 40, 64, 1, 32, 32],
+    }),
+    (0, 6, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 5,
+        unpack_info: &[1, 1, 1, 32, 32, 32, 8, 16, 8, 8, 29, 40, 1, 32, 32, 8],
+    }),
+    (0, 7, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 3,
+        unpack_info: &[1, 1, 1, 32, 32, 16, 8, 8, 29, 40],
+    }),
+    (0, 8, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 5,
+        unpack_info: &[1, 1, 1, 32, 32, 32, 8, 16, 8, 8, 29, 40, 32, 32],
+    }),
+    (0, 9, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 17,
+        unpack_info: &[64, 64, 64, 64, 64, 64, 64, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 64, 64, 64, 1, 1, 1, 1, 1, 64, 8, 32, 1, 7, 7],
+    }),
+    (0, 10, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 5,
+        unpack_info: &[5, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 8, 8, 8, 8, 8, 8, 8, 8, 1],
+    }),
+    (0, 11, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 4,
+        unpack_info: &[32, 32, 32, 32, 16, 16, 16, 16, 1, 1, 1],
+    }),
+    (0, 12, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 11,
+        unpack_info: &[6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 32, 32, 1],
+    }),
+    (0, 13, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 11,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 40],
+    }),
+    (0, 14, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 11,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 40],
+    }),
+    (0, 15, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 9,
+        unpack_info: &[7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 1, 1, 1, 1, 64, 64, 64, 64, 40, 1, 1],
+    }),
+    (0, 16, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 3,
+        unpack_info: &[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 4, 40, 1, 1],
+    }),
+];

@@ -104,14 +104,14 @@ int InverseFpEc (
     // TODO: call mpz_invert
     RawFec::Element a;
     array2fe(_a, a);
-    if (zisk_fec.isZero(a))
+    if (fec.isZero(a))
     {
         printf("InverseFpEc() Division by zero\n");
         return -1;
     }
 
     RawFec::Element r;
-    zisk_fec.inv(r, a);
+    fec.inv(r, a);
 
     fe2array(r, _r);
 
@@ -146,14 +146,14 @@ int InverseFnEc (
 {
     RawFnec::Element a;
     array2fe(_a, a);
-    if (zisk_fnec.isZero(a))
+    if (fnec.isZero(a))
     {
         printf("InverseFnEc() Division by zero\n");
         return -1;
     }
 
     RawFnec::Element r;
-    zisk_fnec.inv(r, a);
+    fnec.inv(r, a);
 
     fe2array(r, _r);
 
@@ -230,9 +230,9 @@ int SqrtFpEcParity (
     {
         // Negate the result
         RawFec::Element fe;
-        zisk_fec.fromMpz(fe, r.get_mpz_t());
-        fe = zisk_fec.neg(fe);
-        zisk_fec.toMpz(r.get_mpz_t(), fe);
+        fec.fromMpz(fe, r.get_mpz_t());
+        fe = fec.neg(fe);
+        fec.toMpz(r.get_mpz_t(), fe);
     }
 
     scalar2array(r, &_r[1]);

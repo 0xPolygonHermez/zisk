@@ -48,14 +48,14 @@ inline void array2fe (const uint64_t * a, RawFec::Element &fe)
 {
     mpz_class s;
     array2scalar(a, s);
-    zisk_fec.fromMpz(fe, s.get_mpz_t());
+    fec.fromMpz(fe, s.get_mpz_t());
 }
 
 // Converts a FEC element to an array of 4 u64 LE
 inline void fe2array (const RawFec::Element &fe, uint64_t * a)
 {
     mpz_class s;
-    zisk_fec.toMpz(s.get_mpz_t(), fe);
+    fec.toMpz(s.get_mpz_t(), fe);
     scalar2array(s, a);
 }
 
@@ -64,14 +64,14 @@ inline void array2fe (const uint64_t * a, RawFnec::Element &fe)
 {
     mpz_class s;
     array2scalar(a, s);
-    zisk_fnec.fromMpz(fe, s.get_mpz_t());
+    fnec.fromMpz(fe, s.get_mpz_t());
 }
 
 // Converts a FNEC element to an array of 4 u64 LE
 inline void fe2array (const RawFnec::Element &fe, uint64_t * a)
 {
     mpz_class s;
-    zisk_fnec.toMpz(s.get_mpz_t(), fe);
+    fnec.toMpz(s.get_mpz_t(), fe);
     scalar2array(s, a);
 }
 

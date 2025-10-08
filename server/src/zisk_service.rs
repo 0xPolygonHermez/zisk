@@ -339,33 +339,21 @@ impl ZiskService {
     pub fn new(params: &ZiskServerParams) -> Result<Self> {
         info_file!("Starting asm microservices...");
 
-        let proofman = ProofMan::<Goldilocks>::new(
-            params.proving_key.clone(),
-            params.custom_commits_map.clone(),
-            params.verify_constraints,
-            params.aggregation,
-            params.final_snark,
-            params.gpu_params.clone(),
-            params.verbose.into(),
-            None,
-        )
-        .expect("Failed to initialize proofman");
+        let mpi_info = ProofMan::<Goldilocks>::get_mpi_info();
 
-        let mpi_ctx = proofman.get_mpi_ctx();
+        initialize_logger(params.verbose.into(), Some(mpi_info.rank));
 
-        initialize_logger(params.verbose.into(), Some(mpi_ctx.rank));
+        let port = params.port + mpi_info.node_rank as u16;
 
-        let port = params.port + mpi_ctx.node_rank as u16;
-
-        let world_rank = mpi_ctx.rank;
-        let local_rank = mpi_ctx.node_rank;
+        let world_rank = mpi_info.rank;
+        let local_rank = mpi_info.node_rank;
         let unlock_mapped_memory = params.unlock_mapped_memory;
 
         let asm_runner_options = AsmRunnerOptions::new()
             .with_verbose(params.verbose > 0)
             .with_base_port(params.asm_port)
-            .with_world_rank(mpi_ctx.rank)
-            .with_local_rank(mpi_ctx.node_rank)
+            .with_world_rank(mpi_info.rank)
+            .with_local_rank(mpi_info.node_rank)
             .with_unlock_mapped_memory(params.unlock_mapped_memory);
 
         let asm_services = if params.emulator {
@@ -394,6 +382,18 @@ impl ZiskService {
             params.shared_tables,
         )
         .expect("Failed to initialize witness library");
+
+        let proofman = ProofMan::<Goldilocks>::new(
+            params.proving_key.clone(),
+            params.custom_commits_map.clone(),
+            params.verify_constraints,
+            params.aggregation,
+            params.final_snark,
+            params.gpu_params.clone(),
+            params.verbose.into(),
+            witness_lib.get_packed_info(),
+        )
+        .expect("Failed to initialize proofman");
 
         proofman.register_witness(witness_lib.as_mut(), library);
 

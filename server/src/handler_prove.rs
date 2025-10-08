@@ -60,8 +60,6 @@ impl ZiskServiceProveHandler {
             move || {
                 let start = std::time::Instant::now();
 
-                let mpi_ctx = proofman.get_mpi_ctx();
-
                 let result = proofman
                     .generate_proof_from_lib(
                         ProvePhaseInputs::Full(ProofInfo::new(Some(request_input), 1, vec![0], 0)),
@@ -88,7 +86,7 @@ impl ZiskServiceProveHandler {
 
                 let elapsed = start.elapsed();
 
-                if mpi_ctx.rank == 0 {
+                if proofman.rank().unwrap() == 0 {
                     #[allow(clippy::type_complexity)]
                     let (result, _stats, _witness_stats): (
                         ZiskExecutionResult,

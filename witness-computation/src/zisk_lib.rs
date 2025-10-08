@@ -7,26 +7,28 @@
 use executor::{StateMachines, StaticSMBundle, ZiskExecutor};
 use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
+use precomp_arith_eq::ArithEqManager;
+use precomp_arith_eq_384::ArithEq384Manager;
+use precomp_keccakf::KeccakfManager;
+use precomp_sha256f::Sha256fManager;
 use proofman::register_std;
+use proofman_common::PackedInfo;
+use sm_arith::ArithSM;
+use sm_binary::BinarySM;
+use sm_mem::Mem;
+use sm_rom::RomSM;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary};
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
+#[cfg(all(feature = "gpu", feature = "packed"))]
+use zisk_pil::PACKED_INFO;
 use zisk_pil::{
     ARITH_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS,
     BINARY_EXTENSION_AIR_IDS, INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
     MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS,
     ROM_DATA_AIR_IDS, SHA_256_F_AIR_IDS, ZISK_AIRGROUP_ID,
 };
-
-use precomp_arith_eq::ArithEqManager;
-use precomp_arith_eq_384::ArithEq384Manager;
-use precomp_keccakf::KeccakfManager;
-use precomp_sha256f::Sha256fManager;
-use sm_arith::ArithSM;
-use sm_binary::BinarySM;
-use sm_mem::Mem;
-use sm_rom::RomSM;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
@@ -178,6 +180,24 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         wcm.register_component(executor.clone());
 
         self.executor = Some(executor);
+    }
+
+    fn get_packed_info(&self) -> HashMap<(usize, usize), PackedInfo> {
+        let mut _packed_info = HashMap::new();
+        #[cfg(all(feature = "gpu", feature = "packed"))]
+        {
+            for packed_info in PACKED_INFO.iter() {
+                _packed_info.insert(
+                    (packed_info.0, packed_info.1),
+                    PackedInfo::new(
+                        packed_info.2.is_packed,
+                        packed_info.2.num_packed_words,
+                        packed_info.2.unpack_info.to_vec(),
+                    ),
+                );
+            }
+        }
+        _packed_info
     }
 }
 

@@ -264,29 +264,17 @@ impl Worker {
     ) -> Result<Self> {
         info!("Starting asm microservices...");
 
-        let proofman = ProofMan::<Goldilocks>::new(
-            config.proving_key.clone(),
-            config.custom_commits_map.clone(),
-            config.verify_constraints,
-            config.aggregation,
-            config.final_snark,
-            config.gpu_params.clone(),
-            config.verbose.into(),
-            None,
-        )
-        .expect("Failed to initialize proofman");
-
-        let mpi_ctx = proofman.get_mpi_ctx();
+        let mpi_info = ProofMan::<Goldilocks>::get_mpi_info();
 
         let asm_runner_options = AsmRunnerOptions::new()
             .with_verbose(config.verbose > 0)
             .with_base_port(config.asm_port)
-            .with_world_rank(mpi_ctx.rank)
-            .with_local_rank(mpi_ctx.node_rank)
+            .with_world_rank(mpi_info.rank)
+            .with_local_rank(mpi_info.node_rank)
             .with_unlock_mapped_memory(config.unlock_mapped_memory);
 
-        let world_rank = mpi_ctx.rank;
-        let local_rank = mpi_ctx.node_rank;
+        let world_rank = mpi_info.rank;
+        let local_rank = mpi_info.node_rank;
         let base_port = config.asm_port;
         let unlock_mapped_memory = config.unlock_mapped_memory;
 
@@ -316,6 +304,18 @@ impl Worker {
             config.shared_tables,
         )
         .expect("Failed to initialize witness library");
+
+        let proofman = ProofMan::<Goldilocks>::new(
+            config.proving_key.clone(),
+            config.custom_commits_map.clone(),
+            config.verify_constraints,
+            config.aggregation,
+            config.final_snark,
+            config.gpu_params.clone(),
+            config.verbose.into(),
+            witness_lib.get_packed_info(),
+        )
+        .expect("Failed to initialize proofman");
 
         proofman.register_witness(&mut *witness_lib, library);
 
@@ -590,7 +590,7 @@ impl Worker {
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
     ) -> Result<Vec<AggProofs>> {
-        let world_rank = proofman.get_mpi_ctx().rank;
+        let world_rank = proofman.rank().unwrap_or(0);
 
         let proof = match proofman.generate_proof_from_lib(
             phase_inputs,

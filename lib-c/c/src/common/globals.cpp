@@ -1,7 +1,7 @@
 #include "globals.hpp"
 
-RawFec zisk_fec;
-RawFnec zisk_fnec;
+RawFec fec;
+RawFnec fnec;
 RawFq bn254;
 RawBLS12_381_384 bls12_381;
 

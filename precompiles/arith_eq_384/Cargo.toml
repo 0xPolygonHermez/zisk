@@ -63,7 +63,7 @@ nom = "7"
 [features]
 default = []
 gpu = ["proofman-common/gpu"]
-packed = ["zisk-common/packed"]
+packed = ["proofman-common/packed"]
 diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 no_lib_link = ["proofman-common/no_lib_link"]
 test_data = []
