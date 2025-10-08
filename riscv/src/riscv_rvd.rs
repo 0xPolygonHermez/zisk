@@ -472,7 +472,6 @@ impl Rvd {
                         match (inst >> 20) & 0xFFF {
                             0 => ("I", "ecall"),
                             1 => ("I", "ebreak"),
-                            0x302 => ("I", "mret"),
                             _ => panic!("Rvd::get_type_and_name_32_bits() invalid imm for opcode 115 funct3=0 inst=0x{inst:x}"),
                         }
                     },

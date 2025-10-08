@@ -177,7 +177,6 @@ impl Riscv2ZiskContext<'_> {
             // I.6 Privileged & System Instructions (Part of I Base)
             "ecall" => self.ecall(riscv_instruction),
             "ebreak" => self.nop(riscv_instruction, 4),
-            "mret" => self.halt_with_error(riscv_instruction, 4),
             "csrrw" => self.csrrw(riscv_instruction),
             "csrrs" => self.csrrs(riscv_instruction),
             "csrrc" => self.csrrc(riscv_instruction),
