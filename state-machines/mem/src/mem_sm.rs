@@ -97,7 +97,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = MemTraceType::new_from_vec(trace_buffer);
+        let mut trace = MemTraceType::<F>::new_from_vec(trace_buffer);
 
         let std = self.std.clone();
 
