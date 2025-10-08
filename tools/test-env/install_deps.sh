@@ -102,7 +102,7 @@ install_dependencies_darwin() {
     total_steps=1
 
     step "Installing package dependencies for macOS..."
-    ensure brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium riscv-tools || return 1
+    ensure brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium || return 1
 }
 
 main() {
