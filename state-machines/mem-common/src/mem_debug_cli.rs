@@ -86,9 +86,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ((area_wo_duals - area_w_duals) as f32 * 100.0) / area_wo_duals as f32,
             (dual as f32 * 100.0) / count as f32
     );
-    debug.info_instances(MemTrace::<Goldilocks>::NUM_ROWS);
-    debug.info_chunks(MemTrace::<Goldilocks>::NUM_ROWS);
-    debug.dump_to_file("tmp/mem_debug_cli_ops.txt");
-    // debug.save_to_file("tmp/debug_mem.txt");
+    let num_rows = MemTrace::<Goldilocks>::NUM_ROWS;
+    debug.info_instances(num_rows);
+    debug.info_chunks(num_rows);
+    debug.dump_to_file(num_rows, "tmp/mem_debug_cli_ops.txt");
+    // debug.save_to_file(num_rows, "tmp/debug_mem.txt");
     Ok(())
 }
