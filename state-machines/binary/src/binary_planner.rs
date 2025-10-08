@@ -4,10 +4,9 @@
 //! It organizes execution plans for both regular instances and table instances,
 //! leveraging binary operation counts by operation and metadata to construct detailed plans.
 
-use std::any::Any;
-
 use crate::BinaryCounter;
-use fields::Goldilocks;
+use fields::PrimeField64;
+use std::any::Any;
 use zisk_common::{
     plan_with_frops, BusDeviceMetrics, ChunkId, InstFropsCount, InstanceType, Metrics, Plan,
     Planner,
@@ -19,18 +18,19 @@ use zisk_pil::{BinaryAddTrace, BinaryExtensionTrace, BinaryTrace};
 /// It allows adding metadata about instances and tables and generates plans
 /// based on the provided counters.
 #[derive(Default)]
-pub struct BinaryPlanner {}
+pub struct BinaryPlanner<F> {
+    _marker: std::marker::PhantomData<F>,
+}
 
-impl BinaryPlanner {
+impl<F: PrimeField64> BinaryPlanner<F> {
     pub fn new() -> Self {
-        Self {}
+        Self { _marker: std::marker::PhantomData }
     }
     fn size_basic_of(rows: usize) -> usize {
         if rows == 0 {
             0
         } else {
-            ((rows - 1 / BinaryTrace::<Goldilocks>::NUM_ROWS) + 1)
-                * BinaryTrace::<Goldilocks>::ROW_SIZE
+            ((rows - 1 / BinaryTrace::<F>::NUM_ROWS) + 1) * BinaryTrace::<F>::ROW_SIZE
         }
     }
 
@@ -38,8 +38,7 @@ impl BinaryPlanner {
         if rows == 0 {
             0
         } else {
-            ((rows - 1 / BinaryAddTrace::<Goldilocks>::NUM_ROWS) + 1)
-                * BinaryAddTrace::<Goldilocks>::ROW_SIZE
+            ((rows - 1 / BinaryAddTrace::<F>::NUM_ROWS) + 1) * BinaryAddTrace::<F>::ROW_SIZE
         }
     }
 
@@ -55,15 +54,15 @@ impl BinaryPlanner {
             })
             .collect();
 
-        let extension_num_rows = BinaryExtensionTrace::<Goldilocks>::NUM_ROWS;
+        let extension_num_rows = BinaryExtensionTrace::<F>::NUM_ROWS;
 
         let plans: Vec<_> = plan_with_frops(&extension_counters, extension_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new(collect_info);
                 Plan::new(
-                    BinaryExtensionTrace::<Goldilocks>::AIRGROUP_ID,
-                    BinaryExtensionTrace::<Goldilocks>::AIR_ID,
+                    BinaryExtensionTrace::<F>::AIRGROUP_ID,
+                    BinaryExtensionTrace::<F>::AIR_ID,
                     None,
                     InstanceType::Instance,
                     check_point,
@@ -93,15 +92,15 @@ impl BinaryPlanner {
             })
             .collect();
 
-        let basic_num_rows = BinaryTrace::<Goldilocks>::NUM_ROWS;
+        let basic_num_rows = BinaryTrace::<F>::NUM_ROWS;
 
         let plans: Vec<_> = plan_with_frops(&basic_counters, basic_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new((with_adds, collect_info));
                 Plan::new(
-                    BinaryTrace::<Goldilocks>::AIRGROUP_ID,
-                    BinaryTrace::<Goldilocks>::AIR_ID,
+                    BinaryTrace::<F>::AIRGROUP_ID,
+                    BinaryTrace::<F>::AIR_ID,
                     None,
                     InstanceType::Instance,
                     check_point,
@@ -122,15 +121,15 @@ impl BinaryPlanner {
             })
             .collect();
 
-        let add_num_rows = BinaryAddTrace::<Goldilocks>::NUM_ROWS;
+        let add_num_rows = BinaryAddTrace::<F>::NUM_ROWS;
 
         plan_with_frops(&add_counters, add_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new(collect_info);
                 Plan::new(
-                    BinaryAddTrace::<Goldilocks>::AIRGROUP_ID,
-                    BinaryAddTrace::<Goldilocks>::AIR_ID,
+                    BinaryAddTrace::<F>::AIRGROUP_ID,
+                    BinaryAddTrace::<F>::AIR_ID,
                     None,
                     InstanceType::Instance,
                     check_point,
@@ -142,7 +141,7 @@ impl BinaryPlanner {
     }
 }
 
-impl Planner for BinaryPlanner {
+impl<F: PrimeField64> Planner for BinaryPlanner<F> {
     /// Generates execution plans for binary instances and tables.
     ///
     /// # Arguments

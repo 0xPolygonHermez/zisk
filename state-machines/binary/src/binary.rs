@@ -70,7 +70,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
     /// # Returns
     /// A boxed implementation of `RegularPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
-        Box::new(BinaryPlanner::new())
+        Box::new(BinaryPlanner::<F>::new())
     }
 
     /// Builds an instance for binary operations.
