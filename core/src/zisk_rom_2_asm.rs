@@ -3380,7 +3380,7 @@ impl ZiskRom2Asm {
                 address += 2;
                 written_bytes += 2;
             }
-            while written_bytes + 1 <= ro_data_len {
+            while written_bytes < ro_data_len {
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
                 *code += &format!(
                     "\tmov byte {}[{}], 0x{:x} {}\n",
