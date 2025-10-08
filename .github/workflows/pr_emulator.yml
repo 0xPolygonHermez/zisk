@@ -1,4 +1,4 @@
-name: Risc Oficial Tests Check
+name: Riscof Tests
 
 on:
   pull_request:
@@ -10,11 +10,12 @@ on:
       - "emulator/**"
       - "riscv/**"
       - "core/**"
+      - "lib-float/**"
   workflow_dispatch:
 
 jobs:
-  docker-ziskof-check:
-    name: Docker Risc Oficial Tests Check
+  riscof-docker-tests:
+    name: Riscof docker tests
     runs-on: ubuntu-latest
     container:
       image: hermeznetwork/ziskof:latest
@@ -35,7 +36,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_deps.sh
           # Riscof dependencies
-          apt-get install -y gcc-riscv64-unknown-elf libsodium23 libomp5
+          apt-get install -y libsodium23 libomp5
 
       - name: Build ZisK
         run: |
@@ -52,3 +53,42 @@ jobs:
             --suite=riscv-arch-test/riscv-test-suite/ \
             --env=riscv-arch-test/riscv-test-suite/env \
             --work-dir=/workspace/output/riscof_work/
+
+  riscof-elf-tests-asm:
+    name: Riscof ELF tests (assembly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      ZISK_GHA: "1"
+      ZISK_REPO_DIR: ${{ github.workspace }}
+      TERM: xterm
+    steps:
+      - name: Increase shared memory (/dev/shm)
+        run: |
+          set -euxo pipefail
+          df -h /dev/shm || true
+          sudo mount -o remount,size=16G /dev/shm || sudo mount -o remount,size=16G /run/shm
+          df -h /dev/shm
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Checkout zisk-testvectors repo
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/zisk-testvectors
+          path: zisk-testvectors
+
+      - name: Install dependencies
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          sudo ./install_deps.sh
+
+      - name: Emulate in assembly Riscof ELF files
+        run: |
+          . "$HOME/.cargo/env"
+          cd "$GITHUB_WORKSPACE"
+          sudo ./tools/emulate_asm_all.sh $GITHUB_WORKSPACE/zisk-testvectors/riscof/riscof_work/rv64i_m
