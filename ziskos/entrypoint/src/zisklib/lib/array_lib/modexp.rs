@@ -1,10 +1,13 @@
+// TODO: It can be speed up by using Montgomery multiplication but knowning that divisions are "free"
+// For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
+
 use std::vec;
 
-use super::{div_long, div_short, mul_long, mul_short, square, U256};
+use super::{rem_long, rem_short, mul_and_reduce, square_and_reduce, U256};
 
-/// Modular exponentiation of three large numbers (represented as arrays of U256): base^exp (mod modulus)
+/// Modular exponentiation of three large numbers
 ///
-/// It assumes that modulus > 0 and len(base),len(exp) > 0 (these are handled by the host library)
+/// It assumes that modulus > 0 and len(base),len(exp) > 0
 pub fn modexp(base: &[U256], exp: &[u64], modulus: &[U256]) -> Vec<U256> {
     let len_b = base.len();
     let len_e = exp.len();
@@ -53,65 +56,47 @@ pub fn modexp(base: &[U256], exp: &[u64], modulus: &[U256]) -> Vec<U256> {
     // We can assume from now on that base,modulus > 1 and exp > 0
 
     // Initialize out = 1
-    let mut out = Vec::with_capacity(len_m);
-    out.push(U256::ONE);
+    let mut out = vec![U256::ZERO; len_m];
+    out[0] = U256::ONE;
 
-    // Reduce base mod modulus once at the start
-    let base = if len_b < len_m || (len_b == len_m && base < modulus) {
+    // Compute base = base (mod modulus)
+    let base = if U256::lt_slices_unchecked(base, modulus) {
         base.to_vec()
     } else if len_m == 1 {
-        vec![div_short(base, &modulus[0]).1]
+        vec![rem_short(base, &modulus[0])]
     } else {
-        div_long(base, modulus).1
+        rem_long(base, modulus)
     };
 
-    let mut scratch = Vec::with_capacity(len_m * 2);
+    // scratch space for intermediate computations
+    let mut scratch = vec![U256::ZERO; 2 * len_m];
     for e in exp.iter().rev() {
         let mut mask: u64 = 1 << 63;
         while mask > 0 {
             // Compute out = out² (mod modulus);
-            scratch.clear();
-            scratch.extend_from_slice(&square(&out));
-
-            let len_sq = scratch.len();
-            if len_sq < len_m || (len_sq == len_m && scratch < modulus.to_vec()) {
-                out.clear();
-                out.extend_from_slice(&scratch);
-            } else if len_m == 1 {
-                out = vec![div_short(&scratch, &modulus[0]).1];
-            } else {
-                out = div_long(&scratch, modulus).1;
-            };
+            square_and_reduce(&out, modulus, &mut scratch);
+            out.copy_from_slice(&scratch[..len_m]);
+            scratch.fill(U256::ZERO);
 
             if e & mask != 0 {
                 // Compute out = (out * base) (mod modulus);
-                scratch.clear();
-                if base.len() == 1 {
-                    scratch.extend_from_slice(&mul_short(&out, &base[0]));
-                } else {
-                    scratch.extend_from_slice(&mul_long(&out, &base));
-                }
-
-                let len_mul = scratch.len();
-                if len_mul < len_m || (len_mul == len_m && scratch < modulus.to_vec()) {
-                    out.clear();
-                    out.extend_from_slice(&scratch);
-                } else if len_m == 1 {
-                    out = vec![div_short(&scratch, &modulus[0]).1];
-                } else {
-                    out = div_long(&scratch, modulus).1;
-                };
+                mul_and_reduce(&out, &base, modulus, &mut scratch);
+                out.copy_from_slice(&scratch[..len_m]);
+                scratch.fill(U256::ZERO);
             }
             mask >>= 1;
         }
     }
 
+    // Strip any leading zeros at the end
+    while out.len() > 1 && out.last() == Some(&U256::ZERO) {
+        out.pop();
+    }
+
     out
 }
 
-/// Modular exponentiation of three large numbers (represented as arrays of u64): base^exp (mod modulus)
 pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64]) -> Vec<u64> {
-    // Helper function to pad array to multiple of 4
     fn pad_to_multiple_of_4(input: &[u64]) -> Vec<u64> {
         let mut padded = input.to_vec();
         let remainder = input.len() % 4;

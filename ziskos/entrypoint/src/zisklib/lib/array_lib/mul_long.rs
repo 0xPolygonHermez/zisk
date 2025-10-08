@@ -4,23 +4,20 @@ use crate::{
     arith256::{syscall_arith256, SyscallArith256Params},
 };
 
-use super::{U256, div_short, div_long};
+use super::U256;
 
 /// Multiplication of two large numbers (represented as arrays of U256)
 ///
-/// It assumes that a,b > 0 and len(b) > 1
-pub fn mul_long(a: &[U256], b: &[U256]) -> Vec<U256> {
+/// It assumes that len(a),len(b) > 0 and len(out) >= len(a) + len(b)
+pub fn mul_long(a: &[U256], b: &[U256], out: &mut [U256]) {
     let len_a = a.len();
     let len_b = b.len();
     #[cfg(debug_assertions)]
     {
         assert_ne!(len_a, 0, "Input 'a' must have at least one limb");
-        assert!(len_b > 1, "Input 'b' must have more than one limb");
-        assert_ne!(a.last().unwrap(), &U256::ZERO, "Input 'a' must not have leading zeros");
-        assert_ne!(b.last().unwrap(), &U256::ZERO, "Input 'b' must not have leading zeros");
+        assert_ne!(len_b, 0, "Input 'b' must have at least one limb");
+        assert!(out.len() >= len_a + len_b, "Output 'out' must have at least len(a) + len(b) limbs");
     }
-
-    let mut out = vec![U256::ZERO; len_a + len_b];
 
     // Start with a[0]·b[0]
     let mut params = SyscallArith256Params {
@@ -116,37 +113,5 @@ pub fn mul_long(a: &[U256], b: &[U256]) -> Vec<U256> {
 
         // Set out[i+j+1] = carry
         out[i + len_b] = U256::from_u64s(params_arith.dh);
-    }
-
-    if out[len_a + len_b - 1] == U256::ZERO {
-        out.pop();
-    }
-
-    out
-}
-
-pub fn mul_and_reduce(a: &[U256], b: &[U256], modulus: &[U256], out: &mut [U256]) {
-    let len_m = modulus.len();
-    #[cfg(debug_assertions)]
-    {
-        assert_ne!(len_m, 0, "Input 'modulus' must have at least one limb");
-        assert_ne!(modulus.last().unwrap(), &U256::ZERO, "Input 'modulus' must not have leading zeros");
-    }
-
-    let product = mul_long(a, b);
-    let len_prod = product.len();
-    if len_prod < len_m || (len_prod == len_m && product.as_slice() < modulus) {
-        // If product < modulus, then the result is just product
-        out[..len_prod].copy_from_slice(&product);
-        out[len_prod..].fill(U256::ZERO);
-    } else if len_m == 1 {
-        // If modulus has only one limb, we can use short division
-        out[0] = div_short(&product, &modulus[0]).1;
-        out[1..].fill(U256::ZERO);
-    } else {
-        let (_, r) = div_long(&product, modulus);
-        let len_r = r.len();
-        out[..len_r].copy_from_slice(&r);
-        out[len_r..].fill(U256::ZERO);
     }
 }

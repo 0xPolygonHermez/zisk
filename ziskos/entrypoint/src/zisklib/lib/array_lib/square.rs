@@ -4,7 +4,7 @@ use crate::{
     arith256::{syscall_arith256, SyscallArith256Params},
 };
 
-use super::{U256, div_short, div_long};
+use super::{U256, rem_short, rem_long};
 
 /// Squaring of a large number (represented as an array of U256)
 //                                        a3    a2    a1      a0
@@ -19,15 +19,13 @@ use super::{U256, div_short, div_long};
 //    a3*a3     X        X          X           0      0      0
 //         ------------------------------------------------------- 4
 //                          RESULT
-pub fn square(a: &[U256]) -> Vec<U256> {
+pub fn square(a: &[U256], out: &mut [U256]) {
     let len_a = a.len();
     #[cfg(debug_assertions)]
     {
         assert_ne!(len_a, 0, "Input 'a' must have at least one limb");
-        assert_ne!(a.last().unwrap(), &U256::ZERO, "Input 'a' must not have leading zeros");
+        assert!(out.len() >= 2 * len_a, "Output 'out' must have at least 2 * len(a) limbs");
     }
-
-    let mut out = vec![U256::ZERO; 2 * len_a];
 
     // Step 1: Compute all diagonal terms a[i] * a[i]
     for i in 0..len_a {
@@ -164,12 +162,6 @@ pub fn square(a: &[U256]) -> Vec<U256> {
             }
         }
     }
-
-    if out.last() == Some(&U256::ZERO) {
-        out.pop();
-    }
-
-    out
 }
 
 pub fn square_and_reduce(a: &[U256], modulus: &[U256], out: &mut [U256]) {
@@ -178,23 +170,25 @@ pub fn square_and_reduce(a: &[U256], modulus: &[U256], out: &mut [U256]) {
     {
         assert_ne!(len_m, 0, "Input 'modulus' must have at least one limb");
         assert_ne!(modulus.last().unwrap(), &U256::ZERO, "Input 'modulus' must not have leading zeros");
+        assert!(out.len() >= len_m, "Output 'out' must have at least len(modulus) limbs");
     }
 
-    let a_squared = square(a);
-    let len_sq = a_squared.len();
+    let len_sq = a.len() * 2;
+    let mut sq = vec![U256::ZERO; len_sq];
+    square(a, &mut sq);
+    
+    // If a·b < modulus, then the result is just a·b
+    if U256::lt_slices(&sq, modulus) {
+        out[..len_sq].copy_from_slice(&sq);
+        return;
+    }
 
-    if len_sq < len_m || (len_sq == len_m && a_squared.as_slice() < modulus) {
-        // If a_squared < modulus, then the result is just a_squared
-        out[..len_sq].copy_from_slice(&a_squared);
-        out[len_sq..].fill(U256::ZERO);
-    } else if len_m == 1 {
+    if len_m == 1 {
         // If modulus has only one limb, we can use short division
-        out[0] = div_short(&a_squared, &modulus[0]).1;
-        out[1..].fill(U256::ZERO);
+        out[0] = rem_short(&sq, &modulus[0]);
     } else {
-        let (_, r) = div_long(&a_squared, modulus);
-        let len_r = r.len();
-        out[..len_r].copy_from_slice(&r);
-        out[len_r..].fill(U256::ZERO);
+        // Otherwise, use long division
+        let r = rem_long(&sq, modulus);
+        out[..r.len()].copy_from_slice(&r);
     }
 }
