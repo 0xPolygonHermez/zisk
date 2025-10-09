@@ -142,9 +142,13 @@ pub const UART_ADDR: u64 = SYS_ADDR + 512;
 /// CSR memory address; contains control and status registers
 pub const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
 /// Machine trap-vector base-address register
-pub const MTVEC: u64 = CSR_ADDR + 0x305;
+pub const MTVEC: u64 = CSR_ADDR + 0x305 * 8;
 /// Floating-point Control and Status Register
 pub const FCSR: u64 = CSR_ADDR + 0x003 * 8;
+/// Architecture ID Control and Status Register
+pub const ARCH_ID_CSR: u64 = 0xF12;
+/// Architecture ID Control and Status Register address
+pub const ARCH_ID_CSR_ADDR: u64 = CSR_ADDR + (ARCH_ID_CSR * 8);
 
 /// Memory section data, including a buffer (a vector of bytes) and start and end program
 /// memory addresses.

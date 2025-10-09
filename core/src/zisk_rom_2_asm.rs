@@ -3327,10 +3327,10 @@ impl ZiskRom2Asm {
             let mut address = rom.ro_data[i].from;
             let ro_data_len = rom.ro_data[i].data.len();
             total_ro_data_len += ro_data_len;
-            println!(
-                "ZiskRom2Asm::save_to_asm() ro_data[{}] len={} total_len={} address={:x}",
-                i, ro_data_len, total_ro_data_len, address
-            );
+            // println!(
+            //     "ZiskRom2Asm::save_to_asm() ro_data[{}] len={} total_len={} address={:x}",
+            //     i, ro_data_len, total_ro_data_len, address
+            // );
             let mut written_bytes = 0;
             while written_bytes + 8 <= ro_data_len {
                 let value = u64::from_le_bytes(
