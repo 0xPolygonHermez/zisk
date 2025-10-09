@@ -664,7 +664,7 @@ impl Riscv2ZiskContext<'_> {
             };
         zib.store("reg", i.rd as i64 + reg_offset, false, false);
         zib.j(inst_size as i64, inst_size as i64);
-        zib.verbose(&format!("{} r{}+{}, 0x{:x}(r{})", i.inst, i.rd, reg_offset, i.imm, i.rs1));
+        zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst, i.rd, i.imm, i.rs1));
         zib.build();
         self.insts.insert(self.s, zib);
         self.s += inst_size;
@@ -690,7 +690,7 @@ impl Riscv2ZiskContext<'_> {
         zib.ind_width(w);
         zib.store("ind", i.imm as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
-        zib.verbose(&format!("{} r{}+{}, 0x{:x}(r{})", i.inst, i.rs2, reg_offset, i.imm, i.rs1));
+        zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst, i.rs2, i.imm, i.rs1));
         zib.build();
         self.insts.insert(self.s, zib);
         self.s += inst_size;

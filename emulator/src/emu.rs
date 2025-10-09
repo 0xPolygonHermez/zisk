@@ -1845,8 +1845,8 @@ impl<'a> Emu<'a> {
                 instruction.to_text()
             );
             self.print_regs();
-            self.print_float_regs();
-            self.print_float_saved_regs();
+            // self.print_float_regs();
+            // self.print_float_saved_regs();
             println!();
         }
 

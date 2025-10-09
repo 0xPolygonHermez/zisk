@@ -71,7 +71,7 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
             let inst: u32 = (inst as u32) | ((code[code_index] as u32) << 16);
             code_index += 1;
 
-            let (inst_type, inst_name) = Rvd::get_type_and_name_32_bits(inst);
+            let (inst_type, inst_name, level) = Rvd::get_type_and_name_32_bits(inst);
 
             // Create a RISCV instruction instance with the known fields to be filled with data
             // from the instruction based on its format type
@@ -88,29 +88,13 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
             // |  imm[11:0]    |  rs1    | funct3 |   rd    |       opcode       | I-type
             if i.t == *"I" {
                 i.funct3 = (inst & 0x7000) >> 12;
-                //let funct7 = (inst & 0xFC000000) >> 26;
-                i.funct7 = (inst & 0xFC000000) >> 26;
+                let funct7 = (inst & 0xFC000000) >> 26;
                 i.rd = (inst & 0xF80) >> 7;
                 i.rs1 = (inst & 0xF8000) >> 15;
                 i.imm = signext((inst & 0xFFF00000) >> 20, 12);
-                // let l: i32;
-                // (i.inst, l) = getinst(&inf.op, i.funct3, funct7);
-                // assert!(
-                //     !i.inst.is_empty(),
-                //     "i.inst.is_empty() for inst=0x{:x} at index={} opcode={} func3={:?} funct7={:?}",
-                //     inst,
-                //     code_index,
-                //     opcode,
-                //     i.funct3,
-                //     funct7
-                // );
-                // if l == 2 {
-                //     i.imm &= 0x3F;
-                //     i.funct7 = funct7;
-                // }
-                // If this is a CSR instruction, then the immediate is the CSR address index
-                if i.inst.starts_with("csr") {
-                    i.csr = i.imm as u32 * 8;
+                if level == 2 {
+                    i.imm &= 0x3F;
+                    i.funct7 = funct7;
                 }
             }
             //  31 30 ... 26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
