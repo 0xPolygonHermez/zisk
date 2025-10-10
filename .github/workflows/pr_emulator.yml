@@ -88,11 +88,6 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           sudo ./install_deps.sh
 
-      - name: Build ZisK
-        run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./build_zisk.sh
-
       - name: Emulate in rust Riscof ELF files
         run: |
           . "$HOME/.cargo/env"

@@ -67,6 +67,10 @@ fi
 # Record the number of files
 MAX_COUNTER=${COUNTER}
 
+# Build ZisK
+echo "Building ZisK..."
+cargo build
+
 # Create an empty input file
 INPUT_FILE="/tmp/empty_input.bin"
 touch $INPUT_FILE
@@ -99,7 +103,7 @@ do
     echo "Emulating file ${COUNTER} of ${MAX_COUNTER}: ${ELF_FILE}"
 
     # Execute it and save output
-    ./target/release/ziskemu -e $ELF_FILE -i $INPUT_FILE 2>&1|tee output
+    ./target/debug/ziskemu -e $ELF_FILE -i $INPUT_FILE 2>&1|tee output
 
     # Compare output vs reference
     REFERENCE_FILE=${ELF_FILE%%my.elf}../ref/Reference-sail_c_simulator.signature
