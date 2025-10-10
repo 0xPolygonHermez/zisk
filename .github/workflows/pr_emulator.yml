@@ -55,7 +55,7 @@ jobs:
             --work-dir=/workspace/output/riscof_work/
 
   riscof-elf-tests-asm:
-    name: Riscof ELF tests (assembly)
+    name: Riscof ELF tests (rust and assembly)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     defaults:
@@ -87,6 +87,12 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           sudo ./install_deps.sh
+
+      - name: Emulate in rust Riscof ELF files
+        run: |
+          . "$HOME/.cargo/env"
+          cd "$GITHUB_WORKSPACE"
+          sudo ./tools/emulate_all.sh $GITHUB_WORKSPACE/zisk-testvectors/riscof/riscof_work/rv64i_m
 
       - name: Emulate in assembly Riscof ELF files
         run: |
