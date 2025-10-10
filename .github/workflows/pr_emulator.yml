@@ -81,6 +81,7 @@ jobs:
         with:
           repository: 0xPolygonHermez/zisk-testvectors
           path: zisk-testvectors
+          ref: feature/imacfd
 
       - name: Install dependencies
         run: |
