@@ -68,8 +68,10 @@ fi
 MAX_COUNTER=${COUNTER}
 
 # Build ZisK
+ls -l
 echo "Building ZisK..."
 cargo build
+ls -l
 
 # Create an empty input file
 INPUT_FILE="/tmp/empty_input.bin"

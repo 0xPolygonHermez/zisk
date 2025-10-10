@@ -92,10 +92,10 @@ jobs:
         run: |
           . "$HOME/.cargo/env"
           cd "$GITHUB_WORKSPACE"
-          sudo ./tools/emulate_all.sh $GITHUB_WORKSPACE/zisk-testvectors/riscof/riscof_work/rv64i_m
+          sudo ./tools/emulate_all.sh $GITHUB_WORKSPACE/zisk-testvectors/riscof/riscof_work
 
       - name: Emulate in assembly Riscof ELF files
         run: |
           . "$HOME/.cargo/env"
           cd "$GITHUB_WORKSPACE"
-          sudo ./tools/emulate_asm_all.sh $GITHUB_WORKSPACE/zisk-testvectors/riscof/riscof_work/rv64i_m
+          sudo ./tools/emulate_asm_all.sh $GITHUB_WORKSPACE/zisk-testvectors/riscof/riscof_work
