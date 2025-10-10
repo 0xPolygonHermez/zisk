@@ -6,19 +6,19 @@ use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqLtTableSM;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 use zisk_pil::{ArithEq384Trace, ArithEq384TraceRow};
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 use zisk_pil::{ArithEq384TracePacked, ArithEq384TraceRowPacked};
 
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 type ArithEq384TraceRowType<F> = ArithEq384TraceRowPacked<F>;
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 type ArithEq384TraceType<F> = ArithEq384TracePacked<F>;
 
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 type ArithEq384TraceRowType<F> = ArithEq384TraceRow<F>;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 type ArithEq384TraceType<F> = ArithEq384Trace<F>;
 
 use crate::{

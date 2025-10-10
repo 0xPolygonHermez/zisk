@@ -10,19 +10,19 @@ use precompiles_helpers::keccakf_topology;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::KeccakfFixed;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 use zisk_pil::{KeccakfTrace, KeccakfTraceRow};
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 use zisk_pil::{KeccakfTracePacked, KeccakfTraceRowPacked};
 
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 type KeccakfTraceRowType<F> = KeccakfTraceRowPacked<F>;
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 type KeccakfTraceType<F> = KeccakfTracePacked<F>;
 
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 type KeccakfTraceRowType<F> = KeccakfTraceRow<F>;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 type KeccakfTraceType<F> = KeccakfTrace<F>;
 
 use crate::KeccakfInput;

@@ -11,41 +11,41 @@ use crate::MemAlignInput;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_pil::{MemAlignByteAirValues, MemAlignReadByteAirValues, MemAlignWriteByteAirValues};
 
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 use zisk_pil::{
     MemAlignByteTrace, MemAlignByteTraceRow, MemAlignReadByteTrace, MemAlignReadByteTraceRow,
     MemAlignWriteByteTrace, MemAlignWriteByteTraceRow,
 };
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 use zisk_pil::{
     MemAlignByteTracePacked, MemAlignByteTraceRowPacked, MemAlignReadByteTracePacked,
     MemAlignReadByteTraceRowPacked, MemAlignWriteByteTracePacked, MemAlignWriteByteTraceRowPacked,
 };
 
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 pub type MemAlignByteTraceRowType<F> = MemAlignByteTraceRowPacked<F>;
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 pub type MemAlignByteTraceType<F> = MemAlignByteTracePacked<F>;
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 pub type MemAlignReadByteTraceRowType<F> = MemAlignReadByteTraceRowPacked<F>;
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 pub type MemAlignReadByteTraceType<F> = MemAlignReadByteTracePacked<F>;
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 pub type MemAlignWriteByteTraceRowType<F> = MemAlignWriteByteTraceRowPacked<F>;
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 pub type MemAlignWriteByteTraceType<F> = MemAlignWriteByteTracePacked<F>;
 
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 pub type MemAlignByteTraceRowType<F> = MemAlignByteTraceRow<F>;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 pub type MemAlignByteTraceType<F> = MemAlignByteTrace<F>;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 pub type MemAlignReadByteTraceRowType<F> = MemAlignReadByteTraceRow<F>;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 pub type MemAlignReadByteTraceType<F> = MemAlignReadByteTrace<F>;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 pub type MemAlignWriteByteTraceRowType<F> = MemAlignWriteByteTraceRow<F>;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 pub type MemAlignWriteByteTraceType<F> = MemAlignWriteByteTrace<F>;
 
 pub trait MemAlignByteRow<F: PrimeField64, T> {
