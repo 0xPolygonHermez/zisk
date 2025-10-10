@@ -3322,11 +3322,11 @@ impl ZiskRom2Asm {
         Self::push_external_registers(&mut ctx, code);
 
         // Create a new read section for every RO data entry of the rom
-        let mut total_ro_data_len: usize = 0;
+        //let mut total_ro_data_len: usize = 0;
         for i in 0..rom.ro_data.len() {
             let mut address = rom.ro_data[i].from;
             let ro_data_len = rom.ro_data[i].data.len();
-            total_ro_data_len += ro_data_len;
+            //total_ro_data_len += ro_data_len;
             // println!(
             //     "ZiskRom2Asm::save_to_asm() ro_data[{}] len={} total_len={} address={:x}",
             //     i, ro_data_len, total_ro_data_len, address
