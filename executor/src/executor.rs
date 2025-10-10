@@ -1522,6 +1522,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         });
 
         // Add to executor stats
+        #[cfg(feature = "stats")]
         self.stats.add_stat(
             0,
             parent_stats_id,
