@@ -305,6 +305,7 @@ impl Worker {
 
         let mut witness_lib = witness_lib_constructor(
             config.verbose.into(),
+            None,
             config.elf.clone(),
             config.asm.clone(),
             config.asm_rom.clone(),

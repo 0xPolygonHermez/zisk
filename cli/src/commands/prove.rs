@@ -267,6 +267,7 @@ impl ZiskProve {
             unsafe { library.get(b"init_library")? };
         let mut witness_lib = witness_lib_constructor(
             self.verbose.into(),
+            None,
             self.elf.clone(),
             self.asm.clone(),
             asm_rom,

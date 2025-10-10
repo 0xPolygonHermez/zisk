@@ -195,6 +195,7 @@ impl ZiskExecute {
                     unsafe { library.get(b"init_library")? };
                 witness_lib = witness_lib_constructor(
                     self.verbose.into(),
+                    None,
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,

@@ -32,6 +32,7 @@ use rom_setup::gen_elf_hash;
 use sm_rom::{RomInstance, RomSM};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use witness::WitnessComponent;
+use zisk_common::io::ZiskStdin;
 
 use crate::DummyCounter;
 use data_bus::DataBusTrait;
@@ -50,7 +51,6 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 use std::{
     collections::HashMap,
-    fs,
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
 };
@@ -78,6 +78,8 @@ enum MinimalTraceExecutionMode {
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
 pub struct ZiskExecutor<F: PrimeField64> {
+    stdin: Mutex<Box<dyn ZiskStdin>>,
+
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
 
@@ -157,6 +159,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        stdin: Box<dyn ZiskStdin>,
         rom_path: PathBuf,
         asm_path: Option<PathBuf>,
         asm_rom_path: Option<PathBuf>,
@@ -185,6 +188,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
 
         Self {
+            stdin: Mutex::new(stdin),
             rom_path,
             asm_runner_path: asm_path,
             asm_rom_path,
@@ -234,8 +238,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
-    fn execute_with_emulator(&self, input_data_path: Option<PathBuf>) -> MinimalTraces {
-        let min_traces = self.run_emulator(Self::NUM_THREADS, input_data_path);
+    fn execute_with_emulator(&self) -> MinimalTraces {
+        let min_traces = self.run_emulator(Self::NUM_THREADS, self.stdin.lock().unwrap().as_mut());
 
         // Store execute steps
         let steps = if let MinimalTraces::EmuTrace(min_traces) = &min_traces {
@@ -261,7 +265,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     fn execute_with_assembly(
         &self,
         pctx: &ProofCtx<F>,
-        input_data_path: Option<PathBuf>,
         _caller_stats_id: u64,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<JoinHandle<AsmRunnerMO>>)
     {
@@ -276,43 +279,42 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             ExecutorStatsEvent::Begin,
         );
 
-        if let Some(input_path) = input_data_path.as_ref() {
-            AsmServices::SERVICES.par_iter().for_each(|service| {
-                #[cfg(feature = "stats")]
-                let stats_id = self.stats.lock().unwrap().get_id();
-                #[cfg(feature = "stats")]
-                self.stats.lock().unwrap().add_stat(
-                    parent_stats_id,
-                    stats_id,
-                    "ASM_WRITE_INPUT",
-                    0,
-                    ExecutorStatsEvent::Begin,
-                );
+        AsmServices::SERVICES.par_iter().for_each(|service| {
+            #[cfg(feature = "stats")]
+            let stats_id = self.stats.lock().unwrap().get_id();
+            #[cfg(feature = "stats")]
+            self.stats.lock().unwrap().add_stat(
+                parent_stats_id,
+                stats_id,
+                "ASM_WRITE_INPUT",
+                0,
+                ExecutorStatsEvent::Begin,
+            );
 
-                let port = if let Some(base_port) = self.base_port {
-                    AsmServices::port_for(service, base_port, self.local_rank)
-                } else {
-                    AsmServices::default_port(service, self.local_rank)
-                };
+            let port = if let Some(base_port) = self.base_port {
+                AsmServices::port_for(service, base_port, self.local_rank)
+            } else {
+                AsmServices::default_port(service, self.local_rank)
+            };
 
-                let shmem_input_name = AsmSharedMemory::<AsmMTHeader>::shmem_input_name(
-                    port,
-                    *service,
-                    self.local_rank,
-                );
-                write_input(input_path, &shmem_input_name, self.unlock_mapped_memory);
+            let shmem_input_name =
+                AsmSharedMemory::<AsmMTHeader>::shmem_input_name(port, *service, self.local_rank);
+            write_input(
+                self.stdin.lock().unwrap().as_mut(),
+                &shmem_input_name,
+                self.unlock_mapped_memory,
+            );
 
-                // Add to executor stats
-                #[cfg(feature = "stats")]
-                self.stats.lock().unwrap().add_stat(
-                    parent_stats_id,
-                    stats_id,
-                    "ASM_WRITE_INPUT",
-                    0,
-                    ExecutorStatsEvent::End,
-                );
-            });
-        }
+            // Add to executor stats
+            #[cfg(feature = "stats")]
+            self.stats.lock().unwrap().add_stat(
+                parent_stats_id,
+                stats_id,
+                "ASM_WRITE_INPUT",
+                0,
+                ExecutorStatsEvent::End,
+            );
+        });
 
         let chunk_size = self.chunk_size;
         let (world_rank, local_rank, base_port) =
@@ -511,15 +513,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_count)
     }
 
-    fn run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>) -> MinimalTraces {
+    fn run_emulator(&self, num_threads: usize, stdin: &mut dyn ZiskStdin) -> MinimalTraces {
         // Call emulate with these options
-        let input_data = if let Some(path) = &input_data_path {
-            // Read inputs data from the provided inputs path
-            let path = PathBuf::from(path.display().to_string());
-            fs::read(path).expect("Could not read inputs file")
-        } else {
-            Vec::new()
-        };
+        let input_data = stdin.read();
 
         // Settings for the emulator
         let emu_options = EmuOptions {
@@ -1158,7 +1154,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         &self,
         pctx: Arc<ProofCtx<F>>,
         global_ids: &RwLock<Vec<usize>>,
-        input_data_path: Option<PathBuf>,
+        _input_data_path: Option<PathBuf>,
     ) {
         #[cfg(feature = "stats")]
         let parent_stats_id = self.stats.lock().unwrap().get_id();
@@ -1186,7 +1182,6 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             // If we are executing in assembly mode
             self.execute_with_assembly(
                 &pctx,
-                input_data_path,
                 #[cfg(feature = "stats")]
                 parent_stats_id,
                 #[cfg(not(feature = "stats"))]
@@ -1194,7 +1189,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             )
         } else {
             // Otherwise, use the emulator
-            let min_traces = self.execute_with_emulator(input_data_path);
+            let min_traces = self.execute_with_emulator();
 
             timer_start_info!(COUNT);
             let (main_count, secn_count) = self.count(&min_traces);

@@ -4,7 +4,7 @@ use fields::PrimeField64;
 use proofman_common::VerboseMode;
 use witness::WitnessLibrary;
 
-use crate::ExecutorStats;
+use crate::{io::ZiskStdin, ExecutorStats};
 
 #[derive(Debug, Default, Clone)]
 pub struct ZiskExecutionResult {
@@ -42,6 +42,7 @@ pub trait ZiskLib<F: PrimeField64>:
 
 pub type ZiskLibInitFn<F> = fn(
     VerboseMode,
+    Option<Box<dyn ZiskStdin>>,
     PathBuf,         // Rom path
     Option<PathBuf>, // Asm path
     Option<PathBuf>, // Asm ROM path

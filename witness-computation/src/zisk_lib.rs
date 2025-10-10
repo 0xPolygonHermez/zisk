@@ -10,7 +10,10 @@ use pil_std_lib::Std;
 use proofman::register_std;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
-use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary};
+use zisk_common::{
+    io::{NullStdin, ZiskStdin},
+    ExecutorStats, Stats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary,
+};
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 use zisk_pil::{
     ARITH_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS,
@@ -29,6 +32,7 @@ use sm_mem::Mem;
 use sm_rom::RomSM;
 
 pub struct WitnessLib<F: PrimeField64> {
+    stdin: Option<Box<dyn ZiskStdin>>,
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
@@ -45,6 +49,7 @@ pub struct WitnessLib<F: PrimeField64> {
 #[allow(clippy::too_many_arguments)]
 fn init_library(
     verbose_mode: proofman_common::VerboseMode,
+    stdin: Option<Box<dyn ZiskStdin>>,
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
@@ -59,6 +64,7 @@ fn init_library(
     let chunk_size = CHUNK_SIZE;
 
     let result = Box::new(WitnessLib {
+        stdin,
         elf_path,
         asm_path,
         asm_rom_path,
@@ -156,8 +162,11 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             ],
         );
 
+        let stdin = self.stdin.take().unwrap_or_else(|| Box::new(NullStdin));
+
         // Step 5: Create the executor and register the secondary state machines
         let executor: ZiskExecutor<F> = ZiskExecutor::new(
+            stdin,
             self.elf_path.clone(),
             self.asm_path.clone(),
             self.asm_rom_path.clone(),
