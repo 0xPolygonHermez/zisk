@@ -1,5 +1,9 @@
 #!/bin/bash
 
+set -e
+
+source "$HOME/.cargo/env"
+
 echo "Emulate in assembly all ELF files found in a directory"
 
 # Check that at least one argument has been passed
@@ -68,10 +72,8 @@ fi
 MAX_COUNTER=${COUNTER}
 
 # Build ZisK
-ls -l
 echo "Building ZisK..."
 cargo build
-ls -l
 
 # Create an empty input file
 INPUT_FILE="/tmp/empty_input.bin"
