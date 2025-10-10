@@ -12,19 +12,19 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 use zisk_pil::{BinaryExtensionTracePacked, BinaryExtensionTraceRowPacked};
 
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 type BinaryExtensionTraceRowType<F> = BinaryExtensionTraceRowPacked<F>;
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 type BinaryExtensionTraceType<F> = BinaryExtensionTracePacked<F>;
 
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 type BinaryExtensionTraceRowType<F> = BinaryExtensionTraceRow<F>;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 type BinaryExtensionTraceType<F> = BinaryExtensionTrace<F>;
 
 // Constants for bit masks and operations.

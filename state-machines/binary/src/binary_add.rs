@@ -8,19 +8,19 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use std::sync::Arc;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 use zisk_pil::{BinaryAddTracePacked, BinaryAddTraceRowPacked};
 
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 type BinaryAddTraceRowType<F> = BinaryAddTraceRowPacked<F>;
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 type BinaryAddTraceType<F> = BinaryAddTracePacked<F>;
 
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 type BinaryAddTraceRowType<F> = BinaryAddTraceRow<F>;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 type BinaryAddTraceType<F> = BinaryAddTrace<F>;
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;

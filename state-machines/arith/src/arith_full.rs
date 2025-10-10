@@ -18,19 +18,19 @@ use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 use zisk_pil::{ArithTrace, ArithTraceRow};
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 use zisk_pil::{ArithTracePacked, ArithTraceRowPacked};
 
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 type ArithTraceRowType<F> = ArithTraceRowPacked<F>;
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 type ArithTraceType<F> = ArithTracePacked<F>;
 
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 type ArithTraceRowType<F> = ArithTraceRow<F>;
-#[cfg(any(not(feature = "gpu"), not(feature = "packed")))]
+#[cfg(not(feature = "packed"))]
 type ArithTraceType<F> = ArithTrace<F>;
 
 const CHUNK_SIZE: u64 = 0x10000;

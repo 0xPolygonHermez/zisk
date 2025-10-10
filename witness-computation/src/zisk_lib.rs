@@ -21,7 +21,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary};
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
-#[cfg(all(feature = "gpu", feature = "packed"))]
+#[cfg(feature = "packed")]
 use zisk_pil::PACKED_INFO;
 use zisk_pil::{
     ARITH_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS,
@@ -184,7 +184,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
     fn get_packed_info(&self) -> HashMap<(usize, usize), PackedInfo> {
         let mut _packed_info = HashMap::new();
-        #[cfg(all(feature = "gpu", feature = "packed"))]
+        #[cfg(feature = "packed")]
         {
             for packed_info in PACKED_INFO.iter() {
                 _packed_info.insert(
