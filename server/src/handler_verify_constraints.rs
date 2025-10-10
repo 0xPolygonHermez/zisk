@@ -8,8 +8,7 @@ use fields::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::DebugInfo;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLib};
+use zisk_common::{ExecutorStats, ZiskExecutionResult, ZiskLib};
 
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
@@ -58,11 +57,8 @@ impl ZiskServiceVerifyConstraintsHandler {
                 let elapsed = start.elapsed();
 
                 #[allow(clippy::type_complexity)]
-                let (result, _stats, _witness_stats): (
-                    ZiskExecutionResult,
-                    ExecutorStats,
-                    HashMap<usize, Stats>,
-                ) = witness_lib.get_execution_result().expect("Failed to get execution result");
+                let (result, mut _stats): (ZiskExecutionResult, ExecutorStats) =
+                    witness_lib.get_execution_result().expect("Failed to get execution result");
 
                 println!();
                 tracing::info!(
@@ -82,10 +78,9 @@ impl ZiskServiceVerifyConstraintsHandler {
                 // Store the stats in stats.json
                 #[cfg(feature = "stats")]
                 {
-                    let stats = result.1;
-                    let stats_id = stats.lock().unwrap().get_id();
-                    stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
-                    stats.lock().unwrap().store_stats();
+                    let stats_id = _stats.next_id();
+                    _stats.add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
+                    _stats.store_stats();
                 }
             }
         });

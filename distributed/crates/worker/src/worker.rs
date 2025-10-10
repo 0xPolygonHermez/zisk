@@ -653,7 +653,7 @@ impl Worker {
                 .unwrap_or_default();
 
             let executed_steps = match witness_lib.get_execution_result() {
-                Some((exec_result, _exec_stats, _witness_stats)) => exec_result.executed_steps,
+                Some((exec_result, _)) => exec_result.executed_steps,
                 None => {
                     error!("Failed to get execution result from witness library for {job_id}");
                     0

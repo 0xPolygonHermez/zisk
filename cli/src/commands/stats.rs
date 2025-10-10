@@ -297,11 +297,8 @@ impl ZiskStats {
         };
 
         #[allow(clippy::type_complexity)]
-        let (_, stats, witness_stats): (
-            ZiskExecutionResult,
-            ExecutorStats,
-            HashMap<usize, Stats>,
-        ) = witness_lib.get_execution_result().expect("Failed to get execution result");
+        let (_, stats): (ZiskExecutionResult, ExecutorStats) =
+            witness_lib.get_execution_result().expect("Failed to get execution result");
 
         if world_rank % 2 == 1 {
             thread::sleep(std::time::Duration::from_millis(2000));
@@ -313,7 +310,7 @@ impl ZiskStats {
             "-".repeat(55)
         );
 
-        Self::print_stats(&witness_stats);
+        Self::print_stats(&stats.witness_stats);
 
         stats.print_stats();
 
@@ -388,7 +385,7 @@ impl ZiskStats {
         let mut total_witness_time = 0;
         for stat in sorted_stats.iter() {
             let collect_ms = stat.collect_duration;
-            let witness_ms = stat.witness_duration;
+            let witness_ms = stat.witness_duration as u64;
 
             println!(
                 "    {:<8} {:<25} {:<8} {:<12} {:<12}",
@@ -433,7 +430,7 @@ impl ZiskStats {
 
             for e in &entries {
                 let collect_ms = e.collect_duration;
-                let witness_ms = e.witness_duration;
+                let witness_ms = e.witness_duration as u64;
 
                 c_min = c_min.min(collect_ms);
                 c_max = c_max.max(collect_ms);
@@ -543,8 +540,11 @@ impl ZiskStats {
                 //     "{} num_chunks={}, start_time={}, duration={}",
                 //     name, stat.num_chunks, witness_start_time, stat.witness_duration
                 // );
-                let task =
-                    Task { name, start: witness_start_time, duration: stat.witness_duration };
+                let task = Task {
+                    name,
+                    start: witness_start_time,
+                    duration: stat.witness_duration as u64,
+                };
                 tasks.push(task);
             }
         }

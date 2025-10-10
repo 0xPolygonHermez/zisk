@@ -5,12 +5,11 @@ use proofman::ProofMan;
 use proofman::{ProofInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::{fs::File, path::PathBuf};
-use zisk_common::{ExecutorStats, ProofLog, Stats, ZiskExecutionResult, ZiskLib};
+use zisk_common::{ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
 use zstd::stream::write::Encoder;
 
 use crate::{
@@ -90,10 +89,9 @@ impl ZiskServiceProveHandler {
 
                 if mpi_ctx.rank == 0 {
                     #[allow(clippy::type_complexity)]
-                    let (result, _stats, _witness_stats): (
+                    let (result, mut _stats): (
                         ZiskExecutionResult,
                         ExecutorStats,
-                        HashMap<usize, Stats>,
                     ) = witness_lib.get_execution_result().expect("Failed to get execution result");
 
                     proofman.set_barrier();
@@ -116,15 +114,9 @@ impl ZiskServiceProveHandler {
                     // Store the stats in stats.json
                     #[cfg(feature = "stats")]
                     {
-                        let stats_id = _stats.lock().unwrap().get_id();
-                        _stats.lock().unwrap().add_stat(
-                            0,
-                            stats_id,
-                            "END",
-                            0,
-                            ExecutorStatsEvent::Mark,
-                        );
-                        _stats.lock().unwrap().store_stats();
+                        let stats_id = _stats.next_id();
+                        _stats.add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
+                        _stats.store_stats();
                     }
 
                     if let Some(proof_id) = proof_id {
