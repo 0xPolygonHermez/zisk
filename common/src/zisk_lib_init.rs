@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, time::Instant};
+use std::{path::PathBuf, time::Instant};
 
 use fields::PrimeField64;
 use proofman_common::VerboseMode;
@@ -22,16 +22,14 @@ pub struct Stats {
     /// Witness start time
     pub witness_start_time: Instant,
     /// Witness duration in microseconds
-    pub witness_duration: u64,
+    pub witness_duration: u128,
     /// Number of chunks
     pub num_chunks: usize,
 }
 
 /// Extension trait that provides execution result access without Any boxing
 pub trait ZiskWitnessLibrary<F: PrimeField64> {
-    fn get_execution_result(
-        &self,
-    ) -> Option<(ZiskExecutionResult, ExecutorStats, HashMap<usize, Stats>)>;
+    fn get_execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)>;
 }
 
 // SUpertrait for ZiskWitnessLibrary and WitnessLibrary

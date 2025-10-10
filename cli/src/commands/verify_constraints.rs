@@ -18,7 +18,7 @@ use rom_setup::{
 use std::{collections::HashMap, fs, path::PathBuf};
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLibInitFn};
+use zisk_common::{ExecutorStats, ZiskExecutionResult, ZiskLibInitFn};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -227,11 +227,8 @@ impl ZiskVerifyConstraints {
         let elapsed = start.elapsed();
 
         #[allow(clippy::type_complexity)]
-        let (result, _stats, _witness_stats): (
-            ZiskExecutionResult,
-            ExecutorStats,
-            HashMap<usize, Stats>,
-        ) = witness_lib.get_execution_result().expect("Failed to get execution result");
+        let (result, mut _stats): (ZiskExecutionResult, ExecutorStats) =
+            witness_lib.get_execution_result().expect("Failed to get execution result");
 
         tracing::info!("");
         tracing::info!(
@@ -254,9 +251,9 @@ impl ZiskVerifyConstraints {
         // Store the stats in stats.json
         #[cfg(feature = "stats")]
         {
-            let stats_id = _stats.lock().unwrap().get_id();
-            _stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
-            _stats.lock().unwrap().store_stats();
+            let stats_id = _stats.next_id();
+            _stats.add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
+            _stats.store_stats();
         }
 
         Ok(())
