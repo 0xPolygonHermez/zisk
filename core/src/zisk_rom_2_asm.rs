@@ -3338,13 +3338,7 @@ impl ZiskRom2Asm {
                 );
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
-                *code += &format!(
-                    "\tmov qword {}[{}], {} {}\n",
-                    ctx.ptr,
-                    REG_ADDRESS,
-                    REG_VALUE,
-                    ctx.comment_str(&format!("ro_data[{:x}] = {:x}", address, value))
-                );
+                *code += &format!("\tmov qword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
                 address += 8;
                 written_bytes += 8;
             }
@@ -3354,13 +3348,7 @@ impl ZiskRom2Asm {
                 );
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
-                *code += &format!(
-                    "\tmov dword {}[{}], {} {}\n",
-                    ctx.ptr,
-                    REG_ADDRESS,
-                    REG_VALUE,
-                    ctx.comment_str(&format!("ro_data[{:x}] = {:x}", address, value))
-                );
+                *code += &format!("\tmov dword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
                 address += 4;
                 written_bytes += 4;
             }
@@ -3370,28 +3358,15 @@ impl ZiskRom2Asm {
                 );
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
-                *code += &format!(
-                    "\tmov word {}[{}], {} {}\n",
-                    ctx.ptr,
-                    REG_ADDRESS,
-                    REG_VALUE,
-                    ctx.comment_str(&format!("ro_data[{:x}] = {:x}", address, value))
-                );
+                *code += &format!("\tmov word {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
                 address += 2;
                 written_bytes += 2;
             }
             while written_bytes < ro_data_len {
+                let value = rom.ro_data[i].data[written_bytes];
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
-                *code += &format!(
-                    "\tmov byte {}[{}], 0x{:x} {}\n",
-                    ctx.ptr,
-                    REG_ADDRESS,
-                    rom.ro_data[i].data[written_bytes],
-                    ctx.comment_str(&format!(
-                        "ro_data[{:x}] = {:x}",
-                        address, rom.ro_data[i].data[written_bytes]
-                    ))
-                );
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
+                *code += &format!("\tmov byte {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
                 address += 1;
                 written_bytes += 1;
             }
