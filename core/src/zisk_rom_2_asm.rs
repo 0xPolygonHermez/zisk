@@ -33,6 +33,8 @@ const REG_FLAG: &str = "rdx";
 const REG_STEP: &str = "r14";
 const REG_VALUE: &str = "r9";
 const REG_VALUE_W: &str = "r9d";
+const REG_VALUE_H: &str = "r9w";
+const REG_VALUE_B: &str = "r9b";
 const REG_ADDRESS: &str = "r10";
 const REG_MEM_READS_ADDRESS: &str = "r12";
 const REG_MEM_READS_SIZE: &str = "r13";
@@ -3348,7 +3350,7 @@ impl ZiskRom2Asm {
                 );
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
-                *code += &format!("\tmov dword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
+                *code += &format!("\tmov dword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE_W);
                 address += 4;
                 written_bytes += 4;
             }
@@ -3358,7 +3360,7 @@ impl ZiskRom2Asm {
                 );
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
-                *code += &format!("\tmov word {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
+                *code += &format!("\tmov word {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE_H);
                 address += 2;
                 written_bytes += 2;
             }
@@ -3366,7 +3368,7 @@ impl ZiskRom2Asm {
                 let value = rom.ro_data[i].data[written_bytes];
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
-                *code += &format!("\tmov byte {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
+                *code += &format!("\tmov byte {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE_B);
                 address += 1;
                 written_bytes += 1;
             }
