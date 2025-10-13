@@ -74,36 +74,29 @@ pub fn skip_add256_mem_inputs(
     mem_collectors_info: &[MemCollectorInfo],
 ) -> bool {
     // verify main params "struct" of indirections
-    for iparam in 0..PARAMS {
-        let addr = addr_main + iparam as u32 * 8;
-        for mem_collector in mem_collectors_info {
-            if !mem_collector.skip_addr(addr) {
-                return false;
-            }
+    let to_addr = addr_main + (PARAMS as u32 - 1) * 8;
+    for mem_collector in mem_collectors_info {
+        if !mem_collector.skip_addr_range(addr_main, to_addr) {
+            return false;
         }
     }
-
     // verify read params
     for iparam in 0..READ_PARAMS {
         let param_addr = data[OPERATION_BUS_DATA_SIZE + iparam] as u32;
-        for ichunk in 0..PARAM_CHUNKS {
-            let addr = param_addr + ichunk as u32 * 8;
-            for mem_collector in mem_collectors_info {
-                if !mem_collector.skip_addr(addr) {
-                    return false;
-                }
+        let to_addr = param_addr + (PARAM_CHUNKS as u32 - 1) * 8;
+        for mem_collector in mem_collectors_info {
+            if !mem_collector.skip_addr_range(param_addr, to_addr) {
+                return false;
             }
         }
     }
 
     // verify write param
     let write_addr = data[OPERATION_BUS_DATA_SIZE + WRITE_ADDR_PARAM] as u32;
-    for ichunk in 0..PARAM_CHUNKS {
-        let addr = write_addr + ichunk as u32 * 8;
-        for mem_collector in mem_collectors_info {
-            if !mem_collector.skip_addr(addr) {
-                return false;
-            }
+    let to_addr = write_addr + (PARAM_CHUNKS as u32 - 1) * 8;
+    for mem_collector in mem_collectors_info {
+        if !mem_collector.skip_addr_range(write_addr, to_addr) {
+            return false;
         }
     }
 
