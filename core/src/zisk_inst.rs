@@ -83,7 +83,8 @@ pub enum ZiskOperationType {
     Sha256,
     PubOut,
     ArithEq,
-    ArithEq384, // Note: Add new core operations here
+    ArithEq384,
+    BigInt, // Note: Add new core operations here
     // ZisK Free Input Operations
     FcallParam,
     Fcall,
@@ -100,6 +101,7 @@ pub const SHA256_OP_TYPE_ID: u32 = ZiskOperationType::Sha256 as u32;
 pub const PUB_OUT_OP_TYPE_ID: u32 = ZiskOperationType::PubOut as u32;
 pub const ARITH_EQ_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq as u32;
 pub const ARITH_EQ_384_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq384 as u32;
+pub const BIG_INT_OP_TYPE_ID: u32 = ZiskOperationType::BigInt as u32;
 pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
 pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
 pub const FCALL_GET_OP_TYPE_ID: u32 = ZiskOperationType::FcallGet as u32;

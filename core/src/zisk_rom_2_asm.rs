@@ -206,6 +206,7 @@ impl ZiskAsmContext {
                 | ZiskOp::Bls12_381ComplexAdd
                 | ZiskOp::Bls12_381ComplexSub
                 | ZiskOp::Bls12_381ComplexMul
+                | ZiskOp::Add256
         )
     }
 }
@@ -511,6 +512,7 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_bls12_381_complex_add\n";
         *code += ".extern opcode_bls12_381_complex_sub\n";
         *code += ".extern opcode_bls12_381_complex_mul\n";
+        *code += ".extern opcode_add256\n";
         *code += ".extern chunk_done\n";
         *code += ".extern print_fcall_ctx\n";
         *code += ".extern print_pc\n";
@@ -4962,7 +4964,7 @@ impl ZiskRom2Asm {
                             *code += &format!("\tjmp pc_{:x}_sha256_active_chunk_done\n", ctx.pc);
                             *code += &format!("pc_{:x}_sha256_active_chunk:\n", ctx.pc);
                         }
-                        Self::precompiled_save_mem_reads(ctx, code, 2, 2, [4, 8].to_vec());
+                        Self::precompiled_save_mem_reads(ctx, code, 2, &[4, 8]);
                         if ctx.zip() {
                             *code += &format!("pc_{:x}_sha256_active_chunk_done:\n", ctx.pc);
                         }
@@ -4970,11 +4972,7 @@ impl ZiskRom2Asm {
 
                     // Save memory operations into mem_reads
                     if ctx.mem_op() {
-                        // Arguments will be read from indirection[0, 1]
-                        Self::mem_op_precompiled_read(ctx, code, 2, 2, [4, 8].to_vec());
-
-                        // Result will be written to indirection[0]
-                        Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 4);
+                        Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[4, 8], 0, 0, 4);
                     }
 
                     // Call the SHA256 function
@@ -5047,7 +5045,7 @@ impl ZiskRom2Asm {
                         *code += &format!("\tjmp pc_{:x}_arith256_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_arith256_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 5, 3, [4, 4, 4].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 5, &[4, 4, 4]);
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_arith256_active_chunk_done:\n", ctx.pc);
                     }
@@ -5078,11 +5076,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1, 2]
-                    Self::mem_op_precompiled_read(ctx, code, 5, 3, [4, 4, 4].to_vec());
-
-                    // Result will be written to indirection[3, 4]
-                    Self::mem_op_precompiled_write(ctx, code, 5, 3, 4, 4);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 5, &[4, 4, 4], 3, 4, 4);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -5126,7 +5120,7 @@ impl ZiskRom2Asm {
                         *code += &format!("\tjmp pc_{:x}_arith256mod_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_arith256mod_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 5, 4, [4, 4, 4, 4].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 5, &[4, 4, 4, 4]);
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_arith256mod_active_chunk_done:\n", ctx.pc);
                     }
@@ -5134,11 +5128,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1, 2, 3]
-                    Self::mem_op_precompiled_read(ctx, code, 5, 4, [4, 4, 4, 4].to_vec());
-
-                    // Result will be written to indirection[4]
-                    Self::mem_op_precompiled_write(ctx, code, 5, 4, 4, 4);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 5, &[4, 4, 4, 4], 4, 4, 4);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -5205,7 +5195,7 @@ impl ZiskRom2Asm {
                         *code += &format!("\tjmp pc_{:x}_secp256k1add_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_secp256k1add_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [8, 8].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_secp256k1add_active_chunk_done:\n", ctx.pc);
                     }
@@ -5213,11 +5203,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
-
-                    // Result will be written to indirection[0]
-                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 8);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -5608,7 +5594,7 @@ impl ZiskRom2Asm {
                             &format!("\tjmp pc_{:x}_bn254curveadd_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_bn254curveadd_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [8, 8].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_bn254curveadd_active_chunk_done:\n", ctx.pc);
                     }
@@ -5616,11 +5602,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
-
-                    // Result will be written to indirection[0]
-                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 8);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -5789,7 +5771,7 @@ impl ZiskRom2Asm {
                             &format!("\tjmp pc_{:x}_bn254complexadd_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_bn254complexadd_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [8, 8].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_bn254complexadd_active_chunk_done:\n", ctx.pc);
                     }
@@ -5797,11 +5779,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
-
-                    // Result will be written to indirection[0]
-                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 8);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -5869,7 +5847,7 @@ impl ZiskRom2Asm {
                             &format!("\tjmp pc_{:x}_bn254complexsub_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_bn254complexsub_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [8, 8].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_bn254complexsub_active_chunk_done:\n", ctx.pc);
                     }
@@ -5877,11 +5855,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
-
-                    // Result will be written to indirection[0]
-                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 8);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -5949,7 +5923,7 @@ impl ZiskRom2Asm {
                             &format!("\tjmp pc_{:x}_bn254complexmul_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_bn254complexmul_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [8, 8].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_bn254complexmul_active_chunk_done:\n", ctx.pc);
                     }
@@ -5957,11 +5931,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
-
-                    // Result will be written to indirection[0]
-                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 8);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -6037,7 +6007,7 @@ impl ZiskRom2Asm {
                         *code += &format!("\tjmp pc_{:x}_arith384mod_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_arith384mod_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 5, 4, [6, 6, 6, 6].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 5, &[6, 6, 6, 6]);
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_arith384mod_active_chunk_done:\n", ctx.pc);
                     }
@@ -6045,11 +6015,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1, 2, 3]
-                    Self::mem_op_precompiled_read(ctx, code, 5, 4, [6, 6, 6, 6].to_vec());
-
-                    // Result will be written to indirection[4]
-                    Self::mem_op_precompiled_write(ctx, code, 5, 4, 4, 6);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 5, &[6, 6, 6, 6], 4, 4, 6);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -6117,7 +6083,7 @@ impl ZiskRom2Asm {
                             &format!("\tjmp pc_{:x}_bls12_381curveadd_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_bls12_381curveadd_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [12, 12].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_bls12_381curveadd_active_chunk_done:\n", ctx.pc);
                     }
@@ -6125,11 +6091,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [12, 12].to_vec());
-
-                    // Result will be written to indirection[0]
-                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 12);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -6301,7 +6263,7 @@ impl ZiskRom2Asm {
                         );
                         *code += &format!("pc_{:x}_bls12_381complexadd_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [12, 12].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
                     if ctx.zip() {
                         *code +=
                             &format!("pc_{:x}_bls12_381complexadd_active_chunk_done:\n", ctx.pc);
@@ -6310,11 +6272,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [12, 12].to_vec());
-
-                    // Result will be written to indirection[0]
-                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 12);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -6385,7 +6343,7 @@ impl ZiskRom2Asm {
                         );
                         *code += &format!("pc_{:x}_bls12_381complexsub_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [12, 12].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
                     if ctx.zip() {
                         *code +=
                             &format!("pc_{:x}_bls12_381complexsub_active_chunk_done:\n", ctx.pc);
@@ -6394,11 +6352,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [12, 12].to_vec());
-
-                    // Result will be written to indirection[0]
-                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 12);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -6469,7 +6423,7 @@ impl ZiskRom2Asm {
                         );
                         *code += &format!("pc_{:x}_bls12_381complexmul_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [12, 12].to_vec());
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[12, 12]);
                     if ctx.zip() {
                         *code +=
                             &format!("pc_{:x}_bls12_381complexmul_active_chunk_done:\n", ctx.pc);
@@ -6478,11 +6432,7 @@ impl ZiskRom2Asm {
 
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
-                    // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [12, 12].to_vec());
-
-                    // Result will be written to indirection[0]
-                    Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 12);
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[12, 12], 0, 0, 12);
                 }
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -6522,6 +6472,91 @@ impl ZiskRom2Asm {
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Add256 => {
+                *code += &ctx.full_line_comment("Add256".to_string());
+
+                // Use the memory address as the first and unique parameter
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    *code += &format!(
+                        "\tmov rdi, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("rdi = b = address")
+                    );
+                }
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
+                    // If zip, check if chunk is active
+                    if ctx.zip() {
+                        *code += &format!(
+                            "\ttest {}, 1 {}\n",
+                            REG_ACTIVE_CHUNK,
+                            ctx.comment_str("active_chunk == 1 ?")
+                        );
+                        *code += &format!("\tjnz pc_{:x}_add256_active_chunk\n", ctx.pc);
+                        *code += &format!("\tjmp pc_{:x}_add256_active_chunk_done\n", ctx.pc);
+                        *code += &format!("pc_{:x}_add256_active_chunk:\n", ctx.pc);
+                    }
+                    Self::precompiled_save_mem_reads(ctx, code, 4, &[4, 4]);
+                    if ctx.zip() {
+                        *code += &format!("pc_{:x}_add256_active_chunk_done:\n", ctx.pc);
+                    }
+                }
+
+                // Consume mem reads
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tadd {}, 13*8 {}\n", // 13 = @a, @b, cin, @c, a[0..4], b[0..4], cout
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("chunk_address += 13*8")
+                    );
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 4, &[4, 4], 3, 3, 4);
+                }
+
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    // Call the add256 function
+                    Self::push_internal_registers_except_c_and_flag(ctx, code, false);
+                    // Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_add256\n";
+                    *code += &format!("\tmov {}, rax {}\n", REG_C, ctx.comment_str("c = rax"));
+                    *code +=
+                        &format!("\tmov {}, rax {}\n", REG_FLAG, ctx.comment_str("flag = rax"));
+                    Self::pop_internal_registers_except_c_and_flag(ctx, code, false);
+
+                    // this precompiles store the result in minimal trace
+                    if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
+                        Self::precompiled_save_result(ctx, code);
+                    }
+                    // Self::assert_rsp_is_aligned(ctx, code);
+                } else {
+                    // Set REG_C, REG_FLAGS from last value of mt
+                    Self::mem_op_precompiled_restore_c_and_flags(ctx, code);
+                }
+
+                // Set result
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = false;
             }
         }
     }
@@ -6926,76 +6961,64 @@ impl ZiskRom2Asm {
     fn precompiled_save_mem_reads(
         ctx: &mut ZiskAsmContext,
         code: &mut String,
-        indirections_count: u64,
-        load_count: u64,
-        load_size: Vec<u64>,
+        params_count: u64,
+        load_sizes: &[usize],
     ) {
         // This index will be incremented as we insert data into mem_reads
         let mut mem_reads_index: u64 = 0;
 
-        // This index will be incremented as we consume load sizes
-        assert!(load_count as usize == load_size.len());
-        let mut load_size_index: usize = 0;
-
         // We get a copy of the precompiled data address
         *code += &format!("\tmov {}, rdi {}\n", REG_ADDRESS, ctx.comment_str("address = rdi"));
 
-        // We make 2 rounds, a first one to store the indirection addresses, and a second one to
-        // store the load data, up to load_count
-        for j in 0..2 {
-            // For every indirection
-            for i in 0..indirections_count {
-                // Store next aligned address value in mem_reads, and advance it
+        for i in 0..params_count {
+            // Store next aligned address value in mem_reads, and advance it
+            *code += &format!(
+                "\tmov {}, [{} + {}*8] {}\n",
+                REG_VALUE,
+                REG_ADDRESS,
+                i,
+                ctx.comment(format!("value = mem[address+{i}]"))
+            );
+
+            *code += &format!(
+                "\tmov [{} + {}*8 + {}*8], {} {}\n",
+                REG_MEM_READS_ADDRESS,
+                REG_MEM_READS_SIZE,
+                mem_reads_index,
+                REG_VALUE,
+                ctx.comment_str("mem_reads[@+size*8+ind*8] = param")
+            );
+            mem_reads_index += 1;
+        }
+
+        for (i, size) in load_sizes.iter().enumerate() {
+            // Store next aligned address value in mem_reads, and advance it
+            *code += &format!(
+                "\tmov {}, [{} + {}*8] {}\n",
+                REG_VALUE,
+                REG_ADDRESS,
+                i,
+                ctx.comment(format!("value = mem[address+{i}]"))
+            );
+
+            // For each chunk of the indirection, store it in mem_reads
+            for l in 0..*size {
                 *code += &format!(
                     "\tmov {}, [{} + {}*8] {}\n",
+                    REG_AUX,
                     REG_VALUE,
-                    REG_ADDRESS,
-                    i,
-                    ctx.comment(format!("value = mem[address+{i}]"))
+                    l,
+                    ctx.comment(format!("aux = mem[ind+{l}]"))
                 );
-
-                // During the first iteration, store the indirection read value in mem_reads
-                if j == 0 {
-                    *code += &format!(
-                        "\tmov [{} + {}*8 + {}*8], {} {}\n",
-                        REG_MEM_READS_ADDRESS,
-                        REG_MEM_READS_SIZE,
-                        mem_reads_index,
-                        REG_VALUE,
-                        ctx.comment_str("mem_reads[@+size*8+ind*8] = ind")
-                    );
-                    mem_reads_index += 1;
-                }
-
-                // During the second iteration, store the first load_count iterations
-                // load_size elements in mem_reads
-                if j == 1 {
-                    // Only store the first load_count indirections
-                    if i >= load_count {
-                        break;
-                    }
-
-                    // For each chunk of the indirection, store it in mem_reads
-                    for l in 0..load_size[load_size_index] {
-                        *code += &format!(
-                            "\tmov {}, [{} + {}*8] {}\n",
-                            REG_AUX,
-                            REG_VALUE,
-                            l,
-                            ctx.comment(format!("aux = mem[ind+{l}]"))
-                        );
-                        *code += &format!(
-                            "\tmov [{} + {}*8 + {}*8], {} {}\n",
-                            REG_MEM_READS_ADDRESS,
-                            REG_MEM_READS_SIZE,
-                            mem_reads_index,
-                            REG_AUX,
-                            ctx.comment_str("mem_reads[@+size*8+ind*8] = ind")
-                        );
-                        mem_reads_index += 1;
-                    }
-                    load_size_index += 1;
-                }
+                *code += &format!(
+                    "\tmov [{} + {}*8 + {}*8], {} {}\n",
+                    REG_MEM_READS_ADDRESS,
+                    REG_MEM_READS_SIZE,
+                    mem_reads_index,
+                    REG_AUX,
+                    ctx.comment_str("mem_reads[@+size*8+ind*8] = ind")
+                );
+                mem_reads_index += 1;
             }
         }
 
@@ -7005,6 +7028,23 @@ impl ZiskRom2Asm {
             REG_MEM_READS_SIZE,
             mem_reads_index,
             ctx.comment(format!("mem_reads_size+={mem_reads_index}"))
+        );
+    }
+
+    fn precompiled_save_result(ctx: &mut ZiskAsmContext, code: &mut String) {
+        *code += &format!(
+            "\tmov [{} + {}*8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_C,
+            ctx.comment_str("mem_reads[@+size*8] = C")
+        );
+
+        // Increment chunk.steps.mem_reads_size
+        *code += &format!(
+            "\tinc {} {}\n",
+            REG_MEM_READS_SIZE,
+            ctx.comment("++mem_reads_size".to_string())
         );
     }
 
@@ -7305,140 +7345,23 @@ impl ZiskRom2Asm {
         );
     }
 
-    fn mem_op_precompiled_read(
+    fn internal_mem_op_precompiled_read(
         ctx: &mut ZiskAsmContext,
         code: &mut String,
-        indirections_count: u64,
-        load_count: u64,
-        load_size: Vec<u64>,
-    ) {
+        params_count: u64,
+        load_sizes: &[usize],
+        update_index: bool,
+    ) -> u64 {
         // Calculate the mask
         let mem_op_mask: u64 = 8u64 << 32;
 
         // This index will be incremented as we insert data into mem_reads
         let mut mem_reads_index: u64 = 0;
 
-        // This index will be incremented as we consume load sizes
-        assert!(load_count as usize == load_size.len());
-        let mut load_size_index: usize = 0;
-
         // We get a copy of the precompiled data address
         *code += &format!("\tmov {}, rdi {}\n", REG_ADDRESS, ctx.comment_str("address = rdi"));
 
-        // We make 2 rounds, a first one to store the indirection addresses, and a second one to
-        // store the load data, up to load_count
-        for j in 0..2 {
-            // For every indirection
-            for i in 0..indirections_count {
-                // Store next aligned address value in mem_reads, and advance it
-                *code += &format!(
-                    "\tmov {}, [{} + {}*8] {}\n",
-                    REG_VALUE,
-                    REG_ADDRESS,
-                    i,
-                    ctx.comment(format!("value = mem[address+{i}]"))
-                );
-
-                // During the first iteration, store the indirection read value in mem_reads
-                if j == 0 {
-                    // Load the mask + offset
-                    *code += &format!(
-                        "\tmov {}, 0x{:x} {}\n",
-                        REG_AUX,
-                        mem_op_mask + 8 * i,
-                        ctx.comment_str("aux = mem op mask + offset")
-                    );
-
-                    // Add the address
-                    *code += &format!(
-                        "\tadd {}, {} {}\n",
-                        REG_AUX,
-                        REG_ADDRESS,
-                        ctx.comment_str("aux += address")
-                    );
-
-                    // Store it in the trace
-                    *code += &format!(
-                        "\tmov [{} + {}*8 + {}*8], {} {}\n",
-                        REG_MEM_READS_ADDRESS,
-                        REG_MEM_READS_SIZE,
-                        mem_reads_index,
-                        REG_AUX,
-                        ctx.comment_str("mem_reads[@+size*8+ind*8] = mem_op")
-                    );
-                    mem_reads_index += 1;
-                }
-
-                // During the second iteration, store the first load_count iterations
-                // load_size elements in mem_reads
-                if j == 1 {
-                    // Only store the first load_count indirections
-                    if i >= load_count {
-                        break;
-                    }
-
-                    // For each chunk of the indirection, store it in mem_reads
-                    for l in 0..load_size[load_size_index] {
-                        // Load the mask + offset
-                        *code += &format!(
-                            "\tmov {}, 0x{:x} {}\n",
-                            REG_AUX,
-                            mem_op_mask + 8 * l,
-                            ctx.comment_str("aux = mem op mask + offset")
-                        );
-
-                        // Add the address
-                        *code += &format!(
-                            "\tadd {}, {} {}\n",
-                            REG_AUX,
-                            REG_VALUE,
-                            ctx.comment_str("aux += address")
-                        );
-
-                        // Store it in the trace
-                        *code += &format!(
-                            "\tmov [{} + {}*8 + {}*8], {} {}\n",
-                            REG_MEM_READS_ADDRESS,
-                            REG_MEM_READS_SIZE,
-                            mem_reads_index,
-                            REG_AUX,
-                            ctx.comment_str("mem_reads[@+size*8+ind*8] = mem_op")
-                        );
-                        mem_reads_index += 1;
-                    }
-                    load_size_index += 1;
-                }
-            }
-        }
-
-        // Increment chunk.steps.mem_reads_size
-        *code += &format!(
-            "\tadd {}, {} {}\n",
-            REG_MEM_READS_SIZE,
-            mem_reads_index,
-            ctx.comment(format!("mem_reads_size+={mem_reads_index}"))
-        );
-    }
-
-    fn mem_op_precompiled_write(
-        ctx: &mut ZiskAsmContext,
-        code: &mut String,
-        indirections_count: u64,
-        begin: u64,
-        end: u64,
-        load_size: u64,
-    ) {
-        // Calculate the mask
-        let mem_op_mask: u64 = F_MEM_WRITE + (8u64 << F_MEM_WIDTH_SHIFT);
-
-        // This index will be incremented as we insert data into mem_reads
-        let mut mem_reads_index: u64 = 0;
-
-        // We get a copy of the precompiled data address
-        *code += &format!("\tmov {}, rdi {}\n", REG_ADDRESS, ctx.comment_str("address = rdi"));
-
-        // For every indirection
-        for i in 0..indirections_count {
+        for i in 0..params_count {
             // Store next aligned address value in mem_reads, and advance it
             *code += &format!(
                 "\tmov {}, [{} + {}*8] {}\n",
@@ -7448,12 +7371,134 @@ impl ZiskRom2Asm {
                 ctx.comment(format!("value = mem[address+{i}]"))
             );
 
-            // Only store the first load_count indirections
-            if (i < begin) || (i > end) {
-                continue;
-            }
+            // Load the mask + offset
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_AUX,
+                mem_op_mask + 8 * i,
+                ctx.comment_str("aux = mem op mask + offset")
+            );
+
+            // Add the address
+            *code += &format!(
+                "\tadd {}, {} {}\n",
+                REG_AUX,
+                REG_ADDRESS,
+                ctx.comment_str("aux += address")
+            );
+
+            // Store it in the trace
+            *code += &format!(
+                "\tmov [{} + {}*8 + {}*8], {} {}\n",
+                REG_MEM_READS_ADDRESS,
+                REG_MEM_READS_SIZE,
+                mem_reads_index,
+                REG_AUX,
+                ctx.comment_str("mem_reads[@+size*8+ind*8] = mem_op")
+            );
+            mem_reads_index += 1;
+        }
+
+        for (i, size) in load_sizes.iter().enumerate() {
+            // Store next aligned address value in mem_reads, and advance it
+            *code += &format!(
+                "\tmov {}, [{} + {}*8] {}\n",
+                REG_VALUE,
+                REG_ADDRESS,
+                i,
+                ctx.comment(format!("value = mem[address+{i}]"))
+            );
+
+            // Store the first load_count iterations
+            // load_size elements in mem_reads
 
             // For each chunk of the indirection, store it in mem_reads
+            for l in 0..*size {
+                // Load the mask + offset
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_AUX,
+                    mem_op_mask + 8 * (l as u64),
+                    ctx.comment_str("aux = mem op mask + offset")
+                );
+
+                // Add the address
+                *code += &format!(
+                    "\tadd {}, {} {}\n",
+                    REG_AUX,
+                    REG_VALUE,
+                    ctx.comment_str("aux += address")
+                );
+
+                // Store it in the trace
+                *code += &format!(
+                    "\tmov [{} + {}*8 + {}*8], {} {}\n",
+                    REG_MEM_READS_ADDRESS,
+                    REG_MEM_READS_SIZE,
+                    mem_reads_index,
+                    REG_AUX,
+                    ctx.comment_str("mem_reads[@+size*8+ind*8] = mem_op")
+                );
+                mem_reads_index += 1;
+            }
+        }
+        if update_index {
+            // Increment chunk.steps.mem_reads_size
+            *code += &format!(
+                "\tadd {}, {} {}\n",
+                REG_MEM_READS_SIZE,
+                mem_reads_index,
+                ctx.comment(format!("mem_reads_size+={mem_reads_index}"))
+            );
+        }
+        mem_reads_index
+    }
+
+    fn mem_op_precompiled_read_and_write(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        params_count: u64,
+        load_sizes: &[usize],
+        begin: u64,
+        end: u64,
+        write_size: u64,
+    ) {
+        let mem_reads_index =
+            Self::internal_mem_op_precompiled_read(ctx, code, params_count, load_sizes, false);
+        Self::internal_mem_op_precompiled_write(ctx, code, begin, end, write_size, mem_reads_index);
+    }
+
+    #[inline(always)]
+    fn internal_mem_op_precompiled_write(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        begin: u64,
+        end: u64,
+        load_size: u64,
+        initial_mem_reads_index: u64,
+    ) {
+        // Calculate the mask
+        let mem_op_mask: u64 = F_MEM_WRITE + (8u64 << F_MEM_WIDTH_SHIFT);
+
+        // This index will be incremented as we insert data into mem_reads
+        let mut mem_reads_index: u64 = initial_mem_reads_index;
+
+        if initial_mem_reads_index == 0 {
+            // We get a copy of the precompiled data address
+            *code += &format!("\tmov {}, rdi {}\n", REG_ADDRESS, ctx.comment_str("address = rdi"));
+        }
+        // For every parameter
+        for i in begin..=end {
+            // Store next aligned address value in mem_reads, and advance it
+            *code += &format!(
+                "\tmov {}, [{} + {}*8] {}\n",
+                REG_VALUE,
+                REG_ADDRESS,
+                i,
+                ctx.comment(format!("value = mem[address+{i}]"))
+            );
+
+            // For each of the indirection parameter, store it in mem_reads
             for l in 0..load_size {
                 // Load the mask + offset
                 *code += &format!(
@@ -7491,6 +7536,21 @@ impl ZiskRom2Asm {
             mem_reads_index,
             ctx.comment(format!("mem_reads_size+={mem_reads_index}"))
         );
+    }
+
+    fn mem_op_precompiled_restore_c_and_flags(ctx: &mut ZiskAsmContext, code: &mut String) {
+        // We get a copy of the precompiled data address
+        *code += &format!("\tmov {}, rdi {}\n", REG_ADDRESS, ctx.comment_str("address = rdi"));
+
+        // read last mem_read into c
+        *code += &format!(
+            "\tmov {}, [{} + {}*8 - 8] {}\n",
+            REG_C,
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            ctx.comment_str("c = mem_reads[@+size*8+ind*8]")
+        );
+        *code += &format!("\tmov {}, {} {}\n", REG_FLAG, REG_C, ctx.comment_str("flag = c"));
     }
 
     /*******************/
@@ -8032,6 +8092,40 @@ impl ZiskRom2Asm {
         // *code += "\tpop rsi\n";
         //*code += "\tpop rdi\n";
         *code += "\tpop rdx\n";
+        *code += "\tpop rcx\n";
+        *code += "\tpop rax\n";
+    }
+
+    fn push_internal_registers_except_c_and_flag(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        extra_8: bool,
+    ) {
+        *code += "\tpush rax\n";
+        *code += "\tpush rcx\n";
+        //*code += "\tpush rdi\n";
+        // *code += "\tpush rsi\n";
+        // *code += "\tpush rsp\n";
+        *code += "\tpush r8\n";
+        *code += "\tpush r9\n";
+        *code += "\tpush r10\n";
+        *code += "\tpush r11\n";
+        Self::push_xmm_regs(ctx, code, extra_8);
+    }
+
+    fn pop_internal_registers_except_c_and_flag(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        extra_8: bool,
+    ) {
+        Self::pop_xmm_regs(ctx, code, extra_8);
+        *code += "\tpop r11\n";
+        *code += "\tpop r10\n";
+        *code += "\tpop r9\n";
+        *code += "\tpop r8\n";
+        // *code += "\tpop rsp\n";
+        // *code += "\tpop rsi\n";
+        //*code += "\tpop rdi\n";
         *code += "\tpop rcx\n";
         *code += "\tpop rax\n";
     }

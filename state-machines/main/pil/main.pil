@@ -134,8 +134,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     // Operations related
 
     col witness is_external_op;        // [is_external_op == 1] => operation op sent to bus
-    col witness op;                    // [is_external_op == 0 && op=0] ==>  a=last_c, flag=1
-                                       // [is_external_op == 0 && op=0] ==>  b=last_c, flag=0
+    col witness op;                    // [is_external_op == 0 && op=0] ==>  c=0, flag=1 (flag)
+                                       // [is_external_op == 0 && op=1] ==>  c=b, flag=0 (copy_b)
                                        // else then this op is sent to the bus.
 
     // Destination C

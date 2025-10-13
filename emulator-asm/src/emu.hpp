@@ -76,6 +76,9 @@ typedef struct {
     uint64_t bls12_381_complex_mul_counter;
     uint64_t bls12_381_complex_mul_duration;
 
+    uint64_t add256_counter;    
+    uint64_t add256_duration;
+
 } AsmCallMetrics;
 
 extern AsmCallMetrics asm_call_metrics;

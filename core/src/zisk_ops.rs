@@ -50,6 +50,7 @@ pub enum OpType {
     ArithEq,
     Fcall,
     ArithEq384,
+    BigInt,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -65,6 +66,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::ArithEq => ZiskOperationType::ArithEq,
             OpType::Fcall => ZiskOperationType::Fcall,
             OpType::ArithEq384 => ZiskOperationType::ArithEq384,
+            OpType::BigInt => ZiskOperationType::BigInt,
         }
     }
 }
@@ -84,6 +86,7 @@ impl Display for OpType {
             Self::ArithEq => write!(f, "Arith256"),
             Self::Fcall => write!(f, "Fcall"),
             Self::ArithEq384 => write!(f, "Arith384"),
+            Self::BigInt => write!(f, "BigInt"),
         }
     }
 }
@@ -104,6 +107,7 @@ impl FromStr for OpType {
             "aeq" => Ok(Self::ArithEq),
             "fcall" => Ok(Self::Fcall),
             "aeq384" => Ok(Self::ArithEq384),
+            "bint" => Ok(Self::BigInt),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -276,6 +280,7 @@ const SHA256_COST: u64 = 9000;
 const ARITH_EQ_COST: u64 = 1200;
 const FCALL_COST: u64 = INTERNAL_COST;
 const ARITH_EQ_384_COST: u64 = 2000;
+const ADD256_COST: u64 = 104;
 
 /// Table of Zisk opcode definitions: enum, name, type, cost, code and implementation functions
 /// This table is the backbone of the Zisk processor, it determines what functionality is supported,
@@ -334,6 +339,7 @@ define_ops! {
     (MaxW, "max_w", Binary, BINARY_COST, 0x25, 0, opc_max_w, op_max_w),
     (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, opc_keccak, op_keccak),
     (PubOut, "pubout", PubOut, 0, 0x30, 0, opc_pubout, op_pubout),
+    (Add256, "add256", BigInt, ADD256_COST, 0xf0, 104, opc_add256, op_add256),
     (Arith256, "arith256", ArithEq, ARITH_EQ_COST, 0xf2, 136, opc_arith256, op_arith256),
     (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, opc_arith256_mod, op_arith256_mod),
     (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xf4, 144, opc_secp256k1_add, op_secp256k1_add),
@@ -1233,10 +1239,56 @@ pub fn op_sha256(_a: u64, _b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn precompiled_load_data(
     ctx: &mut InstContext,
-    indirections_count: usize,
-    loads_count: usize,
+    params_count: usize,
+    load_indirections: usize,
     load_chunks: usize,
     load_rem: usize,
+    data: &mut [u64],
+    title: &str,
+) {
+    internal_precompiled_load_data(
+        ctx,
+        params_count,
+        load_indirections,
+        load_chunks,
+        load_rem,
+        0,
+        data,
+        title,
+    );
+}
+
+#[inline(always)]
+pub fn precompiled_load_data_with_result(
+    ctx: &mut InstContext,
+    params_count: usize,
+    load_indirections: usize,
+    load_chunks: usize,
+    load_rem: usize,
+    data: &mut [u64],
+    title: &str,
+) {
+    internal_precompiled_load_data(
+        ctx,
+        params_count,
+        load_indirections,
+        load_chunks,
+        load_rem,
+        1,
+        data,
+        title,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
+fn internal_precompiled_load_data(
+    ctx: &mut InstContext,
+    params_count: usize,
+    load_indirections: usize,
+    load_chunks: usize,
+    load_rem: usize,
+    result: usize,
     data: &mut [u64],
     title: &str,
 ) {
@@ -1245,18 +1297,12 @@ pub fn precompiled_load_data(
         panic!("precompiled_check_address() found address not aligned to 8 bytes");
     }
     if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
-        let expected_len = indirections_count + loads_count * load_chunks + load_rem;
         // Check input data has the expected length
+        let expected_len = params_count + load_indirections * load_chunks + load_rem + result;
         if ctx.precompiled.input_data.len() != expected_len {
             panic!(
-                "[{}] ctx.precompiled.input_data.len={} != {} [{}+{}*{}+{}]",
-                title,
+                "[{title}] ctx.precompiled.input_data.len={} != {expected_len} [{params_count}+{load_indirections}*{load_chunks}+{load_rem}+{result}]",
                 ctx.precompiled.input_data.len(),
-                expected_len,
-                indirections_count,
-                loads_count,
-                load_chunks,
-                load_rem
             );
         }
         // Read data from the precompiled context
@@ -1269,7 +1315,7 @@ pub fn precompiled_load_data(
     }
 
     // Write the indirections to data
-    for (i, data) in data.iter_mut().enumerate().take(indirections_count) {
+    for (i, data) in data.iter_mut().enumerate().take(params_count) {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
         if address & 0x7 != 0 {
             panic!("precompiled_check_address() found address[{i}] not aligned to 8 bytes");
@@ -1277,12 +1323,11 @@ pub fn precompiled_load_data(
         *data = indirection;
     }
 
-    let mut data_offset = indirections_count;
-    for i in 0..loads_count {
+    let mut data_offset = params_count;
+    for i in 0..load_indirections {
         let data_offset = i * load_chunks + data_offset;
         // if there aren't indirections, take directly from the address
-        let param_address =
-            if indirections_count == 0 { address + data_offset as u64 } else { data[i] };
+        let param_address = if params_count == 0 { address + data_offset as u64 } else { data[i] };
         for j in 0..load_chunks {
             let addr = param_address + (8 * j as u64);
             data[data_offset + j] = ctx.mem.read(addr, 8);
@@ -1291,11 +1336,11 @@ pub fn precompiled_load_data(
 
     // Process the remanent of the last chunk
     if load_rem > 0 {
-        data_offset += (loads_count - 1) * load_chunks;
-        let param_address = if indirections_count == 0 {
+        data_offset += (load_indirections - 1) * load_chunks;
+        let param_address = if params_count == 0 {
             address + data_offset as u64
         } else {
-            data[loads_count - 1]
+            data[load_indirections - 1]
         };
         for j in load_chunks..load_chunks + load_rem {
             let addr = param_address + (8 * j as u64);
@@ -1304,15 +1349,58 @@ pub fn precompiled_load_data(
     }
 
     if let EmulationMode::GenerateMemReads = ctx.emulation_mode {
-        let expected_len = indirections_count + loads_count * load_chunks + load_rem;
-
         ctx.precompiled.input_data.clear();
         for (i, d) in data.iter_mut().enumerate() {
             ctx.precompiled.input_data.push(*d);
         }
-
         ctx.precompiled.step = ctx.step;
     }
+}
+
+#[inline(always)]
+pub fn opc_add256(ctx: &mut InstContext) {
+    const WORDS: usize = 4 + 1 + 2 * 4;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data_with_result(ctx, 4, 2, 4, 0, &mut data, "add256");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 3 indirections
+        // 0 - addr_a
+        // 1 - addr_b
+        // 2 - cin
+        // 3 - addr_c
+        let cin = data[2];
+        let (params, rest) = data.split_at(4); // params(4)
+        let (a, rest) = rest.split_at(4);
+        let (b, _) = rest.split_at(4);
+
+        let a: &[u64; 4] = a.try_into().expect("opc_add256: a.len != 4");
+        let b: &[u64; 4] = b.try_into().expect("opc_add256: b.len != 4");
+        let mut c = [0u64; 4];
+        let cout = precompiles_helpers::add256(a, b, cin, &mut c);
+
+        let c_addr = params[3];
+        for (i, c_item) in c.iter().enumerate() {
+            ctx.mem.write(c_addr + (8 * i as u64), *c_item, 8);
+        }
+        if let EmulationMode::GenerateMemReads = ctx.emulation_mode {
+            ctx.precompiled.input_data[4 + 2 * 4] = cout;
+        }
+        ctx.c = cout;
+        ctx.flag = cout != 0;
+    } else {
+        assert!(data[4 + 2 * 4] <= 1, "opc_add256: cout > 1");
+        ctx.c = data[4 + 2 * 4];
+        ctx.flag = data[4 + 2 * 4] != 0;
+    }
+}
+
+/// Unimplemented.  Arith256 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_add256(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_add256() is not implemented");
 }
 
 #[inline(always)]

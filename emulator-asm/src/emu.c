@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include "emu.hpp"
+#include "../../lib-c/c/src/bigint/add256.hpp"
 #include "../../lib-c/c/src/ec/ec.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
 #include "../../lib-c/c/src/arith256/arith256.hpp"
@@ -71,6 +72,8 @@ void reset_asm_call_metrics (void)
     asm_call_metrics.bls12_381_complex_sub_duration = 0;
     asm_call_metrics.bls12_381_complex_mul_counter = 0;
     asm_call_metrics.bls12_381_complex_mul_duration = 0;
+    asm_call_metrics.add256_counter = 0;
+    asm_call_metrics.add256_duration = 0;
 }
 
 void print_asm_call_metrics (uint64_t total_duration)
@@ -276,6 +279,16 @@ void print_asm_call_metrics (uint64_t total_duration)
     printf("bls12_381_complex_mul: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bls12_381_complex_mul_counter,
         asm_call_metrics.bls12_381_complex_mul_duration,
+        duration,
+        percentage);
+
+    // Print add256 metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.add256_duration * 1000) / total_duration;
+    duration = asm_call_metrics.add256_counter == 0 ? 0 : (asm_call_metrics.add256_duration * 1000) / asm_call_metrics.add256_counter;
+    asm_call_total_duration += asm_call_metrics.add256_duration;
+    printf("Add256: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.add256_counter,
+        asm_call_metrics.add256_duration,
         duration,
         percentage);
 
@@ -1269,4 +1282,55 @@ extern int _opcode_bls12_381_complex_mul(uint64_t * address)
     asm_call_metrics.bls12_381_complex_mul_duration += TimeDiff(asm_call_start, asm_call_stop);
 #endif
     return 0;
+}
+
+
+extern uint64_t _opcode_add256(uint64_t * address)
+{
+    printf("_opcode_add256() address=%p\n", address);
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+
+    // Call arithmetic 256 operation
+    uint64_t * a = (uint64_t *)address[0];
+    uint64_t * b = (uint64_t *)address[1];
+    uint64_t cin = (uint64_t)address[2];
+    uint64_t * c = (uint64_t *)address[3];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        printf("opcode_add256() calling Add256() counter=%lu address=%p\n", asm_call_metrics.add256_counter, address);
+#else
+        printf("opcode_add256() calling Add256() address=%p\n", address);
+#endif
+        printf("a = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0], a[3], a[2], a[1], a[0]);
+        printf("b = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0], b[3], b[2], b[1], b[0]);
+        printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
+    }
+#endif
+
+    // cout = [0,1] ok, cout < 0 error
+    int cout = Add256 (a, b, cin, c);
+    if (cout < 0)
+    {
+        printf("_opcode_add256() failed callilng Add256() cout=%d;", cout);
+        exit(-1);
+    }
+
+#ifdef DEBUG
+    if (emu_verbose) printf("opcode_add256() called Add256()\n");
+    if (emu_verbose)
+    {
+        printf("cout = %lu\n", cout);
+        printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
+    }
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.add256_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.add256_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return cout;
 }
