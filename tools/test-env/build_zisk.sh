@@ -166,9 +166,6 @@ main() {
     ensure cp ziskup/ziskup "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/libziskclib.a "${ZISK_BIN_DIR}" || return 1
 
-    mkdir -p "${ZISK_DIR}/zisk/lib-float/c/lib"
-    ensure cp ./lib-float/c/lib/ziskfloat.elf "${ZISK_DIR}/zisk/lib-float/c/lib/" || return 1
-
     step "Copying emulator-asm files..."
     if [[ "${PLATFORM}" == "linux" ]]; then
         mkdir -p "${ZISK_DIR}/zisk/emulator-asm"
