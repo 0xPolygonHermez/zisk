@@ -24,6 +24,7 @@
 
 // Assembly-provided functions
 void emulator_start(void);
+void write_ro_data(void);
 uint64_t get_max_bios_pc(void);
 uint64_t get_max_program_pc(void);
 uint64_t get_gen_method(void);
@@ -2649,6 +2650,9 @@ void server_setup (void)
         exit(-1);
     }
     if (verbose) printf("sem_open(%s) succeeded\n", sem_shutdown_done_name);
+
+    /* Write read-only ROM data */
+    write_ro_data();
 }
 
 void server_reset (void)

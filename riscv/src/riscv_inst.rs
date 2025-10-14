@@ -41,12 +41,14 @@ pub struct RiscvInstruction {
     /// Instruction type
     pub t: String,
 
+    pub funct2: u32,
     pub funct3: u32,
     pub funct5: u32,
     pub funct7: u32,
     pub rd: u32,
     pub rs1: u32,
     pub rs2: u32,
+    pub rs3: u32,
     pub imm: i32,
     pub imme: u32,
     pub inst: String,
@@ -73,11 +75,11 @@ impl RiscvInstruction {
     }
 
     /// Creates a HALT instruction
-    pub fn halt(rvinst: u32) -> Self {
+    pub fn c_halt(rvinst: u32) -> Self {
         Self {
             rvinst,
-            t: "I".to_string(),
-            inst: "halt".to_string(),
+            t: "CINVALID".to_string(),
+            inst: "c.halt".to_string(),
             rd: 0,
             rs1: 0,
             rs2: 0,

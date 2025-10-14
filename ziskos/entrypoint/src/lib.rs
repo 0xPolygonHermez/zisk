@@ -180,7 +180,7 @@ mod ziskos {
             )
         };
         if arch_id_zisk == ARCH_ID_ZISK as usize {
-            addr = 0xa000_0200 as *mut u8;
+            addr = UART_ADDR as *mut u8;
         }
 
         for i in 0..nbytes {

@@ -13,9 +13,9 @@ use data_bus::DataBusTrait;
 use zisk_common::{EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
-    EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, OUTPUT_ADDR, ROM_ENTRY,
-    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-    STORE_REG,
+    EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
+    FREG_RA, FREG_X0, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
+    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -1027,7 +1027,7 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.inst_ctx.sp as i64;
                 }
                 addr += self.ctx.inst_ctx.a as i64;
-                debug_assert!(addr >= 0);
+                debug_assert!(addr >= 0, "addr is negative: addr={addr}=0x{addr:x}");
                 let addr = addr as u64;
 
                 // Get it from memory
@@ -1793,7 +1793,6 @@ impl<'a> Emu<'a> {
         //     self.ctx.inst_ctx.pc,
         //     instruction.to_text()
         // );
-        // println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
         //println!("PCLOG={}", instruction.to_text());
 
@@ -1846,6 +1845,8 @@ impl<'a> Emu<'a> {
                 instruction.to_text()
             );
             self.print_regs();
+            // self.print_float_regs();
+            // self.print_float_saved_regs();
             println!();
         }
 
@@ -2475,6 +2476,28 @@ impl<'a> Emu<'a> {
         print!("Emu::print_regs(): ");
         for (i, r) in regs_array.iter().enumerate() {
             print!("x{i}={r}={r:x} ");
+        }
+        println!();
+    }
+
+    pub fn print_float_regs(&self) {
+        print!("Emu::print_float_regs(): ");
+        for i in 0..31 {
+            let r = self.ctx.inst_ctx.mem.read(FREG_F0 + i * 8, 8);
+            print!("f{i}={r}={r:x} ");
+        }
+        let r = self.ctx.inst_ctx.mem.read(FREG_INST, 8);
+        print!("finst={r}={r:x} ");
+        let r = self.ctx.inst_ctx.mem.read(FREG_RA, 8);
+        print!("fra={r}={r:x} ");
+        println!();
+    }
+
+    pub fn print_float_saved_regs(&self) {
+        print!("Emu::print_float_saved_regs(): ");
+        for i in 0..31 {
+            let r = self.ctx.inst_ctx.mem.read(FREG_X0 + i * 8, 8);
+            print!("fx{i}={r}={r:x} ");
         }
         println!();
     }

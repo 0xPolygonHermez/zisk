@@ -4,9 +4,9 @@
 use std::path::Path;
 
 use crate::{
-    zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskRom, FREE_INPUT_ADDR, M64, P2_32,
-    ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskRom, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
+    M64, P2_32, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -33,6 +33,8 @@ const REG_FLAG: &str = "rdx";
 const REG_STEP: &str = "r14";
 const REG_VALUE: &str = "r9";
 const REG_VALUE_W: &str = "r9d";
+const REG_VALUE_H: &str = "r9w";
+const REG_VALUE_B: &str = "r9b";
 const REG_ADDRESS: &str = "r10";
 const REG_MEM_READS_ADDRESS: &str = "r12";
 const REG_MEM_READS_SIZE: &str = "r13";
@@ -3311,6 +3313,74 @@ impl ZiskRom2Asm {
         /****************/
         *code += unusual_code.as_str();
 
+        /**********************/
+        /* READ_ONLY ROM DATA */
+        /**********************/
+
+        *code += "\n";
+        *code += ".global write_ro_data\n";
+        *code += "write_ro_data:\n";
+
+        Self::push_external_registers(&mut ctx, code);
+
+        // Create a new read section for every RO data entry of the rom
+        //let mut total_ro_data_len: usize = 0;
+        for i in 0..rom.ro_data.len() {
+            let mut address = rom.ro_data[i].from;
+            let ro_data_len = rom.ro_data[i].data.len();
+            //total_ro_data_len += ro_data_len;
+            // println!(
+            //     "ZiskRom2Asm::save_to_asm() ro_data[{}] len={} total_len={} address={:x}",
+            //     i, ro_data_len, total_ro_data_len, address
+            // );
+            let mut written_bytes = 0;
+            while written_bytes + 8 <= ro_data_len {
+                let value = u64::from_le_bytes(
+                    rom.ro_data[i].data[written_bytes..written_bytes + 8].try_into().unwrap(),
+                );
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
+                *code += &format!("\tmov qword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
+                address += 8;
+                written_bytes += 8;
+            }
+            while written_bytes + 4 <= ro_data_len {
+                let value = u32::from_le_bytes(
+                    rom.ro_data[i].data[written_bytes..written_bytes + 4].try_into().unwrap(),
+                );
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
+                *code += &format!("\tmov dword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE_W);
+                address += 4;
+                written_bytes += 4;
+            }
+            while written_bytes + 2 <= ro_data_len {
+                let value = u16::from_le_bytes(
+                    rom.ro_data[i].data[written_bytes..written_bytes + 2].try_into().unwrap(),
+                );
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
+                *code += &format!("\tmov word {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE_H);
+                address += 2;
+                written_bytes += 2;
+            }
+            while written_bytes < ro_data_len {
+                let value = rom.ro_data[i].data[written_bytes];
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
+                *code += &format!("\tmov byte {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE_B);
+                address += 1;
+                written_bytes += 1;
+            }
+        }
+
+        Self::pop_external_registers(&mut ctx, code);
+        *code += "\tret\n\n";
+
+        /*****************/
+        /* BRANCH TABLES */
+        /*****************/
+
         // For all program addresses in the vector, create an assembly set of instructions with a
         // map label
         *code += "\n";
@@ -3343,7 +3413,8 @@ impl ZiskRom2Asm {
                 //   4N + 3
                 // 4(N+1)
                 //   ...
-                if (*key > ROM_ADDR) && (*key != (previous_key + 1)) {
+                if (*key > ROM_ADDR) && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
+                {
                     for _ in previous_key + 1..*key {
                         *code += "\t.quad 0\n";
                     }
@@ -6653,10 +6724,17 @@ impl ZiskRom2Asm {
 
     fn jumpt_to_dynamic_pc(ctx: &mut ZiskAsmContext, code: &mut String) {
         *code += &ctx.full_line_comment("jump to dynamic pc".to_string());
+        // When executing program code, it can dynamically jump to any BIOS instruction
+        // (low address) or to any program code address (high address).
+        // When executing zisk float library code, it can dynamically jump to any BIOS instruction
+        // (low address) or to any float library code address (high address) but not to program
+        // code addresses.
+        let high_address =
+            if ctx.pc < FLOAT_LIB_ROM_ADDR { ctx.min_program_pc } else { FLOAT_LIB_ROM_ADDR };
         *code += &format!(
             "\tmov {}, 0x{:x} {}\n",
             REG_ADDRESS,
-            ctx.min_program_pc,
+            high_address,
             ctx.comment_str("is pc a low address?")
         );
         *code += &format!("\tcmp {REG_PC}, {REG_ADDRESS}\n");
@@ -6670,8 +6748,8 @@ impl ZiskRom2Asm {
         *code += &format!(
             "\tlea {}, [map_pc_{:x}] {}\n",
             REG_ADDRESS,
-            ctx.min_program_pc,
-            ctx.comment_str(&format!("address = map[0x{:x}]", ctx.min_program_pc))
+            high_address,
+            ctx.comment_str(&format!("address = map[0x{:x}]", high_address))
         );
         *code += &format!(
             "\tmov {}, [{} + {}*{}] {}\n",

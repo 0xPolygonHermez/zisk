@@ -204,9 +204,9 @@ impl ZiskInstBuilder {
 
     /// Sets jump offsets.  The first offset is added to the pc when a set pc or a flag happens,
     /// and the second offset is the default one.
-    pub fn j(&mut self, j1: i32, j2: i32) {
-        self.i.jmp_offset1 = j1 as i64;
-        self.i.jmp_offset2 = j2 as i64;
+    pub fn j(&mut self, j1: i64, j2: i64) {
+        self.i.jmp_offset1 = j1;
+        self.i.jmp_offset2 = j2;
     }
 
     /// Set the indirection data width.  Accepted values are 1, 2, 4 and 8 (bytes.)
