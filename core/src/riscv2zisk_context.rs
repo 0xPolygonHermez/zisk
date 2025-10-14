@@ -6,8 +6,8 @@ use riscv::{riscv_interpreter, RiscvInstruction};
 
 use crate::{
     convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR,
-    FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_INST, FREG_RA, FREG_X0, INPUT_ADDR, MTVEC, OUTPUT_ADDR,
-    ROM_ENTRY, ROM_EXIT,
+    FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, FREG_X0, INPUT_ADDR, MTVEC,
+    OUTPUT_ADDR, REG_X0, ROM_ENTRY, ROM_EXIT,
 };
 
 use std::collections::HashMap;
@@ -579,12 +579,11 @@ impl Riscv2ZiskContext<'_> {
     /// and stores the result c into a register
     pub fn create_register_op(&mut self, i: &RiscvInstruction, op: &str, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let reg_offset: u64 = if op == "fadd.d" { 40 } else { 0 };
         let mut zib = ZiskInstBuilder::new(self.s);
-        zib.src_a("reg", i.rs1 as u64 + reg_offset, false);
-        zib.src_b("reg", i.rs2 as u64 + reg_offset, false);
+        zib.src_a("reg", i.rs1 as u64, false);
+        zib.src_b("reg", i.rs2 as u64, false);
         zib.op(op).unwrap();
-        zib.store("reg", i.rd as i64 + reg_offset as i64, false, false);
+        zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rd, i.rs1, i.rs2));
         zib.build();
@@ -659,7 +658,7 @@ impl Riscv2ZiskContext<'_> {
         zib.op(op).unwrap();
         let reg_offset: i64 =
             if i.inst == "fld" || i.inst == "flw" || i.inst == "c.fld" || i.inst == "c.fldsp" {
-                40
+                ((FREG_F0 - REG_X0) >> 3) as i64
             } else {
                 0
             };
@@ -680,7 +679,7 @@ impl Riscv2ZiskContext<'_> {
         assert!(inst_size == 2 || inst_size == 4);
         let reg_offset: u64 =
             if i.inst == "fsd" || i.inst == "fsw" || i.inst == "c.fsd" || i.inst == "c.fsdsp" {
-                40
+                (FREG_F0 - REG_X0) >> 3
             } else {
                 0
             };
@@ -1640,6 +1639,23 @@ impl Riscv2ZiskContext<'_> {
             }
         }
     }
+
+    // pub fn read_cycle_counter(&mut self, i: &RiscvInstruction) {
+    //     if i.rd == 0 {
+    //         self.nop(i, 4);
+    //     } else {
+    //         let mut zib = ZiskInstBuilder::new(self.s);
+    //         zib.src_a("step", 0, false);
+    //         zib.src_b("imm", 0, false);
+    //         zib.op("or").unwrap();
+    //         zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
+    //         zib.verbose(&format!("{} r{}, 0x{:x}, r{}", i.inst, i.rd, i.csr, i.rs1));
+    //         zib.j(4, 4);
+    //         zib.build();
+    //         self.insts.insert(self.s, zib);
+    //         self.s += 4;
+    //     }
+    // }
 
     /// Implements a float or double function, for both 16-bit and 32-bit instruction sizes.
     /// Implemented via integger operations
