@@ -35,7 +35,9 @@
 //! `|`
 //! `| Contains system address.`
 //! `| The first 256 bytes contain 32 8-byte registers`
-//! `| The address UART_ADDR is used as a standard output`
+//! `| The address UART_ADDR is used as a stdout at addr = 0xa0000200`
+//! `| The first float register is at         FREG_FIRST = 0xa0001000`
+//! `| The first CSR register is at             CSR_ADDR = 0xa0008000`
 //! `|`
 //! `|--------------- OUTPUT_ADDR                         (0xa0010000)`
 //! `|`
@@ -138,7 +140,9 @@ pub const FLOAT_LIB_SP: u64 = 0xb0000000 - 16; // 0xaffffff0
 /// Zisk architecture ID
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 /// UART memory address; single bytes written here will be copied to the standard output
-pub const UART_ADDR: u64 = SYS_ADDR + 512;
+pub const UART_ADDR: u64 = SYS_ADDR + 0x200;
+/// Float registers first address
+pub const FREG_FIRST: u64 = SYS_ADDR + 0x1000;
 /// CSR memory address; contains control and status registers
 pub const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
 /// Machine trap-vector base-address register

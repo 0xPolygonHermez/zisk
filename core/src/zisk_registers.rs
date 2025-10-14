@@ -44,7 +44,7 @@
 //! | REG_T5   | REG_X30 | Temporary register 5                      |
 //! | REG_T6   | REG_X31 | Temporary register 6                      |
 
-use crate::SYS_ADDR;
+use crate::{FREG_FIRST, SYS_ADDR};
 
 // Registers memory address definitions
 pub const REG_FIRST: u64 = SYS_ADDR;
@@ -125,9 +125,6 @@ pub const REGS_IN_MAIN: usize = REGS_IN_MAIN_TO - REGS_IN_MAIN_FROM + 1;
 pub const REGS_IN_MAIN_TOTAL_NUMBER: usize = 32; // Total number of registers in main, including the zero register
 
 // Float registers memory address definitions
-pub const FREG_OFFSET: u64 = 40;
-pub const FREG_FIRST: u64 = SYS_ADDR + FREG_OFFSET * 8;
-
 pub const FREG_F0: u64 = FREG_FIRST;
 pub const FREG_F1: u64 = FREG_FIRST + 8;
 pub const FREG_F2: u64 = FREG_FIRST + 2_u64 * 8;
@@ -162,10 +159,10 @@ pub const FREG_F30: u64 = FREG_FIRST + 30_u64 * 8;
 pub const FREG_F31: u64 = FREG_FIRST + 31_u64 * 8;
 
 // TODO: delete the _INVALID version after testing
-pub const FREG_CSR_INVALID: u64 = FREG_FIRST + 32_u64 * 8; // Floating-point control and status register (fcsr)
 pub const FREG_INST: u64 = FREG_FIRST + 33_u64 * 8; // Floating-point instruction register (finst)
 pub const FREG_RA: u64 = FREG_FIRST + 34_u64 * 8; // Floating-point return address register (fra)
 
+// RISC-V registers backup when calling float functions
 pub const FREG_X0: u64 = FREG_FIRST + 35_u64 * 8; // Floating-point register x0
 pub const FREG_X1: u64 = FREG_FIRST + 36_u64 * 8; // Floating-point register x1
 pub const FREG_X2: u64 = FREG_FIRST + 37_u64 * 8; // Floating-point register x2

@@ -12,8 +12,7 @@ extern "C" {
 // System address where the floating-point registers are mapped
 #define SYS_ADDR 0xa0000000
 #define REG_FIRST SYS_ADDR
-#define FREG_OFFSET 40
-#define FREG_FIRST (SYS_ADDR + FREG_OFFSET * 8)
+#define FREG_FIRST (SYS_ADDR + 0x1000)
 #define FREG_F0 FREG_FIRST
 #define FREG_INST (FREG_FIRST + 33 * 8) // Floating-point instruction register (finst)
 #define FREG_X0 (FREG_FIRST + 35 * 8) // Integer register backup for floating-point instructions (fX0)
