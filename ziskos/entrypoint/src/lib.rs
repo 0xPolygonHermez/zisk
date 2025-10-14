@@ -73,13 +73,7 @@ pub fn read_input_slice<'a>() -> &'a [u8] {
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub fn read_input_slice() -> Box<[u8]> {
-    use std::{fs::File, io::Read};
-
-    let mut file =
-        File::open("build/input.bin").expect("Error opening input file at: build/input.bin");
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).unwrap();
-    buffer.into_boxed_slice()
+    read_input().into_boxed_slice()
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
