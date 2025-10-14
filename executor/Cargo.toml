@@ -42,7 +42,7 @@ sm-mem = { workspace = true }
 sm-frequent-ops = { workspace = true }
 
 [features]
-default = []
+default = ["stats"]
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
 gpu = ["proofman-common/gpu", "proofman/gpu" ]
 stats = []

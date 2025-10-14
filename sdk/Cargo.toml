@@ -1,0 +1,24 @@
+[package]
+name = "zisk-sdk"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+proofman-common = { workspace = true }
+zisk-common = { workspace = true }
+fields = { workspace = true }
+libloading = { workspace = true }
+anyhow = { workspace = true }
+proofman = { workspace = true }
+rom-setup = { workspace = true }
+asm-runner = { workspace = true }
+colored = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+default = []
+gpu = []

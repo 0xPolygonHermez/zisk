@@ -16,7 +16,7 @@ use anyhow::{Context, Result};
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
 
-pub trait Task: Send + Sync + 'static {
+pub trait Task<'a>: Send + Sync + 'a {
     type Output: Send + 'static;
     fn execute(self) -> Self::Output;
 }
@@ -77,7 +77,7 @@ impl AsmRunnerMT {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn run_and_count<T: Task>(
+    pub fn run_and_count<T: Task<'static> + 'static>(
         preloaded: &mut PreloadedMT,
         max_steps: u64,
         chunk_size: u64,

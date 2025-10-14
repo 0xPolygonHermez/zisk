@@ -43,6 +43,7 @@ members = [
     "distributed/crates/grpc-api",
     "distributed/crates/common",
     "distributed/crates/worker",
+    "sdk",
 ]
 
 resolver = "2"
@@ -88,6 +89,7 @@ zisk-witness = { path = "witness-computation" }
 ziskclib = { path = "ziskclib" }
 ziskos = { path = "ziskos/entrypoint" }
 circuit = { path = "tools/circuit" }
+zisk-sdk = { path = "sdk" }
 
 # Distributed crates
 zisk-distributed-common = { path = "distributed/crates/common" }

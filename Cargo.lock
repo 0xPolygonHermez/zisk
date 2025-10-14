@@ -580,6 +580,7 @@ dependencies = [
  "zisk-common",
  "zisk-core",
  "zisk-pil",
+ "zisk-sdk",
  "zstd",
 ]
 
@@ -5622,6 +5623,22 @@ dependencies = [
  "rayon",
  "serde",
  "serde_arrays",
+]
+
+[[package]]
+name = "zisk-sdk"
+version = "0.12.0"
+dependencies = [
+ "anyhow",
+ "asm-runner",
+ "colored",
+ "fields",
+ "libloading",
+ "proofman",
+ "proofman-common",
+ "rom-setup",
+ "tracing",
+ "zisk-common",
 ]
 
 [[package]]
