@@ -77,11 +77,7 @@ pub fn read_input_slice() -> Box<[u8]> {
 
     let mut file =
         File::open("build/input.bin").expect("Error opening input file at: build/input.bin");
-    
-    // Pre-allocate with file size to avoid reallocations
-    let file_size = file.metadata().map(|m| m.len() as usize).unwrap_or(0);
-    let mut buffer = Vec::with_capacity(file_size);
-    
+    let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).unwrap();
     buffer.into_boxed_slice()
 }
