@@ -62,6 +62,31 @@ pub fn read_input() -> Vec<u8> {
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+pub fn read_input_slice<'a>() -> &'a [u8] {
+    // Create a slice of the first 8 bytes to get the size
+    let bytes = unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), 8) };
+    // Convert the slice to a u64 (little-endian)
+    let size: u64 = u64::from_le_bytes(bytes.try_into().unwrap());
+
+    unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(16), size as usize) }
+}
+
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+pub fn read_input_slice() -> Box<[u8]> {
+    use std::{fs::File, io::Read};
+
+    let mut file =
+        File::open("build/input.bin").expect("Error opening input file at: build/input.bin");
+    
+    // Pre-allocate with file size to avoid reallocations
+    let file_size = file.metadata().map(|m| m.len() as usize).unwrap_or(0);
+    let mut buffer = Vec::with_capacity(file_size);
+    
+    file.read_to_end(&mut buffer).unwrap();
+    buffer.into_boxed_slice()
+}
+
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub fn set_output(id: usize, value: u32) {
     use std::arch::asm;
     let addr_n: *mut u32;
