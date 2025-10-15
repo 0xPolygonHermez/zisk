@@ -16,7 +16,7 @@ fn signext(v: u32, size: u32) -> i32 {
 
 /// Interprets a buffer of 32-bits RICSV instructions into a vector of decoded RISCV instructions
 /// split by field
-pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
+pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInstruction> {
     let mut insts = Vec::<RiscvInstruction>::new();
 
     // code_len is the length of the input code buffer,
@@ -71,26 +71,31 @@ pub fn riscv_interpreter(code: &[u16]) -> Vec<RiscvInstruction> {
             let inst: u32 = (inst as u32) | ((code[code_index] as u32) << 16);
             code_index += 1;
 
-            let i = riscv_get_instruction_32(inst, code_index);
+            let i = riscv_get_instruction_32(inst, rom_address, code_index);
             insts.push(i);
         }
         /***********/
         /* 16 bits */
         /***********/
         else {
-            let i = riscv_get_instruction_16(inst, code_index);
+            let i = riscv_get_instruction_16(inst, rom_address, code_index);
             insts.push(i);
         }
     }
     insts
 }
 
-fn riscv_get_instruction_32(inst: u32, code_index: usize) -> RiscvInstruction {
+fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> RiscvInstruction {
+    // Get the instruction type and name from the RVD data
     let (inst_type, inst_name, level) = Rvd::get_type_and_name_32_bits(inst);
+
+    // Calculate the ROM address of this instruction
+    let rom_address = root_address + (code_index * 16) as u64;
 
     // Create a RISCV instruction instance with the known fields to be filled with data
     // from the instruction based on its format type
     let mut i = RiscvInstruction {
+        rom_address,
         rvinst: inst,
         t: inst_type.to_string(),
         inst: inst_name.to_string(),
@@ -202,27 +207,27 @@ fn riscv_get_instruction_32(inst: u32, code_index: usize) -> RiscvInstruction {
         i.funct3 = (inst & 0x7000) >> 12;
         if i.funct3 == 0 {
             if (inst & 0xF00F8F80) != 0 {
-                panic!("Invalid F funct3=0 inst=0x{inst:x} at index={code_index}");
+                panic!("Invalid F funct3=0 inst=0x{inst:x} at index={code_index} addr=0x{rom_address:x}");
             }
             i.pred = (inst & 0x0F000000) >> 24;
             i.succ = (inst & 0x00F00000) >> 20;
             i.inst = "fence".to_string();
         } else if i.funct3 == 1 {
             if (inst & 0xFFFF8F80) != 0 {
-                panic!("Invalid F funct3=1 inst=0x{inst:x} at index={code_index}");
+                panic!("Invalid F funct3=1 inst=0x{inst:x} at index={code_index} addr=0x{rom_address:x}");
             }
             i.inst = "fence.i".to_string();
         } else {
-            panic!("Invalid F funct3={:?} inst=0x{inst:x} at index={code_index}", i.funct3);
+            panic!("Invalid F funct3={:?} inst=0x{inst:x} at index={code_index} addr=0x{rom_address:x}", i.funct3);
         }
     } else if i.t == *"INVALID" {
     } else {
-        panic!("Invalid i.t={} at index={}", i.t, code_index);
+        panic!("Invalid i.t={} at index={} addr=0x{:x}", i.t, code_index, rom_address);
     }
     i
 }
 
-fn riscv_get_instruction_16(inst: u16, code_index: usize) -> RiscvInstruction {
+fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> RiscvInstruction {
     // This is a 16-bit instruction, so we need to decode it accordingly
     let (inst_type, inst_name) = Rvd::get_type_and_name_16_bits(inst);
 
@@ -230,7 +235,9 @@ fn riscv_get_instruction_16(inst: u16, code_index: usize) -> RiscvInstruction {
     // the RVD info data
     // Copy the original RISCV 32-bit instruction
     // Copy the instruction type
+    let rom_address = root_address + (code_index * 16) as u64;
     let mut i = RiscvInstruction {
+        rom_address,
         rvinst: inst as u32,
         t: inst_type.to_string(),
         inst: inst_name.to_string(),
@@ -248,7 +255,9 @@ fn riscv_get_instruction_16(inst: u16, code_index: usize) -> RiscvInstruction {
         if inst_name == "c.jr" {
             i.rd = 0;
             if i.rs2 != 0 {
-                panic!("Invalid use of rs2!=0 in c.jr at index={code_index}");
+                panic!(
+                    "Invalid use of rs2!=0 in c.jr at index={code_index} addr=0x{rom_address:x}"
+                );
             }
         } else if inst_name == "c.jalr" {
             i.rd = 1;
@@ -304,7 +313,10 @@ fn riscv_get_instruction_16(inst: u16, code_index: usize) -> RiscvInstruction {
                 i.inst = "c.nop".to_string(); // Change to c.nop
             }
             if i.rd == 2 {
-                panic!("Invalid use of rd=2 in c.lui at index={} inst=0x{:x}", code_index, inst);
+                panic!(
+                    "Invalid use of rd=2 in c.lui at index={} inst=0x{:x} addr=0x{:x}",
+                    code_index, inst, rom_address
+                );
             }
         } else if inst_name == "c.ldsp" {
             let imm5 = ((inst >> 12) & 0x1) as u32;
@@ -312,7 +324,9 @@ fn riscv_get_instruction_16(inst: u16, code_index: usize) -> RiscvInstruction {
             let imm8_6 = ((inst >> 2) & 0x7) as u32;
             i.imm = ((imm8_6 << 6) | (imm5 << 5) | (imm4_3 << 3)) as i32;
             if i.rd == 0 {
-                panic!("Invalid use of rd=0 in c.ldsp at index={code_index}");
+                panic!(
+                    "Invalid use of rd=0 in c.ldsp at index={code_index} addr=0x{rom_address:x}"
+                );
             }
             i.rs1 = 2; // x2 is always the base pointer for LDSP instructions
         } else if inst_name == "c.lwsp" {
@@ -321,7 +335,9 @@ fn riscv_get_instruction_16(inst: u16, code_index: usize) -> RiscvInstruction {
             let imm7_6 = ((inst >> 2) & 0x3) as u32;
             i.imm = ((imm7_6 << 6) | (imm5 << 5) | (imm4_2 << 2)) as i32;
             if i.rd == 0 {
-                panic!("Invalid use of rd=0 in c.lwsp at index={code_index}");
+                panic!(
+                    "Invalid use of rd=0 in c.lwsp at index={code_index} addr=0x{rom_address:x}"
+                );
             }
             i.rs1 = 2; // x2 is always the base pointer for LWSP instructions
         } else {
@@ -352,7 +368,12 @@ fn riscv_get_instruction_16(inst: u16, code_index: usize) -> RiscvInstruction {
                 i.imm = ((imm7_6 << 6) | (imm5_2 << 2)) as i32;
                 i.rs1 = 2; // x2 is always the base pointer for CSS instructions
             }
-            _ => panic!("Invalid funct3={} for CSS at index={}", (inst >> 13) & 0x7, code_index),
+            _ => panic!(
+                "Invalid funct3={} for CSS at index={} addr=0x{:x}",
+                (inst >> 13) & 0x7,
+                code_index,
+                rom_address
+            ),
         }
 
         i.rs2 = ((inst >> 2) & 0x1F) as u32;
@@ -419,7 +440,9 @@ fn riscv_get_instruction_16(inst: u16, code_index: usize) -> RiscvInstruction {
             i.rd = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
             i.rs1 = i.rd;
             if i.rd == 0 {
-                panic!("Invalid use of rd=0 in c.andi at index={code_index}");
+                panic!(
+                    "Invalid use of rd=0 in c.andi at index={code_index} addr=0x{rom_address:x}"
+                );
             }
         } else if inst_name == "c.srli" {
             let imm5 = ((inst >> 12) & 0x1) as u32;
@@ -468,7 +491,7 @@ fn riscv_get_instruction_16(inst: u16, code_index: usize) -> RiscvInstruction {
         i.imm = signext(offset, 12);
     } else if i.t == *"CINVALID" {
     } else {
-        panic!("Invalid i.t={} at index={}", i.t, code_index);
+        panic!("Invalid i.t={} at index={} addr=0x{:x}", i.t, code_index, rom_address);
     }
     i
 }

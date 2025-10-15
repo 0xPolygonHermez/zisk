@@ -1704,7 +1704,7 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8]) {
     let code_vector: Vec<u16> = convert_vector(data);
 
     // Convert data vector to RISCV instructions
-    let riscv_instructions = riscv_interpreter(&code_vector);
+    let riscv_instructions = riscv_interpreter(addr, &code_vector);
 
     // Create a context to convert RISCV instructions to ZisK instructions, using rom.insts
     let mut ctx = Riscv2ZiskContext { s: addr, insts: &mut rom.insts };
