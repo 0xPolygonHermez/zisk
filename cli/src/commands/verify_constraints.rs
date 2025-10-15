@@ -124,12 +124,12 @@ impl ZiskVerifyConstraints {
             .build()?;
 
         let start = std::time::Instant::now();
-        prover.verify_constraints(self.input.clone())?;
+        prover.debug_verify_constraints(self.input.clone(), self.debug.clone())?;
         let elapsed = start.elapsed();
 
-        #[allow(clippy::type_complexity)]
-        let (result, mut _stats) =
-            prover.execution_result().expect("Failed to get execution result");
+        let (result, mut _stats) = prover.execution_result().ok_or_else(|| {
+            anyhow::anyhow!("Failed to get execution result from emulator prover")
+        })?;
 
         Ok((result, elapsed))
     }
@@ -150,12 +150,12 @@ impl ZiskVerifyConstraints {
             .build()?;
 
         let start = std::time::Instant::now();
-        prover.verify_constraints(self.input.clone())?;
+        prover.debug_verify_constraints(self.input.clone(), self.debug.clone())?;
         let elapsed = start.elapsed();
 
-        #[allow(clippy::type_complexity)]
-        let (result, mut _stats) =
-            prover.execution_result().expect("Failed to get execution result");
+        let (result, mut _stats) = prover
+            .execution_result()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get execution result from ASM prover"))?;
 
         Ok((result, elapsed))
     }

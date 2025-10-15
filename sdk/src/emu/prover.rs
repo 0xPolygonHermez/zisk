@@ -1,7 +1,7 @@
 use crate::{ensure_custom_commits, Proof, ProverEngine, RankInfo, ZiskBackend, ZiskLibLoader};
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use proofman::ProofMan;
-use proofman_common::{initialize_logger, DebugInfo, ParamsGPU};
+use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use std::{collections::HashMap, path::PathBuf};
 use zisk_common::{ExecutorStats, ZiskExecutionResult, ZiskLib};
 
@@ -59,6 +59,23 @@ where
     F: PrimeField64,
     GoldilocksQuinticExtension: ExtensionField<F>,
 {
+    fn debug_verify_constraints(
+        &self,
+        input: Option<PathBuf>,
+        debug_info: Option<Option<String>>,
+    ) -> Result<()> {
+        let debug_info = match &debug_info {
+            None => DebugInfo::default(),
+            Some(None) => DebugInfo::new_debug(),
+            Some(Some(debug_value)) => json_to_debug_instances_map(
+                self.core_prover.proving_key.clone(),
+                debug_value.clone(),
+            ),
+        };
+
+        self.core_prover.debug_verify_constraints(input, debug_info)
+    }
+
     fn verify_constraints(&self, input: Option<PathBuf>) -> Result<()> {
         self.core_prover.verify_constraints(input)
     }
@@ -80,6 +97,7 @@ where
 {
     rank_info: RankInfo,
     witness_lib: Box<dyn ZiskLib<F>>,
+    proving_key: PathBuf,
     proofman: ProofMan<F>,
     verify_constraints: bool,
 }
@@ -103,7 +121,7 @@ where
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path)]);
 
         let proofman = ProofMan::<F>::new(
-            proving_key,
+            proving_key.clone(),
             custom_commits_map,
             verify_constraints,
             aggregation,
@@ -134,22 +152,31 @@ where
 
         Ok(Self {
             rank_info: RankInfo { world_rank, local_rank },
+            proving_key,
             witness_lib,
             proofman,
             verify_constraints,
         })
     }
 
-    fn verify_constraints(&self, input: Option<PathBuf>) -> Result<()> {
+    fn debug_verify_constraints(
+        &self,
+        input: Option<PathBuf>,
+        debug_info: DebugInfo,
+    ) -> Result<()> {
         if !self.verify_constraints {
             return Err(anyhow::anyhow!("Constraint verification is disabled for this prover."));
         }
 
         self.proofman
-            .verify_proof_constraints_from_lib(input, &DebugInfo::default(), false)
+            .verify_proof_constraints_from_lib(input, &debug_info, false)
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
 
         Ok(())
+    }
+
+    fn verify_constraints(&self, input: Option<PathBuf>) -> Result<()> {
+        self.debug_verify_constraints(input, DebugInfo::default())
     }
 
     fn generate_proof(&self) -> Result<Proof> {
