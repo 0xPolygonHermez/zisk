@@ -30,6 +30,9 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInstruction
     while code_index < code_len {
         //println!("riscv_interpreter() code_index={}", code_index);
 
+        // Store the current code index
+        let instruction_code_index = code_index;
+
         // Get the RISCV instruction
         let inst = code[code_index];
         code_index += 1;
@@ -71,14 +74,14 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInstruction
             let inst: u32 = (inst as u32) | ((code[code_index] as u32) << 16);
             code_index += 1;
 
-            let i = riscv_get_instruction_32(inst, rom_address, code_index);
+            let i = riscv_get_instruction_32(inst, rom_address, instruction_code_index);
             insts.push(i);
         }
         /***********/
         /* 16 bits */
         /***********/
         else {
-            let i = riscv_get_instruction_16(inst, rom_address, code_index);
+            let i = riscv_get_instruction_16(inst, rom_address, instruction_code_index);
             insts.push(i);
         }
     }
@@ -90,7 +93,7 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
     let (inst_type, inst_name, level) = Rvd::get_type_and_name_32_bits(inst);
 
     // Calculate the ROM address of this instruction
-    let rom_address = root_address + (code_index * 16) as u64;
+    let rom_address = root_address + (code_index * 2) as u64;
 
     // Create a RISCV instruction instance with the known fields to be filled with data
     // from the instruction based on its format type
