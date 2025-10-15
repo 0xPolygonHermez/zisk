@@ -5,7 +5,7 @@ use crate::{
     get_asm_paths, get_proving_key, get_witness_computation_lib, ZiskProver,
 };
 use colored::Colorize;
-use fields::Goldilocks;
+use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 
 use anyhow::Result;
 
@@ -116,7 +116,11 @@ impl AsmProverBuilder {
     ///
     /// let prover = ProverClient::builder().asm().build();
     /// ```
-    pub fn build(self) -> Result<ZiskProver<Asm<Goldilocks>>> {
+    pub fn build<F>(self) -> Result<ZiskProver<Asm>>
+    where
+        F: PrimeField64,
+        GoldilocksQuinticExtension: ExtensionField<F>,
+    {
         let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("elf_path is required"))?;
@@ -144,7 +148,7 @@ impl AsmProverBuilder {
             self.unlock_mapped_memory,
         )?;
 
-        Ok(ZiskProver::<Asm<Goldilocks>>::new(asm))
+        Ok(ZiskProver::<Asm>::new(asm))
     }
 
     fn _print_command_info(witness_lib: &Path, proving_key: &Path, elf: &Path) {

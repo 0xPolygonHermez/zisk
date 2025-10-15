@@ -5,7 +5,6 @@ use crate::{
     get_proving_key, get_witness_computation_lib, ZiskProver,
 };
 use colored::Colorize;
-use fields::Goldilocks;
 
 use anyhow::Result;
 
@@ -93,7 +92,7 @@ impl EmuProverBuilder {
     ///
     /// let prover = ProverClient::builder().emu().build();
     /// ```
-    pub fn build(self) -> Result<ZiskProver<Emu<Goldilocks>>> {
+    pub fn build(self) -> Result<ZiskProver<Emu>> {
         let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("elf_path is required"))?;
@@ -115,7 +114,7 @@ impl EmuProverBuilder {
             self.shared_tables,
         )?;
 
-        Ok(ZiskProver::<Emu<Goldilocks>>::new(emu))
+        Ok(ZiskProver::<Emu>::new(emu))
     }
 
     fn _print_command_info(witness_lib: &Path, proving_key: &Path, elf: &Path) {

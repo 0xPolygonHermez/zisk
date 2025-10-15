@@ -1,5 +1,5 @@
 use crate::{ensure_custom_commits, Proof, ProverEngine, RankInfo, ZiskBackend, ZiskLibLoader};
-use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
+use fields::{ExtensionField, Goldilocks, GoldilocksQuinticExtension, PrimeField64};
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use std::{collections::HashMap, path::PathBuf};
@@ -7,29 +7,17 @@ use zisk_common::{ExecutorStats, ZiskExecutionResult, ZiskLib};
 
 use anyhow::Result;
 
-pub struct Emu<F: PrimeField64>(std::marker::PhantomData<F>);
+pub struct Emu;
 
-impl<F> ZiskBackend for Emu<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
-    type Prover = EmuProver<F>;
+impl ZiskBackend for Emu {
+    type Prover = EmuProver;
 }
 
-pub struct EmuProver<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
-    pub(crate) core_prover: EmuCoreProver<F>,
+pub struct EmuProver {
+    pub(crate) core_prover: EmuCoreProver,
 }
 
-impl<F: PrimeField64> EmuProver<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
+impl EmuProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
@@ -54,11 +42,7 @@ where
     }
 }
 
-impl<F> ProverEngine for EmuProver<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
+impl ProverEngine for EmuProver {
     fn debug_verify_constraints(
         &self,
         input: Option<PathBuf>,
@@ -90,23 +74,15 @@ where
     }
 }
 
-pub struct EmuCoreProver<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
+pub struct EmuCoreProver {
     rank_info: RankInfo,
-    witness_lib: Box<dyn ZiskLib<F>>,
+    witness_lib: Box<dyn ZiskLib<Goldilocks>>,
     proving_key: PathBuf,
-    proofman: ProofMan<F>,
+    proofman: ProofMan<Goldilocks>,
     verify_constraints: bool,
 }
 
-impl<F> EmuCoreProver<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
+impl EmuCoreProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
@@ -120,7 +96,7 @@ where
         let rom_bin_path = ensure_custom_commits(&proving_key, &elf)?;
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path)]);
 
-        let proofman = ProofMan::<F>::new(
+        let proofman = ProofMan::new(
             proving_key.clone(),
             custom_commits_map,
             verify_constraints,

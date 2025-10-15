@@ -1,6 +1,6 @@
 use crate::{ensure_custom_commits, Proof, ProverEngine, RankInfo, ZiskBackend, ZiskLibLoader};
 use asm_runner::{AsmRunnerOptions, AsmServices};
-use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
+use fields::{ExtensionField, Goldilocks, GoldilocksQuinticExtension, PrimeField64};
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::DEFAULT_CACHE_PATH;
@@ -10,29 +10,17 @@ use zisk_common::{ExecutorStats, ZiskExecutionResult, ZiskLib};
 
 use anyhow::Result;
 
-pub struct Asm<F: PrimeField64>(std::marker::PhantomData<F>);
+pub struct Asm;
 
-impl<F> ZiskBackend for Asm<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
-    type Prover = AsmProver<F>;
+impl ZiskBackend for Asm {
+    type Prover = AsmProver;
 }
 
-pub struct AsmProver<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
-    pub(crate) core_prover: AsmCoreProver<F>,
+pub struct AsmProver {
+    pub(crate) core_prover: AsmCoreProver,
 }
 
-impl<F: PrimeField64> AsmProver<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
+impl AsmProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
@@ -65,11 +53,7 @@ where
     }
 }
 
-impl<F> ProverEngine for AsmProver<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
+impl ProverEngine for AsmProver {
     fn debug_verify_constraints(
         &self,
         input: Option<PathBuf>,
@@ -101,23 +85,15 @@ where
     }
 }
 
-pub struct AsmCoreProver<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
+pub struct AsmCoreProver {
     rank_info: RankInfo,
-    witness_lib: Box<dyn ZiskLib<F>>,
+    witness_lib: Box<dyn ZiskLib<Goldilocks>>,
     proving_key: PathBuf,
-    proofman: ProofMan<F>,
+    proofman: ProofMan<Goldilocks>,
     verify_constraints: bool,
 }
 
-impl<F> AsmCoreProver<F>
-where
-    F: PrimeField64,
-    GoldilocksQuinticExtension: ExtensionField<F>,
-{
+impl AsmCoreProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
@@ -143,7 +119,7 @@ where
 
         // TODO! Check if paths exist
 
-        let proofman = ProofMan::<F>::new(
+        let proofman = ProofMan::new(
             proving_key.clone(),
             custom_commits_map,
             verify_constraints,
