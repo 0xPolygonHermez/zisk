@@ -44,19 +44,19 @@
 //! `| Contains output data, which is written during`
 //! `| program execution and read during memory finalization`
 //! `|`
-//! `|--------------- FLOAT_LIB_RAM_ADDR                  (0xa0020000)`
-//! `|`
-//! `| Contains float library memory, available for normal R/W`
-//! `| use during library execution.`
-//! `|`
-//! `|--------------- FLOAT_LIB_SP                        (0xa0030000 - 16)`
-//! `|`
-//! `| Contains float library stack
-//! `|`
 //! `|--------------- AVAILABLE_MEM_ADDR                  (0xa0030000)`
 //! `|`
 //! `| Contains program memory, available for normal R/W`
-//! `| use during program execution.`
+//! `| used during program execution.`
+//! `|`
+//! `|--------------- FLOAT_LIB_RAM_ADDR = 0xafff0000     (0xb0000000 - 0x10000)`
+//! `|`
+//! `| Contains float library memory, available for normal R/W`
+//! `| used during library execution (bottom-up).`
+//! `|`
+//! `| Contains float library stack memory (top-down).`
+//! `|`
+//! `|--------------- FLOAT_LIB_SP = 0xaffffff0           (0xb0000000 - 16)`
 //! `|`
 //! `|---------------                                     (0xb0000000)`
 //! `      ...`
