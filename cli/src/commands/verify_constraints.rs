@@ -7,10 +7,11 @@ use anyhow::Result;
 
 use clap::Parser;
 use colored::Colorize;
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_sdk::ZiskProverBuilder;
+use zisk_common::ZiskExecutionResult;
+use zisk_sdk::ProverClient;
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -85,27 +86,7 @@ impl ZiskVerifyConstraints {
 
         print_banner();
 
-        let zisk_prover = ZiskProverBuilder::new()
-            .with_witness_lib_path(self.witness_lib.clone())
-            .with_proving_key_path(self.proving_key.clone())
-            .with_debug_info(self.debug.clone())
-            .with_verbose(self.verbose)
-            .with_elf_path(Some(self.elf.clone()))
-            .with_shared_tables(self.shared_tables)
-            .with_asm_path(self.asm.clone())
-            .with_base_port(self.port)
-            .with_unlock_mapped_memory(self.unlock_mapped_memory)
-            .with_emulator(self.emulator)
-            .with_command_info()
-            .build()?;
-
-        let start = std::time::Instant::now();
-        zisk_prover.verify_constraints(self.input.clone())?;
-        let elapsed = start.elapsed();
-
-        #[allow(clippy::type_complexity)]
-        let (result, mut _stats) =
-            zisk_prover.execution_result().expect("Failed to get execution result");
+        let (result, elapsed) = if self.emulator { self.run_emu()? } else { self.run_asm()? };
 
         tracing::info!("");
         tracing::info!(
@@ -119,8 +100,6 @@ impl ZiskVerifyConstraints {
             result.executed_steps
         );
 
-        zisk_prover.finalize()?;
-
         // Store the stats in stats.json
         #[cfg(feature = "stats")]
         {
@@ -130,5 +109,54 @@ impl ZiskVerifyConstraints {
         }
 
         Ok(())
+    }
+
+    pub fn run_emu(&mut self) -> Result<(ZiskExecutionResult, Duration)> {
+        let prover = ProverClient::builder()
+            .emu()
+            .verify_constraints()
+            .witness_lib_path(self.witness_lib.clone())
+            .proving_key_path(self.proving_key.clone())
+            .elf_path(Some(self.elf.clone()))
+            .verbose(self.verbose)
+            .shared_tables(self.shared_tables)
+            .print_command_info()
+            .build()?;
+
+        let start = std::time::Instant::now();
+        prover.verify_constraints(self.input.clone())?;
+        let elapsed = start.elapsed();
+
+        #[allow(clippy::type_complexity)]
+        let (result, mut _stats) =
+            prover.execution_result().expect("Failed to get execution result");
+
+        Ok((result, elapsed))
+    }
+
+    pub fn run_asm(&mut self) -> Result<(ZiskExecutionResult, Duration)> {
+        let prover = ProverClient::builder()
+            .asm()
+            .verify_constraints()
+            .witness_lib_path(self.witness_lib.clone())
+            .proving_key_path(self.proving_key.clone())
+            .elf_path(Some(self.elf.clone()))
+            .verbose(self.verbose)
+            .shared_tables(self.shared_tables)
+            .asm_path(self.asm.clone())
+            .base_port(self.port)
+            .unlock_mapped_memory(self.unlock_mapped_memory)
+            .print_command_info()
+            .build()?;
+
+        let start = std::time::Instant::now();
+        prover.verify_constraints(self.input.clone())?;
+        let elapsed = start.elapsed();
+
+        #[allow(clippy::type_complexity)]
+        let (result, mut _stats) =
+            prover.execution_result().expect("Failed to get execution result");
+
+        Ok((result, elapsed))
     }
 }

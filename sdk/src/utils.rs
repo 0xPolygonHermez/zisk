@@ -1,5 +1,12 @@
-use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::{env, fs};
+
+use anyhow::Result;
+
+use rom_setup::{
+    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
+    DEFAULT_CACHE_PATH,
+};
 
 /// Gets the user's home directory as specified by the HOME environment variable.
 pub fn get_home_dir() -> String {
@@ -89,4 +96,39 @@ pub fn get_proving_key(proving_key: Option<&PathBuf>) -> PathBuf {
 /// Uses the default one if not specified by user.
 pub fn get_zisk_path(zisk_path: Option<&PathBuf>) -> PathBuf {
     zisk_path.cloned().unwrap_or_else(get_default_zisk_path)
+}
+
+pub fn ensure_custom_commits(proving_key: &Path, elf: &Path) -> Result<PathBuf> {
+    // Ensure cache directory exists
+    let default_cache_path =
+        std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
+
+    if let Err(e) = fs::create_dir_all(&default_cache_path) {
+        if e.kind() != std::io::ErrorKind::AlreadyExists {
+            panic!("Failed to create cache directory: {e:?}");
+        }
+    }
+
+    // Get the blowup factor as the custom commits filename is formed using it
+    // {ELF_HASH}_{PILOUT_HASH}_{ROM_NUM_ROWS}_{BLOWUP_FACTOR}.bin
+    let blowup_factor = get_rom_blowup_factor(proving_key);
+
+    // Compute the path for the custom commits file
+    let rom_bin_path = get_elf_bin_file_path(elf, &default_cache_path, blowup_factor)?;
+
+    // Check if the custom commits file exists, if not generate it
+    if !rom_bin_path.exists() {
+        let _ = gen_elf_hash(elf, rom_bin_path.as_path(), blowup_factor, false)
+            .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
+    }
+
+    Ok(rom_bin_path)
+}
+
+pub fn get_asm_paths(elf: &Path) -> Result<(String, String)> {
+    let stem = elf.file_stem().unwrap().to_str().unwrap();
+    let hash =
+        get_elf_data_hash(elf).map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
+
+    Ok((format!("{stem}-{hash}-mt.bin"), format!("{stem}-{hash}-rh.bin")))
 }
