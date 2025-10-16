@@ -383,6 +383,7 @@ impl ZiskService {
 
         let mut witness_lib = witness_lib_constructor(
             params.verbose.into(),
+            None,
             params.elf.clone(),
             params.asm.clone(),
             params.asm_rom.clone(),

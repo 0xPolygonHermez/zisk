@@ -16,364 +16,131 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "163bcca4d46e9820bcb620f1da69250c790cb1de690f03c76877618f09a22d33";
+pub const PILOUT_HASH: &str = "209cf1e8020a432b6cfc65c5e69283ca3fab83caeae478ecdaa08cf0d51348ec";
 
-//AIRGROUP CONSTANTS
-
+// AIRGROUP CONSTANTS
 pub const ZISK_AIRGROUP_ID: usize = 0;
 
-//AIR CONSTANTS
-
+// AIR CONSTANTS
 pub const MAIN_AIR_IDS: &[usize] = &[0];
-
 pub const ROM_AIR_IDS: &[usize] = &[1];
-
 pub const MEM_AIR_IDS: &[usize] = &[2];
-
 pub const ROM_DATA_AIR_IDS: &[usize] = &[3];
-
 pub const INPUT_DATA_AIR_IDS: &[usize] = &[4];
-
 pub const MEM_ALIGN_AIR_IDS: &[usize] = &[5];
-
 pub const MEM_ALIGN_BYTE_AIR_IDS: &[usize] = &[6];
-
 pub const MEM_ALIGN_READ_BYTE_AIR_IDS: &[usize] = &[7];
-
 pub const MEM_ALIGN_WRITE_BYTE_AIR_IDS: &[usize] = &[8];
-
 pub const ARITH_AIR_IDS: &[usize] = &[9];
-
 pub const BINARY_AIR_IDS: &[usize] = &[10];
-
 pub const BINARY_ADD_AIR_IDS: &[usize] = &[11];
-
 pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[12];
-
 pub const ARITH_EQ_AIR_IDS: &[usize] = &[13];
-
 pub const ARITH_EQ_384_AIR_IDS: &[usize] = &[14];
-
 pub const KECCAKF_AIR_IDS: &[usize] = &[15];
-
 pub const SHA_256_F_AIR_IDS: &[usize] = &[16];
-
 pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[17];
-
 pub const VIRTUAL_TABLE_0_AIR_IDS: &[usize] = &[18];
-
 pub const VIRTUAL_TABLE_1_AIR_IDS: &[usize] = &[19];
 
-
-//PUBLICS
-use serde::Deserialize;
-use serde::Serialize;
-use serde_arrays;
-
-
-fn default_array_rom_root() -> [u64; 4] {
-    [0; 4]
-}
-
-fn default_array_inputs() -> [u64; 64] {
-    [0; 64]
-}
-
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ZiskPublics {
-    #[serde(default = "default_array_rom_root", with = "serde_arrays")]
-    pub rom_root: [u64; 4],
-    #[serde(default = "default_array_inputs", with = "serde_arrays")]
-    pub inputs: [u64; 64],
-    
-}
-
-impl Default for ZiskPublics {
-    fn default() -> Self {
-        Self {  
-            rom_root: [0; 4],  
-            inputs: [0; 64], 
-        }
-    }
-}
-
-values!(ZiskPublicValues<F> {
- rom_root: [F; 4], inputs: [F; 64],
-});
- 
-values!(ZiskProofValues<F> {
- enable_input_data: F,
-});
- 
-trace!(MainFixed<F> {
- SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
-},  0, 0, 4194304 );
-
-trace!(MainTrace<F> {
- a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, a_reg_prev_mem_step: F, b_reg_prev_mem_step: F, store_reg_prev_mem_step: F, store_reg_prev_value: [F; 2], a_src_reg: F, b_src_reg: F, store_reg: F,
-},  0, 0, 4194304 );
-
-trace!(RomFixed<F> {
- __L1__: F,
-},  0, 1, 2097152 );
-
-trace!(RomTrace<F> {
- multiplicity: F,
-},  0, 1, 2097152 );
-
-trace!(MemFixed<F> {
- SEGMENT_L1: F, __L1__: F,
-},  0, 2, 4194304 );
-
-trace!(MemTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, step_dual: F, sel_dual: F, value: [F; 2], wr: F, previous_step: F, increment: [F; 2], read_same_addr: F,
-},  0, 2, 4194304 );
-
-trace!(RomDataFixed<F> {
- SEGMENT_L1: F, __L1__: F,
-},  0, 3, 2097152 );
-
-trace!(RomDataTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value: [F; 2],
-},  0, 3, 2097152 );
-
-trace!(InputDataFixed<F> {
- SEGMENT_L1: F, __L1__: F,
-},  0, 4, 2097152 );
-
-trace!(InputDataTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4], is_free_read: F,
-},  0, 4, 2097152 );
-
-trace!(MemAlignFixed<F> {
- L1: F, __L1__: F,
-},  0, 5, 2097152 );
-
-trace!(MemAlignTrace<F> {
- addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2],
-},  0, 5, 2097152 );
-
-trace!(MemAlignByteFixed<F> {
- __L1__: F,
-},  0, 6, 4194304 );
-
-trace!(MemAlignByteTrace<F> {
- sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, written_composed_value: F, written_byte_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F, is_write: F, mem_write_values: [F; 2], bus_byte: F,
-},  0, 6, 4194304 );
-
-trace!(MemAlignReadByteFixed<F> {
- __L1__: F,
-},  0, 7, 4194304 );
-
-trace!(MemAlignReadByteTrace<F> {
- sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F,
-},  0, 7, 4194304 );
-
-trace!(MemAlignWriteByteFixed<F> {
- __L1__: F,
-},  0, 8, 4194304 );
-
-trace!(MemAlignWriteByteTrace<F> {
- sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, written_composed_value: F, written_byte_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F, mem_write_values: [F; 2],
-},  0, 8, 4194304 );
-
-trace!(ArithFixed<F> {
- __L1__: F,
-},  0, 9, 2097152 );
-
-trace!(ArithTrace<F> {
- carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
-},  0, 9, 2097152 );
-
-trace!(BinaryFixed<F> {
- __L1__: F,
-},  0, 10, 4194304 );
-
-trace!(BinaryTrace<F> {
- m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, has_initial_carry: F, cout: F, result_is_a: F, use_last_carry_mode32: F, use_last_carry_mode64: F, m_op_or_ext: F, free_in_a_or_c: [F; 4], free_in_b_or_zero: [F; 4], multiplicity: F,
-},  0, 10, 4194304 );
-
-trace!(BinaryAddFixed<F> {
- __L1__: F,
-},  0, 11, 4194304 );
-
-trace!(BinaryAddTrace<F> {
- a: [F; 2], b: [F; 2], c_chunks: [F; 4], cout: [F; 2], multiplicity: F,
-},  0, 11, 4194304 );
-
-trace!(BinaryExtensionFixed<F> {
- __L1__: F,
-},  0, 12, 4194304 );
-
-trace!(BinaryExtensionTrace<F> {
- op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], multiplicity: F,
-},  0, 12, 4194304 );
-
-trace!(ArithEqFixed<F> {
- CLK_0: F, __L1__: F,
-},  0, 13, 1048576 );
-
-trace!(ArithEqTrace<F> {
- x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 9], sel_op_clk0: [F; 9], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
-},  0, 13, 1048576 );
-
-trace!(ArithEq384Fixed<F> {
- CLK_0: F, __L1__: F,
-},  0, 14, 1048576 );
-
-trace!(ArithEq384Trace<F> {
- x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 6], sel_op_clk0: [F; 6], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
-},  0, 14, 1048576 );
-
-trace!(KeccakfFixed<F> {
- L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
-},  0, 15, 2097152 );
-
-trace!(KeccakfTrace<F> {
- free_in_a: [F; 9], free_in_b: [F; 9], free_in_c: [F; 9], free_in_d: [F; 9], bit: [F; 4], val: [F; 4], step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 15, 2097152 );
-
-trace!(Sha256fFixed<F> {
- CLK_0: F, __L1__: F,
-},  0, 16, 262144 );
-
-trace!(Sha256fTrace<F> {
- a: [F; 32], e: [F; 32], w: [F; 32], new_a_carry_bits: F, new_e_carry_bits: F, new_w_carry_bits: F, step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 16, 262144 );
-
-trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 19], __L1__: F,
-},  0, 17, 2097152 );
-
-trace!(SpecifiedRangesTrace<F> {
- mul: [F; 19],
-},  0, 17, 2097152 );
-
-trace!(VirtualTable0Fixed<F> {
- UID: [F; 11], column: [F; 63], __L1__: F,
-},  0, 18, 2097152 );
-
-trace!(VirtualTable0Trace<F> {
- multiplicity: [F; 11],
-},  0, 18, 2097152 );
-
-trace!(VirtualTable1Fixed<F> {
- UID: [F; 8], column: [F; 64], __L1__: F,
-},  0, 19, 2097152 );
-
-trace!(VirtualTable1Trace<F> {
- multiplicity: [F; 8],
-},  0, 19, 2097152 );
-
-trace!(RomRomTrace<F> {
- line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
-}, 0, 1, 2097152, 0 );
-
-values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31], im_direct: [FieldExtension<F>; 96],
-});
-
-values!(MemAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], im_direct: [FieldExtension<F>; 6],
-});
-
-values!(RomDataAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4],
-});
-
-values!(InputDataAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4],
-});
-
-values!(MemAlignByteAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 2],
-});
-
-values!(MemAlignReadByteAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 2],
-});
-
-values!(MemAlignWriteByteAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 3],
-});
-
-values!(MainAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(RomAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(MemAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(RomDataAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(InputDataAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(MemAlignAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(MemAlignByteAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(MemAlignReadByteAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(MemAlignWriteByteAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(ArithAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(BinaryAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(BinaryAddAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(BinaryExtensionAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(ArithEqAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(ArithEq384AirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(KeccakfAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(Sha256fAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(SpecifiedRangesAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(VirtualTable0AirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(VirtualTable1AirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
+// PUBLIC VALUES
+values!(ZiskPublicValues<F> { rom_root: [F; 4], inputs: [F; 64], });
+
+// PROOF VALUES
+values!(ZiskProofValues<F> { enable_input_data: F, });
+
+// TRACES
+trace!(MainFixed<F> { SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F, },  0, 0, 4194304 );
+trace!(MainTrace<F> { a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, a_reg_prev_mem_step: F, b_reg_prev_mem_step: F, store_reg_prev_mem_step: F, store_reg_prev_value: [F; 2], a_src_reg: F, b_src_reg: F, store_reg: F, },  0, 0, 4194304 );
+
+trace!(RomFixed<F> { __L1__: F, },  0, 1, 2097152 );
+trace!(RomTrace<F> { multiplicity: F, },  0, 1, 2097152 );
+
+trace!(MemFixed<F> { SEGMENT_L1: F, __L1__: F, },  0, 2, 4194304 );
+trace!(MemTrace<F> { addr: F, step: F, sel: F, addr_changes: F, step_dual: F, sel_dual: F, value: [F; 2], wr: F, previous_step: F, increment: [F; 2], read_same_addr: F, },  0, 2, 4194304 );
+
+trace!(RomDataFixed<F> { SEGMENT_L1: F, __L1__: F, },  0, 3, 2097152 );
+trace!(RomDataTrace<F> { addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], },  0, 3, 2097152 );
+
+trace!(InputDataFixed<F> { SEGMENT_L1: F, __L1__: F, },  0, 4, 2097152 );
+trace!(InputDataTrace<F> { addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4], is_free_read: F, },  0, 4, 2097152 );
+
+trace!(MemAlignFixed<F> { L1: F, __L1__: F, },  0, 5, 2097152 );
+trace!(MemAlignTrace<F> { addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2], },  0, 5, 2097152 );
+
+trace!(MemAlignByteFixed<F> { __L1__: F, },  0, 6, 4194304 );
+trace!(MemAlignByteTrace<F> { sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, written_composed_value: F, written_byte_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F, is_write: F, mem_write_values: [F; 2], bus_byte: F, },  0, 6, 4194304 );
+
+trace!(MemAlignReadByteFixed<F> { __L1__: F, },  0, 7, 4194304 );
+trace!(MemAlignReadByteTrace<F> { sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F, },  0, 7, 4194304 );
+
+trace!(MemAlignWriteByteFixed<F> { __L1__: F, },  0, 8, 4194304 );
+trace!(MemAlignWriteByteTrace<F> { sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, written_composed_value: F, written_byte_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F, mem_write_values: [F; 2], },  0, 8, 4194304 );
+
+trace!(ArithFixed<F> { __L1__: F, },  0, 9, 2097152 );
+trace!(ArithTrace<F> { carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F, },  0, 9, 2097152 );
+
+trace!(BinaryFixed<F> { __L1__: F, },  0, 10, 4194304 );
+trace!(BinaryTrace<F> { m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, has_initial_carry: F, cout: F, result_is_a: F, use_last_carry_mode32: F, use_last_carry_mode64: F, m_op_or_ext: F, free_in_a_or_c: [F; 4], free_in_b_or_zero: [F; 4], multiplicity: F, },  0, 10, 4194304 );
+
+trace!(BinaryAddFixed<F> { __L1__: F, },  0, 11, 4194304 );
+trace!(BinaryAddTrace<F> { a: [F; 2], b: [F; 2], c_chunks: [F; 4], cout: [F; 2], multiplicity: F, },  0, 11, 4194304 );
+
+trace!(BinaryExtensionFixed<F> { __L1__: F, },  0, 12, 4194304 );
+trace!(BinaryExtensionTrace<F> { op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], multiplicity: F, },  0, 12, 4194304 );
+
+trace!(ArithEqFixed<F> { CLK_0: F, __L1__: F, },  0, 13, 1048576 );
+trace!(ArithEqTrace<F> { x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 9], sel_op_clk0: [F; 9], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F, },  0, 13, 1048576 );
+
+trace!(ArithEq384Fixed<F> { CLK_0: F, __L1__: F, },  0, 14, 1048576 );
+trace!(ArithEq384Trace<F> { x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 6], sel_op_clk0: [F; 6], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F, },  0, 14, 1048576 );
+
+trace!(KeccakfFixed<F> { L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F, },  0, 15, 2097152 );
+trace!(KeccakfTrace<F> { free_in_a: [F; 9], free_in_b: [F; 9], free_in_c: [F; 9], free_in_d: [F; 9], bit: [F; 4], val: [F; 4], step_addr: F, in_use_clk_0: F, in_use: F, },  0, 15, 2097152 );
+
+trace!(Sha256fFixed<F> { CLK_0: F, __L1__: F, },  0, 16, 262144 );
+trace!(Sha256fTrace<F> { a: [F; 32], e: [F; 32], w: [F; 32], new_a_carry_bits: F, new_e_carry_bits: F, new_w_carry_bits: F, step_addr: F, in_use_clk_0: F, in_use: F, },  0, 16, 262144 );
+
+trace!(SpecifiedRangesFixed<F> { RANGE: [F; 19], __L1__: F, },  0, 17, 2097152 );
+trace!(SpecifiedRangesTrace<F> { mul: [F; 19], },  0, 17, 2097152 );
+
+trace!(VirtualTable0Fixed<F> { UID: [F; 11], column: [F; 63], __L1__: F, },  0, 18, 2097152 );
+trace!(VirtualTable0Trace<F> { multiplicity: [F; 11], },  0, 18, 2097152 );
+
+trace!(VirtualTable1Fixed<F> { UID: [F; 8], column: [F; 64], __L1__: F, },  0, 19, 2097152 );
+trace!(VirtualTable1Trace<F> { multiplicity: [F; 8], },  0, 19, 2097152 );
+
+
+// CUSTOM COMMITS
+trace!(RomRomTrace<F> { line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F, }, 0, 1, 2097152, 0 );
+
+// AIRGROUP VALUES
+values!(MainAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(RomAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(MemAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(RomDataAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(InputDataAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(MemAlignAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(MemAlignByteAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(MemAlignReadByteAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(MemAlignWriteByteAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(ArithAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(BinaryAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(BinaryAddAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(BinaryExtensionAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(ArithEqAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(ArithEq384AirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(KeccakfAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(Sha256fAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(SpecifiedRangesAirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(VirtualTable0AirGroupValues<F> { gsum_result: FieldExtension<F>, });
+values!(VirtualTable1AirGroupValues<F> { gsum_result: FieldExtension<F>, });
+
+// AIR VALUES
+values!(MainAirValues<F> { main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31], im_direct: [FieldExtension<F>; 96], });
+values!(MemAirValues<F> { segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], im_direct: [FieldExtension<F>; 6], });
+values!(RomDataAirValues<F> { segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4], });
+values!(InputDataAirValues<F> { segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4], });
+values!(MemAlignByteAirValues<F> { padding_size: F, im_direct: [FieldExtension<F>; 2], });
+values!(MemAlignReadByteAirValues<F> { padding_size: F, im_direct: [FieldExtension<F>; 2], });
+values!(MemAlignWriteByteAirValues<F> { padding_size: F, im_direct: [FieldExtension<F>; 3], });

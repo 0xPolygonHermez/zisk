@@ -18,7 +18,10 @@ use rom_setup::{
 use std::{collections::HashMap, fs, path::PathBuf};
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLibInitFn};
+use zisk_common::{
+    io::{ZiskFileStdin, ZiskStdin},
+    ExecutorStats, Stats, ZiskExecutionResult, ZiskLibInitFn,
+};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -142,11 +145,14 @@ impl ZiskVerifyConstraints {
             }
         }
 
-        if let Some(input) = &self.input {
+        let stdin = if let Some(input) = &self.input {
             if !input.exists() {
                 return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
             }
-        }
+            Some(Box::new(ZiskFileStdin::new(input)?) as Box<dyn ZiskStdin>)
+        } else {
+            None
+        };
 
         let blowup_factor = get_rom_blowup_factor(&proving_key);
 
@@ -205,6 +211,7 @@ impl ZiskVerifyConstraints {
                     unsafe { library.get(b"init_library")? };
                 witness_lib = witness_lib_constructor(
                     self.verbose.into(),
+                    stdin,
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,
@@ -219,7 +226,7 @@ impl ZiskVerifyConstraints {
                 proofman.register_witness(&mut *witness_lib, library);
 
                 proofman
-                    .verify_proof_constraints_from_lib(self.input.clone(), &debug_info, false)
+                    .verify_proof_constraints_from_lib(None, &debug_info, false)
                     .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
             }
         };

@@ -2,7 +2,8 @@ use libc::{
     c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
     PROT_WRITE, S_IRUSR, S_IWUSR,
 };
-use std::{ffi::CString, fmt::Debug, fs, io, os::raw::c_void, path::Path, ptr};
+use std::{ffi::CString, fmt::Debug, io, os::raw::c_void, ptr};
+use zisk_common::io::ZiskStdin;
 
 use anyhow::Result;
 
@@ -268,8 +269,8 @@ pub unsafe fn unmap(ptr: *mut c_void, size: usize) {
     }
 }
 
-pub fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {
-    let inputs = fs::read(inputs_path).expect("Failed to read input file");
+pub fn write_input(stdin: &mut dyn ZiskStdin, shmem_input_name: &str, unlock_mapped_memory: bool) {
+    let inputs = stdin.read();
     let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
     let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
 
