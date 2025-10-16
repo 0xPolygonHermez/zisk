@@ -29,7 +29,7 @@ pub struct Stats {
 
 /// Extension trait that provides execution result access without Any boxing
 pub trait ZiskWitnessLibrary<F: PrimeField64> {
-    fn get_execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)>;
+    fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)>;
 }
 
 // SUpertrait for ZiskWitnessLibrary and WitnessLibrary

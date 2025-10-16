@@ -652,7 +652,7 @@ impl Worker {
                 .map(|proof| proof.into_iter().map(|p| p.proof).collect())
                 .unwrap_or_default();
 
-            let executed_steps = match witness_lib.get_execution_result() {
+            let executed_steps = match witness_lib.execution_result() {
                 Some((exec_result, _)) => exec_result.executed_steps,
                 None => {
                     error!("Failed to get execution result from witness library for {job_id}");

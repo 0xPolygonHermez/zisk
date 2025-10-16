@@ -1,30 +1,17 @@
 //! ZisK Prover Client
 //!
 //! This module provides an interface for interacting with the ZisK prover.
+//!
+//! For new code, prefer using `ZiskProverBuilder` directly for type-safe configuration.
+//! This legacy interface is maintained for backward compatibility.
 
-use crate::asm::builder::AsmProverBuilder;
-use crate::emu::builder::EmuProverBuilder;
+use crate::ProverClientBuilder;
 
 pub struct ProverClient;
 
 impl ProverClient {
     #[must_use]
     pub fn builder() -> ProverClientBuilder {
-        ProverClientBuilder
-    }
-}
-
-/// A builder to define which proving client to use.
-pub struct ProverClientBuilder;
-
-impl ProverClientBuilder {
-    #[must_use]
-    pub fn emu(&self) -> EmuProverBuilder {
-        EmuProverBuilder::new()
-    }
-
-    #[must_use]
-    pub fn asm(&self) -> AsmProverBuilder {
-        AsmProverBuilder::new()
+        ProverClientBuilder::new()
     }
 }

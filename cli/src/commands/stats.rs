@@ -298,7 +298,7 @@ impl ZiskStats {
 
         #[allow(clippy::type_complexity)]
         let (_, stats): (ZiskExecutionResult, ExecutorStats) =
-            witness_lib.get_execution_result().expect("Failed to get execution result");
+            witness_lib.execution_result().expect("Failed to get execution result");
 
         if world_rank % 2 == 1 {
             thread::sleep(std::time::Duration::from_millis(2000));

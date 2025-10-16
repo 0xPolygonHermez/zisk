@@ -83,6 +83,7 @@ impl<F: PrimeField64> AssemblyRunner<F> {
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
     #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     pub fn run(
         &mut self,
         pctx: &ProofCtx<F>,
@@ -216,6 +217,7 @@ impl<F: PrimeField64> AssemblyRunner<F> {
         (min_traces, main_count, secn_count, Some(handle_mo), handle_rh, steps)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_mt_assembly(
         zisk_rom: &ZiskRom,
         chunk_size: u64,

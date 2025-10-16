@@ -5631,6 +5631,7 @@ version = "0.12.0"
 dependencies = [
  "anyhow",
  "asm-runner",
+ "bytemuck",
  "colored",
  "fields",
  "libloading",
@@ -5639,6 +5640,7 @@ dependencies = [
  "rom-setup",
  "tracing",
  "zisk-common",
+ "zstd",
 ]
 
 [[package]]

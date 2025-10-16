@@ -257,7 +257,7 @@ impl ZiskWitnessLibrary<Goldilocks> for WitnessLib<Goldilocks> {
     ///
     /// # Returns
     /// * `u16` - The execution result code.
-    fn get_execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
+    fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
         self.executor.as_ref().map(|executor| match executor {
             ZiskExecutorType::Asm(asm_executor) => asm_executor.get_execution_result(),
             ZiskExecutorType::Emu(emu_executor) => emu_executor.get_execution_result(),

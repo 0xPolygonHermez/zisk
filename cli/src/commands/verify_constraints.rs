@@ -1,8 +1,4 @@
-use crate::{
-    commands::{cli_fail_if_gpu_mode, Field},
-    ux::print_banner,
-    ZISK_VERSION_MESSAGE,
-};
+use crate::{commands::cli_fail_if_gpu_mode, ux::print_banner, ZISK_VERSION_MESSAGE};
 use anyhow::Result;
 
 use clap::Parser;
@@ -10,7 +6,7 @@ use colored::Colorize;
 use std::{path::PathBuf, time::Duration};
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_common::ZiskExecutionResult;
+use zisk_common::{ExecutorStats, ZiskExecutionResult};
 use zisk_sdk::ProverClient;
 
 #[derive(Parser)]
@@ -50,9 +46,6 @@ pub struct ZiskVerifyConstraints {
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
-    #[clap(long, default_value_t = Field::Goldilocks)]
-    pub field: Field,
-
     /// Base port for Assembly microservices (default: 23115).
     /// A single execution will use 3 consecutive ports, from this port to port + 2.
     /// If you are running multiple instances of ZisK using mpi on the same machine,
@@ -86,7 +79,8 @@ impl ZiskVerifyConstraints {
 
         print_banner();
 
-        let (result, elapsed) = if self.emulator { self.run_emu()? } else { self.run_asm()? };
+        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+        let (result, elapsed, _stats) = if emulator { self.run_emu()? } else { self.run_asm()? };
 
         tracing::info!("");
         tracing::info!(
@@ -95,68 +89,44 @@ impl ZiskVerifyConstraints {
         );
         tracing::info!("    ► Statistics");
         tracing::info!(
-            "      time: {} seconds, steps: {}",
+            "      time: {:.2} seconds, steps: {}",
             elapsed.as_secs_f32(),
             result.executed_steps
         );
 
-        // Store the stats in stats.json
-        #[cfg(feature = "stats")]
-        {
-            let stats_id = _stats.next_id();
-            _stats.add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
-            _stats.store_stats();
-        }
-
         Ok(())
     }
 
-    pub fn run_emu(&mut self) -> Result<(ZiskExecutionResult, Duration)> {
+    pub fn run_emu(&mut self) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
         let prover = ProverClient::builder()
             .emu()
             .verify_constraints()
-            .witness_lib_path(self.witness_lib.clone())
-            .proving_key_path(self.proving_key.clone())
-            .elf_path(Some(self.elf.clone()))
+            .witness_lib_path_opt(self.witness_lib.clone())
+            .proving_key_path_opt(self.proving_key.clone())
+            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .print_command_info()
             .build()?;
 
-        let start = std::time::Instant::now();
-        prover.debug_verify_constraints(self.input.clone(), self.debug.clone())?;
-        let elapsed = start.elapsed();
-
-        let (result, mut _stats) = prover.execution_result().ok_or_else(|| {
-            anyhow::anyhow!("Failed to get execution result from emulator prover")
-        })?;
-
-        Ok((result, elapsed))
+        prover.debug_verify_constraints(self.input.clone(), self.debug.clone())
     }
 
-    pub fn run_asm(&mut self) -> Result<(ZiskExecutionResult, Duration)> {
+    pub fn run_asm(&mut self) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
         let prover = ProverClient::builder()
             .asm()
             .verify_constraints()
-            .witness_lib_path(self.witness_lib.clone())
-            .proving_key_path(self.proving_key.clone())
-            .elf_path(Some(self.elf.clone()))
+            .witness_lib_path_opt(self.witness_lib.clone())
+            .proving_key_path_opt(self.proving_key.clone())
+            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
-            .asm_path(self.asm.clone())
-            .base_port(self.port)
+            .asm_path_opt(self.asm.clone())
+            .base_port_opt(self.port)
             .unlock_mapped_memory(self.unlock_mapped_memory)
             .print_command_info()
             .build()?;
 
-        let start = std::time::Instant::now();
-        prover.debug_verify_constraints(self.input.clone(), self.debug.clone())?;
-        let elapsed = start.elapsed();
-
-        let (result, mut _stats) = prover
-            .execution_result()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get execution result from ASM prover"))?;
-
-        Ok((result, elapsed))
+        prover.debug_verify_constraints(self.input.clone(), self.debug.clone())
     }
 }

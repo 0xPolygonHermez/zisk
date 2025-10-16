@@ -1,12 +1,15 @@
-use crate::{ensure_custom_commits, Proof, ProverEngine, RankInfo, ZiskBackend, ZiskLibLoader};
+use crate::{
+    ensure_custom_commits,
+    prover::{ProverBackend, ProverEngine, ZiskBackend},
+    Proof, RankInfo, ZiskLibLoader,
+};
 use asm_runner::{AsmRunnerOptions, AsmServices};
-use fields::{ExtensionField, Goldilocks, GoldilocksQuinticExtension, PrimeField64};
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::DEFAULT_CACHE_PATH;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 use tracing::info;
-use zisk_common::{ExecutorStats, ZiskExecutionResult, ZiskLib};
+use zisk_common::{ExecutorStats, ZiskExecutionResult};
 
 use anyhow::Result;
 
@@ -21,6 +24,7 @@ pub struct AsmProver {
 }
 
 impl AsmProver {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
@@ -34,6 +38,11 @@ impl AsmProver {
         asm_rh_filename: String,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
+        gpu_params: ParamsGPU,
+        verify_proofs: bool,
+        minimal_memory: bool,
+        save_proofs: bool,
+        output_dir: Option<PathBuf>,
     ) -> Result<Self> {
         let core_prover = AsmCoreProver::new(
             verify_constraints,
@@ -48,7 +57,13 @@ impl AsmProver {
             asm_rh_filename,
             base_port,
             unlock_mapped_memory,
+            gpu_params,
+            verify_proofs,
+            minimal_memory,
+            save_proofs,
+            output_dir,
         )?;
+
         Ok(Self { core_prover })
     }
 }
@@ -58,42 +73,50 @@ impl ProverEngine for AsmProver {
         &self,
         input: Option<PathBuf>,
         debug_info: Option<Option<String>>,
-    ) -> Result<()> {
+    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
         let debug_info = match &debug_info {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
             Some(Some(debug_value)) => json_to_debug_instances_map(
-                self.core_prover.proving_key.clone(),
+                self.core_prover.backend.proving_key.clone(),
                 debug_value.clone(),
             ),
         };
 
-        self.core_prover.debug_verify_constraints(input, debug_info)
+        self.core_prover.backend.debug_verify_constraints(input, debug_info)
     }
 
-    fn verify_constraints(&self, input: Option<PathBuf>) -> Result<()> {
-        self.core_prover.verify_constraints(input)
+    fn verify_constraints(
+        &self,
+        input: Option<PathBuf>,
+    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+        self.core_prover.backend.verify_constraints(input)
     }
 
-    fn generate_proof(&self, input: Option<PathBuf>) -> Result<Proof> {
-        // Perform proof generation logic here
-        Ok(Proof)
-    }
-
-    fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
-        self.core_prover.execution_result()
+    fn generate_proof(
+        &self,
+        input: Option<PathBuf>,
+    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
+        self.core_prover.backend.generate_proof(input)
     }
 }
 
 pub struct AsmCoreProver {
+    backend: ProverBackend,
+    asm_services: AsmServices,
     rank_info: RankInfo,
-    witness_lib: Box<dyn ZiskLib<Goldilocks>>,
-    proving_key: PathBuf,
-    proofman: ProofMan<Goldilocks>,
-    verify_constraints: bool,
+}
+
+impl Drop for AsmCoreProver {
+    fn drop(&mut self) {
+        // Shut down ASM microservices
+        info!(">>> [{}] Stopping ASM microservices.", self.rank_info.world_rank);
+        self.asm_services.stop_asm_services().expect("Failed to stop ASM microservices");
+    }
 }
 
 impl AsmCoreProver {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
@@ -107,6 +130,11 @@ impl AsmCoreProver {
         asm_rh_filename: String,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
+        gpu_params: ParamsGPU,
+        verify_proofs: bool,
+        minimal_memory: bool,
+        save_proofs: bool,
+        output_dir: Option<PathBuf>,
     ) -> Result<Self> {
         let rom_bin_path = ensure_custom_commits(&proving_key, &elf)?;
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path)]);
@@ -125,7 +153,7 @@ impl AsmCoreProver {
             verify_constraints,
             aggregation,
             final_snark,
-            ParamsGPU::default(),
+            gpu_params,
             verbose.into(),
         )
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
@@ -165,41 +193,19 @@ impl AsmCoreProver {
 
         proofman.register_witness(&mut *witness_lib, library);
 
-        Ok(Self {
-            rank_info: RankInfo { world_rank, local_rank },
-            witness_lib,
-            proving_key,
-            proofman,
+        let core = ProverBackend {
             verify_constraints,
-        })
-    }
+            aggregation,
+            final_snark,
+            witness_lib,
+            proving_key: proving_key.clone(),
+            verify_proofs,
+            minimal_memory,
+            save_proofs,
+            output_dir,
+            proofman,
+        };
 
-    fn debug_verify_constraints(
-        &self,
-        input: Option<PathBuf>,
-        debug_info: DebugInfo,
-    ) -> Result<()> {
-        if !self.verify_constraints {
-            return Err(anyhow::anyhow!("Constraint verification is disabled for this prover."));
-        }
-
-        self.proofman
-            .verify_proof_constraints_from_lib(input, &debug_info, false)
-            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
-
-        Ok(())
-    }
-
-    fn verify_constraints(&self, input: Option<PathBuf>) -> Result<()> {
-        self.debug_verify_constraints(input, DebugInfo::default())
-    }
-
-    fn generate_proof(&self) -> Result<Proof> {
-        // Perform proof generation logic here
-        Ok(Proof)
-    }
-
-    fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
-        self.witness_lib.get_execution_result()
+        Ok(Self { backend: core, asm_services, rank_info: RankInfo { world_rank, local_rank } })
     }
 }

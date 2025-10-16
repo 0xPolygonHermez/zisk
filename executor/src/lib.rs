@@ -90,6 +90,7 @@ pub trait ExecutorRunner<F: PrimeField64>: Send + Sync {
     /// - `DeviceMetricsList`: Metrics related to device performance.
     /// - `NestedDeviceMetricsList`: Nested metrics for more detailed performance analysis.
     /// - `u64`: The total number of steps executed.
+    #[allow(clippy::too_many_arguments)]
     fn run(
         &mut self,
         pctx: &ProofCtx<F>,

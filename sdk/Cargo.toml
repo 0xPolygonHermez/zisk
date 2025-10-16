@@ -18,7 +18,10 @@ rom-setup = { workspace = true }
 asm-runner = { workspace = true }
 colored = { workspace = true }
 tracing = { workspace = true }
+zstd = { workspace = true }
+bytemuck = { workspace = true }
 
 [features]
 default = []
 gpu = []
+stats = []

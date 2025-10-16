@@ -13,6 +13,7 @@ use crate::get_witness_computation_lib;
 pub struct ZiskLibLoader;
 
 impl ZiskLibLoader {
+    #[allow(clippy::too_many_arguments)]
     fn load_library<F: PrimeField64>(
         witness_lib: PathBuf,
         elf: PathBuf,
@@ -69,6 +70,7 @@ impl ZiskLibLoader {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn load_asm<F: PrimeField64>(
         witness_lib: PathBuf,
         elf: PathBuf,

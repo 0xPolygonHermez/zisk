@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
@@ -123,6 +124,11 @@ pub fn ensure_custom_commits(proving_key: &Path, elf: &Path) -> Result<PathBuf> 
     }
 
     Ok(rom_bin_path)
+}
+
+pub fn get_custom_commits_map(proving_key: &Path, elf: &Path) -> Result<HashMap<String, PathBuf>> {
+    let rom_bin_path = ensure_custom_commits(proving_key, elf)?;
+    Ok(HashMap::from([("rom".to_string(), rom_bin_path)]))
 }
 
 pub fn get_asm_paths(elf: &Path) -> Result<(String, String)> {
