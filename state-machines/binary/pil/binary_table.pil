@@ -1,67 +1,50 @@
 require "std_constants.pil";
-require "std_lookup.pil"
+require "std_lookup.pil";
 
-// PIL Binary Operations Table used by Binary
-//                                                                                                     Running Total
-// MINU/MINU_W  (OP:0x02)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |                     2^19
-// MIN/MIN_W    (OP:0x03)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |              2^20
-// MAXU/MAXU_W  (OP:0x04)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |              2^20 + 2^19
-// MAX/MAX_W    (OP:0x05)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |       2^21
-// LT_ABS_NP    (OP:0x06)   *   2^16 (AxB) x 2^1 (LAST) x 2^2 (CIN)                         = 2^19 |       2^21        + 2^19
-// LT_ABS_PN    (OP:0x07)   *   2^16 (AxB) x 2^1 (LAST) x 2^2 (CIN)                         = 2^19 |       2^21 + 2^20
-// LTU/LTU_W    (OP:0x08)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20        + 2^18
-// LT/LT_W      (OP:0x09)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20 + 2^19
-// GT           (OP:0x0a)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20 + 2^19 + 2^18
-// EQ/EQ_W      (OP:0x0b)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^22
-// ADD/ADD_W    (OP:0x0c)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^22                     + 2^18
-// SUB/SUB_W    (OP:0x0d)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^22              + 2^19
-// LEU/LEU_W    (OP:0x0e)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22              + 2^19        + 2^17
-// LE/LE_W      (OP:0x0f)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22              + 2^19 + 2^18
-// AND/AND_W    (OP:0x10)   **  2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22              + 2^19 + 2^18 + 2^17
-// OR/OR_W      (OP:0x11)   **  2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22       + 2^20
-// XOR/XOR_W    (OP:0x12)   **  2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22       + 2^20               + 2^17
-// EXT_32       (OP:0x13)   *** 2^8  (A)                x 2^1 (CIN) x 2^2 (FLAGS)           = 2^11 | 2^22       + 2^20               + 2^17 + 2^11 => < 2^23
-// --------------------------------------------------------------------------------------------------------------------------
-// (*) Uses the carry of the last byte of the result (use_last_carry)
-// (**) The op do not use LAST, but the binary does so we need to consider it
-// (***) The op do not use CIN, but the binary does so we need to consider it
-// Note: EXT_32 is the only unary operation which is not a ZisK OP but it is used to prove the rest
+/* PIL Binary Operations Table used by Binary
+                                                                                                        Running Total
+    MINU/MINU_W  (OP:0x02)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |                     2^19
+    MIN/MIN_W    (OP:0x03)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |              2^20
+    MAXU/MAXU_W  (OP:0x04)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |              2^20 + 2^19
+    MAX/MAX_W    (OP:0x05)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |       2^21
+    LT_ABS_NP    (OP:0x06)   *   2^16 (AxB) x 2^1 (LAST) x 2^2 (CIN)                         = 2^19 |       2^21        + 2^19
+    LT_ABS_PN    (OP:0x07)   *   2^16 (AxB) x 2^1 (LAST) x 2^2 (CIN)                         = 2^19 |       2^21 + 2^20
+    LTU/LTU_W    (OP:0x08)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20        + 2^18
+    LT/LT_W      (OP:0x09)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20 + 2^19
+    GT           (OP:0x0a)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20 + 2^19 + 2^18
+    EQ/EQ_W      (OP:0x0b)   *   2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^22
+    ADD/ADD_W    (OP:0x0c)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^22                     + 2^18
+    SUB/SUB_W    (OP:0x0d)       2^16 (AxB) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^22              + 2^19
+    LEU/LEU_W    (OP:0x0e)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22              + 2^19        + 2^17
+    LE/LE_W      (OP:0x0f)   *   2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22              + 2^19 + 2^18
+    AND/AND_W    (OP:0x10)   **  2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22              + 2^19 + 2^18 + 2^17
+    OR/OR_W      (OP:0x11)   **  2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22       + 2^20
+    XOR/XOR_W    (OP:0x12)   **  2^16 (AxB) x 2^1 (LAST)                                     = 2^17 | 2^22       + 2^20               + 2^17
+    EXT_32       (OP:0x13)   *** 2^8  (A)                x 2^1 (CIN) x 2^2 (FLAGS)           = 2^11 | 2^22       + 2^20               + 2^17 + 2^11 => < 2^23
+    --------------------------------------------------------------------------------------------------------------------------
+    (*) Uses the carry of the last byte of the result (use_last_carry)
+    (**) The op do not use LAST, but the binary does so we need to consider it
+    (***) The op do not use CIN, but the binary does so we need to consider it
+    Note: EXT_32 is the only unary operation which is not a ZisK OP but it is used to prove the rest
+*/
 
 const int BINARY_TABLE_ID = 125;
-
 const int EXT_32_OP = 0x13;
-
 const int INITIAL_CARRY_LT_ABS = 0x02;
 
-airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
-
-    #pragma memory m1 start
-    col witness multiplicity;
-
-    if (disable_fixed) {
-        col fixed _K = [0...];
-        // FORCE ONE TRACE
-        multiplicity * _K === 0;
-
-        println("*** DISABLE_FIXED ***");
-        return;
-    }
-
+airtemplate BinaryTable(const int N = 2**23) {
     if (N < 2**23) {
         error(`N must be at least 2^23, but N=${N} was provided`);
     }
 
-    #pragma timer tt start
-    #pragma timer t1 start
-
     // Input A (8 bits)
     col fixed A = [0..255]...;                          
 
-    // Input B (<=8 bits)
+    // Input B (8 bits)
     col fixed B = [[0:P2_8..255:P2_8]:82, // 82 = 4*8 + 2*8 + 4*4 + 2*4 + 2*2 + 3*2
                     0:P2_11]...;          // B is 0 for EXT_32
 
-    // Indicator of the last byte (<=1 bit)
+    // Indicator of the last byte (1 bit)
     col fixed LAST = [[0:P2_16, 1:P2_16]:(4*4), // MINU,MIN,MAXU,MAX
                       [0:P2_16, 1:P2_16]:(2*4), // LT_ABS_NP,LT_ABS_PN
                       [0:P2_16, 1:P2_16]:(4*2), // LTU,LT,GT,EQ
@@ -79,7 +62,7 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
                       0:(P2_17*3),             // AND,OR,XOR
                      [0:P2_8, 1:P2_8]:4]...;   // EXT_32
 
-    // Operation opcode (fixed values)
+    // Operation opcode
     col fixed OP = [0x02:P2_19, 0x03:P2_19, 0x04:P2_19, 0x05:P2_19, // MINU,MIN,MAXU,MAX
                     0x06:P2_19, 0x07:P2_19,                         // LT_ABS_NP,LT_ABS_PN
                     0x08:P2_18, 0x09:P2_18, 0x0a:P2_18, 0x0b:P2_18, // LTU,LT,GT,EQ
@@ -91,11 +74,8 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
     const int TABLE_SIZE = P2_19 * 6 + P2_18 * 6 + P2_17 * 5 + P2_11;
     const int TABLE_BASE_EXT32 = P2_16 * 82;
 
-    #pragma timer t1 end
-    #pragma timer t2 start
-
     col fixed C;             // Output C (8 bits)
-    col fixed FLAGS;
+    col fixed FLAGS;         // Combined flags (8 bits)
 
     #pragma transpile logfile:/tmp/binary_table_2.txt
     for (int i = 0; i < N; i++) {
@@ -150,7 +130,7 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
                 }
                 op_is_min_max = 1;
 
-            case 0x06: // LT_ABS_NP
+            case 0x06: // LT_ABS_NP |a| < |b| with a < 0 and b > 0
                 // Both necessary carries are encoded by cin in binary as 
                 //                  cin = 0bYX,
                 // where X is the carry of the LT operation and Y is 
@@ -176,7 +156,7 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
 
                 use_last_carry = plast;
 
-            case 0x07: // LT_ABS_PN
+            case 0x07: // LT_ABS_PN |a| < |b| with a > 0 and b < 0
                 // Both necessary carries are encoded by cin in binary as 
                 //                  cin = 0bYX,
                 // where X is the carry of the LT operation and Y is 
@@ -237,9 +217,15 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
                 use_last_carry = plast;
 
             case 0x0b: // EQ,EQ_W
-                if (a == b && !cin) c = plast;
-                else cout = 1;
-                if (plast) cout = 1 - cout;
+                if (a == b && !cin) {
+                    c = plast;
+                } else {
+                    cout = 1;
+                }
+
+                if (plast) {
+                    cout = 1 - cout;
+                }
 
                 use_last_carry = plast;
 
@@ -292,9 +278,7 @@ airtemplate BinaryTable(const int N = 2**23, const int disable_fixed = 0) {
         FLAGS[i] = flags;
         log(`T ${plast},${op},${a},${b},${cin},${c},${flags},${i}`);
     }
-    #pragma timer t2 end
-    #pragma timer tt end
 
+    col witness multiplicity;
     lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
-    #pragma memory m1 end
 }
