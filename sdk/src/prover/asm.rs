@@ -1,11 +1,11 @@
 use crate::{
-    ensure_custom_commits,
+    check_paths_exist, create_debug_info, ensure_custom_commits,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
     Proof, RankInfo, ZiskLibLoader,
 };
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use proofman::ProofMan;
-use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
+use proofman_common::{initialize_logger, ParamsGPU};
 use rom_setup::DEFAULT_CACHE_PATH;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use tracing::info;
@@ -74,14 +74,8 @@ impl ProverEngine for AsmProver {
         input: Option<PathBuf>,
         debug_info: Option<Option<String>>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
-        let debug_info = match &debug_info {
-            None => DebugInfo::default(),
-            Some(None) => DebugInfo::new_debug(),
-            Some(Some(debug_value)) => json_to_debug_instances_map(
-                self.core_prover.backend.proving_key.clone(),
-                debug_value.clone(),
-            ),
-        };
+        let debug_info =
+            create_debug_info(debug_info, self.core_prover.backend.proving_key.clone());
 
         self.core_prover.backend.debug_verify_constraints(input, debug_info)
     }
@@ -93,11 +87,11 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.verify_constraints(input)
     }
 
-    fn generate_proof(
+    fn prove(
         &self,
         input: Option<PathBuf>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
-        self.core_prover.backend.generate_proof(input)
+        self.core_prover.backend.prove(input)
     }
 }
 
@@ -111,7 +105,13 @@ impl Drop for AsmCoreProver {
     fn drop(&mut self) {
         // Shut down ASM microservices
         info!(">>> [{}] Stopping ASM microservices.", self.rank_info.world_rank);
-        self.asm_services.stop_asm_services().expect("Failed to stop ASM microservices");
+        if let Err(e) = self.asm_services.stop_asm_services() {
+            tracing::error!(
+                ">>> [{}] Failed to stop ASM microservices: {}",
+                self.rank_info.world_rank,
+                e
+            );
+        }
     }
 }
 
@@ -139,13 +139,19 @@ impl AsmCoreProver {
         let rom_bin_path = ensure_custom_commits(&proving_key, &elf)?;
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path)]);
 
-        let default_cache_path =
-            std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
+        let default_cache_path = std::env::var("HOME")
+            .map(PathBuf::from)
+            .map_err(|e| anyhow::anyhow!("Failed to read HOME environment variable: {e}"))?
+            .join(DEFAULT_CACHE_PATH);
 
         let asm_mt_path = default_cache_path.join(asm_mt_filename);
         let asm_rh_path = default_cache_path.join(asm_rh_filename);
 
-        // TODO! Check if paths exist
+        check_paths_exist(&witness_lib)?;
+        check_paths_exist(&proving_key)?;
+        check_paths_exist(&elf)?;
+        check_paths_exist(&asm_mt_path)?;
+        check_paths_exist(&asm_rh_path)?;
 
         let proofman = ProofMan::new(
             proving_key.clone(),

@@ -4,6 +4,7 @@ use std::{env, fs};
 
 use anyhow::Result;
 
+use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -101,8 +102,10 @@ pub fn get_zisk_path(zisk_path: Option<&PathBuf>) -> PathBuf {
 
 pub fn ensure_custom_commits(proving_key: &Path, elf: &Path) -> Result<PathBuf> {
     // Ensure cache directory exists
-    let default_cache_path =
-        std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
+    let default_cache_path = std::env::var("HOME")
+        .map(PathBuf::from)
+        .map_err(|e| anyhow::anyhow!("Failed to read HOME environment variable: {e}"))?
+        .join(DEFAULT_CACHE_PATH);
 
     if let Err(e) = fs::create_dir_all(&default_cache_path) {
         if e.kind() != std::io::ErrorKind::AlreadyExists {
@@ -137,4 +140,19 @@ pub fn get_asm_paths(elf: &Path) -> Result<(String, String)> {
         get_elf_data_hash(elf).map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
 
     Ok((format!("{stem}-{hash}-mt.bin"), format!("{stem}-{hash}-rh.bin")))
+}
+
+pub fn check_paths_exist(path: &PathBuf) -> Result<()> {
+    if !path.exists() {
+        return Err(anyhow::anyhow!("Path does not exist: {:?}", path));
+    }
+    Ok(())
+}
+
+pub fn create_debug_info(debug_info: Option<Option<String>>, proving_key: PathBuf) -> DebugInfo {
+    match &debug_info {
+        None => DebugInfo::default(),
+        Some(None) => DebugInfo::new_debug(),
+        Some(Some(debug_value)) => json_to_debug_instances_map(proving_key, debug_value.clone()),
+    }
 }

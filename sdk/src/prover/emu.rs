@@ -1,6 +1,10 @@
-use crate::{get_custom_commits_map, prover::{ProverBackend, ProverEngine, ZiskBackend}, Proof,  RankInfo, ZiskLibLoader};
+use crate::{
+    check_paths_exist, create_debug_info, get_custom_commits_map,
+    prover::{ProverBackend, ProverEngine, ZiskBackend},
+    Proof, RankInfo, ZiskLibLoader,
+};
 use proofman::ProofMan;
-use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
+use proofman_common::{initialize_logger, ParamsGPU};
 use std::{path::PathBuf, time::Duration};
 use zisk_common::{ExecutorStats, ZiskExecutionResult};
 
@@ -59,14 +63,8 @@ impl ProverEngine for EmuProver {
         input: Option<PathBuf>,
         debug_info: Option<Option<String>>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
-        let debug_info = match &debug_info {
-            None => DebugInfo::default(),
-            Some(None) => DebugInfo::new_debug(),
-            Some(Some(debug_value)) => json_to_debug_instances_map(
-                self.core_prover.backend.proving_key.clone(),
-                debug_value.clone(),
-            ),
-        };
+        let debug_info =
+            create_debug_info(debug_info, self.core_prover.backend.proving_key.clone());
 
         self.core_prover.backend.debug_verify_constraints(input, debug_info)
     }
@@ -78,11 +76,11 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.verify_constraints(input)
     }
 
-    fn generate_proof(
+    fn prove(
         &self,
         input: Option<PathBuf>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
-        self.core_prover.backend.generate_proof(input)
+        self.core_prover.backend.prove(input)
     }
 }
 
@@ -109,6 +107,10 @@ impl EmuCoreProver {
         output_dir: Option<PathBuf>,
     ) -> Result<Self> {
         let custom_commits_map = get_custom_commits_map(&proving_key, &elf)?;
+
+        check_paths_exist(&witness_lib)?;
+        check_paths_exist(&proving_key)?;
+        check_paths_exist(&elf)?;
 
         let proofman = ProofMan::new(
             proving_key.clone(),

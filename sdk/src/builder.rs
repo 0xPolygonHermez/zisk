@@ -287,8 +287,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
             None
         };
 
-        // TODO!: Validate paths exist?
-
         if self.print_command_info {
             Self::print_emu_command_info(
                 verify_constraints,

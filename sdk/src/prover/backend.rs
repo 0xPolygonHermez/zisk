@@ -59,7 +59,7 @@ impl ProverBackend {
         self.debug_verify_constraints(input, DebugInfo::default())
     }
 
-    pub fn generate_proof(
+    pub fn prove(
         &self,
         input: Option<PathBuf>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
@@ -104,6 +104,11 @@ impl ProverBackend {
 
         if let Some(proof_id) = proof.id.clone() {
             let output_dir = self.output_dir.as_ref().unwrap();
+
+            if !output_dir.exists() {
+                std::fs::create_dir_all(output_dir)?;
+            }
+
             let logs =
                 ProofLog::new(execution_result.executed_steps, proof_id, elapsed.as_secs_f64());
             let log_path = output_dir.join("result.json");

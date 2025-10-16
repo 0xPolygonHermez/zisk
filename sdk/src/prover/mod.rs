@@ -23,7 +23,7 @@ pub trait ProverEngine {
         debug_info: Option<Option<String>>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)>;
 
-    fn generate_proof(
+    fn prove(
         &self,
         input: Option<PathBuf>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)>;
@@ -61,6 +61,6 @@ impl<C: ZiskBackend> ZiskProver<C> {
         &self,
         input: Option<PathBuf>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
-        self.prover.generate_proof(input)
+        self.prover.prove(input)
     }
 }
