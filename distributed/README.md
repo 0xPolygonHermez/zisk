@@ -203,8 +203,9 @@ All webhook notifications are sent as JSON POST requests with the following stru
 {
   "job_id": "job_12345",
   "success": true,
-  "duration_ms": 45000,
+  "duration_ms": 12000,
   "proof": <array of u64...>,
+  "executed_steps": 123456789,
   "timestamp": "2025-10-03T14:30:00Z",
   "error": null
 }
@@ -218,6 +219,7 @@ All webhook notifications are sent as JSON POST requests with the following stru
 | `success` | `boolean` | `true` if proof generation completed successfully, `false` if it failed |
 | `duration_ms` | `number` | Total execution time in milliseconds from job start to completion |
 | `proof` | `array<u64>` \| `null` | Final proof data as array of integers (only present on success) |
+| `executed_steps` | `number` | Total number of executed steps during proof generation |
 | `timestamp` | `string` | ISO 8601 timestamp when the notification was sent |
 | `error` | `object` \| `null` | Error details (only present on failure) |
 
@@ -232,15 +234,18 @@ When `success` is `false`, the `error` field contains:
 }
 ```
 
+#### Webhook Notification Examples
+
 **Successful Proof Generation Example::**
 
 ```json
 {
-  "job_id": "job_abc123",
+  "job_id": "job_12345",
   "success": true,
-  "duration_ms": 32500,
-  "proof": [1234567890, 9876543210, 1357924680, ...],
-  "timestamp": "2025-10-03T14:30:25Z",
+  "duration_ms": 12000,
+  "proof": <array of u64...>,
+  "executed_steps": 123456789,
+  "timestamp": "2025-10-03T14:30:00Z",
   "error": null
 }
 ```
@@ -253,6 +258,7 @@ When `success` is `false`, the `error` field contains:
   "success": false,
   "duration_ms": 15000,
   "proof": null,
+  "executed_steps": null,
   "timestamp": "2025-10-03T14:31:10Z",
   "error": {
     "code": "WORKER_ERROR",
@@ -262,13 +268,6 @@ When `success` is `false`, the `error` field contains:
 ```
 
 #### Webhook Implementation Guidelines
-
-*HTTP Requirements:*
-
-- **Method**: POST
-- **Content-Type**: `application/json`
-- **Timeout**: 10 seconds (configurable)
-- **Retry**: Currently no automatic retries (implement idempotency)
 
 *Recommended Response:*
 
