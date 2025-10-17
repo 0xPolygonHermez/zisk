@@ -257,7 +257,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             trace[i].set_step(step);
             trace[i].set_sel(false);
             trace[i].set_wr(false);
-            trace[i].set_previous_step(step);
 
             let low_value = last_row.get_value(0);
             trace[i].set_value(0, low_value);

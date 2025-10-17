@@ -255,7 +255,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         cout = 0;
                     }
                     cin = cout;
-                    row.set_carry(i, cin == 0);
+                    row.set_carry(i, cin != 0);
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = cout + 2 + 4 * result_is_a;

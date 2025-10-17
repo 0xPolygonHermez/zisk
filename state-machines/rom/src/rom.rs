@@ -270,7 +270,8 @@ impl RomSM {
         }
 
         // Padd with zeroes
-        for i in rom.insts.len()..RomRomTrace::<F>::NUM_ROWS {
+        let num_rows: usize = RomRomTrace::<F>::NUM_ROWS;
+        for i in rom.insts.len()..num_rows {
             rom_custom_trace[i] = RomRomTraceRow::default();
         }
     }
