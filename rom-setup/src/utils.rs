@@ -68,8 +68,14 @@ pub fn get_elf_bin_file_path_with_hash(
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
 
     let gpu = if cfg!(feature = "gpu") { "_gpu" } else { "" };
-    let rom_cache_file_name =
-        format!("{}_{}_{}_{}{}.bin", hash, pilout_hash, &n.to_string(), &blowup_factor.to_string(), gpu);
+    let rom_cache_file_name = format!(
+        "{}_{}_{}_{}{}.bin",
+        hash,
+        pilout_hash,
+        &n.to_string(),
+        &blowup_factor.to_string(),
+        gpu
+    );
 
     Ok(default_cache_path.join(rom_cache_file_name))
 }
