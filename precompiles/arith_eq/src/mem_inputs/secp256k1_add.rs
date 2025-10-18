@@ -20,8 +20,8 @@ pub fn generate_secp256k1_add_mem_inputs(
     pending: &mut VecDeque<(BusId, Vec<u64>)>,
 ) {
     // op,op_type,a,b,addr[2],...
-    let p1: &[u64; 8] = &data[6..14].try_into().unwrap();
-    let p2: &[u64; 8] = &data[14..22].try_into().unwrap();
+    let p1: &[u64; 8] = &data[7..15].try_into().unwrap();
+    let p2: &[u64; 8] = &data[15..23].try_into().unwrap();
     let mut p3 = [0u64; 8];
 
     Secp256k1::calculate_add(p1, p2, &mut p3);

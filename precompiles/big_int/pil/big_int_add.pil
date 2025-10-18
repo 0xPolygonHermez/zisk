@@ -134,5 +134,5 @@ airtemplate BigIntAdd(const int N = 2**21, const int operation_bus_id = OPERATIO
     const expr final_cout = cout[N_RC-1][RC-1];
 
     // proves the operation lauched by main, c = flag = carry_out
-    lookup_proves(operation_bus_id, [operation_code, step, 0, addr_params, 0, final_cout, 0, final_cout], sel);
+    lookup_proves(operation_bus_id, [operation_code, 0, 0, addr_params, 0, final_cout, 0, final_cout, step], sel);
 }

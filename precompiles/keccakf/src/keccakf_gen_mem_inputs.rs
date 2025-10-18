@@ -3,7 +3,7 @@ use tiny_keccak::keccakf;
 use precompiles_common::MemBusHelpers;
 use std::collections::VecDeque;
 use zisk_common::MemCollectorInfo;
-use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
+use zisk_common::{BusId, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 
 #[derive(Debug)]
 pub struct KeccakfMemInputConfig {
@@ -22,7 +22,7 @@ pub fn generate_keccakf_mem_inputs(
 ) {
     // Get the basic data from the input
     // op,op_type,a,b,...
-    let state: &mut [u64; 25] = &mut data[4..29].try_into().unwrap();
+    let state: &mut [u64; 25] = &mut data[5..30].try_into().unwrap();
 
     // Apply the keccakf function
     keccakf(state);
@@ -32,7 +32,7 @@ pub fn generate_keccakf_mem_inputs(
     let write_params = 1;
     let chunks_per_param = 25;
     let params_count = read_params + write_params;
-    let params_offset = OPERATION_BUS_DATA_SIZE;
+    let params_offset = OPERATION_PRECOMPILED_BUS_DATA_SIZE;
     for iparam in 0..params_count {
         let is_write = iparam >= read_params;
         let param_index = if is_write { iparam - read_params } else { iparam };

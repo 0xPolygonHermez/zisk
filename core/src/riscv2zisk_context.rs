@@ -1072,7 +1072,7 @@ impl Riscv2ZiskContext<'_> {
             zib.src_b("reg", i.rs1 as u64, false);
             zib.j(4, 4);
             if (CSR_PRECOMPILED_ADDR_START..=CSR_PRECOMPILED_ADDR_END).contains(&i.csr) {
-                zib.src_a("step", 0, false);
+                zib.src_a("imm", 0, false);
                 let precompiled = CSR_PRECOMPILED[(i.csr - CSR_PRECOMPILED_ADDR_START) as usize];
                 zib.op(precompiled).unwrap();
                 zib.verbose(precompiled);
@@ -1116,7 +1116,7 @@ impl Riscv2ZiskContext<'_> {
             self.s += 4;
         } else if i.csr == CSR_PRECOMPILED_ADD256 {
             let mut zib = ZiskInstBuilder::new(self.s);
-            zib.src_a("step", 0, false);
+            zib.src_a("imm", 0, false);
             zib.src_b("reg", i.rs1 as u64, false);
             zib.op("add256").unwrap();
             zib.verbose("add256");

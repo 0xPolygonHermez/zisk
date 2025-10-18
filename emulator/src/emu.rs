@@ -2315,7 +2315,7 @@ impl<'a> Emu<'a> {
             // a_src_sp: F::from_bool(inst.a_src == SRC_SP),
             // #[cfg(feature = "sp")]
             // a_use_sp_imm1: F::from_u64(inst.a_use_sp_imm1),
-            a_src_step: F::from_bool(inst.a_src == SRC_STEP),
+            op_with_step: F::from_bool(inst.op_with_step),
             b_src_imm: F::from_bool(inst.b_src == SRC_IMM),
             b_src_mem: F::from_bool(inst.b_src == SRC_MEM),
             b_src_reg: F::from_bool(inst.b_src == SRC_REG),

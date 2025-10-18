@@ -19,7 +19,7 @@ pub fn generate_arith384_mod_mem_inputs(
     only_counters: bool,
     pending: &mut VecDeque<(BusId, Vec<u64>)>,
 ) {
-    let mut pos_offset: usize = 9; // op,op_type,a,b,addr[5],...
+    let mut pos_offset: usize = 10; // op,op_type,a,b,addr[5],...
     let a: &[u64; ARITH_EQ_384_U64S] =
         &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S)].try_into().unwrap();
     pos_offset += ARITH_EQ_384_U64S;

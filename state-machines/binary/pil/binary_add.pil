@@ -24,5 +24,5 @@ airtemplate BinaryAdd(const int N = 2**21, const int operation_bus_id = OPERATIO
     }
 
     col witness multiplicity;
-    lookup_proves(operation_bus_id, [operation_code, ...a, ...b, ...c, 0], multiplicity);
+    lookup_proves(operation_bus_id, [operation_code, ...a, ...b, ...c, 0, 0], multiplicity);
 }

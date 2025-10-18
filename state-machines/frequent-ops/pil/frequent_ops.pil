@@ -13,5 +13,8 @@ airtemplate FrequentOps(int N = 2**24, int RC = 2, const int operation_bus_id = 
     col fixed C[RC];
     col fixed FLAG;
 
-    lookup_proves(operation_bus_id, [OP, ...A, ...B, ...C, FLAG], mul: multiplicity, table_id: table_id);
+    // REVIEW: REPLACE BY CONSTANT
+    col fixed __ZERO__ = [0...];
+
+    lookup_proves(operation_bus_id, [OP, ...A, ...B, ...C, FLAG, __ZERO__], mul: multiplicity, table_id: table_id);
 }

@@ -95,6 +95,6 @@ airgroup Zisk {
 
     // Public Inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {
-        direct_global_update_proves(OPERATION_BUS_ID, [PUBLIC_OP, i, 0, inputs[i*2], inputs[i*2 + 1], inputs[i*2], inputs[i*2 + 1], 0]);
+        direct_global_update_proves(OPERATION_BUS_ID, [PUBLIC_OP, i, 0, inputs[i*2], inputs[i*2 + 1], inputs[i*2], inputs[i*2 + 1], 0, 0]);
     }
 }

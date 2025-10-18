@@ -4,10 +4,10 @@
 
 use std::{collections::VecDeque, ops::Add};
 
-use zisk_common::MemCollectorInfo;
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, B, OPERATION_BUS_ID, OP_TYPE,
 };
+use zisk_common::{MemCollectorInfo, STEP};
 use zisk_core::ZiskOperationType;
 
 use crate::{generate_sha256f_mem_inputs, skip_sha256f_mem_inputs};
@@ -120,7 +120,7 @@ impl BusDevice<u64> for Sha256fCounterInputGen {
             }
         }
 
-        let step_main = data[A];
+        let step_main = data[STEP];
         let addr_main = data[B] as u32;
 
         let only_counters = self.mode == BusDeviceMode::Counter;

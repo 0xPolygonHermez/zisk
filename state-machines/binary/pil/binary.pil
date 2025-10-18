@@ -171,5 +171,5 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = OPERATION_B
     expr op = m_op + 0x20 * mode32;
 
     col witness multiplicity;
-    lookup_proves(OPERATION_BUS_ID, [op, ...a, ...b, ...c, cout - result_is_a], multiplicity);
+    lookup_proves(operation_bus_id, [op, ...a, ...b, ...c, cout - result_is_a, 0], multiplicity);
 }

@@ -1,0 +1,127 @@
+const int MEMCPY_CONT_ID = 400;
+
+airtemplate MemCpy(int N = 2**21, const int RC = 2, const int op_x_row = 4, const int selectors = 1) {
+
+    assert(selectors == 0 || selectors == 1);
+    assert(op_x_row > 1);
+
+    airval segment_id;                 // Id of current segment
+    airval segment_previous_reset;     // Last value of `reset` in previous segment.
+    airval segment_previous_src_addr;  // Last value of `src_addr` in previous segment.
+    airval segment_previous_dst_addr;  // Last value of `dst_addr` in previous segment.
+    airval segment_previous_main_step; // Last value of `main_step` in previous segment.
+    airval segment_previous_count;     // Last value of `count` in previous segment.
+
+    airval segment_last_reset;     // Last value of `reset` in current segment.
+    airval segment_last_src_addr;  // Last value of `src_addr` in current segment.
+    airval segment_last_dst_addr;  // Last value of `dst_addr` in current segment.
+    airval segment_last_main_step; // Last value of `main_step` in current segment.
+    airval segment_last_count;     // Last value of `count` in current segment.
+
+    airval is_last_segment;        // 1 if this is the last segment, 0 otherwise.
+    col witness main_step;
+    col witness src_addr;
+    col witness dst_addr;
+    col witness count;
+    col witness value[op_x_row][RC];
+
+    col witness sel_op[selectors ? op_x_row : 0]; // one more for end
+    col witness reset;
+
+    const expr previous_reset = L1 * (segment_previous_reset - 'reset) + 'reset;
+    const expr previous_src_addr = L1 * (segment_previous_src_addr - 'src_addr) + 'src_addr;
+    const expr previous_dst_addr = L1 * (segment_previous_dst_addr - 'dst_addr) + 'dst_addr;
+    const expr previous_main_step = L1 * (segment_previous_main_step - 'main_step) + 'main_step;
+    const expr previous_count = L1 * (segment_previous_count - 'count) + 'count;
+
+    LAST * (reset - segment_last_reset) === 0;
+    LAST * (src_addr - segment_last_src_addr) === 0;
+    LAST * (dst_addr - segment_last_dst_addr) === 0;
+    LAST * (main_step - segment_last_main_step) === 0;
+    LAST * (count - segment_last_count) === 0;
+
+    // Continuations
+    // AIR_ID, segment_id, reset, src_addr, dst_addr, count, main_step 
+    const int UNIQ_ID = AIRGROUP_ID * 1000 + AIR_ID;
+    direct_global_update_proves(MEMCPY_CONT_ID, [UNIQ_ID, 0, 1, 0, 0, 0, 0]);
+
+
+    direct_update_assumes(MEMCPY_CONT_ID, [ UNIQ_ID, 
+                                            segment_id, 
+                                            segment_previous_reset, 
+                                            segment_previous_src_addr, 
+                                            segment_previous_dst_addr, 
+                                            segment_previous_count, 
+                                            segment_previous_main_step]);
+
+    direct_update_proves(MEMCPY_CONT_ID, [  UNIQ_ID, 
+                                            segment_id + 1, 
+                                            segment_last_reset, 
+                                            segment_last_src_addr, 
+                                            segment_last_dst_addr, 
+                                            segment_last_count, 
+                                            segment_last_main_step], sel: is_last_segment);
+
+    // This global constraint is sent to the bus to define the initial and final values of
+    // continuations. A global constraint is used to ensure there is only one initial and one final
+    // value, preventing multiple cycles of `main`.
+
+    // In the initial state define the initial `pc` and final  `pc`. Before finish a execution the
+    // value of "c" must be 0.
+
+    const int zeros[RC];
+    for (int index = 0; index < RC; ++index) {
+        zeros[index] = 0;
+    }
+
+    // These constraints define the state at the beginning and end of a main continuation.
+
+        direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, END_PC_ADDR, ...zeros]);
+
+
+    reset * (1 - reset) === 0;
+
+    expr _ops_in_row = selectors ? sel_op[0] * op_x_row : sel_op[0];
+
+    for (int i = 0; i < op_x_row; i++) {
+        expr sel;
+        if (selectors || i == 0) {
+            sel = sel_op[i];
+            sel_op[i] * (1 - sel_op[i]) === 0;
+        } else {
+            sel = sel_op[0];
+        }
+
+        precompiled_mem_load(
+            sel: sel,
+            main_step: main_step,
+            addr: src_addr * 8 + 8 * i,
+            value: value[i]
+        );
+
+        precompiled_mem_store(
+            sel: sel,
+            main_step: main_step,
+            addr: dst_addr * 8 + 8 * i,
+            value: value[i]
+        );
+        if (selectors && i > 0) {
+            // current selector only can be 1 if previous is 1
+            sel_op[i] * (1 - sel_op[i - 1]) === 0;
+            _ops_in_row += sel_op[i];
+        }
+    }
+    const expr ops_in_row = _ops_in_row;
+    reset * (count - ops_in_row) === 0;
+   
+    range_check(count, min: 0, max: 2**24-1); // cost 1.5
+
+    (count - ('count + op_x_row)) * (1 - reset) === 0;
+    (src_addr - ('src_addr + 8 * op_x_row)) * (1 - reset) === 0;
+    (dst_addr - ('dst_addr + 8 * op_x_row)) * (1 - reset) === 0;
+
+    const expr previous_reset = L1 * (previous_segment_reset - 'reset) + 'reset;
+    
+    lookup_proves(op_bus_id, [op, dst_addr * 8, 0, src_addr * 8, 0, 0, 0, 0, step], sel: previous_reset);    
+    lookup_proves(op_bus_id, [op_param, count, 0, 0, 0, 0, 0, 0, step], sel: reset);
+}

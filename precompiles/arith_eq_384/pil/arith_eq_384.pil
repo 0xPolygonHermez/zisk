@@ -560,7 +560,7 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
                         sel_bls12_381_complex_sub * COMPLEX_SUB_BLS12_381_OP +
                         sel_bls12_381_complex_mul * COMPLEX_MUL_BLS12_381_OP;
 
-    lookup_proves(operation_bus_id, [bus_op, step_addr'(MAIN_STEP), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk0);
+    lookup_proves(operation_bus_id, [bus_op, 0, 0, step_addr'(ADDR_OP), 0, 0, 0, 0, step_addr'(MAIN_STEP)], mul: in_use_clk0);
 
     // selclk0 is the clock 0 for dedicated to one operation
     function expr_group_by_cbc(const expr selclk0, const expr chunks[], const int index): const expr {

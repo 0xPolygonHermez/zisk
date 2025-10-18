@@ -4,10 +4,10 @@
 
 use std::{collections::VecDeque, ops::Add};
 
-use zisk_common::MemCollectorInfo;
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
+use zisk_common::{MemCollectorInfo, STEP};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 use crate::mem_inputs::{
@@ -175,7 +175,7 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
         }
 
         let op = data[OP] as u8;
-        let step_main = data[A];
+        let step_main = data[STEP];
         let addr_main = data[B] as u32;
 
         let only_counters = self.mode == BusDeviceMode::Counter;

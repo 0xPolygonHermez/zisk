@@ -269,7 +269,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID, 
                                      bus_a0, bus_a1,
                                      bus_b0, bus_b1,
                                      bus_res0, bus_res1,
-                                     div_by_zero /*+ div_overflow*/], mul: multiplicity);
+                                     div_by_zero /*+ div_overflow*/, 0], mul: multiplicity);
 
     // Check that remainder (d) is lower than divisor (b) when division is performed
     // Specifically, we ensure that 0 <= |d| < |b|
@@ -277,7 +277,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID, 
                                       (d[0] + CHUNK_SIZE * d[1]), (d[2] + CHUNK_SIZE * d[3]) + m32 * nr * 0xFFFFFFFF, // remainder
                                       (b[0] + CHUNK_SIZE * b[1]), (b[2] + CHUNK_SIZE * b[3]) + m32 * nb * 0xFFFFFFFF, // divisor
                                       1, 0,
-                                      1], sel: div * (1 - div_by_zero));
+                                      1, 0], sel: div * (1 - div_by_zero));
 
     for (int index = 0; index < length(carry); ++index) {
          arith_range_table_assumes(ARITH_RANGE_CARRY, carry[index]);     // TODO: review carry range

@@ -77,7 +77,7 @@ impl Default for EmuOptions {
             elf: None,
             inputs: None,
             output: None,
-            max_steps: 0xFFFFFFFFFFFFFFFF,
+            max_steps: 0xFFF_FFFF_FFFF_FFFFF,
             print_step: None,
             trace: None,
             verbose: false,

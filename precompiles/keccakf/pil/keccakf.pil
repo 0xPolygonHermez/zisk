@@ -312,7 +312,7 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
     );
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
-    lookup_proves(operation_bus_id, [KECCAKF_OP, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_STATE), 0, 0, 0, 0], mul: in_use_clk_0);
+    lookup_proves(operation_bus_id, [KECCAKF_OP, 0, 0, step_addr'(ADDR_STATE), 0, 0, 0, 0, step_addr'(STEP_MAIN)], mul: in_use_clk_0);
 
     function clock_map(const expr cl, int pos, int start = 0, int end = -1, int delta = 0, int factor = 1): const expr {
         expr res = 0;

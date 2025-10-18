@@ -20,9 +20,9 @@ pub fn generate_arith256_mem_inputs(
     pending: &mut VecDeque<(BusId, Vec<u64>)>,
 ) {
     // op,op_type,a,b,addr[5],...
-    let a: &[u64; 4] = &data[9..13].try_into().unwrap();
-    let b: &[u64; 4] = &data[13..17].try_into().unwrap();
-    let c: &[u64; 4] = &data[17..21].try_into().unwrap();
+    let a: &[u64; 4] = &data[10..14].try_into().unwrap();
+    let b: &[u64; 4] = &data[14..18].try_into().unwrap();
+    let c: &[u64; 4] = &data[18..22].try_into().unwrap();
     // let mut dh = [0u64; 4];
     // let mut dl = [0u64; 4];
     let mut d: [u64; 8] = [0u64; 8];

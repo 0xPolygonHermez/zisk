@@ -19,7 +19,7 @@ pub fn generate_bls12_381_complex_sub_mem_inputs(
     only_counters: bool,
     pending: &mut VecDeque<(BusId, Vec<u64>)>,
 ) {
-    let mut pos_offset: usize = 6; // op,op_type,a,b,addr[2],...
+    let mut pos_offset: usize = 7; // op,op_type,a,b,addr[2],...
     let f1: &[u64; ARITH_EQ_384_U64S_DOUBLE] =
         &data[pos_offset..(pos_offset + ARITH_EQ_384_U64S_DOUBLE)].try_into().unwrap();
     pos_offset += ARITH_EQ_384_U64S_DOUBLE;

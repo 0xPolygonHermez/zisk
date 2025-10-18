@@ -21,8 +21,9 @@ impl Add256Input {
             addr_main: values[B] as u32,
             addr_a: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE] as u32,
             addr_b: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1] as u32,
-            addr_c: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2] as u32,
-            cin: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 3],
+            addr_c: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + READ_PARAMS + DIRECT_READ_PARAMS]
+                as u32,
+            cin: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + READ_PARAMS],
             a: values[START_READ_PARAMS..START_READ_PARAMS + PARAM_CHUNKS].try_into().unwrap(),
             b: values[START_READ_PARAMS + PARAM_CHUNKS..START_READ_PARAMS + 2 * PARAM_CHUNKS]
                 .try_into()

@@ -5,7 +5,7 @@
 use crate::{
     zisk_ops::{InvalidNameError, OpType, ZiskOp},
     ZiskInst, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REG_FIRST, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
-    SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // #[cfg(feature = "sp")]
@@ -36,7 +36,7 @@ impl ZiskInstBuilder {
             "lastc" => SRC_C,
             // #[cfg(feature = "sp")]
             // "sp" => SRC_SP,
-            "step" => SRC_STEP,
+            // "step" => SRC_STEP,
             _ => panic!("ZiskInstBuilder::a_src() called with invalid src={src}"),
         }
     }
@@ -199,6 +199,8 @@ impl ZiskInstBuilder {
         self.i.func = op.get_call_function();
         self.i.op_type = op.op_type().into();
         self.i.input_size = op.input_size();
+        // assume that input_size > 0 implies a precompiled, and precompiled uses step on operations
+        self.i.op_with_step = op.input_size() > 0;
         Ok(())
     }
 

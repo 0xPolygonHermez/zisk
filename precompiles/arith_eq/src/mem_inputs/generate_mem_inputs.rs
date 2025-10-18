@@ -1,7 +1,7 @@
 use precompiles_common::MemBusHelpers;
 use std::collections::VecDeque;
 use zisk_common::MemCollectorInfo;
-use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
+use zisk_common::{BusId, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 
 #[derive(Debug)]
 pub struct ArithEqMemInputConfig {
@@ -21,13 +21,13 @@ pub fn generate_mem_inputs(
     config: &ArithEqMemInputConfig,
 ) {
     let params_count = config.read_params + config.write_params;
-    let params_offset = OPERATION_BUS_DATA_SIZE + config.indirect_params;
+    let params_offset = OPERATION_PRECOMPILED_BUS_DATA_SIZE + config.indirect_params;
 
     for iparam in 0..config.indirect_params {
         MemBusHelpers::mem_aligned_load(
             addr_main + iparam as u32 * 8,
             step_main,
-            data[OPERATION_BUS_DATA_SIZE + iparam],
+            data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + iparam],
             pending,
         )
     }
@@ -39,7 +39,7 @@ pub fn generate_mem_inputs(
         };
         let param_addr = if config.indirect_params > 0 {
             // read indirect parameters, means stored the address of parameter
-            data[OPERATION_BUS_DATA_SIZE + param_index] as u32
+            data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_index] as u32
         } else {
             addr_main + (param_index * 8 * config.chunks_per_param) as u32
         };
@@ -97,7 +97,7 @@ pub fn skip_mem_inputs(
             iparam
         };
         let param_addr = if config.indirect_params > 0 {
-            data[OPERATION_BUS_DATA_SIZE + param_index] as u32
+            data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_index] as u32
         } else {
             addr_main + (param_index * 8 * config.chunks_per_param) as u32
         };

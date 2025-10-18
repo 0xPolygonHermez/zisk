@@ -42,10 +42,12 @@ uint64_t get_gen_method(void);
 #define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)
 
 #define TRACE_ADDR         (uint64_t)0xc0000000
-#define INITIAL_TRACE_SIZE (uint64_t)0x100000000 // 4GB
+#define INITIAL_TRACE_SIZE (uint64_t)0x180000000 // 4GB
 
 #define REG_ADDR (uint64_t)0x70000000
 #define REG_SIZE (uint64_t)0x1000 // 4kB
+
+#define MAX_STEPS (1ULL << 36)
 
 uint8_t * pInput = (uint8_t *)INPUT_ADDR;
 uint8_t * pInputLast = (uint8_t *)(INPUT_ADDR + 10440504 - 64);
@@ -1630,7 +1632,7 @@ void client_run (void)
 
                 // Prepare message to send
                 request[0] = TYPE_MT_REQUEST;
-                request[1] = 1ULL << 32; // max_steps
+                request[1] = MAX_STEPS;
                 request[2] = 1ULL << 18; // chunk_len
                 request[3] = 0;
                 request[4] = 0;
@@ -1691,7 +1693,7 @@ void client_run (void)
 
                 // Prepare message to send
                 request[0] = TYPE_RH_REQUEST;
-                request[1] = 1ULL << 32; // max_steps
+                request[1] = MAX_STEPS;
                 request[2] = 0;
                 request[3] = 0;
                 request[4] = 0;
@@ -1752,7 +1754,7 @@ void client_run (void)
 
                 // Prepare message to send
                 request[0] = TYPE_MO_REQUEST;
-                request[1] = 1ULL << 32; // max_steps
+                request[1] = MAX_STEPS;
                 request[2] = 1ULL << 18; // chunk_len
                 request[3] = 0;
                 request[4] = 0;
@@ -1813,7 +1815,7 @@ void client_run (void)
 
                 // Prepare message to send
                 request[0] = TYPE_MA_REQUEST;
-                request[1] = 1ULL << 32; // max_steps
+                request[1] = MAX_STEPS;
                 request[2] = 1ULL << 18; // chunk_len
                 request[3] = 0;
                 request[4] = 0;
@@ -1876,7 +1878,7 @@ void client_run (void)
 
                     // Prepare message to send
                     request[0] = TYPE_CM_REQUEST;
-                    request[1] = 1ULL << 32; // max_steps
+                    request[1] = MAX_STEPS;
                     request[2] = 1ULL << 18; // chunk_len
                     request[3] = chunk_player_address;
                     request[4] = 0;
@@ -1950,7 +1952,7 @@ void client_run (void)
     
                         // Prepare message to send
                         request[0] = TYPE_CM_REQUEST;
-                        request[1] = 1ULL << 32; // max_steps
+                        request[1] = MAX_STEPS;
                         request[2] = 1ULL << 18; // chunk_len
                         request[3] = chunk_player_address;
                         request[4] = 0;
@@ -2011,7 +2013,7 @@ void client_run (void)
 
                 // Prepare message to send
                 request[0] = TYPE_FA_REQUEST;
-                request[1] = 1ULL << 32; // max_steps
+                request[1] = MAX_STEPS;
                 request[2] = 1ULL << 18; // chunk_len
                 request[3] = 0;
                 request[4] = 0;
@@ -2072,7 +2074,7 @@ void client_run (void)
 
                 // Prepare message to send
                 request[0] = TYPE_MR_REQUEST;
-                request[1] = 1ULL << 32; // max_steps
+                request[1] = MAX_STEPS;
                 request[2] = 1ULL << 18; // chunk_len
                 request[3] = 0;
                 request[4] = 0;
@@ -2135,7 +2137,7 @@ void client_run (void)
 
                     // Prepare message to send
                     request[0] = TYPE_CA_REQUEST;
-                    request[1] = 1ULL << 32; // max_steps
+                    request[1] = MAX_STEPS;
                     request[2] = 1ULL << 18; // chunk_len
                     request[3] = chunk_player_address;
                     request[4] = 0;
@@ -2209,7 +2211,7 @@ void client_run (void)
     
                         // Prepare message to send
                         request[0] = TYPE_CA_REQUEST;
-                        request[1] = 1ULL << 32; // max_steps
+                        request[1] = MAX_STEPS;
                         request[2] = 1ULL << 18; // chunk_len
                         request[3] = chunk_player_address;
                         request[4] = 0;

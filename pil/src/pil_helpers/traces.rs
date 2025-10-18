@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "558b53c15322024acd69f0cca53cc64b7c7002f7f72ee3595dd5d12d997caa17";
+pub const PILOUT_HASH: &str = "a67bacab2b28caf917f9d5eedfb48531dc6af524c40c65f08f3b48cfb045593a";
 
 //AIRGROUP CONSTANTS
 
@@ -113,7 +113,7 @@ trace!(MainFixed<F> {
 },  0, 0, 4194304 );
 
 trace!(MainTrace<F> {
- a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, a_reg_prev_mem_step: F, b_reg_prev_mem_step: F, store_reg_prev_mem_step: F, store_reg_prev_value: [F; 2], a_src_reg: F, b_src_reg: F, store_reg: F,
+ a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, op_with_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, a_reg_prev_mem_step: F, b_reg_prev_mem_step: F, store_reg_prev_mem_step: F, store_reg_prev_value: [F; 2], a_src_reg: F, b_src_reg: F, store_reg: F,
 },  0, 0, 4194304 );
 
 trace!(RomFixed<F> {
@@ -269,7 +269,7 @@ trace!(VirtualTable0Trace<F> {
 },  0, 19, 2097152 );
 
 trace!(VirtualTable1Fixed<F> {
- UID: [F; 8], column: [F; 64], __L1__: F,
+ UID: [F; 8], column: [F; 72], __L1__: F,
 },  0, 20, 2097152 );
 
 trace!(VirtualTable1Trace<F> {

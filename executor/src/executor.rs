@@ -171,7 +171,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     const NUM_THREADS: usize = 16;
 
     /// The maximum number of steps to execute in the emulator or assembly runner.
-    const MAX_NUM_STEPS: u64 = 1 << 32;
+    const MAX_NUM_STEPS: u64 = 1 << 36;
 
     /// Creates a new instance of the `ZiskExecutor`.
     ///

@@ -13,12 +13,12 @@ pub struct Sha256fInput {
 impl Sha256fInput {
     pub fn from(values: &OperationSha256Data<u64>) -> Self {
         Self {
-            step_main: values[2],
+            step_main: values[4],
             addr_main: values[3] as u32,
-            state_addr: values[4] as u32,
-            input_addr: values[5] as u32,
-            state: values[6..10].try_into().unwrap(),
-            input: values[10..18].try_into().unwrap(),
+            state_addr: values[5] as u32,
+            input_addr: values[6] as u32,
+            state: values[7..11].try_into().unwrap(),
+            input: values[11..19].try_into().unwrap(),
         }
     }
 }

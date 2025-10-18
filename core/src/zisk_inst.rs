@@ -121,6 +121,7 @@ pub struct ZiskInst {
     pub store: u64,
     pub store_offset: i64,
     pub set_pc: bool,
+    pub op_with_step: bool,
     // #[cfg(feature = "sp")]
     // pub set_sp: bool,
     pub ind_width: u64,
@@ -157,6 +158,7 @@ impl Default for ZiskInst {
             store: 0,
             store_offset: 0,
             set_pc: false,
+            op_with_step: false,
             // #[cfg(feature = "sp")]
             // set_sp: false,
             ind_width: 0,
@@ -230,6 +232,9 @@ impl ZiskInst {
         if self.set_pc {
             s += &format!(" set_pc={}", self.set_pc);
         }
+        if self.op_with_step {
+            s += &format!(" op_with_step={}", self.op_with_step);
+        }
         if self.jmp_offset1 != 0 {
             s += &format!(" jmp_offset1={}", self.jmp_offset1);
         }
@@ -262,7 +267,7 @@ impl ZiskInst {
         let flags: u64 = 1
             | (((self.a_src == SRC_IMM) as u64) << 1)
             | (((self.a_src == SRC_MEM) as u64) << 2)
-            | (((self.a_src == SRC_STEP) as u64) << 3)
+            | ((self.op_with_step as u64) << 3)
             | (((self.b_src == SRC_IMM) as u64) << 4)
             | (((self.b_src == SRC_MEM) as u64) << 5)
             | ((self.is_external_op as u64) << 6)
@@ -330,7 +335,7 @@ impl ZiskInst {
             // a_src_sp: F::from_bool(inst.a_src == SRC_SP),
             // #[cfg(feature = "sp")]
             // a_use_sp_imm1: F::from_u64(inst.a_use_sp_imm1),
-            a_src_step: F::from_bool(self.a_src == SRC_STEP),
+            op_with_step: F::from_bool(self.op_with_step),
             b_src_imm: F::from_bool(self.b_src == SRC_IMM),
             b_src_mem: F::from_bool(self.b_src == SRC_MEM),
             b_src_reg: F::from_bool(self.b_src == SRC_REG),
@@ -399,7 +404,7 @@ impl ZiskInst {
         // a_src_sp: F::from_bool(inst.a_src == SRC_SP),
         // #[cfg(feature = "sp")]
         // a_use_sp_imm1: F::from_u64(inst.a_use_sp_imm1),
-        trace.a_src_step = F::from_bool(self.a_src == SRC_STEP);
+        trace.op_with_step = F::from_bool(self.op_with_step);
         trace.b_src_imm = F::from_bool(self.b_src == SRC_IMM);
         trace.b_src_mem = F::from_bool(self.b_src == SRC_MEM);
         trace.b_src_reg = F::from_bool(self.b_src == SRC_REG);
