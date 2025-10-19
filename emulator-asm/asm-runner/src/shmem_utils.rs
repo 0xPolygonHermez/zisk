@@ -1,7 +1,5 @@
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use libc::MREMAP_MAYMOVE;
 use libc::{
-    c_uint, close, mmap, mremap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
+    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
     PROT_WRITE, S_IRUSR, S_IWUSR,
 };
 use std::{
@@ -50,49 +48,6 @@ impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
 }
 
 impl<H: AsmShmemHeader> AsmSharedMemory<H> {
-    // pub fn open(name: &str, flags: i32, mode: u32) -> Result<Self> {
-    //     if name.is_empty() {
-    //         return Err(anyhow::anyhow!("Shared memory name {name} cannot be empty"));
-    //     }
-
-    //     let c_name = CString::new(name).expect("CString::new failed");
-    //     let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
-    //     if fd == -1 {
-    //         let err = io::Error::last_os_error();
-    //         return Err(anyhow::anyhow!("shm_open('{name}') failed: {err}"));
-    //     }
-
-    //     Ok(Self { fd, mapped_ptr: None, mapped_size: 0, shmem_name: name.to_string() })
-    // }
-
-    // pub fn map(&mut self, size: usize, prot: i32, unlock_mapped_memory: bool) -> Result<()> {
-    //     // Ensure the size is valid
-    //     assert!(size > 0, "Size must be greater than zero for shared memory mapping");
-
-    //     if self.is_mapped() {
-    //         return Err(anyhow::anyhow!(
-    //             "Shared memory '{}' is already mapped, unwrapping first",
-    //             self.shmem_name
-    //         ));
-    //     }
-
-    //     let mut flags = MAP_SHARED;
-    //     if !unlock_mapped_memory {
-    //         flags |= libc::MAP_LOCKED;
-    //     }
-
-    //     let mapped = unsafe { mmap(ptr::null_mut(), size, prot, flags, self.fd, 0) };
-    //     if mapped == MAP_FAILED {
-    //         let err = io::Error::last_os_error();
-    //         panic!("mmap failed for '{}': {err:?} ({size} bytes)", self.shmem_name);
-    //     }
-
-    //     self.mapped_ptr = Some(mapped);
-    //     self.mapped_size = size;
-
-    //     Ok(())
-    // }
-
     pub fn open_and_map(name: &str, _unlock_mapped_memory: bool) -> Result<Self> {
         unsafe {
             if name.is_empty() {
@@ -182,41 +137,74 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
     }
 
     pub fn remap(&mut self, new_size: usize) -> Result<()> {
-        unsafe {
-            if !self.is_mapped() {
-                return Err(anyhow::anyhow!(
-                    "Shared memory '{}' is not currently mapped, cannot remap",
-                    self.shmem_name
-                ));
-            }
+        if !self.is_mapped() {
+            return Err(anyhow::anyhow!(
+                "Shared memory '{}' is not currently mapped, cannot remap",
+                self.shmem_name
+            ));
+        }
 
-            if new_size == 0 {
-                return Err(anyhow::anyhow!("New size must be greater than zero"));
-            }
+        if new_size == 0 {
+            return Err(anyhow::anyhow!("New size must be greater than zero"));
+        }
 
-            #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-            let flags = 0;
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            let flags = MREMAP_MAYMOVE;
+        // Use mremap to extend the existing mapping at the same address
+        let new_ptr = self.remap_region(new_size)?;
 
-            // Use mremap to extend the existing mapping at the same address
-            let new_ptr = mremap(self.mapped_ptr, self.mapped_size, new_size, flags);
+        // Update the struct with new mapping info
+        self.mapped_ptr = new_ptr;
+        self.mapped_size = new_size;
 
+        Ok(())
+    }
+
+    /// Remaps the shared memory region to a new size.
+    /// # Safety
+    /// The caller must ensure that:
+    /// - `new_size` is the desired new size for the mapping.
+    pub fn remap_region(&self, new_size: usize) -> Result<*mut c_void> {
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            let flags = libc::MREMAP_MAYMOVE;
+            let new_ptr =
+                unsafe { libc::mremap(self.mapped_ptr, self.mapped_size, new_size, flags) };
             if new_ptr == MAP_FAILED {
-                return Err(anyhow::anyhow!(
+                Err(anyhow::anyhow!(
                     "Failed to remap shared memory '{}' from size {} to {}: {}",
                     self.shmem_name,
                     self.mapped_size,
                     new_size,
                     io::Error::last_os_error()
+                ))
+            } else {
+                Ok(new_ptr)
+            }
+        }
+
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        {
+            // On macOS / other systems without mremap:
+            // just unmap and remap a fresh region — no data copy.
+            if unsafe { munmap(self.mapped_ptr, self.mapped_size) } != 0 {
+                return Err(anyhow::anyhow!(
+                    "munmap failed for '{}': {}",
+                    self.shmem_name,
+                    io::Error::last_os_error()
                 ));
             }
 
-            // Update the struct with new mapping info
-            self.mapped_ptr = new_ptr;
-            self.mapped_size = new_size;
+            let new_ptr =
+                unsafe { mmap(ptr::null_mut(), new_size, PROT_READ, MAP_SHARED, self._fd, 0) };
 
-            Ok(())
+            if new_ptr == MAP_FAILED {
+                Err(anyhow::anyhow!(
+                    "mmap failed for '{}': {}",
+                    self.shmem_name,
+                    io::Error::last_os_error()
+                ))
+            } else {
+                Ok(new_ptr)
+            }
         }
     }
 
