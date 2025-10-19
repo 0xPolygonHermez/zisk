@@ -1,9 +1,9 @@
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use libc::MREMAP_MAYMOVE;
 use libc::{
     c_uint, close, mmap, mremap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
     PROT_WRITE, S_IRUSR, S_IWUSR,
 };
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use libc::MREMAP_MAYMOVE;
 use std::{
     ffi::CString,
     fmt::Debug,
