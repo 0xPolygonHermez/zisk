@@ -1,7 +1,9 @@
 use libc::{
-    c_uint, close, mmap, mremap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED,
-    MREMAP_MAYMOVE, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR,
+    c_uint, close, mmap, mremap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
+    PROT_WRITE, S_IRUSR, S_IWUSR,
 };
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use libc::MREMAP_MAYMOVE;
 use std::{
     ffi::CString,
     fmt::Debug,
@@ -192,8 +194,13 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
                 return Err(anyhow::anyhow!("New size must be greater than zero"));
             }
 
+            #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+            let flags = 0;
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            let flags = MREMAP_MAYMOVE;
+
             // Use mremap to extend the existing mapping at the same address
-            let new_ptr = mremap(self.mapped_ptr, self.mapped_size, new_size, MREMAP_MAYMOVE);
+            let new_ptr = mremap(self.mapped_ptr, self.mapped_size, new_size, flags);
 
             if new_ptr == MAP_FAILED {
                 return Err(anyhow::anyhow!(
