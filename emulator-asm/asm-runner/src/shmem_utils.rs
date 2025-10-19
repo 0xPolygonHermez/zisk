@@ -1,8 +1,17 @@
 use libc::{
-    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
-    PROT_WRITE, S_IRUSR, S_IWUSR,
+    c_uint, close, mmap, mremap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED,
+    MREMAP_MAYMOVE, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR,
 };
-use std::{ffi::CString, fmt::Debug, fs, io, os::raw::c_void, path::Path, ptr};
+use std::{
+    ffi::CString,
+    fmt::Debug,
+    fs, io,
+    os::raw::c_void,
+    path::Path,
+    ptr,
+    sync::atomic::{fence, Ordering},
+};
+use tracing::debug;
 
 use anyhow::Result;
 
@@ -170,6 +179,58 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         }
     }
 
+    pub fn remap(&mut self, new_size: usize) -> Result<()> {
+        unsafe {
+            if !self.is_mapped() {
+                return Err(anyhow::anyhow!(
+                    "Shared memory '{}' is not currently mapped, cannot remap",
+                    self.shmem_name
+                ));
+            }
+
+            if new_size == 0 {
+                return Err(anyhow::anyhow!("New size must be greater than zero"));
+            }
+
+            // Use mremap to extend the existing mapping at the same address
+            let new_ptr = mremap(self.mapped_ptr, self.mapped_size, new_size, MREMAP_MAYMOVE);
+
+            if new_ptr == MAP_FAILED {
+                return Err(anyhow::anyhow!(
+                    "Failed to remap shared memory '{}' from size {} to {}: {}",
+                    self.shmem_name,
+                    self.mapped_size,
+                    new_size,
+                    io::Error::last_os_error()
+                ));
+            }
+
+            // Update the struct with new mapping info
+            self.mapped_ptr = new_ptr;
+            self.mapped_size = new_size;
+
+            Ok(())
+        }
+    }
+
+    pub fn check_size_changed<T>(&mut self, current_read_ptr: &mut *const T) -> Result<()> {
+        let new_mapped_size = self.map_header().allocated_size();
+
+        if new_mapped_size != self.mapped_size as u64 {
+            debug!("Remapping shared memory {} to new size: {}", self.shmem_name, new_mapped_size);
+
+            let offset = (*current_read_ptr as usize).wrapping_sub(self.mapped_ptr as usize);
+
+            self.remap(new_mapped_size as usize)?;
+
+            *current_read_ptr = unsafe { self.mapped_ptr.add(offset) as *const T };
+
+            fence(Ordering::Acquire);
+        }
+
+        Ok(())
+    }
+
     pub fn unmap(&mut self) -> Result<()> {
         unsafe {
             if munmap(self.mapped_ptr, self.mapped_size) != 0 {
@@ -201,6 +262,10 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
     }
 
     pub fn header_ptr(&self) -> *mut c_void {
+        self.mapped_ptr
+    }
+
+    pub fn mapped_ptr(&self) -> *mut c_void {
         self.mapped_ptr
     }
 
