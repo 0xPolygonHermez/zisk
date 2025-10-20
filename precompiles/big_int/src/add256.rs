@@ -6,7 +6,21 @@ use rayon::prelude::*;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+
+#[cfg(not(feature = "packed"))]
 use zisk_pil::{Add256Trace, Add256TraceRow};
+#[cfg(feature = "packed")]
+use zisk_pil::{Add256TracePacked, Add256TraceRowPacked};
+
+#[cfg(not(feature = "packed"))]
+type Add256TraceRowType<F> = Add256TraceRow<F>;
+#[cfg(feature = "packed")]
+type Add256TraceRowType<F> = Add256TraceRowPacked<F>;
+
+#[cfg(not(feature = "packed"))]
+type Add256TraceType<F> = Add256Trace<F>;
+#[cfg(feature = "packed")]
+type Add256TraceType<F> = Add256TracePacked<F>;
 
 use super::Add256Input;
 
@@ -29,7 +43,7 @@ impl<F: PrimeField64> Add256SM<F> {
     /// A new `Add256SM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_availables = Add256Trace::<usize>::NUM_ROWS;
+        let num_availables = Add256TraceType::<F>::NUM_ROWS;
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None);
 
@@ -45,10 +59,10 @@ impl<F: PrimeField64> Add256SM<F> {
     pub fn process_slice(
         &self,
         input: &Add256Input,
-        trace: &mut Add256TraceRow<F>,
+        trace: &mut Add256TraceRowType<F>,
         multiplicities: &mut [u32],
     ) {
-        trace.cin = F::from_bool(input.cin != 0);
+        trace.set_cin(input.cin != 0);
         let mut cout_2 = input.cin as u32;
 
         for i in 0..4 {
@@ -58,10 +72,10 @@ impl<F: PrimeField64> Add256SM<F> {
             let bl = input.b[i] as u32;
             let bh = (input.b[i] >> 32) as u32;
 
-            trace.a[i][0] = F::from_u32(al);
-            trace.a[i][1] = F::from_u32(ah);
-            trace.b[i][0] = F::from_u32(bl);
-            trace.b[i][1] = F::from_u32(bh);
+            trace.set_a(i, 0, al);
+            trace.set_a(i, 1, ah);
+            trace.set_b(i, 0, bl);
+            trace.set_b(i, 1, bh);
             let cl = al as u64 + bl as u64 + cout_2 as u64;
             let cout_1 = cl >> 32;
             let ch = ah as u64 + bh as u64 + cout_1;
@@ -72,25 +86,25 @@ impl<F: PrimeField64> Add256SM<F> {
             let chl = ch as u16;
             let chh = (ch >> 16) as u16;
 
-            trace.c_chunks[i][0] = F::from_u16(cll);
-            trace.c_chunks[i][1] = F::from_u16(clh);
-            trace.c_chunks[i][2] = F::from_u16(chl);
-            trace.c_chunks[i][3] = F::from_u16(chh);
+            trace.set_c_chunks(i, 0, cll);
+            trace.set_c_chunks(i, 1, clh);
+            trace.set_c_chunks(i, 2, chl);
+            trace.set_c_chunks(i, 3, chh);
 
-            trace.cout[i][0] = F::from_u8(cout_1 as u8);
-            trace.cout[i][1] = F::from_u8(cout_2 as u8);
+            trace.set_cout(i, 0, cout_1 != 0);
+            trace.set_cout(i, 1, cout_2 != 0);
 
             multiplicities[cll as usize] += 1;
             multiplicities[clh as usize] += 1;
             multiplicities[chl as usize] += 1;
             multiplicities[chh as usize] += 1;
         }
-        trace.addr_params = F::from_u32(input.addr_main);
-        trace.addr_a = F::from_u32(input.addr_a);
-        trace.addr_b = F::from_u32(input.addr_b);
-        trace.addr_c = F::from_u32(input.addr_c);
-        trace.step = F::from_u64(input.step_main);
-        trace.sel = F::ONE;
+        trace.set_addr_params(input.addr_main);
+        trace.set_addr_a(input.addr_a);
+        trace.set_addr_b(input.addr_b);
+        trace.set_addr_c(input.addr_c);
+        trace.set_step(input.step_main);
+        trace.set_sel(true);
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -106,7 +120,7 @@ impl<F: PrimeField64> Add256SM<F> {
         inputs: &[Vec<Add256Input>],
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = Add256Trace::new_from_vec(trace_buffer);
+        let mut trace = Add256TraceType::<F>::new_from_vec(trace_buffer);
 
         let num_rows = trace.num_rows();
 
@@ -124,7 +138,7 @@ impl<F: PrimeField64> Add256SM<F> {
 
         // Split the add256_trace.buffer into slices matching each inner vector’s length.
         let flat_inputs: Vec<_> = inputs.iter().flatten().collect();
-        let trace_rows = trace.row_slice_mut();
+        let trace_rows = trace.buffer.as_mut_slice();
 
         // Determinar tamaño óptimo de chunks
         let num_threads = rayon::current_num_threads();
@@ -160,9 +174,8 @@ impl<F: PrimeField64> Add256SM<F> {
 
         timer_stop_and_log_trace!(ADD256_TRACE);
 
-        trace.row_slice_mut()[total_inputs..num_rows]
-            .par_iter_mut()
-            .for_each(|slot| *slot = Add256TraceRow::<F> { ..Default::default() });
+        let padding_row = Add256TraceRowType::<F>::default();
+        trace.buffer[total_inputs..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 
         AirInstance::<F>::new_from_trace(FromTrace::new(&mut trace))
     }

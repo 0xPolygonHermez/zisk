@@ -1295,6 +1295,7 @@ dependencies = [
  "pil-std-lib",
  "precomp-arith-eq",
  "precomp-arith-eq-384",
+ "precomp-big-int",
  "precomp-keccakf",
  "precomp-sha256f",
  "proofman",
@@ -2863,6 +2864,28 @@ dependencies = [
  "tracing",
  "typenum",
  "witness",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+]
+
+[[package]]
+name = "precomp-big-int"
+version = "0.13.0"
+dependencies = [
+ "fields",
+ "generic-array",
+ "lib-c",
+ "mem-common",
+ "pil-std-lib",
+ "precompiles-common",
+ "proofman",
+ "proofman-common",
+ "proofman-macros",
+ "proofman-util",
+ "rayon",
+ "sm-mem",
+ "tracing",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -5622,6 +5645,7 @@ dependencies = [
  "pil-std-lib",
  "precomp-arith-eq",
  "precomp-arith-eq-384",
+ "precomp-big-int",
  "precomp-keccakf",
  "precomp-sha256f",
  "proofman",

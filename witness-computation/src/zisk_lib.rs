@@ -9,6 +9,7 @@ use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_arith_eq_384::ArithEq384Manager;
+use precomp_big_int::Add256Manager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
 use proofman::register_std;
@@ -30,16 +31,6 @@ use zisk_pil::{
     MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS, SHA_256_F_AIR_IDS,
     ZISK_AIRGROUP_ID,
 };
-
-use precomp_arith_eq::ArithEqManager;
-use precomp_arith_eq_384::ArithEq384Manager;
-use precomp_big_int::Add256Manager;
-use precomp_keccakf::KeccakfManager;
-use precomp_sha256f::Sha256fManager;
-use sm_arith::ArithSM;
-use sm_binary::BinarySM;
-use sm_mem::Mem;
-use sm_rom::RomSM;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
