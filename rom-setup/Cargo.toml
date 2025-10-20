@@ -22,4 +22,6 @@ blake3 = "1.3.1"
 
 [features]
 default = []
+gpu = ["proofman-common/gpu", "packed"]
+packed = ["proofman-common/packed"]
 no_lib_link = ["proofman-common/no_lib_link"]

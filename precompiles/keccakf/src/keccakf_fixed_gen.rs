@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let output_file = matches.get_one::<String>("output").unwrap();
 
-    let n: usize = KeccakfTrace::<usize>::NUM_ROWS;
+    let n: usize = KeccakfTrace::<Goldilocks>::NUM_ROWS;
     let bits = log2(n);
 
     // Get the subgroup generator and coset generator

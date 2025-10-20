@@ -2,7 +2,6 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use clap::Parser;
 use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -14,10 +13,8 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, fs, path::PathBuf, thread, time::Instant};
-use zisk_common::{ExecutorStats, ZiskLibInitFn};
-// use zisk_common::ExecutorStatsEnum;
+use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLibInitFn};
 use zisk_pil::*;
 
 use crate::{
@@ -192,6 +189,47 @@ impl ZiskStats {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
+        let mpi_info = ProofMan::<Goldilocks>::get_mpi_info();
+
+        initialize_logger(self.verbose.into(), Some(mpi_info.rank));
+
+        let world_ranks = mpi_info.n_processes;
+
+        let world_rank = mpi_info.rank;
+        let local_rank = mpi_info.node_rank;
+
+        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
+        let asm_runner_options = AsmRunnerOptions::new()
+            .with_verbose(self.verbose > 0)
+            .with_base_port(self.port)
+            .with_world_rank(world_rank)
+            .with_local_rank(local_rank)
+            .with_unlock_mapped_memory(self.unlock_mapped_memory);
+
+        if self.asm.is_some() {
+            // Start ASM microservices
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_info.rank,);
+
+            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
+        }
+
+        let library =
+            unsafe { Library::new(get_witness_computation_lib(self.witness_lib.as_ref()))? };
+        let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
+            unsafe { library.get(b"init_library")? };
+        let mut witness_lib = witness_lib_constructor(
+            self.verbose.into(),
+            self.elf.clone(),
+            self.asm.clone(),
+            asm_rom,
+            Some(world_rank),
+            Some(local_rank),
+            self.port,
+            self.unlock_mapped_memory,
+            self.shared_tables,
+        )
+        .expect("Failed to initialize witness library");
+
         let proofman = ProofMan::<Goldilocks>::new(
             proving_key,
             custom_commits_map,
@@ -200,17 +238,10 @@ impl ZiskStats {
             false,
             gpu_params,
             self.verbose.into(),
+            witness_lib.get_packed_info(),
         )
         .expect("Failed to initialize proofman");
 
-        let mpi_ctx = proofman.get_mpi_ctx();
-
-        initialize_logger(self.verbose.into(), Some(mpi_ctx.rank));
-
-        let world_ranks = mpi_ctx.n_processes;
-
-        let world_rank = mpi_ctx.rank;
-        let local_rank = mpi_ctx.node_rank;
         #[cfg(distributed)]
         {
             let mut is_active = true;
@@ -227,9 +258,9 @@ impl ZiskStats {
             } else {
                 mpi::topology::Color::undefined()
             };
-            let _sub_comm = mpi_ctx.world.split_by_color(color);
+            let _sub_comm = mpi_info.world.split_by_color(color);
 
-            mpi_ctx.world.split_shared(world_rank);
+            mpi_info.world.split_shared(world_rank);
 
             if !is_active {
                 println!(
@@ -242,43 +273,8 @@ impl ZiskStats {
             }
         }
 
-        let mut witness_lib;
-
-        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
-        let asm_runner_options = AsmRunnerOptions::new()
-            .with_verbose(self.verbose > 0)
-            .with_base_port(self.port)
-            .with_world_rank(world_rank)
-            .with_local_rank(local_rank)
-            .with_unlock_mapped_memory(self.unlock_mapped_memory);
-
-        if self.asm.is_some() {
-            // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_ctx.rank,);
-
-            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
-        }
-
         match self.field {
             Field::Goldilocks => {
-                let library = unsafe {
-                    Library::new(get_witness_computation_lib(self.witness_lib.as_ref()))?
-                };
-                let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
-                    unsafe { library.get(b"init_library")? };
-                witness_lib = witness_lib_constructor(
-                    self.verbose.into(),
-                    self.elf.clone(),
-                    self.asm.clone(),
-                    asm_rom,
-                    Some(world_rank),
-                    Some(local_rank),
-                    self.port,
-                    self.unlock_mapped_memory,
-                    self.shared_tables,
-                )
-                .expect("Failed to initialize witness library");
-
                 proofman.register_witness(&mut *witness_lib, library);
 
                 proofman
@@ -300,11 +296,11 @@ impl ZiskStats {
         };
 
         #[allow(clippy::type_complexity)]
-        let (_, stats, witness_stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize,Stats>>>) = *witness_lib
-            .get_execution_result()
-            .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>)>()
-            .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+        let (_, stats, witness_stats): (
+            ZiskExecutionResult,
+            ExecutorStats,
+            HashMap<usize, Stats>,
+        ) = witness_lib.get_execution_result().expect("Failed to get execution result");
 
         if world_rank % 2 == 1 {
             thread::sleep(std::time::Duration::from_millis(2000));
@@ -318,7 +314,7 @@ impl ZiskStats {
 
         Self::print_stats(&witness_stats);
 
-        stats.lock().unwrap().print_stats();
+        stats.print_stats();
 
         if self.asm.is_some() {
             // Shut down ASM microservices
@@ -373,8 +369,7 @@ impl ZiskStats {
     ///
     /// # Arguments
     /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
-    pub fn print_stats(executor_stats: &Mutex<HashMap<usize, Stats>>) {
-        let air_stats = executor_stats.lock().unwrap();
+    pub fn print_stats(air_stats: &HashMap<usize, Stats>) {
         println!("    Number of airs: {}", air_stats.len());
         println!();
         println!("    Stats by Air:");

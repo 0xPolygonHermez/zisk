@@ -38,7 +38,7 @@ use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{
     BusDevice, BusDeviceMetrics, CheckPoint, ExecutorStats, Instance, InstanceCtx, InstanceType,
-    Plan,
+    Plan, Stats, ZiskExecutionResult,
 };
 use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{
@@ -50,7 +50,6 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 use std::{
     collections::HashMap,
-    fmt::Debug,
     fs,
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
@@ -70,31 +69,10 @@ type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>); // (chunk_id, 
 type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
 pub type NestedDeviceMetricsList = HashMap<usize, DeviceMetricsList>;
 
-#[derive(Debug, Default, Clone)]
-pub struct ZiskExecutionResult {
-    pub executed_steps: u64,
-}
-
 #[allow(dead_code)]
 enum MinimalTraceExecutionMode {
     Emulator,
     AsmWithCounter,
-}
-
-#[derive(Debug, Clone)]
-pub struct Stats {
-    pub airgroup_id: usize,
-    pub air_id: usize,
-    /// Collect start time
-    pub collect_start_time: Instant,
-    /// Collect duration in microseconds
-    pub collect_duration: u64,
-    /// Witness start time
-    pub witness_start_time: Instant,
-    /// Witness duration in microseconds
-    pub witness_duration: u64,
-    /// Number of chunks
-    pub num_chunks: usize,
 }
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
@@ -236,11 +214,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     #[allow(clippy::type_complexity)]
     pub fn get_execution_result(
         &self,
-    ) -> (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>, Arc<Mutex<HashMap<usize, Stats>>>) {
+    ) -> (ZiskExecutionResult, ExecutorStats, HashMap<usize, Stats>) {
         (
             self.execution_result.lock().unwrap().clone(),
-            self.stats.clone(),
-            self.witness_stats.clone(),
+            self.stats.lock().unwrap().clone(),
+            self.witness_stats.lock().unwrap().clone(),
         )
     }
 
@@ -1646,7 +1624,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let file_name = pctx.get_custom_commits_fixed_buffer("rom", false)?;
 
-        let setup = sctx.get_setup(RomRomTrace::<usize>::AIRGROUP_ID, RomRomTrace::<usize>::AIR_ID);
+        let setup = sctx.get_setup(RomRomTrace::<F>::AIRGROUP_ID, RomRomTrace::<F>::AIR_ID);
         let blowup_factor =
             1 << (setup.stark_info.stark_struct.n_bits_ext - setup.stark_info.stark_struct.n_bits);
 
