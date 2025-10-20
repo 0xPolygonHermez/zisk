@@ -1,3 +1,5 @@
+pub mod adc256;
+pub mod add256;
 pub mod arith256;
 pub mod arith256_mod;
 pub mod arith384_mod;

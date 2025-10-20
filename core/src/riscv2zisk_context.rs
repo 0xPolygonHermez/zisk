@@ -14,7 +14,7 @@ use std::collections::HashMap;
 // The CSR precompiled addresses are defined in the `ZiskOS` `ziskos/entrypoint/src` files
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 
-const CSR_PRECOMPILED: [&str; 17] = [
+const CSR_PRECOMPILED: [&str; 19] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -32,6 +32,8 @@ const CSR_PRECOMPILED: [&str; 17] = [
     "bls12_381_complex_add",
     "bls12_381_complex_sub",
     "bls12_381_complex_mul",
+    "add256",
+    "adc256",
 ];
 const CSR_PRECOMPILED_ADDR_START: u32 = 0x800;
 const CSR_PRECOMPILED_ADDR_END: u32 = CSR_PRECOMPILED_ADDR_START + CSR_PRECOMPILED.len() as u32;

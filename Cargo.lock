@@ -5700,6 +5700,7 @@ dependencies = [
  "lazy_static",
  "lib-c",
  "num-bigint",
+ "num-integer",
  "num-traits",
  "rand 0.8.5",
  "static_assertions",

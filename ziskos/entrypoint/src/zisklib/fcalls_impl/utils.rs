@@ -14,3 +14,12 @@ pub fn to_limbs_le<const N: usize>(value: &BigUint) -> [u64; N] {
     }
     limbs
 }
+
+pub fn biguint_from_u64_digits(limbs: &[u64]) -> BigUint {
+    let mut words = Vec::with_capacity(limbs.len() * 2);
+    for &w in limbs {
+        words.push((w & 0xFFFF_FFFF) as u32);
+        words.push((w >> 32) as u32);
+    }
+    BigUint::from_slice(&words)
+}

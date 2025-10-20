@@ -1,3 +1,4 @@
+pub mod array_lib;
 pub mod bls12_381;
 pub mod bn254;
 mod ecadd;
@@ -9,6 +10,7 @@ mod sha256f_compress;
 mod utils;
 
 // For public consumption
+pub use array_lib::modexp_u64;
 pub use bls12_381::curve::*;
 pub use bls12_381::fp::*;
 pub use bls12_381::fp2::*;
