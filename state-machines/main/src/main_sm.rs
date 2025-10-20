@@ -355,8 +355,10 @@ impl<F: PrimeField64> MainInstance<F> {
         for range in large_range_checks {
             self.std.range_check(range_id, *range as i64, 1);
         }
-        let range_id =
-            self.std.get_range_id(0, MAX_SEGMENT_ID as i64, None).expect("Failed to get range ID");
+        let range_id = self
+            .std
+            .get_range_id(0, Self::MAX_SEGMENT_ID as i64, None)
+            .expect("Failed to get range ID");
         self.std.range_check(range_id, segment_id.as_usize() as i64, 1);
     }
 }

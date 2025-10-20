@@ -210,8 +210,8 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         self.std.range_check(self.range_id, (INPUT_DATA_W_ADDR_END - last_addr) as i64, 1);
 
         // range of chunks
-        for value_chunk in &value {
-            let value = value_chunk.as_canonical_u64();
+        for j in 0..4 {
+            let value = trace[last_row_idx].get_value_word(j);
             range_check_data[value as usize] += padding_size as u32;
         }
         self.std.range_checks(self.range_chunks_id, range_check_data);

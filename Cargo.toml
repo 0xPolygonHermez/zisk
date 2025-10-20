@@ -99,14 +99,14 @@ zisk-distributed-grpc-api = { path = "distributed/crates/grpc-api" }
 zisk-distributed-prover = { path = "distributed/crates/worker" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling-0.13.0" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling-0.13.0" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling-0.13.0" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling-0.13.0" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling-0.13.0" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling-0.13.0" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling-0.13.0" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/error-handling-0.13.0" }
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
