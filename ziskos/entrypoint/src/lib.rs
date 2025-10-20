@@ -40,14 +40,7 @@ use crate::ziskos_definitions::ziskos_config::*;
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub fn read_input() -> Vec<u8> {
-    // Create a slice of the first 8 bytes to get the size
-    let bytes = unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), 8) };
-    // Convert the slice to a u64 (little-endian)
-    let size: u64 = u64::from_le_bytes(bytes.try_into().unwrap());
-
-    let input =
-        unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(16), size as usize) };
-    input.to_vec()
+    read_input_slice().to_vec()
 }
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
