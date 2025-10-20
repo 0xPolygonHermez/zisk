@@ -441,7 +441,7 @@ version = "0.69.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "271383c67ccabffb7381723dea0672a673f292304fcb45c01cc648c7a8d58088"
 dependencies = [
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
  "cexpr",
  "clang-sys",
  "itertools 0.12.1",
@@ -466,11 +466,11 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.9.4"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2261d10cca569e4643e526d8dc2e62e433cc8aba21ab764233731f8d369bf394"
+checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 dependencies = [
- "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -993,6 +993,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1334,6 +1335,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "num-bigint",
  "paste",
@@ -1534,7 +1536,7 @@ version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b903b73e45dc0c6c596f2d37eccece7c1c8bb6e4407b001096387c63d0d93724"
 dependencies = [
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
  "libc",
  "libgit2-sys",
  "log",
@@ -1905,9 +1907,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.11.4"
+version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b0f83760fb341a774ed326568e19f5a863af4a952def8c39f9ab92fd95b88e5"
+checksum = "6717a8d2a5a929a1a2eb43a12812498ed141a0bcfb7e8f7844fbdbe4303bba9f"
 dependencies = [
  "equivalent",
  "hashbrown 0.16.0",
@@ -2169,7 +2171,7 @@ version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "416f7e718bdb06000964960ffa43b4335ad4012ae8b99060261aa4a8088d5ccb"
 dependencies = [
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
  "libc",
 ]
 
@@ -2478,7 +2480,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
 ]
 
 [[package]]
@@ -2637,6 +2639,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "colored",
  "fields",
@@ -2967,6 +2970,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "blake3",
  "borsh",
@@ -2999,6 +3003,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "borsh",
  "crossbeam-channel",
@@ -3024,6 +3029,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "fields",
  "proofman-common",
@@ -3035,6 +3041,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3045,6 +3052,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3053,6 +3061,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "colored",
  "fields",
@@ -3063,6 +3072,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "bytemuck",
  "fields",
@@ -3130,7 +3140,7 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e8bbe1a966bd2f362681a44f6edce3c2310ac21e4d5067a6e7ec396297a6ea0"
 dependencies = [
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
  "memchr",
  "unicase",
 ]
@@ -3308,7 +3318,7 @@ version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
 ]
 
 [[package]]
@@ -3454,7 +3464,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b91f7eff05f748767f183df4320a63d6936e9c6107d97c9e6bdd9784f4289c94"
 dependencies = [
  "base64 0.21.7",
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
  "serde",
  "serde_derive",
 ]
@@ -3506,7 +3516,7 @@ version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
 dependencies = [
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
@@ -3519,7 +3529,7 @@ version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd15f8a2c5551a84d56efdc1cd049089e409ac19a3072d5037a17fd70719ff3e"
 dependencies = [
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
  "errno",
  "libc",
  "linux-raw-sys 0.11.0",
@@ -4037,9 +4047,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.106"
+version = "2.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ede7c438028d4436d71104916910f5bb611972c5cfd7f89b8300a8186e6fada6"
+checksum = "2a26dbd934e5451d21ef060c018dae56fc073894c5a7896f882928a76e6d081b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4499,7 +4509,7 @@ version = "0.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adc82fd73de2a9722ac5da747f12383d2bfdb93591ee6c58486e0097890f05f2"
 dependencies = [
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
  "bytes",
  "futures-util",
  "http",
@@ -4612,6 +4622,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -5295,6 +5306,7 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 [[package]]
 name = "witness"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblocks_trace#2dec4250e44ec2aebaa16f2f705a0790db8a4c45"
 dependencies = [
  "colored",
  "fields",
