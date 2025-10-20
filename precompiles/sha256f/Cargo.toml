@@ -23,9 +23,7 @@ pil-std-lib = { workspace = true }
 fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
-
-sha2 = { version = "0.10.9", features = ["compress"] }
-generic-array = "0.14"
+sha2 = { workspace = true }
 
 [features]
 default = []
