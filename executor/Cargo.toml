@@ -45,4 +45,5 @@ sm-frequent-ops = { workspace = true }
 default = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
 gpu = ["proofman-common/gpu", "proofman/gpu" ]
+packed = ["proofman-common/packed"]
 stats = []
