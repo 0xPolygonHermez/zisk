@@ -18,7 +18,20 @@ use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
-use zisk_pil::*;
+#[cfg(not(feature = "packed"))]
+use zisk_pil::{ArithTrace, ArithTraceRow};
+#[cfg(feature = "packed")]
+use zisk_pil::{ArithTracePacked, ArithTraceRowPacked};
+
+#[cfg(feature = "packed")]
+type ArithTraceRowType<F> = ArithTraceRowPacked<F>;
+#[cfg(feature = "packed")]
+type ArithTraceType<F> = ArithTracePacked<F>;
+
+#[cfg(not(feature = "packed"))]
+type ArithTraceRowType<F> = ArithTraceRow<F>;
+#[cfg(not(feature = "packed"))]
+type ArithTraceType<F> = ArithTrace<F>;
 
 const CHUNK_SIZE: u64 = 0x10000;
 const EXTENSION: u64 = 0xFFFFFFFF;
@@ -74,7 +87,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         inputs: &[Vec<OperationData<u64>>],
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut arith_trace = ArithTrace::new_from_vec(trace_buffer);
+        let mut arith_trace = ArithTraceType::new_from_vec(trace_buffer);
 
         let num_rows = arith_trace.num_rows();
 
@@ -93,7 +106,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
 
         // Split the arith_trace.buffer into slices matching each inner vector’s length.
         let flat_inputs: Vec<_> = inputs.iter().flatten().collect(); // Vec<&OperationData<u64>>
-        let flat_buffer = arith_trace.row_slice_mut();
+        let flat_buffer = arith_trace.buffer.as_mut_slice();
         let chunk_size = total_inputs.div_ceil(rayon::current_num_threads());
 
         flat_buffer.par_chunks_mut(chunk_size).zip(flat_inputs.par_chunks(chunk_size)).for_each(
@@ -120,14 +133,14 @@ impl<F: PrimeField64> ArithFullSM<F> {
         let padding_rows: usize = num_rows.saturating_sub(padding_offset);
 
         if padding_rows > 0 {
-            let mut t: ArithTraceRow<F> = Default::default();
+            let mut row = ArithTraceRowType::<F>::default();
             let padding_opcode = ZiskOp::Muluh.code();
-            t.op = F::from_u8(padding_opcode);
-            t.fab = F::ONE;
+            row.set_op(padding_opcode);
+            row.set_fab(1);
 
-            arith_trace.row_slice_mut()[padding_offset..num_rows]
+            arith_trace.buffer[padding_offset..num_rows]
                 .par_iter_mut()
-                .for_each(|elem| *elem = t);
+                .for_each(|elem| *elem = row);
 
             range_table_inputs.multi_use_chunk_range_check(padding_rows * 10, 0, 0);
             range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 26, 0);
@@ -219,7 +232,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         table_inputs: &mut ArithTableInputs,
         aop: &mut ArithOperation,
         input: &[u64; 4],
-    ) -> ArithTraceRow<F> {
+    ) -> ArithTraceRowType<F> {
         let input_data = ExtOperationData::OperationData(*input);
 
         let opcode = OperationBusData::get_op(&input_data);
@@ -227,22 +240,22 @@ impl<F: PrimeField64> ArithFullSM<F> {
         let b = OperationBusData::get_b(&input_data);
 
         aop.calculate(opcode, a, b);
-        let mut t: ArithTraceRow<F> = Default::default();
+        let mut row = ArithTraceRowType::<F>::default();
         for i in [0, 2] {
-            t.a[i] = F::from_u64(aop.a[i]);
-            t.b[i] = F::from_u64(aop.b[i]);
-            t.c[i] = F::from_u64(aop.c[i]);
-            t.d[i] = F::from_u64(aop.d[i]);
+            row.set_a(i, aop.a[i] as u16);
+            row.set_b(i, aop.b[i] as u16);
+            row.set_c(i, aop.c[i] as u16);
+            row.set_d(i, aop.d[i] as u16);
             range_table_inputs.use_chunk_range_check(0, aop.a[i]);
             range_table_inputs.use_chunk_range_check(0, aop.b[i]);
             range_table_inputs.use_chunk_range_check(0, aop.c[i]);
             range_table_inputs.use_chunk_range_check(0, aop.d[i]);
         }
         for i in [1, 3] {
-            t.a[i] = F::from_u64(aop.a[i]);
-            t.b[i] = F::from_u64(aop.b[i]);
-            t.c[i] = F::from_u64(aop.c[i]);
-            t.d[i] = F::from_u64(aop.d[i]);
+            row.set_a(i, aop.a[i] as u16);
+            row.set_b(i, aop.b[i] as u16);
+            row.set_c(i, aop.c[i] as u16);
+            row.set_d(i, aop.d[i] as u16);
         }
         range_table_inputs.use_chunk_range_check(aop.range_ab, aop.a[3]);
         range_table_inputs.use_chunk_range_check(aop.range_ab + 26, aop.a[1]);
@@ -255,30 +268,37 @@ impl<F: PrimeField64> ArithFullSM<F> {
         range_table_inputs.use_chunk_range_check(aop.range_cd + 9, aop.d[1]);
 
         for i in 0..7 {
-            t.carry[i] = F::from_i64(aop.carry[i]);
+            let carry = if aop.carry[i] >= 0 {
+                aop.carry[i] as u64
+            } else {
+                (aop.carry[i] + F::ORDER_U64 as i64) as u64
+            };
+            row.set_carry(i, carry);
             range_table_inputs.use_carry_range_check(aop.carry[i]);
         }
-        t.op = F::from_u8(aop.op);
-        t.m32 = F::from_bool(aop.m32);
-        t.div = F::from_bool(aop.div);
-        t.na = F::from_bool(aop.na);
-        t.nb = F::from_bool(aop.nb);
-        t.np = F::from_bool(aop.np);
-        t.nr = F::from_bool(aop.nr);
-        t.signed = F::from_bool(aop.signed);
-        t.main_mul = F::from_bool(aop.main_mul);
-        t.main_div = F::from_bool(aop.main_div);
-        t.sext = F::from_bool(aop.sext);
-        t.multiplicity = F::ONE;
-        t.range_ab = F::from_u8(aop.range_ab);
-        t.range_cd = F::from_u8(aop.range_cd);
-        t.div_by_zero = F::from_bool(aop.div_by_zero);
-        t.div_overflow = F::from_bool(aop.div_overflow);
-        t.inv_sum_all_bs = if aop.div && !aop.div_by_zero {
-            F::from_u64(aop.b[0] + aop.b[1] + aop.b[2] + aop.b[3]).inverse()
+        row.set_op(aop.op);
+        row.set_m32(aop.m32);
+        row.set_div(aop.div);
+        row.set_na(aop.na);
+        row.set_nb(aop.nb);
+        row.set_np(aop.np);
+        row.set_nr(aop.nr);
+        row.set_signed(aop.signed);
+        row.set_main_mul(aop.main_mul);
+        row.set_main_div(aop.main_div);
+        row.set_sext(aop.sext);
+        row.set_multiplicity(true);
+        row.set_range_ab(aop.range_ab);
+        row.set_range_cd(aop.range_cd);
+        row.set_div_by_zero(aop.div_by_zero);
+        row.set_div_overflow(aop.div_overflow);
+
+        let inv_sum_all_bs = if aop.div && !aop.div_by_zero {
+            F::from_u64(aop.b[0] + aop.b[1] + aop.b[2] + aop.b[3]).inverse().as_canonical_u64()
         } else {
-            F::ZERO
+            0
         };
+        row.set_inv_sum_all_bs(inv_sum_all_bs);
 
         table_inputs.add_use(
             aop.op,
@@ -291,27 +311,32 @@ impl<F: PrimeField64> ArithFullSM<F> {
             aop.div_overflow,
         );
 
-        t.fab = if aop.na != aop.nb { F::NEG_ONE } else { F::ONE };
-        //  na * (1 - 2 * nb);
-        t.na_fb = if aop.na {
+        let fab = if aop.na != aop.nb { F::ORDER_U64 - 1 } else { 1 };
+        row.set_fab(fab);
+
+        let na_fb = if aop.na {
             if aop.nb {
-                F::NEG_ONE
+                F::ORDER_U64 - 1
             } else {
-                F::ONE
+                1
             }
         } else {
-            F::ZERO
+            0
         };
-        t.nb_fa = if aop.nb {
+        //  na * (1 - 2 * nb);
+        row.set_na_fb(na_fb);
+        let nb_fa = if aop.nb {
             if aop.na {
-                F::NEG_ONE
+                F::ORDER_U64 - 1
             } else {
-                F::ONE
+                1
             }
         } else {
-            F::ZERO
+            0
         };
-        t.bus_res1 = F::from_u64(if aop.sext {
+        row.set_nb_fa(nb_fa);
+
+        let bus_res1 = if aop.sext {
             0xFFFFFFFF
         } else if aop.m32 {
             0
@@ -321,8 +346,10 @@ impl<F: PrimeField64> ArithFullSM<F> {
             aop.a[2] + (aop.a[3] << 16)
         } else {
             aop.d[2] + (aop.d[3] << 16)
-        });
+        };
 
-        t
+        row.set_bus_res1(bus_res1 as u32);
+
+        row
     }
 }

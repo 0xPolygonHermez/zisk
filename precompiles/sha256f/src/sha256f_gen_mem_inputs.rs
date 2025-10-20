@@ -1,4 +1,3 @@
-use generic_array::{typenum::U64, GenericArray};
 use sha2::compress256;
 
 use precompiles_common::MemBusHelpers;
@@ -30,7 +29,7 @@ pub fn generate_sha256f_mem_inputs(
 
     // Apply the sha256f function and get the output
     let mut state_u32: [u32; 8] = convert_u64_to_u32(state).try_into().unwrap();
-    let block: GenericArray<u8, U64> = convert_u64_to_generic_array_bytes(input);
+    let block = convert_u64_to_generic_array_bytes(input);
     compress256(&mut state_u32, &[block]);
 
     *state = convert_u32_to_u64(&state_u32);

@@ -7,7 +7,6 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use bytemuck::cast_slice;
 use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -20,7 +19,6 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use std::io::Write;
-use std::sync::{Arc, Mutex};
 use std::{
     collections::HashMap,
     fs::{self, File},
@@ -28,7 +26,7 @@ use std::{
 };
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
+use zisk_common::{ExecutorStats, ProofLog, Stats, ZiskExecutionResult, ZiskLibInitFn};
 use zstd::stream::write::Encoder;
 
 // Structure representing the 'prove' subcommand of cargo.
@@ -234,31 +232,21 @@ impl ZiskProve {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let proofman = ProofMan::<Goldilocks>::new(
-            proving_key,
-            custom_commits_map,
-            verify_constraints,
-            self.aggregation,
-            self.final_snark,
-            gpu_params,
-            self.verbose.into(),
-        )
-        .expect("Failed to initialize proofman");
-        let mpi_ctx = proofman.get_mpi_ctx();
+        let mpi_info = ProofMan::<Goldilocks>::get_mpi_info();
 
-        initialize_logger(self.verbose.into(), Some(mpi_ctx.rank));
+        initialize_logger(self.verbose.into(), Some(mpi_info.rank));
 
-        let asm_services = AsmServices::new(mpi_ctx.rank, mpi_ctx.node_rank, self.port);
+        let asm_services = AsmServices::new(mpi_info.rank, mpi_info.node_rank, self.port);
         let asm_runner_options = AsmRunnerOptions::new()
             .with_verbose(self.verbose > 0)
             .with_base_port(self.port)
-            .with_world_rank(mpi_ctx.rank)
-            .with_local_rank(mpi_ctx.node_rank)
+            .with_world_rank(mpi_info.rank)
+            .with_local_rank(mpi_info.node_rank)
             .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
         if self.asm.is_some() {
             // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_ctx.rank,);
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_info.rank);
 
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }
@@ -272,13 +260,25 @@ impl ZiskProve {
             self.elf.clone(),
             self.asm.clone(),
             asm_rom,
-            Some(mpi_ctx.rank),
-            Some(mpi_ctx.node_rank),
+            Some(mpi_info.rank),
+            Some(mpi_info.node_rank),
             self.port,
             self.unlock_mapped_memory,
             self.shared_tables,
         )
         .expect("Failed to initialize witness library");
+
+        let proofman = ProofMan::<Goldilocks>::new(
+            proving_key,
+            custom_commits_map,
+            verify_constraints,
+            self.aggregation,
+            self.final_snark,
+            gpu_params,
+            self.verbose.into(),
+            witness_lib.get_packed_info(),
+        )
+        .expect("Failed to initialize proofman");
 
         proofman.register_witness(&mut *witness_lib, library);
 
@@ -329,24 +329,15 @@ impl ZiskProve {
             };
         }
 
-        if mpi_ctx.rank == 0 {
+        if mpi_info.rank == 0 {
             let elapsed = start.elapsed();
 
             #[allow(clippy::type_complexity)]
-            let (result, _stats, _): (
+            let (result, _stats, _witness_stats): (
                 ZiskExecutionResult,
-                Arc<Mutex<ExecutorStats>>,
-                Arc<Mutex<HashMap<usize, Stats>>>,
-            ) =
-                *witness_lib
-                    .get_execution_result()
-                    .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-                    .downcast::<(
-                        ZiskExecutionResult,
-                        Arc<Mutex<ExecutorStats>>,
-                        Arc<Mutex<HashMap<usize, Stats>>>,
-                    )>()
-                    .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+                ExecutorStats,
+                HashMap<usize, Stats>,
+            ) = witness_lib.get_execution_result().expect("Failed to get execution result");
 
             let elapsed = elapsed.as_secs_f64();
             tracing::info!("");
@@ -405,7 +396,7 @@ impl ZiskProve {
 
         if self.asm.is_some() {
             // Shut down ASM microservices
-            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_ctx.rank);
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_info.rank);
             asm_services.stop_asm_services()?;
         }
 

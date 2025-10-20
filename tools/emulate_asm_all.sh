@@ -71,6 +71,7 @@ fi
 # Build ZisK
 echo "Building ZisK..."
 cargo build
+
 # Create an empty input file
 echo "Creating empty input file"
 touch ./emulator-asm/empty_input.bin
@@ -89,6 +90,10 @@ fi
 COUNTER=0
 PASSED_COUNTER=0
 FAILED_COUNTER=0
+# Arrays to track results for final report
+declare -a TESTED_FILES
+declare -a TEST_RESULTS
+declare -a TEST_INDEXES
 for ELF_FILE in $ELF_FILES
 do
     # Increase file COUNTER
@@ -135,19 +140,53 @@ do
 
     # Compare output vs reference
     REFERENCE_FILE="$(realpath "${ELF_FILE_DIRECTORY}/../ref/Reference-sail_c_simulator.signature")"
+    cp $REFERENCE_FILE .
     echo "Comparing output with $REFERENCE_FILE"
     if diff output $REFERENCE_FILE; then
         PASSED_COUNTER=$((PASSED_COUNTER+1))
         echo "✅ Emulation passed. Tests passed=${PASSED_COUNTER}, failed=${FAILED_COUNTER}"
+        # Record result for final report
+        TESTED_FILES+=("$ELF_FILE")
+        TEST_RESULTS+=("PASSED")
+        TEST_INDEXES+=("$COUNTER")
     else
         FAILED_COUNTER=$((FAILED_COUNTER+1))
         cat output
         echo "❌ Emulation failed. Tests passed=${PASSED_COUNTER}, failed=${FAILED_COUNTER}"
+        # Record result for final report
+        TESTED_FILES+=("$ELF_FILE")
+        TEST_RESULTS+=("FAILED")
+        TEST_INDEXES+=("$COUNTER")
     fi
 
     # Go back to root directory
     cd ..
 done
+
+# Print final report
+echo ""
+echo "======================================"
+echo "           FINAL REPORT"
+echo "======================================"
+echo "Total files processed: $((PASSED_COUNTER + FAILED_COUNTER))"
+echo "Passed: ${PASSED_COUNTER}"
+echo "Failed: ${FAILED_COUNTER}"
+echo ""
+
+if [ ${#TESTED_FILES[@]} -gt 0 ]; then
+    echo "Detailed Results:"
+    echo "=================="
+    for i in "${!TESTED_FILES[@]}"; do
+        if [ "${TEST_RESULTS[$i]}" = "PASSED" ]; then
+            echo "✅ ${TEST_INDEXES[$i]} ${TESTED_FILES[$i]}"
+        else
+            echo "❌ ${TEST_INDEXES[$i]} ${TESTED_FILES[$i]}"
+        fi
+    done
+    echo ""
+fi
+
+echo "Total files processed: $((PASSED_COUNTER + FAILED_COUNTER)): ✅${PASSED_COUNTER} passed, ❌${FAILED_COUNTER} failed"
 
 if [ $FAILED_COUNTER -eq 0 ]; then
     echo "✅ All ELF files processed successfully."

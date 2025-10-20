@@ -91,16 +91,27 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     const int CHUNKS_BY_RC = CHUNK_NUM / RC;
 
     col witness addr;           // CHUNK_NUM-byte address, real address = addr * CHUNK_NUM
+    @witness_bits{ name: "addr", bits: 29 }
     col witness offset;         // 0..7, position at which the operation starts
+    @witness_bits{ name: "offset", bits: 3 }
     col witness width;          // 1,2,4,8, width of the operation
+    @witness_bits{ name: "width", bits: 4 }
     col witness wr;             // 1 if the operation is a write, 0 otherwise
+    @witness_bits{ name: "wr", bits: 1 }
     col witness pc;             // line of the program to execute
+    @witness_bits{ name: "pc", bits: 8 }
     col witness reset;          // 1 at the beginning of the operation (indicating an address reset), 0 otherwise
+    @witness_bits{ name: "reset", bits: 1 }
     col witness sel_up_to_down; // 1 if the next value is the current value (e.g. R -> W)
+    @witness_bits{ name: "sel_up_to_down", bits: 1 }
     col witness sel_down_to_up; // 1 if the next value is the previous value (e.g. W -> R)
+    @witness_bits{ name: "sel_down_to_up", bits: 1 }
     col witness reg[CHUNK_NUM]; // Register values, 1 byte each
+    @witness_bits{ name: "reg", bits: 8 }
     col witness sel[CHUNK_NUM]; // Selectors, 1 if the value is used, 0 otherwise
+    @witness_bits{ name: "sel", bits: 1 }
     col witness step;           // Memory step
+    @witness_bits{ name: "step", bits: 40 }
 
     // 1] Ensure the MemAlign follows the program
 
@@ -136,6 +147,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     // Perform the lookup against the program
     expr delta_pc;
     col witness delta_addr; // Auxiliary column
+    @witness_bits{ name: "delta_addr", bits: 64, signed: 1 }
     delta_pc = pc' - pc;
     delta_addr === (addr - 'addr) * (1 - reset);
     lookup_assumes(MEM_ALIGN_ROM_ID, [pc, delta_pc, delta_addr, offset, width, flags]);
@@ -159,6 +171,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
 
     // 3] Prove unaligned memory accesses against the Main component
     col witness sel_prove;
+    @witness_bits{ name: "sel_prove", bits: 1 }
 
     sel_prove * sel_assume === 0; // Disjoint selectors
 
@@ -181,6 +194,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
 
     // We prove and assume with the same permutation check but with disjoint and different sign selectors
     col witness value[RC];  // Auxiliary columns
+    @witness_bits{ name: "value", bits: 32 }
     for (int i = 0; i < RC; i++) {
         value[i] === sel_prove * prove_val[i] + sel_assume * assume_val[i];
     } 

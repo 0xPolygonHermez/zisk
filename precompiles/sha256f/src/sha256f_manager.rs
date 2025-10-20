@@ -57,8 +57,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for Sha256fManager<F> {
         let num_available_sha256fs = self.sha256f_sm.num_available_sha256fs;
 
         Box::new(Sha256fPlanner::new().add_instance(InstanceInfo::new(
-            Sha256fTrace::<usize>::AIRGROUP_ID,
-            Sha256fTrace::<usize>::AIR_ID,
+            Sha256fTrace::<F>::AIRGROUP_ID,
+            Sha256fTrace::<F>::AIR_ID,
             num_available_sha256fs,
             ZiskOperationType::Sha256,
         )))
@@ -77,7 +77,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for Sha256fManager<F> {
     /// Panics if the provided `air_id` is not supported.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            id if id == Sha256fTrace::<usize>::AIR_ID => {
+            id if id == Sha256fTrace::<F>::AIR_ID => {
                 Box::new(Sha256fInstance::new(self.sha256f_sm.clone(), ictx))
             }
             _ => {

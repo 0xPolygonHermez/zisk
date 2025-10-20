@@ -387,7 +387,7 @@ impl Coordinator {
                 job_id.clone(),
                 job.duration_ms.unwrap_or(0),
                 job.final_proof.clone(),
-                matches!(job.state(), JobState::Completed),
+                job.executed_steps,
             )
             .await
             .map_err(|e| {
@@ -398,7 +398,12 @@ impl Coordinator {
 
         // Save proof to disk
         let folder = PathBuf::from("proofs");
-        hooks::save_proof(job_id.clone().as_str(), folder, &final_proof).await?;
+        zisk_common::save_proof(job_id.clone().as_str(), folder, &final_proof, true).map_err(
+            |e| {
+                error!("Failed to save proof for job {}: {}", job_id, e);
+                CoordinatorError::Internal(e.to_string())
+            },
+        )?;
 
         // Clean up process data for the job
         drop(job);
@@ -1422,7 +1427,7 @@ impl Coordinator {
         }
 
         // Extract the proof data
-        let mut proof_data = match execute_task_response.result_data {
+        let proof_data = match execute_task_response.result_data {
             ExecuteTaskResponseResultDataDto::FinalProof(final_proof) => final_proof,
             _ => {
                 return Err(CoordinatorError::InvalidRequest(
@@ -1434,7 +1439,7 @@ impl Coordinator {
         // Check if the final proof has no values.
         // An empty proof means this was not the last aggregation step,
         // so we need to wait for additional results to complete the job.
-        if proof_data.is_empty() {
+        if proof_data.values.is_empty() {
             return Ok(());
         }
 
@@ -1448,7 +1453,9 @@ impl Coordinator {
             .await?;
 
         // Finalize completed job
-        job.final_proof = Some(proof_data.swap_remove(0));
+        job.final_proof = Some(proof_data.values);
+        job.executed_steps = Some(proof_data.executed_steps);
+
         job.change_state(JobState::Completed);
 
         let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));

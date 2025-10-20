@@ -8,30 +8,42 @@ require "arith_range_table.pil"
 // TOTAL      88       77       57      44
 
 airtemplate ArithMul64(int N = 2**18, const int operation_bus_id, const int dual_result = 0) {
-
     const int CHUNK_SIZE = 2**16;
     const int CHUNKS_INPUT = 4;
     const int CHUNKS_OP = CHUNKS_INPUT * 2;
 
     col witness carry[CHUNKS_OP - 1];
+    @witness_bits{ name: "carry", bits: 64, signed: 1 }
     col witness a[CHUNKS_INPUT];
+    @witness_bits{ name: "a", bits: 1 }
     col witness b[CHUNKS_INPUT];
+    @witness_bits{ name: "b", bits: 16 }
     col witness c[CHUNKS_INPUT];
+    @witness_bits{ name: "c", bits: 16 }
     col witness d[CHUNKS_INPUT];
+    @witness_bits{ name: "d", bits: 16 }
 
     col witness na;     // a is negative
+    @witness_bits{ name: "na", bits: 1 }
     col witness nb;     // b is negative
+    @witness_bits{ name: "nb", bits: 1 }
     col witness np;     // prod is negative
+    @witness_bits{ name: "np", bits: 1 }
 
     col witness fab;    // fab, to decrease degree of intermediate products a * b
                         // fab = 1  if sign of a,b are the same
                         // fab = -1 if sign of a,b are different
+    @witness_bits{ name: "fab", bits: 64 }
 
     col witness na_fb;
+    @witness_bits{ name: "na_fb", bits: 64 }
     col witness nb_fa;
+    @witness_bits{ name: "nb_fa", bits: 64 }
 
     col witness main_mul;
+    @witness_bits{ name: "main_mul", bits: 1 }
     col witness signed;
+    @witness_bits{ name: "signed", bits: 1 }
 
     main_mul * (main_mul - 1) === 0;
     main_mul * main_div === 0;
@@ -50,6 +62,7 @@ airtemplate ArithMul64(int N = 2**18, const int operation_bus_id, const int dual
 
     // b != 0 <==> sum_all_bs != 0
     col witness inv_sum_all_bs;
+    @witness_bits{ name: "inv_sum_all_bs", bits: 1 }
 
     const expr eq[CHUNKS_OP];
 
@@ -164,6 +177,7 @@ airtemplate ArithMul64(int N = 2**18, const int operation_bus_id, const int dual
     np * (1 - np) === 0;
 
     col witness op;
+    @witness_bits{ name: "op", bits: 8 }
 
     // div m32 sa  sb  primary  secondary  opcodes              na   nb   np   nr   sext(c)
     // -------------------------------------------------------------------------------------
@@ -196,6 +210,7 @@ airtemplate ArithMul64(int N = 2**18, const int operation_bus_id, const int dual
                               main_mul * (c[2] + c[3] * CHUNK_SIZE) +
                               main_div * (a[2] + a[3] * CHUNK_SIZE));
     col witness bus_res1;
+    @witness_bits{ name: "bus_res1", bits: 32 }
 
     bus_res1 === sext * 0xFFFF_FFFF + (1 - m32) * bus_res1_64;
 
@@ -203,6 +218,7 @@ airtemplate ArithMul64(int N = 2**18, const int operation_bus_id, const int dual
     m32 * bus_b1 === 0;
 
     col witness multiplicity;
+    @witness_bits{ name: "multiplicity", bits: 1 }
 
     // Check that remainder (d) is lower than divisor (b) when division is performed
     // Specifically, we ensure that 0 <= |d| < |b|
@@ -217,7 +233,9 @@ airtemplate ArithMul64(int N = 2**18, const int operation_bus_id, const int dual
     }
 
     col witness range_ab;
+    @witness_bits{ name: "range_ab", bits: 7 }
     col witness range_cd;
+    @witness_bits{ name: "range_cd", bits: 7 }
 
     arith_table_assumes(op, m32, div, na, nb, np, nr, sext, div_by_zero, div_overflow, main_mul,
                         main_div, signed, range_ab, range_cd);

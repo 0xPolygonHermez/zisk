@@ -39,7 +39,8 @@ named-sem = { workspace = true }
 [features]
 default = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
-gpu = []
+gpu = ["proofman-common/gpu", "packed"]
+packed = ["proofman-common/packed"]
 stats = []
 
 [lints.rust]

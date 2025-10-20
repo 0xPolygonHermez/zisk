@@ -1,6 +1,16 @@
 use std::sync::Arc;
 use zisk_common::SegmentId;
-use zisk_pil::{MemAirValues, MemTrace};
+use zisk_pil::MemAirValues;
+#[cfg(not(feature = "packed"))]
+use zisk_pil::MemTrace;
+#[cfg(feature = "packed")]
+use zisk_pil::MemTracePacked;
+
+#[cfg(feature = "packed")]
+type MemTraceType<F> = MemTracePacked<F>;
+
+#[cfg(not(feature = "packed"))]
+type MemTraceType<F> = MemTrace<F>;
 #[cfg(feature = "debug_mem")]
 use {
     num_bigint::ToBigInt,
@@ -49,7 +59,7 @@ impl<F: PrimeField64> MemSM<F> {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::<usize>::NUM_ROWS;
+        let num_rows = MemTrace::NUM_ROWS;
 
         for i in 0..num_rows {
             let addr = trace[i].addr.as_canonical_biguint().to_bigint().unwrap() * 8;
@@ -87,7 +97,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = MemTrace::<F>::new_from_vec(trace_buffer);
+        let mut trace = MemTraceType::<F>::new_from_vec(trace_buffer);
 
         let std = self.std.clone();
 
@@ -123,29 +133,27 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             let addr_changes = last_addr != mem_op.addr;
             if dual_candidate {
                 dual_candidate = false;
-                trace[i].previous_step = F::from_u64(last_step);
+                trace[i].set_previous_step(last_step);
                 // println!("trace[{i}].previous_step = {last_step} (last_step)");
                 let previous_step = mem_ops[index - 1].step;
                 let previous_chunk_id = MemHelpers::mem_step_to_chunk(previous_step);
                 let chunk_id = MemHelpers::mem_step_to_chunk(step);
                 if mem_op.is_write || addr_changes || previous_chunk_id != chunk_id {
                     // not dual, because write or addr changes
-                    trace[i].sel_dual = F::ZERO;
-                    trace[i].step_dual = F::ZERO;
+                    trace[i].set_sel_dual(false);
+                    trace[i].set_step_dual(0);
                     // last step is previous_step (step)
                     last_step = previous_step;
                     i += 1;
                 } else {
-                    trace[i].sel_dual = F::ONE;
-                    trace[i].step_dual = F::from_u64(step);
+                    trace[i].set_sel_dual(true);
+                    trace[i].set_step_dual(step);
                     // last step is step_dual (step)
                     last_step = step;
                     let increment_step =
                         step - previous_step - if mem_ops[index - 1].is_write { 1 } else { 0 };
                     assert_eq!(
-                        (trace[i].step_dual.as_canonical_u64()
-                            - trace[i].step.as_canonical_u64()
-                            - trace[i].wr.as_canonical_u64()),
+                        (trace[i].get_step_dual() - trace[i].get_step() - trace[i].get_wr() as u64),
                         increment_step
                     );
                     if increment_step >= DUAL_PARTIAL_RANGE_MAX as u64 {
@@ -167,15 +175,15 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                 }
             }
 
-            if i >= trace.num_rows {
+            if i >= trace.num_rows() {
                 break;
             }
 
             dual_candidate = true;
 
             // set the common values of trace between internal reads and regular memory operation
-            trace[i].addr = F::from_u32(mem_op.addr);
-            trace[i].addr_changes = if addr_changes { F::ONE } else { F::ZERO };
+            trace[i].set_addr(mem_op.addr);
+            trace[i].set_addr_changes(addr_changes);
 
             let mut increment = if addr_changes {
                 (mem_op.addr - last_addr) as usize
@@ -191,24 +199,25 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
             // set specific values of trace for regular memory operation
             let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);
-            trace[i].value = [F::from_u32(low_val), F::from_u32(high_val)];
+            trace[i].set_value(0, low_val);
+            trace[i].set_value(1, high_val);
 
-            trace[i].step = F::from_u64(step);
-            trace[i].sel = F::ONE;
+            trace[i].set_step(step);
+            trace[i].set_sel(true);
 
             if addr_changes || mem_op.is_write {
                 // in case of read operations of same address, add one to allow many reads
                 // over same address and step
-                trace[i].read_same_addr = F::ZERO;
+                trace[i].set_read_same_addr(false);
                 increment -= 1;
             } else {
-                trace[i].read_same_addr = F::ONE;
+                trace[i].set_read_same_addr(true);
             }
             let lsb_increment = increment & MEM_INC_C_MASK;
             let msb_increment = increment >> MEM_INC_C_BITS;
-            trace[i].increment[0] = F::from_usize(lsb_increment);
-            trace[i].increment[1] = F::from_usize(msb_increment);
-            trace[i].wr = F::from_bool(mem_op.is_write);
+            trace[i].set_increment(0, lsb_increment as u32);
+            trace[i].set_increment(1, msb_increment as u32);
+            trace[i].set_wr(mem_op.is_write);
 
             #[cfg(feature = "debug_mem")]
             if (lsb_increment >= MEM_INC_C_SIZE) || (msb_increment > MEM_INC_C_SIZE) {
@@ -224,9 +233,9 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         }
         if dual_candidate {
             // if dual, need to "close" not dual row
-            trace[i].sel_dual = F::ZERO;
-            trace[i].step_dual = F::ZERO;
-            trace[i].previous_step = F::from_u64(last_step);
+            trace[i].set_sel_dual(false);
+            trace[i].set_step_dual(0);
+            trace[i].set_previous_step(last_step);
             last_step = step;
             i += 1;
         }
@@ -236,30 +245,30 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
         // = 1, wr = 0
         let last_row_idx = count - 1;
-        let addr = trace[last_row_idx].addr;
-        let value = trace[last_row_idx].value;
-        let step = if trace[last_row_idx].sel_dual.is_zero() {
-            trace[last_row_idx].step
-        } else {
-            trace[last_row_idx].step_dual
-        };
+        let last_row = trace[last_row_idx];
+        let addr = last_row.get_addr();
+        let step =
+            if !last_row.get_sel_dual() { last_row.get_step() } else { last_row.get_step_dual() };
 
-        let padding_size = trace.num_rows - count;
-        let padding_increment = [F::ZERO, F::ZERO];
-        for i in count..trace.num_rows {
-            trace[i].addr = addr;
-            trace[i].step = step;
-            trace[i].sel = F::ZERO;
-            trace[i].wr = F::ZERO;
-            trace[i].previous_step = step;
+        let padding_size = trace.num_rows() - count;
+        for i in count..trace.num_rows() {
+            trace[i].set_previous_step(step);
+            trace[i].set_addr(addr);
+            trace[i].set_step(step);
+            trace[i].set_sel(false);
+            trace[i].set_wr(false);
 
-            trace[i].value = value;
+            let low_value = last_row.get_value(0);
+            trace[i].set_value(0, low_value);
+            let high_value = last_row.get_value(1);
+            trace[i].set_value(1, high_value);
 
-            trace[i].addr_changes = F::ZERO;
-            trace[i].increment = padding_increment;
-            trace[i].read_same_addr = F::ONE;
-            trace[i].sel_dual = F::ZERO;
-            trace[i].step_dual = F::ZERO;
+            trace[i].set_addr_changes(false);
+            trace[i].set_increment(0, 0);
+            trace[i].set_increment(1, 0);
+            trace[i].set_read_same_addr(true);
+            trace[i].set_sel_dual(false);
+            trace[i].set_step_dual(0);
         }
 
         if padding_size > 0 {

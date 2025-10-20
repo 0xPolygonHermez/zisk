@@ -14,5 +14,4 @@ crate-type = ["staticlib"] # Creates static lib
 
 [dependencies]
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
-sha2 = { version = "0.10.9", features = ["compress"] }
-generic-array = "0.14"
+sha2 = { workspace = true }

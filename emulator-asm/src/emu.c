@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <assert.h>
 #include "emu.hpp"
 #include "../../lib-c/c/src/bigint/add256.hpp"
 #include "../../lib-c/c/src/ec/ec.hpp"
@@ -303,6 +304,70 @@ void print_asm_call_metrics (uint64_t total_duration)
 
 #endif
 
+#ifdef ASM_PRECOMPILE_CACHE
+
+const char *precompile_cache_filename = "precompile_cache.bin";
+
+FILE * precompile_file = NULL;
+bool precompile_cache_storing = false;
+bool precompile_cache_loading = false;
+
+void precompile_cache_store_init(void)
+{
+    assert(precompile_file == NULL);
+    assert(precompile_cache_storing == false);
+    assert(precompile_cache_loading == false);
+    precompile_file = fopen(precompile_cache_filename, "wb");
+    if (precompile_file == NULL) {
+        printf("precompile_cache_store_init() Error opening file %s\n", precompile_cache_filename);
+        exit(-1);
+    }
+    precompile_cache_storing = true;
+}
+
+void precompile_cache_load_init(void)
+{
+    assert(precompile_file == NULL);
+    assert(precompile_cache_storing == false);
+    assert(precompile_cache_loading == false);
+    precompile_file = fopen(precompile_cache_filename, "rb");
+    if (precompile_file == NULL) {
+        printf("precompile_cache_load_init() Error opening file %s\n", precompile_cache_filename);
+        exit(-1);
+    }
+    precompile_cache_loading = true;
+}
+
+void precompile_cache_cleanup(void)
+{
+    assert(precompile_file != NULL);
+    fclose(precompile_file);
+    precompile_file = NULL;
+    precompile_cache_storing = false;
+    precompile_cache_loading = false;
+}
+
+void precompile_cache_store( uint8_t* data, uint64_t size)
+{
+    assert(precompile_file != NULL);
+    assert(precompile_cache_storing == true);
+    fwrite(data, 1, size, precompile_file);
+    fflush(precompile_file);
+}
+
+void precompile_cache_load( uint8_t* data, uint64_t size)
+{
+    assert(precompile_file != NULL);
+    assert(precompile_cache_loading == true);
+    size_t read_size = fread(data, 1, size, precompile_file);
+    if (read_size != size) {
+        printf("precompile_cache_load() Error reading file %s read_size=%lu expected size=%lu pos=%lu\n", precompile_cache_filename, read_size, size, ftell(precompile_file));
+        exit(-1);
+    }
+}
+
+#endif
+
 uint64_t print_abcflag_counter = 0;
 
 extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
@@ -386,8 +451,23 @@ extern int _opcode_keccak(uint64_t address)
 #endif
 #endif
 
-    // Call keccak-f compression function
-    keccakf1600_generic((uint64_t *)address);
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        // Call keccak-f compression function
+        keccakf1600_generic((uint64_t *)address);
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)address, 25*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)address, 25*8);
+    }
+#endif
 
 #ifdef DEBUG
     if (emu_verbose) printf("opcode_keccak() called KeccakF1600()\n");
@@ -413,8 +493,23 @@ extern int _opcode_sha256(uint64_t * address)
 #endif
 #endif
 
-    // Call SHA256 compression function
-    zisk_sha256((uint64_t *)address[0], (uint64_t *)address[1]);   
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        // Call SHA256 compression function
+        zisk_sha256((uint64_t *)address[0], (uint64_t *)address[1]);
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)address[0], 4*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)address[0], 4*8);
+    }  
+#endif
 
 #ifdef DEBUG
     if (emu_verbose) printf("opcode_sha256() called sha256_transform_2()\n");
@@ -453,12 +548,30 @@ extern int _opcode_arith256(uint64_t * address)
     }
 #endif
 
-    int result = Arith256 (a, b, c, dl, dh);
-    if (result != 0)
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_arith256_add() failed callilng Arith256() result=%d;", result);
-        exit(-1);
+#endif
+        // Call arithmetic 256 operation
+        int result = Arith256 (a, b, c, dl, dh);
+        if (result != 0)
+        {
+            printf("_opcode_arith256_add() failed callilng Arith256() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)dl, 4*8);
+        precompile_cache_store((uint8_t *)dh, 4*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)dl, 4*8);
+        precompile_cache_load((uint8_t *)dh, 4*8);
+    }
+#endif
 
 #ifdef DEBUG
     if (emu_verbose) printf("opcode_arith256() called Arith256()\n");
@@ -503,12 +616,28 @@ extern int _opcode_arith256_mod(uint64_t * address)
     }
 #endif
 
-    int result = Arith256Mod (a, b, c, module, d);
-    if (result != 0)
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_arith256_mod() failed callilng Arith256Mod() result=%d;", result);
-        exit(-1);
+#endif
+        // Call arithmetic 256 module operation
+        int result = Arith256Mod (a, b, c, module, d);
+        if (result != 0)
+        {
+            printf("_opcode_arith256_mod() failed callilng Arith256Mod() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)d, 4*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)d, 4*8);
+    }
+#endif
 
 #ifdef DEBUG
     if (emu_verbose) printf("opcode_arith256_mod() called Arith256Mod()\n");
@@ -552,12 +681,28 @@ extern int _opcode_arith384_mod(uint64_t * address)
     }
 #endif
 
-    int result = Arith384Mod (a, b, c, module, d);
-    if (result != 0)
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_arith384_mod() failed callilng Arith384Mod() result=%d;", result);
-        exit(-1);
+#endif
+        // Call arithmetic 384 module operation
+        int result = Arith384Mod (a, b, c, module, d);
+        if (result != 0)
+        {
+            printf("_opcode_arith384_mod() failed callilng Arith384Mod() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)d, 6*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)d, 6*8);
+    }
+#endif
 
 #ifdef DEBUG
     if (emu_verbose) printf("opcode_arith384_mod() called Arith384Mod()\n");
@@ -596,17 +741,35 @@ extern int _opcode_secp256k1_add(uint64_t * address)
         printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
     }
 #endif
-    int result = AddPointEcP (
-        0,
-        p1, // p1 = [x1, y1] = 8x64bits
-        p2, // p2 = [x2, y2] = 8x64bits
-        p1 // p3 = [x3, y3] = 8x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_secp256k1_add() failed callilng AddPointEcP() result=%d;", result);
-        exit(-1);
+#endif
+        // Call point addition function
+        int result = AddPointEcP (
+            0,
+            p1, // p1 = [x1, y1] = 8x64bits
+            p2, // p2 = [x2, y2] = 8x64bits
+            p1 // p3 = [x3, y3] = 8x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_secp256k1_add() failed callilng AddPointEcP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose)
     {
@@ -641,17 +804,34 @@ extern int _opcode_secp256k1_dbl(uint64_t * address)
         printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
-    int result = AddPointEcP (
-        1,
-        p1, // p1 = [x1, y1] = 8x64bits
-        NULL, // p2 = [x2, y2] = 8x64bits
-        p1 // p3 = [x3, y3] = 8x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_secp256k1_dbl() failed callilng AddPointEcP() result=%d;", result);
-        exit(-1);
+#endif
+        int result = AddPointEcP (
+            1,
+            p1, // p1 = [x1, y1] = 8x64bits
+            NULL, // p2 = [x2, y2] = 8x64bits
+            p1 // p3 = [x3, y3] = 8x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_secp256k1_dbl() failed callilng AddPointEcP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose) printf("opcode_secp256k1_dbl() called AddPointEcP()\n");
     if (emu_verbose)
@@ -706,13 +886,32 @@ extern int _opcode_fcall(struct FcallContext * ctx)
 #endif
 #endif
 
-    // Call fcall
-    int iresult = Fcall(ctx);
-    if (iresult < 0)
+    int iresult;
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_fcall() failed callilng Fcall() result=%d\n", iresult);
-        exit(-1);
+#endif
+        // Call fcall
+        iresult = Fcall(ctx);
+        if (iresult < 0)
+        {
+            printf("_opcode_fcall() failed callilng Fcall() result=%d\n", iresult);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)&ctx->result_size, 8*8);
+        precompile_cache_store((uint8_t *)&ctx->result, ctx->result_size*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)&ctx->result_size, 8*8);
+        precompile_cache_load((uint8_t *)&ctx->result, ctx->result_size*8);
+    }
+#endif
 
 #ifdef ASM_CALL_METRICS
     asm_call_metrics.fcall_counter++;
@@ -735,15 +934,31 @@ extern int _opcode_inverse_fp_ec(uint64_t params, uint64_t result)
 #endif
 #endif
 
-    int iresult = InverseFpEc (
-        (unsigned long *)params, // a
-        (unsigned long *)result // r
-    );
-    if (iresult != 0)
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_inverse_fp_ec() failed callilng InverseFpEc() result=%d;", iresult);
-        exit(-1);
+#endif
+        // Call inverse function
+        int iresult = InverseFpEc (
+            (unsigned long *)params, // a
+            (unsigned long *)result // r
+        );
+        if (iresult != 0)
+        {
+            printf("_opcode_inverse_fp_ec() failed callilng InverseFpEc() result=%d;", iresult);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)result, 4*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)result, 4*8);
+    }
+#endif
 
 #ifdef ASM_CALL_METRICS
     asm_call_metrics.inverse_fp_ec_counter++;
@@ -765,15 +980,32 @@ extern int _opcode_inverse_fn_ec(uint64_t params, uint64_t result)
     if (emu_verbose) printf("_opcode_inverse_fn_ec()\n");
 #endif
 #endif
-    int iresult = InverseFnEc (
-        (unsigned long *)params, // a
-        (unsigned long *)result // r
-    );
-    if (iresult != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_inverse_fn_ec() failed callilng InverseFnEc() result=%d;", iresult);
-        exit(-1);
+#endif
+        // Call inverse function
+        int iresult = InverseFnEc (
+            (unsigned long *)params, // a
+            (unsigned long *)result // r
+        );
+        if (iresult != 0)
+        {
+            printf("_opcode_inverse_fn_ec() failed callilng InverseFnEc() result=%d;", iresult);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)result, 4*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)result, 4*8);
+    }
+#endif
 
 #ifdef ASM_CALL_METRICS
     asm_call_metrics.inverse_fn_ec_counter++;
@@ -795,16 +1027,33 @@ extern int _opcode_sqrt_fp_ec_parity(uint64_t params, uint64_t result)
     if (emu_verbose) printf("_opcode_sqrt_fp_ec_parity()\n");
 #endif
 #endif
-    int iresult = SqrtFpEcParity (
-        (unsigned long *)params, // a
-        *(unsigned long *)(params + 4*8), // parity
-        (unsigned long *)result // r
-    );
-    if (iresult != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_sqrt_fp_ec_parity() failed callilng SqrtFpEcParity() result=%d;", iresult);
-        exit(-1);
+#endif
+        // Call sqrt function
+        int iresult = SqrtFpEcParity (
+            (unsigned long *)params, // a
+            *(unsigned long *)(params + 4*8), // parity
+            (unsigned long *)result // r
+        );
+        if (iresult != 0)
+        {
+            printf("_opcode_sqrt_fp_ec_parity() failed callilng SqrtFpEcParity() result=%d;", iresult);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)result, 5*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)result, 5*8);
+    }
+#endif
 
 #ifdef ASM_CALL_METRICS
     asm_call_metrics.sqrt_fp_ec_parity_counter++;
@@ -840,16 +1089,34 @@ extern int _opcode_bn254_curve_add(uint64_t * address)
         printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
     }
 #endif
-    int result = BN254CurveAddP (
-        p1, // p1 = [x1, y1] = 8x64bits
-        p2, // p2 = [x2, y2] = 8x64bits
-        p1 // p3 = [x3, y3] = 8x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_bn254_curve_add() failed callilng BN254CurveAddP() result=%d;", result);
-        exit(-1);
+#endif
+        // Call point addition function
+        int result = BN254CurveAddP (
+            p1, // p1 = [x1, y1] = 8x64bits
+            p2, // p2 = [x2, y2] = 8x64bits
+            p1 // p3 = [x3, y3] = 8x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_bn254_curve_add() failed callilng BN254CurveAddP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose)
     {
@@ -884,15 +1151,33 @@ extern int _opcode_bn254_curve_dbl(uint64_t * address)
         printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
-    int result = BN254CurveDblP (
-        p1, // p1 = [x1, y1] = 8x64bits
-        p1 // p1 = [x1, y1] = 8x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_bn254_curve_dbl() failed callilng BN254CurveDblP() result=%d;", result);
-        exit(-1);
+#endif
+        // Call point doubling function
+        int result = BN254CurveDblP (
+            p1, // p1 = [x1, y1] = 8x64bits
+            p1 // p1 = [x1, y1] = 8x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_bn254_curve_dbl() failed callilng BN254CurveDblP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose)
     {
@@ -930,16 +1215,34 @@ extern int _opcode_bn254_complex_add(uint64_t * address)
         printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
     }
 #endif
-    int result = BN254ComplexAddP (
-        p1, // p1 = [x1, y1] = 8x64bits
-        p2, // p2 = [x2, y2] = 8x64bits
-        p1 // p3 = [x3, y3] = 8x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_bn254_complex_add() failed callilng BN254ComplexAddP() result=%d;", result);
-        exit(-1);
+#endif
+        // Call complex addition function
+        int result = BN254ComplexAddP (
+            p1, // p1 = [x1, y1] = 8x64bits
+            p2, // p2 = [x2, y2] = 8x64bits
+            p1 // p3 = [x3, y3] = 8x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_bn254_complex_add() failed callilng BN254ComplexAddP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose)
     {
@@ -977,16 +1280,34 @@ extern int _opcode_bn254_complex_sub(uint64_t * address)
         printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
     }
 #endif
-    int result = BN254ComplexSubP (
-        p1, // p1 = [x1, y1] = 8x64bits
-        p2, // p2 = [x2, y2] = 8x64bits
-        p1 // p3 = [x3, y3] = 8x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_bn254_complex_sub() failed callilng BN254ComplexSubP() result=%d;", result);
-        exit(-1);
+#endif
+        // Call complex subtraction function
+        int result = BN254ComplexSubP (
+            p1, // p1 = [x1, y1] = 8x64bits
+            p2, // p2 = [x2, y2] = 8x64bits
+            p1 // p3 = [x3, y3] = 8x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_bn254_complex_sub() failed callilng BN254ComplexSubP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose)
     {
@@ -1024,16 +1345,34 @@ extern int _opcode_bn254_complex_mul(uint64_t * address)
         printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
     }
 #endif
-    int result = BN254ComplexMulP (
-        p1, // p1 = [x1, y1] = 8x64bits
-        p2, // p2 = [x2, y2] = 8x64bits
-        p1 // p3 = [x3, y3] = 8x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_bn254_complex_mul() failed callilng BN254ComplexMulP() result=%d;", result);
-        exit(-1);
+#endif
+        // Call complex multiplication function
+        int result = BN254ComplexMulP (
+            p1, // p1 = [x1, y1] = 8x64bits
+            p2, // p2 = [x2, y2] = 8x64bits
+            p1 // p3 = [x3, y3] = 8x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_bn254_complex_mul() failed callilng BN254ComplexMulP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose)
     {
@@ -1075,16 +1414,34 @@ extern int _opcode_bls12_381_curve_add(uint64_t * address)
         printf("p2.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6], p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
     }
 #endif
-    int result = BLS12_381CurveAddP (
-        p1, // p1 = [x1, y1] = 12x64bits
-        p2, // p2 = [x2, y2] = 12x64bits
-        p1 // p3 = [x3, y3] = 12x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_bls12_381_curve_add() failed callilng BLS12_381CurveAddP() result=%d;", result);
-        exit(-1);
+#endif
+        // Call point addition function
+        int result = BLS12_381CurveAddP (
+            p1, // p1 = [x1, y1] = 12x64bits
+            p2, // p2 = [x2, y2] = 12x64bits
+            p1 // p3 = [x3, y3] = 12x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_bls12_381_curve_add() failed callilng BLS12_381CurveAddP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 12*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 12*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose)
     {
@@ -1119,15 +1476,33 @@ extern int _opcode_bls12_381_curve_dbl(uint64_t * address)
         printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
     }
 #endif
-    int result = BLS12_381CurveDblP (
-        p1, // p1 = [x1, y1] = 12x64bits
-        p1 // p1 = [x1, y1] = 12x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_bls12_381_curve_dbl() failed callilng BLS12_381CurveDblP() result=%d;", result);
-        exit(-1);
+#endif
+        // Call point doubling function
+        int result = BLS12_381CurveDblP (
+            p1, // p1 = [x1, y1] = 12x64bits
+            p1 // p1 = [x1, y1] = 12x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_bls12_381_curve_dbl() failed callilng BLS12_381CurveDblP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 12*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 12*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose)
     {
@@ -1165,16 +1540,34 @@ extern int _opcode_bls12_381_complex_add(uint64_t * address)
         printf("p2.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6], p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
     }
 #endif
-    int result = BLS12_381ComplexAddP (
-        p1, // p1 = [x1, y1] = 12x64bits
-        p2, // p2 = [x2, y2] = 12x64bits
-        p1 // p3 = [x3, y3] = 12x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_bls12_381_complex_add() failed callilng BLS12_381ComplexAddP() result=%d;", result);
-        exit(-1);
+#endif
+        // Call complex addition function
+        int result = BLS12_381ComplexAddP (
+            p1, // p1 = [x1, y1] = 12x64bits
+            p2, // p2 = [x2, y2] = 12x64bits
+            p1 // p3 = [x3, y3] = 12x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_bls12_381_complex_add() failed callilng BLS12_381ComplexAddP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 12*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 12*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose)
     {
@@ -1212,16 +1605,34 @@ extern int _opcode_bls12_381_complex_sub(uint64_t * address)
         printf("p2.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6], p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
     }
 #endif
-    int result = BLS12_381ComplexSubP (
-        p1, // p1 = [x1, y1] = 12x64bits
-        p2, // p2 = [x2, y2] = 12x64bits
-        p1 // p3 = [x3, y3] = 12x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_bls12_381_complex_sub() failed callilng BLS12_381ComplexSubP() result=%d;", result);
-        exit(-1);
+#endif
+        // Call complex subtraction function
+        int result = BLS12_381ComplexSubP (
+            p1, // p1 = [x1, y1] = 12x64bits
+            p2, // p2 = [x2, y2] = 12x64bits
+            p1 // p3 = [x3, y3] = 12x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_bls12_381_complex_sub() failed callilng BLS12_381ComplexSubP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 12*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 12*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose)
     {
@@ -1259,16 +1670,34 @@ extern int _opcode_bls12_381_complex_mul(uint64_t * address)
         printf("p2.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6], p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
     }
 #endif
-    int result = BLS12_381ComplexMulP (
-        p1, // p1 = [x1, y1] = 12x64bits
-        p2, // p2 = [x2, y2] = 12x64bits
-        p1 // p3 = [x3, y3] = 12x64bits
-    );
-    if (result != 0)
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
     {
-        printf("_opcode_bls12_381_complex_mul() failed callilng BLS12_381ComplexMulP() result=%d;", result);
-        exit(-1);
+#endif
+        // Call complex multiplication function
+        int result = BLS12_381ComplexMulP (
+            p1, // p1 = [x1, y1] = 12x64bits
+            p2, // p2 = [x2, y2] = 12x64bits
+            p1 // p3 = [x3, y3] = 12x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_bls12_381_complex_mul() failed callilng BLS12_381ComplexMulP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 12*8);
     }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 12*8);
+    }
+#endif
+
 #ifdef DEBUG
     if (emu_verbose)
     {

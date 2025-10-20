@@ -191,23 +191,104 @@ phase2_timeout_seconds = 1200 # 20 minutes for phase 2
 webhook_url = "http://webhook.example.com/notify?job_id={$job_id}"
 ```
 
-#### Webhook URL
+### Webhook URL
 
 The Coordinator can notify an external service when a job finishes by sending a request to a configured webhook URL.
 The placeholder {$job_id} can be included in the URL and will be replaced with the finished job’s ID.
 If no placeholder is provided, the Coordinator automatically appends /{job_id} to the end of the URL.
 
-**Example:**
+All webhook notifications are sent as JSON POST requests with the following structure:
 
-```bash
-# Explicit placeholder
-zisk-coordinator --webhook-url 'http://example.com/notify?job_id={$job_id}'
-# → http://example.com/notify?job_id=12345
-
-# Without placeholder (ID is appended automatically)
-zisk-coordinator --webhook-url 'http://example.com/notify'
-# → http://example.com/notify/12345
+```json
+{
+  "job_id": "job_12345",
+  "success": true,
+  "duration_ms": 45000,
+  "proof": <array of u64...>,
+  "timestamp": "2025-10-03T14:30:00Z",
+  "error": null
+}
 ```
+
+##### Fields Description
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `job_id` | `string` | Unique identifier for the proof generation job |
+| `success` | `boolean` | `true` if proof generation completed successfully, `false` if it failed |
+| `duration_ms` | `number` | Total execution time in milliseconds from job start to completion |
+| `proof` | `array<u64>` \| `null` | Final proof data as array of integers (only present on success) |
+| `timestamp` | `string` | ISO 8601 timestamp when the notification was sent |
+| `error` | `object` \| `null` | Error details (only present on failure) |
+
+##### Error Object Structure
+
+When `success` is `false`, the `error` field contains:
+
+```json
+{
+  "code": "WORKER_FAILURE",
+  "message": "Worker node-003 failed during proof generation: Out of memory"
+}
+```
+
+**Successful Proof Generation Example::**
+
+```json
+{
+  "job_id": "job_abc123",
+  "success": true,
+  "duration_ms": 32500,
+  "proof": [1234567890, 9876543210, 1357924680, ...],
+  "timestamp": "2025-10-03T14:30:25Z",
+  "error": null
+}
+```
+
+**Failed Job Example:**
+
+```json
+{
+  "job_id": "job_def456",
+  "success": false,
+  "duration_ms": 15000,
+  "proof": null,
+  "timestamp": "2025-10-03T14:31:10Z",
+  "error": {
+    "code": "WORKER_ERROR",
+    "message": "Memory exhaustion during proof generation"
+  }
+}
+```
+
+#### Webhook Implementation Guidelines
+
+*HTTP Requirements:*
+
+- **Method**: POST
+- **Content-Type**: `application/json`
+- **Timeout**: 10 seconds (configurable)
+- **Retry**: Currently no automatic retries (implement idempotency)
+
+*Recommended Response:*
+
+Your webhook endpoint should respond with:
+
+- **Success**: HTTP 200-299 status code
+- **Body**: Any valid response (ignored by coordinator)
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"received": true, "job_id": "job_abc123"}
+```
+
+If your webhook endpoint is unavailable or returns an error:
+
+- The coordinator logs the failure but continues operation
+- No automatic retries are performed
+- Consider implementing your own retry mechanism or message queue
 
 ### Command Line Arguments
 
