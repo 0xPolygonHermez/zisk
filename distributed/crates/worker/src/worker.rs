@@ -387,7 +387,7 @@ impl Worker {
         total_compute_units: u32,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
-            job_id,
+            job_id: job_id.clone(),
             block,
             rank_id,
             total_workers,
@@ -397,7 +397,7 @@ impl Worker {
         }));
         self.current_job = Some(current_job.clone());
 
-        self.state = WorkerState::Computing(JobPhase::Contributions);
+        self.state = WorkerState::Computing((job_id, JobPhase::Contributions));
 
         current_job
     }
