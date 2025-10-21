@@ -493,7 +493,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             }
         }
 
-        (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_count)
+    #[cfg(feature = "stats")]
+    self.stats.add_stat(0, parent_stats_id, "RUN_MT_ASSEMBLY", 0, ExecutorStatsEvent::End);
+    (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_count)
     }
 
     fn run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>) -> MinimalTraces {
