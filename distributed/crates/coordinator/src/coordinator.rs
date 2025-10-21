@@ -857,7 +857,7 @@ impl Coordinator {
 
         let mut job = job_entry.write().await;
 
-        // If job has Failed mark worker as Idle and return early
+        // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
             self.workers_pool
                 .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
@@ -1162,7 +1162,7 @@ impl Coordinator {
             return self.complete_simulated_job(&mut job).await;
         }
 
-        // If job has Failed mark worker as Idle and return early
+        // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
             self.workers_pool
                 .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
