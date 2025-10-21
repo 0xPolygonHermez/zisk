@@ -51,42 +51,31 @@ airtemplate BigIntAdd(const int N = 2**21, const int operation_bus_id = OPERATIO
     const int N_RC = bits / (RC * 32);
     assert_eq(N_RC * RC * 32, bits);
 
-    col witness a[N_RC][RC];
-    @witness_bits{ name: "a", bits: 32 }    
-    col witness b[N_RC][RC];
-    @witness_bits{ name: "b", bits: 32 }
-    col witness c_chunks[N_RC][RC*2];
-    @witness_bits{ name: "c_chunks", bits: 16 }
-    col witness cout[N_RC][RC];
-    @witness_bits{ name: "cout", bits: 1 }
+    col witness bits(32) a[N_RC][RC];
+    col witness bits(32) b[N_RC][RC];
+    col witness bits(16) c_chunks[N_RC][RC*2];
+    col witness bits(1) cout[N_RC][RC];
 
     // address of struct with params
-    col witness addr_params;
-    @witness_bits{ name: "addr_params", bits: 32 }
+    col witness bits(32) addr_params;
 
     // address of a chunks
-    col witness addr_a;
-    @witness_bits{ name: "addr_a", bits: 32 }
+    col witness bits(32) addr_a;
 
     // address of b chunks
-    col witness addr_b;
-    @witness_bits{ name: "addr_b", bits: 32 }
+    col witness bits(32) addr_b;
 
     // address of c chunks
-    col witness addr_c;
-    @witness_bits{ name: "addr_c", bits: 32 }
+    col witness bits(32) addr_c;
 
     // main step of the operation
-    col witness step;
-    @witness_bits{ name: "step", bits: 40 }
+    col witness bits(40) step;
 
     // carry in binary column
-    col witness cin;
-    @witness_bits{ name: "cin", bits: 1 }
+    col witness bits(1) cin;
 
     // selector for enable row
-    col witness sel;
-    @witness_bits{ name: "sel", bits: 1 }
+    col witness bits(1) sel;
 
     const expr c[N_RC][RC];
 
