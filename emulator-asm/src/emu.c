@@ -1741,28 +1741,33 @@ extern uint64_t _opcode_add256(uint64_t * address)
         printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
     }
 #endif
+
+    uint64_t cout = 0;
+
 #ifdef ASM_PRECOMPILE_CACHE
     if (precompile_cache_storing)
     {
 #endif
 
-    // cout = [0,1] ok, cout < 0 error
-    int cout = Add256 (a, b, cin, c);
-    if (cout < 0)
-    {
-        printf("_opcode_add256() failed callilng Add256() cout=%d;", cout);
-        exit(-1);
-    }
+        // cout = [0,1] ok, cout < 0 error
+        int icout = Add256 (a, b, cin, c);
+        if (icout < 0)
+        {
+            printf("_opcode_add256() failed callilng Add256() cout=%d;", icout);
+            exit(-1);
+        }
+        cout = (uint64_t)icout;
+
 #ifdef ASM_PRECOMPILE_CACHE
         // Store result in cache
         precompile_cache_store((uint8_t *)c, 4*8);
-        precompile_cache_store((uint8_t *)cout, 8);
+        precompile_cache_store((uint8_t *)&cout, 8);
     }
     else if (precompile_cache_loading)
     {
         // Load result from cache
-        precompile_cache_load((uint8_t *)cout, 8);
         precompile_cache_load((uint8_t *)c, 4*8);
+        precompile_cache_load((uint8_t *)&cout, 8);
     }
 #endif
 
@@ -1770,7 +1775,7 @@ extern uint64_t _opcode_add256(uint64_t * address)
     if (emu_verbose) printf("opcode_add256() called Add256()\n");
     if (emu_verbose)
     {
-        printf("cout = %u\n", cout);
+        printf("cout = %lu\n", cout);
         printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
     }
 #endif

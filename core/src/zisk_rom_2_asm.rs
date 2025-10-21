@@ -6739,14 +6739,25 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the add256 function
-                    Self::push_internal_registers_except_c_and_flag(ctx, code, false);
-                    // Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_add256\n";
-                    *code += &format!("\tmov {}, rax {}\n", REG_C, ctx.comment_str("c = rax"));
-                    *code +=
-                        &format!("\tmov {}, rax {}\n", REG_FLAG, ctx.comment_str("flag = rax"));
-                    Self::pop_internal_registers_except_c_and_flag(ctx, code, false);
+                    // Get result from precompile results data
+                    if ctx.precompile_results() {
+                        *code += &format!("\tmov rdi, [rdi+3*8]\n");
+                        Self::precompile_results_array(ctx, code, "rdi", 4);
+                        Self::precompile_results_register(ctx, code, REG_C);
+                    } else {
+                        // Call the add256 function
+                        Self::push_internal_registers_except_c_and_flag(ctx, code, false);
+                        // Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_add256\n";
+                        *code += &format!("\tmov {}, rax {}\n", REG_C, ctx.comment_str("c = rax"));
+                        Self::pop_internal_registers_except_c_and_flag(ctx, code, false);
+                    }
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_FLAG,
+                        REG_C,
+                        ctx.comment_str("flag = rax")
+                    );
 
                     // this precompiles store the result in minimal trace
                     if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
@@ -7804,6 +7815,30 @@ impl ZiskRom2Asm {
             size,
             ctx.comment(format!("aux += {}*8", size))
         );
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            ctx.mem_precompile_results_address,
+            REG_AUX,
+            ctx.comment_str("precompile_results_address = aux")
+        );
+    }
+
+    // Copies 1 u64 element from precompile_results_address to the register reg,
+    // and increments precompile_results_address by 8
+    fn precompile_results_register(ctx: &mut ZiskAsmContext, code: &mut String, reg: &str) {
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_AUX,
+            ctx.mem_precompile_results_address,
+            ctx.comment_str("aux = precompile_results_address")
+        );
+        *code += &format!(
+            "\tmov {}, [{}] {}\n",
+            reg,
+            REG_AUX,
+            ctx.comment(format!("value = precompile_results[0]"))
+        );
+        *code += &format!("\tadd {}, 8 {}\n", REG_AUX, ctx.comment(format!("aux += 8")));
         *code += &format!(
             "\tmov {}, {} {}\n",
             ctx.mem_precompile_results_address,
