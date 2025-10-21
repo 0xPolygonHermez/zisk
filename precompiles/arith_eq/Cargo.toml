@@ -62,7 +62,6 @@ serde_json = "1.0"
 regex = "1.11.1"
 rustfmt-wrapper = "0.2.1"
 k256 = {version = "0.13", features = ["arithmetic"] }
-generic-array = "0.14"
 typenum = "1.16"
 lazy_static = "1.4"
 path-clean = "1.0"
@@ -70,6 +69,8 @@ nom = "7"
 
 [features]
 default = []
+gpu = ["proofman-common/gpu", "packed"]
+packed = ["proofman-common/packed"]
 diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 no_lib_link = ["proofman-common/no_lib_link"]
 test_data = []

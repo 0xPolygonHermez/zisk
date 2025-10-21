@@ -81,10 +81,16 @@ pub fn is_supported_target() -> bool {
     false
 }
 
-pub async fn get_toolchain_download_url(target: String) -> String {
-    format!(
+pub async fn get_toolchain_download_url(target: &String, version: &Option<String>) -> String {
+    if let Some(version) = version {
+        format!(
+        "https://github.com/0xPolygonHermez/rust/releases/download/{version}/rust-toolchain-{target}.tar.gz",
+    )
+    } else {
+        format!(
         "https://github.com/0xPolygonHermez/rust/releases/latest/download/rust-toolchain-{target}.tar.gz",
     )
+    }
 }
 
 pub async fn download_file(

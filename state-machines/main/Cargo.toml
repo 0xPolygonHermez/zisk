@@ -28,6 +28,8 @@ pil-std-lib = { workspace = true }
 
 [features]
 default = []
+gpu = ["proofman-common/gpu", "packed"]
+packed = ["proofman-common/packed"]
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

@@ -470,11 +470,7 @@ impl MemModuleCollector {
     }
 
     pub fn get_mem_collector_info(&self) -> MemCollectorInfo {
-        MemCollectorInfo {
-            from_addr: self.mem_check_point.from_addr,
-            to_addr: self.mem_check_point.to_addr,
-            min_addr: self.min_addr,
-        }
+        MemCollectorInfo { from_addr: self.filter_min_addr, to_addr: self.filter_max_addr }
     }
 }
 

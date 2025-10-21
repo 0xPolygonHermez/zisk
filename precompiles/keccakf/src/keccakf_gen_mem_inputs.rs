@@ -1,6 +1,5 @@
 use tiny_keccak::keccakf;
 
-use mem_common::MemHelpers;
 use precompiles_common::MemBusHelpers;
 use std::collections::VecDeque;
 use zisk_common::MemCollectorInfo;
@@ -73,8 +72,7 @@ pub fn skip_keccakf_mem_inputs(addr_main: u32, mem_collectors_info: &[MemCollect
         for ichunk in 0..chunks_per_param {
             let addr = param_addr + ichunk as u32 * 8;
             for mem_collector in mem_collectors_info {
-                let addr_w = MemHelpers::get_addr_w(addr);
-                if !mem_collector.skip(addr_w) {
+                if !mem_collector.skip_addr(addr) {
                     return false;
                 }
             }

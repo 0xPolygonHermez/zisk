@@ -26,13 +26,13 @@ rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 fields = { workspace = true }
+sha2 = { workspace = true }
 
 indexmap = { version = "2.2.6", features = ["serde"] }
 json = "0.12.4"
 elf = "0.7.4"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
-sha2 = { version = "0.10.9", features = ["compress"] }
-generic-array = "0.14"
+
 
 [features]
 default = []

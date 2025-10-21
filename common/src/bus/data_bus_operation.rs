@@ -21,6 +21,8 @@ pub const OPERATION_BUS_DATA_SIZE: usize = 4; // op,op_type,a,b
 // TODO: optimize and send only one value 64 upto 32-bits addr
 
 const INDIRECTION_SIZE: usize = 1;
+const PARAMS_SIZE: usize = 1;
+const SINGLE_RESULT_SIZE: usize = 1;
 
 const DATA_256_BITS_SIZE: usize = 4;
 const POINT_256_BITS_SIZE: usize = 2 * DATA_256_BITS_SIZE;
@@ -65,6 +67,10 @@ pub const OPERATION_BUS_BLS12_381_COMPLEX_SUB_DATA_SIZE: usize =
 pub const OPERATION_BUS_BLS12_381_COMPLEX_MUL_DATA_SIZE: usize =
     OPERATION_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_384_BITS_SIZE;
 
+// bus_data_size + 4 params (&a, &b, cin, &c, a, b)
+pub const OPERATION_BUS_ADD_256_DATA_SIZE: usize =
+    OPERATION_BUS_DATA_SIZE + 4 * PARAMS_SIZE + 2 * DATA_256_BITS_SIZE + SINGLE_RESULT_SIZE;
+
 // 4 bus_data + 5 addr + 4 x 384 = 4 + 5 + 4 * 6 = 33
 pub const MAX_OPERATION_DATA_SIZE: usize = OPERATION_BUS_ARITH_384_MOD_DATA_SIZE;
 
@@ -101,6 +107,7 @@ pub type OperationBls12_381CurveDblData<D> = [D; OPERATION_BUS_BLS12_381_CURVE_D
 pub type OperationBls12_381ComplexAddData<D> = [D; OPERATION_BUS_BLS12_381_COMPLEX_ADD_DATA_SIZE];
 pub type OperationBls12_381ComplexSubData<D> = [D; OPERATION_BUS_BLS12_381_COMPLEX_SUB_DATA_SIZE];
 pub type OperationBls12_381ComplexMulData<D> = [D; OPERATION_BUS_BLS12_381_COMPLEX_MUL_DATA_SIZE];
+pub type OperationAdd256Data<D> = [D; OPERATION_BUS_ADD_256_DATA_SIZE];
 
 pub enum ExtOperationData<D> {
     OperationData(OperationData<D>),
@@ -121,6 +128,7 @@ pub enum ExtOperationData<D> {
     OperationBls12_381ComplexAddData(OperationBls12_381ComplexAddData<D>),
     OperationBls12_381ComplexSubData(OperationBls12_381ComplexSubData<D>),
     OperationBls12_381ComplexMulData(OperationBls12_381ComplexMulData<D>),
+    OperationAdd256Data(OperationAdd256Data<D>),
 }
 
 const KECCAK_OP: u8 = ZiskOp::Keccak.code();
@@ -140,6 +148,7 @@ const BLS12_381_CURVE_DBL_OP: u8 = ZiskOp::Bls12_381CurveDbl.code();
 const BLS12_381_COMPLEX_ADD_OP: u8 = ZiskOp::Bls12_381ComplexAdd.code();
 const BLS12_381_COMPLEX_SUB_OP: u8 = ZiskOp::Bls12_381ComplexSub.code();
 const BLS12_381_COMPLEX_MUL_OP: u8 = ZiskOp::Bls12_381ComplexMul.code();
+const ADD256_OP: u8 = ZiskOp::Add256.code();
 
 // impl<D: Copy + Into<u8>> TryFrom<&[D]> for ExtOperationData<D> {
 impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
@@ -235,6 +244,11 @@ impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
                 let array: OperationBls12_381ComplexMulData<D> =
                     data.try_into().map_err(|_| "Invalid OperationBls12_381ComplexMulData size")?;
                 Ok(ExtOperationData::OperationBls12_381ComplexMulData(array))
+            }
+            ADD256_OP => {
+                let array: OperationAdd256Data<D> =
+                    data.try_into().map_err(|_| "Invalid OperationAdd256Data size")?;
+                Ok(ExtOperationData::OperationAdd256Data(array))
             }
             _ => {
                 let array: OperationData<D> =
@@ -436,6 +450,16 @@ impl OperationBusData<u64> {
                 }
                 _ => ExtOperationData::OperationData([op, op_type, a, b]),
             },
+            ZiskOperationType::BigInt => match inst.op {
+                ADD256_OP => {
+                    let mut data =
+                        unsafe { uninit_array::<OPERATION_BUS_ADD_256_DATA_SIZE>().assume_init() };
+                    data[0..OPERATION_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b]);
+                    data[OPERATION_BUS_DATA_SIZE..].copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationAdd256Data(data)
+                }
+                _ => ExtOperationData::OperationData([op, op_type, a, b]),
+            },
 
             _ => ExtOperationData::OperationData([op, op_type, a, b]),
         }
@@ -587,6 +611,19 @@ impl OperationBusData<u64> {
                     &buffer[..OPERATION_BUS_DATA_SIZE]
                 }
             },
+            ZiskOperationType::BigInt => match inst.op {
+                ADD256_OP => {
+                    let len = OPERATION_BUS_DATA_SIZE + ctx.precompiled.input_data.len();
+                    buffer[0..OPERATION_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b]);
+                    buffer[OPERATION_BUS_DATA_SIZE..len]
+                        .copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
+                _ => {
+                    buffer[0..OPERATION_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b]);
+                    &buffer[..OPERATION_BUS_DATA_SIZE]
+                }
+            },
 
             _ => {
                 buffer[0..OPERATION_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b]);
@@ -623,6 +660,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBls12_381ComplexAddData(d) => d[OP] as u8,
             ExtOperationData::OperationBls12_381ComplexSubData(d) => d[OP] as u8,
             ExtOperationData::OperationBls12_381ComplexMulData(d) => d[OP] as u8,
+            ExtOperationData::OperationAdd256Data(d) => d[OP] as u8,
         }
     }
 
@@ -654,6 +692,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBls12_381ComplexAddData(d) => d[OP_TYPE],
             ExtOperationData::OperationBls12_381ComplexSubData(d) => d[OP_TYPE],
             ExtOperationData::OperationBls12_381ComplexMulData(d) => d[OP_TYPE],
+            ExtOperationData::OperationAdd256Data(d) => d[OP_TYPE],
         }
     }
 
@@ -685,6 +724,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBls12_381ComplexAddData(d) => d[A],
             ExtOperationData::OperationBls12_381ComplexSubData(d) => d[A],
             ExtOperationData::OperationBls12_381ComplexMulData(d) => d[A],
+            ExtOperationData::OperationAdd256Data(d) => d[A],
         }
     }
 
@@ -716,6 +756,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationBls12_381ComplexAddData(d) => d[B],
             ExtOperationData::OperationBls12_381ComplexSubData(d) => d[B],
             ExtOperationData::OperationBls12_381ComplexMulData(d) => d[B],
+            ExtOperationData::OperationAdd256Data(d) => d[B],
         }
     }
 }

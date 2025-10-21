@@ -1,7 +1,5 @@
-use generic_array::{typenum::U64, GenericArray};
 use sha2::compress256;
 
-use mem_common::MemHelpers;
 use precompiles_common::MemBusHelpers;
 use std::collections::VecDeque;
 use zisk_common::MemCollectorInfo;
@@ -31,7 +29,7 @@ pub fn generate_sha256f_mem_inputs(
 
     // Apply the sha256f function and get the output
     let mut state_u32: [u32; 8] = convert_u64_to_u32(state).try_into().unwrap();
-    let block: GenericArray<u8, U64> = convert_u64_to_generic_array_bytes(input);
+    let block = convert_u64_to_generic_array_bytes(input);
     compress256(&mut state_u32, &[block]);
 
     *state = convert_u32_to_u64(&state_u32);
@@ -102,8 +100,7 @@ pub fn skip_sha256f_mem_inputs(
     for iparam in 0..indirect_params {
         let addr = addr_main + iparam as u32 * 8;
         for mem_collector in mem_collectors_info {
-            let addr_w = MemHelpers::get_addr_w(addr);
-            if !mem_collector.skip(addr_w) {
+            if !mem_collector.skip_addr(addr) {
                 return false;
             }
         }
@@ -117,8 +114,7 @@ pub fn skip_sha256f_mem_inputs(
         for ichunk in 0..chunks {
             let addr = param_addr + ichunk as u32 * 8;
             for mem_collector in mem_collectors_info {
-                let addr_w = MemHelpers::get_addr_w(addr);
-                if !mem_collector.skip(addr_w) {
+                if !mem_collector.skip_addr(addr) {
                     return false;
                 }
             }

@@ -46,7 +46,7 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
     pub fn new(binary_basic_sm: Arc<BinaryBasicSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            BinaryTrace::<usize>::AIR_ID,
+            BinaryTrace::<F>::AIR_ID,
             "BinaryBasicInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
