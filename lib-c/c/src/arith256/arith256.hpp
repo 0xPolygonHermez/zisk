@@ -23,6 +23,14 @@ int Arith256Mod (
     unsigned long * d // 4 x 64 bits
 );
 
+int FastArith256(
+    const unsigned long * _a,  // 4 x 64 bits (input: a)
+    const unsigned long * _b,  // 4 x 64 bits (input: b)  
+    const unsigned long * _c,  // 4 x 64 bits (input: c)
+          unsigned long * _dl, // 4 x 64 bits (output: less significant 64-bit result)
+          unsigned long * _dh  // 4 x 64 bits (output: most significant 64-bit result)
+);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

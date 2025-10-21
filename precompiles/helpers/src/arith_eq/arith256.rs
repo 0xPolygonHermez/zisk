@@ -1,6 +1,6 @@
 // TODO: Implement these functions in assembly to speed things up!
 
-use super::{bigint_from_u64s, bigint_to_2x4_u64, bigint_to_4_u64};
+use crate::{bigint_from_u64s, bigint_to_2x4_u64, bigint_to_4_u64};
 
 pub fn arith256(a: &[u64; 4], b: &[u64; 4], c: &[u64; 4], dl: &mut [u64; 4], dh: &mut [u64; 4]) {
     let a = bigint_from_u64s(a);

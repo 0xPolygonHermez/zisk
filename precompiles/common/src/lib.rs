@@ -52,6 +52,7 @@ impl MemBusHelpers {
         mem_value: u64,
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
     ) {
+        assert!(addr % 8 == 0);
         pending.push_back((
             MEM_BUS_ID,
             vec![
@@ -71,6 +72,7 @@ impl MemBusHelpers {
         value: u64,
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
     ) {
+        assert!(addr % 8 == 0);
         pending.push_back((
             MEM_BUS_ID,
             vec![
