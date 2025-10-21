@@ -495,7 +495,7 @@ extern int _opcode_sha256(uint64_t * address)
     {
         // Load result from cache
         precompile_cache_load((uint8_t *)address[0], 4*8);
-    }  
+    }
 #endif
 
 #ifdef DEBUG
@@ -889,13 +889,13 @@ extern int _opcode_fcall(struct FcallContext * ctx)
 
 #ifdef ASM_PRECOMPILE_CACHE
         // Store result in cache
-        precompile_cache_store((uint8_t *)&ctx->result_size, 8*8);
+        precompile_cache_store((uint8_t *)&ctx->result_size, 1*8);
         precompile_cache_store((uint8_t *)&ctx->result, ctx->result_size*8);
     }
     else if (precompile_cache_loading)
     {
         // Load result from cache
-        precompile_cache_load((uint8_t *)&ctx->result_size, 8*8);
+        precompile_cache_load((uint8_t *)&ctx->result_size, 1*8);
         precompile_cache_load((uint8_t *)&ctx->result, ctx->result_size*8);
     }
 #endif
@@ -908,6 +908,7 @@ extern int _opcode_fcall(struct FcallContext * ctx)
     return iresult;
 }
 
+/*
 extern int _opcode_inverse_fp_ec(uint64_t params, uint64_t result)
 {
 #ifdef ASM_CALL_METRICS
@@ -1049,6 +1050,7 @@ extern int _opcode_sqrt_fp_ec_parity(uint64_t params, uint64_t result)
 #endif
     return 0;
 }
+*/
 
 /*********/
 /* BN254 */

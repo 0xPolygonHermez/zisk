@@ -55,6 +55,7 @@ uint8_t * pRom = (uint8_t *)ROM_ADDR;
 uint64_t * pInputTrace = (uint64_t *)TRACE_ADDR;
 uint64_t * pOutputTrace = (uint64_t *)TRACE_ADDR;
 
+// Assembly service request/response types
 #define TYPE_PING 1 // Ping
 #define TYPE_PONG 2
 #define TYPE_MT_REQUEST 3 // Minimal trace
@@ -76,7 +77,7 @@ uint64_t * pOutputTrace = (uint64_t *)TRACE_ADDR;
 #define TYPE_SD_REQUEST 1000000 // Shutdown
 #define TYPE_SD_RESPONSE 1000001
 
-// Generation method
+// Generation method, to be used with mandatory argument --gen=<method>
 typedef enum {
     Fast = 0,
     MinimalTrace = 1,
@@ -207,6 +208,12 @@ int map_locked_flag = MAP_LOCKED;
 bool precompile_cache_enabled = false;
 #endif
 
+#define PRECOMPILE_RESULTS
+
+#ifdef PRECOMPILE_RESULTS
+uint64_t * precompile_results_address = NULL;
+#endif
+
 void set_chunk_size (uint64_t new_chunk_size)
 {
     if (!is_power_of_two(new_chunk_size))
@@ -301,6 +308,20 @@ sem_t * sem_shutdown_done = NULL;
 int process_id = 0;
 
 uint64_t input_size = 0;
+
+#ifdef PRECOMPILE_RESULTS
+
+#define MAX_PRECOMPILE_SIZE (uint64_t)0x08000000 // 128MB
+
+// Precompile results memory
+char shmem_precompile_name[128];
+int shmem_precompile_fd = -1;
+uint64_t shmem_precompile_size = 0;
+void * shmem_precompile_address = NULL;
+
+char precompile_file[4096] = {0};
+
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -819,6 +840,9 @@ void print_usage (void)
     printf("\t--precompile-cache-store store precompile results in cache file\n");
     printf("\t--precompile-cache-load load precompile results from cache file\n");
 #endif
+#ifdef PRECOMPILE_RESULTS
+    printf("\t-r <precompile_results_file>\n");
+#endif
     printf("\t-h/--help print this\n");
 }
 
@@ -1142,6 +1166,26 @@ void parse_arguments(int argc, char *argv[])
             }
 
 #endif
+#ifdef PRECOMPILE_RESULTS
+            if (strcmp(argv[i], "-r") == 0)
+            {
+                i++;
+                if (i >= argc)
+                {
+                    printf("ERROR: Detected argument -r in the last position; please provide precompile results file after it\n");
+                    print_usage();
+                    exit(-1);
+                }
+                if (strlen(argv[i]) > 4095)
+                {
+                    printf("ERROR: Detected argument -r but next argument is too long\n");
+                    print_usage();
+                    exit(-1);
+                }
+                strcpy(precompile_file, argv[i]);
+                continue;
+            }
+#endif
             printf("ERROR: parse_arguments() Unrecognized argument: %s\n", argv[i]);
             print_usage();
             fflush(stdout);
@@ -1201,6 +1245,17 @@ void parse_arguments(int argc, char *argv[])
         fflush(stderr);
         exit(-1);
     }
+
+#ifdef PRECOMPILE_RESULTS
+    if (client && (strlen(precompile_file) == 0))
+    {
+        printf("ERROR! parse_arguments() when in precompile results mode, you need to provide a precompile results file using -r <precompile_results_file>\n");
+        print_usage();
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+#endif
 }
 
 void configure (void)
@@ -1212,6 +1267,10 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_FT_input");
+#ifdef PRECOMPILE_RESULTS
+            strcpy(shmem_precompile_name, shm_prefix);
+            strcat(shmem_precompile_name, "_FT_precompile");
+#endif
             strcpy(shmem_output_name, "");
             strcpy(sem_chunk_done_name, "");
             strcpy(sem_shutdown_done_name, shm_prefix);
@@ -1224,6 +1283,10 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_MT_input");
+#ifdef PRECOMPILE_RESULTS
+            strcpy(shmem_precompile_name, shm_prefix);
+            strcat(shmem_precompile_name, "_MT_precompile");
+#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MT_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1239,6 +1302,10 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_RH_input");
+#ifdef PRECOMPILE_RESULTS
+            strcpy(shmem_precompile_name, shm_prefix);
+            strcat(shmem_precompile_name, "_RH_precompile");
+#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_RH_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1254,6 +1321,10 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_MA_input");
+#ifdef PRECOMPILE_RESULTS
+            strcpy(shmem_precompile_name, shm_prefix);
+            strcat(shmem_precompile_name, "_MA_precompile");
+#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MA_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1269,6 +1340,9 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_CH_input");
+#ifdef PRECOMPILE_RESULTS
+            strcpy(shmem_precompile_name, "");
+#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_CH_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1293,6 +1367,10 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_ZP_input");
+#ifdef PRECOMPILE_RESULTS
+            strcpy(shmem_precompile_name, shm_prefix);
+            strcat(shmem_precompile_name, "_ZP_precompile");
+#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_ZP_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1308,6 +1386,10 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_MO_input");
+#ifdef PRECOMPILE_RESULTS
+            strcpy(shmem_precompile_name, shm_prefix);
+            strcat(shmem_precompile_name, "_MO_precompile");
+#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MO_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1322,6 +1404,9 @@ void configure (void)
         case ChunkPlayerMTCollectMem:
         {
             strcpy(shmem_input_name, "");
+#ifdef PRECOMPILE_RESULTS
+            strcpy(shmem_precompile_name, "");
+#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_CM_output");
             strcpy(sem_chunk_done_name, "");
@@ -1336,6 +1421,10 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_MT_input");
+#ifdef PRECOMPILE_RESULTS
+            strcpy(shmem_precompile_name, shm_prefix);
+            strcat(shmem_precompile_name, "_MT_precompile");
+#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MT_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1350,6 +1439,9 @@ void configure (void)
         case ChunkPlayerMemReadsCollectMain:
         {
             strcpy(shmem_input_name, "");
+#ifdef PRECOMPILE_RESULTS
+            strcpy(shmem_precompile_name, "");
+#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_CA_output");
             strcpy(sem_chunk_done_name, "");
@@ -1559,6 +1651,119 @@ void client_run (void)
 #endif
 
     }
+
+#ifdef PRECOMPILE_RESULTS
+
+    /*****************************/
+    /* Read precompile file data */
+    /*****************************/
+    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
+    {
+
+#ifdef DEBUG
+        gettimeofday(&start_time, NULL);
+#endif
+
+        // Open input file
+        FILE * precompile_fp = fopen(precompile_file, "r");
+        if (precompile_fp == NULL)
+        {
+            printf("ERROR: Failed calling fopen(%s) errno=%d=%s; does it exist?\n", precompile_file, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Get input file size
+        if (fseek(precompile_fp, 0, SEEK_END) == -1)
+        {
+            printf("ERROR: Failed calling fseek(%s) errno=%d=%s\n", precompile_file, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        long precompile_data_size = ftell(precompile_fp);
+        if (precompile_data_size == -1)
+        {
+            printf("ERROR: Failed calling ftell(%s) errno=%d=%s\n", precompile_file, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Go back to the first byte
+        if (fseek(precompile_fp, 0, SEEK_SET) == -1)
+        {
+            printf("ERROR: Failed calling fseek(%s, 0) errno=%d=%s\n", precompile_file, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Check the input data size is inside the proper range
+        if (precompile_data_size > (MAX_PRECOMPILE_SIZE - 8))
+        {
+            printf("ERROR: Size of precompile file (%s) is too long (%lu)\n", precompile_file, precompile_data_size);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Open input shared memory
+        shmem_precompile_fd = shm_open(shmem_precompile_name, O_RDWR, 0666);
+        if (shmem_precompile_fd < 0)
+        {
+            printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Map the shared memory object into the process address space
+        shmem_precompile_address = mmap(NULL, MAX_PRECOMPILE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_precompile_fd, 0);
+        if (shmem_precompile_address == MAP_FAILED)
+        {
+            printf("ERROR: Failed calling mmap(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Write the input size in the first 64 bits
+        *(uint64_t *)shmem_precompile_address = (uint64_t)precompile_data_size;
+
+        // Copy input data into input memory
+        size_t precompile_read = fread(shmem_precompile_address + 8, 1, precompile_data_size, precompile_fp);
+        if (precompile_read != precompile_data_size)
+        {
+            printf("ERROR: Input read (%lu) != input file size (%lu)\n", precompile_read, precompile_data_size);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Close the file pointer
+        fclose(precompile_fp);
+
+        // Unmap input
+        result = munmap(shmem_precompile_address, MAX_INPUT_SIZE);
+        if (result == -1)
+        {
+            printf("ERROR: Failed calling munmap(precompile) errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+#ifdef DEBUG
+        gettimeofday(&stop_time, NULL);
+        duration = TimeDiff(start_time, stop_time);
+        printf("client (precompile): done in %lu us\n", duration);
+#endif
+
+    }
+
+#endif
 
     /*************************/
     /* Connect to the server */
@@ -2479,6 +2684,58 @@ void server_setup (void)
         }
         if (verbose) printf("mmap(input) mapped %lu B and returned address %p in %lu us\n", MAX_INPUT_SIZE, pInput, duration);
     }
+
+#ifdef PRECOMPILE_RESULTS
+
+    /**********************/
+    /* PRECOMPILE_RESULTS */
+    /**********************/
+
+    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
+    {
+        // Make sure the precompile results shared memory is deleted
+        shm_unlink(shmem_precompile_name);
+
+        // Create the precompile results shared memory
+        shmem_precompile_fd = shm_open(shmem_precompile_name, O_RDWR | O_CREAT, 0666);
+        if (shmem_precompile_fd < 0)
+        {
+            printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Size it
+        result = ftruncate(shmem_precompile_fd, MAX_PRECOMPILE_SIZE);
+        if (result != 0)
+        {
+            printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Map precompile address space
+        if (verbose) gettimeofday(&start_time, NULL);
+        void * pPrecompile = mmap(NULL, MAX_PRECOMPILE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | map_locked_flag, shmem_precompile_fd, 0);
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+        }
+        if (pPrecompile == MAP_FAILED)
+        {
+            printf("ERROR: Failed calling mmap(precompile) errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        precompile_results_address = (uint64_t *)pPrecompile;
+        if (verbose) printf("mmap(precompile) mapped %lu B and returned address %p in %lu us\n", MAX_PRECOMPILE_SIZE, precompile_results_address, duration);
+    }
+
+#endif // PRECOMPILE_RESULTS
 
     /*******/
     /* RAM */
