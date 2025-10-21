@@ -22,8 +22,7 @@ pub async fn send_completion_webhook(
     proof_data: Option<Vec<u64>>,
     executed_steps: Option<u64>,
 ) -> Result<()> {
-    send_webhook(webhook_url, job_id, duration_ms, proof_data, executed_steps, None)
-        .await
+    send_webhook(webhook_url, job_id, duration_ms, proof_data, executed_steps, None).await
 }
 
 /// Sends a webhook notification upon job failure with error details.
