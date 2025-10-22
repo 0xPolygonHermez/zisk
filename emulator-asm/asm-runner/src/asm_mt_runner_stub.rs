@@ -1,8 +1,8 @@
-use zisk_common::{ChunkId, EmuTrace, ExecutorStats};
+use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
 
 use std::ffi::c_void;
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use anyhow::Result;
 pub trait Task: Send + Sync + 'static {
@@ -46,7 +46,7 @@ impl AsmRunnerMT {
         _: i32,
         _: i32,
         _: Option<u16>,
-        _: Arc<Mutex<ExecutorStats>>,
+        _: ExecutorStatsHandle,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
         Err(anyhow::anyhow!("AsmRunnerMT::run_and_count() is not supported on this platform. Only Linux x86_64 is supported."))
     }

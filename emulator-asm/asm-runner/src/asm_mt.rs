@@ -48,7 +48,8 @@ impl AsmMTChunk {
         // Convert mem_reads into a Vec<u64> without copying
         let mem_reads_ptr = *mapped_ptr as *mut u64;
         let mem_reads_len = chunk.mem_reads_size as usize;
-        let mem_reads = unsafe { Vec::from_raw_parts(mem_reads_ptr, mem_reads_len, mem_reads_len) };
+        let mem_reads =
+            unsafe { std::slice::from_raw_parts(mem_reads_ptr, mem_reads_len).to_vec() };
 
         // Advance the pointer after reading memory reads
         *mapped_ptr = unsafe { (*mapped_ptr as *mut u64).add(mem_reads_len) as *const AsmMTChunk };

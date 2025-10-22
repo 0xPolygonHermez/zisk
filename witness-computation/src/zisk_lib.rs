@@ -20,7 +20,7 @@ use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
-use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary};
+use zisk_common::{ExecutorStats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary};
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 #[cfg(feature = "packed")]
 use zisk_pil::PACKED_INFO;
