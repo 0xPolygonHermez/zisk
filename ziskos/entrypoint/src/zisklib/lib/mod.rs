@@ -1,9 +1,5 @@
 pub mod bls12_381;
 pub mod bn254;
-mod ecadd;
-mod ecmul;
-mod ecpairing;
-mod ecrecover;
 mod secp256k1;
 mod sha256f_compress;
 mod utils;
@@ -19,10 +15,6 @@ pub use bn254::pairing::pairing_batch_bn254;
 pub use bn254::twist::{
     is_on_curve_twist_bn254, is_on_subgroup_twist_bn254, to_affine_twist_bn254,
 };
-pub use ecadd::ecadd;
-pub use ecmul::ecmul;
-pub use ecpairing::ecpairing;
-pub use ecrecover::ecrecover;
 pub use secp256k1::curve::{
     secp256k1_decompress, secp256k1_double_scalar_mul_with_g, secp256k1_ecdsa_verify,
     secp256k1_eq_projective, secp256k1_to_affine,
@@ -38,5 +30,5 @@ pub use secp256k1::scalar::{
 pub use sha256f_compress::sha256f_compress;
 pub use utils::{
     eq, exp_power_of_two, exp_power_of_two_self, from_be_bytes_to_u64_array,
-    from_u64_array_to_be_bytes,
+    from_u64_array_to_be_bytes, gt, lt,
 };
