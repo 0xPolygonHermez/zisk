@@ -23,11 +23,14 @@ pub use ecadd::ecadd;
 pub use ecmul::ecmul;
 pub use ecpairing::ecpairing;
 pub use ecrecover::ecrecover;
-pub use secp256k1::curve::{secp256k1_decompress, secp256k1_double_scalar_mul_with_g};
+pub use secp256k1::curve::{secp256k1_decompress, secp256k1_double_scalar_mul_with_g, secp256k1_to_affine, secp256k1_eq_projective};
+pub use secp256k1::field::{
+    secp256k1_fp_reduce, secp256k1_fp_negate, secp256k1_fp_mul, secp256k1_fp_mul_scalar
+};
 pub use secp256k1::scalar::{
-    secp256k1_fn_add, secp256k1_fn_inv, secp256k1_fn_mul, secp256k1_fn_neg, secp256k1_fn_sub,
+    secp256k1_fn_add, secp256k1_fn_inv, secp256k1_fn_mul, secp256k1_fn_neg, secp256k1_fn_sub, secp256k1_fn_reduce
 };
 pub use sha256f_compress::sha256f_compress;
 pub use utils::{
-    exp_power_of_two, exp_power_of_two_self, from_be_bytes_to_u64_array, from_u64_array_to_be_bytes,
+    exp_power_of_two, exp_power_of_two_self, from_be_bytes_to_u64_array, from_u64_array_to_be_bytes, eq,
 };
