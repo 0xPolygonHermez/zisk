@@ -67,6 +67,15 @@ pub struct EmuOptions {
     /// Optional file path to store operation data for analysis
     #[clap(short, long, value_name = "STORE_OP_OUTPUT")]
     pub store_op_output: Option<String>,
+    /// Enable read functions from Symbol Table
+    #[clap(short = 'S', long, value_name = "READ_SYMBOLS", default_value = "false")]
+    pub read_symbols: bool,
+    #[clap(short = 'T', long, value_name = "TOP_ROI", default_value = "10")]
+    pub top_roi: usize,
+    #[clap(short = 'C', long, value_name = "ROI_CALLERS", default_value = "10")]
+    pub roi_callers: usize,
+    #[clap(short = 'D', long, value_name = "TOP_ROI_DETAIL", default_value = "false")]
+    pub top_roi_detail: bool,
 }
 
 impl Default for EmuOptions {
@@ -89,6 +98,10 @@ impl Default for EmuOptions {
             stats: false,
             generate_minimal_traces: false,
             store_op_output: None,
+            read_symbols: false,
+            roi_callers: 10,
+            top_roi: 10,
+            top_roi_detail: false,
         }
     }
 }

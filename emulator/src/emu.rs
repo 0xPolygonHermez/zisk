@@ -1,6 +1,8 @@
 use std::mem;
 
-use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions};
+use crate::{
+    ElfSymbolReader, EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions,
+};
 use fields::PrimeField64;
 use mem_common::MemHelpers;
 use riscv::RiscVRegisters;
@@ -26,7 +28,6 @@ pub struct Emu<'a> {
     pub rom: &'a ZiskRom,
     /// Context, where the state of the execution is stored and modified at every execution step
     pub ctx: EmuContext,
-
     // This array is used to store static data to avoid heap allocations and speed up the
     // conversion of data to be written to the bus
     static_array: [u64; MAX_OPERATION_DATA_SIZE],
@@ -1525,6 +1526,28 @@ impl<'a> Emu<'a> {
     ) {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs.clone());
+
+        let mut elf = ElfSymbolReader::new();
+        if options.read_symbols {
+            if let Some(elf_file) = &options.elf {
+                println!("Loading symbols from ELF file: {elf_file}");
+                elf.load_from_file(&elf_file).unwrap();
+                let mut count = 0;
+                for symbol in elf.functions() {
+                    count += 1;
+                    self.ctx.stats.add_roi(
+                        symbol.address as u32,
+                        (symbol.address + symbol.size - 1) as u32,
+                        &symbol.name,
+                    );
+                }
+                println!("Loaded {} function symbols", count);
+                self.ctx.stats.set_top_rois(options.top_roi);
+                self.ctx.stats.set_roi_callers(options.roi_callers);
+                self.ctx.stats.set_top_roi_detail(options.top_roi_detail);
+            }
+        }
+
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
 
         // Check that callback is provided if chunk size is specified
@@ -1662,6 +1685,7 @@ impl<'a> Emu<'a> {
 
         // Print stats report
         if options.stats {
+            self.ctx.stats.update_costs();
             let report = self.ctx.stats.report();
             println!("{report}");
             if let Some(store_op_output_file) = &options.store_op_output {
@@ -1808,7 +1832,22 @@ impl<'a> Emu<'a> {
 
         // Retrieve statistics data
         if self.ctx.do_stats {
-            self.ctx.stats.on_op(instruction, self.ctx.inst_ctx.a, self.ctx.inst_ctx.b);
+            if instruction.input_size > 0 {
+                if let Ok(inst) = ZiskOp::try_from_code(instruction.op) {
+                    inst.call_stats(&self.ctx.inst_ctx, &mut self.ctx.stats);
+                }
+            }
+            self.ctx.stats.on_op(
+                instruction,
+                self.ctx.inst_ctx.a,
+                self.ctx.inst_ctx.b,
+                pc,
+                &[
+                    self.ctx.inst_ctx.regs[10], // a0
+                    self.ctx.inst_ctx.regs[11], // a1
+                    self.ctx.inst_ctx.regs[12], // a2
+                ],
+            );
         }
 
         // Store the 'c' register value based on the storage specified by the current instruction
