@@ -311,7 +311,7 @@ uint64_t input_size = 0;
 
 #ifdef PRECOMPILE_RESULTS
 
-#define MAX_PRECOMPILE_SIZE (uint64_t)0x08000000 // 128MB
+#define MAX_PRECOMPILE_SIZE (uint64_t)0x10000000 // 256MB
 
 // Precompile results memory
 char shmem_precompile_name[128];
