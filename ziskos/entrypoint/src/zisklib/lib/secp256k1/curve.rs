@@ -1,14 +1,17 @@
 use crate::{
-    fcall_msb_pos_256,
+    eq, fcall_msb_pos_256,
     point::SyscallPoint256,
     secp256k1_add::{syscall_secp256k1_add, SyscallSecp256k1AddParams},
     secp256k1_dbl::syscall_secp256k1_dbl,
-    eq
 };
 
 use super::{
     constants::{E_B, G_X, G_Y},
-    field::{secp256k1_fp_add, secp256k1_fp_mul, secp256k1_fp_sqrt, secp256k1_fp_square, secp256k1_fp_inv},
+    field::{
+        secp256k1_fp_add, secp256k1_fp_inv, secp256k1_fp_mul, secp256k1_fp_sqrt,
+        secp256k1_fp_square,
+    },
+    scalar::{secp256k1_fn_inv, secp256k1_fn_mul, secp256k1_fn_reduce},
 };
 
 /// Converts a point `p` on the Secp256k1 curve from projective coordinates to affine coordinates
@@ -69,7 +72,7 @@ pub fn secp256k1_eq_projective(p1: &[u64; 12], p2: &[u64; 12]) -> bool {
 
 /// Given a x-coordinate `x_bytes` and a parity `y_is_odd`,
 /// this function decompresses the point on the secp256k1 curve.
-pub fn secp256k1_decompress(x_bytes: &[u8; 32], y_is_odd: bool) -> (([u8; 32], [u8; 32]), bool) {
+pub fn secp256k1_decompress(x_bytes: &[u8; 32], y_is_odd: bool) -> (([u64; 4], [u64; 4]), bool) {
     // Convert the x-coordinate from BEu8 to LEu64
     let mut x = [0u64; 4];
     for i in 0..32 {
@@ -82,20 +85,14 @@ pub fn secp256k1_decompress(x_bytes: &[u8; 32], y_is_odd: bool) -> (([u8; 32], [
     let y_sq = secp256k1_fp_add(&x_cb, &E_B);
     let (y, has_sqrt) = secp256k1_fp_sqrt(&y_sq, y_is_odd as u64);
     if !has_sqrt {
-        return (([0u8; 32], [0u8; 32]), false);
+        return (([0u64; 4], [0u64; 4]), false);
     }
 
     // Check the received parity of the y-coordinate is correct
     let parity = (y[0] & 1) != 0;
     assert_eq!(parity, y_is_odd);
 
-    // Convert the y-coordinate from LEu64 to BEu8
-    let mut y_bytes = [0u8; 32];
-    for i in 0..4 {
-        y_bytes[i * 8..(i + 1) * 8].copy_from_slice(&y[3 - i].to_be_bytes());
-    }
-
-    ((*x_bytes, y_bytes), true)
+    ((x, y), true)
 }
 
 /// Given points `p1` and `p2`, performs the point addition `p1 + p2` and assigns the result to `p1`.
@@ -279,4 +276,23 @@ pub fn secp256k1_double_scalar_mul_with_g(
     assert_eq!(k2_rec, *k2);
 
     (res_is_infinity, res)
+}
+
+pub fn secp256k1_ecdsa_verify(
+    pk: &SyscallPoint256,
+    z: &[u64; 4],
+    r: &[u64; 4],
+    s: &[u64; 4],
+) -> bool {
+    let s_inv = secp256k1_fn_inv(s);
+
+    let u1 = secp256k1_fn_mul(z, &s_inv);
+    let u2 = secp256k1_fn_mul(r, &s_inv);
+
+    let (is_infinity, res) = secp256k1_double_scalar_mul_with_g(&u1, &u2, pk);
+    if is_infinity {
+        return false;
+    }
+
+    eq(&secp256k1_fn_reduce(&res.x), r)
 }
