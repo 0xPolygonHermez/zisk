@@ -873,15 +873,18 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
         // Set m_op_or_ext
         let ext_32_op = BinaryBasicTableOp::Ext32 as u8;
-        row.set_m_op_or_ext(mode64 as u8 * (binary_basic_table_op as u8 - ext_32_op) + ext_32_op);
+
+        row.set_m_op_or_ext(if mode64 { binary_basic_table_op as u8 } else { ext_32_op });
 
         // Set free_in_a_or_c and free_in_b_or_zero
         for i in 0..HALF_BYTES {
             row.set_free_in_a_or_c(
                 i,
-                mode64 as u8
-                    * (row.get_free_in_a(i + HALF_BYTES) - row.get_free_in_c(HALF_BYTES - 1))
-                    + row.get_free_in_c(HALF_BYTES - 1),
+                if mode64 {
+                    row.get_free_in_a(i + HALF_BYTES)
+                } else {
+                    row.get_free_in_c(HALF_BYTES - 1)
+                },
             );
             row.set_free_in_b_or_zero(i, mode64 as u8 * row.get_free_in_b(i + HALF_BYTES));
         }
