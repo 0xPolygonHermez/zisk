@@ -1,8 +1,8 @@
-use zisk_common::{ChunkId, EmuTrace, ExecutorStats};
+use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
 
 use std::ffi::c_void;
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 
 use anyhow::Result;
 pub trait Task: Send + Sync + 'static {

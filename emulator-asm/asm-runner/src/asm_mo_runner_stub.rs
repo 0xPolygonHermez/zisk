@@ -1,7 +1,6 @@
-use zisk_common::{ExecutorStats, Plan};
+use zisk_common::{ExecutorStatsHandle, Plan};
 
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 
