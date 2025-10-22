@@ -112,8 +112,6 @@ impl EmuCoreProver {
         check_paths_exist(&proving_key)?;
         check_paths_exist(&elf)?;
 
-        let mpi_ctx = ProofMan::get_mpi_info();
-
         let world_rank = mpi_ctx.rank;
         let local_rank = mpi_ctx.node_rank;
 
