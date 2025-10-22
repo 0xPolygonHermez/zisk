@@ -148,7 +148,7 @@ pub enum WorkerState {
     Disconnected,
     Connecting,
     Idle,
-    Computing(JobPhase),
+    Computing((JobId, JobPhase)),
     Error,
 }
 
@@ -158,7 +158,7 @@ impl Display for WorkerState {
             WorkerState::Disconnected => "Disconnected",
             WorkerState::Connecting => "Connecting",
             WorkerState::Idle => "Idle",
-            WorkerState::Computing(phase) => return write!(f, "Computing({})", phase),
+            WorkerState::Computing(phase) => return write!(f, "Computing({})", phase.1),
             WorkerState::Error => "Error",
         };
         write!(f, "{}", state_str)
@@ -323,7 +323,7 @@ impl Job {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobState {
     Created,
     Running(JobPhase),
