@@ -1,356 +1,511 @@
 //! RISC-V RVD
+//! Based on a 16-bits or a 32-bits instruction, it returns the type and name of the instruction
 
-use std::collections::HashMap;
-
-/// RVD operation, including a map to store nested operations, if any
-/// It contains a human-readable string name of the operation
-pub struct RvdOperation {
-    pub s: String,
-    pub map: HashMap<u32, RvdOperation>,
-}
-
-/// RVD info, containing a type and an RVD operation
-pub struct RvdInfo {
-    pub t: String,
-    pub op: RvdOperation,
-}
-
-/// RVD structure, containing a map of opcodes to RVD info instances
-pub struct Rvd {
-    pub opcodes: HashMap<u32, RvdInfo>,
-}
-
-/// Default constructor for Rvd structure
-impl Default for Rvd {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+/// RVD structure
+pub struct Rvd {}
 
 /// RVD implementation
 impl Rvd {
-    /// RVD constructor, setting opcodes to an empty map
-    pub fn new() -> Rvd {
-        Rvd { opcodes: HashMap::new() }
-    }
-
-    /// RVD initialization, creating a tree of opcode-to-operation pairs
-    pub fn init(&mut self) {
-        // Opcode 3
-        {
-            let mut info = RvdInfo {
-                t: String::from("I"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            info.op.map.insert(0, RvdOperation { s: String::from("lb"), map: HashMap::new() });
-            info.op.map.insert(1, RvdOperation { s: String::from("lh"), map: HashMap::new() });
-            info.op.map.insert(2, RvdOperation { s: String::from("lw"), map: HashMap::new() });
-            info.op.map.insert(3, RvdOperation { s: String::from("ld"), map: HashMap::new() });
-            info.op.map.insert(4, RvdOperation { s: String::from("lbu"), map: HashMap::new() });
-            info.op.map.insert(5, RvdOperation { s: String::from("lhu"), map: HashMap::new() });
-            info.op.map.insert(6, RvdOperation { s: String::from("lwu"), map: HashMap::new() });
-            self.opcodes.insert(3, info);
-        }
-
-        // Opcode 15
-        {
-            let mut info = RvdInfo {
-                t: String::from("F"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            info.op.map.insert(0, RvdOperation { s: String::from("fence"), map: HashMap::new() });
-            info.op.map.insert(1, RvdOperation { s: String::from("fence.i"), map: HashMap::new() });
-            self.opcodes.insert(15, info);
-        }
-
-        // Opcode 19
-        {
-            let mut info = RvdInfo {
-                t: String::from("I"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            info.op.map.insert(0, RvdOperation { s: String::from("addi"), map: HashMap::new() });
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("slli"), map: HashMap::new() });
-                info.op.map.insert(1, op);
+    pub fn get_type_and_name_32_bits(inst: u32) -> (&'static str, &'static str, u64) {
+        match inst & 0x7F {
+            3 => {
+                // Opcode 3
+                match (inst >> 12) & 0x7 {
+                    0 => ("I", "lb", 1),
+                    1 => ("I", "lh", 1),
+                    2 => ("I", "lw", 1),
+                    3 => ("I", "ld", 1),
+                    4 => ("I", "lbu", 1),
+                    5 => ("I", "lhu", 1),
+                    6 => ("I", "lwu", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 3 inst=0x{inst:x}"),
+                }
             }
-            info.op.map.insert(2, RvdOperation { s: String::from("slti"), map: HashMap::new() });
-            info.op.map.insert(3, RvdOperation { s: String::from("sltiu"), map: HashMap::new() });
-            info.op.map.insert(4, RvdOperation { s: String::from("xori"), map: HashMap::new() });
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("srli"), map: HashMap::new() });
-                op.map.insert(16, RvdOperation { s: String::from("srai"), map: HashMap::new() });
-                info.op.map.insert(5, op);
+            7 => {
+                // Opcode 7
+                match (inst >> 12) & 0x7 {
+                    0 => ("INVALID", "reserved", 1),
+                    2 => ("I", "flw", 1),
+                    3 => ("I", "fld", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 7 inst=0x{inst:x}"),
+                }
             }
-            info.op.map.insert(6, RvdOperation { s: String::from("ori"), map: HashMap::new() });
-            info.op.map.insert(7, RvdOperation { s: String::from("andi"), map: HashMap::new() });
-            self.opcodes.insert(19, info);
-        }
-
-        // Opcode 23
-        {
-            let mut info = RvdInfo {
-                t: String::from("U"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            info.op.s = String::from("auipc");
-            self.opcodes.insert(23, info);
-        }
-
-        // Opcode 27
-        {
-            let mut info = RvdInfo {
-                t: String::from("I"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            info.op.map.insert(0, RvdOperation { s: String::from("addiw"), map: HashMap::new() });
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("slliw"), map: HashMap::new() });
-                info.op.map.insert(1, op);
+            15 => {
+                // Opcode 15
+                match (inst >> 12) & 0x7 {
+                    0 => ("F", "fence", 1),
+                    1 => ("F", "fence.i", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 15 inst=0x{inst:x}"),
+                }
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("srliw"), map: HashMap::new() });
-                op.map.insert(16, RvdOperation { s: String::from("sraiw"), map: HashMap::new() });
-                info.op.map.insert(5, op);
+            19 => {
+                // Opcode 19
+                match (inst >> 12) & 0x7 {
+                    0 => ("I", "addi", 1),
+                    1 => {
+                        match (inst >> 26) & 0x3F {
+                            0 => ("I", "slli", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 19 funct3=1 inst=0x{inst:x}"),
+                        }
+                    }
+                    2 => ("I", "slti", 1),
+                    3 => ("I", "sltiu", 1),
+                    4 => ("I", "xori", 1),
+                    5 => {
+                        match (inst >> 26) & 0x3F {
+                            0 => ("I", "srli", 2),
+                            16 => ("I", "srai", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 19 funct3=5 inst=0x{inst:x}"),
+                        }
+                    }
+                    6 => ("I", "ori", 1),
+                    7 => ("I", "andi", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 19 inst=0x{inst:x}"),
+                }
             }
-            self.opcodes.insert(27, info);
-        }
-
-        // Opcode 35
-        {
-            let mut info = RvdInfo {
-                t: String::from("S"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            info.op.map.insert(0, RvdOperation { s: String::from("sb"), map: HashMap::new() });
-            info.op.map.insert(1, RvdOperation { s: String::from("sh"), map: HashMap::new() });
-            info.op.map.insert(2, RvdOperation { s: String::from("sw"), map: HashMap::new() });
-            info.op.map.insert(3, RvdOperation { s: String::from("sd"), map: HashMap::new() });
-            self.opcodes.insert(35, info);
-        }
-
-        // Opcode 47
-        {
-            let mut info = RvdInfo {
-                t: String::from("A"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(2, RvdOperation { s: String::from("lr.w"), map: HashMap::new() });
-                op.map.insert(3, RvdOperation { s: String::from("sc.w"), map: HashMap::new() });
-                op.map
-                    .insert(1, RvdOperation { s: String::from("amoswap.w"), map: HashMap::new() });
-                op.map.insert(0, RvdOperation { s: String::from("amoadd.w"), map: HashMap::new() });
-                op.map.insert(4, RvdOperation { s: String::from("amoxor.w"), map: HashMap::new() });
-                op.map
-                    .insert(12, RvdOperation { s: String::from("amoand.w"), map: HashMap::new() });
-                op.map.insert(8, RvdOperation { s: String::from("amoor.w"), map: HashMap::new() });
-                op.map
-                    .insert(16, RvdOperation { s: String::from("amomin.w"), map: HashMap::new() });
-                op.map
-                    .insert(20, RvdOperation { s: String::from("amomax.w"), map: HashMap::new() });
-                op.map
-                    .insert(24, RvdOperation { s: String::from("amominu.w"), map: HashMap::new() });
-                op.map
-                    .insert(28, RvdOperation { s: String::from("amomaxu.w"), map: HashMap::new() });
-                info.op.map.insert(2, op);
+            23 => {
+                // Opcode 23
+                ("U", "auipc", 0)
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(2, RvdOperation { s: String::from("lr.d"), map: HashMap::new() });
-                op.map.insert(3, RvdOperation { s: String::from("sc.d"), map: HashMap::new() });
-                op.map
-                    .insert(1, RvdOperation { s: String::from("amoswap.d"), map: HashMap::new() });
-                op.map.insert(0, RvdOperation { s: String::from("amoadd.d"), map: HashMap::new() });
-                op.map.insert(4, RvdOperation { s: String::from("amoxor.d"), map: HashMap::new() });
-                op.map
-                    .insert(12, RvdOperation { s: String::from("amoand.d"), map: HashMap::new() });
-                op.map.insert(8, RvdOperation { s: String::from("amoor.d"), map: HashMap::new() });
-                op.map
-                    .insert(16, RvdOperation { s: String::from("amomin.d"), map: HashMap::new() });
-                op.map
-                    .insert(20, RvdOperation { s: String::from("amomax.d"), map: HashMap::new() });
-                op.map
-                    .insert(24, RvdOperation { s: String::from("amominu.d"), map: HashMap::new() });
-                op.map
-                    .insert(28, RvdOperation { s: String::from("amomaxu.d"), map: HashMap::new() });
-                info.op.map.insert(3, op);
+            27 => {
+                // Opcode 27
+                match (inst >> 12) & 0x7 {
+                    0 => ("I", "addiw", 1),
+                    1 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("I", "slliw", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 27 funct3=1 inst=0x{inst:x}"),
+                        }
+                    }
+                    5 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("I", "srliw", 2),
+                            32 => ("I", "sraiw", 2), // TODO: REVIEW (it was 16)
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 27 funct3=5 inst=0x{inst:x}"),
+                        }
+                    }
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 27 inst=0x{inst:x}"),
+                }
             }
-            self.opcodes.insert(47, info);
-        }
-
-        // Opcode 51
-        {
-            let mut info = RvdInfo {
-                t: String::from("R"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("add"), map: HashMap::new() });
-                op.map.insert(1, RvdOperation { s: String::from("mul"), map: HashMap::new() });
-                op.map.insert(32, RvdOperation { s: String::from("sub"), map: HashMap::new() });
-                info.op.map.insert(0, op);
+            35 => {
+                // Opcode 35
+                match (inst >> 12) & 0x7 {
+                    0 => ("S", "sb", 1),
+                    1 => ("S", "sh", 1),
+                    2 => ("S", "sw", 1),
+                    3 => ("S", "sd", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 35 inst=0x{inst:x}"),
+                }
             }
+            39 =>
+            // Opcode 39
             {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("sll"), map: HashMap::new() });
-                op.map.insert(1, RvdOperation { s: String::from("mulh"), map: HashMap::new() });
-                info.op.map.insert(1, op);
+                match (inst >> 12) & 0x7 {
+                    2 => ("S", "fsw", 1),
+                    3 => ("S", "fsd", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 39 inst=0x{inst:x}"),
+                }
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("slt"), map: HashMap::new() });
-                op.map.insert(1, RvdOperation { s: String::from("mulhsu"), map: HashMap::new() });
-                info.op.map.insert(2, op);
+            47 => {
+                // Opcode 47
+                match (inst >> 12) & 0x7 {
+                    2 => {
+                        match (inst >> 27) & 0x1F {
+                            2 => ("A", "lr.w", 2),
+                            3 => ("A", "sc.w", 2),
+                            1 => ("A", "amoswap.w", 2),
+                            0 => ("A", "amoadd.w", 2),
+                            4 => ("A", "amoxor.w", 2),
+                            12 => ("A", "amoand.w", 2),
+                            8 => ("A", "amoor.w", 2),
+                            16 => ("A", "amomin.w", 2),
+                            20 => ("A", "amomax.w", 2),
+                            24 => ("A", "amominu.w", 2),
+                            28 => ("A", "amomaxu.w", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct5 for opcode 47 funct3=2 inst=0x{inst:x}"),
+                        }
+                    }
+                    3 => {
+                        match (inst >> 27) & 0x1F {
+                            2 => ("A", "lr.d", 2),
+                            3 => ("A", "sc.d", 2),
+                            1 => ("A", "amoswap.d", 2),
+                            0 => ("A", "amoadd.d", 2),
+                            4 => ("A", "amoxor.d", 2),
+                            12 => ("A", "amoand.d", 2),
+                            8 => ("A", "amoor.d", 2),
+                            16 => ("A", "amomin.d", 2),
+                            20 => ("A", "amomax.d", 2),
+                            24 => ("A", "amominu.d", 2),
+                            28 => ("A", "amomaxu.d", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct5 for opcode 47 funct3=3 inst=0x{inst:x}"),
+                        }
+                    }
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 47 inst=0x{inst:x}"),
+                }
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("sltu"), map: HashMap::new() });
-                op.map.insert(1, RvdOperation { s: String::from("mulhu"), map: HashMap::new() });
-                info.op.map.insert(3, op);
+            51 => {
+                // Opcode 51
+                match (inst >> 12) & 0x7 {
+                    0 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("R", "add", 2),
+                            1 => ("R", "mul", 2),
+                            32 => ("R", "sub", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=0 inst=0x{inst:x}"),
+                        }
+                    }
+                    1 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("R", "sll", 2),
+                            1 => ("R", "mulh", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=1 inst=0x{inst:x}"),
+                        }
+                    }
+                    2 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("R", "slt", 2),
+                            1 => ("R", "mulhsu", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=2 inst=0x{inst:x}"),
+                        }
+                    }
+                    3 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("R", "sltu", 2),
+                            1 => ("R", "mulhu", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=3 inst=0x{inst:x}"),
+                        }
+                    }
+                    4 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("R", "xor", 2),
+                            1 => ("R", "div", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=4 inst=0x{inst:x}"),
+                        }
+                    }
+                    5 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("R", "srl", 2),
+                            1 => ("R", "divu", 2),
+                            32 => ("R", "sra", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=5 inst=0x{inst:x}"),
+                        }
+                    }
+                    6 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("R", "or", 2),
+                            1 => ("R", "rem", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=6 inst=0x{inst:x}"),
+                        }
+                    }
+                    7 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("R", "and", 2),
+                            1 => ("R", "remu", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=7 inst=0x{inst:x}"),
+                        }
+                    }
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 51 inst=0x{inst:x}"),
+                }
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("xor"), map: HashMap::new() });
-                op.map.insert(1, RvdOperation { s: String::from("div"), map: HashMap::new() });
-                info.op.map.insert(4, op);
+            55 => {
+                // Opcode 55
+                ("U", "lui", 0)
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("srl"), map: HashMap::new() });
-                op.map.insert(1, RvdOperation { s: String::from("divu"), map: HashMap::new() });
-                op.map.insert(32, RvdOperation { s: String::from("sra"), map: HashMap::new() });
-                info.op.map.insert(5, op);
+            59 => {
+                // Opcode 59
+                match (inst >> 12) & 0x7 {
+                    0 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("R", "addw", 2),
+                            1 => ("R", "mulw", 2),
+                            32 => ("R", "subw", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 59 funct3=0 inst=0x{inst:x}"),
+                        }
+                    }
+                    1 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("R", "sllw", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 59 funct3=1 inst=0x{inst:x}"),
+                        }
+                    }
+                    4 => {
+                        match (inst >> 25) & 0x7F {
+                            1 => ("R", "divw", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 59 funct3=4 inst=0x{inst:x}"),
+                        }
+                    }
+                    5 => {
+                        match (inst >> 25) & 0x7F {
+                            0 => ("R", "srlw", 2),
+                            1 => ("R", "divuw", 2),
+                            32 => ("R", "sraw", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 59 funct3=5 inst=0x{inst:x}"),
+                        }
+                    }
+                    6 => {
+                        match (inst >> 25) & 0x7F {
+                            1 => ("R", "remw", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 59 funct3=6 inst=0x{inst:x}"),
+                        }
+                    }
+                    7 => {
+                        match (inst >> 25) & 0x7F {
+                            1 => ("R", "remuw", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 59 funct3=7 inst=0x{inst:x}"),
+                        }
+                    }
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 59 inst=0x{inst:x}"),
+                }
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("or"), map: HashMap::new() });
-                op.map.insert(1, RvdOperation { s: String::from("rem"), map: HashMap::new() });
-                info.op.map.insert(6, op);
+            67 => {
+                // Opcode 67
+                match (inst >> 25) & 0x3 {
+                    0 => ("R4", "fmadd.s", 1),
+                    1 => ("R4", "fmadd.d", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 67 inst=0x{inst:x}"),
+                }
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("and"), map: HashMap::new() });
-                op.map.insert(1, RvdOperation { s: String::from("remu"), map: HashMap::new() });
-                info.op.map.insert(7, op);
+            71 => {
+                // Opcode 71
+                match (inst >> 25) & 0x3 {
+                    0 => ("R4", "fmsub.s", 1),
+                    1 => ("R4", "fmsub.d", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 71 inst=0x{inst:x}"),
+                }
             }
-            self.opcodes.insert(51, info);
-        }
-
-        // Opcode 55
-        {
-            let mut info = RvdInfo {
-                t: String::from("U"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            info.op.s = String::from("lui");
-            info.op.map.clear();
-            self.opcodes.insert(55, info);
-        }
-
-        // Opcode 59
-        {
-            let mut info = RvdInfo {
-                t: String::from("R"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("addw"), map: HashMap::new() });
-                op.map.insert(1, RvdOperation { s: String::from("mulw"), map: HashMap::new() });
-                op.map.insert(32, RvdOperation { s: String::from("subw"), map: HashMap::new() });
-                info.op.map.insert(0, op);
+            75 => {
+                // Opcode 75
+                match (inst >> 25) & 0x3 {
+                    0 => ("R4", "fnmsub.s", 1),
+                    1 => ("R4", "fnmsub.d", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 75 inst=0x{inst:x}"),
+                }
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("sllw"), map: HashMap::new() });
-                info.op.map.insert(1, op);
+            79 => {
+                // Opcode 79
+                match (inst >> 25) & 0x3 {
+                    0 => ("R4", "fnmadd.s", 1),
+                    1 => ("R4", "fnmadd.d", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 79 inst=0x{inst:x}"),
+                }
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(1, RvdOperation { s: String::from("divw"), map: HashMap::new() });
-                info.op.map.insert(4, op);
+            83 => {
+                // Opcode 83
+                match (inst >> 25) & 0x7F {
+                    0 => ("R", "fadd.s", 1),
+                    1 => ("R", "fadd.d", 1),
+                    4 => ("R", "fsub.s", 1),
+                    5 => ("R", "fsub.d", 1),
+                    8 => ("R", "fmul.s", 1),
+                    9 => ("R", "fmul.d", 1),
+                    12 => ("R", "fdiv.s", 1),
+                    13 => ("R", "fdiv.d", 1),
+                    16 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => ("R", "fsgnj.s", 2),
+                            1 => ("R", "fsgnjn.s", 2),
+                            2 => ("R", "fsgnjx.s", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=16 inst=0x{inst:x}"),
+                        }
+                    }
+                    17 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => ("R", "fsgnj.d", 2),
+                            1 => ("R", "fsgnjn.d", 2),
+                            2 => ("R", "fsgnjx.d", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=17 inst=0x{inst:x}"),
+                        }
+                    }
+                    20 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => ("R", "fmin.s", 2),
+                            1 => ("R", "fmax.s", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=20 inst=0x{inst:x}"),
+                        }
+                    }
+                    21 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => ("R", "fmin.d", 2),
+                            1 => ("R", "fmax.d", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=21 inst=0x{inst:x}"),
+                        }
+                    }
+                    32 => {
+                        match (inst >> 20) & 0x1F {
+                            1 => ("R", "fcvt.s.d", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=32 inst=0x{inst:x}"),
+                        }
+                    }
+                    33 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fcvt.d.s", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=33 inst=0x{inst:x}"),
+                        }
+                    }
+                    44 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fsqrt.s", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=44 inst=0x{inst:x}"),
+                        }
+                    }
+                    45 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fsqrt.d", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=45 inst=0x{inst:x}"),
+                        }
+                    }
+                    80 => {
+                        match (inst >> 12) & 0x7 {
+                            2 => ("R", "feq.s", 2),
+                            1 => ("R", "flt.s", 2),
+                            0 => ("R", "fle.s", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=80 inst=0x{inst:x}"),
+                        }
+                    }
+                    81 => {
+                        match (inst >> 12) & 0x7 {
+                            2 => ("R", "feq.d", 2),
+                            1 => ("R", "flt.d", 2),
+                            0 => ("R", "fle.d", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=81 inst=0x{inst:x}"),
+                        }
+                    }
+                    96 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fcvt.w.s", 2),
+                            1 => ("R", "fcvt.wu.s", 2),
+                            2 => ("R", "fcvt.l.s", 2),
+                            3 => ("R", "fcvt.lu.s", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=96 inst=0x{inst:x}"),
+                        }
+                    }
+                    97 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fcvt.w.d", 2),
+                            1 => ("R", "fcvt.wu.d", 2),
+                            2 => ("R", "fcvt.l.d", 2),
+                            3 => ("R", "fcvt.lu.d", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=97 inst=0x{inst:x}"),
+                        }
+                    }
+                    104 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fcvt.s.w", 2),
+                            1 => ("R", "fcvt.s.wu", 2),
+                            2 => ("R", "fcvt.s.l", 2),
+                            3 => ("R", "fcvt.s.lu", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=104 inst=0x{inst:x}"),
+                        }
+                    }
+                    105 => {
+                        match (inst >> 20) & 0x1F {
+                            0 => ("R", "fcvt.d.w", 2),
+                            1 => ("R", "fcvt.d.wu", 2),
+                            2 => ("R", "fcvt.d.l", 2),
+                            3 => ("R", "fcvt.d.lu", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=105 inst=0x{inst:x}"),
+                        }
+                    }
+                    112 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("R", "fmv.x.w", 3),
+                                    _ => ("INVALID", "reserved", 3), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            1 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("R", "fclass.s", 3),
+                                    _ => ("INVALID", "reserved", 3), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=112 inst=0x{inst:x}"),
+                        }
+                    }
+                    113 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("R", "fmv.x.d", 3),
+                                    _ => ("INVALID", "reserved", 3), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            1 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("R", "fclass.d", 3),
+                                    _ => ("INVALID", "reserved", 3), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=113 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=112 inst=0x{inst:x}"),
+                        }
+                    }
+                    120 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("I", "fmv.w.x", 3),
+                                    _ => ("INVALID", "reserved", 3), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=120 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=120 inst=0x{inst:x}"),
+                        }
+                    }
+                    121 => {
+                        match (inst >> 12) & 0x7 {
+                            0 => {
+                                match (inst >> 20) & 0x1F {
+                                    0 => ("I", "fmv.d.x", 3),
+                                    _ => ("INVALID", "reserved", 3), //panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=121 funct3=0 inst=0x{inst:x}"),
+                                }
+                            }
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=121 inst=0x{inst:x}"),
+                        }
+                    }
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 83 inst=0x{inst:x}"),
+                }
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("srlw"), map: HashMap::new() });
-                op.map.insert(1, RvdOperation { s: String::from("divuw"), map: HashMap::new() });
-                op.map.insert(32, RvdOperation { s: String::from("sraw"), map: HashMap::new() });
-                info.op.map.insert(5, op);
+            99 => {
+                // Opcode 99
+                match (inst >> 12) & 0x7 {
+                    0 => ("B", "beq", 1),
+                    1 => ("B", "bne", 1),
+                    4 => ("B", "blt", 1),
+                    5 => ("B", "bge", 1),
+                    6 => ("B", "bltu", 1),
+                    7 => ("B", "bgeu", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 99 inst=0x{inst:x}"),
+                }
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(1, RvdOperation { s: String::from("remw"), map: HashMap::new() });
-                info.op.map.insert(6, op);
+            103 => {
+                // Opcode 103
+                ("I", "jalr", 0)
             }
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(1, RvdOperation { s: String::from("remuw"), map: HashMap::new() });
-                info.op.map.insert(7, op);
+            111 => {
+                // Opcode 111
+                ("J", "jal", 0)
             }
-            self.opcodes.insert(59, info);
-        }
-
-        // Opcode 99
-        {
-            let mut info = RvdInfo {
-                t: String::from("B"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            info.op.map.insert(0, RvdOperation { s: String::from("beq"), map: HashMap::new() });
-            info.op.map.insert(1, RvdOperation { s: String::from("bne"), map: HashMap::new() });
-            info.op.map.insert(4, RvdOperation { s: String::from("blt"), map: HashMap::new() });
-            info.op.map.insert(5, RvdOperation { s: String::from("bge"), map: HashMap::new() });
-            info.op.map.insert(6, RvdOperation { s: String::from("bltu"), map: HashMap::new() });
-            info.op.map.insert(7, RvdOperation { s: String::from("bgeu"), map: HashMap::new() });
-            self.opcodes.insert(99, info);
-        }
-
-        // Opcode 103
-        {
-            let mut info = RvdInfo {
-                t: String::from("I"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            info.op.map.insert(0, RvdOperation { s: String::from("jalr"), map: HashMap::new() });
-            self.opcodes.insert(103, info);
-        }
-
-        // Opcode 111
-        {
-            let mut info = RvdInfo {
-                t: String::from("J"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            info.op.s = String::from("jal");
-            self.opcodes.insert(111, info);
-        }
-
-        // Opcode 115
-        {
-            let mut info = RvdInfo {
-                t: String::from("C"),
-                op: RvdOperation { s: String::new(), map: HashMap::new() },
-            };
-            {
-                let mut op = RvdOperation { s: String::new(), map: HashMap::new() };
-                op.map.insert(0, RvdOperation { s: String::from("ecall"), map: HashMap::new() });
-                op.map.insert(1, RvdOperation { s: String::from("ebreak"), map: HashMap::new() });
-                info.op.map.insert(0, op);
+            115 => {
+                // Opcode 115
+                match (inst >> 12) & 0x7 {
+                    0 => {
+                        match (inst >> 20) & 0xFFF {
+                            0 => ("C", "ecall", 2),
+                            1 => ("C", "ebreak", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid imm for opcode 115 funct3=0 inst=0x{inst:x}"),
+                        }
+                    }
+                    1 => ("C", "csrrw", 1),
+                    2 => ("C", "csrrs", 1),
+                    3 => ("C", "csrrc", 1),
+                    5 => ("C", "csrrwi", 1),
+                    6 => ("C", "csrrsi", 1),
+                    7 => ("C", "csrrci", 1),
+                    _ => ("INVALID", "reserved", 1), //panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 115 inst=0x{inst:x}"),
+                }
             }
-            info.op.map.insert(1, RvdOperation { s: String::from("csrrw"), map: HashMap::new() });
-            info.op.map.insert(2, RvdOperation { s: String::from("csrrs"), map: HashMap::new() });
-            info.op.map.insert(3, RvdOperation { s: String::from("csrrc"), map: HashMap::new() });
-            info.op.map.insert(5, RvdOperation { s: String::from("csrrwi"), map: HashMap::new() });
-            info.op.map.insert(6, RvdOperation { s: String::from("csrrsi"), map: HashMap::new() });
-            info.op.map.insert(7, RvdOperation { s: String::from("csrrci"), map: HashMap::new() });
-            self.opcodes.insert(115, info);
+            _ => ("INVALID", "reserved", 0), //panic!("Rvd::get_type_and_name_32_bits() unknown opcode inst=0x{inst:x}"),
         }
     }
 
@@ -389,28 +544,26 @@ impl Rvd {
     // CB     Branch               funct3   offset    rs1′  offset    op
     // CJ     Jump                 funct3   jump target               op
 
-    pub fn get_type_and_name(inst: u16) -> (&'static str, &'static str) {
-        //println!("Rvd::get_type_and_name() inst=0x{:x}", inst);
+    pub fn get_type_and_name_16_bits(inst: u16) -> (&'static str, &'static str) {
+        //println!("Rvd::get_type_and_name_16_bits() inst=0x{:x}", inst);
         // Return the type and name of the instruction
         match inst & 0x3 {
             // Check bits 1 and 0 = op2
             0x00 => {
                 if inst == 0x0000 {
-                    panic!("Rvd::get_type_and_name() invalid instruction 0x0000");
+                    return ("CINVALID", "c.reserved"); //panic!("Rvd::get_type_and_name_16_bits() invalid instruction 0x0000");
                 }
                 match (inst >> 13) & 0x7 {
                     // Check bits 15 to 13 = funct3
                     0x0 => ("CIW", "c.addi4spn"), // Mapped to addi: addi rd′, x2, nzuimm[9:2]
-                    0x1 => ("CL", "c.fld"),       // Unmapped, i.e. not supported
+                    0x1 => ("CL", "c.fld"),       // Mapped to ld: ld rd′, offset(rs1′)
                     0x2 => ("CL", "c.lw"),        // Mapped to lw: lw rd′, offset(rs1′)
                     0x3 => ("CL", "c.ld"),        // Mapped to ld: ld rd′, offset(rs1′)
-                    0x4 => {
-                        panic!("Rvd::get_type_and_name() reserved instruction inst=0x{inst:x}")
-                    }
-                    0x5 => ("CS", "c.fsd"), // Unmapped, i.e. not supported
-                    0x6 => ("CS", "c.sw"),  // Mapped to sw: sw rs2′,offset(rs1′)
-                    0x7 => ("CS", "c.sd"),  // Mapped to sd: sd rs2′, offset(rs1′)
-                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                    0x4 => ("CINVALID", "c.reserved"), // Reserved
+                    0x5 => ("CS", "c.fsd"),       // Mapped to sd: sd rs2′, offset(rs1′)
+                    0x6 => ("CS", "c.sw"),        // Mapped to sw: sw rs2′,offset(rs1′)
+                    0x7 => ("CS", "c.sd"),        // Mapped to sd: sd rs2′, offset(rs1′)
+                    _ => ("CINVALID", "c.reserved"), //panic!("Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}"),
                 }
             }
             0x01 => match (inst >> 13) & 0x7 {
@@ -441,30 +594,32 @@ impl Rvd {
                             0x1 => ("CA", "c.xor"), // Mapped to xor: xor rd′, rd′, rs2′
                             0x2 => ("CA", "c.or"),  // Mapped to or: or rd′, rd′, rs2′
                             0x3 => ("CA", "c.and"), // Mapped to and: and rd′, rd′, rs2′
-                            _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                            _ => ("CINVALID", "c.reserved"), //panic!(
+                                                     //     "Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}"
+                                                     // ),
                         },
                         0x01 => match (inst >> 5) & 0x3 {
                             0x0 => ("CA", "c.subw"), // Mapped to subw: subw rd′, rd′, rs2′
                             0x1 => ("CA", "c.addw"), // Mapped to addw: addw rd′, rd′,rs2′
-                            0x2 | 0x3 => {
-                                panic!("Rvd::get_type_and_name() reserved inst=0x{inst:x}");
-                            }
-                            _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                            0x2 | 0x3 => ("CINVALID", "c.reserved"), //panic!("Rvd::get_type_and_name_16_bits() reserved inst=0x{inst:x}");
+                            _ => ("CINVALID", "c.reserved"),         //panic!(
+                                                                      //     "Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}"
+                                                                      // ),
                         },
-                        _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                        _ => ("CINVALID", "c.reserved"), //panic!("Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}")
                     },
-                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                    _ => ("CINVALID", "c.reserved"), //panic!("Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}"),
                 },
                 0x5 => ("CJ", "c.j"),    // Mapped to jal: jal x0, offset
                 0x6 => ("CB", "c.beqz"), // Mapped to beq: beq rs1′, x0, offset
                 0x7 => ("CB", "c.bnez"), // Mapped to bne: bne rs1′, x0, offset
-                _ => panic!("Rvd::get_type_and_name() invalid inst=0x{inst:x}"),
+                _ => ("CINVALID", "c.reserved"), //panic!("Rvd::get_type_and_name_16_bits() invalid inst=0x{inst:x}"),
             },
             0x02 => {
                 match (inst >> 13) & 0x7 {
                     // Check bits 15 to 13 = funct3
                     0x0 => ("CI", "c.slli"), // Mapped to slli: slli rd, rd, shamt[5:0]
-                    0x1 => ("CI", "c.fldsp"), // Unmapped, i.e. not supported
+                    0x1 => ("CI", "c.fldsp"), // Mapped to ld: ld rd, offset(x2), rd!=0
                     // Would map to fld: fld rd, offset(x2), x2=sp, offset*8
                     0x2 => ("CI", "c.lwsp"), // Mapped to lw: lw rd, offset(x2)
                     0x3 => ("CI", "c.ldsp"), // Mapped to ld: ld rd, offset(x2), rd!=0
@@ -491,19 +646,19 @@ impl Rvd {
                                     _ => ("CR", "c.add"), // Mapped to add: add rd, rd, rs2
                                 }
                             }
-                            _ => panic!(
-                                "Rvd::get_type_and_name() invalid instruction inst=0x{:x}",
-                                inst
-                            ),
+                            _ => ("CINVALID", "c.reserved"), //panic!(
+                                                             //     "Rvd::get_type_and_name_16_bits() invalid instruction inst=0x{:x}",
+                                                             //     inst
+                                                             // ),
                         }
                     }
-                    0x5 => ("CSS", "c.fsdsp"), // Unmapped, i.e. not supported
+                    0x5 => ("CSS", "c.fsdsp"), // Mapped to sd: sd rs2, offset(x2)
                     0x6 => ("CSS", "c.swsp"),  // Mapped to sw: sw rs2, offset(x2)
                     0x7 => ("CSS", "c.sdsp"),  // Mapped to sd: sd rs2, offset(x2)
-                    _ => panic!("Rvd::get_type_and_name() invalid logic inst=0x{inst:x}"),
+                    _ => ("CINVALID", "c.reserved"), //panic!("Rvd::get_type_and_name_16_bits() invalid logic inst=0x{inst:x}"),
                 }
             }
-            _ => panic!("Rvd::get_type_and_name() unknown opcode inst=0x{inst:x}"),
+            _ => ("CINVALID", "c.reserved"), //panic!("Rvd::get_type_and_name_16_bits() unknown opcode inst=0x{inst:x}"),
         }
     }
 }

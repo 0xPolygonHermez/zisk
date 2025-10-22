@@ -1,4 +1,4 @@
-name: Risc Oficial Tests Check
+name: Riscof Tests
 
 on:
   pull_request:
@@ -10,18 +10,22 @@ on:
       - "emulator/**"
       - "riscv/**"
       - "core/**"
+      - "lib-float/**"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: true
+  
 jobs:
-  docker-ziskof-check:
-    name: Docker Risc Oficial Tests Check
+  riscof-elf-tests-rust:
+    name: Riscof ELF tests (rust emulator)
     runs-on: ubuntu-latest
-    container:
-      image: hermeznetwork/ziskof:latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
     env:
-      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-      C_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
-      CPLUS_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
       TERM: xterm
@@ -29,26 +33,58 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
+      - name: Checkout zisk-testvectors repo
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/zisk-testvectors
+          path: zisk-testvectors
+
       - name: Install dependencies
         run: |
-          # ZisK dependencies
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./install_deps.sh
-          # Riscof dependencies
-          apt-get install -y gcc-riscv64-unknown-elf libsodium23 libomp5
+          sudo ./install_deps.sh
 
-      - name: Build ZisK
+      - name: Emulate in rust Riscof ELF files
+        run: |
+          . "$HOME/.cargo/env"
+          cd "$GITHUB_WORKSPACE"
+          sudo ./tools/emulate_all.sh $GITHUB_WORKSPACE/zisk-testvectors/riscof/riscof_work
+
+  riscof-elf-tests-asm:
+    name: Riscof ELF tests (assembly emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    env:
+      ZISK_GHA: "1"
+      ZISK_REPO_DIR: ${{ github.workspace }}
+      TERM: xterm
+    steps:
+      - name: Increase shared memory (/dev/shm)
+        run: |
+          set -euxo pipefail
+          df -h /dev/shm || true
+          sudo mount -o remount,size=16G /dev/shm || sudo mount -o remount,size=16G /run/shm
+          df -h /dev/shm
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Checkout zisk-testvectors repo
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/zisk-testvectors
+          path: zisk-testvectors
+
+      - name: Install dependencies
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./build_zisk.sh
+          sudo ./install_deps.sh
 
-      - name: Run tests
+      - name: Emulate in assembly Riscof ELF files
         run: |
-          cp "$GITHUB_WORKSPACE/target/x86_64-unknown-linux-gnu/release/ziskemu" /program
-          export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib
-          ldconfig
-          cd /workspace
-          riscof run --config=config.ini \
-            --suite=riscv-arch-test/riscv-test-suite/ \
-            --env=riscv-arch-test/riscv-test-suite/env \
-            --work-dir=/workspace/output/riscof_work/
+          . "$HOME/.cargo/env"
+          cd "$GITHUB_WORKSPACE"
+          sudo ./tools/emulate_asm_all.sh $GITHUB_WORKSPACE/zisk-testvectors/riscof/riscof_work

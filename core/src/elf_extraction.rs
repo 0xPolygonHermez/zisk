@@ -35,10 +35,16 @@ pub struct ElfPayload {
 /// Extracts the relevant sections from the ELF file for `ZiskRom`
 pub fn collect_elf_payload(elf_path: &Path) -> Result<ElfPayload, Box<dyn Error>> {
     // Read the ELF file
-    let file_data = fs::read(elf_path)?;
+    let file_data =
+        fs::read(elf_path).map_err(|_| format!("Error reading ELF file={}", elf_path.display()))?;
 
+    collect_elf_payload_from_bytes(&file_data)
+}
+
+/// Extracts the relevant sections from ELF file bytes for `ZiskRom`
+pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Box<dyn Error>> {
     // Validate it's an ELF file
-    match is_elf_file(&file_data) {
+    match is_elf_file(file_data) {
         Ok(is_file) => {
             if !is_file {
                 return Err("ROM file is not a valid ELF file".into());
@@ -50,7 +56,7 @@ pub fn collect_elf_payload(elf_path: &Path) -> Result<ElfPayload, Box<dyn Error>
     }
 
     // Parse the ELF
-    let elf = ElfBytes::<AnyEndian>::minimal_parse(&file_data)?;
+    let elf = ElfBytes::<AnyEndian>::minimal_parse(file_data)?;
 
     let mut out = ElfPayload { entry_point: elf.ehdr.e_entry, ..Default::default() };
 

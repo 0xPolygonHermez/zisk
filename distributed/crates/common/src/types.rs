@@ -148,7 +148,7 @@ pub enum WorkerState {
     Disconnected,
     Connecting,
     Idle,
-    Computing(JobPhase),
+    Computing((JobId, JobPhase)),
     Error,
 }
 
@@ -158,7 +158,7 @@ impl Display for WorkerState {
             WorkerState::Disconnected => "Disconnected",
             WorkerState::Connecting => "Connecting",
             WorkerState::Idle => "Idle",
-            WorkerState::Computing(phase) => return write!(f, "Computing({})", phase),
+            WorkerState::Computing(phase) => return write!(f, "Computing({})", phase.1),
             WorkerState::Error => "Error",
         };
         write!(f, "{}", state_str)
@@ -237,6 +237,7 @@ pub struct Job {
     pub challenges: Option<Vec<ContributionsInfo>>,
     pub execution_mode: JobExecutionMode,
     pub final_proof: Option<Vec<u64>>,
+    pub executed_steps: Option<u64>,
 }
 
 impl Job {
@@ -263,6 +264,7 @@ impl Job {
             challenges: None,
             execution_mode,
             final_proof: None,
+            executed_steps: None,
         }
     }
 
@@ -321,7 +323,7 @@ impl Job {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobState {
     Created,
     Running(JobPhase),

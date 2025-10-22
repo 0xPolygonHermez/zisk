@@ -6,12 +6,9 @@ use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_AD
 ///
 /// Since RISC-V registers are mapped to memory, memory operations include register access
 /// operations.
-use crate::{
-    emu_costs::{
-        MEM_READ_BYTE_COST, MEM_READ_COST, MEM_READ_UNALIGNED_1_COST, MEM_READ_UNALIGNED_2_COST,
-        MEM_WRITE_BYTE_COST, MEM_WRITE_COST,
-    },
-    MEM_PRECOMPILE_READ_COST, MEM_PRECOMPILE_WRITE_COST,
+use crate::emu_costs::{
+    MEM_READ_BYTE_COST, MEM_READ_COST, MEM_READ_UNALIGNED_1_COST, MEM_READ_UNALIGNED_2_COST,
+    MEM_WRITE_BYTE_COST, MEM_WRITE_COST,
 };
 
 #[derive(Default, Debug, Clone)]

@@ -53,10 +53,10 @@ pub struct Stats {
     rois_by_address: BTreeMap<u32, u32>,
     rois: Vec<RegionsOfInterest>,
     current_roi: Option<usize>,
-    pub top_rois: usize,
-    pub roi_callers: usize,
-    pub by_step: bool,
-    pub top_rois_detail: bool,
+    top_rois: usize,
+    roi_callers: usize,
+    top_rois_detail: bool,
+    legacy_stats: bool,
 }
 
 impl Default for Stats {
@@ -75,12 +75,12 @@ impl Default for Stats {
             rois_by_address: BTreeMap::new(),
             current_roi: None,
             top_rois: 10,
-            by_step: false,
             roi_callers: 10,
             ops_cost: 0,
             precompiled_cost: 0,
             frops_cost: 0,
             top_rois_detail: false,
+            legacy_stats: false,
         }
     }
 }
@@ -243,12 +243,10 @@ impl Stats {
 
     pub fn update_costs(&mut self) {
         self.rois.iter_mut().for_each(|roi| roi.update_costs());
-        let (ops_cost, precompiled_cost, reads, writes) = get_ops_costs(&self.ops);
+        let (ops_cost, precompiled_cost) = get_ops_costs(&self.ops);
         self.frops_cost = get_ops_costs(&self.frops_ops).0;
         self.ops_cost = ops_cost;
         self.precompiled_cost = precompiled_cost;
-        println!("Memory precompile reads: {}, writes: {}", reads, writes);
-        // self.mops.memory_precompile(reads, writes);
     }
     pub fn report_opcodes(&self, report: &mut StatsReport, ops: &[u64], title: &str) {
         let ranks = get_ops_ranks(ops);
@@ -299,8 +297,33 @@ impl Stats {
         }
     }
 
-    /// Returns a string containing a human-readable text showing all caunters
+    fn legacy_report(&self) -> String {
+        let ops_cost = self.ops_cost;
+        let precompiled_cost = self.precompiled_cost;
+        let total_steps = self.steps;
+        let mem_cost = self.mops.get_cost();
+        let main_cost = total_steps * MAIN_COST;
+        let base_cost = BASE_COST as u64;
+        let total_cost = base_cost + mem_cost + main_cost + ops_cost + precompiled_cost;
+        format!(
+            "\nTOTAL COST: {total_cost}\n\
+             STEPS: {total_steps}\n\
+             BASE COST: {base_cost}\n\
+             MAIN COST: {main_cost}\n\
+             OPCODES COST: {ops_cost}\n\
+             PRECOMPILED COST: {precompiled_cost}\n\
+             MEMORY COST: {mem_cost}\n\n\
+             NOTE: New stats flags:\
+             \n  -X   Generate a detailed stats report.\
+             \n  -S   Load symbols from the ELF file to collect additional stats (requires -X).\
+             \n  -D   Show detailed caller statistics (requires -X and -S).\n",
+        )
+    }
+    /// Returns a string containing a human-readable text showing all counters
     pub fn report(&self) -> String {
+        if self.legacy_stats {
+            return self.legacy_report();
+        }
         let ops_cost = self.ops_cost;
         let precompiled_cost = self.precompiled_cost;
         let total_steps = self.steps;
@@ -329,50 +352,52 @@ impl Stats {
         report.title_count_perc_cost_perc("FROPS BY OPCODE", "COUNT", "HIT", "COST", " RANK");
         self.report_opcodes_hit(&mut report, &self.frops_ops, &self.ops, "FROP");
 
-        report.title_top_perc("TOP STEP FUNCTIONS");
+        if !self.rois.is_empty() {
+            report.title_top_perc("TOP STEP FUNCTIONS");
 
-        let top_step_rois = self.get_top_rois(true);
-        for (index, _) in top_step_rois.iter() {
-            let roi = &self.rois[*index];
-            report.add_top_step_perc(&roi.name, roi.get_steps());
-        }
+            let top_step_rois = self.get_top_rois(true);
+            for (index, _) in top_step_rois.iter() {
+                let roi = &self.rois[*index];
+                report.add_top_step_perc(&roi.name, roi.get_steps());
+            }
 
-        report.title_top_perc("TOP COST FUNCTIONS");
+            report.title_top_perc("TOP COST FUNCTIONS");
 
-        // Create a vector with ROI indices and their steps for sorting
-        let top_cost_rois = self.get_top_rois(false);
+            // Create a vector with ROI indices and their steps for sorting
+            let top_cost_rois = self.get_top_rois(false);
 
-        for (index, _) in top_cost_rois.iter() {
-            let roi = &self.rois[*index];
-            report.add_top_cost_perc(&roi.name, roi.get_cost());
-        }
-
-        if self.top_rois_detail {
             for (index, _) in top_cost_rois.iter() {
                 let roi = &self.rois[*index];
-                let mut roi_report = StatsReport::new();
-                roi_report.set_total_cost(roi.get_cost());
-                roi_report.set_steps(roi.steps);
-                roi_report.title(&format!("DETAIL FUNCTION {}", roi.name));
-                roi_report.add_perc("STEPS", roi.get_steps(), total_steps);
-                roi_report.add_perc("COST", roi.get_cost(), total_cost);
+                report.add_top_cost_perc(&roi.name, roi.get_cost());
+            }
 
-                roi_report.set_identation(1);
-                roi_report.title_count_cost_perc("COST BY OPCODE", "COUNT", "COST", " RANK");
-                self.report_opcodes(&mut roi_report, &roi.ops, "OP");
+            if self.top_rois_detail {
+                for (index, _) in top_cost_rois.iter() {
+                    let roi = &self.rois[*index];
+                    let mut roi_report = StatsReport::new();
+                    roi_report.set_total_cost(roi.get_cost());
+                    roi_report.set_steps(roi.steps);
+                    roi_report.title(&format!("DETAIL FUNCTION {}", roi.name));
+                    roi_report.add_perc("STEPS", roi.get_steps(), total_steps);
+                    roi_report.add_perc("COST", roi.get_cost(), total_cost);
 
-                roi_report.title_top_count_perc("TOP STEP CALLERS (calls, steps)");
-                let mut callers: Vec<_> = roi.get_callers().collect();
-                callers.sort_by(|a, b| b.1.calls.cmp(&a.1.calls));
+                    roi_report.set_identation(1);
+                    roi_report.title_count_cost_perc("COST BY OPCODE", "COUNT", "COST", " RANK");
+                    self.report_opcodes(&mut roi_report, &roi.ops, "OP");
 
-                for (index, caller_info) in callers.iter().take(self.roi_callers) {
-                    roi_report.add_top_count_step_perc(
-                        &self.rois[**index].name,
-                        caller_info.calls as u64,
-                        caller_info.steps as u64,
-                    );
+                    roi_report.title_top_count_perc("TOP STEP CALLERS (calls, steps)");
+                    let mut callers: Vec<_> = roi.get_callers().collect();
+                    callers.sort_by(|a, b| b.1.calls.cmp(&a.1.calls));
+
+                    for (index, caller_info) in callers.iter().take(self.roi_callers) {
+                        roi_report.add_top_count_step_perc(
+                            &self.rois[**index].name,
+                            caller_info.calls as u64,
+                            caller_info.steps as u64,
+                        );
+                    }
+                    report.add(&roi_report.output);
                 }
-                report.add(&roi_report.output);
             }
         }
         report.output
@@ -383,9 +408,11 @@ impl Stats {
         self.rois.push(roi);
         self.rois_by_address.insert(from_pc as u32, index);
     }
-
     pub fn set_top_rois(&mut self, value: usize) {
         self.top_rois = value;
+    }
+    pub fn set_legacy_stats(&mut self, value: bool) {
+        self.legacy_stats = value;
     }
     pub fn set_roi_callers(&mut self, value: usize) {
         self.roi_callers = value;

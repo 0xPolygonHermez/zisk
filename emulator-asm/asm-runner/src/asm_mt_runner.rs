@@ -1,11 +1,10 @@
 use named_sem::NamedSemaphore;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use zisk_common::ExecutorStats;
-use zisk_common::{ChunkId, EmuTrace};
+use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::atomic::{fence, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tracing::{error, info};
@@ -86,20 +85,14 @@ impl AsmRunnerMT {
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
-        _stats: Arc<Mutex<ExecutorStats>>,
+        _stats: ExecutorStatsHandle,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
-        let __stats = Arc::clone(&_stats);
+        let __stats = _stats.clone();
 
         #[cfg(feature = "stats")]
-        let parent_stats_id = __stats.lock().unwrap().get_id();
+        let parent_stats_id = __stats.next_id();
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(
-            0,
-            parent_stats_id,
-            "ASM_MT_RUNNER",
-            0,
-            ExecutorStatsEvent::Begin,
-        );
+        _stats.add_stat(0, parent_stats_id, "ASM_MT_RUNNER", 0, ExecutorStatsEvent::Begin);
 
         let port = if let Some(base_port) = base_port {
             AsmServices::port_for(&AsmService::MT, base_port, local_rank)
@@ -119,26 +112,14 @@ impl AsmRunnerMT {
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
 
             #[cfg(feature = "stats")]
-            let stats_id = __stats.lock().unwrap().get_id();
+            let stats_id = __stats.next_id();
             #[cfg(feature = "stats")]
-            __stats.lock().unwrap().add_stat(
-                parent_stats_id,
-                stats_id,
-                "ASM_MT",
-                0,
-                ExecutorStatsEvent::Begin,
-            );
+            __stats.add_stat(parent_stats_id, stats_id, "ASM_MT", 0, ExecutorStatsEvent::Begin);
 
             let result = asm_services.send_minimal_trace_request(max_steps, chunk_size);
 
             #[cfg(feature = "stats")]
-            __stats.lock().unwrap().add_stat(
-                parent_stats_id,
-                stats_id,
-                "ASM_MT",
-                0,
-                ExecutorStatsEvent::End,
-            );
+            __stats.add_stat(parent_stats_id, stats_id, "ASM_MT", 0, ExecutorStatsEvent::End);
 
             result
         });
@@ -151,16 +132,23 @@ impl AsmRunnerMT {
         let mut emu_traces = Vec::new();
         let mut handles = Vec::new();
 
-        let __stats = Arc::clone(&_stats);
+        let __stats = _stats.clone();
+
+        // Threshold (in bytes) used to detect when the shared memory region size has changed.
+        // Computed to optimize the common case where minor size fluctuations are ignored.
+        // It is based on the worst-case scenario of memory usage.
+        let threshold_bytes = (chunk_size as usize * 200) + (44 * 8) + 32;
+        let mut threshold = unsafe {
+            preloaded.output_shmem.mapped_ptr().add(threshold_bytes) as *const AsmMTChunk
+        };
 
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
                     #[cfg(feature = "stats")]
                     {
-                        let mut stats_guard = __stats.lock().unwrap();
-                        let stats_id = stats_guard.get_id();
-                        stats_guard.add_stat(
+                        let stats_id = __stats.next_id();
+                        __stats.add_stat(
                             parent_stats_id,
                             stats_id,
                             "MT_CHUNK_DONE",
@@ -171,6 +159,19 @@ impl AsmRunnerMT {
 
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
+
+                    // Check if we need to remap the shared memory
+                    if data_ptr >= threshold
+                        && preloaded
+                            .output_shmem
+                            .check_size_changed(&mut data_ptr)
+                            .context("Failed to check and remap shared memory for MO trace")?
+                    {
+                        threshold = unsafe {
+                            preloaded.output_shmem.mapped_ptr().add(threshold_bytes)
+                                as *const AsmMTChunk
+                        };
+                    }
 
                     let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
                     let should_exit = emu_trace.end;
@@ -229,13 +230,7 @@ impl AsmRunnerMT {
             .collect::<std::result::Result<_, _>>()?;
 
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(
-            0,
-            parent_stats_id,
-            "ASM_MT_RUNNER",
-            0,
-            ExecutorStatsEvent::End,
-        );
+        _stats.add_stat(0, parent_stats_id, "ASM_MT_RUNNER", 0, ExecutorStatsEvent::End);
 
         Ok((AsmRunnerMT::new(emu_traces), tasks))
     }

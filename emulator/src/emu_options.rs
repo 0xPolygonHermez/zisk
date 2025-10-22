@@ -59,7 +59,9 @@ pub struct EmuOptions {
     #[clap(short = 'a', long, value_name = "TRACERV", default_value = "false")]
     pub tracerv: bool,
     /// Generates statistics about opcodes and memory usage.  Enabled with `-x`.
-    #[clap(short = 'x', long, value_name = "STATS", default_value = "false")]
+    #[clap(short = 'x', long, value_name = "LEGACY_STATS", default_value = "false")]
+    pub legacy_stats: bool,
+    #[clap(short = 'X', long, value_name = "STATS", default_value = "false")]
     pub stats: bool,
     /// Generates minimal traces.  Enabled with `-g`.
     #[clap(short = 'g', long, value_name = "MINIMAL_TRACES", default_value = "false")]
@@ -102,6 +104,7 @@ impl Default for EmuOptions {
             roi_callers: 10,
             top_roi: 10,
             top_roi_detail: false,
+            legacy_stats: false,
         }
     }
 }

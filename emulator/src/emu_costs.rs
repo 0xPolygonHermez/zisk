@@ -17,11 +17,9 @@ pub const BASE_COST: usize = ROM_COST + TABLES_COST;
 
 pub const MAIN_COST: u64 = 68;
 
-pub fn get_ops_costs(ops: &[u64]) -> (u64, u64, u64, u64) {
+pub fn get_ops_costs(ops: &[u64]) -> (u64, u64) {
     let mut ops_cost = 0;
     let mut precompiled_cost = 0;
-    let mut reads = 0;
-    let mut writes = 0;
     for (op, count) in ops.iter().enumerate() {
         if let Ok(inst) = ZiskOp::try_from_code(op as u8) {
             if inst.input_size() > 0 {
@@ -29,11 +27,9 @@ pub fn get_ops_costs(ops: &[u64]) -> (u64, u64, u64, u64) {
             } else {
                 ops_cost += inst.steps() * (*count);
             }
-            reads += (inst.input_size() >> 3) * (*count);
-            writes += (inst.output_size() >> 3) * (*count);
         }
     }
-    (ops_cost, precompiled_cost, reads, writes)
+    (ops_cost, precompiled_cost)
 }
 
 pub fn get_ops_ranking(ops: &[u64]) -> Vec<(u8, u64, u64)> {

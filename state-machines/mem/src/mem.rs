@@ -55,8 +55,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
     }
 
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {
-        let enable_input_data =
-            plannings.iter().any(|p| p.air_id == InputDataTrace::<usize>::AIR_ID);
+        let enable_input_data = plannings.iter().any(|p| p.air_id == InputDataTrace::<F>::AIR_ID);
         let mut proof_values = ZiskProofValues::from_vec_guard(pctx.get_proof_values());
         proof_values.enable_input_data = F::from_bool(enable_input_data);
     }
@@ -70,25 +69,23 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
     /// A boxed implementation of a Memory Instance.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            MemTrace::<usize>::AIR_ID => {
-                Box::new(MemModuleInstance::new(self.mem_sm.clone(), ictx))
-            }
-            RomDataTrace::<usize>::AIR_ID => {
+            MemTrace::<F>::AIR_ID => Box::new(MemModuleInstance::new(self.mem_sm.clone(), ictx)),
+            RomDataTrace::<F>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.rom_data_sm.clone(), ictx))
             }
-            InputDataTrace::<usize>::AIR_ID => {
+            InputDataTrace::<F>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.input_data_sm.clone(), ictx))
             }
-            MemAlignTrace::<usize>::AIR_ID => {
+            MemAlignTrace::<F>::AIR_ID => {
                 Box::new(MemAlignInstance::new(self.mem_align_sm.clone(), ictx))
             }
-            MemAlignByteTrace::<usize>::AIR_ID => {
+            MemAlignByteTrace::<F>::AIR_ID => {
                 Box::new(MemAlignByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
             }
-            MemAlignReadByteTrace::<usize>::AIR_ID => {
+            MemAlignReadByteTrace::<F>::AIR_ID => {
                 Box::new(MemAlignReadByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
             }
-            MemAlignWriteByteTrace::<usize>::AIR_ID => {
+            MemAlignWriteByteTrace::<F>::AIR_ID => {
                 Box::new(MemAlignWriteByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
             }
             _ => panic!("Memory::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),

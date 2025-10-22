@@ -7,6 +7,14 @@
 extern bool emu_verbose;
 #endif
 
+//#define ASM_PRECOMPILE_CACHE
+
+#ifdef ASM_PRECOMPILE_CACHE
+void precompile_cache_store_init(void);
+void precompile_cache_load_init(void);
+void precompile_cache_cleanup(void);
+#endif
+
 //#define ASM_CALL_METRICS
 
 #ifdef ASM_CALL_METRICS
@@ -75,6 +83,9 @@ typedef struct {
 
     uint64_t bls12_381_complex_mul_counter;
     uint64_t bls12_381_complex_mul_duration;
+
+    uint64_t add256_counter;    
+    uint64_t add256_duration;
 
 } AsmCallMetrics;
 

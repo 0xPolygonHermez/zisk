@@ -68,8 +68,7 @@ impl RegionsOfInterest {
         self.ops[op as usize] += 1;
     }
     pub fn update_costs(&mut self) {
-        let (cost, precompiles_cost, reads, writes) = get_ops_costs(&self.ops);
-        // self.mops.memory_precompile(reads, writes);
+        let (cost, precompiles_cost) = get_ops_costs(&self.ops);
         self.cost = cost + precompiles_cost + self.mops.get_cost() + self.steps * MAIN_COST;
     }
     pub fn get_cost(&self) -> u64 {

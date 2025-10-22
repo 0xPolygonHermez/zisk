@@ -63,9 +63,33 @@ pub fn bigint_to_u64_limbs<const N: usize>(value: &BigInt, result: &mut [u64; N]
     }
 }
 
+pub fn bigint_to_u64_limbs_with_cout<const N: usize>(value: &BigInt, result: &mut [u64; N]) -> u64 {
+    let (sign, chunks) = value.to_u64_digits();
+    assert!(
+        sign == Sign::Plus || sign == Sign::NoSign,
+        "bigint_to_u64_limbs: with negative value {value}"
+    );
+    println!("chunks: {chunks:?}");
+    let len = chunks.len();
+    assert!(len <= (N + 1), "bigint_to_u64_limbs: value 0x{value:X} needs {len} limbs > {N}");
+    for i in 0..N {
+        result[i] = if i < len { chunks[i] } else { 0 };
+    }
+    if len == N + 1 {
+        chunks[len - 1]
+    } else {
+        0
+    }
+}
+
 #[inline]
 pub fn bigint_to_4_u64(value: &BigInt, result: &mut [u64; 4]) {
     bigint_to_u64_limbs::<4>(value, result);
+}
+
+#[inline]
+pub fn bigint_to_4_u64_with_cout(value: &BigInt, result: &mut [u64; 4]) -> u64 {
+    bigint_to_u64_limbs_with_cout::<4>(value, result)
 }
 
 #[inline]
