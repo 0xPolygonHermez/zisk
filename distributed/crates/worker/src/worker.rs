@@ -640,7 +640,7 @@ impl Worker {
 
             let options = Self::get_proof_options_aggregation(&agg_params);
 
-            let result: Vec<Vec<u64>> = proofman
+            let result = proofman
                 .receive_aggregated_proofs(
                     agg_proofs,
                     agg_params.last_proof,
