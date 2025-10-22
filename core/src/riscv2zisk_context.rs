@@ -14,7 +14,7 @@ use std::collections::HashMap;
 // The CSR precompiled addresses are defined in the `ZiskOS` `ziskos/entrypoint/src` files
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 
-const CSR_PRECOMPILED: [&str; 17] = [
+const CSR_PRECOMPILED: [&str; 18] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -32,9 +32,11 @@ const CSR_PRECOMPILED: [&str; 17] = [
     "bls12_381_complex_add",
     "bls12_381_complex_sub",
     "bls12_381_complex_mul",
+    "add256",
 ];
 const CSR_PRECOMPILED_ADDR_START: u32 = 0x800;
 const CSR_PRECOMPILED_ADDR_END: u32 = CSR_PRECOMPILED_ADDR_START + CSR_PRECOMPILED.len() as u32;
+const CSR_PRECOMPILED_ADD256: u32 = CSR_PRECOMPILED_ADDR_START + 17;
 const CSR_FCALL_ADDR_START: u32 = 0x8C0;
 const CSR_FCALL_ADDR_END: u32 = 0x8DF;
 const CSR_FCALL_GET_ADDR: u32 = 0xFFE;
@@ -1171,6 +1173,16 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("copyb").unwrap();
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs=0", i.inst, i.rd, i.csr, i.rs1));
             }
+            zib.store("reg", i.rd as i64, false, false);
+            zib.j(4, 4);
+            zib.build();
+            self.insts.insert(rom_address, zib);
+        } else if i.csr == CSR_PRECOMPILED_ADD256 {
+            let mut zib = ZiskInstBuilder::new(rom_address);
+            zib.src_a("step", 0, false);
+            zib.src_b("reg", i.rs1 as u64, false);
+            zib.op("add256").unwrap();
+            zib.verbose("add256");
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
             zib.build();

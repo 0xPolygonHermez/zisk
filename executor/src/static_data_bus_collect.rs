@@ -9,6 +9,8 @@ use precomp_arith_eq::ArithEqCollector;
 use precomp_arith_eq::ArithEqCounterInputGen;
 use precomp_arith_eq_384::ArithEq384Collector;
 use precomp_arith_eq_384::ArithEq384CounterInputGen;
+use precomp_big_int::Add256Collector;
+use precomp_big_int::Add256CounterInputGen;
 use precomp_keccakf::KeccakfCollector;
 use precomp_keccakf::KeccakfCounterInputGen;
 use precomp_sha256f::Sha256fCollector;
@@ -61,6 +63,10 @@ pub struct StaticDataBusCollect<D> {
     pub arith_eq_384_collector: Vec<(usize, ArithEq384Collector)>,
     pub arith_eq_384_inputs_generator: ArithEq384CounterInputGen,
 
+    /// Add256 collectors
+    pub add256_collector: Vec<(usize, Add256Collector)>,
+    pub add256_inputs_generator: Add256CounterInputGen,
+
     /// ROM collector
     pub rom_collector: Vec<(usize, RomCollector)>,
 
@@ -77,6 +83,7 @@ const KECCAK_TYPE: u64 = ZiskOperationType::Keccak as u64;
 const SHA256_TYPE: u64 = ZiskOperationType::Sha256 as u64;
 const ARITH_EQ_TYPE: u64 = ZiskOperationType::ArithEq as u64;
 const ARITH_EQ_384_TYPE: u64 = ZiskOperationType::ArithEq384 as u64;
+const BIG_INT_OP_TYPE_ID: u64 = ZiskOperationType::BigInt as u64;
 
 impl StaticDataBusCollect<PayloadType> {
     /// Creates a new `DataBus` instance.
@@ -92,12 +99,14 @@ impl StaticDataBusCollect<PayloadType> {
         sha256f_collector: Vec<(usize, Sha256fCollector)>,
         arith_eq_collector: Vec<(usize, ArithEqCollector)>,
         arith_eq_384_collector: Vec<(usize, ArithEq384Collector)>,
+        add256_collector: Vec<(usize, Add256Collector)>,
         rom_collector: Vec<(usize, RomCollector)>,
         arith_eq_inputs_generator: ArithEqCounterInputGen,
         arith_eq_384_inputs_generator: ArithEq384CounterInputGen,
         keccakf_inputs_generator: KeccakfCounterInputGen,
         sha256f_inputs_generator: Sha256fCounterInputGen,
         arith_inputs_generator: ArithCounterInputGen,
+        add256_inputs_generator: Add256CounterInputGen,
     ) -> Self {
         let mem_collectors_info: Vec<MemCollectorInfo> =
             mem_collector.iter().map(|(_, collector)| collector.get_mem_collector_info()).collect();
@@ -113,12 +122,14 @@ impl StaticDataBusCollect<PayloadType> {
             sha256f_collector,
             arith_eq_collector,
             arith_eq_384_collector,
+            add256_collector,
             rom_collector,
             arith_eq_inputs_generator,
             arith_eq_384_inputs_generator,
             keccakf_inputs_generator,
             sha256f_inputs_generator,
             arith_inputs_generator,
+            add256_inputs_generator,
             pending_transfers: VecDeque::with_capacity(64),
             mem_collectors_info,
         }
@@ -268,6 +279,23 @@ impl StaticDataBusCollect<PayloadType> {
                         Some(&self.mem_collectors_info),
                     );
                 }
+                BIG_INT_OP_TYPE_ID => {
+                    for (_, add256_collector) in &mut self.add256_collector {
+                        add256_collector.process_data(
+                            &bus_id,
+                            payload,
+                            &mut self.pending_transfers,
+                            None,
+                        );
+                    }
+
+                    self.add256_inputs_generator.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                        Some(&self.mem_collectors_info),
+                    );
+                }
                 _ => {}
             },
             ROM_BUS_ID => {
@@ -345,6 +373,10 @@ impl DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
         }
 
         for (id, collector) in self.arith_eq_384_collector {
+            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+        }
+
+        for (id, collector) in self.add256_collector {
             result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
         }
 

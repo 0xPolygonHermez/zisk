@@ -365,11 +365,11 @@ impl WorkersPool {
         let mut total_capacity = 0;
 
         // Step 1: Select workers that can cover the required compute capacity
-        for (worker_id, worker_connection) in available_workers {
-            if matches!(worker_connection.state, WorkerState::Idle) {
+        for (worker_id, worker_info) in available_workers {
+            if matches!(worker_info.state, WorkerState::Idle) {
                 selected_workers.push(worker_id.clone());
-                worker_capacities.push(worker_connection.compute_capacity.compute_units);
-                total_capacity += worker_connection.compute_capacity.compute_units;
+                worker_capacities.push(worker_info.compute_capacity.compute_units);
+                total_capacity += worker_info.compute_capacity.compute_units;
 
                 // Stop when we have enough capacity
                 if total_capacity >= required_compute_capacity.compute_units {

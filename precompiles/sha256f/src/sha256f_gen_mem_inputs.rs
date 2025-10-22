@@ -1,6 +1,5 @@
 use sha2::compress256;
 
-use mem_common::MemHelpers;
 use precompiles_common::MemBusHelpers;
 use std::collections::VecDeque;
 use zisk_common::MemCollectorInfo;
@@ -101,8 +100,7 @@ pub fn skip_sha256f_mem_inputs(
     for iparam in 0..indirect_params {
         let addr = addr_main + iparam as u32 * 8;
         for mem_collector in mem_collectors_info {
-            let addr_w = MemHelpers::get_addr_w(addr);
-            if !mem_collector.skip(addr_w) {
+            if !mem_collector.skip_addr(addr) {
                 return false;
             }
         }
@@ -116,8 +114,7 @@ pub fn skip_sha256f_mem_inputs(
         for ichunk in 0..chunks {
             let addr = param_addr + ichunk as u32 * 8;
             for mem_collector in mem_collectors_info {
-                let addr_w = MemHelpers::get_addr_w(addr);
-                if !mem_collector.skip(addr_w) {
+                if !mem_collector.skip_addr(addr) {
                     return false;
                 }
             }

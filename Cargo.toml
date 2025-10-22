@@ -8,7 +8,7 @@ categories = ["cryptography"]
 
 [workspace.metadata]
 gha_pil2_proofman_js_branch = "pre-develop-0.13.0"
-gha_pil2_compiler_branch = "develop"
+gha_pil2_compiler_branch = "develop-0.8.0"
 
 [workspace]
 members = [
@@ -33,6 +33,7 @@ members = [
     "precompiles/common",
     "precompiles/keccakf",
     "precompiles/sha256f",
+    "precompiles/big_int",
     "lib-c",
     "lib-float",
     "emulator-asm/asm-runner",
@@ -74,6 +75,7 @@ precompiles-common = { path = "precompiles/common" }
 precompiles-helpers = { path = "precompiles/helpers" }
 precomp-keccakf = { path = "precompiles/keccakf" }
 precomp-sha256f = { path = "precompiles/sha256f" }
+precomp-big-int = { path = "precompiles/big_int" }
 riscv = { path = "riscv" }
 rom-setup = { path = "rom-setup" }
 server = { path = "server" }

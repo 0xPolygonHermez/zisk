@@ -387,7 +387,7 @@ impl Worker {
         total_compute_units: u32,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
-            job_id,
+            job_id: job_id.clone(),
             block,
             rank_id,
             total_workers,
@@ -397,7 +397,7 @@ impl Worker {
         }));
         self.current_job = Some(current_job.clone());
 
-        self.state = WorkerState::Computing(JobPhase::Contributions);
+        self.state = WorkerState::Computing((job_id, JobPhase::Contributions));
 
         current_job
     }
@@ -654,7 +654,7 @@ impl Worker {
                 .unwrap_or_default();
 
             let executed_steps = match witness_lib.get_execution_result() {
-                Some((exec_result, _exec_stats, _witness_stats)) => exec_result.executed_steps,
+                Some((exec_result, _)) => exec_result.executed_steps,
                 None => {
                     error!("Failed to get execution result from witness library for {job_id}");
                     0
