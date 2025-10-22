@@ -12,25 +12,37 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
     const int p2_24 = 2**24;
 
     col witness sel_high_4b; // offsets: 7,6,5,4
+    @witness_bits{ name: "sel_high_4b", bits: 1 }
     col witness sel_high_2b; // offsets: 7,6 3,2
+    @witness_bits{ name: "sel_high_2b", bits: 1 }
     col witness sel_high_b;  // offsets: 7 5 3 1
+    @witness_bits{ name: "sel_high_b", bits: 1 }
 
     col witness direct_value; // no range check, match exactly with value send in bus
+    @witness_bits{ name: "direct_value", bits: 32 }
     col witness composed_value;
+    @witness_bits{ name: "composed_value", bits: 32 }
 
     if (write == 1) {
         col witness air.written_composed_value;
+        @witness_bits{ name: "written_composed_value", bits: 32 }
         col witness air.written_byte_value;
+        @witness_bits{ name: "written_byte_value", bits: 8 }
 
         range_check(min: 0, max: 0xFF, expression: air.written_byte_value);
     }
 
     col witness value_16b;   // range check 16 bits
+    @witness_bits{ name: "value_16b", bits: 16 }
     col witness value_8b;    // range check 8 bits
+    @witness_bits{ name: "value_8b", bits: 8 }
     col witness byte_value;  // range check 8 bits
+    @witness_bits{ name: "byte_value", bits: 8 }
 
     col witness addr_w;
+    @witness_bits{ name: "addr_w", bits: 29 }
     col witness step;
+    @witness_bits{ name: "step", bits: 40 }
 
     sel_high_4b * (1 - sel_high_4b) === 0;
     sel_high_2b * (1 - sel_high_2b) === 0;
@@ -68,6 +80,7 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
 
     if (read == 1 && write == 1) {
         col witness air.is_write;
+        @witness_bits{ name: "is_write", bits: 1 }
         is_write * (1 - is_write) === 0;
     } else if (read == 1) {
         const int air.is_write = 0;
@@ -83,6 +96,7 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
                        value_16b * value_16b_factor;
 
         col witness mem_write_values[2];
+        @witness_bits{ name: "mem_write_values", bits: 32 }
 
         mem_write_values[0] === sel_high_4b * (direct_value - written_composed_value) + written_composed_value;
         mem_write_values[1] === sel_high_4b * (written_composed_value - direct_value) + direct_value;  
@@ -92,6 +106,7 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
 
     if (read == 1 && write == 1) {
         col witness air.bus_byte;
+        @witness_bits{ name: "bus_byte", bits: 8 }
         bus_byte === is_write * (written_byte_value - byte_value) + byte_value;
         permutation_proves(MEMORY_ID, [mem_op, main_addr, step, 1, bus_byte, 0]);
     } else if (read == 1) {

@@ -26,6 +26,7 @@ sm-mem = { workspace = true }
 mem-common = { workspace = true }
 sm-arith = { workspace = true }
 sm-binary = { workspace = true }
+proofman-common = { workspace = true }
 
 fields = { workspace=true }
 clap = { workspace = true }
@@ -48,5 +49,7 @@ harness = false
 
 [features]
 default = []
+gpu = ["proofman-common/gpu", "packed"]
+packed = ["proofman-common/packed"]
 # sp = []
 no_lib_link = ["zisk-pil/no_lib_link"]
