@@ -176,15 +176,23 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         col witness bits(32) air.addr2;
 
         addr0 === a_offset_imm0 + a_use_sp_imm1 * sp;
-        addr1 === b_offset_imm0 + b_src_ind * (a[0] + 2**32 * a[1]) +  b_use_sp_imm1 * sp;
+        addr1 === b_offset_imm0 + b_src_ind * a[0] +  b_use_sp_imm1 * sp;
         addr2 === store_offset + store_ind * a[0] + store_use_sp * sp;
+
+        // to avoid the addr1 overflow when a[0] has high value, this is not problem
+        // because use address of 32-bits
+        (store_ind + b_src_ind) * a[1] === 0;
     } else {
         const expr air.addr0;
         col witness bits(32) air.addr1;
         const expr air.addr2;
         addr0 = a_offset_imm0;
-        addr1 === b_offset_imm0 + b_src_ind * (a[0] + 2**32 * a[1]);
+        addr1 === b_offset_imm0 + b_src_ind * a[0];
         addr2 = store_offset + store_ind * a[0];
+
+        // to avoid the addr1 overflow when a[0] has high value, this is not problem
+        // because use address of 32-bits
+        (store_ind + b_src_ind) * a[1] === 0;
     }
 
     //
@@ -486,6 +494,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c]);
         direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c]);
     }
+
+    SEGMENT_L1 * (segment_initial_pc - pc) === 0;
 
     // This global constraint is sent to the bus to define the initial and final values of
     // continuations. A global constraint is used to ensure there is only one initial and one final
