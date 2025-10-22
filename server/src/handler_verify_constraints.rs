@@ -58,7 +58,7 @@ impl ZiskServiceVerifyConstraintsHandler {
 
                 #[allow(clippy::type_complexity)]
                 let (result, mut _stats): (ZiskExecutionResult, ExecutorStats) =
-                    witness_lib.get_execution_result().expect("Failed to get execution result");
+                    witness_lib.execution_result().expect("Failed to get execution result");
 
                 println!();
                 tracing::info!(
