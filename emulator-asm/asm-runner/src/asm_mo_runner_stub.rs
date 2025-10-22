@@ -24,7 +24,7 @@ impl AsmRunnerMO {
         _: i32,
         _: i32,
         _: Option<u16>,
-        _: Arc<Mutex<ExecutorStats>>,
+        _: ExecutorStatsHandle,
     ) -> Result<Self> {
         Err(anyhow::anyhow!(
             "AsmRunnerMO::run() is not supported on this platform. Only Linux x86_64 is supported."
