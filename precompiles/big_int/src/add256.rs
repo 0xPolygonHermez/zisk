@@ -45,7 +45,7 @@ impl<F: PrimeField64> Add256SM<F> {
         // Compute some useful values
         let num_availables = Add256TraceType::<F>::NUM_ROWS;
 
-        let range_id = std.get_range_id(0, (1 << 16) - 1, None);
+        let range_id = std.get_range_id(0, (1 << 16) - 1, None).unwrap();
 
         Arc::new(Self { std, num_availables, range_id })
     }
