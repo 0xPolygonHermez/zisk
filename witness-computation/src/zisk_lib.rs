@@ -213,9 +213,7 @@ impl ZiskWitnessLibrary<Goldilocks> for WitnessLib<Goldilocks> {
     ///
     /// # Returns
     /// * `u16` - The execution result code.
-    fn get_execution_result(
-        &self,
-    ) -> Option<(ZiskExecutionResult, ExecutorStats, HashMap<usize, Stats>)> {
+    fn get_execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
         self.executor.as_ref().map(|executor| executor.get_execution_result())
     }
 }
