@@ -1531,7 +1531,7 @@ impl<'a> Emu<'a> {
         if options.read_symbols {
             if let Some(elf_file) = &options.elf {
                 println!("Loading symbols from ELF file: {elf_file}");
-                elf.load_from_file(&elf_file).unwrap();
+                elf.load_from_file(elf_file).unwrap();
                 let mut count = 0;
                 for symbol in elf.functions() {
                     count += 1;

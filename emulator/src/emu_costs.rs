@@ -11,8 +11,8 @@ pub const MEM_WRITE_UNALIGNED_2_COST: u64 = 53 * 5;
 pub const MEM_PRECOMPILE_READ_COST: u64 = MEM_READ_COST;
 pub const MEM_PRECOMPILE_WRITE_COST: u64 = MEM_WRITE_COST;
 
-pub const ROM_COST: usize = 21 * 1 << 21;
-pub const TABLES_COST: usize = (55 + 35 + 29) * 1 << 21;
+pub const ROM_COST: usize = 21 << 21;
+pub const TABLES_COST: usize = (55 + 35 + 29) << 21;
 pub const BASE_COST: usize = ROM_COST + TABLES_COST;
 
 pub const MAIN_COST: u64 = 68;

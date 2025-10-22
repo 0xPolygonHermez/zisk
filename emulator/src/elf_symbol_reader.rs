@@ -14,6 +14,11 @@ pub struct ElfSymbolReader {
     functions: Vec<SymbolInfo>,
 }
 
+impl Default for ElfSymbolReader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl ElfSymbolReader {
     pub fn new() -> Self {
         Self { functions: Vec::new() }
@@ -41,8 +46,8 @@ impl ElfSymbolReader {
             if let Ok(name) = symbol.name() {
                 if !name.is_empty() {
                     if let SymbolFlags::Elf { st_info, .. } = symbol.flags() {
-                        if st_info & (STT_FUNC as u8) != 0 {
-                            let name = self.demangle_name(&name);
+                        if (st_info & STT_FUNC) != 0 {
+                            let name = self.demangle_name(name);
                             let address = symbol.address();
                             let size = symbol.size();
                             let symbol_info = SymbolInfo { name, address, size };

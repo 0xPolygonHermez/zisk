@@ -8,6 +8,11 @@ pub struct StatsReport {
     pub label_width: usize,
     pub label_width_stack: Vec<usize>,
 }
+impl Default for StatsReport {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl StatsReport {
     pub fn new() -> Self {

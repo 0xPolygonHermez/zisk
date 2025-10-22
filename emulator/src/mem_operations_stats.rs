@@ -57,34 +57,32 @@ impl MemoryOperationsStats {
         self.full = true;
     }
     pub fn memory_write(&mut self, address: u64, width: u64, value: u64) {
-        if address >= RAM_ADDR && address < (RAM_ADDR + RAM_SIZE) {
+        if (RAM_ADDR..(RAM_ADDR + RAM_SIZE)).contains(&address) {
             self.ram.memory_write(address, width, value);
             self.pages.entry(address >> 24).or_default().memory_write(address, width, value);
-        } else if address >= ROM_ADDR && address <= ROM_ADDR_MAX {
+        } else if (ROM_ADDR..=ROM_ADDR_MAX).contains(&address) {
             self.rom.memory_write(address, width, value);
-        } else if address >= INPUT_ADDR && address < (INPUT_ADDR + MAX_INPUT_SIZE) {
+        } else if (INPUT_ADDR..(INPUT_ADDR + MAX_INPUT_SIZE)).contains(&address) {
             self.input.memory_write(address, width, value);
         }
-        if width == 1 {
-            if (value & 0xFFFF_FFFF_FFFF_FF00) != 0 {
-                self.mwrite_dirty_byte += 1;
-                if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFFFF_FFFF_FFFF_FF00 {
-                    self.mwrite_dirty_s64_byte += 1;
-                } else if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFFFF_FF00 {
-                    self.mwrite_dirty_s32_byte += 1;
-                } else if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFF00 {
-                    self.mwrite_dirty_s16_byte += 1;
-                }
+        if width == 1 && (value & 0xFFFF_FFFF_FFFF_FF00) != 0 {
+            self.mwrite_dirty_byte += 1;
+            if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFFFF_FFFF_FFFF_FF00 {
+                self.mwrite_dirty_s64_byte += 1;
+            } else if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFFFF_FF00 {
+                self.mwrite_dirty_s32_byte += 1;
+            } else if (value & 0xFFFF_FFFF_FFFF_FF00) != 0xFF00 {
+                self.mwrite_dirty_s16_byte += 1;
             }
         }
     }
     pub fn memory_read(&mut self, address: u64, width: u64) {
-        if address >= RAM_ADDR && address < (RAM_ADDR + RAM_SIZE) {
+        if (RAM_ADDR..(RAM_ADDR + RAM_SIZE)).contains(&address) {
             self.ram.memory_read(address, width);
             self.pages.entry(address >> 24).or_default().memory_read(address, width);
-        } else if address >= ROM_ADDR && address <= ROM_ADDR_MAX {
+        } else if (ROM_ADDR..=ROM_ADDR_MAX).contains(&address) {
             self.rom.memory_read(address, width);
-        } else if address >= INPUT_ADDR && address < (INPUT_ADDR + MAX_INPUT_SIZE) {
+        } else if (INPUT_ADDR..=(INPUT_ADDR + MAX_INPUT_SIZE)).contains(&address) {
             self.input.memory_read(address, width);
         }
     }

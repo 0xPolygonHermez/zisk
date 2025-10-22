@@ -406,7 +406,7 @@ impl Stats {
         let roi = RegionsOfInterest::new(from_pc, to_pc, name);
         let index = self.rois.len() as u32;
         self.rois.push(roi);
-        self.rois_by_address.insert(from_pc as u32, index);
+        self.rois_by_address.insert(from_pc, index);
     }
     pub fn set_top_rois(&mut self, value: usize) {
         self.top_rois = value;
