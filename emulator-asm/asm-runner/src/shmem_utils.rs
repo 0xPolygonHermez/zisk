@@ -208,22 +208,24 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         }
     }
 
-    pub fn check_size_changed<T>(&mut self, current_read_ptr: &mut *const T) -> Result<()> {
-        let new_mapped_size = self.map_header().allocated_size();
+    pub fn check_size_changed<T>(&mut self, current_read_ptr: &mut *const T) -> Result<bool> {
+        let read_mapped_size = self.map_header().allocated_size();
 
-        if new_mapped_size != self.mapped_size as u64 {
-            debug!("Remapping shared memory {} to new size: {}", self.shmem_name, new_mapped_size);
-
-            let offset = (*current_read_ptr as usize).wrapping_sub(self.mapped_ptr as usize);
-
-            self.remap(new_mapped_size as usize)?;
-
-            *current_read_ptr = unsafe { self.mapped_ptr.add(offset) as *const T };
-
-            fence(Ordering::Acquire);
+        if read_mapped_size == self.mapped_size as u64 {
+            return Ok(false);
         }
 
-        Ok(())
+        debug!("Remapping shared memory {} to new size: {}", self.shmem_name, read_mapped_size);
+
+        let offset = (*current_read_ptr as usize).wrapping_sub(self.mapped_ptr as usize);
+
+        self.remap(read_mapped_size as usize)?;
+
+        *current_read_ptr = unsafe { self.mapped_ptr.add(offset) as *const T };
+
+        fence(Ordering::Acquire);
+
+        Ok(true)
     }
 
     pub fn unmap(&mut self) -> Result<()> {

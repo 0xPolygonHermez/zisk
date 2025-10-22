@@ -148,6 +148,9 @@ impl AsmRunnerMO {
         // Computed to optimize the common case where minor size fluctuations are ignored.
         // It is based on the worst-case scenario of memory usage.
         let threshold_bytes = (chunk_size as usize * 200) + (44 * 8) + 32;
+        let mut threshold = unsafe {
+            preloaded.output_shmem.mapped_ptr().add(threshold_bytes) as *const AsmMOChunk
+        };
 
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
@@ -156,16 +159,16 @@ impl AsmRunnerMO {
                     fence(Ordering::Acquire);
 
                     // Check if we need to remap the shared memory
-                    if data_ptr
-                        >= unsafe {
-                            preloaded.output_shmem.mapped_ptr().add(threshold_bytes)
-                                as *const AsmMOChunk
-                        }
-                    {
-                        preloaded
+                    if data_ptr >= threshold
+                        && preloaded
                             .output_shmem
                             .check_size_changed(&mut data_ptr)
-                            .context("Failed to check and remap shared memory for MO trace")?;
+                            .context("Failed to check and remap shared memory for MO trace")?
+                    {
+                        threshold = unsafe {
+                            preloaded.output_shmem.mapped_ptr().add(threshold_bytes)
+                                as *const AsmMOChunk
+                        };
                     }
 
                     let chunk = unsafe { std::ptr::read(data_ptr) };
