@@ -28,6 +28,7 @@ void write_ro_data(void);
 uint64_t get_max_bios_pc(void);
 uint64_t get_max_program_pc(void);
 uint64_t get_gen_method(void);
+uint64_t get_precompile_results(void);
 
 // Address map
 #define ROM_ADDR (uint64_t)0x80000000
@@ -208,11 +209,8 @@ int map_locked_flag = MAP_LOCKED;
 bool precompile_cache_enabled = false;
 #endif
 
-#define PRECOMPILE_RESULTS
-
-#ifdef PRECOMPILE_RESULTS
+bool precompile_results_enabled = false;
 uint64_t * precompile_results_address = NULL;
-#endif
 
 void set_chunk_size (uint64_t new_chunk_size)
 {
@@ -309,8 +307,6 @@ int process_id = 0;
 
 uint64_t input_size = 0;
 
-#ifdef PRECOMPILE_RESULTS
-
 #define MAX_PRECOMPILE_SIZE (uint64_t)0x10000000 // 256MB
 
 // Precompile results memory
@@ -320,8 +316,6 @@ uint64_t shmem_precompile_size = 0;
 void * shmem_precompile_address = NULL;
 
 char precompile_file[4096] = {0};
-
-#endif
 
 int main(int argc, char *argv[])
 {
@@ -335,6 +329,14 @@ int main(int argc, char *argv[])
 
     // Get current process id
     process_id = getpid();
+
+    // Get precompiled results configuration
+    uint64_t precompile_results = get_precompile_results();
+    if (precompile_results == 1) {
+        precompile_results_enabled = true;
+    } else {
+        precompile_results_enabled = false;
+    }
 
     // Parse arguments
     parse_arguments(argc, argv);
@@ -840,9 +842,10 @@ void print_usage (void)
     printf("\t--precompile-cache-store store precompile results in cache file\n");
     printf("\t--precompile-cache-load load precompile results from cache file\n");
 #endif
-#ifdef PRECOMPILE_RESULTS
-    printf("\t-r <precompile_results_file>\n");
-#endif
+    if (precompile_results_enabled)
+    {
+        printf("\t-r <precompile_results_file>\n");
+    }
     printf("\t-h/--help print this\n");
 }
 
@@ -1166,8 +1169,7 @@ void parse_arguments(int argc, char *argv[])
             }
 
 #endif
-#ifdef PRECOMPILE_RESULTS
-            if (strcmp(argv[i], "-r") == 0)
+            if (precompile_results_enabled && (strcmp(argv[i], "-r") == 0))
             {
                 i++;
                 if (i >= argc)
@@ -1185,7 +1187,6 @@ void parse_arguments(int argc, char *argv[])
                 strcpy(precompile_file, argv[i]);
                 continue;
             }
-#endif
             printf("ERROR: parse_arguments() Unrecognized argument: %s\n", argv[i]);
             print_usage();
             fflush(stdout);
@@ -1246,8 +1247,7 @@ void parse_arguments(int argc, char *argv[])
         exit(-1);
     }
 
-#ifdef PRECOMPILE_RESULTS
-    if (client && (strlen(precompile_file) == 0))
+    if (precompile_results_enabled && client && (strlen(precompile_file) == 0))
     {
         printf("ERROR! parse_arguments() when in precompile results mode, you need to provide a precompile results file using -r <precompile_results_file>\n");
         print_usage();
@@ -1255,7 +1255,6 @@ void parse_arguments(int argc, char *argv[])
         fflush(stderr);
         exit(-1);
     }
-#endif
 }
 
 void configure (void)
@@ -1267,10 +1266,15 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_FT_input");
-#ifdef PRECOMPILE_RESULTS
-            strcpy(shmem_precompile_name, shm_prefix);
-            strcat(shmem_precompile_name, "_FT_precompile");
-#endif
+            if (precompile_results_enabled)
+            {
+                strcpy(shmem_precompile_name, shm_prefix);
+                strcat(shmem_precompile_name, "_FT_precompile");
+            }
+            else
+            {
+                strcpy(shmem_precompile_name, "");
+            }
             strcpy(shmem_output_name, "");
             strcpy(sem_chunk_done_name, "");
             strcpy(sem_shutdown_done_name, shm_prefix);
@@ -1283,10 +1287,15 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_MT_input");
-#ifdef PRECOMPILE_RESULTS
-            strcpy(shmem_precompile_name, shm_prefix);
-            strcat(shmem_precompile_name, "_MT_precompile");
-#endif
+            if (precompile_results_enabled)
+            {
+                strcpy(shmem_precompile_name, shm_prefix);
+                strcat(shmem_precompile_name, "_MT_precompile");
+            }
+            else
+            {
+                strcpy(shmem_precompile_name, "");
+            }
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MT_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1302,10 +1311,15 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_RH_input");
-#ifdef PRECOMPILE_RESULTS
-            strcpy(shmem_precompile_name, shm_prefix);
-            strcat(shmem_precompile_name, "_RH_precompile");
-#endif
+            if (precompile_results_enabled)
+            {
+                strcpy(shmem_precompile_name, shm_prefix);
+                strcat(shmem_precompile_name, "_RH_precompile");
+            }
+            else
+            {
+                strcpy(shmem_precompile_name, "");
+            }
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_RH_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1321,10 +1335,15 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_MA_input");
-#ifdef PRECOMPILE_RESULTS
-            strcpy(shmem_precompile_name, shm_prefix);
-            strcat(shmem_precompile_name, "_MA_precompile");
-#endif
+            if (precompile_results_enabled)
+            {
+                strcpy(shmem_precompile_name, shm_prefix);
+                strcat(shmem_precompile_name, "_MA_precompile");
+            }
+            else
+            {
+                strcpy(shmem_precompile_name, "");
+            }
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MA_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1340,9 +1359,7 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_CH_input");
-#ifdef PRECOMPILE_RESULTS
             strcpy(shmem_precompile_name, "");
-#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_CH_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1367,10 +1384,15 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_ZP_input");
-#ifdef PRECOMPILE_RESULTS
-            strcpy(shmem_precompile_name, shm_prefix);
-            strcat(shmem_precompile_name, "_ZP_precompile");
-#endif
+            if (precompile_results_enabled)
+            {
+                strcpy(shmem_precompile_name, shm_prefix);
+                strcat(shmem_precompile_name, "_ZP_precompile");
+            }
+            else
+            {
+                strcpy(shmem_precompile_name, "");
+            }
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_ZP_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1386,10 +1408,15 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_MO_input");
-#ifdef PRECOMPILE_RESULTS
-            strcpy(shmem_precompile_name, shm_prefix);
-            strcat(shmem_precompile_name, "_MO_precompile");
-#endif
+            if (precompile_results_enabled)
+            {
+                strcpy(shmem_precompile_name, shm_prefix);
+                strcat(shmem_precompile_name, "_MO_precompile");
+            }
+            else
+            {
+                strcpy(shmem_precompile_name, "");
+            }
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MO_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1404,9 +1431,7 @@ void configure (void)
         case ChunkPlayerMTCollectMem:
         {
             strcpy(shmem_input_name, "");
-#ifdef PRECOMPILE_RESULTS
             strcpy(shmem_precompile_name, "");
-#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_CM_output");
             strcpy(sem_chunk_done_name, "");
@@ -1421,10 +1446,15 @@ void configure (void)
         {
             strcpy(shmem_input_name, shm_prefix);
             strcat(shmem_input_name, "_MT_input");
-#ifdef PRECOMPILE_RESULTS
-            strcpy(shmem_precompile_name, shm_prefix);
-            strcat(shmem_precompile_name, "_MT_precompile");
-#endif
+            if (precompile_results_enabled)
+            {
+                strcpy(shmem_precompile_name, shm_prefix);
+                strcat(shmem_precompile_name, "_MT_precompile");
+            }
+            else
+            {
+                strcpy(shmem_precompile_name, "");
+            }
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MT_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1439,9 +1469,7 @@ void configure (void)
         case ChunkPlayerMemReadsCollectMain:
         {
             strcpy(shmem_input_name, "");
-#ifdef PRECOMPILE_RESULTS
             strcpy(shmem_precompile_name, "");
-#endif
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_CA_output");
             strcpy(sem_chunk_done_name, "");
@@ -1652,12 +1680,10 @@ void client_run (void)
 
     }
 
-#ifdef PRECOMPILE_RESULTS
-
     /*****************************/
     /* Read precompile file data */
     /*****************************/
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
+    if (precompile_results_enabled && (gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
 
 #ifdef DEBUG
@@ -1762,8 +1788,6 @@ void client_run (void)
 #endif
 
     }
-
-#endif
 
     /*************************/
     /* Connect to the server */
@@ -2685,13 +2709,11 @@ void server_setup (void)
         if (verbose) printf("mmap(input) mapped %lu B and returned address %p in %lu us\n", MAX_INPUT_SIZE, pInput, duration);
     }
 
-#ifdef PRECOMPILE_RESULTS
-
     /**********************/
     /* PRECOMPILE_RESULTS */
     /**********************/
 
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
+    if (precompile_results_enabled && (gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
         // Make sure the precompile results shared memory is deleted
         shm_unlink(shmem_precompile_name);
@@ -2734,8 +2756,6 @@ void server_setup (void)
         precompile_results_address = (uint64_t *)pPrecompile;
         if (verbose) printf("mmap(precompile) mapped %lu B and returned address %p in %lu us\n", MAX_PRECOMPILE_SIZE, precompile_results_address, duration);
     }
-
-#endif // PRECOMPILE_RESULTS
 
     /*******/
     /* RAM */

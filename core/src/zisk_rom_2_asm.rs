@@ -579,16 +579,21 @@ impl ZiskRom2Asm {
         }
 
         // Functions to let C know about ASM generation
+
+        // get_max_bios_pc() returns the maximum bios pc used in the ROM
         *code += ".global get_max_bios_pc\n";
         *code += "get_max_bios_pc:\n";
         *code += &format!("\tmov rax, 0x{:08x}\n", rom.max_bios_pc);
         *code += "\tret\n\n";
 
+        // get_max_program_pc() returns the maximum program pc used in the ROM
         *code += ".global get_max_program_pc\n";
         *code += "get_max_program_pc:\n";
         *code += &format!("\tmov rax, 0x{:08x}\n", rom.max_program_pc);
         *code += "\tret\n\n";
 
+        // get_gen_method() returns the generation method used to generate the assembly
+        // It must match the one used to call the assembly emulator
         *code += ".global get_gen_method\n";
         *code += "get_gen_method:\n";
         if ctx.fast() {
@@ -613,6 +618,17 @@ impl ZiskRom2Asm {
             *code += "\tmov rax, 10\n";
         } else {
             panic!("ZiskRom2Asm::save_to_asm() invalid generation method");
+        }
+        *code += "\tret\n\n";
+
+        // get_gen_method() returns the generation method used to generate the assembly
+        // It must match the one used to call the assembly emulator
+        *code += ".global get_precompile_results\n";
+        *code += "get_precompile_results:\n";
+        if ctx.precompile_results() {
+            *code += "\tmov rax, 1\n";
+        } else {
+            *code += "\tmov rax, 0\n";
         }
         *code += "\tret\n\n";
 
