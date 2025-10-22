@@ -5646,6 +5646,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-sdk"
+version = "0.13.0"
+dependencies = [
+ "anyhow",
+ "asm-runner",
+ "bytemuck",
+ "colored",
+ "fields",
+ "libloading",
+ "proofman",
+ "proofman-common",
+ "rom-setup",
+ "tracing",
+ "zisk-common",
+ "zstd",
+]
+
+[[package]]
 name = "zisk-witness"
 version = "0.13.1"
 dependencies = [
