@@ -58,9 +58,10 @@ pub struct EmuOptions {
     /// Tracer v.  Enabled with `-a`.
     #[clap(short = 'a', long, value_name = "TRACERV", default_value = "false")]
     pub tracerv: bool,
-    /// Generates statistics about opcodes and memory usage.  Enabled with `-x`.
+    /// Generates legacy statistics about steps and usage.  Enabled with `-x`.
     #[clap(short = 'x', long, value_name = "LEGACY_STATS", default_value = "false")]
     pub legacy_stats: bool,
+    /// Generates statistics about opcodes and memory usage.  Enabled with `-X`.
     #[clap(short = 'X', long, value_name = "STATS", default_value = "false")]
     pub stats: bool,
     /// Generates minimal traces.  Enabled with `-g`.
@@ -69,13 +70,19 @@ pub struct EmuOptions {
     /// Optional file path to store operation data for analysis
     #[clap(short, long, value_name = "STORE_OP_OUTPUT")]
     pub store_op_output: Option<String>,
-    /// Enable read functions from Symbol Table
+    /// Load function names and symbols from the ELF file.
     #[clap(short = 'S', long, value_name = "READ_SYMBOLS", default_value = "false")]
     pub read_symbols: bool,
+    /// Set the number of top Regions of Interest (ROI) to display.
+    /// Requires options: -S -X
     #[clap(short = 'T', long, value_name = "TOP_ROI", default_value = "10")]
     pub top_roi: usize,
+    /// Set the number of top caller functions to show for each top ROI.
+    /// Requires options: -S -X -D
     #[clap(short = 'C', long, value_name = "ROI_CALLERS", default_value = "10")]
     pub roi_callers: usize,
+    /// Show detailed analysis for the top callers of each Region of Interest (ROI).
+    /// Requires options: -S -X
     #[clap(short = 'D', long, value_name = "TOP_ROI_DETAIL", default_value = "false")]
     pub top_roi_detail: bool,
 }
@@ -124,10 +131,14 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "CHUNK_SIZE: {:?}", self.chunk_size)?;
         writeln!(f, "METRICS: {:?}", self.log_metrics)?;
         writeln!(f, "STATS: {:?}", self.stats)?;
+        writeln!(f, "LEGACY_STATS: {:?}", self.legacy_stats)?;
         writeln!(f, "TRACERV: {:?}", self.tracerv)?;
         writeln!(f, "LOG_STEP: {:?}", self.log_step)?;
         writeln!(f, "MINIMAL_TRACES: {:?}", self.generate_minimal_traces)?;
-        writeln!(f, "STORE_OP_OUTPUT: {:?}", self.store_op_output)?;
+        writeln!(f, "READ_SYMBOLS: {:?}", self.read_symbols)?;
+        writeln!(f, "TOP_ROI: {:?}", self.top_roi)?;
+        writeln!(f, "ROI_CALLERS: {:?}", self.roi_callers)?;
+        writeln!(f, "TOP_ROI_DETAIL: {:?}", self.top_roi_detail)?;
         Ok(())
     }
 }
