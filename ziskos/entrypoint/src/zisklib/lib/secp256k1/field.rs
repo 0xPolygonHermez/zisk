@@ -1,22 +1,20 @@
 use crate::{
-    add256::{syscall_add256, SyscallAdd256Params},
     arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams},
-    fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt, lt,
+    fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt, lt
 };
 
-use super::constants::{NQR, P, P_COMP, P_MINUS_ONE};
+use super::constants::{NQR, P, P_MINUS_ONE};
 
 pub fn secp256k1_fp_reduce(x: &[u64; 4]) -> [u64; 4] {
     if lt(x, &P) {
         return *x;
     }
 
-    // Since 2·p > 2^256, computing x (mod p) = x - p = x + (2^256 - p) (mod 2^256)
+    // x·1 + 0
     let mut params =
-        SyscallAdd256Params { a: x, b: &[P_COMP, 0, 0, 0], cin: 0, c: &mut [0, 0, 0, 0] };
-    syscall_add256(&mut params);
-
-    *params.c
+        SyscallArith256ModParams { a: x, b: &[1, 0, 0, 0], c: &[0, 0, 0, 0], module: &P, d: &mut [0, 0, 0, 0] };
+    syscall_arith256_mod(&mut params);
+    *params.d
 }
 
 pub fn secp256k1_fp_add(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {

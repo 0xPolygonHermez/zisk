@@ -10,11 +10,6 @@ use super::{
     },
 };
 
-const X_BIN_BE: [u8; 63] = [
-    1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0,
-    1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1,
-];
-
 /// Check if a point `p` is on the BN254 twist
 pub fn is_on_curve_twist_bn254(p: &[u64; 16]) -> bool {
     // q in E' iff y² == x³ + 3 / (9 + u)
@@ -178,6 +173,12 @@ pub fn neg_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
 
 /// Scalar multiplication of a non-zero point by x
 pub fn scalar_mul_by_x_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
+    // Binary representation of the exponent x = 4965661367192848881 in big-endian format
+    const X_BIN_BE: [u8; 63] = [
+        1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0,
+        1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1,
+    ];
+
     let mut q = *p;
     for &bit in X_BIN_BE.iter().skip(1) {
         q = dbl_twist_bn254(&q);

@@ -1,4 +1,8 @@
-pub mod constants;
-pub mod curve;
-pub mod field;
-pub mod scalar;
+mod constants;
+mod curve;
+mod field;
+mod scalar;
+
+pub use curve::*;
+pub use field::*;
+pub use scalar::*;
