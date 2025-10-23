@@ -1,6 +1,6 @@
 use crate::{
     arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams},
-    fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt, lt
+    fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt, lt,
 };
 
 use super::constants::{NQR, P, P_MINUS_ONE};
@@ -11,8 +11,13 @@ pub fn secp256k1_fp_reduce(x: &[u64; 4]) -> [u64; 4] {
     }
 
     // x·1 + 0
-    let mut params =
-        SyscallArith256ModParams { a: x, b: &[1, 0, 0, 0], c: &[0, 0, 0, 0], module: &P, d: &mut [0, 0, 0, 0] };
+    let mut params = SyscallArith256ModParams {
+        a: x,
+        b: &[1, 0, 0, 0],
+        c: &[0, 0, 0, 0],
+        module: &P,
+        d: &mut [0, 0, 0, 0],
+    };
     syscall_arith256_mod(&mut params);
     *params.d
 }
