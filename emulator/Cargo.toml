@@ -31,6 +31,11 @@ proofman-common = { workspace = true }
 fields = { workspace=true }
 clap = { workspace = true }
 sysinfo = { workspace = true }
+object = "0.37.3"
+memmap2 = "0.9.8"
+num-format = "0.4"
+symbolic-demangle = { version = "12.16", features = ["rust", "cpp"] }
+symbolic-common = "12.16"
 
 [build-dependencies]
 vergen = { version = "8", default-features = false, features = [

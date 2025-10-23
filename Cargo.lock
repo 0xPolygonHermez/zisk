@@ -2351,6 +2351,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "msvc-demangler"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4c25a3bb7d880e8eceab4822f3141ad0700d20f025991c1f03bd3d00219a5fc"
+dependencies = [
+ "bitflags 2.10.0",
+]
+
+[[package]]
 name = "multimap"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2500,7 +2509,9 @@ version = "0.37.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff76201f031d8863c38aa7f905eca4f53abbfa15f609db4277d44cd8938f33fe"
 dependencies = [
+ "flate2",
  "memchr",
+ "ruzstd",
 ]
 
 [[package]]
@@ -3611,6 +3622,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
+name = "ruzstd"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3640bec8aad418d7d03c72ea2de10d5c646a598f9883c7babc160d91e3c1b26c"
+dependencies = [
+ "twox-hash",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4063,7 +4083,9 @@ version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13d359ef6192db1760a34321ec4f089245ede4342c27e59be99642f12a859de8"
 dependencies = [
+ "cc",
  "cpp_demangle",
+ "msvc-demangler",
  "rustc-demangle",
  "symbolic-common",
 ]
@@ -4655,6 +4677,12 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "twox-hash"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ea3136b675547379c4bd395ca6b938e5ad3c3d20fad76e7fe85f9e0d011419c"
 
 [[package]]
 name = "typeid"
@@ -5684,6 +5712,9 @@ dependencies = [
  "data-bus",
  "fields",
  "mem-common",
+ "memmap2",
+ "num-format",
+ "object",
  "pprof",
  "proofman-common",
  "rayon",
@@ -5691,6 +5722,8 @@ dependencies = [
  "sm-arith",
  "sm-binary",
  "sm-mem",
+ "symbolic-common",
+ "symbolic-demangle",
  "sysinfo 0.37.2",
  "vergen",
  "zisk-common",
