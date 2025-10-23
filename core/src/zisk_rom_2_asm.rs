@@ -214,7 +214,7 @@ impl ZiskAsmContext {
     }
 
     pub fn precompile_results(&self) -> bool {
-        true
+        false
     }
 }
 
