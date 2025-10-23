@@ -32,6 +32,7 @@ fields = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-verifier = { workspace = true }
+proofman-util = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
