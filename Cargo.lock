@@ -993,6 +993,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1335,6 +1336,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "num-bigint",
  "paste",
@@ -2349,6 +2351,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "msvc-demangler"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4c25a3bb7d880e8eceab4822f3141ad0700d20f025991c1f03bd3d00219a5fc"
+dependencies = [
+ "bitflags 2.10.0",
+]
+
+[[package]]
 name = "multimap"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2498,7 +2509,9 @@ version = "0.37.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff76201f031d8863c38aa7f905eca4f53abbfa15f609db4277d44cd8938f33fe"
 dependencies = [
+ "flate2",
  "memchr",
+ "ruzstd",
 ]
 
 [[package]]
@@ -2638,6 +2651,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "colored",
  "fields",
@@ -2980,9 +2994,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.101"
+version = "1.0.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de"
+checksum = "8e0f6df8eaa422d97d72edcd152e1451618fed47fabbdbd5a8864167b1d4aff7"
 dependencies = [
  "unicode-ident",
 ]
@@ -2990,6 +3004,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "blake3",
  "borsh",
@@ -3024,6 +3039,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "borsh",
  "crossbeam-channel",
@@ -3051,6 +3067,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "fields",
  "proofman-common",
@@ -3062,6 +3079,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3072,6 +3090,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3080,6 +3099,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "colored",
  "fields",
@@ -3090,6 +3110,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "bytemuck",
  "fields",
@@ -3605,6 +3626,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
+name = "ruzstd"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3640bec8aad418d7d03c72ea2de10d5c646a598f9883c7babc160d91e3c1b26c"
+dependencies = [
+ "twox-hash",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4057,16 +4087,18 @@ version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13d359ef6192db1760a34321ec4f089245ede4342c27e59be99642f12a859de8"
 dependencies = [
+ "cc",
  "cpp_demangle",
+ "msvc-demangler",
  "rustc-demangle",
  "symbolic-common",
 ]
 
 [[package]]
 name = "syn"
-version = "2.0.107"
+version = "2.0.108"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a26dbd934e5451d21ef060c018dae56fc073894c5a7896f882928a76e6d081b"
+checksum = "da58917d35242480a05c2897064da0a80589a2a0476c9a3f2fdc83b53502e917"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4639,6 +4671,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4648,6 +4681,12 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "twox-hash"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ea3136b675547379c4bd395ca6b938e5ad3c3d20fad76e7fe85f9e0d011419c"
 
 [[package]]
 name = "typeid"
@@ -5322,6 +5361,7 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 [[package]]
 name = "witness"
 version = "0.12.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Ferror-handling-0.13.0#d78a28d9c027efda4b4a95f9d493efb2f31f28b7"
 dependencies = [
  "colored",
  "fields",
@@ -5676,6 +5716,9 @@ dependencies = [
  "data-bus",
  "fields",
  "mem-common",
+ "memmap2",
+ "num-format",
+ "object",
  "pprof",
  "proofman-common",
  "rayon",
@@ -5683,6 +5726,8 @@ dependencies = [
  "sm-arith",
  "sm-binary",
  "sm-mem",
+ "symbolic-common",
+ "symbolic-demangle",
  "sysinfo 0.37.2",
  "vergen",
  "zisk-common",
