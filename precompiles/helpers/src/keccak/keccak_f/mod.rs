@@ -55,8 +55,7 @@ pub fn keccak_f(s: &mut GateState) {
     for i in 0..s.config.sout_ref_number {
         let group = i / s.config.sout_ref_group_by;
         let group_pos = i % s.config.sout_ref_group_by;
-        let ref_idx =
-            s.config.sout_first_ref + group * s.config.sout_ref_distance + group_pos;
+        let ref_idx = s.config.sout_first_ref + group * s.config.sout_ref_distance + group_pos;
         s.xor3(
             s.sout_refs[i as usize],
             PinId::D,

@@ -1,8 +1,7 @@
 use std::vec;
 
 use super::{
-    bits_to_byte, bits_to_byte_msb, print_bits, Gate, GateConfig,
-    GateOperation, PinId, PinSource,
+    bits_to_byte, bits_to_byte_msb, print_bits, Gate, GateConfig, GateOperation, PinId, PinSource,
 };
 
 #[derive(Debug)]

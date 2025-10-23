@@ -1,11 +1,13 @@
 mod expression;
+mod expression_manager;
 mod gate;
 mod gate_config;
 mod gate_state;
 mod pin;
 mod utils;
 
-pub use expression::{Expression, ExpressionManager};
+use expression::Expression;
+pub use expression_manager::ExpressionManager;
 pub use gate::{Gate, GateOperation};
 pub use gate_config::GateConfig;
 pub use gate_state::GateState;
