@@ -10,12 +10,6 @@ use super::{
     },
 };
 
-/// Binary representation of the exponent x = 4965661367192848881 in big-endian format
-const X_BIN_BE: [u8; 63] = [
-    1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0,
-    0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1,
-];
-
 /// Compression in the cyclotomic subgroup GΦ6(p²)
 ///
 // in: a = (a0 + a4·v + a3·v²) + (a2 + a1·v + a5·v²)·w ∈ GΦ6(p²), where ai ∈ Fp2
@@ -180,12 +174,19 @@ pub fn square_cyclo_bn254(a: &[u64; 32]) -> [u64; 32] {
 //
 /// **NOTE**: The output is not guaranteed to be in GΦ6(p²), if the input isn't.
 pub fn exp_by_x_cyclo_bn254(a: &[u64; 48]) -> [u64; 48] {
+    // Binary representation of the exponent x = 4965661367192848881 in big-endian format
+    const X_BIN_LE: [u8; 63] = [
+        1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0,
+        1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0,
+        0, 0, 1,
+    ];
+
     // Start the loop with a
     let mut result = *a;
 
     // Compress the input so we can work in compressed form
     let mut comp = compress_cyclo_bn254(a);
-    for &bit in X_BIN_BE.iter().skip(1) {
+    for &bit in X_BIN_LE.iter().skip(1) {
         // We always square (in compressed form): C(c²)
         comp = square_cyclo_bn254(&comp);
 
