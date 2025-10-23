@@ -284,4 +284,167 @@ mod ziskos {
 
         ptr
     }
+    /// 64-bit optimized memcpy for RISC-V - extern "C" version
+    ///
+    /// # Safety
+    /// This function is unsafe because it works with raw pointers and does not
+    /// perform bounds checking or pointer validity verification.
+    ///
+    /// # Arguments
+    /// * `dst` - Destination pointer
+    /// * `src` - Source pointer  
+    /// * `len` - Number of bytes to copy
+    ///
+    /// # Returns
+    /// Returns the original destination pointer
+    #[no_mangle]
+    pub extern "C" fn memcpy(dst: *mut u8, src: *const u8, len: usize) -> *mut u8 {
+        unsafe {
+            asm!(
+                // Initialize working pointers
+                "mv     {src_work}, {src_input}",    // src_work = src
+                "mv     {dst_work}, {dst_input}",    // dst_work = dst
+
+                // Check if len is 0
+                "beqz   {len_work}, 25f",            // If len=0, jump to end
+
+                // Check if src is aligned to 8 bytes
+                "andi   {tmp1}, {src_work}, 7",      // tmp1 = src & 7
+                "beqz   {tmp1}, 8f",                 // If aligned, jump to .L8
+
+                // Alignment loop for src (byte by byte until aligned)
+                "2:",                                // .L2 (alignment loop)
+                "lb     {tmp2}, 0({src_work})",      // Load byte from src
+                "sb     {tmp2}, 0({dst_work})",      // Store byte to dst
+                "addi   {src_work}, {src_work}, 1",  // src++
+                "addi   {dst_work}, {dst_work}, 1",  // dst++
+                "addi   {len_work}, {len_work}, -1", // len--
+                "beqz   {len_work}, 25f",            // If len=0, finish
+                "andi   {tmp1}, {src_work}, 7",      // Check src alignment
+                "bnez   {tmp1}, 2b",                 // If not aligned, continue loop
+
+                "8:",                                // .L8 (src is now aligned)
+                // Check dst alignment
+                "andi   {tmp1}, {dst_work}, 7",      // Check dst alignment
+                "bnez   {tmp1}, 4f",                 // If dst not aligned, use 32-bit
+
+                // Both pointers aligned to 8 bytes
+                "9:",                                // .L9 (both pointers aligned to 8 bytes)
+                "li     {tmp1}, 32",                 // Threshold for 32-byte loop
+                "bltu   {len_work}, {tmp1}, 12f",    // If len < 32, jump to .L12
+
+                // Main 64-bit loop (32 bytes per iteration)
+                "11:",                               // .L11 (main 64-bit loop)
+                "ld     {tmp1}, 0({src_work})",      // Load 8 bytes
+                "ld     {tmp2}, 8({src_work})",      // Load 8 bytes
+                "ld     {tmp3}, 16({src_work})",     // Load 8 bytes
+                "ld     {tmp4}, 24({src_work})",     // Load 8 bytes
+                "sd     {tmp1}, 0({dst_work})",      // Store 8 bytes
+                "sd     {tmp2}, 8({dst_work})",      // Store 8 bytes
+                "sd     {tmp3}, 16({dst_work})",     // Store 8 bytes
+                "sd     {tmp4}, 24({dst_work})",     // Store 8 bytes
+                "addi   {src_work}, {src_work}, 32", // src += 32
+                "addi   {dst_work}, {dst_work}, 32", // dst += 32
+                "addi   {len_work}, {len_work}, -32", // len -= 32
+                "li     {tmp1}, 31",                 // tmp1 = 31 (for comparison)
+                "bltu   {tmp1}, {len_work}, 11b",    // If len > 31, continue loop
+
+                "12:",                               // .L12 (process 16-byte blocks)
+                "andi   {tmp1}, {len_work}, 16",     // len & 16
+                "beqz   {tmp1}, 14f",                // If no 16 bytes, skip
+
+                "ld     {tmp1}, 0({src_work})",      // Load 8 bytes
+                "ld     {tmp2}, 8({src_work})",      // Load 8 bytes
+                "sd     {tmp1}, 0({dst_work})",      // Store 8 bytes
+                "sd     {tmp2}, 8({dst_work})",      // Store 8 bytes
+                "addi   {src_work}, {src_work}, 16", // src += 16
+                "addi   {dst_work}, {dst_work}, 16", // dst += 16
+
+                "14:",                               // .L14 (process 8-byte blocks)
+                "andi   {tmp1}, {len_work}, 8",      // len & 8
+                "beqz   {tmp1}, 22f",                // If no 8 bytes, skip
+
+                "ld     {tmp1}, 0({src_work})",      // Load 8 bytes
+                "sd     {tmp1}, 0({dst_work})",      // Store 8 bytes
+                "addi   {src_work}, {src_work}, 8",  // src += 8
+                "addi   {dst_work}, {dst_work}, 8",  // dst += 8
+                "j      22f",                        // Go to process remaining bytes
+
+                "4:",                                // .L4 (32-bit fallback - dst unaligned)
+                // Main 32-bit loop (16 bytes per iteration)
+                "li     {tmp1}, 16",                 // Threshold for 16-byte loop
+                "bltu   {len_work}, {tmp1}, 20f",    // If len < 16, jump to .L20
+
+                "19:",                               // .L19 (32-bit loop)
+                "lw     {tmp1}, 0({src_work})",      // Load 4 bytes
+                "lw     {tmp2}, 4({src_work})",      // Load 4 bytes
+                "lw     {tmp3}, 8({src_work})",      // Load 4 bytes
+                "lw     {tmp4}, 12({src_work})",     // Load 4 bytes
+                "sw     {tmp1}, 0({dst_work})",      // Store 4 bytes
+                "sw     {tmp2}, 4({dst_work})",      // Store 4 bytes
+                "sw     {tmp3}, 8({dst_work})",      // Store 4 bytes
+                "sw     {tmp4}, 12({dst_work})",     // Store 4 bytes
+                "addi   {src_work}, {src_work}, 16", // src += 16
+                "addi   {dst_work}, {dst_work}, 16", // dst += 16
+                "addi   {len_work}, {len_work}, -16", // len -= 16
+                "li     {tmp1}, 15",                 // tmp1 = 15 (for comparison)
+                "bltu   {tmp1}, {len_work}, 19b",    // If len > 15, continue loop
+
+                "20:",                               // .L20 (process 8-byte block with 32-bit)
+                "andi   {tmp1}, {len_work}, 8",      // len & 8
+                "beqz   {tmp1}, 22f",                // If no 8 bytes, skip
+
+                "lw     {tmp1}, 0({src_work})",      // Load 4 bytes
+                "lw     {tmp2}, 4({src_work})",      // Load 4 bytes
+                "sw     {tmp1}, 0({dst_work})",      // Store 4 bytes
+                "sw     {tmp2}, 4({dst_work})",      // Store 4 bytes
+                "addi   {src_work}, {src_work}, 8",  // src += 8
+                "addi   {dst_work}, {dst_work}, 8",  // dst += 8
+
+                "22:",                               // .L22 (process remaining bytes)
+                "andi   {tmp1}, {len_work}, 4",      // len & 4
+                "beqz   {tmp1}, 23f",                // If no 4 bytes, skip
+
+                "lw     {tmp1}, 0({src_work})",      // Load 4 bytes
+                "sw     {tmp1}, 0({dst_work})",      // Store 4 bytes
+                "addi   {src_work}, {src_work}, 4",  // src += 4
+                "addi   {dst_work}, {dst_work}, 4",  // dst += 4
+
+                "23:",                               // .L23 (process 2 bytes)
+                "andi   {tmp1}, {len_work}, 2",      // len & 2
+                "beqz   {tmp1}, 24f",                // If no 2 bytes, skip
+
+                "lh     {tmp1}, 0({src_work})",      // Load 2 bytes
+                "sh     {tmp1}, 0({dst_work})",      // Store 2 bytes
+                "addi   {src_work}, {src_work}, 2",  // src += 2
+                "addi   {dst_work}, {dst_work}, 2",  // dst += 2
+
+                "24:",                               // .L24 (process last byte)
+                "andi   {tmp1}, {len_work}, 1",      // len & 1
+                "beqz   {tmp1}, 25f",                // If no remaining byte, finish
+
+                "lb     {tmp1}, 0({src_work})",      // Load last byte
+                "sb     {tmp1}, 0({dst_work})",      // Store last byte
+
+                "25:",                               // .L25 (end)
+
+                // Outputs (working registers)
+                src_work = out(reg) _,          // Working pointer for src
+                dst_work = out(reg) _,          // Working pointer for dst
+                len_work = inout(reg) len => _, // len is modified during execution
+                tmp1 = out(reg) _,              // Temporaries
+                tmp2 = out(reg) _,
+                tmp3 = out(reg) _,
+                tmp4 = out(reg) _,
+
+                // Inputs (read-only)
+                dst_input = in(reg) dst,
+                src_input = in(reg) src,
+
+                options(nostack, preserves_flags)
+            );
+        }
+
+        dst
+    }
 }
