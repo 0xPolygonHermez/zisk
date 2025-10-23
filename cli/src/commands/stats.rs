@@ -23,9 +23,6 @@ use crate::{
     ZISK_VERSION_MESSAGE,
 };
 
-#[cfg(distributed)]
-use mpi::traits::*;
-
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
@@ -189,30 +186,6 @@ impl ZiskStats {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let mpi_info = ProofMan::<Goldilocks>::get_mpi_info();
-
-        initialize_logger(self.verbose.into(), Some(mpi_info.rank));
-
-        let world_ranks = mpi_info.n_processes;
-
-        let world_rank = mpi_info.rank;
-        let local_rank = mpi_info.node_rank;
-
-        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
-        let asm_runner_options = AsmRunnerOptions::new()
-            .with_verbose(self.verbose > 0)
-            .with_base_port(self.port)
-            .with_world_rank(world_rank)
-            .with_local_rank(local_rank)
-            .with_unlock_mapped_memory(self.unlock_mapped_memory);
-
-        if self.asm.is_some() {
-            // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_info.rank,);
-
-            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
-        }
-
         let library =
             unsafe { Library::new(get_witness_computation_lib(self.witness_lib.as_ref()))? };
         let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
@@ -222,8 +195,6 @@ impl ZiskStats {
             self.elf.clone(),
             self.asm.clone(),
             asm_rom,
-            Some(world_rank),
-            Some(local_rank),
             self.port,
             self.unlock_mapped_memory,
             self.shared_tables,
@@ -242,6 +213,27 @@ impl ZiskStats {
         )
         .expect("Failed to initialize proofman");
 
+        let world_rank = proofman.get_world_rank();
+        let local_rank = proofman.get_local_rank();
+        let world_ranks = proofman.get_n_processes();
+
+        initialize_logger(self.verbose.into(), Some(world_rank));
+
+        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
+        let asm_runner_options = AsmRunnerOptions::new()
+            .with_verbose(self.verbose > 0)
+            .with_base_port(self.port)
+            .with_world_rank(world_rank)
+            .with_local_rank(local_rank)
+            .with_unlock_mapped_memory(self.unlock_mapped_memory);
+
+        if self.asm.is_some() {
+            // Start ASM microservices
+            tracing::info!(">>> [{}] Starting ASM microservices.", world_rank,);
+
+            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
+        }
+
         #[cfg(distributed)]
         {
             let mut is_active = true;
@@ -252,15 +244,7 @@ impl ZiskStats {
                 }
             }
 
-            // All processes must participate in these calls:
-            let color = if is_active {
-                mpi::topology::Color::with_value(1)
-            } else {
-                mpi::topology::Color::undefined()
-            };
-            let _sub_comm = mpi_info.world.split_by_color(color);
-
-            mpi_info.world.split_shared(world_rank);
+            proofman.split_active_processes(is_active);
 
             if !is_active {
                 println!(

@@ -163,25 +163,6 @@ impl ZiskVerifyConstraints {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
-        let mpi_info = ProofMan::<Goldilocks>::get_mpi_info();
-
-        initialize_logger(self.verbose.into(), Some(mpi_info.rank));
-
-        let asm_services = AsmServices::new(mpi_info.rank, mpi_info.node_rank, self.port);
-        let asm_runner_options = AsmRunnerOptions::new()
-            .with_verbose(self.verbose > 0)
-            .with_base_port(self.port)
-            .with_world_rank(mpi_info.rank)
-            .with_local_rank(mpi_info.node_rank)
-            .with_unlock_mapped_memory(self.unlock_mapped_memory);
-
-        if self.asm.is_some() {
-            // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_info.rank);
-
-            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
-        }
-
         let library =
             unsafe { Library::new(get_witness_computation_lib(self.witness_lib.as_ref()))? };
         let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
@@ -192,8 +173,6 @@ impl ZiskVerifyConstraints {
             self.elf.clone(),
             self.asm.clone(),
             asm_rom,
-            Some(mpi_info.rank),
-            Some(mpi_info.node_rank),
             self.port,
             self.unlock_mapped_memory,
             self.shared_tables,
@@ -211,6 +190,26 @@ impl ZiskVerifyConstraints {
             witness_lib.get_packed_info(),
         )
         .expect("Failed to initialize proofman");
+
+        let world_rank = proofman.get_world_rank();
+        let local_rank = proofman.get_local_rank();
+
+        initialize_logger(self.verbose.into(), Some(world_rank));
+
+        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
+        let asm_runner_options = AsmRunnerOptions::new()
+            .with_verbose(self.verbose > 0)
+            .with_base_port(self.port)
+            .with_world_rank(world_rank)
+            .with_local_rank(local_rank)
+            .with_unlock_mapped_memory(self.unlock_mapped_memory);
+
+        if self.asm.is_some() {
+            // Start ASM microservices
+            tracing::info!(">>> [{}] Starting ASM microservices.", world_rank);
+
+            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
+        }
 
         let start = std::time::Instant::now();
 
@@ -244,7 +243,7 @@ impl ZiskVerifyConstraints {
 
         if self.asm.is_some() {
             // Shut down ASM microservices
-            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_info.rank);
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", world_rank);
             asm_services.stop_asm_services()?;
         }
 

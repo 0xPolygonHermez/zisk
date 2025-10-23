@@ -79,7 +79,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let airgroup_id = KeccakfTraceType::<F>::AIRGROUP_ID;
         let air_id = KeccakfTraceType::<F>::AIR_ID;
         let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
-        let keccakf_fixed = KeccakfFixed::from_vec(fixed_pols);
+        let keccakf_fixed = KeccakfFixed::new_from_vec(fixed_pols);
 
         // Get the table ID
         let table_id = std.get_virtual_table_id(KeccakfTableSM::TABLE_ID);
