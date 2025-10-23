@@ -13,7 +13,7 @@ use std::fs;
 use std::{path::PathBuf, process};
 use zisk_common::init_tracing;
 
-use crate::commands::{get_proving_key, get_witness_computation_lib, Field};
+use crate::commands::{get_proving_key, get_witness_computation_lib};
 use crate::ux::print_banner;
 use crate::ZISK_VERSION_MESSAGE;
 
@@ -57,9 +57,6 @@ pub struct ZiskServer {
     /// Setup folder path
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
-
-    #[clap(long, default_value_t = Field::Goldilocks)]
-    pub field: Field,
 
     /// Base port for Assembly microservices (default: 23115).
     /// A single execution will use 3 consecutive ports, from this port to port + 2.

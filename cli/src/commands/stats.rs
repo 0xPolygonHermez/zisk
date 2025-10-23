@@ -19,7 +19,7 @@ use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLibInitFn};
 use zisk_pil::*;
 
 use crate::{
-    commands::{get_proving_key, get_witness_computation_lib, Field},
+    commands::{get_proving_key, get_witness_computation_lib},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -60,9 +60,6 @@ pub struct ZiskStats {
     /// Setup folder path
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
-
-    #[clap(long, default_value_t = Field::Goldilocks)]
-    pub field: Field,
 
     /// Base port for Assembly microservices (default: 23115).
     /// A single execution will use 3 consecutive ports, from this port to port + 2.
@@ -258,27 +255,23 @@ impl ZiskStats {
             }
         }
 
-        match self.field {
-            Field::Goldilocks => {
-                proofman.register_witness(&mut *witness_lib, library);
+        proofman.register_witness(&mut *witness_lib, library);
 
-                proofman
-                    .compute_witness_from_lib(
-                        self.input.clone(),
-                        &debug_info,
-                        ProofOptions::new(
-                            false,
-                            false,
-                            false,
-                            false,
-                            self.minimal_memory,
-                            false,
-                            PathBuf::new(),
-                        ),
-                    )
-                    .map_err(|e| anyhow::anyhow!("Error generating stats: {}", e))?;
-            }
-        };
+        proofman
+            .compute_witness_from_lib(
+                self.input.clone(),
+                &debug_info,
+                ProofOptions::new(
+                    false,
+                    false,
+                    false,
+                    false,
+                    self.minimal_memory,
+                    false,
+                    PathBuf::new(),
+                ),
+            )
+            .map_err(|e| anyhow::anyhow!("Error generating stats: {}", e))?;
 
         #[allow(clippy::type_complexity)]
         let (_, stats): (ZiskExecutionResult, ExecutorStats) =
