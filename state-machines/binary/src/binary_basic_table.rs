@@ -50,7 +50,6 @@ impl BinaryBasicTableSM {
     /// The calculated table row offset.
     #[allow(clippy::too_many_arguments)]
     pub fn calculate_table_row(
-        //lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
         opcode: BinaryBasicTableOp,
         a: u64,
         b: u64,
@@ -134,11 +133,11 @@ impl BinaryBasicTableSM {
             | BinaryBasicTableOp::Gt
             | BinaryBasicTableOp::Eq
             | BinaryBasicTableOp::Add
-            | BinaryBasicTableOp::Sub => true,
+            | BinaryBasicTableOp::Sub
+            | BinaryBasicTableOp::Leu
+            | BinaryBasicTableOp::Le => true,
 
-            BinaryBasicTableOp::Leu
-            | BinaryBasicTableOp::Le
-            | BinaryBasicTableOp::And
+            BinaryBasicTableOp::And
             | BinaryBasicTableOp::Or
             | BinaryBasicTableOp::Xor
             | BinaryBasicTableOp::Ext32 => false,
@@ -186,11 +185,11 @@ impl BinaryBasicTableSM {
             BinaryBasicTableOp::Add => 6 * P2_19 + 4 * P2_18,
             BinaryBasicTableOp::Sub => 6 * P2_19 + 5 * P2_18,
             BinaryBasicTableOp::Leu => 6 * P2_19 + 6 * P2_18,
-            BinaryBasicTableOp::Le => 6 * P2_19 + 6 * P2_18 + P2_17,
-            BinaryBasicTableOp::And => 6 * P2_19 + 6 * P2_18 + 2 * P2_17,
-            BinaryBasicTableOp::Or => 6 * P2_19 + 6 * P2_18 + 3 * P2_17,
-            BinaryBasicTableOp::Xor => 6 * P2_19 + 6 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::Ext32 => 6 * P2_19 + 6 * P2_18 + 5 * P2_17,
+            BinaryBasicTableOp::Le => 6 * P2_19 + 7 * P2_18,
+            BinaryBasicTableOp::And => 6 * P2_19 + 8 * P2_18,
+            BinaryBasicTableOp::Or => 6 * P2_19 + 8 * P2_18 + P2_17,
+            BinaryBasicTableOp::Xor => 6 * P2_19 + 8 * P2_18 + 2 * P2_17,
+            BinaryBasicTableOp::Ext32 => 6 * P2_19 + 8 * P2_18 + 3 * P2_17,
         }
     }
 }
