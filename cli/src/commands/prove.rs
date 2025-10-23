@@ -14,6 +14,7 @@ use proofman::{ProofInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::{
     initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions,
 };
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -273,10 +274,10 @@ impl ZiskProve {
             .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
         if self.asm.is_some() {
-            // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", world_rank);
+            timer_start_info!(STARTING_ASM_MICROSERVICES);
 
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
+            timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
         }
 
         proofman.register_witness(&mut *witness_lib, library);
