@@ -31,8 +31,6 @@ mod tests {
             1,
             1,
             1,
-            false,
-            None,
         );
 
         let mut state = GateState::new(circuit_config.clone());
@@ -123,8 +121,6 @@ mod tests {
             1,
             1,
             1,
-            false,
-            None,
         );
 
         let mut state = GateState::new(circuit_config.clone());

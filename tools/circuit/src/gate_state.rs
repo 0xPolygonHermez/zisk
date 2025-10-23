@@ -1,7 +1,7 @@
 use std::vec;
 
 use super::{
-    bits_to_byte, bits_to_byte_msb, print_bits, Expression, ExpressionManager, Gate, GateConfig,
+    bits_to_byte, bits_to_byte_msb, print_bits, Gate, GateConfig,
     GateOperation, PinId, PinSource,
 };
 
@@ -20,27 +20,12 @@ pub struct GateState {
     // Ordered list of gates
     pub gates: Vec<Gate>,
 
-    // Expression manager
-    pub expr_manager: Option<ExpressionManager>,
-
     // Counters
     pub xor2s: u64,
     pub nands: u64,
     pub xor3s: u64,
     pub xornands: u64,
 }
-
-// #[derive(Debug, Clone)]
-// pub struct ResetEvent {
-//     pub round: Option<usize>,
-//     pub step: Option<String>,
-//     pub substep: Option<String>,
-//     pub operation: GateOperation,
-//     pub ref_id: u64,
-//     pub first_value: u64,
-//     pub second_value: u64,
-//     pub op_value: u64,
-// }
 
 impl GateState {
     pub fn new(config: GateConfig) -> Self {
@@ -49,8 +34,6 @@ impl GateState {
         let sout_refs = vec![0; config.sout_ref_number as usize];
         let gates = vec![Gate::new(); config.max_refs as usize];
 
-        let expr_manager =
-            if config.handle_expressions { Some(ExpressionManager::new()) } else { None };
         let mut state = Self {
             config,
             next_ref: 0,
@@ -58,7 +41,6 @@ impl GateState {
             sout_refs,
             program: Vec::new(),
             gates,
-            expr_manager,
             xor2s: 0,
             nands: 0,
             xor3s: 0,
@@ -94,16 +76,6 @@ impl GateState {
         // Calculate the next reference (the first free slot)
         self.next_ref = self.config.first_usable_ref;
 
-        // Initialize input expressions
-        if let Some(ref mut expr_manager) = self.expr_manager {
-            for i in 0..self.config.sin_ref_number {
-                let ref_id = self.config.sin_first_ref
-                    + (i / self.config.sin_ref_group_by) * self.config.sin_ref_distance
-                    + (i % self.config.sin_ref_group_by);
-                expr_manager.set_expression(ref_id, Expression::input(ref_id));
-            }
-        }
-
         // Reset counters
         self.xor2s = 0;
         self.nands = 0;
@@ -116,9 +88,6 @@ impl GateState {
             self.gates[zero_ref as usize].pins[PinId::A].bit = 0;
             self.gates[zero_ref as usize].pins[PinId::B].bit = 1;
             self.gates[zero_ref as usize].pins[PinId::D].bit = 1;
-            if let Some(ref mut expr_manager) = self.expr_manager {
-                expr_manager.set_expression(zero_ref, Expression::ONE);
-            }
         }
     }
 
@@ -272,41 +241,17 @@ impl GateState {
         self.gates[ref_out as usize].pins[PinId::D].source = PinSource::Gated;
         self.gates[ref_out as usize].pins[PinId::D].wired_ref = ref_out;
 
-        // Get involved expressions
-        // TODO: Implement for a third operand
-        let (expr1, expr2) = if self.expr_manager.is_some() {
-            // Threshold check before performing operation
-            self.check_val_before_operation(op, ref_in1, ref_in2);
-
-            let expr_manager = self.expr_manager.as_ref().unwrap();
-            let expr1 =
-                expr_manager.get_expression(ref_in1).cloned().unwrap_or(Expression::input(ref_in1));
-            let expr2 =
-                expr_manager.get_expression(ref_in2).cloned().unwrap_or(Expression::input(ref_in2));
-            (expr1, expr2)
-        } else {
-            (Expression::ZERO, Expression::ZERO)
-        };
-
         // Calculate output based on operation
         match op {
             GateOperation::Xor2 => {
                 // If there are 2 inputs, in3 = 0 doesn't change the result
                 self.gates[ref_out as usize].pins[PinId::D].bit = in1 ^ in2 ^ in3;
                 self.xor2s += 1;
-
-                if let Some(ref mut expr_manager) = self.expr_manager {
-                    expr_manager.set_expression(ref_out, Expression::xor(expr1, expr2));
-                }
             }
 
             GateOperation::Nand => {
                 self.gates[ref_out as usize].pins[PinId::D].bit = (1 - in1) & in2;
                 self.nands += 1;
-
-                if let Some(ref mut expr_manager) = self.expr_manager {
-                    expr_manager.set_expression(ref_out, Expression::nand(expr1, expr2));
-                }
             }
 
             GateOperation::Xor3 | GateOperation::XorNand => {
@@ -428,139 +373,5 @@ impl GateState {
 
         // Print the bits
         print_bits(&bits, name);
-    }
-}
-
-// Expression handling methods
-impl GateState {
-    pub fn set_context(&mut self, round: usize, step: &str) {
-        if let Some(ref mut expr_manager) = self.expr_manager {
-            expr_manager.set_context(round, step);
-        }
-    }
-
-    pub fn set_subcontext(&mut self, subcontext: &str) {
-        if let Some(ref mut expr_manager) = self.expr_manager {
-            expr_manager.set_subcontext(subcontext);
-        }
-    }
-
-    pub fn get_expression(&self, ref_id: u64) -> Option<&Expression> {
-        self.expr_manager.as_ref().and_then(|manager| manager.get_expression(ref_id))
-    }
-
-    /// Set expression for a reference
-    pub fn set_expression(&mut self, ref_id: u64, expr: Expression) {
-        if let Some(ref mut expr_manager) = self.expr_manager {
-            expr_manager.set_expression(ref_id, expr);
-        }
-    }
-
-    pub fn print_expression(&self, ref_id: u64) {
-        if let Some(expr) = self.get_expression(ref_id) {
-            println!("ref[{}] = {}", ref_id, expr);
-        } else {
-            println!("ref[{}] = undefined", ref_id);
-        }
-    }
-
-    pub fn print_max_val_expression(&self, ref_id: u64) {
-        if let Some(expr) = self.get_expression(ref_id) {
-            println!("ref[{}] max value = {}", ref_id, expr.max_value());
-        } else {
-            println!("ref[{}] = undefined", ref_id);
-        }
-    }
-
-    /// Check if performing an operation would exceed the threshold and reset if needed
-    fn check_val_before_operation(&mut self, op: GateOperation, ref_in1: u64, ref_in2: u64) {
-        let Some(ref mut expr_manager) = self.expr_manager else {
-            return;
-        };
-
-        let Some(threshold) = self.config.reset_threshold else {
-            return;
-        };
-
-        let Some(expr1) = expr_manager.get_expression(ref_in1).cloned() else {
-            return;
-        };
-        let Some(expr2) = expr_manager.get_expression(ref_in2).cloned() else {
-            return;
-        };
-
-        // Predict the result based on operation type
-        let predicted_max = Self::eval_op_on_exprs(op, &expr1, &expr2);
-
-        // If predicted result exceeds threshold, reset the largest operand(s)
-        if predicted_max > threshold as u64 {
-            // Create list of operands with their complexity
-            let first_max = expr1.max_value();
-            let second_max = expr2.max_value();
-            let mut operands = vec![(ref_in1, first_max), (ref_in2, second_max)];
-
-            // Sort by max_value descending to reset largest first
-            operands.sort_by(|a, b| b.1.cmp(&a.1));
-
-            // Reset operands until we're under threshold (or all are reset)
-            for (ref_id, max_val) in operands {
-                if max_val > 1 {
-                    expr_manager.create_reset_expression(ref_id, None, Some(predicted_max));
-
-                    // Re-evaluate if we're now under threshold
-                    let expr1 = expr_manager.get_expression(ref_in1).cloned().unwrap();
-                    let expr2 = expr_manager.get_expression(ref_in2).cloned().unwrap();
-                    let new_predicted = Self::eval_op_on_exprs(op, &expr1, &expr2);
-                    if new_predicted <= threshold as u64 {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    /// Helper method to predict operation result after potential resets
-    fn eval_op_on_exprs(op: GateOperation, expr1: &Expression, expr2: &Expression) -> u64 {
-        match op {
-            GateOperation::Xor2 => expr1.max_value() + expr2.max_value(),
-            GateOperation::Nand => (expr1.max_value() + 1) * expr2.max_value(),
-            _ => panic!("Unsupported operation for prediction"),
-        }
-    }
-
-    pub fn create_proxy_expression(&mut self, ref_id: u64) {
-        if let Some(ref mut expr_manager) = self.expr_manager {
-            expr_manager.create_proxy_expression(ref_id);
-        }
-    }
-
-    pub fn manual_reset_expression(&mut self, ref_id: u64, reason: Option<String>) {
-        if let Some(ref mut expr_manager) = self.expr_manager {
-            expr_manager.create_reset_expression(ref_id, reason, None);
-        }
-    }
-
-    pub fn manual_im_expression(&mut self, ref_id: u64, reason: Option<String>) {
-        if let Some(ref mut expr_manager) = self.expr_manager {
-            expr_manager.create_im_expression(ref_id, reason, None);
-        }
-    }
-
-    pub fn print_round_events(&self, round: usize, limit: Option<usize>) {
-        if let Some(ref expr_manager) = self.expr_manager {
-            expr_manager.print_round_events(round, limit);
-        }
-    }
-
-    pub fn print_round_events_summary(&self, round: usize) {
-        if let Some(ref expr_manager) = self.expr_manager {
-            expr_manager.print_round_events(round, Some(0));
-        }
-    }
-
-    pub fn print_expression_summary(&self) {
-        if let Some(ref expr_manager) = self.expr_manager {
-            expr_manager.print_expression_summary();
-        }
     }
 }

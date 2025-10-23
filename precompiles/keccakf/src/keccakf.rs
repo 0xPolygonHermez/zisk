@@ -348,7 +348,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
                                 get_col_row(&row0, |row| &row.free_in_d)
                             };
                         }
-                        PinId::E => panic!("Output pin E is not used by the Keccakf circuit"),
                     }
                 }
                 set_col(par_trace, |row| &mut row.free_in_a, row, value_a);
@@ -408,7 +407,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
                                 get_col_row(&row0, |row| &row.free_in_d)
                             };
                         }
-                        PinId::E => panic!("Output pin E is not used by the Keccakf circuit"),
                     }
                 }
                 set_col(par_trace, |row| &mut row.free_in_b, row, value_b);
@@ -468,7 +466,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
                                 get_col_row(&row0, |row| &row.free_in_d)
                             };
                         }
-                        PinId::E => panic!("Output pin E is not used by the Keccakf circuit"),
                     }
                 }
                 set_col(par_trace, |row| &mut row.free_in_c, row, value_c);
@@ -476,8 +473,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 // Set the value of free_in_d
                 let op = gate.op;
                 let d_val = match op {
-                    GateOperation::Xor => value_a ^ value_b ^ value_c,
-                    GateOperation::XorAndp => {
+                    GateOperation::Xor3 => value_a ^ value_b ^ value_c,
+                    GateOperation::XorNand => {
                         value_a ^ ((value_b ^ MASK_CHUNK_BITS_KECCAKF) & value_c)
                     }
                     _ => panic!("Invalid operation"),

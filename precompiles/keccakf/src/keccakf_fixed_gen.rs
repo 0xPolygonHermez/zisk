@@ -120,7 +120,7 @@ fn cols_gen(subgroup_order: usize, subgroup_gen: u64, cosets_gen: u64) -> FixedC
             // k = 3: Connections to output D
             for k in 0..4 {
                 let pin = &gate.pins[k];
-                let connections_to_input_a = &pin.connections_to_input_a;
+                let connections_to_input_a = &pin.connections[0];
                 for &ref2 in connections_to_input_a {
                     let mut ref2 = ref2 as usize;
                     if ref2 > 0 {
@@ -138,7 +138,7 @@ fn cols_gen(subgroup_order: usize, subgroup_gen: u64, cosets_gen: u64) -> FixedC
                     }
                 }
 
-                let connections_to_input_b = &pin.connections_to_input_b;
+                let connections_to_input_b = &pin.connections[1];
                 for &ref2 in connections_to_input_b {
                     let mut ref2 = ref2 as usize;
                     if ref2 > 0 {
@@ -156,7 +156,7 @@ fn cols_gen(subgroup_order: usize, subgroup_gen: u64, cosets_gen: u64) -> FixedC
                     }
                 }
 
-                let connections_to_input_c = &pin.connections_to_input_c;
+                let connections_to_input_c = &pin.connections[2];
                 for &ref2 in connections_to_input_c {
                     let mut ref2 = ref2 as usize;
                     if ref2 > 0 {
@@ -187,8 +187,8 @@ fn cols_gen(subgroup_order: usize, subgroup_gen: u64, cosets_gen: u64) -> FixedC
             }
 
             match op {
-                GateOperation::Xor => gate_op[line] = F::ZERO,
-                GateOperation::XorAndp => gate_op[line] = F::ONE,
+                GateOperation::Xor3 => gate_op[line] = F::ZERO,
+                GateOperation::XorNand => gate_op[line] = F::ONE,
                 _ => panic!("Invalid op: {op:?}"),
             }
         }

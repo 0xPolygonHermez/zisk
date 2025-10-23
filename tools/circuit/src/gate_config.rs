@@ -14,8 +14,6 @@ pub struct GateConfig {
     pub sout_ref_number: u64,
     pub sout_ref_distance: u64,
     pub sout_last_ref: u64,
-    pub handle_expressions: bool,
-    pub reset_threshold: Option<u32>,
 }
 
 impl GateConfig {
@@ -33,8 +31,6 @@ impl GateConfig {
         sout_ref_group_by: u64,
         sout_ref_number: u64,
         sout_ref_distance: u64,
-        handle_expressions: bool,
-        reset_threshold: Option<u32>,
     ) -> Self {
         assert!(max_refs >= gate_number);
 
@@ -80,8 +76,6 @@ impl GateConfig {
             sout_ref_number,
             sout_ref_distance,
             sout_last_ref,
-            handle_expressions,
-            reset_threshold,
         }
     }
 
