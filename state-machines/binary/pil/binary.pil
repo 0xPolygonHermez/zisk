@@ -67,31 +67,21 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, c
     const int BYTES_PER_CHUNK = BYTES / RC;
 
     // Primary columns
-    col witness b_op;              // binary operation code
-    @witness_bits{ name: "b_op", bits: 5 }
-    col witness free_in_a[BYTES];  // input A per byte
-    @witness_bits{ name: "free_in_a", bits: 8 }
-    col witness free_in_b[BYTES];  // input B per byte
-    @witness_bits{ name: "free_in_b", bits: 8 }
-    col witness free_in_c[BYTES];  // output C per byte
-    @witness_bits{ name: "free_in_c", bits: 8 }
-    col witness cout[BYTES];               // output carry 
-    @witness_bits{ name: "cout", bits: 1 } // Carry distribution per byte: 
+    col witness bits(5) b_op;              // binary operation code
+    col witness bits(8) free_in_a[BYTES];  // input A per byte
+    col witness bits(8) free_in_b[BYTES];  // input B per byte
+    col witness bits(8) free_in_c[BYTES];  // output C per byte
+    col witness bits(1) cout[BYTES];       // Carry distribution per byte: 
                                            //       [cin[0], cout[0]], [cin[1], cout[1]], ..., [cin[BYTES-1], cout[BYTES-1]]
                                            // Note that cin[i] == cout[i-1] for i > 0, and cin[0] is either 0 or a fixed value (for LT_ABS_* operations)
 
 
     // Flags and helpers
-    col witness mode32;            // 1 if operation is in 32-bit mode; 0 if in 64-bit mode
-    @witness_bits{ name: "mode32", bits: 1 }
-    col witness use_last_carry32;  // 1 if use last carry as result in 32-bit mode; 0 otherwise
-    @witness_bits{ name: "use_last_carry32", bits: 1 }
-    col witness use_last_carry64;  // 1 if use last carry as result in 64-bit mode; 0 otherwise
-    @witness_bits{ name: "use_last_carry64", bits: 1 }
-    col witness op_is_min_max;     // 1 if operation is MIN/MAX family; 0 otherwise
-    @witness_bits{ name: "op_is_min_max", bits: 1 }
-    col witness has_initial_carry; // 1 if operation provides initial carry (LT_ABS_*); 0 otherwise
-    @witness_bits{ name: "has_initial_carry", bits: 1 }
+    col witness bits(1) mode32;            // 1 if operation is in 32-bit mode; 0 if in 64-bit mode
+    col witness bits(1) use_last_carry32;  // 1 if use last carry as result in 32-bit mode; 0 otherwise
+    col witness bits(1) use_last_carry64;  // 1 if use last carry as result in 64-bit mode; 0 otherwise
+    col witness bits(1) op_is_min_max;     // 1 if operation is in the MIN/MAX family; 0 otherwise
+    col witness bits(1) has_initial_carry; // 1 if operation provides initial carry (LT_ABS_*); 0 otherwise
 
     const expr mode64 = 1 - mode32;
     const expr cout32 = cout[HALF_BYTES-1];
@@ -127,16 +117,11 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, c
     */
 
     // Auxiliary columns (primarily used to lower the lookup call complexity)
-    col witness last_cout;                       // last carry out of the operation
-    @witness_bits{ name: "last_cout", bits: 1 }
-    col witness result_is_a;                     // 1 if result is A (MIN/MAX family); 0 otherwise
-    @witness_bits{ name: "result_is_a", bits: 1 }
-    col witness b_op_or_sext_op;                  // b_op if operation is 64-bit; SEXT_OP if operation is 32-bit
-    @witness_bits{ name: "b_op_or_sext_op", bits: 5 }
-    col witness free_in_a_or_c_half[HALF_BYTES]; // free_in_a[i] if i < HALF_BYTES; free_in_c[HALF_BYTES-1] if i >= HALF_BYTES
-    @witness_bits{ name: "free_in_a_or_c_half", bits: 8 }
-    col witness free_in_b_or_zero[HALF_BYTES];   // free_in_b[i] if i < HALF_BYTES; 0 if i >= HALF_BYTES
-    @witness_bits{ name: "free_in_b_or_zero", bits: 8 }
+    col witness bits(1) last_cout;                       // last carry out of the operation
+    col witness bits(1) result_is_a;                     // 1 if result is A (MIN/MAX family); 0 otherwise
+    col witness bits(5) b_op_or_sext_op;                  // b_op if operation is 64-bit; SEXT_OP if operation is 32-bit
+    col witness bits(8) free_in_a_or_c_half[HALF_BYTES]; // free_in_a[i] if i < HALF_BYTES; free_in_c[HALF_BYTES-1] if i >= HALF_BYTES
+    col witness bits(8) free_in_b_or_zero[HALF_BYTES];   // free_in_b[i] if i < HALF_BYTES; 0 if i >= HALF_BYTES
     last_cout === mode64 * (cout64 - cout32) + cout32;
     result_is_a === op_is_min_max * last_cout;
     b_op_or_sext_op === mode64 * (b_op - SEXT_OP) + SEXT_OP;
@@ -192,14 +177,12 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, c
     // For example, if A = 0x12_34_56_78, B = 0x12_34_56_78 then
     // the lookup table checks that C = 0x01_00_00_00
     // but we need that C = 0x00_00_00_01
-    col witness result_is_last_cout;
-    @witness_bits{ name: "result_is_last_cout", bits: 1 }
+    col witness bits(1) result_is_last_cout;
     result_is_last_cout === (use_last_carry64 + use_last_carry32) * last_cout;
 
     c[0] += result_is_last_cout;
     c[RC - 1] -= result_is_last_cout * (BYTE_BASE ** (BYTES_PER_CHUNK - 1));
 
-    col witness multiplicity;
-    @witness_bits{ name: "multiplicity", bits: 1 }
+    col witness bits(1) multiplicity;
     lookup_proves(operation_bus_id, [b_op + 0x20 * mode32, ...a, ...b, ...c, last_cout - result_is_a], multiplicity);
 }

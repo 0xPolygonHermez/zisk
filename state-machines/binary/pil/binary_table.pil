@@ -74,8 +74,8 @@ airtemplate BinaryTable(const int N = 2**23) {
     const int TABLE_SIZE = P2_19 * 6 + P2_18 * 8 + P2_17 * 3 + P2_11;
     const int TABLE_BASE_SEXT = P2_16 * 86;
 
-    col fixed C;             // Output C (8 bits)
-    col fixed FLAGS;         // Combined flags (8 bits)
+    col fixed C;     // Output C (8 bits)
+    col fixed FLAGS; // Combined flags (8 bits)
 
     #pragma transpile logfile:/tmp/binary_table.txt
     for (int i = 0; i < N; i++) {

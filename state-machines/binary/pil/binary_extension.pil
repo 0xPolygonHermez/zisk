@@ -1,100 +1,123 @@
 require "std_lookup.pil"
 require "std_range_check.pil"
 
-// Coprocessor in charge of performing standard RISCV binary operations
-
 /*
-List:
-    ┼────────┼────────┼──────────┼
-    │  name  │  bits  │   op     │
-    ┼────────┼────────┼──────────┼
-    │  SLL   │   64   │   0x31   │
-    │  SRL   │   64   │   0x32   │
-    │  SRA   │   64   │   0x33   │
-    │  SLL_W │   32   │   0x34   │
-    │  SRL_W │   32   │   0x35   │
-    │  SRA_W │   32   │   0x36   │
-    │  SE_B  │   32   │   0x37   │
-    │  SE_H  │   32   │   0x38   │
-    │  SE_W  │   32   │   0x39   │
-    ┼────────┼────────┼──────────┼
+    Operation table summary:
+    =======================================
 
-Examples:
-=======================================
+    List of 64-bit proven operations:
+    ┼────────┼──────────┼──────────────┼─────────────┼
+    │  name  │   op     │ in2_low_bits │ op_is_shift │
+    ┼────────┼──────────┼──────────────┼─────────────┼
+    │  SLL   │   0x31   │      6       │      x      │
+    │  SRL   │   0x32   │      6       │      x      │
+    │  SRA   │   0x33   │      6       │      x      │
+    ┼────────┼──────────┼──────────────┼─────────────┼
 
-SLL 28
-x    in1[x]    out[x][0]     out[x][1]
----------------------------------------
-0    0x11      0x10000000    0x00000001
-1    0x22      0x00000000    0x00000220
-2    0x33      0x00000000    0x00033000
-3    0x44      0x00000000    0x04400000
-4    0x55      0x00000000    0x50000000
-5    0x66      0x00000000    0x00000000
-6    0x77      0x00000000    0x00000000
-7    0x88      0x00000000    0x00000000
----------------------------------------
-Result:        0x10000000    0x54433221
+    List of 32-bit proven operations:
+    ┼────────┼──────────┼──────────────┼─────────────┼
+    │  name  │   op     │ in2_low_bits │ op_is_shift │
+    ┼────────┼──────────┼──────────────┼─────────────┼
+    │  SLL_W │   0x34   │      5       │      x      │
+    │  SRL_W │   0x35   │      5       │      x      │
+    │  SRA_W │   0x36   │      5       │      x      │
+    │  SE_B  │   0x37   │      0       │             │
+    │  SE_H  │   0x38   │      0       │             │
+    │  SE_W  │   0x39   │      0       │             │
+    ┼────────┼──────────┼──────────────┼─────────────┼
 
-SLL_W 8
-x    in1[x]    out[x][0]     out[x][1]
----------------------------------------
-0    0x11      0x00001100    0x00000000
-1    0x22      0x00220000    0x00000000
-2    0x33      0x33000000    0x00000000
-3    0x44      0x00000000    0x00000044
-4    0x55      0x00000000    0x00000000 (since 0x44 & 0x80 = 0, we stop here and set the remaining bytes to 0x00)
-5    0x66      0x00000000    0x00000000 (bytes of in1 are ignored from here)
-6    0x77      0x00000000    0x00000000
-7    0x88      0x00000000    0x00000000
----------------------------------------
-Result:        0x33221100    0x00000000
+    Examples:
+    =======================================
 
-SE_H
-x    in2[x]    out[x][0]     out[x][1]
----------------------------------------
-0    0xbc      0x000000bc    0x00000000
-1    0x8a      0xFFFF8a00    0xFFFFFFFF (since 0x8a & 0x80 = 0x80, we stop here and set the remaining bytes to 0xFF)
-2    0x33      0x00000000    0x00000000 (bytes of in2 are ignored from here)
-3    0x44      0x00000000    0x00000000
-4    0x55      0x00000000    0x00000000
-5    0x66      0x00000000    0x00000000
-6    0x77      0x00000000    0x00000000
-7    0x88      0x00000000    0x00000000
----------------------------------------
-Result:        0xFFFF8abc    0xFFFFFFFF
+    SLL 28
+    x    in1[x]    out[x][0]     out[x][1]
+    ---------------------------------------
+    0    0x11      0x10000000    0x00000001
+    1    0x22      0x00000000    0x00000220
+    2    0x33      0x00000000    0x00033000
+    3    0x44      0x00000000    0x04400000
+    4    0x55      0x00000000    0x50000000
+    5    0x66      0x00000000    0x00000000
+    6    0x77      0x00000000    0x00000000
+    7    0x88      0x00000000    0x00000000
+    ---------------------------------------
+    Result:        0x10000000    0x54433221
+
+    SLL_W 8
+    x    in1[x]    out[x][0]     out[x][1]
+    ---------------------------------------
+    0    0x11      0x00001100    0x00000000
+    1    0x22      0x00220000    0x00000000
+    2    0x33      0x33000000    0x00000000
+    3    0x44      0x00000000    0x00000044
+    4    0x55      0x00000000    0x00000000 (since 0x44 & 0x80 = 0, we stop here and set the remaining bytes to 0x00)
+    5    0x66      0x00000000    0x00000000 (bytes of in1 are ignored from here)
+    6    0x77      0x00000000    0x00000000
+    7    0x88      0x00000000    0x00000000
+    ---------------------------------------
+    Result:        0x33221100    0x00000000
+
+    SE_H
+    x    in2[x]    out[x][0]     out[x][1]
+    ---------------------------------------
+    0    0xbc      0x000000bc    0x00000000
+    1    0x8a      0xFFFF8a00    0xFFFFFFFF (since 0x8a & 0x80 = 0x80, we stop here and set the remaining bytes to 0xFF)
+    2    0x33      0x00000000    0x00000000 (bytes of in2 are ignored from here)
+    3    0x44      0x00000000    0x00000000
+    4    0x55      0x00000000    0x00000000
+    5    0x66      0x00000000    0x00000000
+    6    0x77      0x00000000    0x00000000
+    7    0x88      0x00000000    0x00000000
+    ---------------------------------------
+    Result:        0xFFFF8abc    0xFFFFFFFF
 */
 
-airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID) {
+airtemplate BinaryExtension(const int N = 2**18, const int bits = 64, const int operation_bus_id = OPERATION_BUS_ID) {
+    if (bits <= 0) {
+        error(`bits=${bits} must be positive integer`);
+    } else if (bits % 16 != 0) {
+        error(`Bits=${bits} must be divisible by 16`);
+    }
 
-    const int bits = 64;
-    const int bytes = bits / 8;
+    // Default values
+    const int BYTES = bits / 8;
+    const int HALF_BYTES = BYTES / 2;
+    const int BYTE_BASE = (1 << BYTES);
 
-    col witness op;
-    col witness in1[bytes];
-    col witness in2_low;       // Note:  if in2_low∊[0,2^5-1], else in2_low∊[0,2^6-1] (checked by the table)
-    col witness out[bytes][2];
-    col witness op_is_shift;   // 1 if op is shift, 0 otherwise
+    // Primary columns
+    col witness bits(6) op;              // operation code
+    col witness bits(8) in1[BYTES];      // input 1 per byte
+    col witness bits(8) in2_low;         // lower bits of input 2 (those not ignored by the operation)
+    col witness bits(32) out[BYTES][2];  // output per byte, split in 2 parts
+
+    // Flags and helpers
+    col witness bits(1) op_is_shift;     // 1 if operation is in the shift family; 0 otherwise
 
     // Constraints to check the correctness of each binary operation
-    for (int j = 0; j < bytes; j++) {
+    for (int j = 0; j < BYTES; j++) {
        lookup_assumes(BINARY_EXTENSION_TABLE_ID, [op, j, in1[j], in2_low, out[j][0], out[j][1], op_is_shift]);
     }
 
     // Constraints to make sure that this component is called from the main component
-    col witness in2[2];
+    col witness bits(32) in2[2]; // in2[0] only requires 24 bits
 
-    expr in1_low = in1[0] + in1[1]*2**8 + in1[2]*2**16 + in1[3]*2**24;
-    expr in1_high = in1[4] + in1[5]*2**8 + in1[6]*2**16 + in1[7]*2**24;
+    expr in1_low = 0;
+    expr in1_high = 0;
+    for (int j = 0; j < HALF_BYTES; j++) {
+        in1_low += in1[j] * (BYTE_BASE ** j);
+        in1_high += in1[HALF_BYTES + j] * (BYTE_BASE ** j);
+    }
 
-    col witness multiplicity;
+    col witness bits(1) multiplicity;
+    // if op_is_shift == 1 => [op, in1_low, in1_high, in2_low + 256 * in2[0], in2[1],   sum(out[*][0]), sum(out[*][1]), 0]
+    // if op_is_shift == 0 => [op, in2[0],  in2[1],   in1_low,                in1_high, sum(out[*][0]), sum(out[*][1]), 0]
     lookup_proves(
         operation_bus_id,
         [
             op,
             op_is_shift * (in1_low - in2[0]) + in2[0],
             op_is_shift * (in1_high - in2[1]) + in2[1],
-            op_is_shift * (in2_low + 256 * in2[0] - in1_low) + in1_low,
+            op_is_shift * (in2_low + BYTE_BASE * in2[0] - in1_low) + in1_low,
             op_is_shift * (in2[1] - in1_high) + in1_high,
             out[0][0] + out[1][0] + out[2][0] + out[3][0] + out[4][0] + out[5][0] + out[6][0] + out[7][0],
             out[0][1] + out[1][1] + out[2][1] + out[3][1] + out[4][1] + out[5][1] + out[6][1] + out[7][1],
