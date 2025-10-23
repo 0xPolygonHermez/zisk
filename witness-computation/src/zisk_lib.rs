@@ -38,11 +38,10 @@ pub struct WitnessLib<F: PrimeField64> {
     asm_rom_path: Option<PathBuf>,
     executor: Option<Arc<ZiskExecutor<F>>>,
     chunk_size: u64,
-    world_rank: i32,
-    local_rank: i32,
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
     shared_tables: bool,
+    verbose_mode: proofman_common::VerboseMode,
 }
 
 #[no_mangle]
@@ -52,14 +51,10 @@ fn init_library(
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
-    world_rank: Option<i32>,
-    local_rank: Option<i32>,
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
     shared_tables: bool,
 ) -> Result<Box<dyn ZiskLib<Goldilocks>>, Box<dyn std::error::Error>> {
-    proofman_common::initialize_logger(verbose_mode, world_rank);
-
     let chunk_size = CHUNK_SIZE;
 
     let result = Box::new(WitnessLib {
@@ -68,11 +63,10 @@ fn init_library(
         asm_rom_path,
         executor: None,
         chunk_size,
-        world_rank: world_rank.unwrap_or(0),
-        local_rank: local_rank.unwrap_or(0),
         base_port,
         unlock_mapped_memory,
         shared_tables,
+        verbose_mode,
     });
 
     Ok(result)
@@ -93,6 +87,11 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
     /// # Panics
     /// Panics if the `Riscv2zisk` conversion fails or if required paths cannot be resolved.
     fn register_witness(&mut self, wcm: &WitnessManager<F>) {
+        let world_rank = wcm.get_world_rank();
+        let local_rank = wcm.get_local_rank();
+
+        proofman_common::initialize_logger(self.verbose_mode, Some(world_rank));
+
         // Step 1: Create an instance of the RISCV -> ZisK program converter
         let rv2zk = Riscv2zisk::new(self.elf_path.display().to_string());
 
@@ -175,8 +174,8 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             sm_bundle,
             Some(rom_sm.clone()),
             self.chunk_size,
-            self.world_rank,
-            self.local_rank,
+            world_rank,
+            local_rank,
             self.base_port,
             self.unlock_mapped_memory,
         );

@@ -264,41 +264,19 @@ impl Worker {
     ) -> Result<Self> {
         info!("Starting asm microservices...");
 
-        let mpi_info = ProofMan::<Goldilocks>::get_mpi_info();
-
-        let asm_runner_options = AsmRunnerOptions::new()
-            .with_verbose(config.verbose > 0)
-            .with_base_port(config.asm_port)
-            .with_world_rank(mpi_info.rank)
-            .with_local_rank(mpi_info.node_rank)
-            .with_unlock_mapped_memory(config.unlock_mapped_memory);
-
-        let world_rank = mpi_info.rank;
-        let local_rank = mpi_info.node_rank;
-        let base_port = config.asm_port;
-        let unlock_mapped_memory = config.unlock_mapped_memory;
-
-        let asm_services = if config.emulator {
-            None
-        } else {
-            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-            asm_services
-                .start_asm_services(config.asm.as_ref().unwrap(), asm_runner_options.clone())?;
-            Some(asm_services)
-        };
-
         let library =
             unsafe { Library::new(config.witness_lib.clone()).expect("Failed to load library") };
         let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
             unsafe { library.get(b"init_library").expect("Failed to get symbol") };
+
+        let base_port = config.asm_port;
+        let unlock_mapped_memory = config.unlock_mapped_memory;
 
         let mut witness_lib = witness_lib_constructor(
             config.verbose.into(),
             config.elf.clone(),
             config.asm.clone(),
             config.asm_rom.clone(),
-            Some(world_rank),
-            Some(local_rank),
             base_port,
             unlock_mapped_memory,
             config.shared_tables,
@@ -316,6 +294,25 @@ impl Worker {
             witness_lib.get_packed_info(),
         )
         .expect("Failed to initialize proofman");
+
+        let world_rank = proofman.get_world_rank();
+        let local_rank = proofman.get_local_rank();
+
+        let asm_runner_options = AsmRunnerOptions::new()
+            .with_verbose(config.verbose > 0)
+            .with_base_port(config.asm_port)
+            .with_world_rank(world_rank)
+            .with_local_rank(local_rank)
+            .with_unlock_mapped_memory(config.unlock_mapped_memory);
+
+        let asm_services = if config.emulator {
+            None
+        } else {
+            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+            asm_services
+                .start_asm_services(config.asm.as_ref().unwrap(), asm_runner_options.clone())?;
+            Some(asm_services)
+        };
 
         proofman.register_witness(&mut *witness_lib, library);
 
