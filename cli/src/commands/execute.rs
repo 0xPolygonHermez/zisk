@@ -14,7 +14,7 @@ use rom_setup::{
 use std::{collections::HashMap, fs, path::PathBuf};
 
 use crate::{
-    commands::{cli_fail_if_gpu_mode, get_proving_key, get_witness_computation_lib, Field},
+    commands::{cli_fail_if_gpu_mode, get_proving_key, get_witness_computation_lib},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -59,9 +59,6 @@ pub struct ZiskExecute {
     /// Setup folder path
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
-
-    #[clap(long, default_value_t = Field::Goldilocks)]
-    pub field: Field,
 
     /// Base port for Assembly microservices (default: 23115).
     /// A single execution will use 3 consecutive ports, from this port to port + 2.
@@ -202,15 +199,11 @@ impl ZiskExecute {
             timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
         }
 
-        match self.field {
-            Field::Goldilocks => {
-                proofman.register_witness(&mut *witness_lib, library);
+        proofman.register_witness(&mut *witness_lib, library);
 
-                proofman
-                    .execute_from_lib(self.input.clone(), self.output_path.clone())
-                    .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
-            }
-        };
+        proofman
+            .execute_from_lib(self.input.clone(), self.output_path.clone())
+            .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
         if self.asm.is_some() {
             // Shut down ASM microservices
