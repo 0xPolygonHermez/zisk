@@ -225,6 +225,8 @@ impl Debug for JobStats {
 pub struct Job {
     pub job_id: JobId,
     pub start_time: DateTime<Utc>,
+    pub start_time_prove: DateTime<Utc>,
+    pub start_time_aggregate: DateTime<Utc>,
     pub duration_ms: Option<u64>,
     pub state: JobState,
     pub block: BlockContext,
@@ -252,6 +254,8 @@ impl Job {
         Self {
             job_id: JobId::new(),
             start_time: Utc::now(),
+            start_time_prove: Utc::now(),
+            start_time_aggregate: Utc::now(),
             duration_ms: None,
             state: JobState::Created,
             block: BlockContext { block_id, input_path },
