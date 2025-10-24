@@ -857,11 +857,11 @@ impl Coordinator {
 
         let mut job = job_entry.write().await;
 
+        let worker_id = execute_task_response.worker_id.clone();
+
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
-            self.workers_pool
-                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
-                .await?;
+            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await?;
             return Ok(());
         }
 
@@ -869,7 +869,7 @@ impl Coordinator {
         self.store_contribution_response(&mut job, execute_task_response).await?;
 
         // Check if all contributions are complete
-        if !self.check_phase1_completion(&job) {
+        if !self.check_phase1_completion(&job, &worker_id) {
             return Ok(());
         }
 
@@ -970,7 +970,7 @@ impl Coordinator {
     /// # Parameters
     ///
     /// * `job` - Reference to the job to check
-    fn check_phase1_completion(&self, job: &Job) -> bool {
+    fn check_phase1_completion(&self, job: &Job, worker_id: &WorkerId) -> bool {
         let phase1_results_len =
             job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
 
@@ -979,7 +979,8 @@ impl Coordinator {
         let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
         info!(
-            "[Phase1 progress] {} with {}/{} workers completed (duration: {:.3}s)",
+            "[Phase1 progress] WorkerId {} done. {} with {}/{} workers completed (duration: {:.3}s)",
+            worker_id,
             job.job_id,
             phase1_results_len,
             job.workers.len(),
@@ -1183,7 +1184,7 @@ impl Coordinator {
         // Assign aggregator worker if not already assigned
         let agg_worker_id = self.resolve_aggregator_assignment(&mut job, &worker_id).await?;
 
-        let all_done = self.check_phase2_completion(&job).await?;
+        let all_done = self.check_phase2_completion(&job, &worker_id).await?;
 
         let proofs = self.collect_worker_proofs(&job, &agg_worker_id, &worker_id)?;
 
@@ -1335,7 +1336,11 @@ impl Coordinator {
     /// Phase 2 is considered complete when:
     /// - All assigned workers have submitted proof results
     /// - All submitted proofs report successful generation
-    async fn check_phase2_completion(&self, job: &Job) -> CoordinatorResult<bool> {
+    async fn check_phase2_completion(
+        &self,
+        job: &Job,
+        worker_id: &WorkerId,
+    ) -> CoordinatorResult<bool> {
         let empty_results = HashMap::new();
         let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
 
@@ -1346,7 +1351,8 @@ impl Coordinator {
         // Provide operational visibility into Phase 2 progress
         // This logging helps with monitoring long-running proof generation jobs
         info!(
-            "[Phase2 progress] {} with {}/{} workers completed (duration: {:.3}s)",
+            "[Phase2 progress] Worker {} done. {} with {}/{} workers completed (duration: {:.3}s)",
+            worker_id,
             job.job_id,
             phase2_results.len(),
             job.workers.len(),
@@ -1513,10 +1519,10 @@ impl Coordinator {
 
         let mut job = job_entry.write().await;
 
+        let agg_worker_id = &job.agg_worker_id.as_ref().unwrap().clone();
+
         // Mark the aggregation worker as Idle
-        self.workers_pool
-            .mark_worker_with_state(job.agg_worker_id.as_ref().unwrap(), WorkerState::Idle)
-            .await?;
+        self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Idle).await?;
 
         // Finalize completed job
         job.final_proof = Some(proof_data.values);
@@ -1532,7 +1538,12 @@ impl Coordinator {
 
         drop(job);
 
-        info!("[Phase3 completed] {} (duration: {:.3}s)", job_id, duration_ms.as_secs_f32());
+        info!(
+            "[Phase3 completed] WorkerId {} done. {} (duration: {:.3}s)",
+            agg_worker_id,
+            job_id,
+            duration_ms.as_secs_f32()
+        );
 
         info!("[Job Finished] {} (duration: {:.3}s)", job_id, duration.as_secs_f32());
 
