@@ -168,6 +168,11 @@ pub struct ProofDto {
     pub values: Vec<u64>,
 }
 
+pub struct FinalProofDto {
+    pub values: Vec<u64>,
+    pub executed_steps: u64,
+}
+
 pub struct ExecuteTaskResponseDto {
     pub job_id: JobId,
     pub worker_id: WorkerId,
@@ -179,7 +184,7 @@ pub struct ExecuteTaskResponseDto {
 pub enum ExecuteTaskResponseResultDataDto {
     Challenges(Vec<ChallengesDto>),
     Proofs(Vec<ProofDto>),
-    FinalProof(Vec<Vec<u64>>),
+    FinalProof(FinalProofDto),
 }
 
 pub struct HeartbeatAckDto {
@@ -206,18 +211,25 @@ pub struct WebhookPayloadDto {
     pub success: bool,
     pub duration_ms: u64,
     pub proof: Option<Vec<u64>>,
+    pub executed_steps: Option<u64>,
     pub timestamp: String,
     pub error: Option<WebhookErrorDto>,
 }
 
 impl WebhookPayloadDto {
     /// Creates a successful webhook payload
-    pub fn success(job_id: String, duration_ms: u64, proof: Option<Vec<u64>>) -> Self {
+    pub fn success(
+        job_id: String,
+        duration_ms: u64,
+        proof: Option<Vec<u64>>,
+        executed_steps: Option<u64>,
+    ) -> Self {
         Self {
             job_id,
             success: true,
             duration_ms,
             proof,
+            executed_steps,
             timestamp: chrono::Utc::now().to_rfc3339(),
             error: None,
         }
@@ -230,6 +242,7 @@ impl WebhookPayloadDto {
             success: false,
             duration_ms,
             proof: None,
+            executed_steps: None,
             timestamp: chrono::Utc::now().to_rfc3339(),
             error: Some(error),
         }

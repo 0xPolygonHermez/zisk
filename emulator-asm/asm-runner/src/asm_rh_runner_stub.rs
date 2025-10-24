@@ -1,11 +1,8 @@
-use std::{
-    ffi::c_void,
-    sync::{Arc, Mutex},
-};
+use std::ffi::c_void;
 
 use crate::AsmRHData;
 use anyhow::Result;
-use zisk_common::ExecutorStats;
+use zisk_common::ExecutorStatsHandle;
 
 pub struct PreloadedRH {}
 
@@ -35,7 +32,7 @@ impl AsmRunnerRH {
         _: i32,
         _: Option<u16>,
         _: bool,
-        _: Arc<Mutex<ExecutorStats>>,
+        _: ExecutorStatsHandle,
     ) -> Result<AsmRunnerRH> {
         Err(anyhow::anyhow!(
             "AsmRunnerRH::run() is not supported on this platform. Only Linux x86_64 is supported."

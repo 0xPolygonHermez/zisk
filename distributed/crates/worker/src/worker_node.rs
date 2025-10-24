@@ -203,8 +203,8 @@ impl WorkerNodeGrpc {
             ComputationResult::Proofs { job_id, success, result } => {
                 self.send_proof(job_id, success, result, message_sender).await
             }
-            ComputationResult::AggProof { job_id, success, result } => {
-                self.send_aggregation(job_id, success, result, message_sender).await
+            ComputationResult::AggProof { job_id, success, result, executed_steps } => {
+                self.send_aggregation(job_id, success, result, message_sender, executed_steps).await
             }
         }
     }
@@ -320,40 +320,39 @@ impl WorkerNodeGrpc {
         success: bool,
         result: Result<Option<Vec<Vec<u64>>>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        executed_steps: u64,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
         }
 
-        let (result_data, error_message) = match result {
+        let mut error_message = String::new();
+        let mut reset_current_job = false;
+
+        let result_data = match result {
             Ok(data) => {
-                assert!(success);
+                if !success {
+                    return Err(anyhow!("Aggregation returned Ok result but reported failure"));
+                }
 
                 if let Some(final_proof) = data {
-                    (
-                        Some(ResultData::FinalProof(FinalProofList {
-                            final_proofs: final_proof
-                                .into_iter()
-                                .map(|v| FinalProof { values: v })
-                                .collect(),
-                        })),
-                        String::new(),
-                    )
+                    reset_current_job = !final_proof.is_empty();
+                    Some(ResultData::FinalProof(FinalProof {
+                        values: final_proof.into_iter().flatten().collect(),
+                        executed_steps,
+                    }))
                 } else {
-                    (None, String::new())
+                    None
                 }
             }
             Err(e) => {
-                // ! FIXME, return an error?
-                assert!(!success);
-                (None, e.to_string())
+                if success {
+                    return Err(anyhow!("Aggregation returned Err but reported success"));
+                }
+                error_message = e.to_string();
+                None
             }
         };
-
-        let reset_current_job = matches!(
-            result_data.as_ref(),
-            Some(ResultData::FinalProof(FinalProofList { final_proofs })) if !final_proofs.is_empty()
-        );
 
         let message = WorkerMessage {
             payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {

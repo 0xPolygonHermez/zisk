@@ -9,7 +9,21 @@ use circuit::{Gate, GateOperation, PinId};
 use precompiles_helpers::keccakf_topology;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{KeccakfFixed, KeccakfTrace, KeccakfTraceRow};
+use zisk_pil::KeccakfFixed;
+#[cfg(not(feature = "packed"))]
+use zisk_pil::{KeccakfTrace, KeccakfTraceRow};
+#[cfg(feature = "packed")]
+use zisk_pil::{KeccakfTracePacked, KeccakfTraceRowPacked};
+
+#[cfg(feature = "packed")]
+type KeccakfTraceRowType<F> = KeccakfTraceRowPacked<F>;
+#[cfg(feature = "packed")]
+type KeccakfTraceType<F> = KeccakfTracePacked<F>;
+
+#[cfg(not(feature = "packed"))]
+type KeccakfTraceRowType<F> = KeccakfTraceRow<F>;
+#[cfg(not(feature = "packed"))]
+type KeccakfTraceType<F> = KeccakfTrace<F>;
 
 use crate::KeccakfInput;
 
@@ -58,14 +72,14 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let circuit_size = keccakf_program.len();
 
         // Compute some useful values
-        let num_available_circuits = (KeccakfTrace::<usize>::NUM_ROWS - 1) / circuit_size;
+        let num_available_circuits = (KeccakfTraceType::<F>::NUM_ROWS - 1) / circuit_size;
         let num_available_keccakfs = NUM_KECCAKF_PER_CIRCUIT * num_available_circuits;
 
         // Get the fixed columns
-        let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
-        let air_id = KeccakfTrace::<usize>::AIR_ID;
+        let airgroup_id = KeccakfTraceType::<F>::AIRGROUP_ID;
+        let air_id = KeccakfTraceType::<F>::AIR_ID;
         let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
-        let keccakf_fixed = KeccakfFixed::from_vec(fixed_pols);
+        let keccakf_fixed = KeccakfFixed::new_from_vec(fixed_pols);
 
         // Get the table ID
         let table_id = std.get_virtual_table_id(KeccakfTableSM::TABLE_ID);
@@ -92,7 +106,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     #[inline(always)]
     pub fn process_trace<'a, I>(
         &self,
-        trace: &mut KeccakfTrace<F>,
+        trace: &mut KeccakfTraceType<F>,
         num_rows_constants: usize,
         inputs: I,
         num_inputs: usize,
@@ -120,15 +134,15 @@ impl<F: PrimeField64> KeccakfSM<F> {
             let initial_pos = initial_offset + circuit_offset + circuit_pos;
 
             // Activate the in_use_clk_0 a single time
-            trace[initial_pos].in_use_clk_0 = F::ONE;
+            trace[initial_pos].set_in_use_clk_0(true);
 
             // Fill the step_addr
-            trace[initial_pos].step_addr = F::from_u64(step_main); // STEP_MAIN
-            trace[initial_pos + STATE_SIZE].step_addr = F::from_u32(addr_main); // ADDR_MAIN
+            trace[initial_pos].set_step_addr(step_main);
+            trace[initial_pos + STATE_SIZE].set_step_addr(addr_main as u64);
 
             // Activate the in_use for the input data
             for j in 0..IN_BLOCKS {
-                trace[initial_pos + j * STATE_SIZE].in_use = F::ONE;
+                trace[initial_pos + j * STATE_SIZE].set_in_use(true);
             }
 
             // Process the keccakf input
@@ -169,7 +183,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
             // Activate the in_use for the output data
             offset += input_offset;
             for j in 0..OUT_BLOCKS {
-                trace[offset + j * STATE_SIZE].in_use = F::ONE;
+                trace[offset + j * STATE_SIZE].set_in_use(true);
             }
 
             // Process the output
@@ -222,7 +236,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     for k in rem_inputs..NUM_KECCAKF_PER_CIRCUIT {
                         let pos = block + k;
                         for l in 0..MEM_BITS_IN_PARALLEL {
-                            trace[pos + 1].val[l] = trace[pos].val[l];
+                            let val = trace[pos].get_val(l);
+                            trace[pos + 1].set_val(l, val);
                         }
                     }
                 }
@@ -273,7 +288,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let program = &self.program;
         let gates = &self.gates;
 
-        let trace_rows = trace.row_slice_mut();
+        let trace_rows = trace.buffer.as_mut_slice();
 
         let row0 = trace_rows[0];
 
@@ -322,36 +337,36 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     match wired_a {
                         PinId::A => {
                             value_a = if ref_a > 0 {
-                                get_col(par_trace, |row| &row.free_in_a, ref_a - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_a(i), ref_a - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_a)
+                                get_col_row(&row0, |row, i| row.get_free_in_a(i))
                             };
                         }
                         PinId::B => {
                             value_a = if ref_a > 0 {
-                                get_col(par_trace, |row| &row.free_in_b, ref_a - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_b(i), ref_a - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_b)
+                                get_col_row(&row0, |row, i| row.get_free_in_b(i))
                             };
                         }
                         PinId::C => {
                             value_a = if ref_a > 0 {
-                                get_col(par_trace, |row| &row.free_in_c, ref_a - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_c(i), ref_a - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_c)
+                                get_col_row(&row0, |row, i| row.get_free_in_c(i))
                             };
                         }
                         PinId::D => {
                             value_a = if ref_a > 0 {
-                                get_col(par_trace, |row| &row.free_in_d, ref_a - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_d(i), ref_a - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_d)
+                                get_col_row(&row0, |row, i| row.get_free_in_d(i))
                             };
                         }
                         PinId::E => panic!("Output pin E is not used by the Keccakf circuit"),
                     }
                 }
-                set_col(par_trace, |row| &mut row.free_in_a, row, value_a);
+                set_col(par_trace, |row, i, val| row.set_free_in_a(i, val), row, value_a);
 
                 // Set the value of free_in_b
                 let b = &gate.pins[1];
@@ -382,36 +397,36 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     match wired_b {
                         PinId::A => {
                             value_b = if ref_b > 0 {
-                                get_col(par_trace, |row| &row.free_in_a, ref_b - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_a(i), ref_b - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_a)
+                                get_col_row(&row0, |row, i| row.get_free_in_a(i))
                             };
                         }
                         PinId::B => {
                             value_b = if ref_b > 0 {
-                                get_col(par_trace, |row| &row.free_in_b, ref_b - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_b(i), ref_b - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_b)
+                                get_col_row(&row0, |row, i| row.get_free_in_b(i))
                             };
                         }
                         PinId::C => {
                             value_b = if ref_b > 0 {
-                                get_col(par_trace, |row| &row.free_in_c, ref_b - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_c(i), ref_b - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_c)
+                                get_col_row(&row0, |row, i| row.get_free_in_c(i))
                             };
                         }
                         PinId::D => {
                             value_b = if ref_b > 0 {
-                                get_col(par_trace, |row| &row.free_in_d, ref_b - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_d(i), ref_b - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_d)
+                                get_col_row(&row0, |row, i| row.get_free_in_d(i))
                             };
                         }
                         PinId::E => panic!("Output pin E is not used by the Keccakf circuit"),
                     }
                 }
-                set_col(par_trace, |row| &mut row.free_in_b, row, value_b);
+                set_col(par_trace, |row, i, val| row.set_free_in_b(i, val), row, value_b);
 
                 // Set the value of free_in_c
                 let c = &gate.pins[2];
@@ -442,36 +457,36 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     match wired_c {
                         PinId::A => {
                             value_c = if ref_c > 0 {
-                                get_col(par_trace, |row| &row.free_in_a, ref_c - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_a(i), ref_c - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_a)
+                                get_col_row(&row0, |row, i| row.get_free_in_a(i))
                             };
                         }
                         PinId::B => {
                             value_c = if ref_c > 0 {
-                                get_col(par_trace, |row| &row.free_in_b, ref_c - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_b(i), ref_c - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_b)
+                                get_col_row(&row0, |row, i| row.get_free_in_b(i))
                             };
                         }
                         PinId::C => {
                             value_c = if ref_c > 0 {
-                                get_col(par_trace, |row| &row.free_in_c, ref_c - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_c(i), ref_c - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_c)
+                                get_col_row(&row0, |row, i| row.get_free_in_c(i))
                             };
                         }
                         PinId::D => {
                             value_c = if ref_c > 0 {
-                                get_col(par_trace, |row| &row.free_in_d, ref_c - 1)
+                                get_col(par_trace, |row, i| row.get_free_in_d(i), ref_c - 1)
                             } else {
-                                get_col_row(&row0, |row| &row.free_in_d)
+                                get_col_row(&row0, |row, i| row.get_free_in_d(i))
                             };
                         }
                         PinId::E => panic!("Output pin E is not used by the Keccakf circuit"),
                     }
                 }
-                set_col(par_trace, |row| &mut row.free_in_c, row, value_c);
+                set_col(par_trace, |row, i, val| row.set_free_in_c(i, val), row, value_c);
 
                 // Set the value of free_in_d
                 let op = gate.op;
@@ -482,14 +497,11 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     }
                     _ => panic!("Invalid operation"),
                 };
-                set_col(par_trace, |row| &mut row.free_in_d, row, d_val);
+                set_col(par_trace, |row, i, val| row.set_free_in_d(i, val), row, d_val);
             }
 
             // Update the multiplicity table for the circuit
             for (k, row) in par_trace.iter().enumerate().take(self.circuit_size) {
-                let a = &row.free_in_a;
-                let b = &row.free_in_b;
-                let c = &row.free_in_c;
                 let gate_op = self.keccakf_fixed[k + 1 + i * self.circuit_size].GATE_OP;
                 let gate_op_val = match F::as_canonical_u64(&gate_op) {
                     0 => KeccakfTableGateOp::Xor,
@@ -498,9 +510,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 };
 
                 for j in 0..CHUNKS_KECCAKF {
-                    let a_val = F::as_canonical_u64(&a[j]);
-                    let b_val = F::as_canonical_u64(&b[j]);
-                    let c_val = F::as_canonical_u64(&c[j]);
+                    let a_val = row.get_free_in_a(j) as u64;
+                    let b_val = row.get_free_in_b(j) as u64;
+                    let c_val = row.get_free_in_c(j) as u64;
                     let table_row =
                         KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val, c_val);
                     self.std.inc_virtual_row(self.table_id, table_row as u64, 1);
@@ -509,60 +521,60 @@ impl<F: PrimeField64> KeccakfSM<F> {
         });
 
         fn update_bit_val<F: PrimeField64>(
-            trace: &mut KeccakfTrace<F>,
+            trace: &mut KeccakfTraceType<F>,
             pos: usize,
             bit: u64,
             circuit_pos: usize,
             bit_pos: usize,
             reset: bool,
         ) {
-            trace[pos].bit[bit_pos] = F::from_u64(bit);
-            trace[pos + 1].val[bit_pos] = if reset {
-                F::from_u64(bit << circuit_pos)
+            trace[pos].set_bit(bit_pos, bit != 0);
+            let val = if reset {
+                bit << circuit_pos
             } else {
-                trace[pos].val[bit_pos] + F::from_u64(bit << circuit_pos)
+                let value = trace[pos].get_val(bit_pos);
+                value + (bit << circuit_pos)
             };
+
+            trace[pos + 1].set_val(bit_pos, val);
         }
 
         fn set_col<F: PrimeField64>(
-            trace: &mut [KeccakfTraceRow<F>],
-            cols: impl Fn(&mut KeccakfTraceRow<F>) -> &mut [F; CHUNKS_KECCAKF],
+            trace: &mut [KeccakfTraceRowType<F>],
+            set_col_fn: impl Fn(&mut KeccakfTraceRowType<F>, usize, u8),
             index: usize,
             value: u64,
         ) {
-            let mut _value = value;
+            let mut remaining = value;
             let row = &mut trace[index];
-            let cols = cols(row);
-            for col in cols.iter_mut() {
-                *col = F::from_u64(_value & MASK_BITS_KECCAKF);
-                _value >>= BITS_KECCAKF;
+            for i in 0..CHUNKS_KECCAKF {
+                let chunk = remaining & MASK_BITS_KECCAKF;
+                set_col_fn(row, i, chunk as u8);
+                remaining >>= BITS_KECCAKF;
             }
         }
 
         fn get_col<F: PrimeField64>(
-            trace: &[KeccakfTraceRow<F>],
-            cols: impl Fn(&KeccakfTraceRow<F>) -> &[F; CHUNKS_KECCAKF],
-            index: usize,
+            trace: &[KeccakfTraceRowType<F>],
+            get_col_fn: impl Fn(&KeccakfTraceRowType<F>, usize) -> u8,
+            row_index: usize,
         ) -> u64 {
             let mut value = 0;
-            let row = &trace[index];
-            let cols = cols(row);
-            for (i, col) in cols.iter().enumerate() {
-                let col_i_val = F::as_canonical_u64(col);
+            let row = &trace[row_index];
+            for i in 0..CHUNKS_KECCAKF {
+                let col_i_val = get_col_fn(row, i) as u64;
                 value += col_i_val << ((i * BITS_KECCAKF) as u64);
             }
             value
         }
 
         fn get_col_row<F: PrimeField64>(
-            trace_row: &KeccakfTraceRow<F>,
-            cols: impl Fn(&KeccakfTraceRow<F>) -> &[F; CHUNKS_KECCAKF],
+            trace_row: &KeccakfTraceRowType<F>,
+            get_col_fn: impl Fn(&KeccakfTraceRowType<F>, usize) -> u8,
         ) -> u64 {
             let mut value = 0;
-            let row = trace_row;
-            let cols = cols(row);
-            for (i, col) in cols.iter().enumerate() {
-                let col_i_val = F::as_canonical_u64(col);
+            for i in 0..CHUNKS_KECCAKF {
+                let col_i_val = get_col_fn(trace_row, i) as u64;
                 value += col_i_val << ((i * BITS_KECCAKF) as u64);
             }
             value
@@ -582,7 +594,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         timer_start_trace!(KECCAKF_TRACE);
-        let mut keccakf_trace = KeccakfTrace::new_from_vec_zeroes(trace_buffer);
+        let mut keccakf_trace = KeccakfTraceType::new_from_vec_zeroes(trace_buffer);
         let num_rows = keccakf_trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace
@@ -612,7 +624,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         // Set a = 0b00..00, b = 0b11..11 and c = 0b00..00 at the first row
         // Set, e.g., the operation to be an XOR and set d = 0b11..11 = b = a ^ b ^ c
-        let mut row: KeccakfTraceRow<F> = Default::default();
+        let mut row: KeccakfTraceRowType<F> = Default::default();
         let zeros = 0u64;
         let ones = MASK_BITS_KECCAKF;
         let gate_op = self.keccakf_fixed[0].GATE_OP.as_canonical_u64();
@@ -623,10 +635,10 @@ impl<F: PrimeField64> KeccakfSM<F> {
             "Invalid initial dummy gate operation"
         );
         for i in 0..CHUNKS_KECCAKF {
-            row.free_in_a[i] = F::ZERO;
-            row.free_in_b[i] = F::from_u64(ones);
-            row.free_in_c[i] = F::ZERO;
-            row.free_in_d[i] = F::from_u64(ones);
+            row.set_free_in_a(i, 0);
+            row.set_free_in_b(i, ones as u8);
+            row.set_free_in_c(i, 0);
+            row.set_free_in_d(i, ones as u8);
         }
         // Update the multiplicity table
         let table_row =
@@ -644,7 +656,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         timer_start_trace!(KECCAKF_PADDING);
         // A row with all zeros satisfies the constraints (since XOR(0,0,0) = 0)
-        let padding_row: KeccakfTraceRow<F> = Default::default();
+        let padding_row: KeccakfTraceRowType<F> = Default::default();
         for i in (num_rows_constants + self.circuit_size * self.num_available_circuits)..num_rows {
             let gate_op = self.keccakf_fixed[i].GATE_OP.as_canonical_u64();
             // Sanity check

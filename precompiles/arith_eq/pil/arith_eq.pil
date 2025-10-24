@@ -60,18 +60,29 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
         CLK[i] = (i)'CLK_0;
     }
 
-    const int Q_HSC_MAX = 2**22-1;
+    const int Q_HSC_BITS = 22; // Number of bits for high safe chunk of q
+    const int Q_HSC_MAX = 2**Q_HSC_BITS-1;
 
-    const int CARRY_MIN = -(2**22 - 1);
-    const int CARRY_MAX = 2**22;
+    const int CARRY_BITS = 22;
+    const int CARRY_MIN = -(2**CARRY_BITS - 1);
+    const int CARRY_MAX = 2**CARRY_BITS;
 
     const int EQS = 16;     // Number of equations
     const int OPS = 9;      // Number of operations
     const int MAX_CEQS = 3; // Max concurrent equations
     const int QS = 3;       // Number of quotients
 
-    col witness x1, y1, x2, y2, x3, y3, q0, q1, q2, s;
-    col witness sel_op[OPS];
+    col witness bits(CHUNK_BITS) x1;
+    col witness bits(CHUNK_BITS) y1;
+    col witness bits(CHUNK_BITS) x2;
+    col witness bits(CHUNK_BITS) y2;
+    col witness bits(CHUNK_BITS) x3;
+    col witness bits(CHUNK_BITS) y3;
+    col witness bits(Q_HSC_BITS) q0;
+    col witness bits(Q_HSC_BITS) q1;
+    col witness bits(Q_HSC_BITS) q2;
+    col witness bits(Q_HSC_BITS) s;
+    col witness bits(1) sel_op[OPS];
 
     const expr sel_arith256 = sel_op[0];
     const expr sel_arith256_mod = sel_op[1];
@@ -129,7 +140,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     include "equations/bn254_complex_mul_x3.pil"
     include "equations/bn254_complex_mul_y3.pil"
 
-    col witness sel_op_clk0[OPS];
+    col witness bits(1) sel_op_clk0[OPS];
 
     const expr arith256_clk0 = sel_op_clk0[0];
     const expr arith256_mod_clk0 = sel_op_clk0[1];
@@ -213,7 +224,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     // inverse to demostrate that x1 and x2 are different.
 
     const expr x_delta_chunk = x2 - x1;
-    col witness x_delta_chunk_inv;
+    col witness bits(64) x_delta_chunk_inv;
 
     // x_chunk_different as binary value, only when x_delta_chunk_inv == inv(x_delta_chunk),
     // its value is 1.
@@ -237,7 +248,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
 
     // x_are_different is used to indicate that in current clock we knows that x1 and x2 are different
 
-    col witness x_are_different;
+    col witness bits(1) x_are_different;
     x_are_different * (1 - x_are_different) === 0;
 
     // x_are_different in first clock that x_are_different == 1, after that x_are_different must be 0.
@@ -344,8 +355,8 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     // extra column, we replicate this table for all chunks, total size is 2^18 * 2^4 = 2^22 rows.
     // An extra column here is "pay" for each instance, but in a table is paid once.
 
-    col witness x3_lt;
-    col witness y3_lt;
+    col witness bits(1) x3_lt;
+    col witness bits(1) y3_lt;
 
     x3_lt * (1 - x3_lt) === 0;
     y3_lt * (1 - y3_lt) === 0;
@@ -361,7 +372,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     lookup_assumes(ARITH_EQ_LT_TABLE_ID, [2 * 'x3_lt * (1 - CLK_0) + x3_lt, delta_x3], sel: sel_check_x_lt_prime);
     lookup_assumes(ARITH_EQ_LT_TABLE_ID, [2 * 'y3_lt * (1 - CLK_0) + y3_lt, delta_y3], sel: sel_check_y_lt_prime);
 
-    col witness carry[MAX_CEQS][CBC];
+    col witness bits(64, signed) carry[MAX_CEQS][CBC];
 
     for (int i = 0; i < MAX_CEQS; ++i) {
         carry[i][0] * CLK_0 === 0;
@@ -390,7 +401,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
     // of clock selector and step_addr. This expression has degree 2. In some situations it could be
     // useful to save columns.
 
-    col witness step_addr;
+    col witness bits(40) step_addr;
 
     const int MAIN_STEP = 0;
 

@@ -1,13 +1,13 @@
 use crate::{mem_align_byte_sm::MemAlignByteSM, MemAlignCollector};
 use mem_common::MemAlignCheckPoint;
 
+use crate::mem_align_byte_sm::{MemAlignReadByteTraceRowType, MemAlignReadByteTraceType};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{MemAlignReadByteTrace, MemAlignReadByteTraceRow};
 
 pub struct MemAlignReadByteInstance<F: PrimeField64> {
     /// Instance context
@@ -56,7 +56,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
             .collect();
         Some(
             self.mem_align_byte_sm
-                .compute_witness::<MemAlignReadByteTrace<F>, MemAlignReadByteTraceRow<F>>(
+                .compute_witness::<MemAlignReadByteTraceType<F>, MemAlignReadByteTraceRowType<F>>(
                     &inputs,
                     total_rows as usize,
                     trace_buffer,

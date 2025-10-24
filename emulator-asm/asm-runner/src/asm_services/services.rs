@@ -91,8 +91,6 @@ impl AsmServices {
             }
         }
 
-        let start = std::time::Instant::now();
-
         for service in &Self::SERVICES {
             tracing::debug!(
                 ">>> [{}] Starting ASM service: {} on port {}",
@@ -121,12 +119,6 @@ impl AsmServices {
             self.send_status_request(service)
                 .with_context(|| format!("Service {service} failed to respond to ping"))?;
         }
-
-        tracing::info!(
-            ">>> [{}] ASM microservices are ready ({:.2} seconds)",
-            self.world_rank,
-            start.elapsed().as_secs_f32()
-        );
 
         Ok(())
     }

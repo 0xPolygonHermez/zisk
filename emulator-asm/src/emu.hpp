@@ -7,6 +7,14 @@
 extern bool emu_verbose;
 #endif
 
+//#define ASM_PRECOMPILE_CACHE
+
+#ifdef ASM_PRECOMPILE_CACHE
+void precompile_cache_store_init(void);
+void precompile_cache_load_init(void);
+void precompile_cache_cleanup(void);
+#endif
+
 //#define ASM_CALL_METRICS
 
 #ifdef ASM_CALL_METRICS

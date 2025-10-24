@@ -17,10 +17,24 @@ use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::prelude::*;
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx, SegmentId};
 use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
-use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
+use zisk_pil::MainAirValues;
 use ziskemu::{Emu, EmuRegTrace};
 
-const MAX_SEGMENT_ID: usize = ((1 << 32) / MainTrace::<usize>::NUM_ROWS) - 1;
+#[cfg(not(feature = "packed"))]
+use zisk_pil::{MainTrace, MainTraceRow};
+#[cfg(feature = "packed")]
+use zisk_pil::{MainTracePacked, MainTraceRowPacked};
+
+#[cfg(feature = "packed")]
+type MainTraceRowType<F> = MainTraceRowPacked<F>;
+#[cfg(feature = "packed")]
+type MainTraceType<F> = MainTracePacked<F>;
+
+#[cfg(not(feature = "packed"))]
+type MainTraceRowType<F> = MainTraceRow<F>;
+#[cfg(not(feature = "packed"))]
+type MainTraceType<F> = MainTrace<F>;
+
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
 pub struct MainInstance<F: PrimeField64> {
@@ -31,6 +45,8 @@ pub struct MainInstance<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> MainInstance<F> {
+    const MAX_SEGMENT_ID: usize = ((1 << 32) / MainTraceType::<F>::NUM_ROWS) - 1;
+
     /// Creates a new `MainInstance`.
     ///
     /// # Arguments
@@ -62,7 +78,7 @@ impl<F: PrimeField64> MainInstance<F> {
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         // Create the main trace buffer
-        let mut main_trace = MainTrace::new_from_vec(trace_buffer);
+        let mut main_trace = MainTraceType::new_from_vec(trace_buffer);
 
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
@@ -77,8 +93,8 @@ impl<F: PrimeField64> MainInstance<F> {
             });
 
         // Determine the number of minimal traces per segment
-        let num_within = MainTrace::<F>::NUM_ROWS / chunk_size as usize;
-        let num_rows = MainTrace::<F>::NUM_ROWS;
+        let num_rows = main_trace.num_rows();
+        let num_within = num_rows / chunk_size as usize;
 
         // Determine trace slice for the current segment
         let start_idx = segment_id.as_usize() * num_within;
@@ -163,10 +179,8 @@ impl<F: PrimeField64> MainInstance<F> {
         // Pad remaining rows with the last valid row
         // In padding row must be clear of registers access, if not need to calculate previous
         // register step and range check conntribution
-        let last_row = main_trace.row_slice_mut()[filled_rows - 1];
-        main_trace.row_slice_mut()[filled_rows..num_rows]
-            .par_iter_mut()
-            .for_each(|row| *row = last_row);
+        let last_row = main_trace.buffer[filled_rows - 1];
+        main_trace.buffer[filled_rows..num_rows].par_iter_mut().for_each(|row| *row = last_row);
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
@@ -180,10 +194,11 @@ impl<F: PrimeField64> MainInstance<F> {
 
         air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(*is_last_segment);
-        air_values.segment_initial_pc = main_trace.row_slice()[0].pc;
+        air_values.segment_initial_pc = F::from_u32(main_trace[0].get_pc());
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
-        air_values.segment_last_c = last_row.c;
+        air_values.segment_last_c[0] = F::from_u32(last_row.get_c(0));
+        air_values.segment_last_c[1] = F::from_u32(last_row.get_c(1));
 
         Self::update_reg_airvalues(
             &mut air_values,
@@ -212,7 +227,7 @@ impl<F: PrimeField64> MainInstance<F> {
     /// The next program counter value after processing the minimal trace.
     fn fill_partial_trace(
         zisk_rom: &ZiskRom,
-        main_trace: &mut [MainTraceRow<F>],
+        main_trace: &mut [MainTraceRowType<F>],
         min_trace: &EmuTrace,
         reg_trace: &mut EmuRegTrace,
         step_range_check: &mut [u32],
@@ -244,7 +259,7 @@ impl<F: PrimeField64> MainInstance<F> {
     fn complete_trace_with_initial_reg_steps_per_chunk(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
-        main_trace: &mut MainTrace<F>,
+        main_trace: &mut MainTraceType<F>,
         step_range_check: &mut [u32],
         reg_steps: &mut [u64; REGS_IN_MAIN],
     ) -> Vec<u32> {
@@ -272,16 +287,13 @@ impl<F: PrimeField64> MainInstance<F> {
                     }
                     match slot {
                         0 => {
-                            main_trace.row_slice_mut()[row].a_reg_prev_mem_step =
-                                F::from_u64(reg_prev_mem_step)
+                            main_trace.buffer[row].set_a_reg_prev_mem_step(reg_prev_mem_step);
                         }
                         1 => {
-                            main_trace.row_slice_mut()[row].b_reg_prev_mem_step =
-                                F::from_u64(reg_prev_mem_step)
+                            main_trace.buffer[row].set_b_reg_prev_mem_step(reg_prev_mem_step);
                         }
                         2 => {
-                            main_trace.row_slice_mut()[row].store_reg_prev_mem_step =
-                                F::from_u64(reg_prev_mem_step)
+                            main_trace.buffer[row].set_store_reg_prev_mem_step(reg_prev_mem_step);
                         }
                         _ => panic!("Invalid slot {slot}"),
                     }
@@ -291,6 +303,7 @@ impl<F: PrimeField64> MainInstance<F> {
         }
         large_range_checks
     }
+
     fn update_reg_steps_with_last_chunk(
         last_emu_reg_trace: &EmuRegTrace,
         reg_steps: &mut [u64; REGS_IN_MAIN],
@@ -339,7 +352,7 @@ impl<F: PrimeField64> MainInstance<F> {
         for range in large_range_checks {
             self.std.range_check(range_id, *range as i64, 1);
         }
-        let range_id = self.std.get_range_id(0, MAX_SEGMENT_ID as i64, None);
+        let range_id = self.std.get_range_id(0, Self::MAX_SEGMENT_ID as i64, None);
         self.std.range_check(range_id, segment_id.as_usize() as i64, 1);
     }
 }

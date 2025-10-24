@@ -7,10 +7,10 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
                     const int RC = 2, const int bytes = 8, const int reads_by_row = 1) {
 
 
-    col witness addr; // n-byte address, real address = addr * bytes
-    col witness step[reads_by_row];
-    col witness sel[reads_by_row]; // one-hot encoding of the read in the row
-    col witness value[RC];
+    col witness bits(29) addr;
+    col witness bits(40) step[reads_by_row];
+    col witness bits(1) sel[reads_by_row];
+    col witness bits(32) value[RC];
 
     for (int i = 0; i < reads_by_row; i++) {
         sel[i] * (1 - sel[i]) === 0;

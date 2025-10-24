@@ -69,7 +69,7 @@ pub fn bigint_to_u64_limbs_with_cout<const N: usize>(value: &BigInt, result: &mu
         sign == Sign::Plus || sign == Sign::NoSign,
         "bigint_to_u64_limbs: with negative value {value}"
     );
-    println!("chunks: {chunks:?}");
+
     let len = chunks.len();
     assert!(len <= (N + 1), "bigint_to_u64_limbs: value 0x{value:X} needs {len} limbs > {N}");
     for i in 0..N {

@@ -1,0 +1,16 @@
+[package]
+name = "lib-float"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+build = "build.rs"
+
+# Disable all tests for this crate
+[lib]
+test = false
+
+[dependencies]
