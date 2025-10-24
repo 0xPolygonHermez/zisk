@@ -541,7 +541,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         for mut plan in main_planning {
             let global_id =
-                pctx.add_instance_assign(plan.airgroup_id, plan.air_id, plan.n_threads_witness);
+                pctx.add_instance_assign(plan.airgroup_id, plan.air_id);
             plan.set_global_id(global_id);
             global_ids.write().unwrap().push(global_id);
             main_instances
@@ -649,12 +649,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 pctx.add_instance_assign_first_partition(
                     plan.airgroup_id,
                     plan.air_id,
-                    plan.n_threads_witness,
                 )
             } else {
                 match plan.instance_type {
                     InstanceType::Instance => {
-                        pctx.add_instance(plan.airgroup_id, plan.air_id, plan.n_threads_witness)
+                        pctx.add_instance(plan.airgroup_id, plan.air_id)
                     }
                     InstanceType::Table => pctx.add_table(plan.airgroup_id, plan.air_id),
                 }

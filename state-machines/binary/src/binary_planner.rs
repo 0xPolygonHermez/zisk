@@ -67,7 +67,6 @@ impl<F: PrimeField64> BinaryPlanner<F> {
                     InstanceType::Instance,
                     check_point,
                     Some(converted),
-                    4,
                 )
             })
             .collect();
@@ -105,7 +104,6 @@ impl<F: PrimeField64> BinaryPlanner<F> {
                     InstanceType::Instance,
                     check_point,
                     Some(converted),
-                    4,
                 )
             })
             .collect();
@@ -134,7 +132,6 @@ impl<F: PrimeField64> BinaryPlanner<F> {
                     InstanceType::Instance,
                     check_point,
                     Some(converted),
-                    4,
                 )
             })
             .collect()

@@ -70,7 +70,6 @@ impl MainPlanner {
                     InstanceType::Instance,
                     CheckPoint::Single(ChunkId(segment_id)),
                     Some(Box::new(segment_id == num_instances - 1) as Box<dyn Any>),
-                    4,
                 )
             })
             .collect();

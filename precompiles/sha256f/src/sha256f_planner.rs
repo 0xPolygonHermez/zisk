@@ -111,7 +111,6 @@ impl Planner for Sha256fPlanner {
                         InstanceType::Instance,
                         check_point,
                         Some(converted),
-                        1,
                     )
                 })
                 .collect();
@@ -128,7 +127,6 @@ impl Planner for Sha256fPlanner {
                     InstanceType::Table,
                     CheckPoint::None,
                     None,
-                    1,
                 ));
             }
         }
