@@ -302,6 +302,7 @@ impl ZiskProve {
                         .generate_proof_from_lib(
                             ProvePhaseInputs::Full(ProofInfo::new(
                                 self.input.clone(),
+                                true,
                                 1,
                                 vec![0],
                                 0,

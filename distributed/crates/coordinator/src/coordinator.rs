@@ -787,6 +787,9 @@ impl Coordinator {
         }
 
         match message.result_data {
+            ExecuteTaskResponseResultDataDto::Execution() => {
+                self.handle_execution_completion(message).await
+            }
             ExecuteTaskResponseResultDataDto::Challenges(_) => {
                 self.handle_contributions_completion(message).await
             }
@@ -837,6 +840,44 @@ impl Coordinator {
             message.job_id,
             message.error_message.unwrap_or_default()
         )))
+    }
+
+    /// Processes Phase 0 (Execution) completion
+    ///
+    /// Handles the coordination required when workers complete their initial
+    /// execution tasks.
+    ///
+    /// # Parameters
+    ///
+    /// * `execute_task_response` - Response containing execution results from a worker
+    pub async fn handle_execution_completion(
+        &self,
+        execute_task_response: ExecuteTaskResponseDto,
+    ) -> CoordinatorResult<()> {
+        let job_id = execute_task_response.job_id.clone();
+
+        let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+
+        let mut job = job_entry.write().await;
+
+        // If job has Failed, mark worker as Idle and return early
+        if matches!(job.state(), JobState::Failed) {
+            self.workers_pool
+                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
+                .await?;
+            return Ok(());
+        }
+
+        // Check if all contributions are complete
+        if !self.check_phase0_completion(&job) {
+            return Ok(());
+        }
+
+        // TODO: WAIT FOR PHASE0 RESULTS AND IF PREVIOUS JOB ENDED
+
+        // info!("[Phase1 started] {} with {} workers", job_id, active_workers.len());
+
+        Ok(())
     }
 
     /// Processes Phase 1 (Contributions) completion and orchestrates transition to Phase 2.
@@ -961,6 +1002,28 @@ impl Coordinator {
                 "Expected Challenges result data for Phase1".to_string(),
             )),
         }
+    }
+
+    /// Checks if all workers have completed Phase 1 contributions.
+    ///
+    /// # Parameters
+    ///
+    /// * `job` - Reference to the job to check
+    fn check_phase0_completion(&self, job: &Job) -> bool {
+        let phase0_results_len =
+            job.results.get(&JobPhase::Execution).map(|r| r.len()).unwrap_or(0);
+
+        info!(
+            "[Phase0 progress] {} with {}/{} workers completed",
+            job.job_id,
+            phase0_results_len,
+            job.workers.len()
+        );
+
+        // Ensure we have results from all assigned workers before proceeding.
+        // If not all workers have responded (and we're not in simulation mode),
+        // return early and wait for more results.
+        job.execution_mode.is_simulating() || phase0_results_len >= job.workers.len()
     }
 
     /// Checks if all workers have completed Phase 1 contributions.

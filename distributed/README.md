@@ -38,10 +38,10 @@ cargo build --release --bin zisk-coordinator --bin zisk-worker
 cargo run --release --bin zisk-coordinator
 
 # Run a worker node (in another terminal)
-cargo run --release --bin zisk-worker -- --elf <elf-file-path> --inputs-folder <inputs-folder>
+cargo run --release --features gpu --bin zisk-worker -- -k build/provingKey -w target/release/libzisk_witness.so --elf <elf-file-path> --inputs-folder <inputs-folder>
 
 # Generate a proof (in another terminal)
-cargo run --release --bin zisk-coordinator prove --input <input-filename> --compute-capacity 10
+cargo run --release --features gpu --bin zisk-coordinator prove --input <input-filename> --compute-capacity 10
 ```
 
 ### Docker Deployment

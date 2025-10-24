@@ -197,6 +197,9 @@ impl WorkerNodeGrpc {
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         match result {
+            ComputationResult::Execution { job_id, success, result } => {
+                self.send_execution(job_id, success, result, message_sender).await
+            }
             ComputationResult::Challenge { job_id, success, result } => {
                 self.send_partial_contribution(job_id, success, result, message_sender).await
             }
@@ -207,6 +210,52 @@ impl WorkerNodeGrpc {
                 self.send_aggregation(job_id, success, result, message_sender, executed_steps).await
             }
         }
+    }
+
+    async fn send_execution(
+        &mut self,
+        job_id: JobId,
+        success: bool,
+        result: Result<()>,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+    ) -> Result<()> {
+        if let Some(handle) = self.worker.take_current_computation() {
+            handle.await?;
+        }
+
+        let (_, error_message) = match result {
+            Ok(()) => {
+                if !success {
+                    return Err(anyhow!(
+                        "Inconsistent state: operation reported failure but returned Ok result"
+                    ));
+                }
+                ((), String::new())
+            }
+            Err(e) => {
+                if success {
+                    return Err(anyhow!(
+                        "Inconsistent state: operation reported success but returned Err result"
+                    ));
+                }
+                ((), e.to_string())
+            }
+        };
+
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                worker_id: self.worker_config.worker.worker_id.as_string(),
+                job_id: job_id.as_string(),
+                task_type: TaskType::Execution as i32,
+                success,
+                result_data: None,
+                error_message,
+            })),
+        };
+
+        message_sender.send(message)?;
+
+        Ok(())
     }
 
     async fn send_partial_contribution(
@@ -415,6 +464,9 @@ impl WorkerNodeGrpc {
             }
             coordinator_message::Payload::ExecuteTask(request) => {
                 match TaskType::try_from(request.task_type) {
+                    Ok(TaskType::Execution) => {
+                        self.execution(request, computation_tx).await?;
+                    }
                     Ok(TaskType::PartialContribution) => {
                         self.partial_contribution(request, computation_tx).await?;
                     }
@@ -455,6 +507,44 @@ impl WorkerNodeGrpc {
                 return Err(anyhow!("Coordinator requested shutdown: {}", shutdown.reason));
             }
         }
+
+        Ok(())
+    }
+
+    pub async fn execution(
+        &mut self,
+        request: ExecuteTaskRequest,
+        computation_tx: &mpsc::UnboundedSender<ComputationResult>,
+    ) -> Result<()> {
+        info!("Starting Execution for {}", request.job_id);
+
+        // Extract the Execution params
+        let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
+            return Err(anyhow!("Expected ExecutionParams for Execution task"));
+        };
+
+        let job_id = JobId::from(request.job_id);
+        let input_path =
+            self.worker_config.worker.inputs_folder.join(PathBuf::from(params.input_path));
+
+        // Validate that input_path is a subdirectory of inputs_folder
+        Self::validate_subdir(&self.worker_config.worker.inputs_folder, &input_path)?;
+
+        let block = BlockContext { block_id: BlockId::from(params.block_id), input_path };
+
+        let job = self.worker.new_job(
+            job_id,
+            block,
+            params.rank_id,
+            params.total_workers,
+            params.worker_allocation,
+            params.job_compute_units,
+        );
+
+        // Start computation in background task
+        self.worker.set_current_computation(
+            self.worker.handle_execution(job.clone(), computation_tx.clone()).await,
+        );
 
         Ok(())
     }

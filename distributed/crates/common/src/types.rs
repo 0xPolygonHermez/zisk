@@ -370,6 +370,7 @@ pub struct BlockContext {
 #[repr(u8)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, BorshSerialize, BorshDeserialize)]
 pub enum JobPhase {
+    Execution,
     Contributions,
     Prove,
     Aggregate,
@@ -380,9 +381,10 @@ impl TryFrom<u8> for JobPhase {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(JobPhase::Contributions),
-            1 => Ok(JobPhase::Prove),
-            2 => Ok(JobPhase::Aggregate),
+            0 => Ok(JobPhase::Execution),
+            1 => Ok(JobPhase::Contributions),
+            2 => Ok(JobPhase::Prove),
+            3 => Ok(JobPhase::Aggregate),
             _ => Err(anyhow::anyhow!("Invalid JobPhase byte: {}", value)),
         }
     }
@@ -391,6 +393,7 @@ impl TryFrom<u8> for JobPhase {
 impl fmt::Display for JobPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            JobPhase::Execution => write!(f, "Execution"),
             JobPhase::Contributions => write!(f, "Contributions"),
             JobPhase::Prove => write!(f, "Prove"),
             JobPhase::Aggregate => write!(f, "Aggregate"),

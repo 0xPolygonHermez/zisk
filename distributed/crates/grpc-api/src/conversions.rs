@@ -11,7 +11,7 @@
 use crate::{
     coordinator_message::Payload, execute_task_request, execute_task_response, job_status_response,
     jobs_list_response, launch_proof_response, system_status_response, workers_list_response,
-    AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity, ContributionParams,
+    AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity, ContributionParams, ExecutionParams,
     CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck,
     JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, LaunchProofRequest,
     LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, Shutdown, StatusInfoResponse,
@@ -264,6 +264,10 @@ impl From<JobCancelledDto> for JobCancelled {
 impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
     fn from(dto: ExecuteTaskRequestDto) -> Self {
         let (params, task_type) = match dto.params {
+            ExecuteTaskRequestTypeDto::ExecutionParams(cp) => (
+                execute_task_request::Params::ExecutionParams(cp.into()),
+                TaskType::Execution,
+            ),
             ExecuteTaskRequestTypeDto::ContributionParams(cp) => (
                 execute_task_request::Params::ContributionParams(cp.into()),
                 TaskType::PartialContribution,
@@ -281,6 +285,19 @@ impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
             job_id: dto.job_id.into(),
             task_type: task_type as i32,
             params: Some(params),
+        }
+    }
+}
+
+impl From<ExecutionParamsDto> for ExecutionParams {
+    fn from(dto: ExecutionParamsDto) -> Self {
+        ExecutionParams {
+            block_id: dto.block_id.as_string(),
+            input_path: dto.input_path,
+            rank_id: dto.rank_id,
+            total_workers: dto.total_workers,
+            worker_allocation: dto.worker_allocation,
+            job_compute_units: dto.job_compute_units.compute_units,
         }
     }
 }

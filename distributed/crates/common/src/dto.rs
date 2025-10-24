@@ -123,9 +123,19 @@ pub struct ExecuteTaskRequestDto {
 }
 
 pub enum ExecuteTaskRequestTypeDto {
+    ExecutionParams(ExecutionParamsDto),
     ContributionParams(ContributionParamsDto),
     ProveParams(ProveParamsDto),
     AggParams(AggParamsDto),
+}
+
+pub struct ExecutionParamsDto {
+    pub block_id: BlockId,
+    pub input_path: String,
+    pub rank_id: u32,
+    pub total_workers: u32,
+    pub worker_allocation: Vec<u32>,
+    pub job_compute_units: ComputeCapacity,
 }
 
 pub struct ContributionParamsDto {
@@ -182,6 +192,7 @@ pub struct ExecuteTaskResponseDto {
 }
 
 pub enum ExecuteTaskResponseResultDataDto {
+    Execution(),
     Challenges(Vec<ChallengesDto>),
     Proofs(Vec<ProofDto>),
     FinalProof(FinalProofDto),

@@ -32,6 +32,11 @@ use crate::config::ProverServiceConfigDto;
 /// Result from computation tasks
 #[derive(Debug)]
 pub enum ComputationResult {
+    Execution {
+        job_id: JobId,
+        success: bool,
+        result: Result<()>,
+    },
     Challenge {
         job_id: JobId,
         success: bool,
@@ -399,6 +404,15 @@ impl Worker {
         current_job
     }
 
+    pub async fn handle_execution(
+        &self,
+        job: Arc<Mutex<JobContext>>,
+        tx: mpsc::UnboundedSender<ComputationResult>,
+    ) -> JoinHandle<()> {
+        self.execution_mpi_broadcast(&job).await;
+        self.execution(job, tx).await
+    }
+
     pub async fn handle_partial_contribution(
         &self,
         job: Arc<Mutex<JobContext>>,
@@ -414,6 +428,7 @@ impl Worker {
 
         let proof_info = ProofInfo::new(
             Some(job.block.input_path.clone()),
+            true,
             job.total_compute_units as usize,
             job.allocation.clone(),
             job.rank_id as usize,
@@ -465,6 +480,103 @@ impl Worker {
         self.aggregate(job, agg_params, tx).await
     }
 
+    pub async fn execution(
+        &self,
+        job: Arc<Mutex<JobContext>>,
+        tx: mpsc::UnboundedSender<ComputationResult>,
+    ) -> JoinHandle<()> {
+        let proofman = self.proofman.clone();
+
+        tokio::spawn(async move {
+            let job = job.lock().await;
+            let job_id = job.job_id.clone();
+
+            info!("Computing Execution for {job_id}");
+
+            let proof_info = ProofInfo::new(
+                Some(job.block.input_path.clone()),
+                true,
+                job.total_compute_units as usize,
+                job.allocation.clone(),
+                job.rank_id as usize,
+            );
+            let phase_inputs = proofman::ProvePhaseInputs::Execution(proof_info);
+
+            let options = Self::get_proof_options_partial_contribution();
+
+            let result =
+                Self::execute_execution_task(job_id.clone(), proofman, phase_inputs, options)
+                    .await;
+
+            match result {
+                Ok(data) => {
+                    let _ = tx.send(ComputationResult::Execution {
+                        job_id,
+                        success: true,
+                        result: Ok(data),
+                    });
+                }
+                Err(error) => {
+                    error!("Execution computation failed for {}: {}", job_id, error);
+                    let _ = tx.send(ComputationResult::Execution {
+                        job_id,
+                        success: false,
+                        result: Err(error),
+                    });
+                }
+            }
+        })
+    }
+
+     pub async fn execution_mpi_broadcast(&self, job: &Mutex<JobContext>) {
+        let job = job.lock().await;
+        let job_id = job.job_id.clone();
+
+        let proof_info = ProofInfo::new(
+            Some(job.block.input_path.clone()),
+            true,
+            job.total_compute_units as usize,
+            job.allocation.clone(),
+            job.rank_id as usize,
+        );
+        let phase_inputs = proofman::ProvePhaseInputs::Execution(proof_info);
+
+        let options = Self::get_proof_options_partial_contribution();
+
+        let mut serialized =
+            borsh::to_vec(&(JobPhase::Execution, job_id, phase_inputs, options)).unwrap();
+
+        self.proofman.mpi_broadcast(&mut serialized);
+    }
+
+    pub async fn execute_execution_task(
+        job_id: JobId,
+        proofman: Arc<ProofMan<Goldilocks>>,
+        phase_inputs: ProvePhaseInputs,
+        options: ProofOptions,
+    ) -> Result<()> {
+        let phase = proofman::ProvePhase::Execution;
+
+        // Handle the result immediately without holding it across await
+        match proofman.generate_proof_from_lib(phase_inputs, options, phase) {
+            Ok(proofman::ProvePhaseResult::Execution()) => {
+                info!("Execution computation successful for {job_id}");
+            }
+            Ok(_) => {
+                error!("Error during Execution computation for {job_id}");
+                return Err(anyhow::anyhow!(
+                    "Unexpected result type during Execution computation"
+                ));
+            }
+            Err(err) => {
+                error!("Failed to generate proof for {job_id}: {:?}", err);
+                return Err(anyhow::anyhow!("Failed to generate proof"));
+            }
+        };
+
+        Ok(())
+    }
+
     pub async fn partial_contribution(
         &self,
         job: Arc<Mutex<JobContext>>,
@@ -480,6 +592,7 @@ impl Worker {
 
             let proof_info = ProofInfo::new(
                 Some(job.block.input_path.clone()),
+                true,
                 job.total_compute_units as usize,
                 job.allocation.clone(),
                 job.rank_id as usize,
@@ -719,6 +832,13 @@ impl Worker {
         let phase = borsh::from_slice(&bytes[0..1]).unwrap();
 
         match phase {
+            JobPhase::Execution => {
+                let (job_id, phase_inputs, options): (JobId, ProvePhaseInputs, ProofOptions) =
+                    borsh::from_slice(&bytes[1..]).unwrap();
+
+                Self::execute_execution_task(job_id, self.proofman.clone(), phase_inputs, options)
+                    .await?;
+            }
             JobPhase::Contributions => {
                 let (job_id, phase_inputs, options): (JobId, ProvePhaseInputs, ProofOptions) =
                     borsh::from_slice(&bytes[1..]).unwrap();

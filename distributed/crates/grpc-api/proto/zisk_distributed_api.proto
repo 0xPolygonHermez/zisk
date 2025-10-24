@@ -209,16 +209,27 @@ message ExecuteTaskRequest {
   string job_id = 2;
   TaskType task_type = 3;
   oneof params {
-    ContributionParams contribution_params = 4;
-    ProveParams prove_params = 5;
-    AggParams agg_params = 6;
+    ExecutionParams execution_params = 4;
+    ContributionParams contribution_params = 5;
+    ProveParams prove_params = 6;
+    AggParams agg_params = 7;
   }
 }
 
 enum TaskType {
-  PARTIAL_CONTRIBUTION = 0;
-  PROVE = 1;
-  AGGREGATE = 2;
+  EXECUTION = 0;
+  PARTIAL_CONTRIBUTION = 1;
+  PROVE = 2;
+  AGGREGATE = 3;
+}
+
+message ExecutionParams {
+  string block_id = 1;
+  string input_path = 2;
+  uint32 rank_id = 3;
+  uint32 total_workers = 4;
+  repeated uint32 worker_allocation = 5;
+  uint32 job_compute_units = 6;
 }
 
 message ContributionParams {

@@ -61,7 +61,7 @@ impl ZiskServiceProveHandler {
 
                 let result = proofman
                     .generate_proof_from_lib(
-                        ProvePhaseInputs::Full(ProofInfo::new(Some(request_input), 1, vec![0], 0)),
+                        ProvePhaseInputs::Full(ProofInfo::new(Some(request_input), true, 1, vec![0], 0)),
                         ProofOptions::new(
                             false,
                             request.aggregation,
@@ -182,7 +182,7 @@ impl ZiskServiceProveHandler {
     pub fn process_handle(request: ZiskProveRequest, proofman: Arc<ProofMan<Goldilocks>>) {
         proofman
             .generate_proof_from_lib(
-                ProvePhaseInputs::Full(ProofInfo::new(Some(request.input), 1, vec![0], 0)),
+                ProvePhaseInputs::Full(ProofInfo::new(Some(request.input), true, 1, vec![0], 0)),
                 ProofOptions::new(
                     false,
                     request.aggregation,
