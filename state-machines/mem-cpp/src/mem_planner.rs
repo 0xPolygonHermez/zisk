@@ -181,7 +181,6 @@ impl MemPlanner {
                     InstanceType::Instance,
                     CheckPoint::Multiple(chunks),
                     Some(Box::new(segment)),
-                    4,
                 ));
             }
         }

@@ -92,7 +92,6 @@ impl Planner for Add256Planner {
                         InstanceType::Instance,
                         check_point,
                         Some(converted),
-                        1,
                     )
                 })
                 .collect();
