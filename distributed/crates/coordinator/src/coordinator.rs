@@ -884,6 +884,8 @@ impl Coordinator {
 
         let active_workers = self.select_workers_for_execution(&job)?;
 
+        job.start_time_prove = Utc::now();
+
         drop(job); // Release jobs lock early
 
         // Start Phase2 for all workers
@@ -972,11 +974,16 @@ impl Coordinator {
         let phase1_results_len =
             job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
 
+        let end_time = Utc::now();
+        let duration = end_time.signed_duration_since(job.start_time);
+        let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
+
         info!(
-            "[Phase1 progress] {} with {}/{} workers completed",
+            "[Phase1 progress] {} with {}/{} workers completed (duration: {:.3}s)",
             job.job_id,
             phase1_results_len,
-            job.workers.len()
+            job.workers.len(),
+            duration_ms.as_secs_f32()
         );
 
         // Ensure we have results from all assigned workers before proceeding.
@@ -1180,6 +1187,8 @@ impl Coordinator {
 
         let proofs = self.collect_worker_proofs(&job, &agg_worker_id, &worker_id)?;
 
+        job.start_time_aggregate = Utc::now();
+
         drop(job); // Release jobs lock early
 
         self.send_aggregation_task(&job_id, &agg_worker_id, proofs, all_done).await?;
@@ -1330,13 +1339,18 @@ impl Coordinator {
         let empty_results = HashMap::new();
         let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
 
+        let end_time = Utc::now();
+        let duration = end_time.signed_duration_since(job.start_time_prove);
+        let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
+
         // Provide operational visibility into Phase 2 progress
         // This logging helps with monitoring long-running proof generation jobs
         info!(
-            "[Phase2 progress] {} with {}/{} workers completed",
+            "[Phase2 progress] {} with {}/{} workers completed (duration: {:.3}s)",
             job.job_id,
             phase2_results.len(),
-            job.workers.len()
+            job.workers.len(),
+            duration_ms.as_secs_f32()
         );
 
         // Check if all assigned workers have completed their proof generation
@@ -1512,7 +1526,13 @@ impl Coordinator {
 
         let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
 
+        let end_time = Utc::now();
+        let duration_agg = end_time.signed_duration_since(job.start_time_aggregate);
+        let duration_ms = Duration::from_millis(duration_agg.num_milliseconds() as u64);
+
         drop(job);
+
+        info!("[Phase3 completed] {} (duration: {:.3}s)", job_id, duration_ms.as_secs_f32());
 
         info!("[Job Finished] {} (duration: {:.3}s)", job_id, duration.as_secs_f32());
 
