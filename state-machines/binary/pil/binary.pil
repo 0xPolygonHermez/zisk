@@ -94,21 +94,21 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = OPERATION_B
     Constraints to check the correctness of each binary operation
         opid        last    a      b     c   cin     cout + flags
         ───────────────────────────────────────────────────────────────-------------------------------------------------
-        m_op         0      a0     b0    c0       0  carry0 + 2*op_is_min_max + 4*result_is_a
-        m_op         0      a1     b1    c1  carry0  carry1 + 2*op_is_min_max + 4*result_is_a
-        m_op         0      a2     b2    c2  carry1  carry2 + 2*op_is_min_max + 4*result_is_a
-        m_op         0|1    a3     b3    c3  carry2  carry3 + 2*op_is_min_max + 4*result_is_a + 8*use_last_carry_mode32
-        m_op|EXT_32  0      a4|c3  b4|0  c4  carry3  carry4 + 2*op_is_min_max + 4*result_is_a
-        m_op|EXT_32  0      a5|c3  b5|0  c5  carry4  carry5 + 2*op_is_min_max + 4*result_is_a
-        m_op|EXT_32  0      a6|c3  b6|0  c6  carry5  carry6 + 2*op_is_min_max + 4*result_is_a
-        m_op|EXT_32  0|1    a7|c3  b7|0  c7  carry6  carry7 + 2*op_is_min_max + 4*result_is_a + 8*use_last_carry_mode64
+        m_op         0      a0     b0    c0    cin0  carry0 + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry
+        m_op         0      a1     b1    c1  carry0  carry1 + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry
+        m_op         0      a2     b2    c2  carry1  carry2 + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry
+        m_op         0|1    a3     b3    c3  carry2  carry3 + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry + 16*use_last_carry_mode32
+        m_op|EXT_32  0      a4|c3  b4|0  c4  carry3  carry4 + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry
+        m_op|EXT_32  0      a5|c3  b5|0  c5  carry4  carry5 + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry
+        m_op|EXT_32  0      a6|c3  b6|0  c6  carry5  carry6 + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry
+        m_op|EXT_32  0|1    a7|c3  b7|0  c7  carry6  carry7 + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry + 16*use_last_carry_mode64
         ───────────────────────────────────────────────────────────────-------------------------------------------------
     Perform, at the byte level, lookups against the binary table on inputs:
                   [last, m_op, a, b, cin, c, cout + flags]
     where last indicates whether the byte is the last one in the operation
     */
 
-    lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], has_initial_carry*INITIAL_CARRY_LT_ABS, free_in_c[0], carry[0] + 2*op_is_min_max + 4*result_is_a]);
+    lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[0], free_in_b[0], has_initial_carry*INITIAL_CARRY_LT_ABS, free_in_c[0], carry[0] + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry]);
 
     // More auxiliary columns
     col witness bits(5) m_op_or_ext;
@@ -123,14 +123,14 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = OPERATION_B
         }
 
         if (i < half_bytes - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*result_is_a]);
+            lookup_assumes(BINARY_TABLE_ID, [0, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry]);
         } else if (i == half_bytes - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [mode32, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], cout32 + 2*op_is_min_max + 4*result_is_a + 8*use_last_carry_mode32]);
+            lookup_assumes(BINARY_TABLE_ID, [mode32, m_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], cout32 + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry + 16*use_last_carry_mode32]);
         } else if (i < bytes - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, m_op_or_ext, free_in_a_or_c[j], free_in_b_or_zero[j], carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*result_is_a]);
+            lookup_assumes(BINARY_TABLE_ID, [0, m_op_or_ext, free_in_a_or_c[j], free_in_b_or_zero[j], carry[i-1], free_in_c[i], carry[i] + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry]);
             j++;
         } else  {
-            lookup_assumes(BINARY_TABLE_ID, [mode64, m_op_or_ext, free_in_a_or_c[j], free_in_b_or_zero[j], carry[i-1], free_in_c[i], cout64 + 2*op_is_min_max + 4*result_is_a + 8*use_last_carry_mode64]);
+            lookup_assumes(BINARY_TABLE_ID, [mode64, m_op_or_ext, free_in_a_or_c[j], free_in_b_or_zero[j], carry[i-1], free_in_c[i], cout64 + 2*op_is_min_max + 4*result_is_a + 8*has_initial_carry + 16*use_last_carry_mode64]);
             j++;
         }
     }
