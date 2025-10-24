@@ -1167,7 +1167,7 @@ impl Coordinator {
 
         // If in simulation mode, complete the job
         if job.execution_mode.is_simulating() {
-            return self.complete_simulated_job(&mut job).await;
+            return self.complete_simulated_job(&mut job, &worker_id).await;
         }
 
         // If job has Failed, mark worker as Idle and return early
@@ -1252,7 +1252,11 @@ impl Coordinator {
     /// # Parameters
     ///
     /// * `job` - Mutable reference to job for state updates
-    async fn complete_simulated_job(&self, job: &mut Job) -> CoordinatorResult<()> {
+    async fn complete_simulated_job(
+        &self,
+        job: &mut Job,
+        worker_id: &WorkerId,
+    ) -> CoordinatorResult<()> {
         job.change_state(JobState::Completed);
 
         let assigned_workers = job.workers.clone();
@@ -1260,9 +1264,25 @@ impl Coordinator {
         // Reset worker statuses back to Idle
         self.workers_pool.mark_workers_with_state(&assigned_workers, WorkerState::Idle).await?;
 
-        let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
+        let end_time = Utc::now();
+        let duration = end_time.signed_duration_since(job.start_time_prove);
+        let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
-        info!("[Simulated Job Finished] {} (duration: {:.3}s)", job.job_id, duration.as_secs_f32());
+        // Provide operational visibility into Phase 2 progress
+        // This logging helps with monitoring long-running proof generation jobs
+        info!(
+            "[Phase2 progress] Worker {} done. (duration: {:.3}s)",
+            worker_id,
+            duration_ms.as_secs_f32()
+        );
+
+        let duration_simulation = Duration::from_millis(job.duration_ms.unwrap_or(0));
+
+        info!(
+            "[Simulated Job Finished] {} (duration: {:.3}s)",
+            job.job_id,
+            duration_simulation.as_secs_f32()
+        );
 
         Ok(())
     }
