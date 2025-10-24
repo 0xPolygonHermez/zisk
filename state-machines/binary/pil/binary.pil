@@ -78,6 +78,7 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id = OPERATION_B
 
     use_last_carry * (1 - use_last_carry) === 0;
     op_is_min_max * (1 - op_is_min_max) === 0;
+    has_initial_carry * (1 - has_initial_carry) === 0;
     cout64*(1 - cout64) === 0;
 
     // Auxiliary columns (primarily used to optimize lookups, but can be substituted with expressions)
