@@ -248,15 +248,7 @@ impl Plan {
         check_point: CheckPoint,
         meta: Option<Box<dyn Any>>,
     ) -> Self {
-        Plan {
-            airgroup_id,
-            air_id,
-            segment_id,
-            instance_type,
-            check_point,
-            meta,
-            global_id: None,
-        }
+        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta, global_id: None }
     }
 
     pub fn set_global_id(&mut self, global_id: usize) {
