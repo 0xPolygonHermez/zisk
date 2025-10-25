@@ -305,7 +305,7 @@ impl Stats {
         title: &str,
     ) {
         let mut ops: [u64; 256] = [0; 256];
-        for i in 0..256 {
+        for i in 0..256_usize {
             ops[i] = no_frops[i] + frops[i];
         }
         let mut ops_total_counter: u64 = 0;
@@ -319,22 +319,22 @@ impl Stats {
         let mut no_frops_unused_text: String = String::new();
         let mut frops_used_text: String = String::new();
 
-        for i in 0..256 as usize {
+        for i in 0..256_usize {
             if let Ok(inst) = ZiskOp::try_from_code(i as u8) {
                 ops_total_counter += 1;
-                if ops[i as usize] > 0 {
+                if ops[i] > 0 {
                     ops_used_counter += 1;
                     ops_used_text.push_str(&format!("{}, ", inst.name()));
                 } else {
                     ops_unused_text.push_str(&format!("{}, ", inst.name()));
                 }
-                if no_frops[i as usize] > 0 {
+                if no_frops[i] > 0 {
                     no_frops_used_counter += 1;
                     no_frops_used_text.push_str(&format!("{}, ", inst.name()));
                 } else {
                     no_frops_unused_text.push_str(&format!("{}, ", inst.name()));
                 }
-                if frops[i as usize] > 0 {
+                if frops[i] > 0 {
                     frops_used_counter += 1;
                     frops_used_text.push_str(&format!("{}, ", inst.name()));
                 }
