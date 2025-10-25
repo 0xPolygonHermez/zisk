@@ -6,6 +6,7 @@ use crate::{
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, ParamsGPU};
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::DEFAULT_CACHE_PATH;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use tracing::info;
@@ -153,34 +154,12 @@ impl AsmCoreProver {
         check_paths_exist(&asm_mt_path)?;
         check_paths_exist(&asm_rh_path)?;
 
-        let mpi_ctx = ProofMan::get_mpi_info();
-
-        let world_rank = mpi_ctx.rank;
-        let local_rank = mpi_ctx.node_rank;
-
-        initialize_logger(verbose.into(), Some(world_rank));
-
-        info!(">>> [{}] Starting ASM microservices.", world_rank);
-
-        let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-
-        let asm_runner_options = AsmRunnerOptions::new()
-            .with_verbose(verbose > 0)
-            .with_base_port(base_port)
-            .with_world_rank(world_rank)
-            .with_local_rank(local_rank)
-            .with_unlock_mapped_memory(unlock_mapped_memory);
-
-        asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
-
         let (library, mut witness_lib) = ZiskLibLoader::load_asm(
             witness_lib,
             elf,
-            world_rank,
-            local_rank,
             verbose.into(),
             shared_tables,
-            asm_mt_path,
+            asm_mt_path.clone(),
             asm_rh_path,
             base_port,
             unlock_mapped_memory,
@@ -197,6 +176,24 @@ impl AsmCoreProver {
             witness_lib.get_packed_info(),
         )
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+
+        let world_rank = proofman.get_world_rank();
+        let local_rank = proofman.get_local_rank();
+
+        initialize_logger(verbose.into(), Some(world_rank));
+
+        timer_start_info!(STARTING_ASM_MICROSERVICES);
+        let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+
+        let asm_runner_options = AsmRunnerOptions::new()
+            .with_verbose(verbose > 0)
+            .with_base_port(base_port)
+            .with_world_rank(world_rank)
+            .with_local_rank(local_rank)
+            .with_unlock_mapped_memory(unlock_mapped_memory);
+
+        asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
+        timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
         proofman.register_witness(&mut *witness_lib, library);
 

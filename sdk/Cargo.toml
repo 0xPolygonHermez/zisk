@@ -9,6 +9,7 @@ categories = { workspace = true }
 
 [dependencies]
 proofman-common = { workspace = true }
+proofman-util = { workspace = true }
 zisk-common = { workspace = true }
 fields = { workspace = true }
 libloading = { workspace = true }

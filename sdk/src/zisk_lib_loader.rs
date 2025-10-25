@@ -17,8 +17,6 @@ impl ZiskLibLoader {
     fn load_library<F: PrimeField64>(
         witness_lib: PathBuf,
         elf: PathBuf,
-        world_rank: i32,
-        local_rank: i32,
         verbose: VerboseMode,
         shared_tables: bool,
         asm_mt_filename: Option<PathBuf>,
@@ -37,8 +35,6 @@ impl ZiskLibLoader {
             elf,
             asm_mt_filename,
             asm_rh_filename,
-            Some(world_rank),
-            Some(local_rank),
             base_port,
             unlock_mapped_memory.unwrap_or(false),
             shared_tables,
@@ -51,31 +47,16 @@ impl ZiskLibLoader {
     pub fn load_emu<F: PrimeField64>(
         witness_lib: PathBuf,
         elf: PathBuf,
-        world_rank: i32,
-        local_rank: i32,
         verbose: VerboseMode,
         shared_tables: bool,
     ) -> Result<(Library, Box<dyn ZiskLib<F>>)> {
-        Self::load_library(
-            witness_lib,
-            elf,
-            world_rank,
-            local_rank,
-            verbose,
-            shared_tables,
-            None,
-            None,
-            None,
-            None,
-        )
+        Self::load_library(witness_lib, elf, verbose, shared_tables, None, None, None, None)
     }
 
     #[allow(clippy::too_many_arguments)]
     pub fn load_asm<F: PrimeField64>(
         witness_lib: PathBuf,
         elf: PathBuf,
-        world_rank: i32,
-        local_rank: i32,
         verbose: VerboseMode,
         shared_tables: bool,
         asm_mt_filename: PathBuf,
@@ -86,8 +67,6 @@ impl ZiskLibLoader {
         Self::load_library(
             witness_lib,
             elf,
-            world_rank,
-            local_rank,
             verbose,
             shared_tables,
             Some(asm_mt_filename),
