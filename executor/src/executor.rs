@@ -540,8 +540,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let mut main_instances = self.main_instances.write().unwrap();
 
         for mut plan in main_planning {
-            let global_id =
-                pctx.add_instance_assign(plan.airgroup_id, plan.air_id, plan.n_threads_witness);
+            let global_id = pctx.add_instance_assign(plan.airgroup_id, plan.air_id);
             plan.set_global_id(global_id);
             global_ids.write().unwrap().push(global_id);
             main_instances
@@ -646,16 +645,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             {
                 // If this is the ROM instance, we need to add it to the proof context
                 // with the rank 0.
-                pctx.add_instance_assign_first_partition(
-                    plan.airgroup_id,
-                    plan.air_id,
-                    plan.n_threads_witness,
-                )
+                pctx.add_instance_assign_first_partition(plan.airgroup_id, plan.air_id)
             } else {
                 match plan.instance_type {
-                    InstanceType::Instance => {
-                        pctx.add_instance(plan.airgroup_id, plan.air_id, plan.n_threads_witness)
-                    }
+                    InstanceType::Instance => pctx.add_instance(plan.airgroup_id, plan.air_id),
                     InstanceType::Table => pctx.add_table(plan.airgroup_id, plan.air_id),
                 }
             };

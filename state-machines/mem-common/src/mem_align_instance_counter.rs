@@ -283,7 +283,6 @@ impl MemAlignInstanceCounter {
             InstanceType::Instance,
             CheckPoint::Multiple(chunks),
             Some(Box::new(checkpoints)),
-            4,
         );
         self.plans.push(plan);
     }
