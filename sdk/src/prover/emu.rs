@@ -112,20 +112,9 @@ impl EmuCoreProver {
         check_paths_exist(&proving_key)?;
         check_paths_exist(&elf)?;
 
-        let world_rank = mpi_ctx.rank;
-        let local_rank = mpi_ctx.node_rank;
-
-        initialize_logger(verbose.into(), Some(world_rank));
-
         // Build emulator library
-        let (library, mut witness_lib) = ZiskLibLoader::load_emu(
-            witness_lib,
-            elf,
-            world_rank,
-            local_rank,
-            verbose.into(),
-            shared_tables,
-        )?;
+        let (library, mut witness_lib) =
+            ZiskLibLoader::load_emu(witness_lib, elf, verbose.into(), shared_tables)?;
 
         let proofman = ProofMan::new(
             proving_key.clone(),
@@ -138,6 +127,11 @@ impl EmuCoreProver {
             witness_lib.get_packed_info(),
         )
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+
+        let world_rank = proofman.get_world_rank();
+        let local_rank = proofman.get_local_rank();
+
+        initialize_logger(verbose.into(), Some(world_rank));
 
         proofman.register_witness(&mut *witness_lib, library);
 

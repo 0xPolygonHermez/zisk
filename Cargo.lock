@@ -5658,6 +5658,7 @@ dependencies = [
  "libloading",
  "proofman",
  "proofman-common",
+ "proofman-util",
  "rom-setup",
  "tracing",
  "zisk-common",
