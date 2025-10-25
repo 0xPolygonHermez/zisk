@@ -503,7 +503,7 @@ impl WorkerNodeGrpc {
     fn validate_subdir(base: &Path, candidate: &Path) -> Result<()> {
         let base = base.canonicalize().map_err(|e| anyhow!("Inputs folder error: {e}"))?;
 
-        // Timeout de 10 segundos
+        // Timeout 60 seconds
         let timeout = Duration::from_secs(60);
         let start = std::time::Instant::now();
 
