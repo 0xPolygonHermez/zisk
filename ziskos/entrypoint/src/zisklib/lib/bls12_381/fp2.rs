@@ -1,12 +1,12 @@
 //! Finite field Fp2 operations for BLS12-381
 
 use crate::{
-    bls12_381_complex_add::{syscall_bls12_381_complex_add, SyscallBls12_381ComplexAddParams},
-    bls12_381_complex_mul::{syscall_bls12_381_complex_mul, SyscallBls12_381ComplexMulParams},
-    bls12_381_complex_sub::{syscall_bls12_381_complex_sub, SyscallBls12_381ComplexSubParams},
-    complex::SyscallComplex384,
-    fcall_bls12_381_fp2_inv,
-    zisklib::lib::utils::eq,
+    syscalls::{
+        syscall_bls12_381_complex_add, syscall_bls12_381_complex_mul,
+        syscall_bls12_381_complex_sub, SyscallBls12_381ComplexAddParams,
+        SyscallBls12_381ComplexMulParams, SyscallBls12_381ComplexSubParams, SyscallComplex384,
+    },
+    zisklib::{eq, fcall_bls12_381_fp2_inv},
 };
 
 use super::constants::P_MINUS_ONE;

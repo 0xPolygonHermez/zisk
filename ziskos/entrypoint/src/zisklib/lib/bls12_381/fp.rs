@@ -1,9 +1,8 @@
 //! Finite field Fp operations for BLS12-381
 
 use crate::{
-    arith384_mod::{syscall_arith384_mod, SyscallArith384ModParams},
-    fcall_bls12_381_fp_inv, fcall_bls12_381_fp_sqrt,
-    zisklib::lib::utils::eq,
+    syscalls::{syscall_arith384_mod, SyscallArith384ModParams},
+    zisklib::{eq, fcall_bls12_381_fp_inv, fcall_bls12_381_fp_sqrt},
 };
 
 use super::constants::{NQR, P, P_MINUS_ONE};

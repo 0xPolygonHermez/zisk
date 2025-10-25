@@ -9,7 +9,7 @@
 
 #![allow(unused)]
 
-use ziskos::fcall_proxy;
+use ziskos::zisklib::fcall_proxy;
 
 use std::{
     collections::HashMap,
