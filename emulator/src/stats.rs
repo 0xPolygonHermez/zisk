@@ -297,6 +297,68 @@ impl Stats {
         }
     }
 
+    pub fn report_opcodes_coverage(
+        &self,
+        report: &mut StatsReport,
+        no_frops: &[u64],
+        frops: &[u64],
+        title: &str,
+    ) {
+        let mut ops: [u64; 256] = [0; 256];
+        for i in 0..256 {
+            ops[i] = no_frops[i] + frops[i];
+        }
+        let mut ops_total_counter: u64 = 0;
+        let mut ops_used_counter: u64 = 0;
+        let mut no_frops_used_counter: u64 = 0;
+        let mut frops_used_counter: u64 = 0;
+
+        let mut ops_used_text: String = String::new();
+        let mut ops_unused_text: String = String::new();
+        let mut no_frops_used_text: String = String::new();
+        let mut no_frops_unused_text: String = String::new();
+        let mut frops_used_text: String = String::new();
+
+        for i in 0..256 as usize {
+            if let Ok(inst) = ZiskOp::try_from_code(i as u8) {
+                ops_total_counter += 1;
+                if ops[i as usize] > 0 {
+                    ops_used_counter += 1;
+                    ops_used_text.push_str(&format!("{}, ", inst.name()));
+                } else {
+                    ops_unused_text.push_str(&format!("{}, ", inst.name()));
+                }
+                if no_frops[i as usize] > 0 {
+                    no_frops_used_counter += 1;
+                    no_frops_used_text.push_str(&format!("{}, ", inst.name()));
+                } else {
+                    no_frops_unused_text.push_str(&format!("{}, ", inst.name()));
+                }
+                if frops[i as usize] > 0 {
+                    frops_used_counter += 1;
+                    frops_used_text.push_str(&format!("{}, ", inst.name()));
+                }
+            }
+        }
+        let r = format!(
+            "\n{}:\nAVAILABLE: {}\nUSED: {}\nUSED NO FROPS: {} ({:.2}%) [{}]\nUNUSED NO FROPS: {} ({:.2}%) [{}]\nUSED FROPS: {} ({:.2}%) [{}]\n",
+            title,
+            ops_total_counter,
+            ops_used_counter,
+            no_frops_used_counter,
+            (no_frops_used_counter as f64 * 100.0) / (ops_total_counter as f64),
+            no_frops_used_text,
+            ops_total_counter - no_frops_used_counter,
+            ((ops_total_counter - no_frops_used_counter) as f64 * 100.0) / (ops_total_counter as f64),
+            no_frops_unused_text,
+            frops_used_counter,
+            (frops_used_counter as f64 * 100.0) / (ops_total_counter as f64),
+            frops_used_text
+        );
+
+        report.add(&r);
+    }
+
     fn legacy_report(&self) -> String {
         let ops_cost = self.ops_cost;
         let precompiled_cost = self.precompiled_cost;
@@ -351,6 +413,7 @@ impl Stats {
 
         report.title_count_perc_cost_perc("FROPS BY OPCODE", "COUNT", "HIT", "COST", " RANK");
         self.report_opcodes_hit(&mut report, &self.frops_ops, &self.ops, "FROP");
+        self.report_opcodes_coverage(&mut report, &self.ops, &self.frops_ops, "OPS_COVERAGE");
 
         if !self.rois.is_empty() {
             report.title_top_perc("TOP STEP FUNCTIONS");
