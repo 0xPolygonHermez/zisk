@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "f84f0cfddc746ef78a60d60b39590d435cc7459acf576c2d05c93564d2971402";
+pub const PILOUT_HASH: &str = "8de45e103efe41a2f9a0fb8077f0bb10a7e113dd6c6403fa80af46f387b76e42";
 
 //AIRGROUP CONSTANTS
 
@@ -251,7 +251,7 @@ trace_row!(BinaryFixedRow<F> {
 pub type BinaryFixed<F> = GenericTrace<BinaryFixedRow<F>, 4194304, 0, 10>;
 
 trace_row!(BinaryTraceRow<F> {
- m_op:ubit(5), mode32:bit, free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[bit; 8], use_last_carry:bit, op_is_min_max:bit, has_initial_carry:bit, cout:bit, result_is_a:bit, use_last_carry_mode32:bit, use_last_carry_mode64:bit, m_op_or_ext:ubit(5), free_in_a_or_c:[u8; 4], free_in_b_or_zero:[u8; 4], multiplicity:bit,
+ b_op:ubit(5), free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[bit; 8], mode32:bit, use_last_carry32:bit, use_last_carry64:bit, result_is_a:bit, first_byte:bit, cout:bit, b_op_or_sext:ubit(5), free_in_a_or_c_half:[u8; 4], free_in_b_or_zero:[u8; 4], multiplicity:bit,
 });
 pub type BinaryTrace<F> = GenericTrace<BinaryTraceRow<F>, 4194304, 0, 10>;
 
@@ -557,7 +557,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 10, PackedInfoConst {
         is_packed: true,
         num_packed_words: 5,
-        unpack_info: &[5, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 8, 8, 8, 8, 8, 8, 8, 8, 1],
+        unpack_info: &[5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 8, 8, 8, 8, 8, 8, 8, 8, 1],
     }),
     (0, 11, PackedInfoConst {
         is_packed: true,

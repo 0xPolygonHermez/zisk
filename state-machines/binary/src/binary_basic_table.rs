@@ -43,7 +43,7 @@ impl BinaryBasicTableSM {
     /// * `a` - The first operand a.
     /// * `b` - The second operand b.
     /// * `cin` - The carry-in value.
-    /// * `last` - The "last" flag.
+    /// * `pos_ind` - The position indicator.
     /// * `flags` - The flags value.
     ///
     /// # Returns
@@ -54,13 +54,13 @@ impl BinaryBasicTableSM {
         a: u64,
         b: u64,
         cin: u64,
-        last: u64,
+        pos_ind: u64,
         flags: u64,
     ) -> u64 {
         debug_assert!(a <= 0xFF);
         debug_assert!(b <= 0xFF);
-        debug_assert!(cin <= 0x03);
-        debug_assert!(last <= 0x01);
+        debug_assert!(cin <= 0x01);
+        debug_assert!(pos_ind <= 0x02);
         debug_assert!(flags <= 0x0F);
 
         // Calculate the different row offset contributors, according to the PIL
@@ -85,18 +85,19 @@ impl BinaryBasicTableSM {
             // Offset calculation for other operations.
             let offset_a: u64 = a;
             let offset_b: u64 = b * P2_8;
-            let offset_last: u64 = if Self::opcode_has_last(opcode) { last * P2_16 } else { 0 };
-            let offset_cin: u64 = if Self::opcode_has_cin(opcode) { cin * P2_17 } else { 0 };
+            let offset_pos_ind: u64 =
+                if Self::opcode_has_pos_ind(opcode) { pos_ind * P2_16 } else { 0 };
+            let offset_cin: u64 = cin * Self::offset_cin(opcode);
             let offset_result_is_a: u64 =
-                if Self::opcode_result_is_a(opcode) && ((flags & 0x04) != 0) { P2_18 } else { 0 };
+                if Self::opcode_result_is_a(opcode) && ((flags & 0x02) != 0) { P2_18 } else { 0 };
             let offset_opcode: u64 = Self::offset_opcode(opcode);
 
-            offset_a + offset_b + offset_last + offset_cin + offset_result_is_a + offset_opcode
+            offset_a + offset_b + offset_pos_ind + offset_cin + offset_result_is_a + offset_opcode
         }
     }
 
-    /// Determines if the given opcode requires a "last" flag.
-    fn opcode_has_last(opcode: BinaryBasicTableOp) -> bool {
+    /// Determines if the given opcode requires a position indicator.
+    fn opcode_has_pos_ind(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
             BinaryBasicTableOp::Minu
             | BinaryBasicTableOp::Min
@@ -115,19 +116,18 @@ impl BinaryBasicTableSM {
             | BinaryBasicTableOp::And
             | BinaryBasicTableOp::Or
             | BinaryBasicTableOp::Xor => true,
+
             BinaryBasicTableOp::Ext32 => false,
         }
     }
 
     /// Determines if the given opcode requires a carry-in value.
-    fn opcode_has_cin(opcode: BinaryBasicTableOp) -> bool {
+    fn offset_cin(opcode: BinaryBasicTableOp) -> u64 {
         match opcode {
             BinaryBasicTableOp::Minu
             | BinaryBasicTableOp::Min
             | BinaryBasicTableOp::Maxu
             | BinaryBasicTableOp::Max
-            | BinaryBasicTableOp::LtAbsNP
-            | BinaryBasicTableOp::LtAbsPN
             | BinaryBasicTableOp::Ltu
             | BinaryBasicTableOp::Lt
             | BinaryBasicTableOp::Gt
@@ -135,12 +135,14 @@ impl BinaryBasicTableSM {
             | BinaryBasicTableOp::Add
             | BinaryBasicTableOp::Sub
             | BinaryBasicTableOp::Leu
-            | BinaryBasicTableOp::Le => true,
+            | BinaryBasicTableOp::Le => P2_17,
+
+            BinaryBasicTableOp::LtAbsNP | BinaryBasicTableOp::LtAbsPN => P2_18,
 
             BinaryBasicTableOp::And
             | BinaryBasicTableOp::Or
             | BinaryBasicTableOp::Xor
-            | BinaryBasicTableOp::Ext32 => false,
+            | BinaryBasicTableOp::Ext32 => 0,
         }
     }
 
