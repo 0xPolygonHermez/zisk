@@ -501,8 +501,24 @@ impl WorkerNodeGrpc {
     }
 
     fn validate_subdir(base: &Path, candidate: &Path) -> Result<()> {
-        // Canonicalize to resolve symlinks, "..", etc.
         let base = base.canonicalize().map_err(|e| anyhow!("Inputs folder error: {e}"))?;
+
+        // Timeout 60 seconds
+        let timeout = Duration::from_secs(60);
+        let start = std::time::Instant::now();
+
+        while !candidate.exists() {
+            if start.elapsed() > timeout {
+                return Err(anyhow!(
+                    "Input path {:?} did not appear within {:?}",
+                    candidate,
+                    timeout
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        // Una vez que existe, canonicaliza y valida
         let candidate = candidate.canonicalize().map_err(|e| anyhow!("Input path error: {e}"))?;
 
         if candidate.starts_with(&base) {
