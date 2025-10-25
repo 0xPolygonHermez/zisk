@@ -25,6 +25,9 @@ require "big_int/pil/big_int_add.pil"
 proofval enable_input_data;
 enable_input_data * (1 - enable_input_data);
 
+proofval enable_rom_data;
+enable_rom_data * (1 - enable_rom_data);
+
 const int PUBLIC_INPUTS_64_BITS = 32;  // 32 x 64 bits = 2048 bits
 public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
 
@@ -50,7 +53,7 @@ airgroup Zisk {
 
     // Memory
     Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
-    Mem(N: 2**21, base_address: 0x8000_0000, immutable: 1) alias RomData;
+    Mem(N: 2**21, base_address: 0x8000_0000, immutable: 1, enable_flag: enable_rom_data) alias RomData;
     Mem(N: 2**21, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
 
     MemAlign(N: 2**21, use_predefined_ranges: 0);

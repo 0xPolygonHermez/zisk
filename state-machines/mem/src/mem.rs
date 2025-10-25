@@ -56,8 +56,10 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
 
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {
         let enable_input_data = plannings.iter().any(|p| p.air_id == InputDataTrace::<F>::AIR_ID);
+        let enable_rom_data = plannings.iter().any(|p| p.air_id == RomDataTrace::<F>::AIR_ID);
         let mut proof_values = ZiskProofValues::from_vec_guard(pctx.get_proof_values());
         proof_values.enable_input_data = F::from_bool(enable_input_data);
+        proof_values.enable_rom_data = F::from_bool(enable_rom_data);
     }
 
     /// Builds an instance of the Memory state machine.
