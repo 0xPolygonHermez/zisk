@@ -148,7 +148,7 @@ impl From<WorkerId> for String {
 impl std::fmt::Display for WorkerId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.0.len() > 8 {
-            write!(f, "WorkerId({}…)", &self.0[..8])
+            write!(f, "WorkerId({:.8}…)", self.0)
         } else {
             write!(f, "WorkerId({})", self.0)
         }
