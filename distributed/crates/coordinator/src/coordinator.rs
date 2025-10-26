@@ -417,7 +417,6 @@ impl Coordinator {
     ///
     fn send_webhook(&self, webhook_url: String, job_id: &JobId, job: &Job) {
         // Errors from webhook sending are logged but not reported
-        let webhook_url = webhook_url.clone();
         let job_id_clone = job_id.clone();
         let duration_ms = job.duration_ms.unwrap_or(0);
         let job_state = job.state.clone();
@@ -468,7 +467,7 @@ impl Coordinator {
                             break;
                         }
 
-                        // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 500ms (capped)
+                        // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms, 1600ms, 2000ms (capped)
                         let wait_ms = (INITIAL_BACKOFF_MS * 2_u64.pow(attempt as u32 - 1))
                             .min(MAX_BACKOFF_MS);
 
