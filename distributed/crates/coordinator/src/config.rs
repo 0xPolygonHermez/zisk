@@ -53,7 +53,7 @@ impl Config {
             .set_default("server.host", Self::DEFAULT_BIND_HOST)?
             .set_default("server.port", Self::DEFAULT_PORT)?
             .set_default("server.shutdown_timeout_seconds", 30)?
-            .set_default("logging.level", "debug")?
+            .set_default("logging.level", "info")?
             .set_default("logging.format", "pretty")?
             .set_default("coordinator.max_workers_per_job", 10)?
             .set_default("coordinator.max_total_workers", 1000)?

@@ -303,11 +303,11 @@ impl Coordinator {
             .await?;
 
         info!(
-            "[Job Started] Inputs={} | Capacity={} | Workers={} | {}",
+            "[Job] Started {} with inputs={}, capacity={}, workers={}",
+            job.job_id,
             request.input_path,
             required_compute_capacity,
             job.workers.len(),
-            job.job_id
         );
 
         // Initialize job state
@@ -331,7 +331,7 @@ impl Coordinator {
             .await?;
         }
 
-        info!("[Phase1 started] {} with {} workers", job_id, active_workers.len());
+        info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
 
         Ok(LaunchProofResponseDto { job_id })
     }
@@ -384,54 +384,104 @@ impl Coordinator {
             Vec::new()
         };
 
-        // Check if webhook URL is configured
+        // Check if webhook URL is configured and spawn it in a separate task
         if let Some(webhook_url) = &self.config.coordinator.webhook_url {
-            if job.state == JobState::Failed {
-                hooks::send_failure_webhook(
-                    webhook_url.clone(),
-                    job_id.clone(),
-                    job.duration_ms.unwrap_or(0),
-                    "JOB_FAILED".to_string(),
-                    "The job has failed during execution.".to_string(),
-                )
-                .await
-                .map_err(|e| {
-                    error!("Failed to send webhook for job {}: {}", job_id, e);
-                    CoordinatorError::Internal(e.to_string())
-                })?;
-            } else {
-                hooks::send_completion_webhook(
-                    webhook_url.clone(),
-                    job_id.clone(),
-                    job.duration_ms.unwrap_or(0),
-                    job.final_proof.clone(),
-                    job.executed_steps,
-                )
-                .await
-                .map_err(|e| {
-                    error!("Failed to send webhook for job {}: {}", job_id, e);
-                    CoordinatorError::Internal(e.to_string())
-                })?;
-            }
+            self.send_webhook(webhook_url.clone(), job_id, &job);
         }
+
+        drop(job);
+        let mut job = job_entry.write().await;
 
         // Save proof to disk
         if job.state == JobState::Completed {
             let folder = PathBuf::from("proofs");
-            zisk_common::save_proof(job_id.clone().as_str(), folder, &final_proof, true).map_err(
-                |e| {
-                    error!("Failed to save proof for job {}: {}", job_id, e);
-                    CoordinatorError::Internal(e.to_string())
-                },
-            )?;
+            zisk_common::save_proof(job_id.as_str(), folder, &final_proof, true).map_err(|e| {
+                error!("Failed to save proof for job {}: {}", job_id, e);
+                job.cleanup();
+                CoordinatorError::Internal(e.to_string())
+            })?;
         }
 
         // Clean up process data for the job
-        drop(job);
-        let mut job = job_entry.write().await;
         job.cleanup();
 
         Ok(())
+    }
+
+    /// Sends webhook notifications for job completion or failure.
+    ///
+    /// # Parameters
+    ///
+    /// * `webhook_url` - The URL to send the webhook to.
+    /// * `job_id` - The ID of the job.
+    ///
+    fn send_webhook(&self, webhook_url: String, job_id: &JobId, job: &Job) {
+        // Errors from webhook sending are logged but not reported
+        let webhook_url = webhook_url.clone();
+        let job_id_clone = job_id.clone();
+        let duration_ms = job.duration_ms.unwrap_or(0);
+        let job_state = job.state.clone();
+        let final_proof_clone = job.final_proof.clone();
+        let executed_steps = job.executed_steps;
+
+        tokio::spawn(async move {
+            const MAX_RETRIES: usize = 10;
+            const INITIAL_BACKOFF_MS: u64 = 50;
+            const MAX_BACKOFF_MS: u64 = 2000;
+
+            let mut attempt = 0;
+
+            while attempt < MAX_RETRIES {
+                let result = if job_state == JobState::Failed {
+                    hooks::send_failure_webhook(
+                        webhook_url.clone(),
+                        job_id_clone.clone(),
+                        duration_ms,
+                        "JOB_FAILED".to_string(),
+                        "The job has failed during execution.".to_string(),
+                    )
+                    .await
+                } else {
+                    hooks::send_completion_webhook(
+                        webhook_url.clone(),
+                        job_id_clone.clone(),
+                        duration_ms,
+                        final_proof_clone.clone(),
+                        executed_steps,
+                    )
+                    .await
+                };
+
+                match result {
+                    Ok(_) => {
+                        info!("Successfully sent webhook {} for job {}", webhook_url, job_id_clone);
+                        break;
+                    }
+                    Err(e) => {
+                        attempt += 1;
+
+                        if attempt >= MAX_RETRIES {
+                            error!(
+                                "Failed to send webhook {} for job {} after {} attempts: {}",
+                                webhook_url, job_id_clone, MAX_RETRIES, e
+                            );
+                            break;
+                        }
+
+                        // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 500ms (capped)
+                        let wait_ms = (INITIAL_BACKOFF_MS * 2_u64.pow(attempt as u32 - 1))
+                            .min(MAX_BACKOFF_MS);
+
+                        warn!(
+                            "Failed to send webhook {} for job {} (attempt {}/{}): {}. Retrying in {}ms",
+                            webhook_url, job_id_clone, attempt, MAX_RETRIES, e, wait_ms
+                        );
+
+                        tokio::time::sleep(Duration::from_millis(wait_ms)).await;
+                    }
+                }
+            }
+        });
     }
 
     /// Creates a new proof generation job with allocated resources.
@@ -891,7 +941,7 @@ impl Coordinator {
         // Start Phase2 for all workers
         self.start_prove(&job_id, &active_workers, challenges_dto).await?;
 
-        info!("[Phase2 started] {} with {} workers", job_id, active_workers.len());
+        info!("[Phase2] Started with {} workers for {}", active_workers.len(), job_id);
 
         Ok(())
     }
@@ -979,7 +1029,7 @@ impl Coordinator {
         let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
         info!(
-            "[Phase1 progress] WorkerId {} done. {} with {}/{} workers completed (duration: {:.3}s)",
+            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, {:.3}s)",
             worker_id,
             job.job_id,
             phase1_results_len,
@@ -1331,7 +1381,7 @@ impl Coordinator {
                     .await?;
 
                 info!(
-                    "Assigned worker {} as aggregator for job {}",
+                    "[Phase3] Assigned worker {} as aggregator for job {}",
                     candidate_worker_id, job.job_id
                 );
 
@@ -1371,7 +1421,7 @@ impl Coordinator {
         // Provide operational visibility into Phase 2 progress
         // This logging helps with monitoring long-running proof generation jobs
         info!(
-            "[Phase2 progress] Worker {} done. {} with {}/{} workers completed (duration: {:.3}s)",
+            "[Phase2] {} finished phase 2 for {} ({} / {} workers done, {:.3}s)",
             worker_id,
             job.job_id,
             phase2_results.len(),
@@ -1559,13 +1609,13 @@ impl Coordinator {
         drop(job);
 
         info!(
-            "[Phase3 completed] WorkerId {} done. {} (duration: {:.3}s)",
+            "[Phase3] WorkerId {} done, phase 3 completed for {} ({:.3}s)",
             agg_worker_id,
             job_id,
             duration_ms.as_secs_f32()
         );
 
-        info!("[Job Finished] {} (duration: {:.3}s)", job_id, duration.as_secs_f32());
+        info!("[Job] Finished {} (duration: {:.3}s)", job_id, duration.as_secs_f32());
 
         self.post_launch_proof(job_id).await?;
 
