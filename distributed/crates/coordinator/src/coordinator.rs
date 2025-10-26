@@ -366,11 +366,7 @@ impl Coordinator {
     ///   coordinator server --webhook-url 'http://example.com/notify'
     ///   # becomes 'http://example.com/notify/12345'
     pub async fn post_launch_proof(&self, job_id: &JobId) -> CoordinatorResult<()> {
-        let job_entry = {
-            let job_entry =
-                self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
-            job_entry.clone()
-        };
+        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.read().await;
 
         // Clone job.final_proof and error if does not exist
@@ -386,24 +382,25 @@ impl Coordinator {
 
         // Check if webhook URL is configured and spawn it in a separate task
         if let Some(webhook_url) = &self.config.coordinator.webhook_url {
-            self.send_webhook(webhook_url.clone(), job_id, &job);
+            self.send_webhook(webhook_url.clone(), &job);
         }
 
+        let state = job.state.clone();
         drop(job);
-        let mut job = job_entry.write().await;
+        drop(job_entry);
 
         // Save proof to disk
-        if job.state == JobState::Completed {
+        if state == JobState::Completed {
             let folder = PathBuf::from("proofs");
             zisk_common::save_proof(job_id.as_str(), folder, &final_proof, true).map_err(|e| {
                 error!("Failed to save proof for job {}: {}", job_id, e);
-                job.cleanup();
+                self.jobs.remove(job_id);
                 CoordinatorError::Internal(e.to_string())
             })?;
         }
 
         // Clean up process data for the job
-        job.cleanup();
+        self.jobs.remove(job_id);
 
         Ok(())
     }
@@ -415,12 +412,12 @@ impl Coordinator {
     /// * `webhook_url` - The URL to send the webhook to.
     /// * `job_id` - The ID of the job.
     ///
-    fn send_webhook(&self, webhook_url: String, job_id: &JobId, job: &Job) {
+    fn send_webhook(&self, webhook_url: String, job: &Job) {
         // Errors from webhook sending are logged but not reported
-        let job_id_clone = job_id.clone();
+        let job_id = job.job_id.clone();
         let duration_ms = job.duration_ms.unwrap_or(0);
         let job_state = job.state.clone();
-        let final_proof_clone = job.final_proof.clone();
+        let final_proof = job.final_proof.clone();
         let executed_steps = job.executed_steps;
 
         tokio::spawn(async move {
@@ -434,7 +431,7 @@ impl Coordinator {
                 let result = if job_state == JobState::Failed {
                     hooks::send_failure_webhook(
                         webhook_url.clone(),
-                        job_id_clone.clone(),
+                        job_id.clone(),
                         duration_ms,
                         "JOB_FAILED".to_string(),
                         "The job has failed during execution.".to_string(),
@@ -443,9 +440,9 @@ impl Coordinator {
                 } else {
                     hooks::send_completion_webhook(
                         webhook_url.clone(),
-                        job_id_clone.clone(),
+                        job_id.clone(),
                         duration_ms,
-                        final_proof_clone.clone(),
+                        final_proof.clone(),
                         executed_steps,
                     )
                     .await
@@ -453,7 +450,7 @@ impl Coordinator {
 
                 match result {
                     Ok(_) => {
-                        info!("Successfully sent webhook {} for job {}", webhook_url, job_id_clone);
+                        info!("Successfully sent webhook {} for job {}", webhook_url, job_id);
                         break;
                     }
                     Err(e) => {
@@ -462,7 +459,7 @@ impl Coordinator {
                         if attempt >= MAX_RETRIES {
                             error!(
                                 "Failed to send webhook {} for job {} after {} attempts: {}",
-                                webhook_url, job_id_clone, MAX_RETRIES, e
+                                webhook_url, job_id, MAX_RETRIES, e
                             );
                             break;
                         }
@@ -473,7 +470,7 @@ impl Coordinator {
 
                         warn!(
                             "Failed to send webhook {} for job {} (attempt {}/{}): {}. Retrying in {}ms",
-                            webhook_url, job_id_clone, attempt, MAX_RETRIES, e, wait_ms
+                            webhook_url, job_id, attempt, MAX_RETRIES, e, wait_ms
                         );
 
                         tokio::time::sleep(Duration::from_millis(wait_ms)).await;
@@ -633,9 +630,10 @@ impl Coordinator {
             job.workers.len()
         );
 
-        drop(job); // Release job lock before calling post_launch_proof
+        // Release job lock before calling post_launch_proof
+        drop(job);
+        drop(job_entry);
 
-        // Add webhook notification for failed jobs
         self.post_launch_proof(job_id).await?;
 
         Ok(())
@@ -1605,8 +1603,6 @@ impl Coordinator {
         let duration_agg = end_time.signed_duration_since(job.start_time_aggregate);
         let duration_ms = Duration::from_millis(duration_agg.num_milliseconds() as u64);
 
-        drop(job);
-
         info!(
             "[Phase3] WorkerId {} done, phase 3 completed for {} ({:.3}s)",
             agg_worker_id,
@@ -1615,6 +1611,10 @@ impl Coordinator {
         );
 
         info!("[Job] Finished {} (duration: {:.3}s)", job_id, duration.as_secs_f32());
+
+        // Release job lock before calling post_launch_proof
+        drop(job);
+        drop(job_entry);
 
         self.post_launch_proof(job_id).await?;
 
