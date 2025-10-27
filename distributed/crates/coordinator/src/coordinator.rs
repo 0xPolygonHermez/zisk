@@ -37,6 +37,7 @@ use crate::{
 };
 
 use chrono::{DateTime, Utc};
+use colored::Colorize;
 use dashmap::DashMap;
 use proofman::ContributionsInfo;
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
@@ -1652,9 +1653,13 @@ impl Coordinator {
         );
 
         let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
-        info!("[Job] Finished {} successfully ✅ Duration: {:.3}s ({:.3}s+{:.3}s+{:.3}s) Inputs: {}, Capacity: {} ",
-            job_id,
-            duration.as_secs_f32(),
+
+        let header = format!("[Job] Finished {} successfully ✔", job_id).green();
+        let duration_str = format!("Duration: {:.3}s", duration.as_secs_f32()).bold();
+        info!(
+            "{} {} ({:.3}s+{:.3}s+{:.3}s) Inputs: {}, Capacity: {} ",
+            header,
+            duration_str,
             phase1_duration.as_seconds_f32(),
             phase2_duration.as_seconds_f32(),
             phase3_duration.as_seconds_f32(),
