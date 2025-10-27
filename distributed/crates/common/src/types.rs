@@ -340,6 +340,7 @@ impl Job {
     }
 
     pub fn cleanup(&mut self) {
+        self.partitions.clear();
         self.results.clear();
         self.stats.clear();
         self.challenges = None;

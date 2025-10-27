@@ -404,20 +404,20 @@ impl Coordinator {
 
         let state = job.state.clone();
         drop(job);
-        drop(job_entry);
+        let mut job = job_entry.write().await;
 
         // Save proof to disk
         if state == JobState::Completed {
             let folder = PathBuf::from("proofs");
             zisk_common::save_proof(job_id.as_str(), folder, &final_proof, true).map_err(|e| {
                 error!("Failed to save proof for job {}: {}", job_id, e);
-                self.jobs.remove(job_id);
+                job.cleanup();
                 CoordinatorError::Internal(e.to_string())
             })?;
         }
 
         // Clean up process data for the job
-        self.jobs.remove(job_id);
+        job.cleanup();
 
         Ok(())
     }
