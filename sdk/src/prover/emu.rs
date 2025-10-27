@@ -3,8 +3,8 @@ use crate::{
     prover::{ProverBackend, ProverEngine, ZiskBackend},
     Proof, RankInfo, ZiskLibLoader,
 };
-use proofman::ProofMan;
-use proofman_common::{initialize_logger, ParamsGPU};
+use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
 use std::{path::PathBuf, time::Duration};
 use zisk_common::{ExecutorStats, ZiskExecutionResult};
 
@@ -82,11 +82,56 @@ impl ProverEngine for EmuProver {
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
         self.core_prover.backend.prove(input)
     }
+
+    fn world_rank(&self) -> i32 {
+        self.core_prover.rank_info.world_rank
+    }
+
+    fn local_rank(&self) -> i32 {
+        self.core_prover.rank_info.local_rank
+    }
+
+    fn mpi_broadcast(&self, data: &mut Vec<u8>) {
+        self.core_prover.backend.mpi_broadcast(data);
+    }
+
+    fn generate_proof_from_lib(
+        &self,
+        phase_inputs: ProvePhaseInputs,
+        options: ProofOptions,
+        phase: ProvePhase,
+    ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>> {
+        self.core_prover.backend.generate_proof_from_lib(phase_inputs, options, phase)
+    }
+
+    fn receive_aggregated_proofs(
+        &self,
+        agg_proofs: Vec<AggProofs>,
+        last_proof: bool,
+        final_proof: bool,
+        options: &ProofOptions,
+    ) -> Option<Vec<AggProofs>> {
+        self.core_prover.backend.receive_aggregated_proofs(
+            agg_proofs,
+            last_proof,
+            final_proof,
+            options,
+        )
+    }
+
+    fn executed_steps(&self) -> u64 {
+        self.core_prover
+            .backend
+            .witness_lib
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.executed_steps)
+            .unwrap_or(0)
+    }
 }
 
 pub struct EmuCoreProver {
     backend: ProverBackend,
-    _rank_info: RankInfo,
+    rank_info: RankInfo,
 }
 
 impl EmuCoreProver {
@@ -148,6 +193,6 @@ impl EmuCoreProver {
             proofman,
         };
 
-        Ok(Self { backend: core, _rank_info: RankInfo { world_rank, local_rank } })
+        Ok(Self { backend: core, rank_info: RankInfo { world_rank, local_rank } })
     }
 }
