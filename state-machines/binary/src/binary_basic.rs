@@ -199,7 +199,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         match opcode {
             MINU_OP | MINUW_OP | MIN_OP | MINW_OP => {
                 // Set first byte
-                row.set_first_byte(false);
+                row.set_use_first_byte(false);
 
                 let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
 
@@ -266,7 +266,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             MAXU_OP | MAXUW_OP | MAX_OP | MAXW_OP => {
                 // Set first byte
-                row.set_first_byte(false);
+                row.set_use_first_byte(false);
 
                 let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
 
@@ -333,7 +333,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             LT_ABS_NP_OP => {
                 // Set first byte
-                row.set_first_byte(true);
+                row.set_use_first_byte(true);
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::LtAbsNP;
@@ -383,7 +383,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             LT_ABS_PN_OP => {
                 // Set first byte
-                row.set_first_byte(true);
+                row.set_use_first_byte(true);
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::LtAbsPN;
@@ -433,7 +433,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             LTU_OP | LTUW_OP | LT_OP | LTW_OP => {
                 // Set first byte
-                row.set_first_byte(false);
+                row.set_use_first_byte(false);
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (opcode == LTU_OP) || (opcode == LTUW_OP) {
@@ -500,7 +500,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             GT_OP => {
                 // Set first byte
-                row.set_first_byte(false);
+                row.set_use_first_byte(false);
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Gt;
@@ -551,7 +551,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             EQ_OP | EQW_OP => {
                 // Set first byte
-                row.set_first_byte(false);
+                row.set_use_first_byte(false);
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Eq;
@@ -603,7 +603,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             ADD_OP | ADDW_OP => {
                 // Set first byte
-                row.set_first_byte(false);
+                row.set_use_first_byte(false);
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Add;
@@ -646,7 +646,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             SUB_OP | SUBW_OP => {
                 // Set first byte
-                row.set_first_byte(false);
+                row.set_use_first_byte(false);
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Sub;
@@ -688,7 +688,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             LEU_OP | LEUW_OP | LE_OP | LEW_OP => {
                 // Set first byte
-                row.set_first_byte(false);
+                row.set_use_first_byte(false);
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (opcode == LEU_OP) || (opcode == LEUW_OP) {
@@ -744,7 +744,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             AND_OP => {
                 // Set first byte
-                row.set_first_byte(false);
+                row.set_use_first_byte(false);
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::And;
@@ -774,7 +774,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             OR_OP => {
                 // Set first byte
-                row.set_first_byte(false);
+                row.set_use_first_byte(false);
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Or;
@@ -804,7 +804,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             }
             XOR_OP => {
                 // Set first byte
-                row.set_first_byte(false);
+                row.set_use_first_byte(false);
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Xor;

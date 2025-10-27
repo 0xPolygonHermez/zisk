@@ -2,29 +2,29 @@ require "std_constants.pil";
 require "std_lookup.pil"
 
 /* PIL Binary Operations Table used by Binary
-                                                                                                            Running Total
-    MINU       (OP:0x02)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |                     2^19
-    MIN        (OP:0x03)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |              2^20
-    MAXU       (OP:0x04)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |              2^20 + 2^19
-    MAX        (OP:0x05)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |       2^21
-    LT_ABS_NP  (OP:0x06)   *   2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)                         = 2^19 |       2^21        + 2^19
-    LT_ABS_PN  (OP:0x07)   *   2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)                         = 2^19 |       2^21 + 2^20
-    LTU        (OP:0x08)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20        + 2^18
-    LT         (OP:0x09)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20 + 2^19
-    GT         (OP:0x0a)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20 + 2^19 + 2^18
-    EQ         (OP:0x0b)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                         = 2^18 | 2^22
-    ADD        (OP:0x0c)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                         = 2^18 | 2^22                     + 2^18
-    SUB        (OP:0x0d)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                         = 2^18 | 2^22              + 2^19
-    LEU        (OP:0x0e)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                         = 2^18 | 2^22              + 2^19 + 2^18
-    LE         (OP:0x0f)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                         = 2^18 | 2^22       + 2^20
-    AND        (OP:0x10)   **  2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                                     = 2^17 | 2^22       + 2^20               + 2^17
-    OR         (OP:0x11)   **  2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                                     = 2^17 | 2^22       + 2^20        + 2^18
-    XOR        (OP:0x12)   **  2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                                     = 2^17 | 2^22       + 2^20        + 2^18 + 2^17
-    SEXT       (OP:0x13)   *** 2^8 (A)                           x 2^1 (CIN) x 2^2 (FLAGS)           = 2^11 | 2^22       + 2^20        + 2^18 + 2^17 + 2^11 => < 2^23
+                                                                                                          Running Total
+    MINU       (OP:0x02)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x 2^1 (RESULT_IS_A)  = 2^19 |                     2^19
+    MIN        (OP:0x03)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x 2^1 (RESULT_IS_A)  = 2^19 |              2^20
+    MAXU       (OP:0x04)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x 2^1 (RESULT_IS_A)  = 2^19 |              2^20 + 2^19
+    MAX        (OP:0x05)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x 2^1 (RESULT_IS_A)  = 2^19 |       2^21
+    LT_ABS_NP  (OP:0x06)   *   2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)                      = 2^19 |       2^21        + 2^19
+    LT_ABS_PN  (OP:0x07)   *   2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)                      = 2^19 |       2^21 + 2^20
+    LTU        (OP:0x08)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                      = 2^18 |       2^21 + 2^20        + 2^18
+    LT         (OP:0x09)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                      = 2^18 |       2^21 + 2^20 + 2^19
+    GT         (OP:0x0a)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                      = 2^18 |       2^21 + 2^20 + 2^19 + 2^18
+    EQ         (OP:0x0b)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                      = 2^18 | 2^22
+    ADD        (OP:0x0c)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                      = 2^18 | 2^22                     + 2^18
+    SUB        (OP:0x0d)       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                      = 2^18 | 2^22              + 2^19
+    LEU        (OP:0x0e)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                      = 2^18 | 2^22              + 2^19 + 2^18
+    LE         (OP:0x0f)   *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                      = 2^18 | 2^22       + 2^20
+    AND        (OP:0x10)   **  2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                                  = 2^17 | 2^22       + 2^20               + 2^17
+    OR         (OP:0x11)   **  2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                                  = 2^17 | 2^22       + 2^20        + 2^18
+    XOR        (OP:0x12)   **  2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                                  = 2^17 | 2^22       + 2^20        + 2^18 + 2^17
+    SEXT       (OP:0x13)   *** 2^8 (A)                           x 2^1 (CIN) x 2^2 (FLAGS)        = 2^11 | 2^22       + 2^20        + 2^18 + 2^17 + 2^11 => < 2^23
     --------------------------------------------------------------------------------------------------------------------------
     (*)   Uses the carry of the last byte as its result
     (**)  Do not uses POS_IND in its operation, but the binary does so we need to consider it
-    (***) Do not uses CIN, but we add it to simplify the FLAGS column
+    (***) Do not uses CIN in its operation, but the binary places the previous output carry in CIN, so we need to consider it
     Note: SEXT is the only (unary) operation which is not a ZisK OP but it is used to prove the rest
 */
 
@@ -44,6 +44,9 @@ airtemplate BinaryTable(const int N = 2**23) {
                     0:P2_11]...;          // B is 0 for SEXT
 
     // Indicator of the byte position (<=2 bits)
+    //  - 2 indicates the first byte
+    //  - 1 indicates the last byte
+    //  - 0 indicates a middle byte
     col fixed POS_IND = [[0:P2_16, 1:P2_16]:(4*4),          // MINU,MIN,MAXU,MAX
                          [0:P2_16..2:P2_16, 2:P2_16]:(2*2), // LT_ABS_NP,LT_ABS_PN
                          [0:P2_16, 1:P2_16]:(4*2),          // LTU,LT,GT,EQ
@@ -61,7 +64,7 @@ airtemplate BinaryTable(const int N = 2**23) {
                       0:(P2_17*3),             // AND,OR,XOR
                      [0:P2_8, 1:P2_8]:4]...;   // SEXT
 
-    // Operation opcode (fixed values)
+    // Operation opcode
     col fixed OP = [0x02:P2_19, 0x03:P2_19, 0x04:P2_19, 0x05:P2_19, // MINU,MIN,MAXU,MAX
                     0x06:P2_19, 0x07:P2_19,                         // LT_ABS_NP,LT_ABS_PN
                     0x08:P2_18, 0x09:P2_18, 0x0a:P2_18, 0x0b:P2_18, // LTU,LT,GT,EQ
@@ -71,23 +74,22 @@ airtemplate BinaryTable(const int N = 2**23) {
                     0x13:P2_11]...;                                 // SEXT
 
     const int TABLE_SIZE = P2_19 * 6 + P2_18 * 8 + P2_17 * 3 + P2_11;
-    const int TABLE_BASE_EXT32 = P2_16 * 86;
+    const int TABLE_OFFSET_SEXT = P2_16 * 86;
 
     col fixed C;             // Output C (8 bits)
-    col fixed FLAGS;         // Combined flags (8 bits)
+    col fixed FLAGS;         // Combined flags (8 bits): cout + 2*result_is_a + 4*use_first_byte + 8*use_last_byte;
 
     #pragma transpile logfile:/tmp/binary_table.txt
     for (int i = 0; i < N; i++) {
         const int [pos_ind, op, a, b, cin] = [POS_IND[i], OP[i], A[i], B[i], CIN[i]];
+        const int index = i % TABLE_SIZE;
         const int pfirst = (pos_ind == 2) ? 1 : 0;
         const int plast = (pos_ind == 1) ? 1 : 0;
         int c = 0;
         int cout = 0;
-        int op_is_min_max = 0;
-        int first_byte = 0;
-        int use_last_carry = 0;
-        int index = i % TABLE_SIZE;
-        int result_is_a = index < P2_21 ? ((index >> 18) & 0x01) : 0;
+        int result_is_a = 0;
+        int use_first_byte = 0;
+        int use_last_byte = 0;
         switch (op) {
             case 0x02,0x03: // MINU,MIN: Minimum operation
                 // Returns min(a,b). MINU for unsigned, MIN for signed.
@@ -97,6 +99,8 @@ airtemplate BinaryTable(const int N = 2**23) {
                 } else if (a == b) {
                     cout = cin;
                 }
+
+                result_is_a = (index >> 18) & 0x01;
 
                 if (result_is_a) {
                     c = a;
@@ -116,6 +120,8 @@ airtemplate BinaryTable(const int N = 2**23) {
                 } else if (a == b) {
                     cout = cin;
                 }
+
+                result_is_a = (index >> 18) & 0x01;
 
                 if (result_is_a) {
                     c = a;
@@ -142,8 +148,8 @@ airtemplate BinaryTable(const int N = 2**23) {
                     c = plast * cin;
                 }
 
-                first_byte = 1;
-                use_last_carry = plast;
+                use_first_byte = 1;
+                use_last_byte = plast;
 
             case 0x07: // LT_ABS_PN: Absolute value comparison |a| < |b| where a > 0 and b < 0
                 // Compares absolute values when a is positive and b is negative
@@ -160,8 +166,8 @@ airtemplate BinaryTable(const int N = 2**23) {
                     c = plast * cin;
                 }
 
-                first_byte = 1;
-                use_last_carry = plast;
+                use_first_byte = 1;
+                use_last_byte = plast;
 
             case 0x08,0x09: // LTU,LT: Less than comparison
                 // Returns 1 if a < b, 0 otherwise. LTU for unsigned, LT for signed.
@@ -180,7 +186,7 @@ airtemplate BinaryTable(const int N = 2**23) {
                     cout = c;
                 }
 
-                use_last_carry = plast;
+                use_last_byte = plast;
 
             case 0x0a: // GT: Greater than comparison (signed)
                 // Returns 1 if a > b, 0 otherwise (signed comparison)
@@ -199,7 +205,7 @@ airtemplate BinaryTable(const int N = 2**23) {
                     cout = c;
                 }
 
-                use_last_carry = plast;
+                use_last_byte = plast;
 
             case 0x0b: // EQ: Equality comparison
                 // Returns 1 if a == b, 0 otherwise
@@ -214,7 +220,7 @@ airtemplate BinaryTable(const int N = 2**23) {
                     cout = 1 - cout;
                 }
 
-                use_last_carry = plast;
+                use_last_byte = plast;
 
             case 0x0c: // ADD: Addition with carry
                 // Performs a + b + cin
@@ -225,7 +231,7 @@ airtemplate BinaryTable(const int N = 2**23) {
             case 0x0d: // SUB: Subtraction with borrow
                 // Performs a - b - cin (where cin is borrow)
                 // Example: SUB(5,3,0) = 2, SUB(3,5,0) = 254 with borrow=1
-                sign = (a - cin) >= b ? 0 : 1;
+                const int sign = (a - cin) >= b ? 0 : 1;
                 c = 256 * sign + a - cin - b;
                 cout = plast ? 0 : sign;
 
@@ -245,7 +251,7 @@ airtemplate BinaryTable(const int N = 2**23) {
                     cout = 1 - cout;
                 }
 
-                use_last_carry = plast;
+                use_last_byte = plast;
 
             case 0x10: // AND: Bitwise AND
                 // Performs bitwise AND operation: a & b
@@ -266,12 +272,13 @@ airtemplate BinaryTable(const int N = 2**23) {
                 // Extends sign bit (bit 7) to all 8 bits of output
                 // Example: SEXT(0x80) = 0xFF, SEXT(0x7F) = 0x00
                 c = (a & 0x80) ? 0xFF : 0x00;
-                const int index_offset = (index - TABLE_BASE_EXT32) >> 9;
+
+                const int index_offset = (index - TABLE_OFFSET_SEXT) >> 9;
                 result_is_a = index_offset & 0x01;
                 if ((index_offset & 0x03) == 0x03) {
-                    first_byte = 1;
+                    use_first_byte = 1;
                 } else {
-                    first_byte = 0;
+                    use_first_byte = 0;
                 }
 
             default:
@@ -279,7 +286,7 @@ airtemplate BinaryTable(const int N = 2**23) {
         }
 
         C[i] = c;
-        const int flags = cout + 2*result_is_a + 4*first_byte + 8*use_last_carry;
+        const int flags = cout + 2*result_is_a + 4*use_first_byte + 8*use_last_byte;
         FLAGS[i] = flags;
         log(`T[${i}] = [${pos_ind}, ${op}, ${a}, ${b}, ${cin}, ${c}, ${flags}]`);
     }
