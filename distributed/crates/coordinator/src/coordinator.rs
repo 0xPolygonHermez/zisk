@@ -303,11 +303,11 @@ impl Coordinator {
             .await?;
 
         info!(
-            "[Job Started] Inputs={} | Capacity={} | Workers={} | {}",
+            "[Job] Started {} with inputs={}, capacity={}, workers={}",
+            job.job_id,
             request.input_path,
             required_compute_capacity,
             job.workers.len(),
-            job.job_id
         );
 
         // Initialize job state
@@ -331,7 +331,7 @@ impl Coordinator {
             .await?;
         }
 
-        info!("[Phase1 started] {} with {} workers", job_id, active_workers.len());
+        info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
 
         Ok(LaunchProofResponseDto { job_id })
     }
@@ -366,46 +366,118 @@ impl Coordinator {
     ///   coordinator server --webhook-url 'http://example.com/notify'
     ///   # becomes 'http://example.com/notify/12345'
     pub async fn post_launch_proof(&self, job_id: &JobId) -> CoordinatorResult<()> {
-        let job_entry = {
-            let job_entry =
-                self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
-            job_entry.clone()
-        };
+        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.read().await;
 
         // Clone job.final_proof and error if does not exist
-        let final_proof = job.final_proof.clone().ok_or_else(|| {
-            CoordinatorError::Internal(
-                "Final proof is missing during post-launch processing".to_string(),
-            )
-        })?;
+        let final_proof = if job.state == JobState::Completed {
+            job.final_proof.clone().ok_or_else(|| {
+                CoordinatorError::Internal(
+                    "Final proof is missing during post-launch processing".to_string(),
+                )
+            })?
+        } else {
+            Vec::new()
+        };
 
-        // Check if webhook URL is configured
+        // Check if webhook URL is configured and spawn it in a separate task
         if let Some(webhook_url) = &self.config.coordinator.webhook_url {
-            hooks::send_completion_webhook(
-                webhook_url.clone(),
-                job_id.clone(),
-                job.duration_ms.unwrap_or(0),
-                job.final_proof.clone(),
-                matches!(job.state(), JobState::Completed),
-            )
-            .await
-            .map_err(|e| {
-                error!("Failed to send webhook for job {}: {}", job_id, e);
+            self.send_webhook(webhook_url.clone(), &job);
+        }
+
+        let state = job.state.clone();
+        drop(job);
+        drop(job_entry);
+
+        // Save proof to disk
+        if state == JobState::Completed {
+            let folder = PathBuf::from("proofs");
+            zisk_common::save_proof(job_id.as_str(), folder, &final_proof, true).map_err(|e| {
+                error!("Failed to save proof for job {}: {}", job_id, e);
+                self.jobs.remove(job_id);
                 CoordinatorError::Internal(e.to_string())
             })?;
         }
 
-        // Save proof to disk
-        let folder = PathBuf::from("proofs");
-        hooks::save_proof(job_id.clone().as_str(), folder, &final_proof).await?;
-
         // Clean up process data for the job
-        drop(job);
-        let mut job = job_entry.write().await;
-        job.cleanup();
+        self.jobs.remove(job_id);
 
         Ok(())
+    }
+
+    /// Sends webhook notifications for job completion or failure.
+    ///
+    /// # Parameters
+    ///
+    /// * `webhook_url` - The URL to send the webhook to.
+    /// * `job_id` - The ID of the job.
+    ///
+    fn send_webhook(&self, webhook_url: String, job: &Job) {
+        // Errors from webhook sending are logged but not reported
+        let job_id = job.job_id.clone();
+        let duration_ms = job.duration_ms.unwrap_or(0);
+        let job_state = job.state.clone();
+        let final_proof = job.final_proof.clone();
+        let executed_steps = job.executed_steps;
+
+        tokio::spawn(async move {
+            const MAX_RETRIES: usize = 10;
+            const INITIAL_BACKOFF_MS: u64 = 50;
+            const MAX_BACKOFF_MS: u64 = 2000;
+
+            let mut attempt = 0;
+
+            while attempt < MAX_RETRIES {
+                let result = if job_state == JobState::Failed {
+                    hooks::send_failure_webhook(
+                        webhook_url.clone(),
+                        job_id.clone(),
+                        duration_ms,
+                        "JOB_FAILED".to_string(),
+                        "The job has failed during execution.".to_string(),
+                    )
+                    .await
+                } else {
+                    hooks::send_completion_webhook(
+                        webhook_url.clone(),
+                        job_id.clone(),
+                        duration_ms,
+                        final_proof.clone(),
+                        executed_steps,
+                    )
+                    .await
+                };
+
+                match result {
+                    Ok(_) => {
+                        info!("Successfully sent webhook {} for job {}", webhook_url, job_id);
+                        break;
+                    }
+                    Err(e) => {
+                        attempt += 1;
+
+                        if attempt >= MAX_RETRIES {
+                            error!(
+                                "Failed to send webhook {} for job {} after {} attempts: {}",
+                                webhook_url, job_id, MAX_RETRIES, e
+                            );
+                            break;
+                        }
+
+                        // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms, 1600ms, 2000ms (capped)
+                        let wait_ms = (INITIAL_BACKOFF_MS * 2_u64.pow(attempt as u32 - 1))
+                            .min(MAX_BACKOFF_MS);
+
+                        warn!(
+                            "Failed to send webhook {} for job {} (attempt {}/{}): {}. Retrying in {}ms",
+                            webhook_url, job_id, attempt, MAX_RETRIES, e, wait_ms
+                        );
+
+                        tokio::time::sleep(Duration::from_millis(wait_ms)).await;
+                    }
+                }
+            }
+        });
     }
 
     /// Creates a new proof generation job with allocated resources.
@@ -526,7 +598,10 @@ impl Coordinator {
 
             // Update worker state
             self.workers_pool
-                .mark_worker_with_state(worker_id, WorkerState::Computing(JobPhase::Contributions))
+                .mark_worker_with_state(
+                    worker_id,
+                    WorkerState::Computing((job.job_id.clone(), JobPhase::Contributions)),
+                )
                 .await?;
         }
 
@@ -555,9 +630,10 @@ impl Coordinator {
             job.workers.len()
         );
 
-        drop(job); // Release job lock before calling post_launch_proof
+        // Release job lock before calling post_launch_proof
+        drop(job);
+        drop(job_entry);
 
-        // Add webhook notification for failed jobs
         self.post_launch_proof(job_id).await?;
 
         Ok(())
@@ -691,6 +767,19 @@ impl Coordinator {
     /// - Work may be redistributed to remaining workers where possible
     /// - Aggregation phases may need to be restarted with different worker assignments
     pub async fn unregister_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
+        // Is this worker involved in any active jobs?
+        let affected_jobs = self.workers_pool.worker_state(worker_id).await;
+        if let Some(WorkerState::Computing((job_id, phase))) = affected_jobs {
+            error!(
+                "Worker {} unregistered while computing for job {} in phase {:?}",
+                worker_id, job_id, phase
+            );
+            error!("Marking job {} as failed due to worker disconnection", job_id);
+
+            // Fail the affected job
+            self.fail_job(&job_id, format!("Worker {} disconnected", worker_id)).await?;
+        }
+
         self.workers_pool.unregister_worker(worker_id).await
     }
 
@@ -815,11 +904,19 @@ impl Coordinator {
 
         let mut job = job_entry.write().await;
 
+        let worker_id = execute_task_response.worker_id.clone();
+
+        // If job has Failed, mark worker as Idle and return early
+        if matches!(job.state(), JobState::Failed) {
+            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await?;
+            return Ok(());
+        }
+
         // Store Contributions response
         self.store_contribution_response(&mut job, execute_task_response).await?;
 
         // Check if all contributions are complete
-        if !self.check_phase1_completion(&job) {
+        if !self.check_phase1_completion(&job, &worker_id) {
             return Ok(());
         }
 
@@ -834,12 +931,14 @@ impl Coordinator {
 
         let active_workers = self.select_workers_for_execution(&job)?;
 
+        job.start_time_prove = Utc::now();
+
         drop(job); // Release jobs lock early
 
         // Start Phase2 for all workers
         self.start_prove(&job_id, &active_workers, challenges_dto).await?;
 
-        info!("[Phase2 started] {} with {} workers", job_id, active_workers.len());
+        info!("[Phase2] Started with {} workers for {}", active_workers.len(), job_id);
 
         Ok(())
     }
@@ -918,25 +1017,27 @@ impl Coordinator {
     /// # Parameters
     ///
     /// * `job` - Reference to the job to check
-    fn check_phase1_completion(&self, job: &Job) -> bool {
+    fn check_phase1_completion(&self, job: &Job, worker_id: &WorkerId) -> bool {
         let phase1_results_len =
             job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
 
+        let end_time = Utc::now();
+        let duration = end_time.signed_duration_since(job.start_time);
+        let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
+
         info!(
-            "[Phase1 progress] {} with {}/{} workers completed",
+            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, {:.3}s)",
+            worker_id,
             job.job_id,
             phase1_results_len,
-            job.workers.len()
+            job.workers.len(),
+            duration_ms.as_secs_f32()
         );
 
         // Ensure we have results from all assigned workers before proceeding.
         // If not all workers have responded (and we're not in simulation mode),
         // return early and wait for more results.
-        if !job.execution_mode.is_simulating() && phase1_results_len < job.workers.len() {
-            return false;
-        }
-
-        true
+        job.execution_mode.is_simulating() || phase1_results_len >= job.workers.len()
     }
 
     /// Validates Phase 1 results and extracts challenge data with simulation mode handling.
@@ -1054,7 +1155,7 @@ impl Coordinator {
             if let Some(worker_state) = self.workers_pool.worker_state(worker_id).await {
                 // Validate worker is in the expected Phase 1 computing state
                 // This ensures proper phase sequencing and prevents race conditions
-                if !matches!(worker_state, WorkerState::Computing(JobPhase::Contributions)) {
+                if !matches!(worker_state, WorkerState::Computing((_, JobPhase::Contributions))) {
                     let reason =
                         format!("Worker {worker_id} is not in computing state for {}", job_id);
                     return Err(CoordinatorError::InvalidRequest(reason));
@@ -1063,7 +1164,10 @@ impl Coordinator {
                 // Transition worker to Phase 2 computing state
                 // This atomic update ensures consistent state tracking across the system
                 self.workers_pool
-                    .mark_worker_with_state(worker_id, WorkerState::Computing(JobPhase::Prove))
+                    .mark_worker_with_state(
+                        worker_id,
+                        WorkerState::Computing((job_id.clone(), JobPhase::Prove)),
+                    )
                     .await?;
 
                 // Create Phase 2 task with complete challenge set
@@ -1110,7 +1214,15 @@ impl Coordinator {
 
         // If in simulation mode, complete the job
         if job.execution_mode.is_simulating() {
-            return self.complete_simulated_job(&mut job).await;
+            return self.complete_simulated_job(&mut job, &worker_id).await;
+        }
+
+        // If job has Failed, mark worker as Idle and return early
+        if matches!(job.state(), JobState::Failed) {
+            self.workers_pool
+                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
+                .await?;
+            return Ok(());
         }
 
         // Store Proof response
@@ -1119,9 +1231,11 @@ impl Coordinator {
         // Assign aggregator worker if not already assigned
         let agg_worker_id = self.resolve_aggregator_assignment(&mut job, &worker_id).await?;
 
-        let all_done = self.check_phase2_completion(&job).await?;
+        let all_done = self.check_phase2_completion(&job, &worker_id).await?;
 
         let proofs = self.collect_worker_proofs(&job, &agg_worker_id, &worker_id)?;
+
+        job.start_time_aggregate = Utc::now();
 
         drop(job); // Release jobs lock early
 
@@ -1185,7 +1299,11 @@ impl Coordinator {
     /// # Parameters
     ///
     /// * `job` - Mutable reference to job for state updates
-    async fn complete_simulated_job(&self, job: &mut Job) -> CoordinatorResult<()> {
+    async fn complete_simulated_job(
+        &self,
+        job: &mut Job,
+        worker_id: &WorkerId,
+    ) -> CoordinatorResult<()> {
         job.change_state(JobState::Completed);
 
         let assigned_workers = job.workers.clone();
@@ -1193,9 +1311,25 @@ impl Coordinator {
         // Reset worker statuses back to Idle
         self.workers_pool.mark_workers_with_state(&assigned_workers, WorkerState::Idle).await?;
 
-        let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
+        let end_time = Utc::now();
+        let duration = end_time.signed_duration_since(job.start_time_prove);
+        let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
-        info!("[Simulated Job Finished] {} (duration: {:.3}s)", job.job_id, duration.as_secs_f32());
+        // Provide operational visibility into Phase 2 progress
+        // This logging helps with monitoring long-running proof generation jobs
+        info!(
+            "[Phase2 progress] Worker {} done. (duration: {:.3}s)",
+            worker_id,
+            duration_ms.as_secs_f32()
+        );
+
+        let duration_simulation = Duration::from_millis(job.duration_ms.unwrap_or(0));
+
+        info!(
+            "[Simulated Job Finished] {} (duration: {:.3}s)",
+            job.job_id,
+            duration_simulation.as_secs_f32()
+        );
 
         Ok(())
     }
@@ -1239,12 +1373,12 @@ impl Coordinator {
                 self.workers_pool
                     .mark_worker_with_state(
                         candidate_worker_id,
-                        WorkerState::Computing(JobPhase::Aggregate),
+                        WorkerState::Computing((job.job_id.clone(), JobPhase::Aggregate)),
                     )
                     .await?;
 
                 info!(
-                    "Assigned worker {} as aggregator for job {}",
+                    "[Phase3] Assigned worker {} as aggregator for job {}",
                     candidate_worker_id, job.job_id
                 );
 
@@ -1269,17 +1403,27 @@ impl Coordinator {
     /// Phase 2 is considered complete when:
     /// - All assigned workers have submitted proof results
     /// - All submitted proofs report successful generation
-    async fn check_phase2_completion(&self, job: &Job) -> CoordinatorResult<bool> {
+    async fn check_phase2_completion(
+        &self,
+        job: &Job,
+        worker_id: &WorkerId,
+    ) -> CoordinatorResult<bool> {
         let empty_results = HashMap::new();
         let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
+
+        let end_time = Utc::now();
+        let duration = end_time.signed_duration_since(job.start_time_prove);
+        let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
         // Provide operational visibility into Phase 2 progress
         // This logging helps with monitoring long-running proof generation jobs
         info!(
-            "[Phase2 progress] {} with {}/{} workers completed",
+            "[Phase2] {} finished phase 2 for {} ({} / {} workers done, {:.3}s)",
+            worker_id,
             job.job_id,
             phase2_results.len(),
-            job.workers.len()
+            job.workers.len(),
+            duration_ms.as_secs_f32()
         );
 
         // Check if all assigned workers have completed their proof generation
@@ -1422,7 +1566,7 @@ impl Coordinator {
         }
 
         // Extract the proof data
-        let mut proof_data = match execute_task_response.result_data {
+        let proof_data = match execute_task_response.result_data {
             ExecuteTaskResponseResultDataDto::FinalProof(final_proof) => final_proof,
             _ => {
                 return Err(CoordinatorError::InvalidRequest(
@@ -1434,7 +1578,7 @@ impl Coordinator {
         // Check if the final proof has no values.
         // An empty proof means this was not the last aggregation step,
         // so we need to wait for additional results to complete the job.
-        if proof_data.is_empty() {
+        if proof_data.values.is_empty() {
             return Ok(());
         }
 
@@ -1442,20 +1586,35 @@ impl Coordinator {
 
         let mut job = job_entry.write().await;
 
+        let agg_worker_id = &job.agg_worker_id.as_ref().unwrap().clone();
+
         // Mark the aggregation worker as Idle
-        self.workers_pool
-            .mark_worker_with_state(job.agg_worker_id.as_ref().unwrap(), WorkerState::Idle)
-            .await?;
+        self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Idle).await?;
 
         // Finalize completed job
-        job.final_proof = Some(proof_data.swap_remove(0));
+        job.final_proof = Some(proof_data.values);
+        job.executed_steps = Some(proof_data.executed_steps);
+
         job.change_state(JobState::Completed);
 
         let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
 
-        drop(job);
+        let end_time = Utc::now();
+        let duration_agg = end_time.signed_duration_since(job.start_time_aggregate);
+        let duration_ms = Duration::from_millis(duration_agg.num_milliseconds() as u64);
 
-        info!("[Job Finished] {} (duration: {:.3}s)", job_id, duration.as_secs_f32());
+        info!(
+            "[Phase3] WorkerId {} done, phase 3 completed for {} ({:.3}s)",
+            agg_worker_id,
+            job_id,
+            duration_ms.as_secs_f32()
+        );
+
+        info!("[Job] Finished {} (duration: {:.3}s)", job_id, duration.as_secs_f32());
+
+        // Release job lock before calling post_launch_proof
+        drop(job);
+        drop(job_entry);
 
         self.post_launch_proof(job_id).await?;
 

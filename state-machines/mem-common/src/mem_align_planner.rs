@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{MemAlignCheckPoint, MemAlignCounters};
 use crate::{MemAlignInstanceCounter, MemCounters};
+use fields::Goldilocks;
 use zisk_common::{ChunkId, Plan};
 use zisk_pil::{
     MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,
@@ -38,7 +39,7 @@ impl<'a> MemAlignPlanner<'a> {
         let full = MemAlignInstanceCounter::new(
             MEM_ALIGN_AIR_IDS[0],
             0,
-            MemAlignTrace::<usize>::NUM_ROWS as u32,
+            MemAlignTrace::<Goldilocks>::NUM_ROWS as u32,
             &[5, 3, 2, 2, 3],
             &[0, 1, 2, 3, 4],
         );
@@ -46,7 +47,7 @@ impl<'a> MemAlignPlanner<'a> {
         let read_byte = MemAlignInstanceCounter::new(
             MEM_ALIGN_READ_BYTE_AIR_IDS[0],
             0,
-            MemAlignReadByteTrace::<usize>::NUM_ROWS as u32,
+            MemAlignReadByteTrace::<Goldilocks>::NUM_ROWS as u32,
             &[0, 0, 0, 1, 0],
             &[3],
         );
@@ -54,7 +55,7 @@ impl<'a> MemAlignPlanner<'a> {
         let write_byte = MemAlignInstanceCounter::new(
             MEM_ALIGN_WRITE_BYTE_AIR_IDS[0],
             0,
-            MemAlignWriteByteTrace::<usize>::NUM_ROWS as u32,
+            MemAlignWriteByteTrace::<Goldilocks>::NUM_ROWS as u32,
             &[0, 0, 0, 0, 1],
             &[4],
         );
@@ -62,7 +63,7 @@ impl<'a> MemAlignPlanner<'a> {
         let byte = MemAlignInstanceCounter::new(
             MEM_ALIGN_BYTE_AIR_IDS[0],
             0,
-            MemAlignByteTrace::<usize>::NUM_ROWS as u32,
+            MemAlignByteTrace::<Goldilocks>::NUM_ROWS as u32,
             &[0, 0, 0, 1, 1],
             &[4, 3],
         );

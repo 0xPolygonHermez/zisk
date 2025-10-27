@@ -49,16 +49,16 @@
 //! `| Contains program memory, available for normal R/W`
 //! `| used during program execution.`
 //! `|`
-//! `|--------------- FLOAT_LIB_RAM_ADDR = 0xafff0000     (0xb0000000 - 0x10000)`
+//! `|--------------- FLOAT_LIB_RAM_ADDR = 0xafff0000     (0xc0000000 - 0x10000)`
 //! `|`
 //! `| Contains float library memory, available for normal R/W`
 //! `| used during library execution (bottom-up).`
 //! `|`
 //! `| Contains float library stack memory (top-down).`
 //! `|`
-//! `|--------------- FLOAT_LIB_SP = 0xaffffff0           (0xb0000000 - 16)`
+//! `|--------------- FLOAT_LIB_SP = 0xaffffff0           (0xc0000000 - 16)`
 //! `|`
-//! `|---------------                                     (0xb0000000)`
+//! `|--------------- END OF RAM                          (0xc0000000)`
 //! `      ...`
 //!
 //! ## ROM_ENTRY / ROM_ADDR / ROM_EXIT
@@ -130,13 +130,13 @@ pub const ROM_EXIT: u64 = 0x1004;
 /// First program ROM instruction address, i.e. first RISC-V transpiled instruction
 pub const ROM_ADDR: u64 = 0x80000000;
 /// Maximum program ROM instruction address
-pub const ROM_ADDR_MAX: u64 = (ROM_ADDR + 0x08000000) - 1; // 128M
+pub const ROM_ADDR_MAX: u64 = ROM_ADDR + 0x08000000 - 1; // 128M
 /// First float library ROM instruction address
 pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + 0x08000000 - 0x100000; // 1M before ROM_ADDR_MAX = 0x87F00000
 /// First float library RAM address
-pub const FLOAT_LIB_RAM_ADDR: u64 = 0xb0000000 - 0x10000; // 0xafff0000
+pub const FLOAT_LIB_RAM_ADDR: u64 = 0xc0000000 - 0x10000; // 0xbfff0000
 /// Float library stack pointer address
-pub const FLOAT_LIB_SP: u64 = 0xb0000000 - 16; // 0xaffffff0
+pub const FLOAT_LIB_SP: u64 = 0xc0000000 - 16; // 0xbffffff0
 /// Zisk architecture ID
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 /// UART memory address; single bytes written here will be copied to the standard output

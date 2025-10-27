@@ -75,3 +75,7 @@ pub fn arith256_mod_c(
 ) -> i32 {
     run_on_linux!(Arith256(&a[0], &b[0], &c[0], &mut module[0], &mut d[0]))
 }
+
+pub fn add256(a: &[u64; 4], b: &[u64; 4], cin: u64, c: &mut [u64; 4]) -> i32 {
+    run_on_linux!(Add256(&a[0], &b[0], cin, &mut c[0]))
+}

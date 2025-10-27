@@ -13,6 +13,7 @@ path = "src/cli/main.rs"
 [dependencies]
 zisk-distributed-grpc-api = { workspace = true }
 zisk-distributed-common = { workspace = true }
+zisk-common = { workspace = true }
 
 cargo-zisk = { workspace = true }
 proofman = { workspace = true }
@@ -38,8 +39,6 @@ signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
 
 futures-util = "0.3"
 async-stream = "0.3"
-bytemuck = { workspace = true }
-zstd = { workspace = true }
 
 witness = { workspace = true }
 clap = { workspace = true }

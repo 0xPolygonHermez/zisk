@@ -50,6 +50,7 @@ pub enum OpType {
     ArithEq,
     Fcall,
     ArithEq384,
+    BigInt,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -65,6 +66,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::ArithEq => ZiskOperationType::ArithEq,
             OpType::Fcall => ZiskOperationType::Fcall,
             OpType::ArithEq384 => ZiskOperationType::ArithEq384,
+            OpType::BigInt => ZiskOperationType::BigInt,
         }
     }
 }
@@ -84,6 +86,7 @@ impl Display for OpType {
             Self::ArithEq => write!(f, "Arith256"),
             Self::Fcall => write!(f, "Fcall"),
             Self::ArithEq384 => write!(f, "Arith384"),
+            Self::BigInt => write!(f, "BigInt"),
         }
     }
 }
@@ -104,6 +107,7 @@ impl FromStr for OpType {
             "aeq" => Ok(Self::ArithEq),
             "fcall" => Ok(Self::Fcall),
             "aeq384" => Ok(Self::ArithEq384),
+            "bint" => Ok(Self::BigInt),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -135,10 +139,21 @@ impl Display for InvalidCodeError {
         write!(f, "invalid op code")
     }
 }
+/// Trait for gathering operation statistics
+pub trait OpStats {
+    fn mem_align_read(&mut self, addr: u64, count: usize);
+    fn mem_align_write(&mut self, addr: u64, count: usize);
+}
+
+/// Stats gathering function that does nothing (used as default)
+#[inline(always)]
+pub fn ops_none(_ctx: &InstContext, _stats: &mut dyn OpStats) {
+    // No-op implementation
+}
 
 /// Internal macro used to define all ops in the [`ZiskOp`] enum
 macro_rules! define_ops {
-    ( $( ($name:ident, $str_name:expr, $type:ident, $steps:expr, $code:expr, $input_size:expr, $call_fn:ident, $call_ab_fn:ident) ),* $(,)? ) => {
+    ( $( ($name:ident, $str_name:expr, $type:ident, $steps:expr, $code:expr, $input_size:expr, $output_size:expr, $call_fn:ident, $call_ab_fn:ident, $call_stats_fn:ident ) ),* $(,)? ) => {
 		/// Represents an operation that can be executed in Zisk.
 		///
 		/// All relevant metadata associated with the operation can be efficiently accessed via
@@ -197,7 +212,16 @@ macro_rules! define_ops {
                 }
             }
 
-			/// Executes the operation on the given [`InstContext`]
+			/// Returns the input data size of the operation
+            pub const fn output_size(&self) -> u64 {
+                match self {
+                    $(
+                        Self::$name => $output_size,
+                    )*
+                }
+            }
+
+            /// Executes the operation on the given [`InstContext`]
 			#[inline(always)]
             pub fn call(&self, ctx: &mut InstContext) {
                 match self {
@@ -215,6 +239,26 @@ macro_rules! define_ops {
                     )*
                 }
             }
+
+            /// Executes the operation to obtain extra stats on the given [`InstContext`]
+            #[inline(always)]
+            pub fn call_stats(&self, ctx: &InstContext, stats: &mut dyn OpStats) {
+                match self {
+                    $(
+                        Self::$name => $call_stats_fn(ctx, stats),
+                    )*
+                }
+            }
+
+            /// Returns the call function for extra stats
+            pub const fn get_call_stats_function(&self) -> fn(&InstContext, &mut dyn OpStats) -> () {
+                match self {
+                    $(
+                        Self::$name => $call_stats_fn,
+                    )*
+                }
+            }
+
 
 			/// Executes the operation on the given inputs `a` and `b`
 			#[inline(always)]
@@ -268,92 +312,95 @@ macro_rules! define_ops {
 // Cost definitions: Area x Op
 const INTERNAL_COST: u64 = 0;
 const BINARY_COST: u64 = 75;
+const BINARY_ADD_COST: u64 = 26;
 const BINARY_E_COST: u64 = 54;
 const ARITHA32_COST: u64 = 95;
 const ARITHAM32_COST: u64 = 95;
-const KECCAK_COST: u64 = 167000;
-const SHA256_COST: u64 = 9000;
-const ARITH_EQ_COST: u64 = 1200;
+const KECCAK_COST: u64 = (((93846 * 86) - 1) / 63) + 1;
+const SHA256_COST: u64 = 72 * 121;
+const ARITH_EQ_COST: u64 = 85 * 16;
 const FCALL_COST: u64 = INTERNAL_COST;
-const ARITH_EQ_384_COST: u64 = 2000;
+const ARITH_EQ_384_COST: u64 = 79 * 24;
+const ADD256_COST: u64 = 104;
 
 /// Table of Zisk opcode definitions: enum, name, type, cost, code and implementation functions
 /// This table is the backbone of the Zisk processor, it determines what functionality is supported,
 /// and what state machine is responsible of proving the execution of every opcode, based on its
 /// type.
 define_ops! {
-    (Flag, "flag", Internal, INTERNAL_COST, 0x00, 0, opc_flag, op_flag),
-    (CopyB, "copyb", Internal, INTERNAL_COST, 0x01, 0, opc_copyb, op_copyb),
-    (SignExtendB, "signextend_b", BinaryE, BINARY_E_COST, 0x37, 0, opc_signextend_b, op_signextend_b),
-    (SignExtendH, "signextend_h", BinaryE, BINARY_E_COST, 0x38, 0, opc_signextend_h, op_signextend_h),
-    (SignExtendW, "signextend_w", BinaryE, BINARY_E_COST, 0x39, 0, opc_signextend_w, op_signextend_w),
-    (Add, "add", Binary, BINARY_COST, 0x0c, 0, opc_add, op_add),
-    (AddW, "add_w", Binary, BINARY_COST, 0x2c, 0, opc_add_w, op_add_w),
-    (Sub, "sub", Binary, BINARY_COST, 0x0d, 0, opc_sub, op_sub),
-    (SubW, "sub_w", Binary, BINARY_COST, 0x2d, 0, opc_sub_w, op_sub_w),
-    (Sll, "sll", BinaryE, BINARY_E_COST, 0x31, 0, opc_sll, op_sll),
-    (SllW, "sll_w", BinaryE, BINARY_E_COST, 0x34, 0, opc_sll_w, op_sll_w),
-    (Sra, "sra", BinaryE, BINARY_E_COST, 0x33, 0, opc_sra, op_sra),
-    (Srl, "srl", BinaryE, BINARY_E_COST, 0x32, 0, opc_srl, op_srl),
-    (SraW, "sra_w", BinaryE, BINARY_E_COST, 0x36, 0, opc_sra_w, op_sra_w),
-    (SrlW, "srl_w", BinaryE, BINARY_E_COST, 0x35, 0, opc_srl_w, op_srl_w),
-    (Eq, "eq", Binary, BINARY_COST, 0x0b, 0, opc_eq, op_eq),
-    (EqW, "eq_w", Binary, BINARY_COST, 0x2b, 0, opc_eq_w, op_eq_w),
-    (Ltu, "ltu", Binary, BINARY_COST, 0x08, 0, opc_ltu, op_ltu),
-    (Lt, "lt", Binary, BINARY_COST, 0x09, 0, opc_lt, op_lt),
-    (LtuW, "ltu_w", Binary, BINARY_COST, 0x28, 0, opc_ltu_w, op_ltu_w),
-    (LtW, "lt_w", Binary, BINARY_COST, 0x29, 0, opc_lt_w, op_lt_w),
-    (Leu, "leu", Binary, BINARY_COST, 0x0e, 0, opc_leu, op_leu),
-    (Le, "le", Binary, BINARY_COST, 0x0f, 0, opc_le, op_le),
-    (LeuW, "leu_w", Binary, BINARY_COST, 0x2e, 0, opc_leu_w, op_leu_w),
-    (LeW, "le_w", Binary, BINARY_COST, 0x2f, 0, opc_le_w, op_le_w),
-    (And, "and", Binary, BINARY_COST, 0x10, 0, opc_and, op_and),
-    (Or, "or", Binary, BINARY_COST, 0x11, 0, opc_or, op_or),
-    (Xor, "xor", Binary, BINARY_COST, 0x12, 0, opc_xor, op_xor),
-    (Mulu, "mulu", ArithAm32, ARITHAM32_COST, 0xb0, 0, opc_mulu, op_mulu),
-    (Muluh, "muluh", ArithAm32, ARITHAM32_COST, 0xb1, 0, opc_muluh, op_muluh),
-    (Mulsuh, "mulsuh", ArithAm32, ARITHAM32_COST, 0xb3, 0, opc_mulsuh, op_mulsuh),
-    (Mul, "mul", ArithAm32, ARITHAM32_COST, 0xb4, 0, opc_mul, op_mul),
-    (Mulh, "mulh", ArithAm32, ARITHAM32_COST, 0xb5, 0, opc_mulh, op_mulh),
-    (MulW, "mul_w", ArithAm32, ARITHAM32_COST, 0xb6, 0, opc_mul_w, op_mul_w),
-    (Divu, "divu", ArithAm32, ARITHAM32_COST, 0xb8, 0, opc_divu, op_divu),
-    (Remu, "remu", ArithAm32, ARITHAM32_COST, 0xb9, 0, opc_remu, op_remu),
-    (Div, "div", ArithAm32, ARITHAM32_COST, 0xba, 0, opc_div, op_div),
-    (Rem, "rem", ArithAm32, ARITHAM32_COST, 0xbb, 0, opc_rem, op_rem),
-    (DivuW, "divu_w", ArithA32, ARITHA32_COST, 0xbc, 0, opc_divu_w, op_divu_w),
-    (RemuW, "remu_w", ArithA32, ARITHA32_COST, 0xbd, 0, opc_remu_w, op_remu_w),
-    (DivW, "div_w", ArithA32, ARITHA32_COST, 0xbe, 0, opc_div_w, op_div_w),
-    (RemW, "rem_w", ArithA32, ARITHA32_COST, 0xbf, 0, opc_rem_w, op_rem_w),
-    (Minu, "minu", Binary, BINARY_COST, 0x02, 0, opc_minu, op_minu),
-    (Min, "min", Binary, BINARY_COST, 0x03, 0, opc_min, op_min),
-    (MinuW, "minu_w", Binary, BINARY_COST, 0x22, 0, opc_minu_w, op_minu_w),
-    (MinW, "min_w", Binary, BINARY_COST, 0x23, 0, opc_min_w, op_min_w),
-    (Maxu, "maxu", Binary, BINARY_COST, 0x04, 0, opc_maxu, op_maxu),
-    (Max, "max", Binary, BINARY_COST, 0x05, 0, opc_max, op_max),
-    (MaxuW, "maxu_w", Binary, BINARY_COST, 0x24, 0, opc_maxu_w, op_maxu_w),
-    (MaxW, "max_w", Binary, BINARY_COST, 0x25, 0, opc_max_w, op_max_w),
-    (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, opc_keccak, op_keccak),
-    (PubOut, "pubout", PubOut, 0, 0x30, 0, opc_pubout, op_pubout),
-    (Arith256, "arith256", ArithEq, ARITH_EQ_COST, 0xf2, 136, opc_arith256, op_arith256),
-    (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, opc_arith256_mod, op_arith256_mod),
-    (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xf4, 144, opc_secp256k1_add, op_secp256k1_add),
-    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, opc_secp256k1_dbl, op_secp256k1_add),
-    (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, opc_fcall_param, op_fcall_param),
-    (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, opc_fcall, op_fcall),
-    (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, opc_fcall_get, op_fcall_get),
-    (Sha256, "sha256", Sha256, SHA256_COST, 0xf9, 112, opc_sha256, op_sha256),
-    (Bn254CurveAdd, "bn254_curve_add", ArithEq, ARITH_EQ_COST, 0xfa, 144, opc_bn254_curve_add, op_bn254_curve_add),
-    (Bn254CurveDbl, "bn254_curve_dbl", ArithEq, ARITH_EQ_COST, 0xfb, 64, opc_bn254_curve_dbl, op_bn254_curve_dbl),
-    (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, opc_bn254_complex_add, op_bn254_complex_add),
-    (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, opc_bn254_complex_sub, op_bn254_complex_sub),
-    (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, opc_bn254_complex_mul, op_bn254_complex_mul),
-    (Halt, "halt", Internal, INTERNAL_COST, 0xff, 144, opc_halt, op_halt),
-    (Arith384Mod, "arith384_mod", ArithEq384, ARITH_EQ_384_COST, 0xe2, 232, opc_arith384_mod, op_arith384_mod),
-    (Bls12_381CurveAdd, "bls12_381_curve_add", ArithEq384, ARITH_EQ_384_COST, 0xe3, 208, opc_bls12_381_curve_add, op_bls12_381_curve_add),
-    (Bls12_381CurveDbl, "bls12_381_curve_dbl", ArithEq384, ARITH_EQ_384_COST, 0xe4, 96, opc_bls12_381_curve_dbl, op_bls12_381_curve_dbl),
-    (Bls12_381ComplexAdd, "bls12_381_complex_add", ArithEq384, ARITH_EQ_384_COST, 0xe5, 208, opc_bls12_381_complex_add, op_bls12_381_complex_add),
-    (Bls12_381ComplexSub, "bls12_381_complex_sub", ArithEq384, ARITH_EQ_384_COST, 0xe6, 208, opc_bls12_381_complex_sub, op_bls12_381_complex_sub),
-    (Bls12_381ComplexMul, "bls12_381_complex_mul", ArithEq384, ARITH_EQ_384_COST, 0xe7, 208, opc_bls12_381_complex_mul, op_bls12_381_complex_mul),
+    (Flag, "flag", Internal, INTERNAL_COST, 0x00, 0, 0, opc_flag, op_flag, ops_none),
+    (CopyB, "copyb", Internal, INTERNAL_COST, 0x01, 0, 0, opc_copyb, op_copyb, ops_none),
+    (SignExtendB, "signextend_b", BinaryE, BINARY_E_COST, 0x37, 0, 0, opc_signextend_b, op_signextend_b, ops_none),
+    (SignExtendH, "signextend_h", BinaryE, BINARY_E_COST, 0x38, 0, 0, opc_signextend_h, op_signextend_h, ops_none),
+    (SignExtendW, "signextend_w", BinaryE, BINARY_E_COST, 0x39, 0, 0, opc_signextend_w, op_signextend_w, ops_none),
+    (Add, "add", Binary, BINARY_ADD_COST, 0x0c, 0, 0, opc_add, op_add, ops_none),
+    (AddW, "add_w", Binary, BINARY_COST, 0x2c, 0, 0, opc_add_w, op_add_w, ops_none),
+    (Sub, "sub", Binary, BINARY_COST, 0x0d, 0, 0, opc_sub, op_sub, ops_none),
+    (SubW, "sub_w", Binary, BINARY_COST, 0x2d, 0, 0, opc_sub_w, op_sub_w, ops_none),
+    (Sll, "sll", BinaryE, BINARY_E_COST, 0x31, 0, 0, opc_sll, op_sll, ops_none),
+    (SllW, "sll_w", BinaryE, BINARY_E_COST, 0x34, 0, 0, opc_sll_w, op_sll_w, ops_none),
+    (Sra, "sra", BinaryE, BINARY_E_COST, 0x33, 0, 0, opc_sra, op_sra, ops_none),
+    (Srl, "srl", BinaryE, BINARY_E_COST, 0x32, 0, 0, opc_srl, op_srl, ops_none),
+    (SraW, "sra_w", BinaryE, BINARY_E_COST, 0x36, 0, 0, opc_sra_w, op_sra_w, ops_none),
+    (SrlW, "srl_w", BinaryE, BINARY_E_COST, 0x35, 0, 0, opc_srl_w, op_srl_w, ops_none),
+    (Eq, "eq", Binary, BINARY_COST, 0x0b, 0, 0, opc_eq, op_eq, ops_none),
+    (EqW, "eq_w", Binary, BINARY_COST, 0x2b, 0, 0, opc_eq_w, op_eq_w, ops_none),
+    (Ltu, "ltu", Binary, BINARY_COST, 0x08, 0, 0, opc_ltu, op_ltu, ops_none),
+    (Lt, "lt", Binary, BINARY_COST, 0x09, 0, 0, opc_lt, op_lt, ops_none),
+    (LtuW, "ltu_w", Binary, BINARY_COST, 0x28, 0, 0, opc_ltu_w, op_ltu_w, ops_none),
+    (LtW, "lt_w", Binary, BINARY_COST, 0x29, 0, 0, opc_lt_w, op_lt_w, ops_none),
+    (Leu, "leu", Binary, BINARY_COST, 0x0e, 0, 0, opc_leu, op_leu, ops_none),
+    (Le, "le", Binary, BINARY_COST, 0x0f, 0, 0, opc_le, op_le, ops_none),
+    (LeuW, "leu_w", Binary, BINARY_COST, 0x2e, 0, 0, opc_leu_w, op_leu_w, ops_none),
+    (LeW, "le_w", Binary, BINARY_COST, 0x2f, 0, 0, opc_le_w, op_le_w, ops_none),
+    (And, "and", Binary, BINARY_COST, 0x10, 0, 0, opc_and, op_and, ops_none),
+    (Or, "or", Binary, BINARY_COST, 0x11, 0, 0, opc_or, op_or, ops_none),
+    (Xor, "xor", Binary, BINARY_COST, 0x12, 0, 0, opc_xor, op_xor, ops_none),
+    (Mulu, "mulu", ArithAm32, ARITHAM32_COST, 0xb0, 0, 0, opc_mulu, op_mulu, ops_none),
+    (Muluh, "muluh", ArithAm32, ARITHAM32_COST, 0xb1, 0, 0, opc_muluh, op_muluh, ops_none),
+    (Mulsuh, "mulsuh", ArithAm32, ARITHAM32_COST, 0xb3, 0, 0, opc_mulsuh, op_mulsuh, ops_none),
+    (Mul, "mul", ArithAm32, ARITHAM32_COST, 0xb4, 0, 0, opc_mul, op_mul, ops_none),
+    (Mulh, "mulh", ArithAm32, ARITHAM32_COST, 0xb5, 0, 0, opc_mulh, op_mulh, ops_none),
+    (MulW, "mul_w", ArithAm32, ARITHAM32_COST, 0xb6, 0, 0, opc_mul_w, op_mul_w, ops_none),
+    (Divu, "divu", ArithAm32, ARITHAM32_COST, 0xb8, 0, 0, opc_divu, op_divu, ops_none),
+    (Remu, "remu", ArithAm32, ARITHAM32_COST, 0xb9, 0, 0, opc_remu, op_remu, ops_none),
+    (Div, "div", ArithAm32, ARITHAM32_COST, 0xba, 0, 0, opc_div, op_div, ops_none),
+    (Rem, "rem", ArithAm32, ARITHAM32_COST, 0xbb, 0, 0, opc_rem, op_rem, ops_none),
+    (DivuW, "divu_w", ArithA32, ARITHA32_COST, 0xbc, 0, 0, opc_divu_w, op_divu_w, ops_none),
+    (RemuW, "remu_w", ArithA32, ARITHA32_COST, 0xbd, 0, 0, opc_remu_w, op_remu_w, ops_none),
+    (DivW, "div_w", ArithA32, ARITHA32_COST, 0xbe, 0, 0, opc_div_w, op_div_w, ops_none),
+    (RemW, "rem_w", ArithA32, ARITHA32_COST, 0xbf, 0, 0, opc_rem_w, op_rem_w, ops_none),
+    (Minu, "minu", Binary, BINARY_COST, 0x02, 0, 0, opc_minu, op_minu, ops_none),
+    (Min, "min", Binary, BINARY_COST, 0x03, 0, 0, opc_min, op_min, ops_none),
+    (MinuW, "minu_w", Binary, BINARY_COST, 0x22, 0, 0, opc_minu_w, op_minu_w, ops_none),
+    (MinW, "min_w", Binary, BINARY_COST, 0x23, 0, 0, opc_min_w, op_min_w, ops_none),
+    (Maxu, "maxu", Binary, BINARY_COST, 0x04, 0, 0, opc_maxu, op_maxu, ops_none),
+    (Max, "max", Binary, BINARY_COST, 0x05, 0, 0, opc_max, op_max, ops_none),
+    (MaxuW, "maxu_w", Binary, BINARY_COST, 0x24, 0, 0, opc_maxu_w, op_maxu_w, ops_none),
+    (MaxW, "max_w", Binary, BINARY_COST, 0x25, 0, 0, opc_max_w, op_max_w, ops_none),
+    (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, 200, opc_keccak, op_keccak, ops_none),
+    (PubOut, "pubout", PubOut, 0, 0x30, 0, 0, opc_pubout, op_pubout, ops_none),
+    (Add256, "add256", BigInt, ADD256_COST, 0xf0, 104, 32, opc_add256, op_add256, ops_add256),
+    (Arith256, "arith256", ArithEq, ARITH_EQ_COST, 0xf2, 136, 64, opc_arith256, op_arith256, ops_arith256),
+    (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
+    (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xf4, 144, 64, opc_secp256k1_add, op_secp256k1_add, ops_secp256k1_add),
+    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, 64, opc_secp256k1_dbl, op_secp256k1_add, ops_secp256k1_dbl),
+    (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, 0, opc_fcall_param, op_fcall_param, ops_none),
+    (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, 0, opc_fcall, op_fcall, ops_none),
+    (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, 0, opc_fcall_get, op_fcall_get, ops_none),
+    (Sha256, "sha256", Sha256, SHA256_COST, 0xf9, 112, 112, opc_sha256, op_sha256, ops_sha256),
+    (Bn254CurveAdd, "bn254_curve_add", ArithEq, ARITH_EQ_COST, 0xfa, 144, 64, opc_bn254_curve_add, op_bn254_curve_add, ops_bn254_curve_add),
+    (Bn254CurveDbl, "bn254_curve_dbl", ArithEq, ARITH_EQ_COST, 0xfb, 64, 64, opc_bn254_curve_dbl, op_bn254_curve_dbl, ops_bn254_curve_dbl),
+    (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, 64, opc_bn254_complex_add, op_bn254_complex_add, ops_bn254_complex_add),
+    (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, 64, opc_bn254_complex_sub, op_bn254_complex_sub, ops_bn254_complex_sub),
+    (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, 64, opc_bn254_complex_mul, op_bn254_complex_mul, ops_bn254_complex_mul),
+    (Halt, "halt", Internal, INTERNAL_COST, 0xff, 144, 0, opc_halt, op_halt, ops_none),
+    (Arith384Mod, "arith384_mod", ArithEq384, ARITH_EQ_384_COST, 0xe2, 232, 48, opc_arith384_mod, op_arith384_mod, ops_arith384_mod),
+    (Bls12_381CurveAdd, "bls12_381_curve_add", ArithEq384, ARITH_EQ_384_COST, 0xe3, 208, 96, opc_bls12_381_curve_add, op_bls12_381_curve_add, ops_bls12_381_curve_add),
+    (Bls12_381CurveDbl, "bls12_381_curve_dbl", ArithEq384, ARITH_EQ_384_COST, 0xe4, 96, 96, opc_bls12_381_curve_dbl, op_bls12_381_curve_dbl, ops_bls12_381_curve_dbl),
+    (Bls12_381ComplexAdd, "bls12_381_complex_add", ArithEq384, ARITH_EQ_384_COST, 0xe5, 208, 96, opc_bls12_381_complex_add, op_bls12_381_complex_add, ops_bls12_381_complex_add),
+    (Bls12_381ComplexSub, "bls12_381_complex_sub", ArithEq384, ARITH_EQ_384_COST, 0xe6, 208, 96, opc_bls12_381_complex_sub, op_bls12_381_complex_sub, ops_bls12_381_complex_sub),
+    (Bls12_381ComplexMul, "bls12_381_complex_mul", ArithEq384, ARITH_EQ_384_COST, 0xe7, 208, 96, opc_bls12_381_complex_mul, op_bls12_381_complex_mul, ops_bls12_381_complex_mul),
 }
 
 /* INTERNAL operations */
@@ -1194,6 +1241,11 @@ pub fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_keccak() is not implemented");
 }
 
+#[inline(always)]
+pub fn ops_keccak(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_direct_data(ctx, stats, 25, 25);
+}
+
 /// Performs a Sha256-f hash over a 256-bits input state and 512-bits hash state stored in memory at the address
 /// specified by register A0, and stores the output state in the same memory address
 #[inline(always)]
@@ -1231,12 +1283,63 @@ pub fn op_sha256(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
+pub fn ops_sha256(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[4, 8], &[], 1);
+}
+
+#[inline(always)]
 pub fn precompiled_load_data(
     ctx: &mut InstContext,
-    indirections_count: usize,
-    loads_count: usize,
+    params_count: usize,
+    load_indirections: usize,
     load_chunks: usize,
     load_rem: usize,
+    data: &mut [u64],
+    title: &str,
+) {
+    internal_precompiled_load_data(
+        ctx,
+        params_count,
+        load_indirections,
+        load_chunks,
+        load_rem,
+        0,
+        data,
+        title,
+    );
+}
+
+#[inline(always)]
+pub fn precompiled_load_data_with_result(
+    ctx: &mut InstContext,
+    params_count: usize,
+    load_indirections: usize,
+    load_chunks: usize,
+    load_rem: usize,
+    data: &mut [u64],
+    title: &str,
+) {
+    internal_precompiled_load_data(
+        ctx,
+        params_count,
+        load_indirections,
+        load_chunks,
+        load_rem,
+        1,
+        data,
+        title,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
+fn internal_precompiled_load_data(
+    ctx: &mut InstContext,
+    params_count: usize,
+    load_indirections: usize,
+    load_chunks: usize,
+    load_rem: usize,
+    result: usize,
     data: &mut [u64],
     title: &str,
 ) {
@@ -1245,18 +1348,12 @@ pub fn precompiled_load_data(
         panic!("precompiled_check_address() found address not aligned to 8 bytes");
     }
     if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
-        let expected_len = indirections_count + loads_count * load_chunks + load_rem;
         // Check input data has the expected length
+        let expected_len = params_count + load_indirections * load_chunks + load_rem + result;
         if ctx.precompiled.input_data.len() != expected_len {
             panic!(
-                "[{}] ctx.precompiled.input_data.len={} != {} [{}+{}*{}+{}]",
-                title,
+                "[{title}] ctx.precompiled.input_data.len={} != {expected_len} [{params_count}+{load_indirections}*{load_chunks}+{load_rem}+{result}]",
                 ctx.precompiled.input_data.len(),
-                expected_len,
-                indirections_count,
-                loads_count,
-                load_chunks,
-                load_rem
             );
         }
         // Read data from the precompiled context
@@ -1269,7 +1366,7 @@ pub fn precompiled_load_data(
     }
 
     // Write the indirections to data
-    for (i, data) in data.iter_mut().enumerate().take(indirections_count) {
+    for (i, data) in data.iter_mut().enumerate().take(params_count) {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
         if address & 0x7 != 0 {
             panic!("precompiled_check_address() found address[{i}] not aligned to 8 bytes");
@@ -1277,12 +1374,11 @@ pub fn precompiled_load_data(
         *data = indirection;
     }
 
-    let mut data_offset = indirections_count;
-    for i in 0..loads_count {
+    let mut data_offset = params_count;
+    for i in 0..load_indirections {
         let data_offset = i * load_chunks + data_offset;
         // if there aren't indirections, take directly from the address
-        let param_address =
-            if indirections_count == 0 { address + data_offset as u64 } else { data[i] };
+        let param_address = if params_count == 0 { address + data_offset as u64 } else { data[i] };
         for j in 0..load_chunks {
             let addr = param_address + (8 * j as u64);
             data[data_offset + j] = ctx.mem.read(addr, 8);
@@ -1291,11 +1387,11 @@ pub fn precompiled_load_data(
 
     // Process the remanent of the last chunk
     if load_rem > 0 {
-        data_offset += (loads_count - 1) * load_chunks;
-        let param_address = if indirections_count == 0 {
+        data_offset += (load_indirections - 1) * load_chunks;
+        let param_address = if params_count == 0 {
             address + data_offset as u64
         } else {
-            data[loads_count - 1]
+            data[load_indirections - 1]
         };
         for j in load_chunks..load_chunks + load_rem {
             let addr = param_address + (8 * j as u64);
@@ -1304,15 +1400,106 @@ pub fn precompiled_load_data(
     }
 
     if let EmulationMode::GenerateMemReads = ctx.emulation_mode {
-        let expected_len = indirections_count + loads_count * load_chunks + load_rem;
-
         ctx.precompiled.input_data.clear();
         for (i, d) in data.iter_mut().enumerate() {
             ctx.precompiled.input_data.push(*d);
         }
-
         ctx.precompiled.step = ctx.step;
     }
+}
+
+#[inline(always)]
+pub fn precompiled_stats_data(
+    ctx: &InstContext,
+    stats: &mut dyn OpStats,
+    inputs: &[u32],
+    outputs: &[u32],
+    inputs_reduce_count: usize,
+) {
+    let param_addr = ctx.b;
+
+    stats.mem_align_read(param_addr, inputs.len() + outputs.len());
+    for (index, count) in inputs.iter().enumerate() {
+        if *count == 0 {
+            continue;
+        }
+        let input_addr = ctx.mem.read(param_addr + (8 * index as u64), 8);
+        stats.mem_align_read(input_addr, *count as usize);
+        if index < inputs_reduce_count {
+            stats.mem_align_write(input_addr, *count as usize);
+        }
+    }
+    let index_offset = inputs.len();
+    for (index, count) in outputs.iter().enumerate() {
+        if *count == 0 {
+            continue;
+        }
+        let output_addr = ctx.mem.read(param_addr + (8 * (index + index_offset) as u64), 8);
+        stats.mem_align_write(output_addr, *count as usize);
+    }
+}
+
+#[inline(always)]
+pub fn precompiled_stats_direct_data(
+    ctx: &InstContext,
+    stats: &mut dyn OpStats,
+    inputs: usize,
+    outputs: usize,
+) {
+    let param_addr = ctx.b;
+
+    stats.mem_align_read(param_addr, inputs);
+    stats.mem_align_write(param_addr, outputs);
+}
+
+pub fn opc_add256(ctx: &mut InstContext) {
+    const WORDS: usize = 4 + 1 + 2 * 4;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data_with_result(ctx, 4, 2, 4, 0, &mut data, "add256");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 3 indirections
+        // 0 - addr_a
+        // 1 - addr_b
+        // 2 - cin
+        // 3 - addr_c
+        let cin = data[2];
+        let (params, rest) = data.split_at(4); // params(4)
+        let (a, rest) = rest.split_at(4);
+        let (b, _) = rest.split_at(4);
+
+        let a: &[u64; 4] = a.try_into().expect("opc_add256: a.len != 4");
+        let b: &[u64; 4] = b.try_into().expect("opc_add256: b.len != 4");
+        let mut c = [0u64; 4];
+        let cout = precompiles_helpers::add256(a, b, cin, &mut c);
+
+        let c_addr = params[3];
+        for (i, c_item) in c.iter().enumerate() {
+            ctx.mem.write(c_addr + (8 * i as u64), *c_item, 8);
+        }
+        if let EmulationMode::GenerateMemReads = ctx.emulation_mode {
+            ctx.precompiled.input_data[4 + 2 * 4] = cout;
+        }
+        ctx.c = cout;
+        ctx.flag = cout != 0;
+    } else {
+        assert!(data[4 + 2 * 4] <= 1, "opc_add256: cout > 1");
+        ctx.c = data[4 + 2 * 4];
+        ctx.flag = data[4 + 2 * 4] != 0;
+    }
+}
+
+/// Unimplemented.  Arith256 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_add256(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_add256() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_add256(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[4, 4, 0], &[4], 0);
 }
 
 #[inline(always)]
@@ -1358,6 +1545,11 @@ pub fn op_arith256(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
+pub fn ops_arith256(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[4, 4, 4], &[4, 4], 0);
+}
+
+#[inline(always)]
 pub fn opc_arith256_mod(ctx: &mut InstContext) {
     const WORDS: usize = 5 + 4 * 4;
     let mut data = [0u64; WORDS];
@@ -1399,6 +1591,11 @@ pub fn op_arith256_mod(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
+pub fn ops_arith256_mod(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[4, 4, 4, 4], &[4], 0);
+}
+
+#[inline(always)]
 pub fn opc_secp256k1_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
@@ -1433,6 +1630,11 @@ pub fn op_secp256k1_add(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
+pub fn ops_secp256k1_add(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
+}
+
+#[inline(always)]
 pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
@@ -1459,6 +1661,11 @@ pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_secp256k1_dbl(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_secp256k1_dbl() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_secp256k1_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_direct_data(ctx, stats, 8, 8);
 }
 
 #[inline(always)]
@@ -1497,6 +1704,11 @@ pub fn op_bn254_curve_add(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
+pub fn ops_bn254_curve_add(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
+}
+
+#[inline(always)]
 pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
@@ -1523,6 +1735,11 @@ pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_bn254_curve_dbl(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_bn254_curve_dbl() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_bn254_curve_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_direct_data(ctx, stats, 8, 8);
 }
 
 #[inline(always)]
@@ -1561,6 +1778,11 @@ pub fn op_bn254_complex_add(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
+pub fn ops_bn254_complex_add(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
+}
+
+#[inline(always)]
 pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
@@ -1596,6 +1818,11 @@ pub fn op_bn254_complex_sub(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
+pub fn ops_bn254_complex_sub(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
+}
+
+#[inline(always)]
 pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
@@ -1628,6 +1855,11 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_bn254_complex_mul(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_bn254_complex_mul() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_bn254_complex_mul(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
 }
 
 #[inline(always)]
@@ -1672,6 +1904,11 @@ pub fn op_arith384_mod(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
+pub fn ops_arith384_mod(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[6, 6, 6, 6], &[6], 0);
+}
+
+#[inline(always)]
 pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
@@ -1707,6 +1944,11 @@ pub fn op_bls12_381_curve_add(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
+pub fn ops_bls12_381_curve_add(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[12, 12], &[], 1);
+}
+
+#[inline(always)]
 pub fn opc_bls12_381_curve_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 12;
     let mut data = [0u64; WORDS];
@@ -1733,6 +1975,11 @@ pub fn opc_bls12_381_curve_dbl(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_bls12_381_curve_dbl(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_bls12_381_curve_dbl() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_bls12_381_curve_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_direct_data(ctx, stats, 12, 12);
 }
 
 #[inline(always)]
@@ -1771,6 +2018,11 @@ pub fn op_bls12_381_complex_add(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
+pub fn ops_bls12_381_complex_add(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[12, 12], &[], 1);
+}
+
+#[inline(always)]
 pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
@@ -1806,6 +2058,11 @@ pub fn op_bls12_381_complex_sub(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
+pub fn ops_bls12_381_complex_sub(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[12, 12], &[], 1);
+}
+
+#[inline(always)]
 pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
@@ -1838,6 +2095,11 @@ pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_bls12_381_complex_mul(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_bls12_381_complex_mul() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_bls12_381_complex_mul(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[12, 12], &[], 1);
 }
 
 impl From<ZiskRequiredOperation> for ZiskOp {

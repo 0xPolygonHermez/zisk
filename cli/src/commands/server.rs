@@ -257,7 +257,11 @@ impl ZiskServer {
             get_proving_key(self.proving_key.as_ref()).display()
         );
 
-        let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
+        let std_mode = match &self.debug {
+            None => "Standard mode",
+            Some(None) => "Debug mode (fast)",
+            Some(Some(json_file)) => &format!("Debug mode (from config file: {})", json_file),
+        };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 

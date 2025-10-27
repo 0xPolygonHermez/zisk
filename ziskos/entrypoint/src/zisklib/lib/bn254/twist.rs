@@ -10,11 +10,6 @@ use super::{
     },
 };
 
-const X_BIN_BE: [u8; 63] = [
-    1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0,
-    1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1,
-];
-
 /// Check if a point `p` is on the BN254 twist
 pub fn is_on_curve_twist_bn254(p: &[u64; 16]) -> bool {
     // q in E' iff y² == x³ + 3 / (9 + u)
@@ -45,6 +40,40 @@ pub fn is_on_subgroup_twist_bn254(p: &[u64; 16]) -> bool {
     rhs = utf_endomorphism_twist_bn254(&rhs);
     rhs = utf_endomorphism_twist_bn254(&rhs);
     eq(&lhs, &rhs)
+}
+
+/// Converts a point `p` on the BN254 curve from Jacobian coordinates to affine coordinates
+pub fn to_affine_twist_bn254(p: &[u64; 24]) -> Option<[u64; 16]> {
+    let z: [u64; 8] = p[16..24].try_into().unwrap();
+
+    // Check if p is the point at infinity
+    if z == [0u64; 8] {
+        // Point at infinity cannot be converted to affine
+        return None;
+    }
+
+    // Check if p is already in affine coordinates
+    if z == [1u64, 0, 0, 0, 0, 0, 0, 0] {
+        return Some([
+            p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13],
+            p[14], p[15],
+        ]);
+    }
+
+    let zinv = inv_fp2_bn254(&z);
+    let zinv_sq = square_fp2_bn254(&zinv);
+
+    let x: [u64; 8] = p[0..8].try_into().unwrap();
+    let y: [u64; 8] = p[8..16].try_into().unwrap();
+
+    let x_res = mul_fp2_bn254(&x, &zinv_sq);
+    let mut y_res = mul_fp2_bn254(&y, &zinv_sq);
+    y_res = mul_fp2_bn254(&y_res, &zinv);
+
+    Some([
+        x_res[0], x_res[1], x_res[2], x_res[3], x_res[4], x_res[5], x_res[6], x_res[7], y_res[0],
+        y_res[1], y_res[2], y_res[3], y_res[4], y_res[5], y_res[6], y_res[7],
+    ])
 }
 
 /// Addition of two non-zero points
@@ -144,6 +173,13 @@ pub fn neg_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
 
 /// Scalar multiplication of a non-zero point by x
 pub fn scalar_mul_by_x_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
+    // Binary representation of the exponent x = 4965661367192848881 in big-endian format
+    const X_BIN_BE: [u8; 63] = [
+        1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0,
+        0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0,
+        0, 0, 1,
+    ];
+
     let mut q = *p;
     for &bit in X_BIN_BE.iter().skip(1) {
         q = dbl_twist_bn254(&q);

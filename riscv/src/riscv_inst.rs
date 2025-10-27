@@ -35,12 +35,16 @@
 /// RISC-V instruction data
 #[derive(Default, Debug)]
 pub struct RiscvInstruction {
+    /// Instruction ROM address, i.e. program counter value
+    pub rom_address: u64,
+
     /// Original instruction content (32 bits)
     pub rvinst: u32,
 
     /// Instruction type
     pub t: String,
 
+    /// Instruction mnemonic
     pub funct2: u32,
     pub funct3: u32,
     pub funct5: u32,

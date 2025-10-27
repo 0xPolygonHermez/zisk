@@ -22,6 +22,7 @@ all:
 	gcc $(CFLAGS) -c src/fcall/fcall.cpp -o build/fcall.o
 	gcc $(CFLAGS) -c src/arith256/arith256.cpp -o build/arith256.o
 	gcc $(CFLAGS) -c src/arith384/arith384.cpp -o build/arith384.o
+	gcc $(CFLAGS) -c src/bigint/add256.cpp -o build/add256.o
 	gcc $(CFLAGS) -c src/common/globals.cpp -o build/globals.o
 	ar rcs\
 		build/libziskc.a\
@@ -39,6 +40,7 @@ all:
 		build/fcall.o\
 		build/arith256.o\
 		build/arith384.o\
+		build/add256.o\
 		build/globals.o
 	gcc $(CFLAGS) src/main.cpp -lc build/libziskc.a -o build/clib -lgmp -lstdc++ -lgmpxx
 	mkdir -p lib

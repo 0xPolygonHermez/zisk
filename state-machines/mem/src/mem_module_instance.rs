@@ -87,8 +87,8 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         }
 
         // This method sorts all inputs
-        let parallelize = self.ictx.plan.air_id == MemTrace::<usize>::AIR_ID
-            && self.ictx.plan.airgroup_id == MemTrace::<usize>::AIRGROUP_ID;
+        let parallelize = self.ictx.plan.air_id == MemTrace::<F>::AIR_ID
+            && self.ictx.plan.airgroup_id == MemTrace::<F>::AIRGROUP_ID;
         self.prepare_inputs(&mut inputs, parallelize);
 
         // This method calculates intermediate accesses without adding inputs and trims

@@ -55,7 +55,11 @@ impl From<JobId> for String {
 
 impl std::fmt::Display for JobId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "JobId({})", self.0)
+        if self.0.len() > 8 {
+            write!(f, "JobId({:.8}…)", self.0)
+        } else {
+            write!(f, "JobId({})", self.0)
+        }
     }
 }
 
@@ -97,7 +101,11 @@ impl From<BlockId> for String {
 
 impl std::fmt::Display for BlockId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BlockId({})", self.0)
+        if self.0.len() > 8 {
+            write!(f, "BlockId({:.8}…)", self.0)
+        } else {
+            write!(f, "BlockId({})", self.0)
+        }
     }
 }
 
@@ -139,7 +147,11 @@ impl From<WorkerId> for String {
 
 impl std::fmt::Display for WorkerId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "WorkerId({})", self.0)
+        if self.0.len() > 8 {
+            write!(f, "WorkerId({:.8}…)", self.0)
+        } else {
+            write!(f, "WorkerId({})", self.0)
+        }
     }
 }
 
@@ -148,7 +160,7 @@ pub enum WorkerState {
     Disconnected,
     Connecting,
     Idle,
-    Computing(JobPhase),
+    Computing((JobId, JobPhase)),
     Error,
 }
 
@@ -158,7 +170,7 @@ impl Display for WorkerState {
             WorkerState::Disconnected => "Disconnected",
             WorkerState::Connecting => "Connecting",
             WorkerState::Idle => "Idle",
-            WorkerState::Computing(phase) => return write!(f, "Computing({})", phase),
+            WorkerState::Computing(phase) => return write!(f, "Computing({})", phase.1),
             WorkerState::Error => "Error",
         };
         write!(f, "{}", state_str)
@@ -225,6 +237,8 @@ impl Debug for JobStats {
 pub struct Job {
     pub job_id: JobId,
     pub start_time: DateTime<Utc>,
+    pub start_time_prove: DateTime<Utc>,
+    pub start_time_aggregate: DateTime<Utc>,
     pub duration_ms: Option<u64>,
     pub state: JobState,
     pub block: BlockContext,
@@ -237,6 +251,7 @@ pub struct Job {
     pub challenges: Option<Vec<ContributionsInfo>>,
     pub execution_mode: JobExecutionMode,
     pub final_proof: Option<Vec<u64>>,
+    pub executed_steps: Option<u64>,
 }
 
 impl Job {
@@ -251,6 +266,8 @@ impl Job {
         Self {
             job_id: JobId::new(),
             start_time: Utc::now(),
+            start_time_prove: Utc::now(),
+            start_time_aggregate: Utc::now(),
             duration_ms: None,
             state: JobState::Created,
             block: BlockContext { block_id, input_path },
@@ -263,6 +280,7 @@ impl Job {
             challenges: None,
             execution_mode,
             final_proof: None,
+            executed_steps: None,
         }
     }
 
@@ -321,7 +339,7 @@ impl Job {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobState {
     Created,
     Running(JobPhase),

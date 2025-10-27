@@ -1,15 +1,23 @@
-//! BLS12-381 library
-#![deny(missing_docs)]
-
 mod constants;
-pub mod curve;
-pub mod cyclotomic;
-pub mod final_exp;
-pub mod fp;
-pub mod fp12;
-pub mod fp2;
-pub mod fp6;
-pub mod fr;
-pub mod miller_loop;
-pub mod pairing;
-pub mod twist;
+mod curve;
+mod cyclotomic;
+mod final_exp;
+mod fp;
+mod fp12;
+mod fp2;
+mod fp6;
+mod fr;
+mod miller_loop;
+mod pairing;
+mod twist;
+
+pub use curve::*;
+pub use cyclotomic::*;
+pub use final_exp::*;
+pub use fp::*;
+pub use fp12::*;
+pub use fp2::*;
+pub use fp6::*;
+pub use fr::*;
+pub use pairing::*;
+pub use twist::*;

@@ -1,3 +1,4 @@
+pub mod add256;
 pub mod arith256;
 pub mod arith256_mod;
 pub mod arith384_mod;
@@ -29,5 +30,21 @@ macro_rules! ziskos_syscall {
                 value = in(reg) $addr
             );
         }
+    }};
+}
+
+#[macro_export]
+macro_rules! ziskos_syscall_ret_u64 {
+    ($csr_addr:literal, $addr:expr) => {{
+        let v: u64;
+        unsafe {
+            asm!(
+                concat!("csrrs {0}, ", stringify!($csr_addr), ", {1}"),
+                out(reg) v,
+                in(reg) $addr,
+                options(nostack, nomem)
+            );
+        }
+        v
     }};
 }

@@ -6,17 +6,17 @@
 #![allow(dead_code)]
 
 use proofman_common as common;
-pub use proofman_macros::trace;
+use proofman_common::GenericTrace;
+use proofman_common::PackedInfoConst;
+pub use proofman_macros::trace_row;
 pub use proofman_macros::values;
-
+use fields::PrimeField64;
 use std::fmt;
-
-use rayon::prelude::*;
 
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "163bcca4d46e9820bcb620f1da69250c790cb1de690f03c76877618f09a22d33";
+pub const PILOUT_HASH: &str = "f84f0cfddc746ef78a60d60b39590d435cc7459acf576c2d05c93564d2971402";
 
 //AIRGROUP CONSTANTS
 
@@ -50,19 +50,21 @@ pub const BINARY_ADD_AIR_IDS: &[usize] = &[11];
 
 pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[12];
 
-pub const ARITH_EQ_AIR_IDS: &[usize] = &[13];
+pub const ADD_256_AIR_IDS: &[usize] = &[13];
 
-pub const ARITH_EQ_384_AIR_IDS: &[usize] = &[14];
+pub const ARITH_EQ_AIR_IDS: &[usize] = &[14];
 
-pub const KECCAKF_AIR_IDS: &[usize] = &[15];
+pub const ARITH_EQ_384_AIR_IDS: &[usize] = &[15];
 
-pub const SHA_256_F_AIR_IDS: &[usize] = &[16];
+pub const KECCAKF_AIR_IDS: &[usize] = &[16];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[17];
+pub const SHA_256_F_AIR_IDS: &[usize] = &[17];
 
-pub const VIRTUAL_TABLE_0_AIR_IDS: &[usize] = &[18];
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[18];
 
-pub const VIRTUAL_TABLE_1_AIR_IDS: &[usize] = &[19];
+pub const VIRTUAL_TABLE_0_AIR_IDS: &[usize] = &[19];
+
+pub const VIRTUAL_TABLE_1_AIR_IDS: &[usize] = &[20];
 
 
 //PUBLICS
@@ -106,169 +108,293 @@ values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
  
-trace!(MainFixed<F> {
+trace_row!(MainFixedRow<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
-},  0, 0, 4194304 );
+});
+pub type MainFixed<F> = GenericTrace<MainFixedRow<F>, 4194304, 0, 0>;
 
-trace!(MainTrace<F> {
- a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, a_reg_prev_mem_step: F, b_reg_prev_mem_step: F, store_reg_prev_mem_step: F, store_reg_prev_value: [F; 2], a_src_reg: F, b_src_reg: F, store_reg: F,
-},  0, 0, 4194304 );
+trace_row!(MainTraceRow<F> {
+ a:[u32; 2], b:[u32; 2], c:[u32; 2], flag:bit, pc:u32, a_src_imm:bit, a_src_mem:bit, a_offset_imm0:u64, a_imm1:u32, a_src_step:bit, b_src_imm:bit, b_src_mem:bit, b_offset_imm0:u64, b_imm1:u32, b_src_ind:bit, ind_width:ubit(4), is_external_op:bit, op:u8, store_ra:bit, store_mem:bit, store_ind:bit, store_offset:u64, set_pc:bit, jmp_offset1:u64, jmp_offset2:u64, m32:bit, addr1:u32, a_reg_prev_mem_step:ubit(40), b_reg_prev_mem_step:ubit(40), store_reg_prev_mem_step:ubit(40), store_reg_prev_value:[u32; 2], a_src_reg:bit, b_src_reg:bit, store_reg:bit,
+});
+pub type MainTrace<F> = GenericTrace<MainTraceRow<F>, 4194304, 0, 0>;
 
-trace!(RomFixed<F> {
+
+pub type MainTracePacked<F> = GenericTrace<MainTraceRowPacked<F>, 4194304, 0, 0>;
+
+
+trace_row!(RomFixedRow<F> {
  __L1__: F,
-},  0, 1, 2097152 );
+});
+pub type RomFixed<F> = GenericTrace<RomFixedRow<F>, 2097152, 0, 1>;
 
-trace!(RomTrace<F> {
- multiplicity: F,
-},  0, 1, 2097152 );
+trace_row!(RomTraceRow<F> {
+ multiplicity:F,
+});
+pub type RomTrace<F> = GenericTrace<RomTraceRow<F>, 2097152, 0, 1>;
 
-trace!(MemFixed<F> {
+
+trace_row!(MemFixedRow<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 2, 4194304 );
+});
+pub type MemFixed<F> = GenericTrace<MemFixedRow<F>, 4194304, 0, 2>;
 
-trace!(MemTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, step_dual: F, sel_dual: F, value: [F; 2], wr: F, previous_step: F, increment: [F; 2], read_same_addr: F,
-},  0, 2, 4194304 );
+trace_row!(MemTraceRow<F> {
+ addr:ubit(29), step:ubit(40), sel:bit, addr_changes:bit, step_dual:ubit(40), sel_dual:bit, value:[u32; 2], wr:bit, previous_step:ubit(40), increment:[ubit(18); 2], read_same_addr:bit,
+});
+pub type MemTrace<F> = GenericTrace<MemTraceRow<F>, 4194304, 0, 2>;
 
-trace!(RomDataFixed<F> {
+
+pub type MemTracePacked<F> = GenericTrace<MemTraceRowPacked<F>, 4194304, 0, 2>;
+
+
+trace_row!(RomDataFixedRow<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 3, 2097152 );
+});
+pub type RomDataFixed<F> = GenericTrace<RomDataFixedRow<F>, 2097152, 0, 3>;
 
-trace!(RomDataTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value: [F; 2],
-},  0, 3, 2097152 );
+trace_row!(RomDataTraceRow<F> {
+ addr:ubit(29), step:ubit(40), sel:bit, addr_changes:bit, value:[u32; 2],
+});
+pub type RomDataTrace<F> = GenericTrace<RomDataTraceRow<F>, 2097152, 0, 3>;
 
-trace!(InputDataFixed<F> {
+
+pub type RomDataTracePacked<F> = GenericTrace<RomDataTraceRowPacked<F>, 2097152, 0, 3>;
+
+
+trace_row!(InputDataFixedRow<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 4, 2097152 );
+});
+pub type InputDataFixed<F> = GenericTrace<InputDataFixedRow<F>, 2097152, 0, 4>;
 
-trace!(InputDataTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4], is_free_read: F,
-},  0, 4, 2097152 );
+trace_row!(InputDataTraceRow<F> {
+ addr:ubit(29), step:ubit(40), sel:bit, addr_changes:bit, value_word:[u16; 4], is_free_read:bit,
+});
+pub type InputDataTrace<F> = GenericTrace<InputDataTraceRow<F>, 2097152, 0, 4>;
 
-trace!(MemAlignFixed<F> {
+
+pub type InputDataTracePacked<F> = GenericTrace<InputDataTraceRowPacked<F>, 2097152, 0, 4>;
+
+
+trace_row!(MemAlignFixedRow<F> {
  L1: F, __L1__: F,
-},  0, 5, 2097152 );
+});
+pub type MemAlignFixed<F> = GenericTrace<MemAlignFixedRow<F>, 2097152, 0, 5>;
 
-trace!(MemAlignTrace<F> {
- addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2],
-},  0, 5, 2097152 );
+trace_row!(MemAlignTraceRow<F> {
+ addr:ubit(29), offset:ubit(3), width:ubit(4), wr:bit, pc:u8, reset:bit, sel_up_to_down:bit, sel_down_to_up:bit, reg:[u8; 8], sel:[bit; 8], step:ubit(40), delta_addr:u64, sel_prove:bit, value:[u32; 2],
+});
+pub type MemAlignTrace<F> = GenericTrace<MemAlignTraceRow<F>, 2097152, 0, 5>;
 
-trace!(MemAlignByteFixed<F> {
+
+pub type MemAlignTracePacked<F> = GenericTrace<MemAlignTraceRowPacked<F>, 2097152, 0, 5>;
+
+
+trace_row!(MemAlignByteFixedRow<F> {
  __L1__: F,
-},  0, 6, 4194304 );
+});
+pub type MemAlignByteFixed<F> = GenericTrace<MemAlignByteFixedRow<F>, 4194304, 0, 6>;
 
-trace!(MemAlignByteTrace<F> {
- sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, written_composed_value: F, written_byte_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F, is_write: F, mem_write_values: [F; 2], bus_byte: F,
-},  0, 6, 4194304 );
+trace_row!(MemAlignByteTraceRow<F> {
+ sel_high_4b:bit, sel_high_2b:bit, sel_high_b:bit, direct_value:u32, composed_value:u32, written_composed_value:u32, written_byte_value:u8, value_16b:u16, value_8b:u8, byte_value:u8, addr_w:ubit(29), step:ubit(40), is_write:bit, mem_write_values:[u32; 2], bus_byte:u8,
+});
+pub type MemAlignByteTrace<F> = GenericTrace<MemAlignByteTraceRow<F>, 4194304, 0, 6>;
 
-trace!(MemAlignReadByteFixed<F> {
+
+pub type MemAlignByteTracePacked<F> = GenericTrace<MemAlignByteTraceRowPacked<F>, 4194304, 0, 6>;
+
+
+trace_row!(MemAlignReadByteFixedRow<F> {
  __L1__: F,
-},  0, 7, 4194304 );
+});
+pub type MemAlignReadByteFixed<F> = GenericTrace<MemAlignReadByteFixedRow<F>, 4194304, 0, 7>;
 
-trace!(MemAlignReadByteTrace<F> {
- sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F,
-},  0, 7, 4194304 );
+trace_row!(MemAlignReadByteTraceRow<F> {
+ sel_high_4b:bit, sel_high_2b:bit, sel_high_b:bit, direct_value:u32, composed_value:u32, value_16b:u16, value_8b:u8, byte_value:u8, addr_w:ubit(29), step:ubit(40),
+});
+pub type MemAlignReadByteTrace<F> = GenericTrace<MemAlignReadByteTraceRow<F>, 4194304, 0, 7>;
 
-trace!(MemAlignWriteByteFixed<F> {
+
+pub type MemAlignReadByteTracePacked<F> = GenericTrace<MemAlignReadByteTraceRowPacked<F>, 4194304, 0, 7>;
+
+
+trace_row!(MemAlignWriteByteFixedRow<F> {
  __L1__: F,
-},  0, 8, 4194304 );
+});
+pub type MemAlignWriteByteFixed<F> = GenericTrace<MemAlignWriteByteFixedRow<F>, 4194304, 0, 8>;
 
-trace!(MemAlignWriteByteTrace<F> {
- sel_high_4b: F, sel_high_2b: F, sel_high_b: F, direct_value: F, composed_value: F, written_composed_value: F, written_byte_value: F, value_16b: F, value_8b: F, byte_value: F, addr_w: F, step: F, mem_write_values: [F; 2],
-},  0, 8, 4194304 );
+trace_row!(MemAlignWriteByteTraceRow<F> {
+ sel_high_4b:bit, sel_high_2b:bit, sel_high_b:bit, direct_value:u32, composed_value:u32, written_composed_value:u32, written_byte_value:u8, value_16b:u16, value_8b:u8, byte_value:u8, addr_w:ubit(29), step:ubit(40), mem_write_values:[u32; 2],
+});
+pub type MemAlignWriteByteTrace<F> = GenericTrace<MemAlignWriteByteTraceRow<F>, 4194304, 0, 8>;
 
-trace!(ArithFixed<F> {
+
+pub type MemAlignWriteByteTracePacked<F> = GenericTrace<MemAlignWriteByteTraceRowPacked<F>, 4194304, 0, 8>;
+
+
+trace_row!(ArithFixedRow<F> {
  __L1__: F,
-},  0, 9, 2097152 );
+});
+pub type ArithFixed<F> = GenericTrace<ArithFixedRow<F>, 2097152, 0, 9>;
 
-trace!(ArithTrace<F> {
- carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
-},  0, 9, 2097152 );
+trace_row!(ArithTraceRow<F> {
+ carry:[u64; 7], a:[u16; 4], b:[u16; 4], c:[u16; 4], d:[u16; 4], na:bit, nb:bit, nr:bit, np:bit, sext:bit, m32:bit, div:bit, fab:u64, na_fb:u64, nb_fa:u64, main_div:bit, main_mul:bit, signed:bit, div_by_zero:bit, div_overflow:bit, inv_sum_all_bs:u64, op:u8, bus_res1:u32, multiplicity:bit, range_ab:ubit(7), range_cd:ubit(7),
+});
+pub type ArithTrace<F> = GenericTrace<ArithTraceRow<F>, 2097152, 0, 9>;
 
-trace!(BinaryFixed<F> {
+
+pub type ArithTracePacked<F> = GenericTrace<ArithTraceRowPacked<F>, 2097152, 0, 9>;
+
+
+trace_row!(BinaryFixedRow<F> {
  __L1__: F,
-},  0, 10, 4194304 );
+});
+pub type BinaryFixed<F> = GenericTrace<BinaryFixedRow<F>, 4194304, 0, 10>;
 
-trace!(BinaryTrace<F> {
- m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, has_initial_carry: F, cout: F, result_is_a: F, use_last_carry_mode32: F, use_last_carry_mode64: F, m_op_or_ext: F, free_in_a_or_c: [F; 4], free_in_b_or_zero: [F; 4], multiplicity: F,
-},  0, 10, 4194304 );
+trace_row!(BinaryTraceRow<F> {
+ m_op:ubit(5), mode32:bit, free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[bit; 8], use_last_carry:bit, op_is_min_max:bit, has_initial_carry:bit, cout:bit, result_is_a:bit, use_last_carry_mode32:bit, use_last_carry_mode64:bit, m_op_or_ext:ubit(5), free_in_a_or_c:[u8; 4], free_in_b_or_zero:[u8; 4], multiplicity:bit,
+});
+pub type BinaryTrace<F> = GenericTrace<BinaryTraceRow<F>, 4194304, 0, 10>;
 
-trace!(BinaryAddFixed<F> {
+
+pub type BinaryTracePacked<F> = GenericTrace<BinaryTraceRowPacked<F>, 4194304, 0, 10>;
+
+
+trace_row!(BinaryAddFixedRow<F> {
  __L1__: F,
-},  0, 11, 4194304 );
+});
+pub type BinaryAddFixed<F> = GenericTrace<BinaryAddFixedRow<F>, 4194304, 0, 11>;
 
-trace!(BinaryAddTrace<F> {
- a: [F; 2], b: [F; 2], c_chunks: [F; 4], cout: [F; 2], multiplicity: F,
-},  0, 11, 4194304 );
+trace_row!(BinaryAddTraceRow<F> {
+ a:[u32; 2], b:[u32; 2], c_chunks:[u16; 4], cout:[bit; 2], multiplicity:bit,
+});
+pub type BinaryAddTrace<F> = GenericTrace<BinaryAddTraceRow<F>, 4194304, 0, 11>;
 
-trace!(BinaryExtensionFixed<F> {
+
+pub type BinaryAddTracePacked<F> = GenericTrace<BinaryAddTraceRowPacked<F>, 4194304, 0, 11>;
+
+
+trace_row!(BinaryExtensionFixedRow<F> {
  __L1__: F,
-},  0, 12, 4194304 );
+});
+pub type BinaryExtensionFixed<F> = GenericTrace<BinaryExtensionFixedRow<F>, 4194304, 0, 12>;
 
-trace!(BinaryExtensionTrace<F> {
- op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], multiplicity: F,
-},  0, 12, 4194304 );
+trace_row!(BinaryExtensionTraceRow<F> {
+ op:ubit(6), in1:[u8; 8], in2_low:u8, out:[[u32; 2]; 8], op_is_shift:bit, in2:[u32; 2], multiplicity:bit,
+});
+pub type BinaryExtensionTrace<F> = GenericTrace<BinaryExtensionTraceRow<F>, 4194304, 0, 12>;
 
-trace!(ArithEqFixed<F> {
+
+pub type BinaryExtensionTracePacked<F> = GenericTrace<BinaryExtensionTraceRowPacked<F>, 4194304, 0, 12>;
+
+
+trace_row!(Add256FixedRow<F> {
+ __L1__: F,
+});
+pub type Add256Fixed<F> = GenericTrace<Add256FixedRow<F>, 1048576, 0, 13>;
+
+trace_row!(Add256TraceRow<F> {
+ a:[[u32; 2]; 4], b:[[u32; 2]; 4], c_chunks:[[u16; 4]; 4], cout:[[bit; 2]; 4], addr_params:u32, addr_a:u32, addr_b:u32, addr_c:u32, step:ubit(40), cin:bit, sel:bit,
+});
+pub type Add256Trace<F> = GenericTrace<Add256TraceRow<F>, 1048576, 0, 13>;
+
+
+pub type Add256TracePacked<F> = GenericTrace<Add256TraceRowPacked<F>, 1048576, 0, 13>;
+
+
+trace_row!(ArithEqFixedRow<F> {
  CLK_0: F, __L1__: F,
-},  0, 13, 1048576 );
+});
+pub type ArithEqFixed<F> = GenericTrace<ArithEqFixedRow<F>, 1048576, 0, 14>;
 
-trace!(ArithEqTrace<F> {
- x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 9], sel_op_clk0: [F; 9], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
-},  0, 13, 1048576 );
+trace_row!(ArithEqTraceRow<F> {
+ x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 9], sel_op_clk0:[bit; 9], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, carry:[[u64; 2]; 3], step_addr:ubit(40),
+});
+pub type ArithEqTrace<F> = GenericTrace<ArithEqTraceRow<F>, 1048576, 0, 14>;
 
-trace!(ArithEq384Fixed<F> {
+
+pub type ArithEqTracePacked<F> = GenericTrace<ArithEqTraceRowPacked<F>, 1048576, 0, 14>;
+
+
+trace_row!(ArithEq384FixedRow<F> {
  CLK_0: F, __L1__: F,
-},  0, 14, 1048576 );
+});
+pub type ArithEq384Fixed<F> = GenericTrace<ArithEq384FixedRow<F>, 1048576, 0, 15>;
 
-trace!(ArithEq384Trace<F> {
- x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 6], sel_op_clk0: [F; 6], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
-},  0, 14, 1048576 );
+trace_row!(ArithEq384TraceRow<F> {
+ x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 6], sel_op_clk0:[bit; 6], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, carry:[[u64; 2]; 3], step_addr:ubit(40),
+});
+pub type ArithEq384Trace<F> = GenericTrace<ArithEq384TraceRow<F>, 1048576, 0, 15>;
 
-trace!(KeccakfFixed<F> {
+
+pub type ArithEq384TracePacked<F> = GenericTrace<ArithEq384TraceRowPacked<F>, 1048576, 0, 15>;
+
+
+trace_row!(KeccakfFixedRow<F> {
  L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
-},  0, 15, 2097152 );
+});
+pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 2097152, 0, 16>;
 
-trace!(KeccakfTrace<F> {
- free_in_a: [F; 9], free_in_b: [F; 9], free_in_c: [F; 9], free_in_d: [F; 9], bit: [F; 4], val: [F; 4], step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 15, 2097152 );
+trace_row!(KeccakfTraceRow<F> {
+ free_in_a:[ubit(7); 9], free_in_b:[ubit(7); 9], free_in_c:[ubit(7); 9], free_in_d:[ubit(7); 9], bit:[bit; 4], val:[u64; 4], step_addr:ubit(40), in_use_clk_0:bit, in_use:bit,
+});
+pub type KeccakfTrace<F> = GenericTrace<KeccakfTraceRow<F>, 2097152, 0, 16>;
 
-trace!(Sha256fFixed<F> {
+
+pub type KeccakfTracePacked<F> = GenericTrace<KeccakfTraceRowPacked<F>, 2097152, 0, 16>;
+
+
+trace_row!(Sha256fFixedRow<F> {
  CLK_0: F, __L1__: F,
-},  0, 16, 262144 );
+});
+pub type Sha256fFixed<F> = GenericTrace<Sha256fFixedRow<F>, 262144, 0, 17>;
 
-trace!(Sha256fTrace<F> {
- a: [F; 32], e: [F; 32], w: [F; 32], new_a_carry_bits: F, new_e_carry_bits: F, new_w_carry_bits: F, step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 16, 262144 );
+trace_row!(Sha256fTraceRow<F> {
+ a:[bit; 32], e:[bit; 32], w:[bit; 32], new_a_carry_bits:u8, new_e_carry_bits:u8, new_w_carry_bits:ubit(4), step_addr:ubit(40), in_use_clk_0:bit, in_use:bit,
+});
+pub type Sha256fTrace<F> = GenericTrace<Sha256fTraceRow<F>, 262144, 0, 17>;
 
-trace!(SpecifiedRangesFixed<F> {
+
+pub type Sha256fTracePacked<F> = GenericTrace<Sha256fTraceRowPacked<F>, 262144, 0, 17>;
+
+
+trace_row!(SpecifiedRangesFixedRow<F> {
  RANGE: [F; 19], __L1__: F,
-},  0, 17, 2097152 );
+});
+pub type SpecifiedRangesFixed<F> = GenericTrace<SpecifiedRangesFixedRow<F>, 2097152, 0, 18>;
 
-trace!(SpecifiedRangesTrace<F> {
- mul: [F; 19],
-},  0, 17, 2097152 );
+trace_row!(SpecifiedRangesTraceRow<F> {
+ mul:[F; 19],
+});
+pub type SpecifiedRangesTrace<F> = GenericTrace<SpecifiedRangesTraceRow<F>, 2097152, 0, 18>;
 
-trace!(VirtualTable0Fixed<F> {
+
+trace_row!(VirtualTable0FixedRow<F> {
  UID: [F; 11], column: [F; 63], __L1__: F,
-},  0, 18, 2097152 );
+});
+pub type VirtualTable0Fixed<F> = GenericTrace<VirtualTable0FixedRow<F>, 2097152, 0, 19>;
 
-trace!(VirtualTable0Trace<F> {
- multiplicity: [F; 11],
-},  0, 18, 2097152 );
+trace_row!(VirtualTable0TraceRow<F> {
+ multiplicity:[F; 11],
+});
+pub type VirtualTable0Trace<F> = GenericTrace<VirtualTable0TraceRow<F>, 2097152, 0, 19>;
 
-trace!(VirtualTable1Fixed<F> {
+
+trace_row!(VirtualTable1FixedRow<F> {
  UID: [F; 8], column: [F; 64], __L1__: F,
-},  0, 19, 2097152 );
+});
+pub type VirtualTable1Fixed<F> = GenericTrace<VirtualTable1FixedRow<F>, 2097152, 0, 20>;
 
-trace!(VirtualTable1Trace<F> {
- multiplicity: [F; 8],
-},  0, 19, 2097152 );
+trace_row!(VirtualTable1TraceRow<F> {
+ multiplicity:[F; 8],
+});
+pub type VirtualTable1Trace<F> = GenericTrace<VirtualTable1TraceRow<F>, 2097152, 0, 20>;
 
-trace!(RomRomTrace<F> {
+
+trace_row!(RomRomTraceRow<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
-}, 0, 1, 2097152, 0 );
+});
+pub type RomRomTrace<F> = GenericTrace<RomRomTraceRow<F>, 2097152, 0, 1, 0>;
+
 
 values!(MainAirValues<F> {
  main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31], im_direct: [FieldExtension<F>; 96],
@@ -350,6 +476,10 @@ values!(BinaryExtensionAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
+values!(Add256AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
 values!(ArithEqAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
@@ -377,3 +507,91 @@ values!(VirtualTable0AirGroupValues<F> {
 values!(VirtualTable1AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
+
+pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
+    (0, 0, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 14,
+        unpack_info: &[32, 32, 32, 32, 32, 32, 1, 32, 1, 1, 64, 32, 1, 1, 1, 64, 32, 1, 4, 1, 8, 1, 1, 1, 64, 1, 64, 64, 1, 32, 40, 40, 40, 32, 32, 1, 1, 1],
+    }),
+    (0, 2, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 4,
+        unpack_info: &[29, 40, 1, 1, 40, 1, 32, 32, 1, 40, 18, 18, 1],
+    }),
+    (0, 3, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 3,
+        unpack_info: &[29, 40, 1, 1, 32, 32],
+    }),
+    (0, 4, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 3,
+        unpack_info: &[29, 40, 1, 1, 16, 16, 16, 16, 1],
+    }),
+    (0, 5, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 5,
+        unpack_info: &[29, 3, 4, 1, 8, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 40, 64, 1, 32, 32],
+    }),
+    (0, 6, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 5,
+        unpack_info: &[1, 1, 1, 32, 32, 32, 8, 16, 8, 8, 29, 40, 1, 32, 32, 8],
+    }),
+    (0, 7, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 3,
+        unpack_info: &[1, 1, 1, 32, 32, 16, 8, 8, 29, 40],
+    }),
+    (0, 8, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 5,
+        unpack_info: &[1, 1, 1, 32, 32, 32, 8, 16, 8, 8, 29, 40, 32, 32],
+    }),
+    (0, 9, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 17,
+        unpack_info: &[64, 64, 64, 64, 64, 64, 64, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 64, 64, 64, 1, 1, 1, 1, 1, 64, 8, 32, 1, 7, 7],
+    }),
+    (0, 10, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 5,
+        unpack_info: &[5, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 8, 8, 8, 8, 8, 8, 8, 8, 1],
+    }),
+    (0, 11, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 4,
+        unpack_info: &[32, 32, 32, 32, 16, 16, 16, 16, 1, 1, 1],
+    }),
+    (0, 12, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 11,
+        unpack_info: &[6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 32, 32, 1],
+    }),
+    (0, 13, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 15,
+        unpack_info: &[32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 32, 32, 32, 32, 40, 1, 1],
+    }),
+    (0, 14, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 11,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 40],
+    }),
+    (0, 15, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 11,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 40],
+    }),
+    (0, 16, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 9,
+        unpack_info: &[7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 1, 1, 1, 1, 64, 64, 64, 64, 40, 1, 1],
+    }),
+    (0, 17, PackedInfoConst {
+        is_packed: true,
+        num_packed_words: 3,
+        unpack_info: &[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 8, 8, 4, 40, 1, 1],
+    }),
+];

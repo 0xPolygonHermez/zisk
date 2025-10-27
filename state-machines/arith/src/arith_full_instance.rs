@@ -47,7 +47,7 @@ impl<F: PrimeField64> ArithFullInstance<F> {
     pub fn new(arith_full_sm: Arc<ArithFullSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            ArithTrace::<usize>::AIR_ID,
+            ArithTrace::<F>::AIR_ID,
             "ArithFullInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );

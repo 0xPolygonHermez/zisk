@@ -98,7 +98,7 @@ impl WorkerServiceConfig {
         }
 
         // Generate a random worker ID
-        let random_worker_id = format!("worker-{}", uuid::Uuid::new_v4().simple());
+        let random_worker_id = format!("{}", uuid::Uuid::new_v4().simple());
 
         let mut builder = config::Config::builder()
             .set_default("worker.worker_id", random_worker_id)?
@@ -108,7 +108,7 @@ impl WorkerServiceConfig {
             .set_default("coordinator.url", zisk_distributed_coordinator::Config::default_url())?
             .set_default("connection.reconnect_interval_seconds", 5)?
             .set_default("connection.heartbeat_timeout_seconds", 30)?
-            .set_default("logging.level", "debug")?
+            .set_default("logging.level", "info")?
             .set_default("logging.format", "pretty")?;
 
         if let Some(path) = config {

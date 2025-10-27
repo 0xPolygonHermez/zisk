@@ -35,10 +35,7 @@
 //! | STORE_MEM  | c        | Value is stored in memory at a constant address             |
 //! | STORE_IND  | c        | value is stored in memory at an indirect address a + offset |
 
-use crate::zisk_ops::ZiskOp;
 use crate::{source_to_str, store_to_str, InstContext};
-use fields::PrimeField64;
-use zisk_pil::MainTraceRow;
 
 /// a or b registers source is the current value of the c register
 pub const SRC_C: u64 = 0;
@@ -83,7 +80,8 @@ pub enum ZiskOperationType {
     Sha256,
     PubOut,
     ArithEq,
-    ArithEq384, // Note: Add new core operations here
+    ArithEq384,
+    BigInt, // Note: Add new core operations here
     // ZisK Free Input Operations
     FcallParam,
     Fcall,
@@ -100,6 +98,7 @@ pub const SHA256_OP_TYPE_ID: u32 = ZiskOperationType::Sha256 as u32;
 pub const PUB_OUT_OP_TYPE_ID: u32 = ZiskOperationType::PubOut as u32;
 pub const ARITH_EQ_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq as u32;
 pub const ARITH_EQ_384_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq384 as u32;
+pub const BIG_INT_OP_TYPE_ID: u32 = ZiskOperationType::BigInt as u32;
 pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
 pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
 pub const FCALL_GET_OP_TYPE_ID: u32 = ZiskOperationType::FcallGet as u32;
@@ -275,185 +274,5 @@ impl ZiskInst {
             | (((self.store == STORE_REG) as u64) << 15);
 
         flags
-    }
-
-    #[inline(always)]
-    pub fn build_constant_trace<F: PrimeField64>(&self) -> MainTraceRow<F> {
-        let jmp_offset1 = if self.jmp_offset1 >= 0 {
-            F::from_u64(self.jmp_offset1 as u64)
-        } else {
-            F::neg(F::from_u64((-self.jmp_offset1) as u64))
-        };
-
-        let jmp_offset2 = if self.jmp_offset2 >= 0 {
-            F::from_u64(self.jmp_offset2 as u64)
-        } else {
-            F::neg(F::from_u64((-self.jmp_offset2) as u64))
-        };
-
-        let store_offset = if self.store_offset >= 0 {
-            F::from_u64(self.store_offset as u64)
-        } else {
-            F::neg(F::from_u64((-self.store_offset) as u64))
-        };
-
-        let a_offset_imm0 = if self.a_offset_imm0 as i64 >= 0 {
-            F::from_u64(self.a_offset_imm0)
-        } else {
-            F::neg(F::from_u64((-(self.a_offset_imm0 as i64)) as u64))
-        };
-
-        let b_offset_imm0 = if self.b_offset_imm0 as i64 >= 0 {
-            F::from_u64(self.b_offset_imm0)
-        } else {
-            F::neg(F::from_u64((-(self.b_offset_imm0 as i64)) as u64))
-        };
-
-        MainTraceRow {
-            a: [F::ZERO, F::ZERO],
-            b: [F::ZERO, F::ZERO],
-            c: [F::ZERO, F::ZERO],
-
-            flag: F::ZERO,
-            pc: F::from_u64(self.paddr),
-            a_src_imm: F::from_bool(self.a_src == SRC_IMM),
-            a_src_mem: F::from_bool(self.a_src == SRC_MEM),
-            a_src_reg: F::from_bool(self.a_src == SRC_REG),
-            a_offset_imm0,
-            // #[cfg(not(feature = "sp"))]
-            a_imm1: F::from_u64(self.a_use_sp_imm1),
-            // #[cfg(feature = "sp")]
-            // sp: F::from_u64(inst_ctx.sp),
-            // #[cfg(feature = "sp")]
-            // a_src_sp: F::from_bool(inst.a_src == SRC_SP),
-            // #[cfg(feature = "sp")]
-            // a_use_sp_imm1: F::from_u64(inst.a_use_sp_imm1),
-            a_src_step: F::from_bool(self.a_src == SRC_STEP),
-            b_src_imm: F::from_bool(self.b_src == SRC_IMM),
-            b_src_mem: F::from_bool(self.b_src == SRC_MEM),
-            b_src_reg: F::from_bool(self.b_src == SRC_REG),
-            b_offset_imm0,
-            // #[cfg(not(feature = "sp"))]
-            b_imm1: F::from_u64(self.b_use_sp_imm1),
-            // #[cfg(feature = "sp")]
-            // b_use_sp_imm1: F::from_u64(inst.b_use_sp_imm1),
-            b_src_ind: F::from_bool(self.b_src == SRC_IND),
-            ind_width: F::from_u64(self.ind_width),
-            is_external_op: F::from_bool(self.is_external_op),
-            // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
-            // of the copyb, use to get free-input information
-            op: if self.op == ZiskOp::Fcall.code()
-                || self.op == ZiskOp::FcallGet.code()
-                || self.op == ZiskOp::FcallParam.code()
-            {
-                F::from_u8(ZiskOp::CopyB.code())
-            } else {
-                F::from_u8(self.op)
-            },
-            store_ra: F::from_bool(self.store_ra),
-            store_mem: F::from_bool(self.store == STORE_MEM),
-            store_reg: F::from_bool(self.store == STORE_REG),
-            store_ind: F::from_bool(self.store == STORE_IND),
-            store_offset,
-            set_pc: F::from_bool(self.set_pc),
-            // #[cfg(feature = "sp")]
-            // store_use_sp: F::from_bool(inst.store_use_sp),
-            // #[cfg(feature = "sp")]
-            // set_sp: F::from_bool(inst.set_sp),
-            // #[cfg(feature = "sp")]
-            // inc_sp: F::from_u64(inst.inc_sp),
-            jmp_offset1,
-            jmp_offset2,
-            m32: F::from_bool(self.m32),
-            addr1: F::ZERO,
-            a_reg_prev_mem_step: F::ZERO,
-            b_reg_prev_mem_step: F::ZERO,
-            store_reg_prev_mem_step: F::ZERO,
-            store_reg_prev_value: [F::ZERO, F::ZERO],
-        }
-    }
-
-    #[inline(always)]
-    pub fn write_constant_trace<F: PrimeField64>(&self, trace: &mut MainTraceRow<F>) {
-        // Write the trace fields
-        trace.a = [F::ZERO, F::ZERO];
-        trace.b = [F::ZERO, F::ZERO];
-        trace.c = [F::ZERO, F::ZERO];
-        trace.flag = F::ZERO;
-        trace.pc = F::from_u64(self.paddr);
-        trace.a_src_imm = F::from_bool(self.a_src == SRC_IMM);
-        trace.a_src_mem = F::from_bool(self.a_src == SRC_MEM);
-        trace.a_src_reg = F::from_bool(self.a_src == SRC_REG);
-        trace.a_offset_imm0 = if self.a_offset_imm0 as i64 >= 0 {
-            F::from_u64(self.a_offset_imm0)
-        } else {
-            F::neg(F::from_u64((-(self.a_offset_imm0 as i64)) as u64))
-        };
-        // #[cfg(not(feature = "sp"))]
-        trace.a_imm1 = F::from_u64(self.a_use_sp_imm1);
-        // #[cfg(feature = "sp")]
-        // sp: F::from_u64(inst_ctx.sp),
-        // #[cfg(feature = "sp")]
-        // a_src_sp: F::from_bool(inst.a_src == SRC_SP),
-        // #[cfg(feature = "sp")]
-        // a_use_sp_imm1: F::from_u64(inst.a_use_sp_imm1),
-        trace.a_src_step = F::from_bool(self.a_src == SRC_STEP);
-        trace.b_src_imm = F::from_bool(self.b_src == SRC_IMM);
-        trace.b_src_mem = F::from_bool(self.b_src == SRC_MEM);
-        trace.b_src_reg = F::from_bool(self.b_src == SRC_REG);
-        trace.b_offset_imm0 = if self.b_offset_imm0 as i64 >= 0 {
-            F::from_u64(self.b_offset_imm0)
-        } else {
-            F::neg(F::from_u64((-(self.b_offset_imm0 as i64)) as u64))
-        };
-        // #[cfg(not(feature = "sp"))]
-        trace.b_imm1 = F::from_u64(self.b_use_sp_imm1);
-        // #[cfg(feature = "sp")]
-        // b_use_sp_imm1: F::from_u64(inst.b_use_sp_imm1),
-        trace.b_src_ind = F::from_bool(self.b_src == SRC_IND);
-        trace.ind_width = F::from_u64(self.ind_width);
-        trace.is_external_op = F::from_bool(self.is_external_op);
-        // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
-        // of the copyb, use to get free-input information
-        trace.op = if self.op == ZiskOp::Fcall.code()
-            || self.op == ZiskOp::FcallGet.code()
-            || self.op == ZiskOp::FcallParam.code()
-        {
-            F::from_u8(ZiskOp::CopyB.code())
-        } else {
-            F::from_u8(self.op)
-        };
-        trace.store_ra = F::from_bool(self.store_ra);
-        trace.store_mem = F::from_bool(self.store == STORE_MEM);
-        trace.store_reg = F::from_bool(self.store == STORE_REG);
-        trace.store_ind = F::from_bool(self.store == STORE_IND);
-        trace.store_offset = if self.store_offset >= 0 {
-            F::from_u64(self.store_offset as u64)
-        } else {
-            F::neg(F::from_u64((-self.store_offset) as u64))
-        };
-        trace.set_pc = F::from_bool(self.set_pc);
-        // #[cfg(feature = "sp")]
-        // store_use_sp: F::from_bool(inst.store_use_sp),
-        // #[cfg(feature = "sp")]
-        // set_sp: F::from_bool(inst.set_sp),
-        // #[cfg(feature = "sp")]
-        // inc_sp: F::from_u64(inst.inc_sp),
-        trace.jmp_offset1 = if self.jmp_offset1 >= 0 {
-            F::from_u64(self.jmp_offset1 as u64)
-        } else {
-            F::neg(F::from_u64((-self.jmp_offset1) as u64))
-        };
-        trace.jmp_offset2 = if self.jmp_offset2 >= 0 {
-            F::from_u64(self.jmp_offset2 as u64)
-        } else {
-            F::neg(F::from_u64((-self.jmp_offset2) as u64))
-        };
-        trace.m32 = F::from_bool(self.m32);
-        trace.addr1 = F::ZERO;
-        trace.a_reg_prev_mem_step = F::ZERO;
-        trace.b_reg_prev_mem_step = F::ZERO;
-        trace.store_reg_prev_mem_step = F::ZERO;
-        trace.store_reg_prev_value = [F::ZERO, F::ZERO];
     }
 }

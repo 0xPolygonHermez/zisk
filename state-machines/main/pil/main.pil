@@ -91,74 +91,76 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
 
     // Registers
 
-    col witness a[RC];
-    col witness b[RC];
-    col witness c[RC];
-    col witness flag;                  // Conditional flag modified by operations
-
-    col witness pc;                    // Program counter
+    col witness bits(32) a[RC];
+    col witness bits(32) b[RC];
+    col witness bits(32) c[RC];
+    col witness bits(1) flag;
+    col witness bits(32) pc;
 
     // Source A
 
-    col witness a_src_imm;             // Selector indicating that 'a' uses an immediate value.
-    col witness a_src_mem;             // Selector indicating that 'a' is read from memory.
-    col witness a_offset_imm0;         // Depending on the flag values, this witness contains either
+    col witness bits(1) a_src_imm;
+    col witness bits(1) a_src_mem;
+    col witness bits(64, signed) a_offset_imm0;
                                        // the lower 32-bit part of an immediate value or the memory
                                        // address offset.
     if (stack_enabled == 1) {
-        col witness air.sp;
-        col witness air.a_src_sp;
-        col witness air.a_use_sp_imm1;
+        col witness bits(32) air.sp;
+        col witness bits(1) air.a_src_sp;
+        col witness bits(32) air.a_use_sp_imm1;
     } else {
-        col witness air.a_imm1;        // The higher 32-bit part of a immediate value
+        col witness bits(32) air.a_imm1;
     }
-    col witness a_src_step;            // Selector to load the `step` in register `a`
+    col witness bits(1) a_src_step;
 
     // Source B
 
-    col witness b_src_imm;             // Selector indicating that 'b' uses an immediate value.
-    col witness b_src_mem;             // Selector indicating that 'b' is read from memory.
-    col witness b_offset_imm0;         // Depending on the flag values, this witness contains either
+    col witness bits(1) b_src_imm;
+    col witness bits(1) b_src_mem;
+    col witness bits(64, signed) b_offset_imm0;
                                        // the lower 32-bit part of an immediate value or the memory
                                        // address offset.
 
     if (stack_enabled) {
-        col witness air.b_use_sp_imm1;
+        col witness bits(32) air.b_use_sp_imm1;
     } else {
-        col witness air.b_imm1;        // The higher 32-bit part of a immediate value
+        col witness bits(32) air.b_imm1;
     }
-    col witness b_src_ind;             // Selector to indicate take value in a as address to
+    col witness bits(1) b_src_ind;
                                        // read b form memory (b = mem[a])
-    col witness ind_width;             // bytes: 8, 4, 2, 1
+    col witness bits(4) ind_width;
 
     // Operations related
 
-    col witness is_external_op;        // [is_external_op == 1] => operation op sent to bus
-    col witness op;                    // [is_external_op == 0 && op=0] ==>  a=last_c, flag=1
-                                       // [is_external_op == 0 && op=0] ==>  b=last_c, flag=0
+    col witness bits(1) is_external_op;
+    col witness bits(8) op;
+                                       // [is_external_op == 0 && op=1] ==>  c=b, flag=0 (copy_b)
                                        // else then this op is sent to the bus.
 
     // Destination C
 
-    col witness store_ra;              // Store the return address instead of the C register.
+    col witness bits(1) store_ra;
 
-    col witness store_mem;             // Selector for store c to memory
-    col witness store_ind;             // Selector for store c to memory address in a
+    col witness bits(1) store_mem;
+    
+    col witness bits(1) store_ind;
 
-    col witness store_offset;          // Memory address offset used on c
+    col witness bits(64, signed) store_offset;
 
-    col witness set_pc;                // Selector to set to pc the value in c
+    col witness bits(1) set_pc;
 
     if (stack_enabled) {
-        col witness air.store_use_sp;  // Selector to calculate store address use sp
-        col witness air.set_sp;        // Selector to set result as new value of sp
-        col witness air.inc_sp;        // Increment of sp (negative or positive)
+        col witness bits(1) air.store_use_sp;
+        col witness bits(1) air.set_sp;
+        col witness bits(64, signed) air.inc_sp;
     }
 
 
-    col witness jmp_offset1;           // Next default pc if flag = 0
-    col witness jmp_offset2;           // Next default pc if flag = 1
-    col witness m32;                   // Selector to indicate the high part of operands (a,b) send
+    col witness bits(64, signed) jmp_offset1;
+
+    col witness bits(64, signed) jmp_offset2;
+
+    col witness bits(1) m32;
                                        // to bus must be 0, because it's a 32 bits operation. Used
                                        // to avoid sent to bus dirty values.
 
@@ -169,20 +171,28 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     // are "converted" to witness to avoid increase the degree on stage 2 with extension.
 
     if (stack_enabled) {
-        col witness air.addr0;
-        col witness air.addr1;
-        col witness air.addr2;
+        col witness bits(32) air.addr0;
+        col witness bits(32) air.addr1;
+        col witness bits(32) air.addr2;
 
         addr0 === a_offset_imm0 + a_use_sp_imm1 * sp;
-        addr1 === b_offset_imm0 + b_src_ind * (a[0] + 2**32 * a[1]) +  b_use_sp_imm1 * sp;
+        addr1 === b_offset_imm0 + b_src_ind * a[0] +  b_use_sp_imm1 * sp;
         addr2 === store_offset + store_ind * a[0] + store_use_sp * sp;
+
+        // to avoid the addr1 overflow when a[0] has high value, this is not problem
+        // because use address of 32-bits
+        (store_ind + b_src_ind) * a[1] === 0;
     } else {
         const expr air.addr0;
-        col witness air.addr1;
+        col witness bits(32) air.addr1;
         const expr air.addr2;
         addr0 = a_offset_imm0;
-        addr1 === b_offset_imm0 + b_src_ind * (a[0] + 2**32 * a[1]);
+        addr1 === b_offset_imm0 + b_src_ind * a[0];
         addr2 = store_offset + store_ind * a[0];
+
+        // to avoid the addr1 overflow when a[0] has high value, this is not problem
+        // because use address of 32-bits
+        (store_ind + b_src_ind) * a[1] === 0;
     }
 
     //
@@ -246,13 +256,13 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     //   region. As a result, no memory state machine can validate memory access in this area;
     //   only the main state machine can 'prove' such memory access.
 
-    col witness a_reg_prev_mem_step;      // Previous mem_step where register a_offset_imm0 is used
-    col witness b_reg_prev_mem_step;      // Previous mem_step where register b_offset_imm0 is used
-    col witness store_reg_prev_mem_step;  // Previous mem_step where register store_offset is used
-    col witness store_reg_prev_value[RC]; // Previous value of register store_offset is used
-    col witness a_src_reg;                // Selector indicating that 'a' is read from register
-    col witness b_src_reg;                // Selector indicating that 'b' is read from register
-    col witness store_reg;                // Selector to store result to register
+    col witness bits(40) a_reg_prev_mem_step;
+    col witness bits(40) b_reg_prev_mem_step;
+    col witness bits(40) store_reg_prev_mem_step;
+    col witness bits(32) store_reg_prev_value[RC];
+    col witness bits(1) a_src_reg;
+    col witness bits(1) b_src_reg;
+    col witness bits(1) store_reg;
 
     // Calculate the memory step from the main step
 
@@ -484,6 +494,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c]);
         direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c]);
     }
+
+    SEGMENT_L1 * (segment_initial_pc - pc) === 0;
 
     // This global constraint is sent to the bus to define the initial and final values of
     // continuations. A global constraint is used to ensure there is only one initial and one final

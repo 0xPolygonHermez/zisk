@@ -111,7 +111,6 @@ impl Planner for ArithEqPlanner {
                         InstanceType::Instance,
                         check_point,
                         Some(converted),
-                        4,
                     )
                 })
                 .collect();
@@ -128,7 +127,6 @@ impl Planner for ArithEqPlanner {
                     InstanceType::Table,
                     CheckPoint::None,
                     None,
-                    1,
                 ));
             }
         }
