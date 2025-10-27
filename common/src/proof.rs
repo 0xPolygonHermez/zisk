@@ -48,8 +48,8 @@ pub fn save_proof(
     // Calculate compression statistics
     let raw_size = proof_bytes.len();
 
-    info!("Final proof compression completed:");
-    info!("  Raw: {} ({} bytes)", raw_path.display(), raw_size);
+    info!("[PostJob] Saving proof:");
+    info!("[PostJob] Raw: {} ({} bytes)", raw_path.display(), raw_size);
 
     if with_zip {
         // Compress proof data and write to file
@@ -57,7 +57,12 @@ pub fn save_proof(
 
         let ratio = zip_size as f64 / raw_size as f64;
 
-        info!("  Compressed: {} ({} bytes, ratio: {:.2}x)", zip_path.display(), zip_size, ratio);
+        info!(
+            "[PostJob] Compressed: {} ({} bytes, ratio: {:.2}x)",
+            zip_path.display(),
+            zip_size,
+            ratio
+        );
     }
 
     Ok(())

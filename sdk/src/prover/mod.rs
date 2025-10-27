@@ -2,9 +2,11 @@ mod asm;
 mod backend;
 mod emu;
 
-pub(crate) use asm::*;
+pub use asm::*;
 use backend::*;
-pub(crate) use emu::*;
+pub use emu::*;
+use proofman::{AggProofs, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman_common::ProofOptions;
 
 use crate::Proof;
 use anyhow::Result;
@@ -27,6 +29,29 @@ pub trait ProverEngine {
         &self,
         input: Option<PathBuf>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)>;
+
+    fn world_rank(&self) -> i32;
+
+    fn local_rank(&self) -> i32;
+
+    fn mpi_broadcast(&self, data: &mut Vec<u8>);
+
+    fn generate_proof_from_lib(
+        &self,
+        phase_inputs: ProvePhaseInputs,
+        options: ProofOptions,
+        phase: ProvePhase,
+    ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>>;
+
+    fn receive_aggregated_proofs(
+        &self,
+        agg_proofs: Vec<AggProofs>,
+        last_proof: bool,
+        final_proof: bool,
+        options: &ProofOptions,
+    ) -> Option<Vec<AggProofs>>;
+
+    fn executed_steps(&self) -> u64;
 }
 
 pub trait ZiskBackend: Send + Sync {
@@ -62,5 +87,40 @@ impl<C: ZiskBackend> ZiskProver<C> {
         input: Option<PathBuf>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
         self.prover.prove(input)
+    }
+
+    pub fn world_rank(&self) -> i32 {
+        self.prover.world_rank()
+    }
+
+    pub fn local_rank(&self) -> i32 {
+        self.prover.local_rank()
+    }
+
+    pub fn mpi_broadcast(&self, data: &mut Vec<u8>) {
+        self.prover.mpi_broadcast(data);
+    }
+
+    pub fn generate_proof_from_lib(
+        &self,
+        phase_inputs: ProvePhaseInputs,
+        options: ProofOptions,
+        phase: ProvePhase,
+    ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>> {
+        self.prover.generate_proof_from_lib(phase_inputs, options, phase)
+    }
+
+    pub fn receive_aggregated_proofs(
+        &self,
+        agg_proofs: Vec<AggProofs>,
+        last_proof: bool,
+        final_proof: bool,
+        options: &ProofOptions,
+    ) -> Option<Vec<AggProofs>> {
+        self.prover.receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
+    }
+
+    pub fn executed_steps(&self) -> u64 {
+        self.prover.executed_steps()
     }
 }

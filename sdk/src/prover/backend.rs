@@ -2,7 +2,7 @@ use crate::Proof;
 use anyhow::Result;
 use bytemuck::cast_slice;
 use fields::Goldilocks;
-use proofman::{ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman::{AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::{DebugInfo, ProofOptions};
 use std::{fs::File, io::Write, path::PathBuf, time::Duration};
 use zisk_common::{ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
@@ -148,5 +148,28 @@ impl ProverBackend {
         self.proofman.set_barrier();
 
         Ok((execution_result, elapsed, stats, proof))
+    }
+
+    pub fn mpi_broadcast(&self, data: &mut Vec<u8>) {
+        self.proofman.mpi_broadcast(data);
+    }
+
+    pub fn generate_proof_from_lib(
+        &self,
+        phase_inputs: ProvePhaseInputs,
+        options: ProofOptions,
+        phase: ProvePhase,
+    ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>> {
+        self.proofman.generate_proof_from_lib(phase_inputs, options, phase)
+    }
+
+    pub fn receive_aggregated_proofs(
+        &self,
+        agg_proofs: Vec<AggProofs>,
+        last_proof: bool,
+        final_proof: bool,
+        options: &ProofOptions,
+    ) -> Option<Vec<AggProofs>> {
+        self.proofman.receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
     }
 }

@@ -11,21 +11,16 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_distributed_common::{AggregationParams, BlockContext, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
+use zisk_sdk::{Asm, ProverClient, ZiskProver};
 
-use asm_runner::AsmRunnerOptions;
-use asm_runner::AsmServices;
-use fields::Goldilocks;
-use libloading::{Library, Symbol};
+use proofman::ProofInfo;
 use proofman::ProvePhaseInputs;
-use proofman::{ProofInfo, ProofMan};
 use proofman_common::ParamsGPU;
 use proofman_common::ProofOptions;
 use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::{error, info};
-
-use zisk_common::{ZiskLib, ZiskLibInitFn};
 
 use crate::config::ProverServiceConfigDto;
 
@@ -237,6 +232,7 @@ pub struct JobContext {
     pub allocation: Vec<u32>, // Worker allocation for this job, vector of all computed units assigned
     pub total_compute_units: u32, // Total compute units for the whole job
     pub phase: JobPhase,
+    pub executed_steps: u64,
 }
 
 pub struct Worker {
@@ -245,78 +241,34 @@ pub struct Worker {
     state: WorkerState,
     current_job: Option<Arc<Mutex<JobContext>>>,
     current_computation: Option<JoinHandle<()>>,
+
+    prover: Arc<ZiskProver<Asm>>,
     prover_config: ProverConfig,
-
-    // It is important to keep the witness_lib declaration before the proofman declaration
-    // to ensure that the witness library is dropped before the proofman.
-    _witness_lib: Arc<Box<dyn ZiskLib<Goldilocks>>>,
-    _asm_services: Option<AsmServices>,
-
-    proofman: Arc<ProofMan<Goldilocks>>,
-    local_rank: i32,
 }
 
 impl Worker {
     pub fn new(
         worker_id: WorkerId,
         compute_capacity: ComputeCapacity,
-        config: ProverConfig,
+        prover_config: ProverConfig,
     ) -> Result<Self> {
-        info!("Starting asm microservices...");
-
-        let library =
-            unsafe { Library::new(config.witness_lib.clone()).expect("Failed to load library") };
-        let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
-            unsafe { library.get(b"init_library").expect("Failed to get symbol") };
-
-        let base_port = config.asm_port;
-        let unlock_mapped_memory = config.unlock_mapped_memory;
-
-        let mut witness_lib = witness_lib_constructor(
-            config.verbose.into(),
-            config.elf.clone(),
-            config.asm.clone(),
-            config.asm_rom.clone(),
-            base_port,
-            unlock_mapped_memory,
-            config.shared_tables,
-        )
-        .expect("Failed to initialize witness library");
-
-        let proofman = ProofMan::<Goldilocks>::new(
-            config.proving_key.clone(),
-            config.custom_commits_map.clone(),
-            config.verify_constraints,
-            config.aggregation,
-            config.final_snark,
-            config.gpu_params.clone(),
-            config.verbose.into(),
-            witness_lib.get_packed_info(),
-        )
-        .expect("Failed to initialize proofman");
-
-        let world_rank = proofman.get_world_rank();
-        let local_rank = proofman.get_local_rank();
-
-        let asm_runner_options = AsmRunnerOptions::new()
-            .with_verbose(config.verbose > 0)
-            .with_base_port(config.asm_port)
-            .with_world_rank(world_rank)
-            .with_local_rank(local_rank)
-            .with_unlock_mapped_memory(config.unlock_mapped_memory);
-
-        let asm_services = if config.emulator {
-            None
-        } else {
-            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-            asm_services
-                .start_asm_services(config.asm.as_ref().unwrap(), asm_runner_options.clone())?;
-            Some(asm_services)
-        };
-
-        proofman.register_witness(&mut *witness_lib, library);
-
-        let witness_lib = Arc::from(witness_lib);
+        let prover = Arc::new(
+            ProverClient::builder()
+                .asm()
+                .prove()
+                .aggregation(true)
+                .witness_lib_path(prover_config.witness_lib.clone())
+                .proving_key_path(prover_config.proving_key.clone())
+                .elf_path(prover_config.elf.clone())
+                .verbose(prover_config.verbose)
+                .shared_tables(prover_config.shared_tables)
+                .asm_path_opt(prover_config.asm.clone())
+                .base_port_opt(prover_config.asm_port)
+                .unlock_mapped_memory(prover_config.unlock_mapped_memory)
+                .gpu(prover_config.gpu_params.clone())
+                .print_command_info()
+                .build()?,
+        );
 
         Ok(Self {
             _worker_id: worker_id,
@@ -324,16 +276,13 @@ impl Worker {
             state: WorkerState::Disconnected,
             current_job: None,
             current_computation: None,
-            prover_config: config,
-            _witness_lib: witness_lib,
-            proofman: Arc::new(proofman),
-            local_rank,
-            _asm_services: asm_services,
+            prover,
+            prover_config,
         })
     }
 
     pub fn local_rank(&self) -> i32 {
-        self.local_rank
+        self.prover.local_rank()
     }
 
     pub fn state(&self) -> &WorkerState {
@@ -391,6 +340,7 @@ impl Worker {
             allocation,
             total_compute_units,
             phase: JobPhase::Contributions,
+            executed_steps: 0,
         }));
         self.current_job = Some(current_job.clone());
 
@@ -425,7 +375,7 @@ impl Worker {
         let mut serialized =
             borsh::to_vec(&(JobPhase::Contributions, job_id, phase_inputs, options)).unwrap();
 
-        self.proofman.mpi_broadcast(&mut serialized);
+        self.prover.mpi_broadcast(&mut serialized);
     }
 
     pub async fn handle_prove(
@@ -453,7 +403,7 @@ impl Worker {
         let mut serialized =
             borsh::to_vec(&(JobPhase::Prove, job_id, phase_inputs, options)).unwrap();
 
-        self.proofman.mpi_broadcast(&mut serialized);
+        self.prover.mpi_broadcast(&mut serialized);
     }
 
     pub async fn handle_aggregate(
@@ -470,10 +420,10 @@ impl Worker {
         job: Arc<Mutex<JobContext>>,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
-        let proofman = self.proofman.clone();
+        let prover = self.prover.clone();
 
         tokio::spawn(async move {
-            let job = job.lock().await;
+            let mut job = job.lock().await;
             let job_id = job.job_id.clone();
 
             info!("Computing Contribution for {job_id}");
@@ -488,9 +438,15 @@ impl Worker {
 
             let options = Self::get_proof_options_partial_contribution();
 
-            let result =
-                Self::execute_contribution_task(job_id.clone(), proofman, phase_inputs, options)
-                    .await;
+            let result = Self::execute_contribution_task(
+                job_id.clone(),
+                prover.as_ref(),
+                phase_inputs,
+                options,
+            )
+            .await;
+
+            job.executed_steps = prover.executed_steps();
 
             match result {
                 Ok(data) => {
@@ -514,14 +470,14 @@ impl Worker {
 
     pub async fn execute_contribution_task(
         job_id: JobId,
-        proofman: Arc<ProofMan<Goldilocks>>,
+        prover: &ZiskProver<Asm>,
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
     ) -> Result<Vec<ContributionsInfo>> {
         let phase = proofman::ProvePhase::Contributions;
 
         // Handle the result immediately without holding it across await
-        let challenge = match proofman.generate_proof_from_lib(phase_inputs, options, phase) {
+        let challenge = match prover.generate_proof_from_lib(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Contributions(challenge)) => {
                 info!("Contribution computation successful for {job_id}");
                 challenge
@@ -547,7 +503,7 @@ impl Worker {
         challenges: Vec<ContributionsInfo>,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
-        let proofman = self.proofman.clone();
+        let prover = self.prover.clone();
 
         tokio::spawn(async move {
             let job = job.lock().await;
@@ -560,7 +516,8 @@ impl Worker {
             let options = Self::get_proof_options_prove();
 
             let result =
-                Self::execute_prove_task(job_id.clone(), proofman, phase_inputs, options).await;
+                Self::execute_prove_task(job_id.clone(), prover.as_ref(), phase_inputs, options)
+                    .await;
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Proofs {
@@ -583,13 +540,13 @@ impl Worker {
 
     pub async fn execute_prove_task(
         job_id: JobId,
-        proofman: Arc<ProofMan<Goldilocks>>,
+        prover: &ZiskProver<Asm>,
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
     ) -> Result<Vec<AggProofs>> {
-        let world_rank = proofman.rank().unwrap_or(0);
+        let world_rank = prover.world_rank();
 
-        let proof = match proofman.generate_proof_from_lib(
+        let proof = match prover.generate_proof_from_lib(
             phase_inputs,
             options,
             proofman::ProvePhase::Internal,
@@ -619,8 +576,7 @@ impl Worker {
         agg_params: AggregationParams,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
-        let proofman = self.proofman.clone();
-        let witness_lib = self._witness_lib.clone();
+        let prover = self.prover.clone();
 
         tokio::spawn(async move {
             let job = job.lock().await;
@@ -640,7 +596,7 @@ impl Worker {
 
             let options = Self::get_proof_options_aggregation(&agg_params);
 
-            let result = proofman
+            let result = prover
                 .receive_aggregated_proofs(
                     agg_proofs,
                     agg_params.last_proof,
@@ -650,19 +606,11 @@ impl Worker {
                 .map(|proof| proof.into_iter().map(|p| p.proof).collect())
                 .unwrap_or_default();
 
-            let executed_steps = match witness_lib.execution_result() {
-                Some((exec_result, _)) => exec_result.executed_steps,
-                None => {
-                    error!("Failed to get execution result from witness library for {job_id}");
-                    0
-                }
-            };
-
             let _ = tx.send(ComputationResult::AggProof {
                 job_id,
                 success: true,
                 result: Ok(Some(result)),
-                executed_steps,
+                executed_steps: job.executed_steps,
             });
         })
     }
@@ -713,7 +661,7 @@ impl Worker {
     pub async fn handle_mpi_broadcast_request(&self) -> Result<()> {
         let mut bytes: Vec<u8> = Vec::new();
 
-        self.proofman.mpi_broadcast(&mut bytes);
+        self.prover.mpi_broadcast(&mut bytes);
 
         // extract byte 0 to decide the option
         let phase = borsh::from_slice(&bytes[0..1]).unwrap();
@@ -725,7 +673,7 @@ impl Worker {
 
                 Self::execute_contribution_task(
                     job_id,
-                    self.proofman.clone(),
+                    self.prover.as_ref(),
                     phase_inputs,
                     options,
                 )
@@ -735,7 +683,7 @@ impl Worker {
                 let (job_id, phase_inputs, options): (JobId, ProvePhaseInputs, ProofOptions) =
                     borsh::from_slice(&bytes[1..]).unwrap();
 
-                Self::execute_prove_task(job_id, self.proofman.clone(), phase_inputs, options)
+                Self::execute_prove_task(job_id, self.prover.as_ref(), phase_inputs, options)
                     .await?;
             }
             JobPhase::Aggregate => {

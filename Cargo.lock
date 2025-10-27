@@ -5631,6 +5631,7 @@ dependencies = [
  "zisk-distributed-coordinator",
  "zisk-distributed-grpc-api",
  "zisk-pil",
+ "zisk-sdk",
 ]
 
 [[package]]

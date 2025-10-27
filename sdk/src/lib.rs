@@ -6,6 +6,7 @@ mod zisk_lib_loader;
 
 pub use builder::*;
 pub use client::ProverClient;
+pub use prover::*;
 pub use utils::*;
 pub use zisk_lib_loader::*;
 
