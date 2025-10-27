@@ -55,7 +55,11 @@ impl From<JobId> for String {
 
 impl std::fmt::Display for JobId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "JobId({})", self.0)
+        if self.0.len() > 8 {
+            write!(f, "JobId({:.8}…)", self.0)
+        } else {
+            write!(f, "JobId({})", self.0)
+        }
     }
 }
 
@@ -97,7 +101,11 @@ impl From<BlockId> for String {
 
 impl std::fmt::Display for BlockId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BlockId({})", self.0)
+        if self.0.len() > 8 {
+            write!(f, "BlockId({:.8}…)", self.0)
+        } else {
+            write!(f, "BlockId({})", self.0)
+        }
     }
 }
 
@@ -139,7 +147,11 @@ impl From<WorkerId> for String {
 
 impl std::fmt::Display for WorkerId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "WorkerId({})", self.0)
+        if self.0.len() > 8 {
+            write!(f, "WorkerId({:.8}…)", self.0)
+        } else {
+            write!(f, "WorkerId({})", self.0)
+        }
     }
 }
 
