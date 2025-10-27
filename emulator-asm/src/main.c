@@ -24,14 +24,13 @@
 
 // Assembly-provided functions
 void emulator_start(void);
-void write_ro_data(void);
 uint64_t get_max_bios_pc(void);
 uint64_t get_max_program_pc(void);
 uint64_t get_gen_method(void);
 
 // Address map
 #define ROM_ADDR (uint64_t)0x80000000
-#define ROM_SIZE (uint64_t)0x08000000 // 128MB
+#define ROM_SIZE (uint64_t)0x10000000 // 256MB
 
 #define INPUT_ADDR (uint64_t)0x90000000
 #define MAX_INPUT_SIZE (uint64_t)0x08000000 // 128MB
@@ -2690,9 +2689,6 @@ void server_setup (void)
         exit(-1);
     }
     if (verbose) printf("sem_open(%s) succeeded\n", sem_shutdown_done_name);
-
-    /* Write read-only ROM data */
-    write_ro_data();
 }
 
 void server_reset (void)
