@@ -179,5 +179,5 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, c
 
     col witness bits(1) multiplicity;
     multiplicity * (1 - multiplicity) === 0; // multiplicity is not used yet, so it must be 0 or 1
-    lookup_proves(OPERATION_BUS_ID, [b_op + 0x20 * mode32, ...a, ...b, ...c, cout - result_is_a], multiplicity);
+    lookup_proves(operation_bus_id, [b_op + 0x20 * mode32, ...a, ...b, ...c, cout - result_is_a], multiplicity);
 }
