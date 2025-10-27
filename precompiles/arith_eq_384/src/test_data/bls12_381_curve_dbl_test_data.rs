@@ -1,4 +1,4 @@
-use precomp_arith_eq_384::ARITH_EQ_384_U64S_DOUBLE;
+use crate::arith_eq_384_constants::ARITH_EQ_384_U64S_DOUBLE;
 
 use super::str_test_data;
 
