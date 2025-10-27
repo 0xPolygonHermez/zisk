@@ -151,13 +151,22 @@ impl Coordinator {
             let job = job_lock.read().await;
 
             if let JobState::Running(phase) = &job.state() {
+                let start_time =
+                    job.start_times.get(phase).map(|t| t.timestamp() as u64).unwrap_or_else(|| {
+                        error!(
+                            "Start time for phase {:?} is missing for job {}",
+                            phase, job.job_id
+                        );
+                        0
+                    });
+
                 jobs.push(JobStatusDto {
                     job_id: job.job_id.clone(),
                     block_id: job.block.block_id.clone(),
                     phase: Some(phase.clone()),
                     state: job.state().clone(),
                     assigned_workers: job.workers.clone(),
-                    start_time: job.start_time.timestamp() as u64,
+                    start_time,
                     duration_ms: job.duration_ms.unwrap_or(0),
                 });
             }
@@ -188,6 +197,13 @@ impl Coordinator {
         let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.read().await;
 
+        let phase = JobPhase::Contributions;
+        let start_time =
+            job.start_times.get(&phase).map(|t| t.timestamp() as u64).unwrap_or_else(|| {
+                error!("Start time for phase {:?} is missing for job {}", phase, job.job_id);
+                0
+            });
+
         Ok(JobStatusDto {
             job_id: job.job_id.clone(),
             block_id: job.block.block_id.clone(),
@@ -198,7 +214,7 @@ impl Coordinator {
                 None
             },
             assigned_workers: job.workers.clone(),
-            start_time: job.start_time.timestamp() as u64,
+            start_time,
             duration_ms: job.duration_ms.unwrap_or(0),
         })
     }
@@ -303,10 +319,10 @@ impl Coordinator {
             .await?;
 
         info!(
-            "[Job] Started {} with inputs={}, capacity={}, workers={}",
+            "[Job] Started {} successfully Inputs: {} Capacity: {} Workers: {}",
             job.job_id,
-            request.input_path,
-            required_compute_capacity,
+            job.block.input_path.display(),
+            job.compute_capacity,
             job.workers.len(),
         );
 
@@ -931,8 +947,6 @@ impl Coordinator {
 
         let active_workers = self.select_workers_for_execution(&job)?;
 
-        job.start_time_prove = Utc::now();
-
         drop(job); // Release jobs lock early
 
         // Start Phase2 for all workers
@@ -1022,7 +1036,12 @@ impl Coordinator {
             job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
 
         let end_time = Utc::now();
-        let duration = end_time.signed_duration_since(job.start_time);
+        let duration = end_time.signed_duration_since(
+            job.start_times.get(&JobPhase::Contributions).unwrap_or_else(|| {
+                error!("Missing start time for Phase1 in job {}", job.job_id);
+                &end_time
+            }),
+        );
         let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
         info!(
@@ -1235,8 +1254,6 @@ impl Coordinator {
 
         let proofs = self.collect_worker_proofs(&job, &agg_worker_id, &worker_id)?;
 
-        job.start_time_aggregate = Utc::now();
-
         drop(job); // Release jobs lock early
 
         self.send_aggregation_task(&job_id, &agg_worker_id, proofs, all_done).await?;
@@ -1312,7 +1329,13 @@ impl Coordinator {
         self.workers_pool.mark_workers_with_state(&assigned_workers, WorkerState::Idle).await?;
 
         let end_time = Utc::now();
-        let duration = end_time.signed_duration_since(job.start_time_prove);
+        let duration = end_time.signed_duration_since(
+            job.start_times.get(&JobPhase::Prove).unwrap_or_else(|| {
+                error!("Missing start time for Phase2 in job {}", job.job_id);
+                &end_time
+            }),
+        );
+
         let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
         // Provide operational visibility into Phase 2 progress
@@ -1412,7 +1435,12 @@ impl Coordinator {
         let phase2_results = job.results.get(&JobPhase::Prove).unwrap_or(&empty_results);
 
         let end_time = Utc::now();
-        let duration = end_time.signed_duration_since(job.start_time_prove);
+        let duration = end_time.signed_duration_since(
+            job.start_times.get(&JobPhase::Prove).unwrap_or_else(|| {
+                error!("Missing start time for Phase2 in job {}", job.job_id);
+                &end_time
+            }),
+        );
         let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
         // Provide operational visibility into Phase 2 progress
@@ -1597,20 +1625,42 @@ impl Coordinator {
 
         job.change_state(JobState::Completed);
 
-        let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
-
         let end_time = Utc::now();
-        let duration_agg = end_time.signed_duration_since(job.start_time_aggregate);
-        let duration_ms = Duration::from_millis(duration_agg.num_milliseconds() as u64);
+
+        let phase1_time = job.start_times.get(&JobPhase::Contributions).unwrap_or_else(|| {
+            error!("Missing start time for Phase1 in job {}", job.job_id);
+            &end_time
+        });
+        let phase2_time = job.start_times.get(&JobPhase::Prove).unwrap_or_else(|| {
+            error!("Missing start time for Phase2 in job {}", job.job_id);
+            &end_time
+        });
+        let phase3_time = job.start_times.get(&JobPhase::Aggregate).unwrap_or_else(|| {
+            error!("Missing start time for Phase3 in job {}", job.job_id);
+            &end_time
+        });
+
+        let phase1_duration = phase2_time.signed_duration_since(phase1_time);
+        let phase2_duration = phase3_time.signed_duration_since(phase2_time);
+        let phase3_duration = end_time.signed_duration_since(phase3_time);
 
         info!(
             "[Phase3] WorkerId {} done, phase 3 completed for {} ({:.3}s)",
             agg_worker_id,
             job_id,
-            duration_ms.as_secs_f32()
+            phase3_duration.as_seconds_f32()
         );
 
-        info!("[Job] Finished {} (duration: {:.3}s)", job_id, duration.as_secs_f32());
+        let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
+        info!("[Job] Finished {} successfully ✅ Duration: {:.3}s ({:.3}s+{:.3}s+{:.3}s) Inputs: {}, Capacity: {} ",
+            job_id,
+            duration.as_secs_f32(),
+            phase1_duration.as_seconds_f32(),
+            phase2_duration.as_seconds_f32(),
+            phase3_duration.as_seconds_f32(),
+            job.block.input_path.display(),
+            job.compute_capacity,
+        );
 
         // Release job lock before calling post_launch_proof
         drop(job);

@@ -14,6 +14,7 @@ use std::{
     ops::Range,
     path::PathBuf,
 };
+use tracing::error;
 
 /// Job ID wrapper for type safety
 #[derive(
@@ -191,7 +192,7 @@ impl From<u32> for ComputeCapacity {
 
 impl std::fmt::Display for ComputeCapacity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} CU", self.compute_units)
+        write!(f, "{}CU", self.compute_units)
     }
 }
 
@@ -236,9 +237,7 @@ impl Debug for JobStats {
 #[derive(Debug, Clone)]
 pub struct Job {
     pub job_id: JobId,
-    pub start_time: DateTime<Utc>,
-    pub start_time_prove: DateTime<Utc>,
-    pub start_time_aggregate: DateTime<Utc>,
+    pub start_times: HashMap<JobPhase, DateTime<Utc>>,
     pub duration_ms: Option<u64>,
     pub state: JobState,
     pub block: BlockContext,
@@ -265,9 +264,7 @@ impl Job {
     ) -> Self {
         Self {
             job_id: JobId::new(),
-            start_time: Utc::now(),
-            start_time_prove: Utc::now(),
-            start_time_aggregate: Utc::now(),
+            start_times: HashMap::new(),
             duration_ms: None,
             state: JobState::Created,
             block: BlockContext { block_id, input_path },
@@ -299,10 +296,21 @@ impl Job {
             self.add_start_time(new_phase.clone());
         }
 
-        if matches!(new_state, JobState::Completed | JobState::Failed) {
-            let end_time = Utc::now();
-            let duration = end_time.signed_duration_since(self.start_time);
-            self.duration_ms = Some(duration.num_milliseconds() as u64);
+        match new_state {
+            JobState::Running(phase) => {
+                let previous = self.start_times.insert(phase.clone(), Utc::now());
+                if previous.is_some() {
+                    error!("Start time for phase {:?} was already set", phase);
+                }
+            }
+            JobState::Completed | JobState::Failed => {
+                let end_time = Utc::now();
+                if let Some(start_time) = self.start_times.get(&JobPhase::Contributions) {
+                    let duration = end_time.signed_duration_since(*start_time);
+                    self.duration_ms = Some(duration.num_milliseconds() as u64);
+                }
+            }
+            _ => {}
         }
     }
 
