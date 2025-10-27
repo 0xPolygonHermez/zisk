@@ -1662,7 +1662,7 @@ impl Coordinator {
             "Steps: N/A".to_string().red().bold()
         };
         info!(
-            "{} {} ({:.3}s+{:.3}s+{:.3}s) Steps: {} Inputs: {}, Capacity: {} ",
+            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} Inputs: {}, Capacity: {} ",
             header,
             duration_str,
             phase1_duration.as_seconds_f32(),
