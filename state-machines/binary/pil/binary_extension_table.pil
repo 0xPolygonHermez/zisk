@@ -2,7 +2,7 @@ require "std_constants.pil"
 require "std_lookup.pil"
 
 /* PIL Binary Operations Table used by Binary Extension
-                                                                    Running Total
+                                                                  Running Total
     SLL     (OP:0x31)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |               2^19
     SRL     (OP:0x32)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20
     SRA     (OP:0x33)   2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20  + 2^19
@@ -21,11 +21,11 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
         error("N must be at least 2^22");
     }
 
-    const int SE_MASK_32 = 0xFFFFFFFF00000000;
-    const int SE_MASK_16 = 0xFFFFFFFFFFFF0000;
-    const int SE_MASK_8 = 0xFFFFFFFFFFFFFF00;
+    const int SE_MASK_32 = 0xFF_FF_FF_FF_00_00_00_00;
+    const int SE_MASK_16 = 0xFF_FF_FF_FF_FF_FF_00_00;
+    const int SE_MASK_8 =  0xFF_FF_FF_FF_FF_FF_FF_00;
 
-    const int SIGN_32_BIT = 0x80000000;
+    const int SIGN_32_BIT = 0x80_00_00_00;
     const int SIGN_BYTE = 0x80;
 
     const int LS_5_BITS = 0x1F;
@@ -47,11 +47,9 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                     0x34:P2_19, 0x35:P2_19, 0x36:P2_19,     // SLL_W, SRL_W, SRA_W
                     0x37:P2_11, 0x38:P2_11, 0x39:P2_11]...; // SE_B, SE_H, SE_W
 
-    #pragma fixed_size dword
-    col fixed C0; // Output C0  (32 bits)
-    #pragma fixed_size dword
-    col fixed C1; // Output C1  (32 bits)
-    col fixed OP_IS_SHIFT; // Operation is shift (1 bit)
+    col fixed C0;    // Output C0  (32 bits)
+    col fixed C1;    // Output C1  (32 bits)
+    col fixed FLAGS; // Flags (1 bit): op_is_shift
 
     #pragma transpile logfile:/tmp/binary_extension_table.txt
     for (int i = 0; i < N; i++) {
@@ -82,12 +80,10 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                 // Example: SRA(0x7F, offset=7, B=1) = 0x3F80000000000000 (no sign extend)
                 const int _b = b & LS_6_BITS;
                 out = a_positioned >> _b;
-                if (offset == 7) {
+                if (offset == 7 && (a & SIGN_BYTE)) {
                     // most significant bit of most significant byte define if negative or not
                     // if negative then add b bits one on the left
-                    if (a & SIGN_BYTE) {
-                        out = out | (MASK_64 << (64 - _b));
-                    }
+                    out = out | (MASK_64 << (64 - _b));
                 }
 
                 op_is_shift = 1;
@@ -134,12 +130,10 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                 } else {
                     const int _b = b & LS_5_BITS;
                     out = a_positioned >> _b;
-                    if (offset == 3) {
+                    if (offset == 3 && (a & SIGN_BYTE)) {
                         // most significant bit of most significant byte define if negative or not
                         // if negative then add b bits one on the left
-                        if (a & SIGN_BYTE) {
-                            out = out | (MASK_64 << (32 - _b));
-                        }
+                        out = out | (MASK_64 << (32 - _b));
                     }
                 }
 
@@ -179,26 +173,25 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                 // Example: SE_W with bytes forming 0x80000000 = 0xFFFFFFFF80000000 (negative)
                 if (offset <= 3) {
                     out = a_positioned;
-                    if (offset == 3) {
-                        if (a & SIGN_BYTE) {
-                            // the most significant bit of fourth byte determines the sign extend
-                            out = out | SE_MASK_32
-                        }
+                    if (offset == 3 && (a & SIGN_BYTE)) {
+                        // the most significant bit of fourth byte determines the sign extend
+                        out = out | SE_MASK_32;
                     }
                 }
 
             default:
-                error(`Invalid operation opcode: ${op} in row ${i}`);
+                error(`Invalid operation opcode: ${op} at row ${i}`);
         }
 
         const int c0 = out & MASK_32;
         const int c1 = (out >> 32) & MASK_32;
         C0[i] = c0;
         C1[i] = c1;
-        OP_IS_SHIFT[i] = op_is_shift;
-        log(`T[${i}] = [${op}, ${offset}, ${a}, ${b}, ${c0}, ${c1}, ${op_is_shift}, ${out}]`);
+        const int flags = op_is_shift;
+        FLAGS[i] = flags;
+        log(`T[${i}] = [${op}, ${offset}, ${a}, ${b}, ${c0}, ${c1}, ${flags}]`);
     }
 
     col witness multiplicity;
-    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1, OP_IS_SHIFT], multiplicity);
+    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1, FLAGS], multiplicity);
 }

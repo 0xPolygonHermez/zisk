@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "f84f0cfddc746ef78a60d60b39590d435cc7459acf576c2d05c93564d2971402";
+pub const PILOUT_HASH: &str = "7f85691377a8cca1b002f9c017cb041e63292a8d00797397fdcdac1542092e94";
 
 //AIRGROUP CONSTANTS
 
@@ -279,7 +279,7 @@ trace_row!(BinaryExtensionFixedRow<F> {
 pub type BinaryExtensionFixed<F> = GenericTrace<BinaryExtensionFixedRow<F>, 4194304, 0, 12>;
 
 trace_row!(BinaryExtensionTraceRow<F> {
- op:ubit(6), in1:[u8; 8], in2_low:u8, out:[[u32; 2]; 8], op_is_shift:bit, in2:[u32; 2], multiplicity:bit,
+ op:ubit(6), free_in_a:[u8; 8], free_in_b:u8, free_in_c:[[u32; 2]; 8], op_is_shift:bit, b:[u32; 2], multiplicity:bit,
 });
 pub type BinaryExtensionTrace<F> = GenericTrace<BinaryExtensionTraceRow<F>, 4194304, 0, 12>;
 
