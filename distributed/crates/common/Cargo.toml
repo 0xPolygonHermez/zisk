@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 proofman = { workspace = true }
+proofman-common = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }

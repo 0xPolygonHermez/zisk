@@ -1,5 +1,4 @@
 use anyhow::Result;
-use tracing::{error, info, warn};
 use zisk_distributed_common::{
     dto::{WebhookErrorDto, WebhookPayloadDto},
     JobId,
@@ -72,31 +71,22 @@ async fn send_webhook(
         WebhookPayloadDto::success(job_id.as_string(), duration_ms, proof_data, executed_steps)
     };
 
-    let response = match client
+    let response = client
         .post(&webhook_url)
         .header("Content-Type", "application/json")
         .json(&payload)
         .timeout(std::time::Duration::from_secs(10))
         .send()
-        .await
-    {
-        Ok(response) => response,
-        Err(e) => {
-            // This handles connection errors, timeouts, DNS resolution failures, etc.
-            error!("Failed to send webhook request to {}: {}", webhook_url, e);
-            return Err(e.into());
-        }
-    };
+        .await?;
 
-    if response.status().is_success() {
-        info!("Successfully sent webhook notification for {} to {}", job_id, webhook_url);
-    } else {
-        warn!(
+    // This handles HTTP response status codes.
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!(
             "Webhook returned non-success status {} for {}: {}",
             response.status(),
             job_id,
             response.text().await.unwrap_or_default()
-        );
+        ));
     }
 
     Ok(())
