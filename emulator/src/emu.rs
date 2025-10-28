@@ -1,6 +1,8 @@
 use std::mem;
 
-use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions};
+use crate::{
+    ElfSymbolReader, EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions,
+};
 use fields::PrimeField64;
 use mem_common::MemHelpers;
 use riscv::RiscVRegisters;
@@ -13,9 +15,9 @@ use data_bus::DataBusTrait;
 use zisk_common::{EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
-    EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, OUTPUT_ADDR, ROM_ENTRY,
-    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-    STORE_REG,
+    EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
+    FREG_RA, FREG_X0, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
+    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -26,7 +28,6 @@ pub struct Emu<'a> {
     pub rom: &'a ZiskRom,
     /// Context, where the state of the execution is stored and modified at every execution step
     pub ctx: EmuContext,
-
     // This array is used to store static data to avoid heap allocations and speed up the
     // conversion of data to be written to the bus
     static_array: [u64; MAX_OPERATION_DATA_SIZE],
@@ -1027,7 +1028,7 @@ impl<'a> Emu<'a> {
                     addr += self.ctx.inst_ctx.sp as i64;
                 }
                 addr += self.ctx.inst_ctx.a as i64;
-                debug_assert!(addr >= 0);
+                debug_assert!(addr >= 0, "addr is negative: addr={addr}=0x{addr:x}");
                 let addr = addr as u64;
 
                 // Get it from memory
@@ -1525,6 +1526,29 @@ impl<'a> Emu<'a> {
     ) {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs.clone());
+
+        let mut elf = ElfSymbolReader::new();
+        if options.read_symbols {
+            if let Some(elf_file) = &options.elf {
+                println!("Loading symbols from ELF file: {elf_file}");
+                elf.load_from_file(elf_file).unwrap();
+                let mut count = 0;
+                for symbol in elf.functions() {
+                    count += 1;
+                    self.ctx.stats.add_roi(
+                        symbol.address as u32,
+                        (symbol.address + symbol.size - 1) as u32,
+                        &symbol.name,
+                    );
+                }
+                println!("Loaded {} function symbols", count);
+                self.ctx.stats.set_top_rois(options.top_roi);
+                self.ctx.stats.set_roi_callers(options.roi_callers);
+                self.ctx.stats.set_top_roi_detail(options.top_roi_detail);
+            }
+        }
+
+        self.ctx.stats.set_legacy_stats(options.legacy_stats);
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
 
         // Check that callback is provided if chunk size is specified
@@ -1585,7 +1609,7 @@ impl<'a> Emu<'a> {
         //println!("Emu::run() full-equipe");
 
         // Store the stats option into the emulator context
-        self.ctx.do_stats = options.stats;
+        self.ctx.do_stats = options.stats || options.legacy_stats;
 
         // While not done
         while !self.ctx.inst_ctx.end {
@@ -1661,7 +1685,8 @@ impl<'a> Emu<'a> {
         }
 
         // Print stats report
-        if options.stats {
+        if self.ctx.do_stats {
+            self.ctx.stats.update_costs();
             let report = self.ctx.stats.report();
             println!("{report}");
             if let Some(store_op_output_file) = &options.store_op_output {
@@ -1684,7 +1709,7 @@ impl<'a> Emu<'a> {
         self.ctx.trace.start_state.pc = ROM_ENTRY;
 
         // Store the stats option into the emulator context
-        self.ctx.do_stats = options.stats;
+        self.ctx.do_stats = options.stats || options.legacy_stats;
 
         // Set emulation mode
         self.ctx.inst_ctx.emulation_mode = EmulationMode::GenerateMemReads;
@@ -1745,7 +1770,7 @@ impl<'a> Emu<'a> {
         self.ctx.trace.start_state.pc = ROM_ENTRY;
 
         // Store the stats option into the emulator context
-        self.ctx.do_stats = options.stats;
+        self.ctx.do_stats = options.stats || options.legacy_stats;
 
         // Set emulation mode
         self.ctx.inst_ctx.emulation_mode = EmulationMode::GenerateMemReads;
@@ -1793,7 +1818,6 @@ impl<'a> Emu<'a> {
         //     self.ctx.inst_ctx.pc,
         //     instruction.to_text()
         // );
-        // println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
         //println!("PCLOG={}", instruction.to_text());
 
@@ -1808,7 +1832,22 @@ impl<'a> Emu<'a> {
 
         // Retrieve statistics data
         if self.ctx.do_stats {
-            self.ctx.stats.on_op(instruction, self.ctx.inst_ctx.a, self.ctx.inst_ctx.b);
+            if instruction.input_size > 0 {
+                if let Ok(inst) = ZiskOp::try_from_code(instruction.op) {
+                    inst.call_stats(&self.ctx.inst_ctx, &mut self.ctx.stats);
+                }
+            }
+            self.ctx.stats.on_op(
+                instruction,
+                self.ctx.inst_ctx.a,
+                self.ctx.inst_ctx.b,
+                pc,
+                &[
+                    self.ctx.inst_ctx.regs[10], // a0
+                    self.ctx.inst_ctx.regs[11], // a1
+                    self.ctx.inst_ctx.regs[12], // a2
+                ],
+            );
         }
 
         // Store the 'c' register value based on the storage specified by the current instruction
@@ -1824,7 +1863,7 @@ impl<'a> Emu<'a> {
         // If this is the last instruction, stop executing
         if instruction.end {
             self.ctx.inst_ctx.end = true;
-            if options.stats {
+            if self.ctx.do_stats {
                 self.ctx.stats.on_steps(self.ctx.inst_ctx.step);
             }
         }
@@ -1846,6 +1885,8 @@ impl<'a> Emu<'a> {
                 instruction.to_text()
             );
             self.print_regs();
+            // self.print_float_regs();
+            // self.print_float_saved_regs();
             println!();
         }
 
@@ -1905,7 +1946,7 @@ impl<'a> Emu<'a> {
         // Call the operation
         (instruction.func)(&mut self.ctx.inst_ctx);
 
-        // If this is a precompiled, copy input data to mem_reads
+        // If this is a precompiled, copy input data generated by precompile call to mem_reads.
         if instruction.input_size > 0 {
             emu_full_trace_vec.mem_reads.append(&mut self.ctx.inst_ctx.precompiled.input_data);
         }
@@ -2255,112 +2296,116 @@ impl<'a> Emu<'a> {
         reg_trace: &EmuRegTrace,
     ) -> EmuFullTraceStep<F> {
         // Calculate intermediate values
-        let a = [inst_ctx.a & 0xFFFFFFFF, (inst_ctx.a >> 32) & 0xFFFFFFFF];
-        let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
-        let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
+        let a: [u32; 2] =
+            [(inst_ctx.a & 0xFFFFFFFF) as u32, ((inst_ctx.a >> 32) & 0xFFFFFFFF) as u32];
+        let b: [u32; 2] =
+            [(inst_ctx.b & 0xFFFFFFFF) as u32, ((inst_ctx.b >> 32) & 0xFFFFFFFF) as u32];
+        let c: [u32; 2] =
+            [(inst_ctx.c & 0xFFFFFFFF) as u32, ((inst_ctx.c >> 32) & 0xFFFFFFFF) as u32];
         let store_prev_value = [
-            reg_trace.store_reg_prev_value & 0xFFFFFFFF,
-            (reg_trace.store_reg_prev_value >> 32) & 0xFFFFFFFF,
+            (reg_trace.store_reg_prev_value & 0xFFFFFFFF) as u32,
+            ((reg_trace.store_reg_prev_value >> 32) & 0xFFFFFFFF) as u32,
         ];
 
         let addr1 = (inst.b_offset_imm0 as i64
-            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
+            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u32;
 
         let jmp_offset1 = if inst.jmp_offset1 >= 0 {
-            F::from_u64(inst.jmp_offset1 as u64)
+            inst.jmp_offset1 as u64
         } else {
-            F::neg(F::from_u64((-inst.jmp_offset1) as u64))
+            F::neg(F::from_u64((-inst.jmp_offset1) as u64)).as_canonical_u64()
         };
 
         let jmp_offset2 = if inst.jmp_offset2 >= 0 {
-            F::from_u64(inst.jmp_offset2 as u64)
+            inst.jmp_offset2 as u64
         } else {
-            F::neg(F::from_u64((-inst.jmp_offset2) as u64))
+            F::neg(F::from_u64((-inst.jmp_offset2) as u64)).as_canonical_u64()
         };
 
         let store_offset = if inst.store_offset >= 0 {
-            F::from_u64(inst.store_offset as u64)
+            inst.store_offset as u64
         } else {
-            F::neg(F::from_u64((-inst.store_offset) as u64))
+            F::neg(F::from_u64((-inst.store_offset) as u64)).as_canonical_u64()
         };
 
         let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
-            F::from_u64(inst.a_offset_imm0)
+            inst.a_offset_imm0
         } else {
-            F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64))
+            F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64)).as_canonical_u64()
         };
-
         let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
-            F::from_u64(inst.b_offset_imm0)
+            inst.b_offset_imm0
         } else {
-            F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64))
+            F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
         };
 
-        EmuFullTraceStep {
-            a: [F::from_u64(a[0]), F::from_u64(a[1])],
-            b: [F::from_u64(b[0]), F::from_u64(b[1])],
-            c: [F::from_u64(c[0]), F::from_u64(c[1])],
-
-            flag: F::from_bool(inst_ctx.flag),
-            pc: F::from_u64(inst.paddr),
-            a_src_imm: F::from_bool(inst.a_src == SRC_IMM),
-            a_src_mem: F::from_bool(inst.a_src == SRC_MEM),
-            a_src_reg: F::from_bool(inst.a_src == SRC_REG),
-            a_offset_imm0,
-            // #[cfg(not(feature = "sp"))]
-            a_imm1: F::from_u64(inst.a_use_sp_imm1),
-            // #[cfg(feature = "sp")]
-            // sp: F::from_u64(inst_ctx.sp),
-            // #[cfg(feature = "sp")]
-            // a_src_sp: F::from_bool(inst.a_src == SRC_SP),
-            // #[cfg(feature = "sp")]
-            // a_use_sp_imm1: F::from_u64(inst.a_use_sp_imm1),
-            a_src_step: F::from_bool(inst.a_src == SRC_STEP),
-            b_src_imm: F::from_bool(inst.b_src == SRC_IMM),
-            b_src_mem: F::from_bool(inst.b_src == SRC_MEM),
-            b_src_reg: F::from_bool(inst.b_src == SRC_REG),
-            b_offset_imm0,
-            // #[cfg(not(feature = "sp"))]
-            b_imm1: F::from_u64(inst.b_use_sp_imm1),
-            // #[cfg(feature = "sp")]
-            // b_use_sp_imm1: F::from_u64(inst.b_use_sp_imm1),
-            b_src_ind: F::from_bool(inst.b_src == SRC_IND),
-            ind_width: F::from_u64(inst.ind_width),
-            is_external_op: F::from_bool(inst.is_external_op),
-            // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
-            // of the copyb, use to get free-input information
-            op: if inst.op == ZiskOp::Fcall.code()
+        let mut trace = EmuFullTraceStep::default();
+        trace.set_a(0, a[0]);
+        trace.set_a(1, a[1]);
+        trace.set_b(0, b[0]);
+        trace.set_b(1, b[1]);
+        trace.set_c(0, c[0]);
+        trace.set_c(1, c[1]);
+        trace.set_flag(inst_ctx.flag);
+        trace.set_pc(inst.paddr as u32);
+        trace.set_a_src_imm(inst.a_src == SRC_IMM);
+        trace.set_a_src_mem(inst.a_src == SRC_MEM);
+        trace.set_a_src_reg(inst.a_src == SRC_REG);
+        trace.set_a_offset_imm0(a_offset_imm0);
+        // #[cfg(not(feature = "sp"))]
+        trace.set_a_imm1(inst.a_use_sp_imm1 as u32);
+        // #[cfg(feature = "sp")]
+        // trace.set_sp(inst_ctx.sp);
+        // #[cfg(feature = "sp")]
+        // trace.set_a_src_sp(inst.a_src == SRC_SP),
+        // #[cfg(feature = "sp")]
+        // trace.set_a_use_sp_imm1(inst.a_use_sp_imm1),
+        trace.set_a_src_step(inst.a_src == SRC_STEP);
+        trace.set_b_src_imm(inst.b_src == SRC_IMM);
+        trace.set_b_src_mem(inst.b_src == SRC_MEM);
+        trace.set_b_src_reg(inst.b_src == SRC_REG);
+        trace.set_b_offset_imm0(b_offset_imm0);
+        // #[cfg(not(feature = "sp"))]
+        trace.set_b_imm1(inst.b_use_sp_imm1 as u32);
+        // #[cfg(feature = "sp")]
+        // trace.set_b_use_sp_imm1(inst.b_use_sp_imm1),
+        trace.set_b_src_ind(inst.b_src == SRC_IND);
+        trace.set_ind_width(inst.ind_width as u8);
+        trace.set_is_external_op(inst.is_external_op);
+        // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
+        // of the copyb, use to get free-input information
+        trace.set_op(
+            if inst.op == ZiskOp::Fcall.code()
                 || inst.op == ZiskOp::FcallGet.code()
                 || inst.op == ZiskOp::FcallParam.code()
             {
-                F::from_u8(ZiskOp::CopyB.code())
+                ZiskOp::CopyB.code()
             } else {
-                F::from_u8(inst.op)
+                inst.op
             },
-            store_ra: F::from_bool(inst.store_ra),
-            store_mem: F::from_bool(inst.store == STORE_MEM),
-            store_reg: F::from_bool(inst.store == STORE_REG),
-            store_ind: F::from_bool(inst.store == STORE_IND),
-            store_offset,
-            set_pc: F::from_bool(inst.set_pc),
-            // #[cfg(feature = "sp")]
-            // store_use_sp: F::from_bool(inst.store_use_sp),
-            // #[cfg(feature = "sp")]
-            // set_sp: F::from_bool(inst.set_sp),
-            // #[cfg(feature = "sp")]
-            // inc_sp: F::from_u64(inst.inc_sp),
-            jmp_offset1,
-            jmp_offset2,
-            m32: F::from_bool(inst.m32),
-            addr1: F::from_u64(addr1),
-            a_reg_prev_mem_step: F::from_u64(reg_trace.reg_prev_steps[0]),
-            b_reg_prev_mem_step: F::from_u64(reg_trace.reg_prev_steps[1]),
-            store_reg_prev_mem_step: F::from_u64(reg_trace.reg_prev_steps[2]),
-            store_reg_prev_value: [
-                F::from_u64(store_prev_value[0]),
-                F::from_u64(store_prev_value[1]),
-            ],
-        }
+        );
+        trace.set_store_ra(inst.store_ra);
+        trace.set_store_mem(inst.store == STORE_MEM);
+        trace.set_store_reg(inst.store == STORE_REG);
+        trace.set_store_ind(inst.store == STORE_IND);
+        trace.set_store_offset(store_offset);
+        trace.set_set_pc(inst.set_pc);
+        // #[cfg(feature = "sp")]
+        // trace.set_store_use_sp(inst.store_use_sp);
+        // #[cfg(feature = "sp")]
+        // trace.set_sp(inst_ctx.sp);
+        // #[cfg(feature = "sp")]
+        // trace.set_inc_sp(inst.inc_sp);
+        trace.set_jmp_offset1(jmp_offset1);
+        trace.set_jmp_offset2(jmp_offset2);
+        trace.set_m32(inst.m32);
+        trace.set_addr1(addr1);
+        trace.set_a_reg_prev_mem_step(reg_trace.reg_prev_steps[0]);
+        trace.set_b_reg_prev_mem_step(reg_trace.reg_prev_steps[1]);
+        trace.set_store_reg_prev_mem_step(reg_trace.reg_prev_steps[2]);
+        trace.set_store_reg_prev_value(0, store_prev_value[0]);
+        trace.set_store_reg_prev_value(1, store_prev_value[1]);
+        trace
     }
 
     /// Returns if the emulation ended
@@ -2475,6 +2520,28 @@ impl<'a> Emu<'a> {
         print!("Emu::print_regs(): ");
         for (i, r) in regs_array.iter().enumerate() {
             print!("x{i}={r}={r:x} ");
+        }
+        println!();
+    }
+
+    pub fn print_float_regs(&self) {
+        print!("Emu::print_float_regs(): ");
+        for i in 0..31 {
+            let r = self.ctx.inst_ctx.mem.read(FREG_F0 + i * 8, 8);
+            print!("f{i}={r}={r:x} ");
+        }
+        let r = self.ctx.inst_ctx.mem.read(FREG_INST, 8);
+        print!("finst={r}={r:x} ");
+        let r = self.ctx.inst_ctx.mem.read(FREG_RA, 8);
+        print!("fra={r}={r:x} ");
+        println!();
+    }
+
+    pub fn print_float_saved_regs(&self) {
+        print!("Emu::print_float_saved_regs(): ");
+        for i in 0..31 {
+            let r = self.ctx.inst_ctx.mem.read(FREG_X0 + i * 8, 8);
+            print!("fx{i}={r}={r:x} ");
         }
         println!();
     }

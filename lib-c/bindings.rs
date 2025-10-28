@@ -97,3 +97,12 @@ extern "C" {
         d: *mut ::std::os::raw::c_ulong,
     ) -> ::std::os::raw::c_int;
 }
+
+extern "C" {
+    pub fn Add256(
+        a: *const ::std::os::raw::c_ulong,
+        b: *const ::std::os::raw::c_ulong,
+        cin: ::std::os::raw::c_ulong,
+        c: *mut ::std::os::raw::c_ulong,
+    ) -> ::std::os::raw::c_int;
+}

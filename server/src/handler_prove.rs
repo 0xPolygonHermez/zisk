@@ -1,18 +1,15 @@
 use bytemuck::cast_slice;
 use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use proofman::ProofMan;
 use proofman::{ProofInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::io::Write;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::{fs::File, path::PathBuf};
-use witness::WitnessLibrary;
-use zisk_common::{ExecutorStats, ProofLog};
+use zisk_common::{ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
 use zstd::stream::write::Encoder;
 
 use crate::{
@@ -50,7 +47,7 @@ impl ZiskServiceProveHandler {
         request: ZiskProveRequest,
         // It is important to keep the witness_lib declaration before the proofman declaration
         // to ensure that the witness library is dropped before the proofman.
-        witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+        witness_lib: Arc<Box<dyn ZiskLib<Goldilocks>>>,
         proofman: Arc<ProofMan<Goldilocks>>,
         is_busy: Arc<std::sync::atomic::AtomicBool>,
     ) -> (ZiskResponse, Option<JoinHandle<()>>) {
@@ -61,8 +58,6 @@ impl ZiskServiceProveHandler {
             let config = config.clone();
             move || {
                 let start = std::time::Instant::now();
-
-                let mpi_ctx = proofman.get_mpi_ctx();
 
                 let result = proofman
                     .generate_proof_from_lib(
@@ -90,23 +85,13 @@ impl ZiskServiceProveHandler {
 
                 let elapsed = start.elapsed();
 
-                if mpi_ctx.rank == 0 {
+                if proofman.rank().unwrap() == 0 {
                     #[allow(clippy::type_complexity)]
-                    let (result, _stats, _witness_stats): (
+                    let (result, mut _stats): (
                         ZiskExecutionResult,
-                        Arc<Mutex<ExecutorStats>>,
-                        Arc<Mutex<HashMap<usize, Stats>>>,
-                    ) = *witness_lib
-                        .get_execution_result()
-                        .ok_or_else(|| anyhow::anyhow!("No execution result found"))
-                        .expect("Failed to get execution result")
-                        .downcast::<(
-                            ZiskExecutionResult,
-                            Arc<Mutex<ExecutorStats>>,
-                            Arc<Mutex<HashMap<usize, Stats>>>,
-                        )>()
-                        .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
-                        .expect("Failed to downcast execution result");
+                        ExecutorStats,
+                    ) = witness_lib.get_execution_result().expect("Failed to get execution result");
+
                     proofman.set_barrier();
                     let elapsed = elapsed.as_secs_f64();
                     tracing::info!("");
@@ -127,15 +112,9 @@ impl ZiskServiceProveHandler {
                     // Store the stats in stats.json
                     #[cfg(feature = "stats")]
                     {
-                        let stats_id = _stats.lock().unwrap().get_id();
-                        _stats.lock().unwrap().add_stat(
-                            0,
-                            stats_id,
-                            "END",
-                            0,
-                            ExecutorStatsEvent::Mark,
-                        );
-                        _stats.lock().unwrap().store_stats();
+                        let stats_id = _stats.next_id();
+                        _stats.add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
+                        _stats.store_stats();
                     }
 
                     if let Some(proof_id) = proof_id {

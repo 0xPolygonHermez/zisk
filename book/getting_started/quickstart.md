@@ -17,12 +17,12 @@ ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below
 2. Install all required dependencies with:
     - **Ubuntu**:
         ```bash
-        sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
+        sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common libclang-dev clang gcc-riscv64-unknown-elf
         ```
     - **macOS**:
         ```bash
-        brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
-        ```    
+        brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium
+        ```
 
 3. To install ZisK using ziskup, run the following command in your terminal:
     ```bash
@@ -48,7 +48,7 @@ This will create a project with the following structure:
     └── main.rs
 ```
 
-The example program takes a number `n` as input and computes the SHA-256 hash `n` times. 
+The example program takes a number `n` as input and computes the SHA-256 hash `n` times.
 
 The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20). This file is used in `main.rs` as input to calculate the hash.
 

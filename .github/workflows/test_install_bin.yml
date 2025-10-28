@@ -110,7 +110,7 @@ jobs:
         shell: bash
         run: |
           cd $HOME/sha_hasher
-          cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher 2>&1 | tee romsetup_output.log
+          cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -v 2>&1 | tee romsetup_output.log
           if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
             echo "❌ Program setup failed"
             exit 1

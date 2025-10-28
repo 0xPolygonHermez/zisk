@@ -7,7 +7,6 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use bytemuck::cast_slice;
 use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -15,12 +14,12 @@ use proofman::{ProofInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::{
     initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions,
 };
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
 use std::io::Write;
-use std::sync::{Arc, Mutex};
 use std::{
     collections::HashMap,
     fs::{self, File},
@@ -28,7 +27,7 @@ use std::{
 };
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
+use zisk_common::{ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLibInitFn};
 use zstd::stream::write::Encoder;
 
 // Structure representing the 'prove' subcommand of cargo.
@@ -234,35 +233,6 @@ impl ZiskProve {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let proofman = ProofMan::<Goldilocks>::new(
-            proving_key,
-            custom_commits_map,
-            verify_constraints,
-            self.aggregation,
-            self.final_snark,
-            gpu_params,
-            self.verbose.into(),
-        )
-        .expect("Failed to initialize proofman");
-        let mpi_ctx = proofman.get_mpi_ctx();
-
-        initialize_logger(self.verbose.into(), Some(mpi_ctx.rank));
-
-        let asm_services = AsmServices::new(mpi_ctx.rank, mpi_ctx.node_rank, self.port);
-        let asm_runner_options = AsmRunnerOptions::new()
-            .with_verbose(self.verbose > 0)
-            .with_base_port(self.port)
-            .with_world_rank(mpi_ctx.rank)
-            .with_local_rank(mpi_ctx.node_rank)
-            .with_unlock_mapped_memory(self.unlock_mapped_memory);
-
-        if self.asm.is_some() {
-            // Start ASM microservices
-            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_ctx.rank,);
-
-            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
-        }
-
         let library =
             unsafe { Library::new(get_witness_computation_lib(self.witness_lib.as_ref()))? };
         let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
@@ -272,13 +242,43 @@ impl ZiskProve {
             self.elf.clone(),
             self.asm.clone(),
             asm_rom,
-            Some(mpi_ctx.rank),
-            Some(mpi_ctx.node_rank),
             self.port,
             self.unlock_mapped_memory,
             self.shared_tables,
         )
         .expect("Failed to initialize witness library");
+
+        let proofman = ProofMan::<Goldilocks>::new(
+            proving_key,
+            custom_commits_map,
+            verify_constraints,
+            self.aggregation,
+            self.final_snark,
+            gpu_params,
+            self.verbose.into(),
+            witness_lib.get_packed_info(),
+        )
+        .expect("Failed to initialize proofman");
+
+        let world_rank = proofman.get_world_rank();
+        let local_rank = proofman.get_local_rank();
+
+        initialize_logger(self.verbose.into(), Some(world_rank));
+
+        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
+        let asm_runner_options = AsmRunnerOptions::new()
+            .with_verbose(self.verbose > 0)
+            .with_base_port(self.port)
+            .with_world_rank(world_rank)
+            .with_local_rank(local_rank)
+            .with_unlock_mapped_memory(self.unlock_mapped_memory);
+
+        if self.asm.is_some() {
+            timer_start_info!(STARTING_ASM_MICROSERVICES);
+
+            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
+            timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
+        }
 
         proofman.register_witness(&mut *witness_lib, library);
 
@@ -329,24 +329,12 @@ impl ZiskProve {
             };
         }
 
-        if mpi_ctx.rank == 0 {
+        if world_rank == 0 {
             let elapsed = start.elapsed();
 
             #[allow(clippy::type_complexity)]
-            let (result, _stats, _): (
-                ZiskExecutionResult,
-                Arc<Mutex<ExecutorStats>>,
-                Arc<Mutex<HashMap<usize, Stats>>>,
-            ) =
-                *witness_lib
-                    .get_execution_result()
-                    .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-                    .downcast::<(
-                        ZiskExecutionResult,
-                        Arc<Mutex<ExecutorStats>>,
-                        Arc<Mutex<HashMap<usize, Stats>>>,
-                    )>()
-                    .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+            let (result, mut _stats): (ZiskExecutionResult, ExecutorStats) =
+                witness_lib.get_execution_result().expect("Failed to get execution result");
 
             let elapsed = elapsed.as_secs_f64();
             tracing::info!("");
@@ -395,9 +383,9 @@ impl ZiskProve {
             // Store the stats in stats.json
             #[cfg(feature = "stats")]
             {
-                let stats_id = _stats.lock().unwrap().get_id();
-                _stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
-                _stats.lock().unwrap().store_stats();
+                let stats_id = _stats.next_id();
+                _stats.add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
+                _stats.store_stats();
             }
         }
 
@@ -405,7 +393,7 @@ impl ZiskProve {
 
         if self.asm.is_some() {
             // Shut down ASM microservices
-            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_ctx.rank);
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", world_rank);
             asm_services.stop_asm_services()?;
         }
 
@@ -444,7 +432,11 @@ impl ZiskProve {
             get_proving_key(self.proving_key.as_ref()).display()
         );
 
-        let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
+        let std_mode = match &self.debug {
+            None => "Standard mode",
+            Some(None) => "Debug mode (fast)",
+            Some(Some(json_file)) => &format!("Debug mode (from config file: {})", json_file),
+        };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 

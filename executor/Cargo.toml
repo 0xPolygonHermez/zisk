@@ -35,6 +35,7 @@ precomp-keccakf = { workspace = true }
 precomp-sha256f = { workspace = true }
 precomp-arith-eq = { workspace = true }
 precomp-arith-eq-384 = { workspace = true }
+precomp-big-int = { workspace = true }
 
 sm-arith = { workspace = true }
 sm-binary = { workspace = true }
@@ -45,4 +46,5 @@ sm-frequent-ops = { workspace = true }
 default = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
 gpu = ["proofman-common/gpu", "proofman/gpu" ]
+packed = ["proofman-common/packed"]
 stats = []

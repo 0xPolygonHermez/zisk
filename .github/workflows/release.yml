@@ -58,35 +58,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `runner`: GHA runner label
-          # `target`: Rust build target triple
-          # `platform` and `arch`: Used in tarball names
-          # `svm`: target platform to use for the Solc binary: https://github.com/roynalnaruto/svm-rs/blob/84cbe0ac705becabdc13168bae28a45ad2299749/svm-builds/build.rs#L4-L24
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             svm_target_platform: linux-amd64
             platform: linux
             arch: amd64
-          # - runner: warp-ubuntu-latest-arm64-4x
-          #   target: aarch64-unknown-linux-gnu
-          #   svm_target_platform: linux-aarch64
-          #   platform: linux
-          #   arch: arm64
-          # - runner: macos-13
-          #   target: x86_64-apple-darwin
-          #   svm_target_platform: macosx-amd64
-          #   platform: darwin
-          #   arch: amd64
-          - runner: self-hosted-macos
+          - runner: macos-14
             target: aarch64-apple-darwin
             svm_target_platform: macosx-aarch64
             platform: darwin
             arch: arm64
-          # - runner: windows-latest
-          #   target: x86_64-pc-windows-msvc
-          #   svm_target_platform: windows-amd64
-          #   platform: win32
-          #   arch: amd64
     steps:
       - uses: actions/checkout@v4
 
@@ -102,14 +83,8 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: |
-            if [[ "${{ matrix.platform }}" == "darwin" ]]; then
-                brew install jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium
-            else
-                sudo apt-get update
-                sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev \
-                    libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
-                    libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
-            fi
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
 
       - name: Setup macOS env vars
         if: matrix.target == 'aarch64-apple-darwin'
@@ -148,9 +123,9 @@ jobs:
 
           if [[ "${PLATFORM_NAME}" == "linux" ]]; then
             mkdir -p zisk-dist/zisk/emulator-asm/src
-            cp -r ./emulator-asm/src                               zisk-dist/zisk/emulator-asm/
+            cp -r ./emulator-asm/src                               zisk-dist/zisk/emulator-asm
             cp -r ./lib-c/                                         zisk-dist/zisk
-            cp ./emulator-asm/Makefile                             zisk-dist/zisk/emulator-asm/
+            cp ./emulator-asm/Makefile                             zisk-dist/zisk/emulator-asm
           fi
 
           ARCHIVE_FILE="cargo_zisk_${PLATFORM_NAME}_${ARCH}.tar.gz"

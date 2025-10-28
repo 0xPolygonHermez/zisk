@@ -24,6 +24,7 @@ int AddPointEcP (
     uint64_t * p3  // 8 x 64 bits
 );
 
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

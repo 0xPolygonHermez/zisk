@@ -93,7 +93,7 @@ impl RomSM {
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
-        tracing::info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
+        tracing::info!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
@@ -164,9 +164,9 @@ impl RomSM {
     ) -> AirInstance<F> {
         let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer);
 
-        tracing::info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
+        tracing::info!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
-        const MAIN_TRACE_LEN: u64 = MainTrace::<usize>::NUM_ROWS as u64;
+        let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
         for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
@@ -188,7 +188,7 @@ impl RomSM {
                     }
 
                     if inst.paddr == ROM_EXIT {
-                        multiplicity += MAIN_TRACE_LEN - asm_romh.steps % MAIN_TRACE_LEN;
+                        multiplicity += main_trace_len - asm_romh.steps % main_trace_len;
                     }
                 }
             } else {
@@ -270,7 +270,8 @@ impl RomSM {
         }
 
         // Padd with zeroes
-        for i in rom.insts.len()..rom_custom_trace.num_rows() {
+        let num_rows: usize = RomRomTrace::<F>::NUM_ROWS;
+        for i in rom.insts.len()..num_rows {
             rom_custom_trace[i] = RomRomTraceRow::default();
         }
     }

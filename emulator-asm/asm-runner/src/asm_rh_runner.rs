@@ -1,11 +1,10 @@
 use tracing::error;
-use zisk_common::ExecutorStats;
+use zisk_common::ExecutorStatsHandle;
 
 use crate::{AsmRHData, AsmRHHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
 use anyhow::{Context, Result};
 use named_sem::NamedSemaphore;
 use std::sync::atomic::{fence, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub struct PreloadedRH {
@@ -61,20 +60,14 @@ impl AsmRunnerRH {
         local_rank: i32,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
-        _stats: Arc<Mutex<ExecutorStats>>,
+        _stats: ExecutorStatsHandle,
     ) -> Result<AsmRunnerRH> {
-        let __stats = Arc::clone(&_stats);
+        let __stats = _stats.clone();
 
         #[cfg(feature = "stats")]
-        let parent_stats_id = __stats.lock().unwrap().get_id();
+        let parent_stats_id = __stats.next_id();
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(
-            0,
-            parent_stats_id,
-            "ASM_RH_RUNNER",
-            0,
-            ExecutorStatsEvent::Begin,
-        );
+        _stats.add_stat(0, parent_stats_id, "ASM_RH_RUNNER", 0, ExecutorStatsEvent::Begin);
 
         let port = if let Some(base_port) = base_port {
             AsmServices::port_for(&AsmService::RH, base_port, local_rank)
@@ -114,13 +107,7 @@ impl AsmRunnerRH {
 
         // Add to executor stats
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(
-            0,
-            parent_stats_id,
-            "ASM_RH_RUNNER",
-            0,
-            ExecutorStatsEvent::End,
-        );
+        _stats.add_stat(0, parent_stats_id, "ASM_RH_RUNNER", 0, ExecutorStatsEvent::End);
 
         Ok(AsmRunnerRH::new(asm_rowh_output))
     }

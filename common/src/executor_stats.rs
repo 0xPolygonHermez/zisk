@@ -1,8 +1,15 @@
-use std::{fs, process, time::Instant};
+use std::{
+    collections::HashMap,
+    fs, process,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "stats")]
 use zisk_pil::*;
+
+use crate::Stats;
 
 #[derive(Debug, Clone)]
 pub enum ExecutorStatsEvent {
@@ -21,11 +28,12 @@ struct ExecutorStatsEntry {
     timestamp: Instant,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExecutorStats {
     start_time: Instant,
     last_id: u64,
     stats: Vec<ExecutorStatsEntry>,
+    pub witness_stats: HashMap<usize, Stats>,
 }
 
 impl Default for ExecutorStats {
@@ -36,13 +44,19 @@ impl Default for ExecutorStats {
 
 impl ExecutorStats {
     pub fn new() -> Self {
-        Self { start_time: Instant::now(), last_id: 0, stats: Vec::new() }
+        Self {
+            start_time: Instant::now(),
+            last_id: 0,
+            stats: Vec::new(),
+            witness_stats: HashMap::new(),
+        }
     }
 
     pub fn reset(&mut self) {
         self.start_time = Instant::now();
         self.last_id = 0;
         self.stats.clear();
+        self.witness_stats.clear();
     }
 
     pub fn add_stat(
@@ -62,14 +76,7 @@ impl ExecutorStats {
         self.start_time = start_time;
     }
 
-    #[cfg(feature = "stats")]
-    pub fn get_id(&mut self) -> u64 {
-        self.last_id += 1;
-        self.last_id
-    }
-
-    #[cfg(not(feature = "stats"))]
-    pub fn get_id(&mut self) -> u64 {
+    pub fn next_id(&mut self) -> u64 {
         self.last_id += 1;
         self.last_id
     }
@@ -181,6 +188,66 @@ impl ExecutorStats {
                 stat.event,
                 stat.timestamp.duration_since(self.start_time).as_nanos() as u64
             );
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ExecutorStatsHandle {
+    inner: Arc<Mutex<ExecutorStats>>,
+}
+
+impl ExecutorStatsHandle {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn reset(&self) {
+        self.inner.lock().unwrap().reset();
+    }
+
+    pub fn add_stat(
+        &self,
+        parent_id: u64,
+        id: u64,
+        name: &'static str,
+        index: usize,
+        event: ExecutorStatsEvent,
+    ) {
+        self.inner.lock().unwrap().add_stat(parent_id, id, name, index, event);
+    }
+
+    pub fn set_start_time(&self, start_time: Instant) {
+        self.inner.lock().unwrap().set_start_time(start_time);
+    }
+
+    pub fn next_id(&self) -> u64 {
+        self.inner.lock().unwrap().next_id()
+    }
+
+    #[cfg(feature = "stats")]
+    pub fn _air_name(&self, airgroup_id: usize, air_id: usize) -> String {
+        ExecutorStats::_air_name(airgroup_id, air_id)
+    }
+
+    pub fn store_stats(&self) {
+        self.inner.lock().unwrap().store_stats();
+    }
+
+    pub fn print_stats(&self) {
+        self.inner.lock().unwrap().print_stats();
+    }
+
+    pub fn get_inner(&self) -> ExecutorStats {
+        self.inner.lock().unwrap().clone()
+    }
+
+    pub fn insert_witness_stats(&self, airgroup_id: usize, stats: Stats) {
+        self.inner.lock().unwrap().witness_stats.insert(airgroup_id, stats);
+    }
+
+    pub fn set_witness_duration(&self, airgroup_id: usize, duration: u128) {
+        if let Some(stats) = self.inner.lock().unwrap().witness_stats.get_mut(&airgroup_id) {
+            stats.witness_duration = duration;
         }
     }
 }

@@ -22,6 +22,7 @@ sm-frequent-ops = { workspace = true }
 data-bus = { workspace = true }
 precomp-keccakf = { workspace = true }
 precomp-sha256f = { workspace = true }
+precomp-big-int = { workspace = true }
 precomp-arith-eq = { workspace = true }
 precomp-arith-eq-384 = { workspace = true }
 zisk-pil = { workspace = true }
@@ -43,6 +44,8 @@ rayon = { workspace = true }
 
 [features]
 default = []
+gpu = ["proofman-common/gpu", "packed"]
+packed = ["proofman-common/packed", "proofman/packed"]
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

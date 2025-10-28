@@ -1,3 +1,4 @@
+use fields::Goldilocks;
 use rayon::prelude::*;
 #[cfg(feature = "save_mem_counters")]
 use std::collections::HashMap;
@@ -311,7 +312,7 @@ impl MemPlanner {
                 addr_index: 2,
                 from_addr: RAM_W_ADDR_INIT,
                 last_addr: RAM_W_ADDR_INIT,
-                rows: MemTrace::<usize>::NUM_ROWS as u32,
+                rows: MemTrace::<Goldilocks>::NUM_ROWS as u32,
                 consecutive_addr: false,
             },
             counters.clone(),
@@ -324,7 +325,7 @@ impl MemPlanner {
                 addr_index: 0,
                 from_addr: ROM_DATA_W_ADDR_INIT,
                 last_addr: ROM_DATA_W_ADDR_INIT - 1,
-                rows: RomDataTrace::<usize>::NUM_ROWS as u32,
+                rows: RomDataTrace::<Goldilocks>::NUM_ROWS as u32,
                 consecutive_addr: true,
             },
             counters.clone(),
@@ -337,7 +338,7 @@ impl MemPlanner {
                 addr_index: 1,
                 from_addr: INPUT_DATA_W_ADDR_INIT,
                 last_addr: INPUT_DATA_W_ADDR_INIT,
-                rows: InputDataTrace::<usize>::NUM_ROWS as u32,
+                rows: InputDataTrace::<Goldilocks>::NUM_ROWS as u32,
                 consecutive_addr: true,
             },
             counters.clone(),

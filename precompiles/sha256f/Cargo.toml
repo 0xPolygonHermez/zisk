@@ -23,12 +23,12 @@ pil-std-lib = { workspace = true }
 fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
-
-sha2 = { version = "0.10.9", features = ["compress"] }
-generic-array = "0.14"
+sha2 = { workspace = true }
 
 [features]
 default = []
+gpu = ["proofman-common/gpu", "packed"]
+packed = ["proofman-common/packed"]
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

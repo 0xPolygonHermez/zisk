@@ -4,7 +4,6 @@ use std::{
 };
 
 use zisk_common::MemBusData;
-use zisk_pil::MemTrace;
 
 use crate::MemHelpers;
 
@@ -299,12 +298,11 @@ impl MemDebug {
         }
         (dual_rows, dual_count)
     }
-    pub fn save_to_file(&mut self, file_name: &str) {
+    pub fn save_to_file(&mut self, num_rows: usize, file_name: &str) {
         self.prepare();
         println!("[MemDebug] writing information {file_name} .....");
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::<usize>::NUM_ROWS;
         for (i, op) in self.ops.iter().enumerate() {
             let extra = if (i % num_rows) == 0 {
                 format!(" ======= INSTANCE {} ==========", i / num_rows)
@@ -329,11 +327,10 @@ impl MemDebug {
         }
         println!("[MemDebug] done");
     }
-    pub fn dump_to_file(&mut self, file_name: &str) {
+    pub fn dump_to_file(&mut self, num_rows: usize, file_name: &str) {
         println!("[MemDebug] writing information {file_name} .....");
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::<usize>::NUM_ROWS;
         for (i, op) in self.ops.iter().enumerate() {
             if (i % num_rows) == 0 {
                 writeln!(writer, " ======= INSTANCE {} ==========", i / num_rows).unwrap();
