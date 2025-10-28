@@ -20,7 +20,7 @@ use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
-use zisk_common::{ExecutorStats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary};
+use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary};
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 #[cfg(feature = "packed")]
 use zisk_pil::PACKED_INFO;
@@ -208,6 +208,12 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 }
 
 impl ZiskWitnessLibrary<Goldilocks> for WitnessLib<Goldilocks> {
+    fn set_stdin(&self, stdin: ZiskStdin) {
+        if let Some(executor) = &self.executor {
+            executor.set_stdin(stdin);
+        }
+    }
+
     /// Returns the execution result of the witness computation.
     ///
     /// # Returns

@@ -10,24 +10,24 @@ use proofman_common::ProofOptions;
 
 use crate::Proof;
 use anyhow::Result;
-use std::{path::PathBuf, time::Duration};
-use zisk_common::{ExecutorStats, ZiskExecutionResult};
+use std::time::Duration;
+use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 
 pub trait ProverEngine {
     fn verify_constraints(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)>;
 
     fn debug_verify_constraints(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)>;
 
     fn prove(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)>;
 
     fn world_rank(&self) -> i32;
@@ -69,24 +69,24 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     pub fn debug_verify_constraints(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
-        self.prover.debug_verify_constraints(input, debug_info)
+        self.prover.debug_verify_constraints(stdin, debug_info)
     }
 
     pub fn verify_constraints(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
-        self.prover.verify_constraints(input)
+        self.prover.verify_constraints(stdin)
     }
 
     pub fn generate_proof(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
-        self.prover.prove(input)
+        self.prover.prove(stdin)
     }
 
     pub fn world_rank(&self) -> i32 {

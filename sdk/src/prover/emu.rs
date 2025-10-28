@@ -6,7 +6,7 @@ use crate::{
 use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
 use std::{path::PathBuf, time::Duration};
-use zisk_common::{ExecutorStats, ZiskExecutionResult};
+use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 
 use anyhow::Result;
 
@@ -60,27 +60,27 @@ impl EmuProver {
 impl ProverEngine for EmuProver {
     fn debug_verify_constraints(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
         let debug_info =
             create_debug_info(debug_info, self.core_prover.backend.proving_key.clone());
 
-        self.core_prover.backend.debug_verify_constraints(input, debug_info)
+        self.core_prover.backend.debug_verify_constraints(stdin, debug_info)
     }
 
     fn verify_constraints(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
-        self.core_prover.backend.verify_constraints(input)
+        self.core_prover.backend.verify_constraints(stdin)
     }
 
     fn prove(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
-        self.core_prover.backend.prove(input)
+        self.core_prover.backend.prove(stdin)
     }
 
     fn world_rank(&self) -> i32 {

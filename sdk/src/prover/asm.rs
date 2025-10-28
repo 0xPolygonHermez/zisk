@@ -10,7 +10,7 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::DEFAULT_CACHE_PATH;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 use tracing::info;
-use zisk_common::{ExecutorStats, ZiskExecutionResult};
+use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 
 use anyhow::Result;
 
@@ -72,27 +72,27 @@ impl AsmProver {
 impl ProverEngine for AsmProver {
     fn debug_verify_constraints(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
         let debug_info =
             create_debug_info(debug_info, self.core_prover.backend.proving_key.clone());
 
-        self.core_prover.backend.debug_verify_constraints(input, debug_info)
+        self.core_prover.backend.debug_verify_constraints(stdin, debug_info)
     }
 
     fn verify_constraints(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
-        self.core_prover.backend.verify_constraints(input)
+        self.core_prover.backend.verify_constraints(stdin)
     }
 
     fn prove(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
-        self.core_prover.backend.prove(input)
+        self.core_prover.backend.prove(stdin)
     }
 
     fn world_rank(&self) -> i32 {

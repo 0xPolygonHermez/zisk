@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_common::ZiskExecutionResult;
+use zisk_common::{io::ZiskStdin, ZiskExecutionResult};
 use zisk_sdk::{Proof, ProverClient};
 
 // Structure representing the 'prove' subcommand of cargo.
@@ -119,10 +119,15 @@ impl ZiskProve {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
+        let stdin = self.create_stdin()?;
+
         let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
 
-        let (proof, result, elapsed) =
-            if emulator { self.run_emu(gpu_params)? } else { self.run_asm(gpu_params)? };
+        let (proof, result, elapsed) = if emulator {
+            self.run_emu(stdin, gpu_params)?
+        } else {
+            self.run_asm(stdin, gpu_params)?
+        };
 
         // if mpi_ctx.rank == 0 {
         let elapsed = elapsed.as_secs_f64();
@@ -137,8 +142,21 @@ impl ZiskProve {
         Ok(())
     }
 
+    fn create_stdin(&mut self) -> Result<ZiskStdin> {
+        let stdin = if let Some(input) = &self.input {
+            if !input.exists() {
+                return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
+            }
+            ZiskStdin::from_file(input)?
+        } else {
+            ZiskStdin::null()
+        };
+        Ok(stdin)
+    }
+
     pub fn run_emu(
         &mut self,
+        stdin: ZiskStdin,
         gpu_params: ParamsGPU,
     ) -> Result<(Proof, ZiskExecutionResult, Duration)> {
         let prover = ProverClient::builder()
@@ -157,14 +175,14 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let (execution_result, elapsed, _stats, proof) =
-            prover.generate_proof(self.input.clone())?;
+        let (execution_result, elapsed, _stats, proof) = prover.generate_proof(stdin)?;
 
         Ok((proof, execution_result, elapsed))
     }
 
     pub fn run_asm(
         &mut self,
+        stdin: ZiskStdin,
         gpu_params: ParamsGPU,
     ) -> Result<(Proof, ZiskExecutionResult, Duration)> {
         let prover = ProverClient::builder()
@@ -186,8 +204,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let (execution_result, elapsed, _stats, proof) =
-            prover.generate_proof(self.input.clone())?;
+        let (execution_result, elapsed, _stats, proof) = prover.generate_proof(stdin)?;
 
         Ok((proof, execution_result, elapsed))
     }

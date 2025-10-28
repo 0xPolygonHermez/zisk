@@ -6,7 +6,7 @@ use colored::Colorize;
 use std::{path::PathBuf, time::Duration};
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_common::{ExecutorStats, ZiskExecutionResult};
+use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 use zisk_sdk::ProverClient;
 
 #[derive(Parser)]
@@ -79,8 +79,11 @@ impl ZiskVerifyConstraints {
 
         print_banner();
 
+        let stdin = self.create_stdin()?;
+
         let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
-        let (result, elapsed, _stats) = if emulator { self.run_emu()? } else { self.run_asm()? };
+        let (result, elapsed, _stats) =
+            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin)? };
 
         tracing::info!("");
         tracing::info!(
@@ -97,7 +100,22 @@ impl ZiskVerifyConstraints {
         Ok(())
     }
 
-    pub fn run_emu(&mut self) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    fn create_stdin(&mut self) -> Result<ZiskStdin> {
+        let stdin = if let Some(input) = &self.input {
+            if !input.exists() {
+                return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
+            }
+            ZiskStdin::from_file(input)?
+        } else {
+            ZiskStdin::null()
+        };
+        Ok(stdin)
+    }
+
+    pub fn run_emu(
+        &mut self,
+        stdin: ZiskStdin,
+    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
         let prover = ProverClient::builder()
             .emu()
             .verify_constraints()
@@ -109,10 +127,13 @@ impl ZiskVerifyConstraints {
             .print_command_info()
             .build()?;
 
-        prover.debug_verify_constraints(self.input.clone(), self.debug.clone())
+        prover.debug_verify_constraints(stdin, self.debug.clone())
     }
 
-    pub fn run_asm(&mut self) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    pub fn run_asm(
+        &mut self,
+        stdin: ZiskStdin,
+    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
         let prover = ProverClient::builder()
             .asm()
             .verify_constraints()
@@ -127,6 +148,6 @@ impl ZiskVerifyConstraints {
             .print_command_info()
             .build()?;
 
-        prover.debug_verify_constraints(self.input.clone(), self.debug.clone())
+        prover.debug_verify_constraints(stdin, self.debug.clone())
     }
 }
