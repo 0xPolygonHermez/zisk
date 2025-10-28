@@ -70,6 +70,10 @@ impl AsmProver {
 }
 
 impl ProverEngine for AsmProver {
+    fn set_stdin(&self, stdin: ZiskStdin) {
+        self.core_prover.backend.witness_lib.set_stdin(stdin);
+    }
+
     fn debug_verify_constraints(
         &self,
         stdin: ZiskStdin,

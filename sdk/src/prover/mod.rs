@@ -14,6 +14,8 @@ use std::time::Duration;
 use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 
 pub trait ProverEngine {
+    fn set_stdin(&self, stdin: ZiskStdin);
+
     fn verify_constraints(
         &self,
         stdin: ZiskStdin,
@@ -65,6 +67,10 @@ pub struct ZiskProver<C: ZiskBackend> {
 impl<C: ZiskBackend> ZiskProver<C> {
     pub fn new(prover: C::Prover) -> Self {
         Self { prover }
+    }
+
+    pub fn set_stdin(&self, stdin: ZiskStdin) {
+        self.prover.set_stdin(stdin);
     }
 
     pub fn debug_verify_constraints(

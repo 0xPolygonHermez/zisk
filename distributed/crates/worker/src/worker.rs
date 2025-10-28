@@ -9,6 +9,7 @@ use std::fs;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
+use zisk_common::io::ZiskStdin;
 use zisk_distributed_common::{AggregationParams, BlockContext, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
 use zisk_sdk::{Asm, ProverClient, ZiskProver};
@@ -477,6 +478,15 @@ impl Worker {
         let phase = proofman::ProvePhase::Contributions;
 
         // Handle the result immediately without holding it across await
+        if let ProvePhaseInputs::Contributions(proof_info) = &phase_inputs {
+            if let Some(input_data_path) = &proof_info.input_data_path {
+                let stdin = ZiskStdin::from_file(input_data_path)?;
+                prover.set_stdin(stdin);
+            }
+        } else {
+            return Err(anyhow::anyhow!("Invalid phase inputs for Contribution phase"));
+        }
+
         let challenge = match prover.generate_proof_from_lib(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Contributions(challenge)) => {
                 info!("Contribution computation successful for {job_id}");
