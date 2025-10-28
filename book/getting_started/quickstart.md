@@ -21,7 +21,7 @@ ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below
         ```
     - **macOS**:
         ```bash
-        brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+        brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium
         ```
 
 3. To install ZisK using ziskup, run the following command in your terminal:
