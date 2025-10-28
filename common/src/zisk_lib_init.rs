@@ -4,7 +4,7 @@ use fields::PrimeField64;
 use proofman_common::VerboseMode;
 use witness::WitnessLibrary;
 
-use crate::ExecutorStats;
+use crate::{io::ZiskStdin, ExecutorStats};
 
 #[derive(Debug, Default, Clone)]
 pub struct ZiskExecutionResult {
@@ -29,6 +29,7 @@ pub struct Stats {
 
 /// Extension trait that provides execution result access without Any boxing
 pub trait ZiskWitnessLibrary<F: PrimeField64> {
+    fn set_stdin(&self, stdin: ZiskStdin);
     fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)>;
 }
 

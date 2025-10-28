@@ -5,7 +5,7 @@ use fields::Goldilocks;
 use proofman::{AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::{DebugInfo, ProofOptions};
 use std::{fs::File, io::Write, path::PathBuf, time::Duration};
-use zisk_common::{ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
+use zisk_common::{io::ZiskStdin, ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
 use zstd::Encoder;
 
 pub struct ProverBackend {
@@ -24,7 +24,7 @@ pub struct ProverBackend {
 impl ProverBackend {
     pub fn debug_verify_constraints(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
         debug_info: DebugInfo,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
         if !self.verify_constraints {
@@ -32,8 +32,11 @@ impl ProverBackend {
         }
 
         let start = std::time::Instant::now();
+
+        self.witness_lib.set_stdin(stdin);
+
         self.proofman
-            .verify_proof_constraints_from_lib(input, &debug_info, false)
+            .verify_proof_constraints_from_lib(None, &debug_info, false)
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
         let elapsed = start.elapsed();
 
@@ -54,14 +57,14 @@ impl ProverBackend {
 
     pub fn verify_constraints(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
-        self.debug_verify_constraints(input, DebugInfo::default())
+        self.debug_verify_constraints(stdin, DebugInfo::default())
     }
 
     pub fn prove(
         &self,
-        input: Option<PathBuf>,
+        stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
         if self.verify_constraints {
             return Err(anyhow::anyhow!(
@@ -71,11 +74,13 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
+        self.witness_lib.set_stdin(stdin);
+
         self.proofman.set_barrier();
         let proof = self
             .proofman
             .generate_proof_from_lib(
-                ProvePhaseInputs::Full(ProofInfo::new(input, 1, vec![0], 0)),
+                ProvePhaseInputs::Full(ProofInfo::new(None, 1, vec![0], 0)),
                 ProofOptions::new(
                     self.verify_constraints,
                     self.aggregation,
