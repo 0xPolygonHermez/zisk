@@ -1,6 +1,7 @@
 mod arith_eq;
 mod arith_eq_384;
 mod keccak;
+mod keccak_3;
 
 pub use arith_eq::*;
 pub use arith_eq_384::*;
@@ -9,3 +10,4 @@ pub use keccak::{
     KECCAKF_INPUT_SIZE_BITS, KECCAKF_OUTPUT_BITS_IN_PARALLEL, KECCAKF_OUTPUT_SIZE_BITS,
     KECCAK_GATE_CONFIG,
 };
+pub use keccak_3::*; // TODO: Remove!

@@ -14,6 +14,7 @@ pub struct GateConfig {
     pub sout_ref_number: u64,
     pub sout_ref_distance: u64,
     pub sout_last_ref: u64,
+    pub reset_threshold: u32,
 }
 
 impl GateConfig {
@@ -31,8 +32,11 @@ impl GateConfig {
         sout_ref_group_by: u64,
         sout_ref_number: u64,
         sout_ref_distance: u64,
+        reset_threshold: u32,
     ) -> Self {
         assert!(max_refs >= gate_number);
+
+        assert!(reset_threshold > 0 && reset_threshold & (reset_threshold - 1) == 0);
 
         let sin_last_ref = sin_first_ref
             + (sin_ref_number - sin_ref_group_by) * sin_ref_distance / sin_ref_group_by
@@ -76,6 +80,7 @@ impl GateConfig {
             sout_ref_number,
             sout_ref_distance,
             sout_last_ref,
+            reset_threshold,
         }
     }
 
