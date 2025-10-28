@@ -10,7 +10,9 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_common::io::ZiskStdin;
-use zisk_distributed_common::{AggregationParams, BlockContext, JobPhase, WorkerState};
+use zisk_distributed_common::{
+    AggregationParams, BlockContext, InputSourceDto, JobPhase, WorkerState,
+};
 use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
 use zisk_sdk::{Asm, ProverClient, ZiskProver};
 
@@ -364,7 +366,7 @@ impl Worker {
         let job_id = job.job_id.clone();
 
         let proof_info = ProofInfo::new(
-            Some(job.block.input_path.clone()),
+            None,
             job.total_compute_units as usize,
             job.allocation.clone(),
             job.rank_id as usize,
@@ -373,8 +375,14 @@ impl Worker {
 
         let options = Self::get_proof_options_partial_contribution();
 
-        let mut serialized =
-            borsh::to_vec(&(JobPhase::Contributions, job_id, phase_inputs, options)).unwrap();
+        let mut serialized = borsh::to_vec(&(
+            JobPhase::Contributions,
+            job_id,
+            phase_inputs,
+            options,
+            job.block.input_source.clone(),
+        ))
+        .unwrap();
 
         self.prover.mpi_broadcast(&mut serialized);
     }
@@ -430,7 +438,7 @@ impl Worker {
             info!("Computing Contribution for {job_id}");
 
             let proof_info = ProofInfo::new(
-                Some(job.block.input_path.clone()),
+                None,
                 job.total_compute_units as usize,
                 job.allocation.clone(),
                 job.rank_id as usize,
@@ -443,6 +451,7 @@ impl Worker {
                 job_id.clone(),
                 prover.as_ref(),
                 phase_inputs,
+                job.block.input_source.clone(),
                 options,
             )
             .await;
@@ -473,18 +482,24 @@ impl Worker {
         job_id: JobId,
         prover: &ZiskProver<Asm>,
         phase_inputs: ProvePhaseInputs,
+        input_source: InputSourceDto,
         options: ProofOptions,
     ) -> Result<Vec<ContributionsInfo>> {
         let phase = proofman::ProvePhase::Contributions;
 
-        // Handle the result immediately without holding it across await
-        if let ProvePhaseInputs::Contributions(proof_info) = &phase_inputs {
-            if let Some(input_data_path) = &proof_info.input_data_path {
-                let stdin = ZiskStdin::from_file(input_data_path)?;
+        match input_source {
+            InputSourceDto::InputPath(input_path) => {
+                let stdin = ZiskStdin::from_file(input_path)?;
                 prover.set_stdin(stdin);
             }
-        } else {
-            return Err(anyhow::anyhow!("Invalid phase inputs for Contribution phase"));
+            InputSourceDto::InputData(input_data) => {
+                let stdin = ZiskStdin::from_vec(input_data);
+                prover.set_stdin(stdin);
+            }
+            InputSourceDto::InputNull => {
+                let stdin = ZiskStdin::null();
+                prover.set_stdin(stdin);
+            }
         }
 
         let challenge = match prover.generate_proof_from_lib(phase_inputs, options, phase) {
@@ -678,13 +693,18 @@ impl Worker {
 
         match phase {
             JobPhase::Contributions => {
-                let (job_id, phase_inputs, options): (JobId, ProvePhaseInputs, ProofOptions) =
-                    borsh::from_slice(&bytes[1..]).unwrap();
+                let (job_id, phase_inputs, options, input_source_dto): (
+                    JobId,
+                    ProvePhaseInputs,
+                    ProofOptions,
+                    InputSourceDto,
+                ) = borsh::from_slice(&bytes[1..]).unwrap();
 
                 Self::execute_contribution_task(
                     job_id,
                     self.prover.as_ref(),
                     phase_inputs,
+                    input_source_dto,
                     options,
                 )
                 .await?;

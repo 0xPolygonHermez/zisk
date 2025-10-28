@@ -16,6 +16,8 @@ use std::{
 };
 use tracing::error;
 
+use crate::{InputModeDto, InputSourceDto};
+
 /// Job ID wrapper for type safety
 #[derive(
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize,
@@ -240,7 +242,8 @@ pub struct Job {
     pub start_times: HashMap<JobPhase, DateTime<Utc>>,
     pub duration_ms: Option<u64>,
     pub state: JobState,
-    pub block: BlockContext,
+    pub block_id: BlockId,
+    pub input_mode: InputModeDto,
     pub compute_capacity: ComputeCapacity,
     pub workers: Vec<WorkerId>,
     pub agg_worker_id: Option<WorkerId>,
@@ -256,7 +259,7 @@ pub struct Job {
 impl Job {
     pub fn new(
         block_id: BlockId,
-        input_path: PathBuf,
+        input_mode: InputModeDto,
         compute_capacity: ComputeCapacity,
         selected_workers: Vec<WorkerId>,
         partitions: Vec<Vec<u32>>,
@@ -267,7 +270,9 @@ impl Job {
             start_times: HashMap::new(),
             duration_ms: None,
             state: JobState::Created,
-            block: BlockContext { block_id, input_path },
+            // block: BlockContext { block_id, input_source },
+            block_id,
+            input_mode,
             compute_capacity,
             workers: selected_workers,
             agg_worker_id: None,
@@ -389,7 +394,7 @@ pub struct JobResult {
 #[derive(Debug, Clone)]
 pub struct BlockContext {
     pub block_id: BlockId,
-    pub input_path: PathBuf,
+    pub input_source: InputSourceDto,
 }
 
 #[repr(u8)]

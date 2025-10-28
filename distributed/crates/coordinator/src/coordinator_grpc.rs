@@ -370,7 +370,10 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     ) -> Result<Response<LaunchProofResponse>, Status> {
         self.validate_admin_request(&request)?;
 
-        let launch_proof_request_dto = request.into_inner().into();
+        let launch_proof_request_dto = request
+            .into_inner()
+            .try_into()
+            .map_err(|e| Status::invalid_argument(format!("Invalid request: {}", e)))?;
         let result = self.coordinator.launch_proof(launch_proof_request_dto).await;
 
         result.map(|response_dto| Response::new(response_dto.into())).map_err(Status::from)
