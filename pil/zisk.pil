@@ -20,6 +20,7 @@ require "arith_eq_384/pil/arith_eq_384.pil"
 require "keccakf/pil/keccakf.pil"
 require "keccakf/pil/keccakf_table.pil"
 require "sha256f/pil/sha256f.pil"
+require "big_int/pil/big_int_add.pil"
 
 proofval enable_input_data;
 enable_input_data * (1 - enable_input_data);
@@ -32,6 +33,8 @@ const int PUBLIC_OP = 0x30;
 const int ARITH_FROPS_TABLE_ID = 5010;
 const int BINARY_BASIC_FROPS_TABLE_ID = 5011;
 const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
+
+const int ADD256_OP = 0xF0; 
 
 airgroup Zisk {
     // Virtual Tables Configuration
@@ -76,6 +79,7 @@ airgroup Zisk {
                         bin_file: "state-machines/binary/src/binary_extension_frops_fixed.bin") alias BinaryExtensionFrops;
 
     // Precompiles
+    BigIntAdd(N: 2**20, bits: 256, operation_code: ADD256_OP) alias Add256;
     ArithEq(N: 2**20);
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();

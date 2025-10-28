@@ -51,7 +51,10 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
     col fixed CONN_C;
     col fixed CONN_D;
 
-    col witness free_in_a[chunks], free_in_b[chunks], free_in_c[chunks], free_in_d[chunks];
+    col witness bits(bits) free_in_a[chunks];
+    col witness bits(bits) free_in_b[chunks];
+    col witness bits(bits) free_in_c[chunks];
+    col witness bits(bits) free_in_d[chunks];
 
     // --> Circuit gates constraints
     for (int i = 0; i < chunks; i++) {
@@ -124,8 +127,8 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
         ----------------------------------------------------------------------------------------          
     */
 
-    col witness bit[mem_bits_in_parallel];
-    col witness val[mem_bits_in_parallel];
+    col witness bits(1) bit[mem_bits_in_parallel];
+    col witness bits(64) val[mem_bits_in_parallel];
 
     // Ensure that bit[i] is a bit
     for (int i = 0; i < mem_bits_in_parallel; i++) {
@@ -188,7 +191,7 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
     // (1),(2) and (3) prove that the bit decomposition is correct
 
     // A single col is sufficient for storing the step and the address
-    col witness step_addr;
+    col witness bits(40) step_addr;
 
     // Number of memory accesses needed to handle the bits
     const int MEM_BITS = RB * RC;
@@ -286,11 +289,11 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
     const expr mem_addr = clock_map(step_addr, pos: ADDR_STATE, start: 0,         end: IN_BLOCKS,     delta: 8, factor: MEM_SIZE) +
                           clock_map(step_addr, pos: ADDR_STATE, start: IN_BLOCKS, end: IN_OUT_BLOCKS, delta: 8, factor: MEM_SIZE);
 
-    col witness in_use_clk_0;
+    col witness bits(1) in_use_clk_0;
     in_use_clk_0 * (1 - in_use_clk_0) === 0;
     (1 - CLK_0) * in_use_clk_0 === 0; // it can only be active when CLK_0 is active
 
-    col witness in_use;
+    col witness bits(1) in_use;
     in_use * (1 - in_use) === 0;
 
     // if in_use is activated, it must be activated until there are not more input/output blocks

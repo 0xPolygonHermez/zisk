@@ -1,8 +1,5 @@
 //! Constants for the BN254 elliptic curve
 
-/// Family parameter
-pub const X: [u64; 4] = [0x44E992B44A6909F1, 0, 0, 0];
-
 /// B parameter of the curve E: y² = x³ + 3
 pub const E_B: [u64; 4] = [0x3, 0, 0, 0];
 
@@ -24,13 +21,6 @@ pub const P: [u64; 4] =
 
 /// Base field size minus one
 pub const P_MINUS_ONE: [u64; 4] = [P[0] - 1, P[1], P[2], P[3]];
-
-/// Scalar field size
-const R: [u64; 4] =
-    [0x43e1f593f0000001, 0x2833e84879b97091, 0xb85045b68181585d, 0x30644e72e131a029];
-
-/// Scalar field size minus one
-pub const R_MINUS_ONE: [u64; 4] = [R[0] - 1, R[1], R[2], R[3]];
 
 /// Frobenius operator constant 𝛾₁₁ := (9 + u)^((p-1)/6)
 pub const FROBENIUS_GAMMA11: [u64; 8] = [

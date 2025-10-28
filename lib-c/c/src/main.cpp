@@ -3,12 +3,32 @@
 #include <stdlib.h>
 #include <cstdint>
 #include <cstring>
+#include <clocale>
+#include <cstdio>
+
 #include "ec/ec.hpp"
 #include "fcall/fcall.hpp"
 #include "arith256/arith256.hpp"
 #include "arith384/arith384.hpp"
 #include "bn254/bn254.hpp"
 #include "bls12_381/bls12_381.hpp"
+#include "bigint/add256.hpp"
+#include "ffiasm/fec.hpp"
+#include "ffiasm/fnec.hpp"
+#include "common/utils.hpp"
+
+#define N_TESTS 1000000
+#define MAX_TEST_SIZE_U64  36  // Enough for the largest test
+
+
+void print_results(const char *name, uint64_t duration, double tp) {
+    // static uint64_t line = 0;
+    // const char *s_line = line % 2 ? "" : "\x1B[7m";
+    // const char *e_line = line % 2 ? "" : "\x1B[0m";
+    // printf("%s%-28s|%'15lu|%'15lu|%'15.4f%s\n", s_line, name, duration, (duration * 1000) / N_TESTS, tp, e_line);
+    // line = line + 1;
+    printf("%-28s|%'15lu|%'15lu|%'15.4f\n", name, duration, (duration * 1000) / N_TESTS, tp);
+}
 
 uint64_t TimeDiff(const struct timeval &startTime, const struct timeval &endTime)
 {
@@ -44,199 +64,892 @@ uint64_t TimeDiff(const struct timeval &startTime)
 
 bool verbose = false;
 
-int main(int argc, char *argv[])
+void secp256k1_add_benchmark(uint64_t *data)
 {
-    if (argc > 1)
-    {
-        if (strcmp(argv[1], "-v") == 0)
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 4 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 2 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
         {
-            verbose = true;
-        } 
-    }
-
-    /*******************/
-    /* secp256k1 curve */
-    /*******************/
-
-    printf("clib secp256k1:\n");
-
-    {
-        uint64_t dbl = 0;
-        uint64_t x1[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t y1[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t x2[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t y2[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t x3[4] = {0, 0, 0, 0};
-        uint64_t y3[4] = {0, 0, 0, 0};
-
-        int result = AddPointEc(dbl, x1, y1, x2, y2, x3, y3);
-        if (verbose)
-        {
-            printf("Called AddPointEc() result=%d x1=%lu:%lu:%lu:%lu y1=%lu:%lu:%lu:%lu x2=%lu:%lu:%lu:%lu y2=%lu:%lu:%lu:%lu x3=%lu:%lu:%lu:%lu y3=%lu:%lu:%lu:%lu\n",
-                result,
-                x1[3], x1[2], x1[1], x1[0],
-                y1[3], y1[2], y1[1], y1[0],
-                x2[3], x2[2], x2[1], x2[0],
-                y2[3], y2[2], y2[1], y2[0],
-                x3[3], x3[2], x3[1], x3[0],
-                y3[3], y3[2], y3[1], y3[0]
-            );
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j] = (uint64_t)rand();
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
         }
-   }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            AddPointEc(false, test_data, test_data + 4, test_data + 8, test_data + 12, test_data + 16, test_data + 20);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("secp256k1 (add)", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("secp256k1 (add)             |Exception: %s\n", e.what());
+    }
+}
+
+void secp256k1_dbl_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_POINT_U64 = 2 * 4;
+        const uint64_t TEST_SIZE_INPUT_U64 = TEST_SIZE_POINT_U64 * 2;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 2 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_POINT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_POINT_U64] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            AddPointEc(true, test_data, test_data + 4, test_data + 8, test_data + 12, test_data + 16, test_data + 20);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("secp256k1 (dbl)", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("secp256k1 (dbl)             |Exception: %s\n", e.what());
+    }
+}
+/*
+void secp256k1_add_fe_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t count = N_TESTS;
+        RawFec::Element* x1 = new RawFec::Element[count];
+        RawFec::Element* y1 = new RawFec::Element[count];
+        RawFec::Element* x2 = new RawFec::Element[count];
+        RawFec::Element* y2 = new RawFec::Element[count];
+        RawFec::Element x3, y3;
+        for (uint64_t i = 0; i<count; i++)
+        {
+            uint64_t _x1[4] = {(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand()};
+            uint64_t _y1[4] = {(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand()};
+            uint64_t _x2[4] = {(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand()};
+            uint64_t _y2[4] = {(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand()};
+            array2fe(_x1, x1[i]);
+            array2fe(_y1, y1[i]);
+            array2fe(_x2, x2[i]);
+            array2fe(_y2, y2[i]);
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<count; i++)
+        {
+            int result = AddPointEcFe(false, x1[i], y1[i], x2[i], y2[i], x3, y3);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        delete[] x1;
+        delete[] y1;
+        delete[] x2;
+        delete[] y2;
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("secp256k1 (add) (direct fe)", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("secp256k1 (add) (direct fe) |Exception: %s\n", e.what());
+    }
+}
+
+void secp256k1_dbl_fe_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t count = N_TESTS;
+        RawFec::Element* x1 = new RawFec::Element[count];
+        RawFec::Element* y1 = new RawFec::Element[count];
+        RawFec::Element x2, y2;
+        RawFec::Element x3, y3;
+        for (uint64_t i = 0; i<count; i++)
+        {
+            uint64_t _x1[4] = {(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand()};
+            uint64_t _y1[4] = {(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand(),(uint64_t)rand()};
+            array2fe(_x1, x1[i]);
+            array2fe(_y1, y1[i]);
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<count; i++)
+        {
+            int result = AddPointEcFe(true, x1[i], y1[i], x1[i], y1[i], x3, y3);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        delete[] x1;
+        delete[] y1;
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("secp256k1 (dbl) (direct fe)", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("secp256k1 (dbl) (direct fe) |Exception: %s\n", e.what());
+    }
+}
+*/
+void InverseFpEc_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = InverseFpEc(test_data, test_data + TEST_SIZE_INPUT_U64);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("InverseFpEc", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("InverseFpEc                 |Exception: %s\n", e.what());
+    } 
+}
+
+void InverseFnEc_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = InverseFnEc(test_data, test_data + TEST_SIZE_INPUT_U64);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("InverseFnEc", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("InverseFnEc                 |Exception: %s\n", e.what());
+    }       
+}
+
+void SqrtFpEcParity_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = SqrtFpEcParity(test_data, i%2, test_data + TEST_SIZE_INPUT_U64);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("SqrtFpEcParity", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("SqrtFpEcParity              |Exception: %s\n", e.what());
+    }       
+}
+
+void BN254CurveAddP_benchmark(uint64_t *data) 
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 4 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 2 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BN254CurveAddP(test_data, test_data + 8, test_data + 16);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BN254CurveAddP", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BN254CurveAddP              |Exception: %s\n", e.what());
+    }    
+}
+
+void BN254CurveDblP_benchmark(uint64_t *data) 
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 2 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 2 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            BN254CurveDblP(test_data, test_data + 8);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BN254CurveDblP", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BN254CurveDblP              |Exception: %s\n", e.what());
+    }    
+}
+
+void BN254FpInv_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BN254FpInv(test_data, test_data + 4);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BN254FpInv", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BN254FpInv                  |Exception: %s\n", e.what());
+    }            
+}
+
+void BN254ComplexAddP_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 2 * 8;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 8;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BN254ComplexAddP(test_data, test_data + 8, test_data + 16);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BN254ComplexAddP", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BN254ComplexAddP            |Exception: %s\n", e.what());
+    }            
+}
+
+void BN254ComplexSubP_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 2 * 8;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 8;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BN254ComplexSubP(test_data, test_data + 8, test_data + 16);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BN254ComplexSubP", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BN254ComplexSubP            |Exception: %s\n", e.what());
+    }            
+}
+
+void BN254ComplexMulP_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 2 * 8;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 8;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BN254ComplexMulP(test_data, test_data + 8, test_data + 16);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BN254ComplexMulP", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BN254ComplexMulP            |Exception: %s\n", e.what());
+    }            
+}
+
+void BN254ComplexInv_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BN254ComplexInv(test_data, test_data + 4);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BN254ComplexInv", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BN254ComplexInv             |Exception: %s\n", e.what());
+    }            
+} 
+
+void BN254TwistAddLineCoeffs_benchmark(uint64_t *data)
+{
+        try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BN254TwistAddLineCoeffs(test_data, test_data + 4);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BN254TwistAddLineCoeffs", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BN254TwistAddLineCoeffs     |Exception: %s\n", e.what());
+    }
+}
+
+void BN254TwistDblLineCoeffs_benchmark(uint64_t *data)
+{
+        try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BN254TwistDblLineCoeffs(test_data, test_data + 4);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BN254TwistDblLineCoeffs", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BN254TwistDblLineCoeffs     |Exception: %s\n", e.what());
+    }
+}
+
+void Arith256_benchmark(uint64_t *data) {
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 3 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 2 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j] = (uint64_t)rand();
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            Arith256(test_data, test_data + 4, test_data + 8, test_data + 12, test_data + 16);
+        }
+
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("Arith256", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("Arith256                    |Exception: %s\n", e.what());
+    }
     
-    {
-        uint64_t dbl = 0;
-        uint64_t p1[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p2[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p3[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+}
 
-        int result = AddPointEcP(dbl, p1, p2, p3);
-        if (verbose)
+void FastArith256_benchmark(uint64_t *data) {
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 3 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 2 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
         {
-            printf("Called AddPointEcP() result=%d x1=%lu:%lu:%lu:%lu y1=%lu:%lu:%lu:%lu x2=%lu:%lu:%lu:%lu y2=%lu:%lu:%lu:%lu x3=%lu:%lu:%lu:%lu y3=%lu:%lu:%lu:%lu\n",
-                result,
-                p1[3], p1[2], p1[1], p1[0],
-                p1[7], p1[6], p1[5], p1[4],
-                p2[3], p2[2], p2[1], p2[0],
-                p2[7], p2[6], p2[5], p2[4],
-                p3[3], p3[2], p3[1], p3[0],
-                p3[7], p3[6], p3[5], p3[4]
-            );
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j] = (uint64_t)rand();
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
         }
-    }
 
-    {
-        uint64_t dbl = 0;
-        uint64_t x1[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t y1[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t x2[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t y2[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t x3[4] = {0, 0, 0, 0};
-        uint64_t y3[4] = {0, 0, 0, 0};
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            FastArith256(test_data, test_data + 4, test_data + 8, test_data + 12, test_data + 16);
+        }
+
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("Arith256 (fast)", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("Arith256 (fast)             |Exception: %s\n", e.what());
+    }
+}
+
+void Arith256Mod_benchmark(uint64_t *data) {
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 4 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j] = (uint64_t)rand();
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            Arith256Mod(test_data, test_data + 4, test_data + 8, test_data + 12, test_data + 16);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("Arith256Mod", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("Arith256Mod                 |Exception: %s\n", e.what());
+    }
+}
+
+void Arith384_benchmark(uint64_t *data) {
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 3 * 6;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 2 * 6;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j] = (uint64_t)rand();
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            Arith384(test_data, test_data + 6, test_data + 12, test_data + 18, test_data + 24);
+        }
+
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("Arith384", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("Arith384                    |Exception: %s\n", e.what());
+    }
+    
+}
+
+void Arith384Mod_benchmark(uint64_t *data) {
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 4 * 6;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 6;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j] = (uint64_t)rand();
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            Arith384Mod(test_data, test_data + 6, test_data + 12, test_data + 18, test_data + 24);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("Arith384Mod", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("Arith384Mod                 |Exception: %s\n", e.what());
+    }
+}
+
+void BLS12_381CurveAddP_benchmark(uint64_t *data) 
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 4 * 6;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 2 * 6;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
 
         struct timeval startTime;
         gettimeofday(&startTime, NULL);
         for (uint64_t i = 0; i<1000000; i++)
         {
-            int result = AddPointEc(dbl, x1, y1, x2, y2, x3, y3);
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BLS12_381CurveAddP(test_data, test_data + 12, test_data + 24);
         }
         uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("AddPointEc(dbl=0) duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BLS12_381CurveAddP", duration, tp);
     }
+    catch (const std::exception & e) {
+        printf("BLS12_381CurveAddP          |Exception: %s\n", e.what());
+    }    
+}
 
-    {
-        uint64_t dbl = 1;
-        uint64_t x1[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t y1[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t x2[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t y2[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t x3[4] = {0, 0, 0, 0};
-        uint64_t y3[4] = {0, 0, 0, 0};
+void BLS12_381CurveDblP_benchmark(uint64_t *data) 
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 2 * 6;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 2 * 6;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
 
         struct timeval startTime;
         gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
+        for (uint64_t i = 0; i<N_TESTS; i++)
         {
-            int result = AddPointEc(dbl, x1, y1, x2, y2, x3, y3);
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            BLS12_381CurveDblP(test_data, test_data + 12);
         }
         uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("AddPointEc(dbl=1) duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BLS12_381CurveDblP", duration, tp);
     }
+    catch (const std::exception & e) {
+        printf("BLS12_381CurveDblP          |Exception: %s\n", e.what());
+    }    
+}
 
-    {
-        uint64_t a[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t r[4] = {0, 0, 0, 0};
+void BLS12_381ComplexAddP_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 2 * 12;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 12;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BLS12_381ComplexAddP(test_data, test_data + 12, test_data + 24);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BLS12_381ComplexAddP", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BLS12_381ComplexAddP        |Exception: %s\n", e.what());
+    }            
+}
+
+void BLS12_381ComplexSubP_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 2 * 12;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 12;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BLS12_381ComplexSubP(test_data, test_data + 12, test_data + 24);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BLS12_381ComplexSubP", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BLS12_381ComplexSubP        |Exception: %s\n", e.what());
+    }            
+}
+
+void BLS12_381ComplexMulP_benchmark(uint64_t *data)
+{
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 2 * 12;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 12;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                uint64_t value = (uint64_t)rand();
+                data[i * TEST_SIZE_U64 + j] = value;
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            int result = BLS12_381ComplexMulP(test_data, test_data + 12, test_data + 24);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("BLS12_381ComplexMulP", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("BLS12_381ComplexMulP        |Exception: %s\n", e.what());
+    }            
+}
+
+void Add256_benchmark(uint64_t *data) {
+
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 2 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 1 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + 1 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j] = (uint64_t)rand();
+            }
+            data[i * TEST_SIZE_U64 + TEST_SIZE_INPUT_U64] = (uint64_t)rand() % 2;
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64 + 1] = 0;
+            }
+        }
 
         struct timeval startTime;
         gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
+        for (uint64_t i = 0; i<N_TESTS; i++)
         {
-            int result = InverseFpEc(a, r);
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            Add256(test_data, test_data + 4, test_data[8], test_data + 9);
         }
+
         uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("InverseFpEc() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("Add256", duration, tp);
     }
-
-    {
-        uint64_t a[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t r[4] = {0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = InverseFnEc(a, r);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("InverseFnEc() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
+    catch (const std::exception & e) {
+        printf("Add256                      |Exception: %s\n", e.what());
     }
+}
 
-    {
-        uint64_t a[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t r[4] = {0, 0, 0, 0};
-        uint64_t parity = 0;
 
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = SqrtFpEcParity(a, parity, r);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("SqrtFpEcParity() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    printf("clib BN254:\n");
-
-    /*******************/
-    /* BN254 curve add */
-    /*******************/
-
-    {
-        uint64_t p1[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p2[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p3[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BN254CurveAddP(p1, p2, p3);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BN254CurveAddP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /**********************/
-    /* BN254 curve double */
-    /**********************/
-
-    {
-        uint64_t p1[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p2[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BN254CurveDblP(p1, p2);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BN254CurveDblP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /**************/
-    /* BN254FpInv */
-    /**************/
-
+void BN254FpInv_test()
+{
     {
         uint64_t x[4] = {1, 0, 0, 0};
         uint64_t expected_result[4] = {1, 0, 0, 0};
@@ -287,87 +1000,10 @@ int main(int argc, char *argv[])
             printf("BN254FpInv() succeeded\n");
         }
     }
+}
 
-    {
-        uint64_t a[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t r[4] = {0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BN254FpInv(a, r);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BN254FpInv() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-
-    }
-
-    /*********************/
-    /* BN254 complex add */
-    /*********************/
-
-    {
-        uint64_t p1[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p2[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p3[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BN254ComplexAddP(p1, p2, p3);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BN254ComplexAddP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /*********************/
-    /* BN254 complex sub */
-    /*********************/
-
-    {
-        uint64_t p1[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p2[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p3[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BN254ComplexSubP(p1, p2, p3);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BN254ComplexSubP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /*********************/
-    /* BN254 complex mul */
-    /*********************/
-
-    {
-        uint64_t p1[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p2[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p3[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BN254ComplexMulP(p1, p2, p3);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BN254ComplexMulP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /*******************/
-    /* BN254ComplexInv */
-    /*******************/
-
+void BN254ComplexInv_test()
+{
     {
         uint64_t x[8] = {1, 0, 0, 0, 0, 0, 0, 0};
         uint64_t expected_result[8] = {1, 0, 0, 0, 0, 0, 0, 0};
@@ -395,7 +1031,6 @@ int main(int argc, char *argv[])
             printf("BN254ComplexInv(1) succeeded\n");
         }
     }
-
     {
         uint64_t x[8] = {
             0xa4528921da9661b8,
@@ -441,26 +1076,10 @@ int main(int argc, char *argv[])
             printf("BN254ComplexInv() succeeded\n");
         }
     }
+}
 
-    {
-        uint64_t a[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t r[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BN254ComplexInv(a, r);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;   
-        printf("BN254ComplexInv() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /***************************/
-    /* BN254TwistAddLineCoeffs */
-    /***************************/
-
+void BN254TwistAddLineCoeffs_test()
+{
     {
         uint64_t input[32] = {
             // p
@@ -542,28 +1161,10 @@ int main(int argc, char *argv[])
         }
         if ((!failed) && verbose) printf("BN254TwistAddLineCoeffs() succeeded\n");
     }
+}
 
-    {
-        uint64_t a[32];
-        for (uint64_t i=0; i<32; i++) { a[i] = (uint64_t)rand(); }
-        uint64_t r[16];
-        for (uint64_t i=0; i<16; i++) { r[i] = 0; }
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BN254TwistAddLineCoeffs(a, r);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BN254TwistAddLineCoeffs() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /***************************/
-    /* BN254TwistDblLineCoeffs */
-    /***************************/
-
+void BN254TwistDblLineCoeffs_test()
+{   
     {
         uint64_t input[16] = {
             // p
@@ -627,230 +1228,56 @@ int main(int argc, char *argv[])
         }
         if ((!failed) && verbose) printf("BN254TwistDblLineCoeffs() succeeded\n");
     }
+}
 
+int main(int argc, char *argv[])
+{
+    if (argc > 1)
     {
-        uint64_t a[32];
-        for (uint64_t i=0; i<32; i++) { a[i] = (uint64_t)rand(); }
-        uint64_t r[16];
-        for (uint64_t i=0; i<16; i++) { r[i] = 0; }
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
+        if (strcmp(argv[1], "-v") == 0)
         {
-            int result = BN254TwistDblLineCoeffs(a, r);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BN254TwistDblLineCoeffs() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
+            verbose = true;
+        } 
     }
 
-    /************/
-    /* Arith256 */
-    /************/
+    setlocale(LC_NUMERIC, "en_US.UTF-8");  // usa locale del sistema
+    // o específico:    
+    uint64_t *data = (uint64_t *)malloc(N_TESTS * MAX_TEST_SIZE_U64 * sizeof(uint64_t));
+    printf("Test                        |duration   (us)|average    (ns)|TP (Mcalls/sec)\n");
+    printf("----------------------------|---------------|---------------|---------------\n");
 
-    printf("clib arith:\n");
+    secp256k1_add_benchmark(data);
+    secp256k1_dbl_benchmark(data);
+    // secp256k1_add_fe_benchmark(data);
+    // secp256k1_dbl_fe_benchmark(data);
+    InverseFpEc_benchmark(data);
+    InverseFnEc_benchmark(data);
+    SqrtFpEcParity_benchmark(data);
+    BN254CurveAddP_benchmark(data);
+    BN254CurveDblP_benchmark(data);
+    BN254FpInv_benchmark(data);
+    BN254ComplexAddP_benchmark(data);
+    BN254ComplexSubP_benchmark(data);
+    BN254ComplexMulP_benchmark(data);
+    BN254ComplexInv_benchmark(data);
+    BN254TwistAddLineCoeffs_benchmark(data);
+    BN254TwistDblLineCoeffs_benchmark(data);
+    Arith256_benchmark(data);
+    FastArith256_benchmark(data);
+    Arith256Mod_benchmark(data);
+    Arith384_benchmark(data);
+    Arith384Mod_benchmark(data);
+    BLS12_381CurveAddP_benchmark(data);
+    BLS12_381CurveDblP_benchmark(data);
+    BLS12_381ComplexAddP_benchmark(data);
+    BLS12_381ComplexSubP_benchmark(data);
+    BLS12_381ComplexMulP_benchmark(data);
+    Add256_benchmark(data);
 
-    {
+    BN254FpInv_test();
+    BN254ComplexInv_test();
+    BN254TwistAddLineCoeffs_test();
+    BN254TwistDblLineCoeffs_test();
 
-        uint64_t a[4];
-        for (uint64_t i=0; i<4; i++) { a[i] = (uint64_t)rand(); }
-        uint64_t b[4];
-        for (uint64_t i=0; i<4; i++) { b[i] = (uint64_t)rand(); }
-        uint64_t c[4];
-        for (uint64_t i=0; i<4; i++) { c[i] = (uint64_t)rand(); }
-        uint64_t dl[4];
-        uint64_t dh[4];
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = Arith256(a, b, c, dl, dh);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("Arith256()duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /*******************/
-    /* Arith256 module */
-    /*******************/
-
-    {
-        uint64_t a[4];
-        for (uint64_t i=0; i<4; i++) { a[i] = (uint64_t)rand(); }
-        uint64_t b[4];
-        for (uint64_t i=0; i<4; i++) { b[i] = (uint64_t)rand(); }
-        uint64_t c[4];
-        for (uint64_t i=0; i<4; i++) { c[i] = (uint64_t)rand(); }
-        uint64_t module[4];
-        for (uint64_t i=0; i<4; i++) { module[i] = (uint64_t)rand(); }
-        uint64_t d[4];
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = Arith256Mod(a, b, c, module, d);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("Arith256Mod() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /************/
-    /* Arith384 */
-    /************/
-
-    printf("clib arith 384:\n");
-
-    {
-
-        uint64_t a[6];
-        for (uint64_t i=0; i<6; i++) { a[i] = (uint64_t)rand(); }
-        uint64_t b[6];
-        for (uint64_t i=0; i<6; i++) { b[i] = (uint64_t)rand(); }
-        uint64_t c[6];
-        for (uint64_t i=0; i<6; i++) { c[i] = (uint64_t)rand(); }
-        uint64_t dl[6];
-        uint64_t dh[6];
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = Arith384(a, b, c, dl, dh);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("Arith384() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /*******************/
-    /* Arith384 module */
-    /*******************/
-
-    {
-        uint64_t a[6];
-        for (uint64_t i=0; i<6; i++) { a[i] = (uint64_t)rand(); }
-        uint64_t b[6];
-        for (uint64_t i=0; i<6; i++) { b[i] = (uint64_t)rand(); }
-        uint64_t c[6];
-        for (uint64_t i=0; i<6; i++) { c[i] = (uint64_t)rand(); }
-        uint64_t module[6];
-        for (uint64_t i=0; i<6; i++) { module[i] = (uint64_t)rand(); }
-        uint64_t d[6];
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = Arith384Mod(a, b, c, module, d);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("Arith384Mod() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    printf("clib BLS12_381:\n");
-
-    /***********************/
-    /* BLS12_381 curve add */
-    /***********************/
-
-    {
-        uint64_t p1[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p2[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p3[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BLS12_381CurveAddP(p1, p2, p3);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BLS12_381CurveAddP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /**************************/
-    /* BLS12_381 curve double */
-    /**************************/
-
-    {
-        uint64_t p1[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p2[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BLS12_381CurveDblP(p1, p2);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BLS12_381CurveDblP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /*************************/
-    /* BLS12_381 complex add */
-    /*************************/
-
-    {
-        uint64_t p1[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p2[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p3[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BLS12_381ComplexAddP(p1, p2, p3);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BLS12_381ComplexAddP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /*************************/
-    /* BLS12_381 complex sub */
-    /*************************/
-
-    {
-        uint64_t p1[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p2[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p3[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BLS12_381ComplexSubP(p1, p2, p3);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BLS12_381ComplexSubP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
-
-    /*************************/
-    /* BLS12_381 complex mul */
-    /*************************/
-
-    {
-        uint64_t p1[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p2[12] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
-        uint64_t p3[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-        struct timeval startTime;
-        gettimeofday(&startTime, NULL);
-        for (uint64_t i = 0; i<1000000; i++)
-        {
-            int result = BLS12_381ComplexMulP(p1, p2, p3);
-        }
-        uint64_t duration = TimeDiff(startTime);
-        double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("BLS12_381ComplexMulP() duration=%lu us, average=%lu ns, TP = %f Mcalls/sec\n", duration, duration/1000, tp);
-    }
+    free(data);
 }

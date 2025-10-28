@@ -70,11 +70,12 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = OP
     const int bits = 64;
     const int bytes = bits / 8;
 
-    col witness op;
-    col witness in1[bytes];
-    col witness in2_low;       // Note:  if in2_low∊[0,2^5-1], else in2_low∊[0,2^6-1] (checked by the table)
-    col witness out[bytes][2];
-    col witness op_is_shift;   // 1 if op is shift, 0 otherwise
+    col witness bits(6) op;
+    col witness bits(8) in1[bytes];
+    col witness bits(8) in2_low;
+    
+    col witness bits(32) out[bytes][2];
+    col witness bits(1) op_is_shift;
 
     // Constraints to check the correctness of each binary operation
     for (int j = 0; j < bytes; j++) {
@@ -82,12 +83,12 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = OP
     }
 
     // Constraints to make sure that this component is called from the main component
-    col witness in2[2];
+    col witness bits(32) in2[2]; // in2[0] only requires 24 bits
 
     expr in1_low = in1[0] + in1[1]*2**8 + in1[2]*2**16 + in1[3]*2**24;
     expr in1_high = in1[4] + in1[5]*2**8 + in1[6]*2**16 + in1[7]*2**24;
 
-    col witness multiplicity;
+    col witness bits(1) multiplicity;
     lookup_proves(
         operation_bus_id,
         [

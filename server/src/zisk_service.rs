@@ -16,8 +16,7 @@ use proofman_common::{initialize_logger, DebugInfo, ParamsGPU};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use uuid::Uuid;
-use witness::WitnessLibrary;
-use zisk_common::{info_file, ZiskLibInitFn};
+use zisk_common::{info_file, ZiskLib, ZiskLibInitFn};
 
 use anyhow::Result;
 
@@ -329,7 +328,7 @@ pub struct ZiskService {
     config: Arc<ServerConfig>,
     // It is important to keep the witness_lib declaration before the proofman declaration
     // to ensure that the witness library is dropped before the proofman.
-    witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+    witness_lib: Arc<Box<dyn ZiskLib<Goldilocks>>>,
     proofman: Arc<ProofMan<Goldilocks>>,
     asm_services: Option<AsmServices>,
     is_busy: Arc<AtomicBool>,
@@ -339,6 +338,23 @@ pub struct ZiskService {
 impl ZiskService {
     pub fn new(params: &ZiskServerParams) -> Result<Self> {
         info_file!("Starting asm microservices...");
+        let library =
+            unsafe { Library::new(params.witness_lib.clone()).expect("Failed to load library") };
+        let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
+            unsafe { library.get(b"init_library").expect("Failed to get symbol") };
+
+        let unlock_mapped_memory = params.unlock_mapped_memory;
+
+        let mut witness_lib = witness_lib_constructor(
+            params.verbose.into(),
+            params.elf.clone(),
+            params.asm.clone(),
+            params.asm_rom.clone(),
+            params.asm_port,
+            unlock_mapped_memory,
+            params.shared_tables,
+        )
+        .expect("Failed to initialize witness library");
 
         let proofman = ProofMan::<Goldilocks>::new(
             params.proving_key.clone(),
@@ -348,24 +364,22 @@ impl ZiskService {
             params.final_snark,
             params.gpu_params.clone(),
             params.verbose.into(),
+            witness_lib.get_packed_info(),
         )
         .expect("Failed to initialize proofman");
 
-        let mpi_ctx = proofman.get_mpi_ctx();
+        let world_rank = proofman.get_world_rank();
+        let local_rank = proofman.get_local_rank();
 
-        initialize_logger(params.verbose.into(), Some(mpi_ctx.rank));
+        initialize_logger(params.verbose.into(), Some(world_rank));
 
-        let port = params.port + mpi_ctx.node_rank as u16;
-
-        let world_rank = mpi_ctx.rank;
-        let local_rank = mpi_ctx.node_rank;
-        let unlock_mapped_memory = params.unlock_mapped_memory;
+        let port = params.port + local_rank as u16;
 
         let asm_runner_options = AsmRunnerOptions::new()
             .with_verbose(params.verbose > 0)
             .with_base_port(params.asm_port)
-            .with_world_rank(mpi_ctx.rank)
-            .with_local_rank(mpi_ctx.node_rank)
+            .with_world_rank(world_rank)
+            .with_local_rank(local_rank)
             .with_unlock_mapped_memory(params.unlock_mapped_memory);
 
         let asm_services = if params.emulator {
@@ -377,27 +391,9 @@ impl ZiskService {
             Some(asm_services)
         };
 
-        let library =
-            unsafe { Library::new(params.witness_lib.clone()).expect("Failed to load library") };
-        let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
-            unsafe { library.get(b"init_library").expect("Failed to get symbol") };
-
-        let mut witness_lib = witness_lib_constructor(
-            params.verbose.into(),
-            params.elf.clone(),
-            params.asm.clone(),
-            params.asm_rom.clone(),
-            Some(world_rank),
-            Some(local_rank),
-            params.asm_port,
-            unlock_mapped_memory,
-            params.shared_tables,
-        )
-        .expect("Failed to initialize witness library");
-
         proofman.register_witness(witness_lib.as_mut(), library);
 
-        let witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync> = Arc::from(witness_lib);
+        let witness_lib = Arc::new(witness_lib);
 
         let config = ServerConfig::new(
             port,

@@ -13,38 +13,38 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID, 
     const int CHUNKS_INPUT = 4;
     const int CHUNKS_OP = CHUNKS_INPUT * 2;
 
-    col witness carry[CHUNKS_OP - 1];
-    col witness a[CHUNKS_INPUT];
-    col witness b[CHUNKS_INPUT];
-    col witness c[CHUNKS_INPUT];
-    col witness d[CHUNKS_INPUT];
+    col witness bits(64, signed) carry[CHUNKS_OP - 1];
+    col witness bits(16) a[CHUNKS_INPUT];
+    col witness bits(16) b[CHUNKS_INPUT];
+    col witness bits(16) c[CHUNKS_INPUT];
+    col witness bits(16) d[CHUNKS_INPUT];
 
-    col witness na;     // a is negative
-    col witness nb;     // b is negative
-    col witness nr;     // rem is negative
-    col witness np;     // prod is negative
-    col witness sext;   // sign extend for 32 bits result
+    col witness bits(1) na;
+    col witness bits(1) nb;
+    col witness bits(1) nr;
+    col witness bits(1) np;
+    col witness bits(1) sext;
 
-    col witness m32;    // 32 bits operation
-    col witness div;    // division operation (div,rem)
+    col witness bits(1) m32;
+    col witness bits(1) div;
 
-    col witness fab;    // fab, to decrease degree of intermediate products a * b
+    col witness bits(64, signed) fab;
                         // fab = 1  if sign of a,b are the same
                         // fab = -1 if sign of a,b are different
 
-    col witness na_fb;
-    col witness nb_fa;
+    col witness bits(64, signed) na_fb;
+    col witness bits(64, signed) nb_fa;
 
 /*
-    col witness secondary;       // op_index: 0 => first result, 1 => second result;
+    col witness bits(1) secondary;
     secondary * (secondary - 1) === 0;
 */
-    col witness main_div;
-    col witness main_mul;
-    col witness signed;
+    col witness bits(1) main_div;
+    col witness bits(1) main_mul;
+    col witness bits(1) signed;
 
-    col witness div_by_zero;
-    col witness div_overflow;
+    col witness bits(1) div_by_zero;
+    col witness bits(1) div_overflow;
 
     main_div * (main_div - 1) === 0;
     main_mul * (main_mul - 1) === 0;
@@ -83,7 +83,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID, 
     div_overflow * (c[3] - (1 - m32) * 0x8000) === 0;
 
     // b != 0 <==> sum_all_bs != 0
-    col witness inv_sum_all_bs;
+    col witness bits(64, signed) inv_sum_all_bs;
 
     // div = 0 => div_by_zero must be 0 => 0 (no need calculate inverse)
     // div = 1 and div_by_zero = 0 => 1 calculate inverse to demostrate b != 0
@@ -216,7 +216,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID, 
     np * (1 - np) === 0;
     sext * (1 - sext) === 0;
 
-    col witness op;
+    col witness bits(8) op;
 
     // div m32 sa  sb  primary  secondary  opcodes              na   nb   np   nr   sext(c)
     // -------------------------------------------------------------------------------------
@@ -256,14 +256,14 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID, 
     const expr bus_res1_64 = (secondary * (d[2] + d[3] * CHUNK_SIZE) +
                               main_mul * (c[2] + c[3] * CHUNK_SIZE) +
                               main_div * (a[2] + a[3] * CHUNK_SIZE));
-    col witness bus_res1;
+    col witness bits(32) bus_res1;
 
     bus_res1 === sext * 0xFFFF_FFFF + (1 - m32) * bus_res1_64;
 
     m32 * bus_a1 === 0;
     m32 * bus_b1 === 0;
 
-    col witness multiplicity;
+    col witness bits(1) multiplicity;
 
     lookup_proves(operation_bus_id, [op,
                                      bus_a0, bus_a1,
@@ -283,8 +283,8 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID, 
          arith_range_table_assumes(ARITH_RANGE_CARRY, carry[index]);     // TODO: review carry range
     }
 
-    col witness range_ab;
-    col witness range_cd;
+    col witness bits(7) range_ab;
+    col witness bits(7) range_cd;
 
     arith_table_assumes(op, m32, div, na, nb, np, nr, sext, div_by_zero, div_overflow, main_mul,
                         main_div, signed, range_ab, range_cd);

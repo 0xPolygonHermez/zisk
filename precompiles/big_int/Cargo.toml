@@ -1,0 +1,35 @@
+[package]
+name = "precomp-big-int"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
+zisk-pil = { workspace = true }
+precompiles-common = { workspace = true }
+sm-mem = { workspace = true }
+mem-common = { workspace = true }
+lib-c = { workspace = true }
+
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+proofman-macros = { workspace = true }
+proofman-util = { workspace = true }
+pil-std-lib = { workspace = true }
+fields = { workspace=true }
+tracing = { workspace = true }
+rayon = { workspace = true }
+generic-array = "0.14"
+
+[features]
+default = []
+gpu = ["proofman-common/gpu", "packed"]
+packed = ["proofman-common/packed"]
+no_lib_link = ["proofman-common/no_lib_link"]
+diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

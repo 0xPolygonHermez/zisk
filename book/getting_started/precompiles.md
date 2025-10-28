@@ -1,6 +1,6 @@
 # Precompiles
 
-Precompiles are built-in system functions within ZisK’s operating system that accelerate computationally expensive and frequently used operations such as the Keccak-f permutation and Secp256k1 addition and doubling. 
+Precompiles are built-in system functions within ZisK’s operating system that accelerate computationally expensive and frequently used operations such as the Keccak-f permutation and Secp256k1 addition and doubling.
 
 These precompiles improve proving efficiency by offloading intensive computations from ZisK programs to dedicated, pre-integrated sub-processors. ZisK manages precompiles as system calls using the RISC-V `ecall` instruction.
 
@@ -32,3 +32,4 @@ Below is a summary of the precompiles currently available in ZisK:
 - [syscall_bls12_381_complex_add](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/bls12_381_complex_add.rs): Complex addition within the quadratic extension built over the base field of the BLS12-381 curve.
 - [syscall_bls12_381_complex_sub](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/bls12_381_complex_add.rs): Complex subtraction within the quadratic extension built over the base field of the BLS12-381 curve.
 - [syscall_bls12_381_complex_mul](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/bls12_381_complex_add.rs): Complex multiplication within the quadratic extension built over the base field of the BLS12-381 curve.
+- [syscall_add256](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/add256.rs): 256 bits addition with one carry in bit and carry out bit.

@@ -257,7 +257,7 @@ message ExecuteTaskResponse {
   oneof result_data {
     ChallengesList challenges = 6;
     ProofList proofs = 7;
-    FinalProofList final_proof = 8;
+    FinalProof final_proof = 8;
   }
 }
 
@@ -281,12 +281,9 @@ message Proof {
   repeated uint64 values = 3;
 }
 
-message FinalProofList {
-  repeated FinalProof final_proofs = 1;
-}
-
 message FinalProof {
   repeated uint64 values = 1;
+  uint64 executed_steps = 2;
 }
 
 message WorkerError {

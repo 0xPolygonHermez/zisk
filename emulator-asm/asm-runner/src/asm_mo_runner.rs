@@ -1,12 +1,10 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
-use zisk_common::ExecutorStats;
+use zisk_common::ExecutorStatsHandle;
 use zisk_common::Plan;
 
 use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 use tracing::error;
 
@@ -87,18 +85,12 @@ impl AsmRunnerMO {
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
-        _stats: Arc<Mutex<ExecutorStats>>,
+        _stats: ExecutorStatsHandle,
     ) -> Result<Self> {
         #[cfg(feature = "stats")]
-        let parent_stats_id = _stats.lock().unwrap().get_id();
+        let parent_stats_id = _stats.next_id();
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(
-            0,
-            parent_stats_id,
-            "ASM_MO_RUNNER",
-            0,
-            ExecutorStatsEvent::Begin,
-        );
+        _stats.add_stat(0, parent_stats_id, "ASM_MO_RUNNER", 0, ExecutorStatsEvent::Begin);
 
         let port = if let Some(base_port) = base_port {
             AsmServices::port_for(&AsmService::MO, base_port, local_rank)
@@ -112,32 +104,20 @@ impl AsmRunnerMO {
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        let __stats = Arc::clone(&_stats);
+        let __stats = _stats.clone();
 
         let handle = std::thread::spawn(move || {
             #[cfg(feature = "stats")]
-            let stats_id = __stats.lock().unwrap().get_id();
+            let stats_id = __stats.next_id();
             #[cfg(feature = "stats")]
-            __stats.lock().unwrap().add_stat(
-                parent_stats_id,
-                stats_id,
-                "ASM_MO",
-                0,
-                ExecutorStatsEvent::Begin,
-            );
+            __stats.add_stat(parent_stats_id, stats_id, "ASM_MO", 0, ExecutorStatsEvent::Begin);
 
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
             let result = asm_services.send_memory_ops_request(max_steps, chunk_size);
 
             // Add to executor stats
             #[cfg(feature = "stats")]
-            __stats.lock().unwrap().add_stat(
-                parent_stats_id,
-                stats_id,
-                "ASM_MO",
-                0,
-                ExecutorStatsEvent::End,
-            );
+            __stats.add_stat(parent_stats_id, stats_id, "ASM_MO", 0, ExecutorStatsEvent::End);
 
             result
         });
@@ -154,9 +134,9 @@ impl AsmRunnerMO {
         mem_planner.execute();
 
         #[cfg(feature = "stats")]
-        let stats_id = _stats.lock().unwrap().get_id();
+        let stats_id = _stats.next_id();
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(
+        _stats.add_stat(
             parent_stats_id,
             stats_id,
             "MO_PROCESS_CHUNKS",
@@ -164,11 +144,32 @@ impl AsmRunnerMO {
             ExecutorStatsEvent::Begin,
         );
 
+        // Threshold (in bytes) used to detect when the shared memory region size has changed.
+        // Computed to optimize the common case where minor size fluctuations are ignored.
+        // It is based on the worst-case scenario of memory usage.
+        let threshold_bytes = (chunk_size as usize * 200) + (44 * 8) + 32;
+        let mut threshold = unsafe {
+            preloaded.output_shmem.mapped_ptr().add(threshold_bytes) as *const AsmMOChunk
+        };
+
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
+
+                    // Check if we need to remap the shared memory
+                    if data_ptr >= threshold
+                        && preloaded
+                            .output_shmem
+                            .check_size_changed(&mut data_ptr)
+                            .context("Failed to check and remap shared memory for MO trace")?
+                    {
+                        threshold = unsafe {
+                            preloaded.output_shmem.mapped_ptr().add(threshold_bytes)
+                                as *const AsmMOChunk
+                        };
+                    }
 
                     let chunk = unsafe { std::ptr::read(data_ptr) };
 
@@ -177,9 +178,8 @@ impl AsmRunnerMO {
                     // Add to executor stats
                     #[cfg(feature = "stats")]
                     {
-                        let mut stats_guard = _stats.lock().unwrap();
-                        let stats_id = stats_guard.get_id();
-                        stats_guard.add_stat(
+                        let stats_id = _stats.next_id();
+                        _stats.add_stat(
                             parent_stats_id,
                             stats_id,
                             "MO_CHUNK_DONE",
@@ -229,18 +229,12 @@ impl AsmRunnerMO {
 
         // Add to executor stats
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(
-            parent_stats_id,
-            stats_id,
-            "MO_PROCESS_CHUNKS",
-            0,
-            ExecutorStatsEvent::End,
-        );
+        _stats.add_stat(parent_stats_id, stats_id, "MO_PROCESS_CHUNKS", 0, ExecutorStatsEvent::End);
 
         #[cfg(feature = "stats")]
-        let stats_id = _stats.lock().unwrap().get_id();
+        let stats_id = _stats.next_id();
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(
+        _stats.add_stat(
             parent_stats_id,
             stats_id,
             "MO_COLLECT_PLANS",
@@ -255,19 +249,13 @@ impl AsmRunnerMO {
 
         // Add to executor stats
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(
-            parent_stats_id,
-            stats_id,
-            "MO_COLLECT_PLANS",
-            0,
-            ExecutorStatsEvent::End,
-        );
+        _stats.add_stat(parent_stats_id, stats_id, "MO_COLLECT_PLANS", 0, ExecutorStatsEvent::End);
 
         // #[cfg(feature = "stats")]
         // {
         //     let mem_stats = mem_planner.get_mem_stats();
         //     for i in mem_stats {
-        //         _stats.lock().unwrap().add_stat(i);
+        //         _stats.add_stat(i);
         //     }
         // }
 
@@ -277,13 +265,7 @@ impl AsmRunnerMO {
         }));
 
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(
-            0,
-            parent_stats_id,
-            "ASM_MO_RUNNER",
-            0,
-            ExecutorStatsEvent::End,
-        );
+        _stats.add_stat(0, parent_stats_id, "ASM_MO_RUNNER", 0, ExecutorStatsEvent::End);
 
         Ok(AsmRunnerMO::new(plans))
     }

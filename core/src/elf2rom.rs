@@ -1,8 +1,10 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
 use crate::{
-    add_end_jmp,
-    elf_extraction::{collect_elf_payload, merge_adjacent_ro_sections},
+    add_end_and_lib,
+    elf_extraction::{
+        collect_elf_payload, collect_elf_payload_from_bytes, merge_adjacent_ro_sections, ElfPayload,
+    },
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
     AsmGenerationMethod, RoData, ZiskInst, ZiskRom, ZiskRom2Asm, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
@@ -11,39 +13,45 @@ use std::{error::Error, path::Path};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
+    // Load the embedded float library
+    const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../lib-float/c/lib/ziskfloat.elf");
+
     // Extract all relevant sections from the ELF file
-    let payload = collect_elf_payload(elf_file)?;
+    let payloads: Vec<ElfPayload> =
+        vec![collect_elf_payload(elf_file)?, collect_elf_payload_from_bytes(FLOAT_LIB_DATA)?];
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
     // Add the end instruction, jumping over it
-    add_end_jmp(&mut rom);
+    add_end_and_lib(&mut rom);
 
-    // 1. Add executable code sections
-    for section in &payload.exec {
-        add_zisk_code(&mut rom, section.addr, &section.data);
+    for payload in payloads.into_iter() {
+        // 1. Add executable code sections
+        for section in &payload.exec {
+            add_zisk_code(&mut rom, section.addr, &section.data);
+        }
+
+        // 2. Add read-write data sections (will be copied to RAM)
+        for section in &payload.rw {
+            add_zisk_init_data(&mut rom, section.addr, &section.data, true);
+        }
+
+        // 3. Add read-only data sections
+        // Merge adjacent read-only sections for efficiency
+        let merged_ro = merge_adjacent_ro_sections(&payload.ro);
+        for section in &merged_ro {
+            rom.ro_data.push(RoData::new(section.addr, section.data.len(), section.data.clone()));
+        }
+
+        // Add RO data initialization code instructions
+        for section in &merged_ro {
+            add_zisk_init_data(&mut rom, section.addr, &section.data, true);
+        }
+
+        // Add entry and exit jump instructions
+        add_entry_exit_jmp(&mut rom, payload.entry_point);
     }
-
-    // 2. Add read-write data sections (will be copied to RAM)
-    for section in &payload.rw {
-        add_zisk_init_data(&mut rom, section.addr, &section.data, true);
-    }
-
-    // 3. Add read-only data sections
-    // Merge adjacent read-only sections for efficiency
-    let merged_ro = merge_adjacent_ro_sections(&payload.ro);
-    for section in &merged_ro {
-        rom.ro_data.push(RoData::new(section.addr, section.data.len(), section.data.clone()));
-    }
-
-    // Add RO data initialization code instructions
-    for section in &merged_ro {
-        add_zisk_init_data(&mut rom, section.addr, &section.data, true);
-    }
-
-    // Add entry and exit jump instructions
-    add_entry_exit_jmp(&mut rom, payload.entry_point);
 
     // Preprocess the ROM (experimental)
     // Split the ROM instructions based on their address in order to get a better performance when

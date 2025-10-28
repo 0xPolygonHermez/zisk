@@ -6,7 +6,7 @@
 use std::any::Any;
 
 use asm_runner::MinimalTraces;
-use fields::PrimeField;
+use fields::PrimeField64;
 use zisk_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan, SegmentId};
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -31,7 +31,7 @@ impl MainPlanner {
     ///
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
-    pub fn plan<F: PrimeField>(
+    pub fn plan<F: PrimeField64>(
         min_traces: &MinimalTraces,
         main_counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>,
         min_traces_size: u64,
@@ -70,7 +70,6 @@ impl MainPlanner {
                     InstanceType::Instance,
                     CheckPoint::Single(ChunkId(segment_id)),
                     Some(Box::new(segment_id == num_instances - 1) as Box<dyn Any>),
-                    4,
                 )
             })
             .collect();
