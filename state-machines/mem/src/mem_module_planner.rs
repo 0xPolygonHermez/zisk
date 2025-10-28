@@ -29,7 +29,7 @@ pub struct MemModulePlannerConfig {
     pub from_addr: u32,
     pub last_addr: u32,
     pub rows: u32,
-    pub consecutive_addr: bool,
+    pub max_addr_distance: u32,
 }
 impl MemModulePlanner {
     pub fn new(
@@ -183,7 +183,6 @@ impl MemModulePlanner {
 
     fn add_intermediate_rows(&mut self, addr: u32, count: u32) {
         let mut pending = count;
-
         while pending > 0 {
             let rows = min(pending, self.rows_available);
             let skip = count - pending;
@@ -201,23 +200,23 @@ impl MemModulePlanner {
             pending -= rows;
         }
     }
-    fn add_intermediate_addr(&mut self, from_addr: u32, to_addr: u32) {
+    fn add_intermediate_addr(&mut self, from_addr: u32, to_addr: u32) -> u32 {
         // adding internal reads of zero for consecutive addresses
-        let count = to_addr - from_addr + 1;
-        if count > 1 {
-            self.add_intermediate_rows(from_addr, 1);
-            self.add_intermediate_rows(to_addr, count - 1);
-        } else {
-            assert_eq!(to_addr, from_addr);
-            self.add_intermediate_rows(to_addr, 1);
+        let mut addr = from_addr;
+        while (to_addr - addr) > self.config.max_addr_distance {
+            addr += self.config.max_addr_distance;
+            self.add_intermediate_rows(addr, 1);
         }
+        addr
     }
     fn add_intermediates(&mut self, addr: u32) -> u32 {
         if self.last_addr != addr {
-            if self.config.consecutive_addr && (addr - self.last_addr) > 1 {
-                self.add_intermediate_addr(self.last_addr + 1, addr - 1);
-            }
-            self.last_addr = addr;
+            let distance = addr - self.last_addr;
+            self.last_addr = if distance > self.config.max_addr_distance {
+                self.add_intermediate_addr(self.last_addr, addr)
+            } else {
+                addr
+            };
         }
         0
     }
