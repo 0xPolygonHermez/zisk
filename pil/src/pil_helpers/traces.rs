@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "b6abb8858d25fc8555316bfd0f320cd721f2f91fcc2006041cc6dd952d4b2f43";
+pub const PILOUT_HASH: &str = "bf5612d0cd82e9c4ed8f946b6440d72704e14ab980dac9f0873f91853867fcdf";
 
 //AIRGROUP CONSTANTS
 
@@ -557,7 +557,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 10, PackedInfoConst {
         is_packed: true,
         num_packed_words: 5,
-        unpack_info: &[5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 8, 8, 8, 8, 8, 8, 8, 8, 1],
+        unpack_info: &[5, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 8, 8, 8, 8, 8, 8, 8, 8, 1],
     }),
     (0, 11, PackedInfoConst {
         is_packed: true,
