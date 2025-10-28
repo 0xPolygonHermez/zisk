@@ -145,12 +145,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // Split a in bytes and store them in in1
         let a_bytes: [u8; 8] = a_val.to_le_bytes();
         for (i, value) in a_bytes.iter().enumerate() {
-            row.set_in1(i, *value);
+            row.set_free_in_a(i, *value);
         }
 
         // Store b low part into in2_low
         let in2_low: u64 = if op_is_shift { b_val & 0xFF } else { 0 };
-        row.set_in2_low(in2_low as u8);
+        row.set_free_in_b(in2_low as u8);
 
         // Store b lower bits when shifting, depending on operation size
         let b_low = if op_is_shift_word { b_val & LS_5_BITS } else { b_val & LS_6_BITS };
@@ -163,8 +163,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         };
         let in2_1: u32 = ((b_val >> 32) & 0xFFFFFFFF) as u32;
 
-        row.set_in2(0, in2_0);
-        row.set_in2(1, in2_1);
+        row.set_b(0, in2_0);
+        row.set_b(1, in2_1);
 
         // Calculate the trace output
         let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
@@ -306,8 +306,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
         // Convert the trace output to field elements
         for (j, out) in t_out.iter().enumerate() {
-            row.set_out(j, 0, out[0] as u32);
-            row.set_out(j, 1, out[1] as u32);
+            row.set_free_in_c(j, 0, out[0] as u32);
+            row.set_free_in_c(j, 1, out[1] as u32);
         }
 
         // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
