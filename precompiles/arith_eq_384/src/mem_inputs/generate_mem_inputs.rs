@@ -80,12 +80,10 @@ pub fn skip_mem_inputs(
     let params_count = config.read_params + config.write_params;
 
     // Check indirect loads
-    for iparam in 0..config.indirect_params {
-        let addr = addr_main + iparam as u32 * 8;
-        for mem_collector in mem_collectors_info {
-            if !mem_collector.skip_addr(addr) {
-                return false;
-            }
+    let to_addr = addr_main + (config.indirect_params as u32 - 1) * 8;
+    for mem_collector in mem_collectors_info {
+        if !mem_collector.skip_addr_range(addr_main, to_addr) {
+            return false;
         }
     }
 
@@ -100,12 +98,10 @@ pub fn skip_mem_inputs(
         } else {
             addr_main + (param_index * 8 * config.chunks_per_param) as u32
         };
-        for ichunk in 0..config.chunks_per_param {
-            let addr = param_addr + ichunk as u32 * 8;
-            for mem_collector in mem_collectors_info {
-                if !mem_collector.skip_addr(addr) {
-                    return false;
-                }
+        let to_addr = param_addr + (config.chunks_per_param as u32 - 1) * 8;
+        for mem_collector in mem_collectors_info {
+            if !mem_collector.skip_addr_range(param_addr, to_addr) {
+                return false;
             }
         }
     }

@@ -63,4 +63,10 @@ impl MemCollectorInfo {
         }
         false
     }
+    pub fn skip_addr_range(&self, from_addr: u32, to_addr: u32) -> bool {
+        if from_addr > self.to_addr || to_addr < self.from_addr {
+            return true;
+        }
+        false
+    }
 }
