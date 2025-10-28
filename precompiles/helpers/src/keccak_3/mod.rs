@@ -23,7 +23,7 @@ const KECCAKF_OUTPUT_BITS_IN_PARALLEL: u64 = 1;
 const KECCAKF_CHUNKS: u64 = 1;
 const KECCAKF_BITS: u64 = 1;
 const KECCAKF_NUM: u64 = KECCAKF_CHUNKS * KECCAKF_BITS;
-const KECCAKF_CIRCUIT_SIZE: u64 = 200000;
+const KECCAKF_CIRCUIT_SIZE: u64 = 155286;
 const KECCAKF_RESET_THRESHOLD: u32 = 1 << 20;
 
 // Keccak Configuration
@@ -62,27 +62,27 @@ pub fn keccak_f(state: &mut [u64; 25]) {
     // Apply all 24 rounds of Keccak permutations
     for r in 0..24 {
         // θ step
-        // s.set_context(r, "θ");
+        gate_state.set_context(r, "θ");
         keccak_f_theta(&mut gate_state, r);
         gate_state.copy_sout_refs_to_sin_refs();
 
         // ρ step
-        // s.set_context(r, "ρ");
+        gate_state.set_context(r, "ρ");
         keccak_f_rho(&mut gate_state);
         gate_state.copy_sout_refs_to_sin_refs();
 
         // π step
-        // s.set_context(r, "π");
+        gate_state.set_context(r, "π");
         keccak_f_pi(&mut gate_state);
         gate_state.copy_sout_refs_to_sin_refs();
 
         // χ step
-        // s.set_context(r, "χ");
+        gate_state.set_context(r, "χ");
         keccak_f_chi(&mut gate_state);
         gate_state.copy_sout_refs_to_sin_refs();
 
         // ι step
-        // s.set_context(r, "ι");
+        gate_state.set_context(r, "ι");
         keccak_f_iota(&mut gate_state, r);
         if r != 23 {
             gate_state.copy_sout_refs_to_sin_refs();
@@ -97,16 +97,32 @@ pub fn keccak_f(state: &mut [u64; 25]) {
         gate_state.print_round_events(r, Some(10));
     }
 
-    gate_state.print_expression_summary();
-
-    // Get the output bits
     let mut state_out_bits = [0u8; 1600];
+    let sout_ref_group_by = gate_state.config.sout_ref_group_by;
+    let sout_first_ref = gate_state.config.sout_first_ref;
+    let sout_ref_distance = gate_state.config.sout_ref_distance;
     for i in 0..1600 {
-        let group = i as u64 / sin_ref_group_by;
-        let group_pos = i as u64 % sin_ref_group_by;
-        let ref_idx = sin_first_ref + group * sin_ref_distance + group_pos;
-        state_out_bits[i] = gate_state.gates[ref_idx as usize].pins[PinId::A].bit;
+        // Add gates to make sure that the output is located in the expected gates
+        let group = i / sout_ref_group_by;
+        let group_pos = i % sout_ref_group_by;
+        let ref_idx = sout_first_ref + group * sout_ref_distance + group_pos;
+        gate_state.xor2(
+            gate_state.sout_refs[i as usize],
+            PinId::D,
+            gate_state.config.zero_ref.unwrap(),
+            PinId::A,
+            ref_idx,
+        );
+        gate_state.sout_refs[i as usize] = ref_idx;
+
+        // Get the output bits
+        state_out_bits[i as usize] = gate_state.gates[ref_idx as usize].pins[PinId::A].bit;
     }
+
+    // Print final expression summary and circuit topology
+    gate_state.print_expression_summary();
+    gate_state.print_circuit_topology();
+
     *state = bits_to_state(&state_out_bits);
 }
 

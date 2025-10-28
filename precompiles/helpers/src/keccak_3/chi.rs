@@ -9,6 +9,16 @@ use super::bit_position;
 ///
 /// 2. Return `A′`
 pub fn keccak_f_chi(s: &mut GateState) {
+    // Reset expressions before the nand
+    let reason = format!("χ step nand prep");
+    for i in 0..1600 {
+        let sin_ref = s.sin_refs[i];
+        s.manual_reset_expression(sin_ref, Some(reason.clone()));
+    }
+
+    s.set_subcontext(
+        "χ: A'[x,y,z] = A[x, y, z] ^ (¬A[(x + 1) mod 5, y, z] & A[(x + 2) mod 5, y, z])",
+    );
     for x in 0..5 {
         for y in 0..5 {
             for z in 0..64 {
