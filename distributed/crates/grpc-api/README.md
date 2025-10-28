@@ -16,7 +16,7 @@ The primary communication channel between coordinator and workers:
 
 **Worker → Coordinator Messages:**
 - `WorkerRegisterRequest` - Initial worker registration with compute capacity
-- `WorkerReconnectRequest` - Reconnection with last known state  
+- `WorkerReconnectRequest` - Reconnection with last known state
 - `ExecuteTaskResponse` - Task completion results (challenges, proofs, final proofs)
 - `HeartbeatAck` - Heartbeat acknowledgments
 - `WorkerError` - Error reporting
@@ -33,7 +33,7 @@ The primary communication channel between coordinator and workers:
 The system supports three types of proof tasks:
 
 1. **PARTIAL_CONTRIBUTION** - Distributed witness generation
-2. **PROVE** - Generate cryptographic proofs from challenges  
+2. **PROVE** - Generate cryptographic proofs from challenges
 3. **AGGREGATE** - Combine partial proofs into final proof
 
 ## Administrative API
@@ -57,7 +57,7 @@ All administrative endpoints use standardized error responses:
 ```proto
 message ErrorResponse {
   string code = 1;      // Error code (e.g., "JOB_NOT_FOUND")
-  string message = 2;   // Human-readable error message  
+  string message = 2;   // Human-readable error message
 }
 ```
 
@@ -79,7 +79,7 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 # Health check
 grpcurl -plaintext 127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/HealthCheck
 
-# Service information  
+# Service information
 grpcurl -plaintext 127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/StatusInfo
 
 # System status
@@ -113,7 +113,7 @@ For testing the bidirectional `WorkerStream`, you need a streaming-capable clien
 ```json
 {
   "register": {
-    "worker_id": "test-worker-001", 
+    "worker_id": "test-worker-001",
     "compute_capacity": {"compute_units": 8}
   }
 }
@@ -139,36 +139,34 @@ use zisk_distributed_grpc_api::zisk_distributed_api::{
 
 ```rust
 use tonic::transport::Channel;
-use zisk_distributed_grpc_api::zisk_distributed_api::{
-    ZiskDistributedApiClient, WorkerMessage, WorkerRegisterRequest
-};
+zisk_distributed_grpc_api
 
 async fn connect_worker() -> Result<(), Box<dyn std::error::Error>> {
     let channel = Channel::from_static("http://[::1]:50051")
         .connect()
         .await?;
-    
+
     let mut client = ZiskDistributedApiClient::new(channel);
-    
+
     let outbound = async_stream::stream! {
         yield WorkerMessage {
             payload: Some(worker_message::Payload::Register(WorkerRegisterRequest {
                 worker_id: "example-worker".to_string(),
-                compute_capacity: Some(ComputeCapacity { 
-                    compute_units: 4 
+                compute_capacity: Some(ComputeCapacity {
+                    compute_units: 4
                 }),
             })),
         };
     };
-    
+
     let response = client.worker_stream(Request::new(outbound)).await?;
     let mut inbound = response.into_inner();
-    
+
     while let Some(coordinator_message) = inbound.message().await? {
         // Handle coordinator messages
         println!("Received: {:?}", coordinator_message);
     }
-    
+
     Ok(())
 }
 ```
