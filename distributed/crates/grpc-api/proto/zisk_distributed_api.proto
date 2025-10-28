@@ -55,8 +55,15 @@ message WorkersListRequest {
 message LaunchProofRequest {
   string block_id = 1;
   uint32 compute_capacity = 2;
-  string input_path = 3;
-  optional uint32 simulated_node = 4; // If set, indicates this is a simulated worker
+  InputMode input_mode = 3;
+  optional string input_path = 4;
+  optional uint32 simulated_node = 5; // If set, indicates this is a simulated worker
+}
+
+enum InputMode {
+  INPUT_MODE_NONE = 0;  // No input provided
+  INPUT_MODE_PATH = 1;  // Input will be provided as a path
+  INPUT_MODE_DATA = 2;  // Input data will be sent directly
 }
 
 // ============================================================================
@@ -223,11 +230,14 @@ enum TaskType {
 
 message ContributionParams {
   string block_id = 1;
-  string input_path = 2;
-  uint32 rank_id = 3;
-  uint32 total_workers = 4;
-  repeated uint32 worker_allocation = 5;
-  uint32 job_compute_units = 6;
+  oneof input_source {
+    string input_path = 2;
+    bytes input_data = 3;
+  }
+  uint32 rank_id = 4;
+  uint32 total_workers = 5;
+  repeated uint32 worker_allocation = 6;
+  uint32 job_compute_units = 7;
 }
 
 message ProveParams {

@@ -1,15 +1,18 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use tonic::transport::Channel;
 use tracing::{error, info};
 use zisk_distributed_coordinator::Config;
 use zisk_distributed_grpc_api::{
-    zisk_distributed_api_client::ZiskDistributedApiClient, LaunchProofRequest,
+    zisk_distributed_api_client::ZiskDistributedApiClient, InputMode, LaunchProofRequest,
 };
 
 /// Handle the prove subcommand - makes RPC request to coordinator
 pub async fn handle(
     coordinator_url: Option<String>,
-    input_path: String,
+    input_path: Option<PathBuf>,
+    direct_input: bool,
     compute_capacity: u32,
     simulated_node: Option<u32>,
 ) -> Result<()> {
@@ -24,9 +27,24 @@ pub async fn handle(
     let channel = Channel::from_shared(coordinator_url)?.connect().await?;
     let mut client = ZiskDistributedApiClient::new(channel);
 
+    let (input_mode, input_path) = if let Some(ref path) = input_path {
+        if path.as_os_str().is_empty() {
+            return Err(anyhow::anyhow!("Input path cannot be empty"));
+        }
+
+        let input_path = Some(path.to_string_lossy().to_string());
+
+        let input_mode = if direct_input { InputMode::Data } else { InputMode::Path };
+
+        (input_mode, input_path)
+    } else {
+        (InputMode::None, None)
+    };
+
     let launch_proof_request = LaunchProofRequest {
         block_id: "0x1234567890abcdef".into(), // TODO! Placeholder block ID
         compute_capacity,
+        input_mode: input_mode.into(),
         input_path,
         simulated_node,
     };

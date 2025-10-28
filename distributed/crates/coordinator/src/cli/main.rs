@@ -4,6 +4,8 @@ use clap::Parser;
 mod handler_coordinator;
 mod handler_prove;
 
+use std::path::PathBuf;
+
 #[derive(Parser, Debug)]
 #[command(name = "zisk-coordinator")]
 #[command(about = "The Coordinator for the Distributed ZisK Network")]
@@ -44,13 +46,16 @@ enum ZiskCoordinatorCommands {
     /// Prove a block with the specified input file and node
     Prove {
         /// Coordinator URL
-        #[arg(short, long)]
+        #[arg(long)]
         coordinator_url: Option<String>,
 
         /// Path to the input file
-        /// NOTE: THIS IS A DEV FEATURE IT WILL BE REMOVED IN PRODUCTION
         #[arg(long, help = "Path to the input file for block proving")]
-        input: String,
+        input: Option<PathBuf>,
+
+        /// Whether to send the input data directly
+        #[clap(short = 'x', long, default_value_t = true)]
+        direct_input: bool,
 
         /// Compute capacity needed to generate the block proof
         #[arg(long, short, help = "Compute capacity needed to generate the block proof")]
@@ -70,11 +75,19 @@ async fn main() -> Result<()> {
         Some(ZiskCoordinatorCommands::Prove {
             coordinator_url,
             input,
+            direct_input,
             compute_capacity,
             simulated_node,
         }) => {
             // Run the "prove" subcommand
-            handler_prove::handle(coordinator_url, input, compute_capacity, simulated_node).await
+            handler_prove::handle(
+                coordinator_url,
+                input,
+                direct_input,
+                compute_capacity,
+                simulated_node,
+            )
+            .await
         }
         None => {
             // No subcommand was provided → default to coordinator mode

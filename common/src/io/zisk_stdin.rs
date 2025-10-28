@@ -1,4 +1,4 @@
-use crate::io::{ZiskFileStdin, ZiskNullStdin};
+use crate::io::{ZiskFileStdin, ZiskMemoryStdin, ZiskNullStdin};
 use std::path::Path;
 
 use anyhow::Result;
@@ -23,6 +23,7 @@ pub trait ZiskIO: Send + Sync {
 pub enum ZiskIOVariant {
     File(ZiskFileStdin),
     Null(ZiskNullStdin),
+    Memory(ZiskMemoryStdin),
 }
 
 impl ZiskIO for ZiskIOVariant {
@@ -30,6 +31,7 @@ impl ZiskIO for ZiskIOVariant {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.read(),
             ZiskIOVariant::Null(null_stdin) => null_stdin.read(),
+            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.read(),
         }
     }
 
@@ -37,6 +39,7 @@ impl ZiskIO for ZiskIOVariant {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.read_slice(slice),
             ZiskIOVariant::Null(null_stdin) => null_stdin.read_slice(slice),
+            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.read_slice(slice),
         }
     }
 
@@ -44,6 +47,7 @@ impl ZiskIO for ZiskIOVariant {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.read_into(buffer),
             ZiskIOVariant::Null(null_stdin) => null_stdin.read_into(buffer),
+            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.read_into(buffer),
         }
     }
 
@@ -51,6 +55,7 @@ impl ZiskIO for ZiskIOVariant {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.write_serialized(data),
             ZiskIOVariant::Null(null_stdin) => null_stdin.write_serialized(data),
+            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.write_serialized(data),
         }
     }
 
@@ -58,6 +63,7 @@ impl ZiskIO for ZiskIOVariant {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.write_bytes(data),
             ZiskIOVariant::Null(null_stdin) => null_stdin.write_bytes(data),
+            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.write_bytes(data),
         }
     }
 }
@@ -97,5 +103,9 @@ impl ZiskStdin {
     /// Create a file-based stdin
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         Ok(Self { io: ZiskIOVariant::File(ZiskFileStdin::new(path)?) })
+    }
+
+    pub fn from_vec(data: Vec<u8>) -> Self {
+        Self { io: ZiskIOVariant::Memory(ZiskMemoryStdin::new(data)) }
     }
 }

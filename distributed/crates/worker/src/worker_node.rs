@@ -8,8 +8,11 @@ use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info};
-use zisk_distributed_common::{AggProofData, AggregationParams, BlockContext, WorkerState};
+use zisk_distributed_common::{
+    AggProofData, AggregationParams, BlockContext, InputSourceDto, WorkerState,
+};
 use zisk_distributed_common::{BlockId, JobId};
+use zisk_distributed_grpc_api::contribution_params::InputSource;
 use zisk_distributed_grpc_api::execute_task_response::ResultData;
 use zisk_distributed_grpc_api::*;
 
@@ -112,7 +115,9 @@ impl WorkerNodeGrpc {
 
         let channel =
             Channel::from_shared(self.worker_config.coordinator.url.clone())?.connect().await?;
-        let mut client = zisk_distributed_api_client::ZiskDistributedApiClient::new(channel);
+        let mut client = zisk_distributed_api_client::ZiskDistributedApiClient::new(channel)
+            .max_decoding_message_size(MAX_MESSAGE_SIZE)
+            .max_encoding_message_size(MAX_MESSAGE_SIZE);
 
         // Create bidirectional stream
         let (message_sender, message_receiver) = mpsc::unbounded_channel();
@@ -475,13 +480,23 @@ impl WorkerNodeGrpc {
         };
 
         let job_id = JobId::from(request.job_id);
-        let input_path =
-            self.worker_config.worker.inputs_folder.join(PathBuf::from(params.input_path));
+        let input_source = match params.input_source {
+            Some(InputSource::InputPath(ref path)) => {
+                println!("Input path received: {}", path);
+                let input_path = self.worker_config.worker.inputs_folder.join(PathBuf::from(path));
 
-        // Validate that input_path is a subdirectory of inputs_folder
-        Self::validate_subdir(&self.worker_config.worker.inputs_folder, &input_path)?;
+                // Validate that input_path is a subdirectory of inputs_folder
+                Self::validate_subdir(&self.worker_config.worker.inputs_folder, &input_path)?;
 
-        let block = BlockContext { block_id: BlockId::from(params.block_id), input_path };
+                InputSourceDto::InputPath(input_path.display().to_string())
+            }
+            Some(InputSource::InputData(data)) => InputSourceDto::InputData(data),
+            None => {
+                return Err(anyhow!("Input source missing in ContributionParams"));
+            }
+        };
+
+        let block = BlockContext { block_id: BlockId::from(params.block_id), input_source };
 
         let job = self.worker.new_job(
             job_id,

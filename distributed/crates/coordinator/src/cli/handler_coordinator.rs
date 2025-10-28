@@ -5,7 +5,9 @@ use std::net::TcpListener;
 use tonic::transport::Server;
 use tracing::{error, info};
 use zisk_distributed_coordinator::{create_shutdown_signal, Config, CoordinatorGrpc};
-use zisk_distributed_grpc_api::zisk_distributed_api_server::ZiskDistributedApiServer;
+use zisk_distributed_grpc_api::{
+    zisk_distributed_api_server::ZiskDistributedApiServer, MAX_MESSAGE_SIZE,
+};
 
 pub async fn handle(
     config_file: Option<String>,
@@ -52,7 +54,9 @@ pub async fn handle(
     // Run the gRPC server with shutdown signal
     tokio::select! {
         result = Server::builder()
-            .add_service(ZiskDistributedApiServer::new(coordinator_service))
+            .add_service(ZiskDistributedApiServer::new(coordinator_service)
+                .max_decoding_message_size(MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(MAX_MESSAGE_SIZE))
             .serve(grpc_addr) => {
             match result {
                 Ok(_) => {
