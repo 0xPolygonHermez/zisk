@@ -292,7 +292,7 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "asm-runner"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -548,7 +548,7 @@ checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 
 [[package]]
 name = "cargo-zisk"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "asm-runner",
@@ -666,7 +666,7 @@ dependencies = [
 
 [[package]]
 name = "circuit"
-version = "0.13.0"
+version = "0.13.1"
 
 [[package]]
 name = "clang-sys"
@@ -1024,7 +1024,7 @@ dependencies = [
 
 [[package]]
 name = "data-bus"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "zisk-common",
  "zisk-core",
@@ -1284,7 +1284,7 @@ dependencies = [
 
 [[package]]
 name = "executor"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "asm-runner",
  "crossbeam",
@@ -2114,11 +2114,11 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "lib-c"
-version = "0.13.0"
+version = "0.13.1"
 
 [[package]]
 name = "lib-float"
-version = "0.13.0"
+version = "0.13.1"
 
 [[package]]
 name = "libc"
@@ -2245,7 +2245,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mem-common"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "clap",
  "fields",
@@ -2267,7 +2267,7 @@ dependencies = [
 
 [[package]]
 name = "mem-planner-cpp"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "mem-common",
  "proofman-common",
@@ -2806,7 +2806,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-arith-eq"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "ark-bn254",
  "ark-ff",
@@ -2844,7 +2844,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-arith-eq-384"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -2883,7 +2883,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-big-int"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "fields",
  "generic-array",
@@ -2905,7 +2905,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-keccakf"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "circuit",
  "clap",
@@ -2930,7 +2930,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-sha256f"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "fields",
  "mem-common",
@@ -2951,7 +2951,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-common"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "fields",
  "zisk-common",
@@ -2960,7 +2960,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-helpers"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -3474,14 +3474,14 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "elf",
 ]
 
 [[package]]
 name = "rom-setup"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "blake3",
@@ -3771,7 +3771,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "asm-runner",
@@ -3882,7 +3882,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
 name = "sm-arith"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "fields",
  "num-bigint",
@@ -3903,7 +3903,7 @@ dependencies = [
 
 [[package]]
 name = "sm-binary"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "fields",
  "num-bigint",
@@ -3923,7 +3923,7 @@ dependencies = [
 
 [[package]]
 name = "sm-frequent-ops"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "clap",
  "fields",
@@ -3943,7 +3943,7 @@ dependencies = [
 
 [[package]]
 name = "sm-main"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "asm-runner",
  "fields",
@@ -3965,7 +3965,7 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "fields",
  "mem-common",
@@ -3987,7 +3987,7 @@ dependencies = [
 
 [[package]]
 name = "sm-rom"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "asm-runner",
  "fields",
@@ -5500,7 +5500,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-common"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -5521,7 +5521,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-core"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "elf",
  "fields",
@@ -5559,7 +5559,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-distributed-coordinator"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -5591,7 +5591,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-distributed-grpc-api"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "chrono",
  "prost",
@@ -5608,7 +5608,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-distributed-worker"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "asm-runner",
@@ -5640,7 +5640,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-pil"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "fields",
  "proofman",
@@ -5653,7 +5653,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-witness"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "data-bus",
  "env_logger",
@@ -5687,7 +5687,7 @@ dependencies = [
 
 [[package]]
 name = "ziskclib"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "sha2",
  "tiny-keccak",
@@ -5695,7 +5695,7 @@ dependencies = [
 
 [[package]]
 name = "ziskemu"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "clap",
  "criterion",
@@ -5723,7 +5723,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "cfg-if",
  "getrandom 0.2.16",
