@@ -24,6 +24,12 @@ pub enum GateOperation {
     XorNand = 4, // XorNand(a,b,c) := a ^ (¬b & c)
 }
 
+impl Default for Gate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Gate {
     pub fn new() -> Self {
         // Default gate is XOR

@@ -11,7 +11,7 @@ use super::bit_position;
 ///
 /// 3. For `t` from `0` to `23`:  
 ///    a. For all `z` such that `0 ≤ z < 64`, let  
-///       `A′[x, y, z] = A[x, y, (z – (t + 1)(t + 2)/2) mod 64]`  
+///    `A′[x, y, z] = A[x, y, (z – (t + 1)(t + 2)/2) mod 64]`  
 ///    b. Let `(x, y) = (y, (2x + 3y) mod 5)`
 ///
 /// 4. Return `A′`

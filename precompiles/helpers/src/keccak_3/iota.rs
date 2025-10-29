@@ -26,7 +26,7 @@ pub fn keccak_f_iota(s: &mut GateState, ir: usize) {
     s.set_subcontext("ι: A'[0, 0, z] = A'[0, 0, z] ^ RC[z]");
     for z in 0..64 {
         // Since XOR(a, 0) = a, we can skip the XOR if the constant bit is zero
-        if KECCAK_F_RC[ir as usize][z] == 1 {
+        if KECCAK_F_RC[ir][z] == 1 {
             let pos = bit_position(0, 0, z);
             let aux = s.get_free_ref();
 

@@ -418,12 +418,12 @@ impl GateState {
         self.expr_manager.create_proxy_expression(ref_id);
     }
 
-    pub fn manual_reset_expression(&mut self, ref_id: u64, reason: Option<String>) {
-        self.expr_manager.create_reset_expression(ref_id, reason, None);
+    pub fn manual_reset_expression(&mut self, ref_id: u64) {
+        self.expr_manager.create_reset_expression(ref_id, true, None);
     }
 
-    pub fn manual_im_expression(&mut self, ref_id: u64, reason: Option<String>) {
-        self.expr_manager.create_im_expression(ref_id, reason, None);
+    pub fn manual_im_expression(&mut self, ref_id: u64) {
+        self.expr_manager.create_im_expression(ref_id, true, None);
     }
 
     /// Check if performing an operation would exceed the threshold and reset if needed
@@ -453,7 +453,7 @@ impl GateState {
             // Reset operands until we're under threshold (or all are reset)
             for (ref_id, max_val) in operands {
                 if max_val > 1 {
-                    expr_manager.create_reset_expression(ref_id, None, Some(predicted_max));
+                    expr_manager.create_reset_expression(ref_id, false, Some(predicted_max));
 
                     // Re-evaluate if we're now under threshold
                     let expr1 = expr_manager.get_expression(ref_in1).cloned().unwrap();

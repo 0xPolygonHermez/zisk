@@ -5,54 +5,57 @@ use super::Expression;
 #[derive(Debug)]
 pub struct ExpressionManager {
     /// Maps each reference to its expression
-    pub expressions: HashMap<u64, Expression>,
+    expressions: HashMap<u64, Expression>,
 
     /// Counter for generating unique IDs
-    pub counter: u64,
+    counter: u64,
 
     /// All expression events (both Im and Reset)
-    pub expression_events: Vec<ExpressionEvent>,
+    expression_events: Vec<ExpressionEvent>,
 
     /// Expression events grouped by round
-    pub events_by_round: HashMap<usize, Vec<ExpressionEvent>>,
+    events_by_round: HashMap<usize, Vec<ExpressionEvent>>,
 
     /// Current context for tracking
-    pub current_round: Option<usize>,
-    pub current_step: Option<String>,
-    pub current_substep: Option<String>,
+    current_round: Option<usize>,
+    current_step: Option<String>,
+    current_substep: Option<String>,
 
     /// Global maximum value encountered
-    pub max_value: u64,
+    max_value: u64,
 
     /// Counters
-    pub proxy_count: usize,
-    pub im_count: usize,
-    pub reset_count: usize,
+    proxy_count: usize,
+    im_count: usize,
+    reset_count: usize,
 }
 
 #[derive(Debug, Clone)]
-pub struct ExpressionEvent {
-    pub round: Option<usize>,
-    pub step: Option<String>,
-    pub substep: Option<String>,
-    pub operation_type: String,
-    pub ref_id: u64,
-    pub original_degree: usize,
-    pub original_max_value: u64,
-    pub new_degree: usize,
-    pub new_max_value: u64,
-    pub event_type: ExpressionEventType,
-    pub predicted_operation_max: Option<u64>,
+struct ExpressionEvent {
+    manual: bool,
+    op_type: ExpressionOpType,
+    step: Option<String>,
+    substep: Option<String>,
+    original_degree: usize,
+    new_degree: usize,
+    original_max_value: u64,
+    new_max_value: u64,
+    predicted_op_max: Option<u64>,
     // pub first_value: u64,
     // pub second_value: u64,
     // pub op_value: u64,
-    // pub reset_type: ExpressionEventType,
 }
 
 #[derive(Debug, Clone)]
-pub enum ExpressionEventType {
-    Automatic,      // Reset/Im due to threshold
-    Manual(String), // Manual reset/Im with reason
+enum ExpressionOpType {
+    Im,
+    Reset,
+}
+
+impl Default for ExpressionManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ExpressionManager {
@@ -79,7 +82,6 @@ impl ExpressionManager {
         id
     }
 
-    /// Set context for tracking
     pub fn set_context(&mut self, round: usize, step: &str) {
         self.current_round = Some(round);
         self.current_step = Some(step.to_string());
@@ -107,7 +109,6 @@ impl ExpressionManager {
         self.max_value
     }
 
-    /// Create a proxy expression from an expression
     pub fn create_proxy_expression(&mut self, ref_id: u64) {
         if let Some(expr) = self.get_expression(ref_id).cloned() {
             let original_degree = expr.degree();
@@ -122,11 +123,10 @@ impl ExpressionManager {
         }
     }
 
-    /// Create Im expression
     pub fn create_im_expression(
         &mut self,
         ref_id: u64,
-        reason: Option<String>,
+        manual: bool,
         predicted_op_max: Option<u64>,
     ) {
         if let Some(expr) = self.get_expression(ref_id).cloned() {
@@ -142,20 +142,13 @@ impl ExpressionManager {
             let new_degree = new_expr.degree();
 
             // Record the Im event
-            let event_type = if let Some(reason) = reason {
-                ExpressionEventType::Manual(reason)
-            } else {
-                ExpressionEventType::Automatic
-            };
-
             self.record_expression_event(
-                ref_id,
-                "im",
+                manual,
+                ExpressionOpType::Im,
                 original_degree,
-                original_max_value,
                 new_degree,
                 original_max_value,
-                event_type,
+                original_max_value,
                 predicted_op_max,
             );
 
@@ -164,11 +157,10 @@ impl ExpressionManager {
         }
     }
 
-    /// Create Reset expression
     pub fn create_reset_expression(
         &mut self,
         ref_id: u64,
-        reason: Option<String>,
+        manual: bool,
         predicted_op_max: Option<u64>,
     ) -> bool {
         if let Some(expr) = self.get_expression(ref_id).cloned() {
@@ -185,20 +177,13 @@ impl ExpressionManager {
             let new_max_value = new_expr.max_value();
 
             // Record the Reset event
-            let event_type = if let Some(reason) = reason {
-                ExpressionEventType::Manual(reason)
-            } else {
-                ExpressionEventType::Automatic
-            };
-
             self.record_expression_event(
-                ref_id,
-                "reset",
+                manual,
+                ExpressionOpType::Reset,
                 original_degree,
-                original_max_value,
                 new_degree,
+                original_max_value,
                 new_max_value,
-                event_type,
                 predicted_op_max,
             );
 
@@ -210,36 +195,33 @@ impl ExpressionManager {
         }
     }
 
-    /// Record an expression event (Im or Reset)
+    #[allow(clippy::too_many_arguments)]
     fn record_expression_event(
         &mut self,
-        ref_id: u64,
-        operation_type: &str,
+        manual: bool,
+        op_type: ExpressionOpType,
         original_degree: usize,
-        original_max_value: u64,
         new_degree: usize,
+        original_max_value: u64,
         new_max_value: u64,
-        event_type: ExpressionEventType,
         predicted_op_max: Option<u64>,
     ) {
         let event = ExpressionEvent {
-            round: self.current_round,
+            manual,
+            op_type,
             step: self.current_step.clone(),
             substep: self.current_substep.clone(),
-            operation_type: operation_type.to_string(),
-            ref_id,
             original_degree,
-            original_max_value,
             new_degree,
+            original_max_value,
             new_max_value,
-            event_type,
-            predicted_operation_max: predicted_op_max,
+            predicted_op_max,
         };
 
         self.expression_events.push(event.clone());
 
         if let Some(round) = self.current_round {
-            self.events_by_round.entry(round).or_insert_with(Vec::new).push(event);
+            self.events_by_round.entry(round).or_default().push(event);
         }
     }
 
@@ -251,13 +233,44 @@ impl ExpressionManager {
         }
     }
 
-    /// Print summary of all expression events
+    pub fn print_round_events(&self, round: usize, limit: Option<usize>) {
+        let limit = limit.unwrap_or(usize::MAX);
+
+        println!("\n--- Round {} Expression Events ---", round);
+        if let Some(events) = self.events_by_round.get(&round) {
+            println!("There were {} expression events in round {}", events.len(), round);
+            for (i, event) in events.iter().enumerate().take(limit) {
+                let event_type = if event.manual { "Manual" } else { "Auto" };
+                let op_type = match &event.op_type {
+                    ExpressionOpType::Im => "Im",
+                    ExpressionOpType::Reset => "Reset",
+                };
+
+                // 1. Step: "θ", Substep: "Compute A'[x, y, z]", Op: Unknown, First max: 2477476, Second max: 0, Op max: 0
+                println!(
+                    "{}. [{}] Type: \"{}\", Step: \"{}\", Substep: \"{}\", Degree: {}→{}, Max Value: {}→{}",
+                    i + 1,
+                    event_type,
+                    op_type,
+                    event.step.clone().unwrap_or("N/A".to_string()),
+                    event.substep.clone().unwrap_or("N/A".to_string()),
+                    event.original_degree,
+                    event.new_degree,
+                    event.original_max_value,
+                    event.new_max_value
+                );
+
+                if let Some(predicted) = event.predicted_op_max {
+                    println!("    (predicted operation max would have been: {})", predicted);
+                }
+            }
+        } else {
+            println!("No expression events in round {}", round);
+        }
+    }
+
     pub fn print_expression_summary(&self) {
         println!("\n--- Expression Event Summary ---");
-        println!("Total events: {}", self.expression_events.len());
-        println!("  Im events: {}", self.im_count);
-        println!("  Reset events: {}", self.reset_count);
-        println!("Maximum expression value: {}", self.max_value);
 
         // Group by type
         let mut automatic_im = 0;
@@ -266,54 +279,19 @@ impl ExpressionManager {
         let mut manual_reset = 0;
 
         for event in &self.expression_events {
-            match (&event.operation_type as &str, &event.event_type) {
-                ("im", ExpressionEventType::Automatic) => automatic_im += 1,
-                ("im", ExpressionEventType::Manual(_)) => manual_im += 1,
-                ("reset", ExpressionEventType::Automatic) => automatic_reset += 1,
-                ("reset", ExpressionEventType::Manual(_)) => manual_reset += 1,
-                _ => {}
+            match (event.manual, &event.op_type) {
+                (true, ExpressionOpType::Im) => manual_im += 1,
+                (true, ExpressionOpType::Reset) => manual_reset += 1,
+                (false, ExpressionOpType::Im) => automatic_im += 1,
+                (false, ExpressionOpType::Reset) => automatic_reset += 1,
             }
         }
 
-        println!("  Automatic Im: {}", automatic_im);
-        println!("  Manual Im: {}", manual_im);
-        println!("  Automatic Reset: {}", automatic_reset);
-        println!("  Manual Reset: {}", manual_reset);
-    }
+        println!("\tAutomatic Im: {}", automatic_im);
+        println!("\tAutomatic Reset: {}", automatic_reset);
+        println!("\tManual Im: {}", manual_im);
+        println!("\tManual Reset: {}", manual_reset);
 
-    /// Print events for a specific round
-    pub fn print_round_events(&self, round: usize, limit: Option<usize>) {
-        let limit = limit.unwrap_or(usize::MAX);
-
-        println!("\n--- Round {} Expression Events ---", round);
-        if let Some(events) = self.events_by_round.get(&round) {
-            println!("There were {} expression events in round {}", events.len(), round);
-            for (i, event) in events.iter().enumerate().take(limit) {
-                let reason = match &event.event_type {
-                    ExpressionEventType::Automatic => "auto".to_string(),
-                    ExpressionEventType::Manual(reason) => format!("manual: {}", reason),
-                };
-
-                // 1. Step: "θ", Substep: "Compute A'[x, y, z]", Op: Unknown, First max: 2477476, Second max: 0, Op max: 0
-                println!(
-                    "{}. Step: {}, Substep: {}, Type: {}, Degree: {}→{}, Max Value: {}→{} ({})",
-                    i + 1,
-                    event.step.clone().unwrap_or("N/A".to_string()),
-                    event.substep.clone().unwrap_or("N/A".to_string()),
-                    event.operation_type.to_uppercase(),
-                    event.original_degree,
-                    event.new_degree,
-                    event.original_max_value,
-                    event.new_max_value,
-                    reason
-                );
-
-                if let Some(predicted) = event.predicted_operation_max {
-                    println!("    (predicted operation max would have been: {})", predicted);
-                }
-            }
-        } else {
-            println!("No expression events in round {}", round);
-        }
+        println!("\tMaximum expression value: {}", self.max_value);
     }
 }

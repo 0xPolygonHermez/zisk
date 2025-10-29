@@ -121,7 +121,6 @@ pub fn keccak_f(state: &mut [u64; 25]) {
 
     // Print final expression summary and circuit topology
     gate_state.print_expression_summary();
-    gate_state.print_circuit_topology();
 
     *state = bits_to_state(&state_out_bits);
 }
