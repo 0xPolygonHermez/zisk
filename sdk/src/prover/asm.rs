@@ -70,8 +70,33 @@ impl AsmProver {
 }
 
 impl ProverEngine for AsmProver {
+    fn world_rank(&self) -> i32 {
+        self.core_prover.rank_info.world_rank
+    }
+
+    fn local_rank(&self) -> i32 {
+        self.core_prover.rank_info.local_rank
+    }
+
     fn set_stdin(&self, stdin: ZiskStdin) {
         self.core_prover.backend.witness_lib.set_stdin(stdin);
+    }
+
+    fn executed_steps(&self) -> u64 {
+        self.core_prover
+            .backend
+            .witness_lib
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.executed_steps)
+            .unwrap_or(0)
+    }
+
+    fn execute(
+        &self,
+        stdin: ZiskStdin,
+        output_path: PathBuf,
+    ) -> Result<(ZiskExecutionResult, Duration)> {
+        self.core_prover.backend.execute(stdin, output_path)
     }
 
     fn debug_verify_constraints(
@@ -99,18 +124,6 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.prove(stdin)
     }
 
-    fn world_rank(&self) -> i32 {
-        self.core_prover.rank_info.world_rank
-    }
-
-    fn local_rank(&self) -> i32 {
-        self.core_prover.rank_info.local_rank
-    }
-
-    fn mpi_broadcast(&self, data: &mut Vec<u8>) {
-        self.core_prover.backend.mpi_broadcast(data);
-    }
-
     fn generate_proof_from_lib(
         &self,
         phase_inputs: ProvePhaseInputs,
@@ -135,13 +148,8 @@ impl ProverEngine for AsmProver {
         )
     }
 
-    fn executed_steps(&self) -> u64 {
-        self.core_prover
-            .backend
-            .witness_lib
-            .execution_result()
-            .map(|(exec_result, _)| exec_result.executed_steps)
-            .unwrap_or(0)
+    fn mpi_broadcast(&self, data: &mut Vec<u8>) {
+        self.core_prover.backend.mpi_broadcast(data);
     }
 }
 
