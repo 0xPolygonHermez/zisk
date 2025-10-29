@@ -339,7 +339,6 @@ impl BusDevice<u64> for MemCounters {
             // self.save_to_compact_file(chunk_id, data);
             self.save_to_file(chunk_id, data);
         }
-
         self.measure(data);
 
         true

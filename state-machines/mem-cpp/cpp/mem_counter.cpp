@@ -120,15 +120,9 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
             const uint32_t aligned_addr = addr & 0xFFFFFFF8;
 
             if ((aligned_addr & ADDR_MASK) == addr_mask) {
-                #ifdef DEBUG_MEM
-                assert((ops == 1 || ops == 2) && "Invalid ops values (first address match)");
-                #endif
                 incr_counter(aligned_addr, chunk_id, false, chunk_data->flags & MEM_WRITE_FLAG);
             }
             else if ((bytes + (addr & 0x07)) > 8 && ((aligned_addr + 8) & ADDR_MASK) == addr_mask) {
-                #ifdef DEBUG_MEM
-                assert((ops == 1 || ops == 2) && "Invalid ops values (second address match)");
-                #endif
                 incr_counter(aligned_addr + 8 , chunk_id, false, chunk_data->flags & MEM_WRITE_FLAG);
             }
         }

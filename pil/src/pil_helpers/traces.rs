@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "f84f0cfddc746ef78a60d60b39590d435cc7459acf576c2d05c93564d2971402";
+pub const PILOUT_HASH: &str = "bf5612d0cd82e9c4ed8f946b6440d72704e14ab980dac9f0873f91853867fcdf";
 
 //AIRGROUP CONSTANTS
 
@@ -105,7 +105,7 @@ values!(ZiskPublicValues<F> {
 });
  
 values!(ZiskProofValues<F> {
- enable_input_data: F,
+ enable_input_data: F, enable_rom_data: F,
 });
  
 trace_row!(MainFixedRow<F> {

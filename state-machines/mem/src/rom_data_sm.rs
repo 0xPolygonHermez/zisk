@@ -30,6 +30,10 @@ pub const ROM_DATA_W_ADDR_END: u32 = ROM_ADDR_MAX as u32 >> MEM_BYTES_BITS;
 
 const _: () = {
     assert!(ROM_ADDR_MAX <= 0xFFFF_FFFF, "ROM_DATA memory exceeds the 32-bit addressable range");
+    assert!(
+        (ROM_ADDR_MAX - ROM_ADDR) <= (128 << 20),
+        "ROM_DATA is too large. ROM size must be <= 128MB"
+    );
 };
 
 pub struct RomDataSM<F: PrimeField64> {
@@ -111,6 +115,8 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         let range_id = self.std.get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
         self.std.range_check(range_id, (previous_segment.addr - ROM_DATA_W_ADDR_INIT) as i64, 1);
 
+        let mut max_range_distance_count = 0;
+
         // Fill the remaining rows
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
@@ -123,13 +129,14 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             last_addr = ROM_DATA_W_ADDR_INIT - 1;
         }
         let mut i = 0;
+
         for mem_op in mem_ops.iter() {
             let distance = mem_op.addr - last_addr;
             if i >= num_rows {
                 break;
             }
-            if distance > 1 {
-                let mut internal_reads = distance - 1;
+            if distance > SEGMENT_ADDR_MAX_RANGE as u32 {
+                let mut internal_reads = (distance - 1) / SEGMENT_ADDR_MAX_RANGE as u32;
 
                 #[cfg(feature = "debug_mem")]
                 println!(
@@ -149,7 +156,8 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
                 }
 
                 trace[i].set_addr_changes(true);
-                last_addr += 1;
+                last_addr += SEGMENT_ADDR_MAX_RANGE as u32;
+                max_range_distance_count += 1;
                 trace[i].set_addr(last_addr);
                 trace[i].set_value(0, 0);
                 trace[i].set_value(1, 0);
@@ -160,7 +168,8 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
 
                 for _j in 1..internal_reads {
                     trace[i] = trace[i - 1];
-                    last_addr += 1;
+                    last_addr += SEGMENT_ADDR_MAX_RANGE as u32;
+                    max_range_distance_count += 1;
                     trace[i].set_addr(last_addr);
                     i += 1;
                 }
@@ -177,7 +186,12 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             trace[i].set_value(1, high_val);
 
             let addr_changes = last_addr != mem_op.addr;
-            trace[i].set_addr_changes(addr_changes || (i == 0 && segment_id == 0));
+            if addr_changes || (i == 0 && segment_id == 0) {
+                trace[i].set_addr_changes(true);
+                self.std.range_check(range_id, (mem_op.addr - last_addr - 1) as i64, 1);
+            } else {
+                trace[i].set_addr_changes(false);
+            }
 
             last_addr = mem_op.addr;
             last_step = mem_op.step;
@@ -197,8 +211,10 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             for i in count + 1..num_rows {
                 trace[i] = trace[i - 1];
             }
+            // address doesn't change in padding rows, no range check is required
         }
 
+        self.std.range_check(range_id, SEGMENT_ADDR_MAX_RANGE as i64, max_range_distance_count);
         self.std.range_check(range_id, (ROM_DATA_W_ADDR_END - last_addr) as i64, 1);
 
         let mut air_values = RomDataAirValues::<F>::new();
