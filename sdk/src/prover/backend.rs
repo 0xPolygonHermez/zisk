@@ -22,7 +22,29 @@ pub struct ProverBackend {
 }
 
 impl ProverBackend {
-    pub fn debug_verify_constraints(
+    pub(crate) fn execute(
+        &self,
+        stdin: ZiskStdin,
+        output_path: PathBuf,
+    ) -> Result<(ZiskExecutionResult, Duration)> {
+        self.witness_lib.set_stdin(stdin);
+
+        let start = std::time::Instant::now();
+
+        self.proofman
+            .execute_from_lib(None, output_path)
+            .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
+
+        let elapsed = start.elapsed();
+
+        let (result, _) = self.witness_lib.execution_result().ok_or_else(|| {
+            anyhow::anyhow!("Failed to get execution result from emulator prover")
+        })?;
+
+        Ok((result, elapsed))
+    }
+
+    pub(crate) fn debug_verify_constraints(
         &self,
         stdin: ZiskStdin,
         debug_info: DebugInfo,
@@ -55,14 +77,14 @@ impl ProverBackend {
         Ok((result, elapsed, stats))
     }
 
-    pub fn verify_constraints(
+    pub(crate) fn verify_constraints(
         &self,
         stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
         self.debug_verify_constraints(stdin, DebugInfo::default())
     }
 
-    pub fn prove(
+    pub(crate) fn prove(
         &self,
         stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
@@ -155,11 +177,7 @@ impl ProverBackend {
         Ok((execution_result, elapsed, stats, proof))
     }
 
-    pub fn mpi_broadcast(&self, data: &mut Vec<u8>) {
-        self.proofman.mpi_broadcast(data);
-    }
-
-    pub fn generate_proof_from_lib(
+    pub(crate) fn generate_proof_from_lib(
         &self,
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
@@ -168,7 +186,7 @@ impl ProverBackend {
         self.proofman.generate_proof_from_lib(phase_inputs, options, phase)
     }
 
-    pub fn receive_aggregated_proofs(
+    pub(crate) fn receive_aggregated_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
@@ -176,5 +194,9 @@ impl ProverBackend {
         options: &ProofOptions,
     ) -> Option<Vec<AggProofs>> {
         self.proofman.receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
+    }
+
+    pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) {
+        self.proofman.mpi_broadcast(data);
     }
 }

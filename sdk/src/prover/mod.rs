@@ -10,16 +10,23 @@ use proofman_common::ProofOptions;
 
 use crate::Proof;
 use anyhow::Result;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 
 pub trait ProverEngine {
+    fn world_rank(&self) -> i32;
+
+    fn local_rank(&self) -> i32;
+
     fn set_stdin(&self, stdin: ZiskStdin);
 
-    fn verify_constraints(
+    fn executed_steps(&self) -> u64;
+
+    fn execute(
         &self,
         stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)>;
+        output_path: PathBuf,
+    ) -> Result<(ZiskExecutionResult, Duration)>;
 
     fn debug_verify_constraints(
         &self,
@@ -27,16 +34,15 @@ pub trait ProverEngine {
         debug_info: Option<Option<String>>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)>;
 
+    fn verify_constraints(
+        &self,
+        stdin: ZiskStdin,
+    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)>;
+
     fn prove(
         &self,
         stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)>;
-
-    fn world_rank(&self) -> i32;
-
-    fn local_rank(&self) -> i32;
-
-    fn mpi_broadcast(&self, data: &mut Vec<u8>);
 
     fn generate_proof_from_lib(
         &self,
@@ -53,7 +59,7 @@ pub trait ProverEngine {
         options: &ProofOptions,
     ) -> Option<Vec<AggProofs>>;
 
-    fn executed_steps(&self) -> u64;
+    fn mpi_broadcast(&self, data: &mut Vec<u8>);
 }
 
 pub trait ZiskBackend: Send + Sync {
@@ -71,6 +77,26 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     pub fn set_stdin(&self, stdin: ZiskStdin) {
         self.prover.set_stdin(stdin);
+    }
+
+    pub fn world_rank(&self) -> i32 {
+        self.prover.world_rank()
+    }
+
+    pub fn local_rank(&self) -> i32 {
+        self.prover.local_rank()
+    }
+
+    pub fn executed_steps(&self) -> u64 {
+        self.prover.executed_steps()
+    }
+
+    pub fn execute(
+        &self,
+        stdin: ZiskStdin,
+        output_path: PathBuf,
+    ) -> Result<(ZiskExecutionResult, Duration)> {
+        self.prover.execute(stdin, output_path)
     }
 
     pub fn debug_verify_constraints(
@@ -95,18 +121,6 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.prove(stdin)
     }
 
-    pub fn world_rank(&self) -> i32 {
-        self.prover.world_rank()
-    }
-
-    pub fn local_rank(&self) -> i32 {
-        self.prover.local_rank()
-    }
-
-    pub fn mpi_broadcast(&self, data: &mut Vec<u8>) {
-        self.prover.mpi_broadcast(data);
-    }
-
     pub fn generate_proof_from_lib(
         &self,
         phase_inputs: ProvePhaseInputs,
@@ -126,7 +140,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
-    pub fn executed_steps(&self) -> u64 {
-        self.prover.executed_steps()
+    pub fn mpi_broadcast(&self, data: &mut Vec<u8>) {
+        self.prover.mpi_broadcast(data);
     }
 }
