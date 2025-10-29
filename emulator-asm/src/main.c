@@ -30,7 +30,7 @@ uint64_t get_gen_method(void);
 
 // Address map
 #define ROM_ADDR (uint64_t)0x80000000
-#define ROM_SIZE (uint64_t)0x10000000 // 256MB
+#define ROM_SIZE (uint64_t)0x08000000 // 128MB
 
 #define INPUT_ADDR (uint64_t)0x90000000
 #define MAX_INPUT_SIZE (uint64_t)0x08000000 // 128MB
