@@ -7,10 +7,8 @@ mod fcall;
 pub use fcall::*;
 
 pub mod zisklib;
-pub use zisklib::*;
 
-mod syscalls;
-pub use syscalls::*;
+pub mod syscalls;
 
 pub mod ziskos_definitions;
 

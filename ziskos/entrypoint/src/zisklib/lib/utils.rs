@@ -1,4 +1,4 @@
-use crate::arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams};
+use crate::syscalls::{syscall_arith256_mod, SyscallArith256ModParams};
 
 pub fn from_be_bytes_to_u64_array(bytes: &[u8; 32]) -> [u64; 4] {
     let mut result = [0u64; 4];

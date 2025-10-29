@@ -1,6 +1,6 @@
 //! Finite field Fp12 operations for BLS12-381
 
-use crate::{fcall_msb_pos_384, zisklib::lib::utils::eq};
+use crate::zisklib::{eq, fcall_msb_pos_384};
 
 use super::{
     constants::{

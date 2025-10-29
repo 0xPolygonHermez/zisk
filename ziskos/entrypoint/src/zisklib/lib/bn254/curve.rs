@@ -1,11 +1,11 @@
 //! Operations on the BN254 curve E: y² = x³ + 3
 
 use crate::{
-    bn254_curve_add::{syscall_bn254_curve_add, SyscallBn254CurveAddParams},
-    bn254_curve_dbl::syscall_bn254_curve_dbl,
-    fcall_msb_pos_256,
-    point::SyscallPoint256,
-    zisklib::lib::utils::eq,
+    syscalls::{
+        syscall_bn254_curve_add, syscall_bn254_curve_dbl, SyscallBn254CurveAddParams,
+        SyscallPoint256,
+    },
+    zisklib::{eq, fcall_msb_pos_256},
 };
 
 use super::{

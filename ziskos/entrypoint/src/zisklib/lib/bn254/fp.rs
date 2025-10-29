@@ -1,9 +1,8 @@
 //! Operations in the base field Fp of the BN254 curve
 
 use crate::{
-    arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams},
-    fcall_bn254_fp_inv,
-    zisklib::lib::utils::eq,
+    syscalls::{syscall_arith256_mod, SyscallArith256ModParams},
+    zisklib::{eq, fcall_bn254_fp_inv},
 };
 
 use super::constants::{P, P_MINUS_ONE};
