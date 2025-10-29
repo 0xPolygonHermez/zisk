@@ -16,7 +16,6 @@ use zisk_common::{io::ZiskStdin, ZiskExecutionResult};
         .multiple(false)
         .required(false)
 ))]
-
 pub struct ZiskExecute {
     /// Witness computation dynamic library path
     #[clap(short = 'w', long)]
