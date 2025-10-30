@@ -11,8 +11,9 @@ use zisk_distributed_grpc_api::{
 /// Handle the prove subcommand - makes RPC request to coordinator
 pub async fn handle(
     coordinator_url: Option<String>,
+    data_id: Option<String>,
     input_path: Option<PathBuf>,
-    direct_input: bool,
+    direct_inputs: bool,
     compute_capacity: u32,
     simulated_node: Option<u32>,
 ) -> Result<()> {
@@ -34,15 +35,24 @@ pub async fn handle(
 
         let input_path = Some(path.to_string_lossy().to_string());
 
-        let input_mode = if direct_input { InputMode::Data } else { InputMode::Path };
+        let input_mode = if direct_inputs { InputMode::Data } else { InputMode::Path };
 
         (input_mode, input_path)
     } else {
         (InputMode::None, None)
     };
 
+    // ID will be id if present, else input file name or random UUID
+    let data_id = if let Some(id) = data_id {
+        id
+    } else if let Some(ref path) = input_path {
+        PathBuf::from(path).file_stem().unwrap().to_string_lossy().to_string()
+    } else {
+        uuid::Uuid::new_v4().to_string()
+    };
+
     let launch_proof_request = LaunchProofRequest {
-        block_id: "0x1234567890abcdef".into(), // TODO! Placeholder block ID
+        data_id,
         compute_capacity,
         input_mode: input_mode.into(),
         input_path,
@@ -51,8 +61,8 @@ pub async fn handle(
 
     // Make the RPC call
     info!(
-        "Sending Launch request for block id: {} with {} compute units",
-        launch_proof_request.block_id, launch_proof_request.compute_capacity
+        "Sending Launch request for data id: {} with {} compute units",
+        launch_proof_request.data_id, launch_proof_request.compute_capacity
     );
     let response = client.launch_proof(launch_proof_request).await?;
 

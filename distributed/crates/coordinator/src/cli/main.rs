@@ -43,22 +43,26 @@ struct ZiskCoordinatorArgs {
 
 #[derive(Parser, Debug)]
 enum ZiskCoordinatorCommands {
-    /// Prove a block with the specified input file and node
+    /// Generate a proof with the specified input file and node
     Prove {
         /// Coordinator URL
         #[arg(long)]
         coordinator_url: Option<String>,
 
+        /// Proof id
+        #[arg(long, help = "ID of the proof to generate")]
+        data_id: Option<String>,
+
         /// Path to the input file
-        #[arg(long, help = "Path to the input file for block proving")]
+        #[arg(long, help = "Path to the input file for proof generation")]
         input: Option<PathBuf>,
 
         /// Whether to send the input data directly
         #[clap(short = 'x', long, default_value_t = false)]
-        direct_input: bool,
+        direct_inputs: bool,
 
-        /// Compute capacity needed to generate the block proof
-        #[arg(long, short, help = "Compute capacity needed to generate the block proof")]
+        /// Compute capacity needed to generate the proof
+        #[arg(long, short, help = "Compute capacity needed to generate the proof")]
         compute_capacity: u32,
 
         #[arg(long, help = "Simulated node ID")]
@@ -74,16 +78,18 @@ async fn main() -> Result<()> {
     match args.command {
         Some(ZiskCoordinatorCommands::Prove {
             coordinator_url,
+            data_id,
             input,
-            direct_input,
+            direct_inputs,
             compute_capacity,
             simulated_node,
         }) => {
             // Run the "prove" subcommand
             handler_prove::handle(
                 coordinator_url,
+                data_id,
                 input,
-                direct_input,
+                direct_inputs,
                 compute_capacity,
                 simulated_node,
             )
