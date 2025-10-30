@@ -123,21 +123,25 @@ impl ZiskProve {
 
         let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
 
-        let (proof, result, elapsed) = if emulator {
+        let (proof, result, elapsed, world_rank) = if emulator {
             self.run_emu(stdin, gpu_params)?
         } else {
             self.run_asm(stdin, gpu_params)?
         };
 
-        // if mpi_ctx.rank == 0 {
-        let elapsed = elapsed.as_secs_f64();
-        tracing::info!("");
-        tracing::info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
-        if let Some(proof_id) = proof.id {
-            tracing::info!("      Proof ID: {}", proof_id);
+        if world_rank == 0 {
+            let elapsed = elapsed.as_secs_f64();
+            tracing::info!("");
+            tracing::info!(
+                "{}",
+                "--- PROVE SUMMARY ------------------------".bright_green().bold()
+            );
+            if let Some(proof_id) = proof.id {
+                tracing::info!("      Proof ID: {}", proof_id);
+            }
+            tracing::info!("    ► Statistics");
+            tracing::info!("      time: {} seconds, steps: {}", elapsed, result.executed_steps);
         }
-        tracing::info!("    ► Statistics");
-        tracing::info!("      time: {} seconds, steps: {}", elapsed, result.executed_steps);
 
         Ok(())
     }
@@ -158,7 +162,7 @@ impl ZiskProve {
         &mut self,
         stdin: ZiskStdin,
         gpu_params: ParamsGPU,
-    ) -> Result<(Proof, ZiskExecutionResult, Duration)> {
+    ) -> Result<(Proof, ZiskExecutionResult, Duration, i32)> {
         let prover = ProverClient::builder()
             .emu()
             .prove()
@@ -176,15 +180,16 @@ impl ZiskProve {
             .build()?;
 
         let (execution_result, elapsed, _stats, proof) = prover.generate_proof(stdin)?;
+        let world_rank = prover.world_rank();
 
-        Ok((proof, execution_result, elapsed))
+        Ok((proof, execution_result, elapsed, world_rank))
     }
 
     pub fn run_asm(
         &mut self,
         stdin: ZiskStdin,
         gpu_params: ParamsGPU,
-    ) -> Result<(Proof, ZiskExecutionResult, Duration)> {
+    ) -> Result<(Proof, ZiskExecutionResult, Duration, i32)> {
         let prover = ProverClient::builder()
             .asm()
             .prove()
@@ -205,7 +210,8 @@ impl ZiskProve {
             .build()?;
 
         let (execution_result, elapsed, _stats, proof) = prover.generate_proof(stdin)?;
+        let world_rank = prover.world_rank();
 
-        Ok((proof, execution_result, elapsed))
+        Ok((proof, execution_result, elapsed, world_rank))
     }
 }

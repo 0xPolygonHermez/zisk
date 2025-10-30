@@ -203,6 +203,7 @@ impl EmuCoreProver {
             save_proofs,
             output_dir,
             proofman,
+            rank_info: RankInfo { world_rank, local_rank },
         };
 
         Ok(Self { backend: core, rank_info: RankInfo { world_rank, local_rank } })
