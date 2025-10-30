@@ -6,7 +6,7 @@
 
 use std::{fmt::Display, path::PathBuf};
 
-use crate::{BlockId, ComputeCapacity, JobId, JobPhase, JobState, WorkerId, WorkerState};
+use crate::{ComputeCapacity, DataId, JobId, JobPhase, JobState, WorkerId, WorkerState};
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -37,7 +37,7 @@ pub struct JobsListDto {
 
 pub struct JobStatusDto {
     pub job_id: JobId,
-    pub block_id: BlockId,
+    pub data_id: DataId,
     pub state: JobState,
     pub phase: Option<JobPhase>,
     pub assigned_workers: Vec<WorkerId>,
@@ -84,7 +84,7 @@ impl Display for InputModeDto {
 }
 
 pub struct LaunchProofRequestDto {
-    pub block_id: BlockId,
+    pub data_id: DataId,
     pub compute_capacity: u32,
     pub input_mode: InputModeDto,
     pub simulated_node: Option<u32>,
@@ -150,7 +150,7 @@ pub enum ExecuteTaskRequestTypeDto {
 }
 
 pub struct ContributionParamsDto {
-    pub block_id: BlockId,
+    pub data_id: DataId,
     pub input_source: InputSourceDto,
     pub rank_id: u32,
     pub total_workers: u32,

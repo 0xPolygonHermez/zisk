@@ -85,7 +85,7 @@ impl From<JobStatusDto> for JobStatus {
     fn from(dto: JobStatusDto) -> Self {
         JobStatus {
             job_id: dto.job_id.into(),
-            block_id: dto.block_id.into(),
+            data_id: dto.data_id.into(),
             phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
             state: dto.state.to_string(),
             assigned_workers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
@@ -99,7 +99,7 @@ impl From<JobStatusDto> for JobStatusResponse {
     fn from(dto: JobStatusDto) -> Self {
         let job_status = JobStatus {
             job_id: dto.job_id.into(),
-            block_id: dto.block_id.into(),
+            data_id: dto.data_id.into(),
             phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
             state: dto.state.to_string(),
             assigned_workers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
@@ -166,7 +166,7 @@ impl From<LaunchProofRequestDto> for LaunchProofRequest {
         };
 
         LaunchProofRequest {
-            block_id: dto.block_id.into(),
+            data_id: dto.data_id.into(),
             compute_capacity: dto.compute_capacity,
             input_mode: input_mode.into(),
             input_path,
@@ -182,7 +182,7 @@ impl TryFrom<LaunchProofRequest> for LaunchProofRequestDto {
 
     fn try_from(req: LaunchProofRequest) -> Result<Self> {
         Ok(LaunchProofRequestDto {
-            block_id: req.block_id.into(),
+            data_id: req.data_id.into(),
             compute_capacity: req.compute_capacity,
             input_mode: match InputMode::try_from(req.input_mode).unwrap_or(InputMode::None) {
                 InputMode::None => InputModeDto::InputModeNone,
@@ -334,7 +334,7 @@ impl From<ContributionParamsDto> for ContributionParams {
         };
 
         ContributionParams {
-            block_id: dto.block_id.as_string(),
+            data_id: dto.data_id.as_string(),
             input_source,
             rank_id: dto.rank_id,
             total_workers: dto.total_workers,

@@ -9,9 +9,9 @@ use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info};
 use zisk_distributed_common::{
-    AggProofData, AggregationParams, BlockContext, InputSourceDto, WorkerState,
+    AggProofData, AggregationParams, DataCtx, InputSourceDto, WorkerState,
 };
-use zisk_distributed_common::{BlockId, JobId};
+use zisk_distributed_common::{DataId, JobId};
 use zisk_distributed_grpc_api::contribution_params::InputSource;
 use zisk_distributed_grpc_api::execute_task_response::ResultData;
 use zisk_distributed_grpc_api::*;
@@ -496,11 +496,11 @@ impl WorkerNodeGrpc {
             }
         };
 
-        let block = BlockContext { block_id: BlockId::from(params.block_id), input_source };
+        let data_ctx = DataCtx { data_id: DataId::from(params.data_id), input_source };
 
         let job = self.worker.new_job(
             job_id,
-            block,
+            data_ctx,
             params.rank_id,
             params.total_workers,
             params.worker_allocation,

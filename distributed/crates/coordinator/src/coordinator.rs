@@ -44,8 +44,8 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use zisk_distributed_common::{
-    AggParamsDto, AggProofData, BlockId, ChallengesDto, ComputeCapacity, ContributionParamsDto,
-    CoordinatorMessageDto, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
+    AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
+    CoordinatorMessageDto, DataId, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
     ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, InputModeDto,
     InputSourceDto, Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState,
     JobStatusDto, JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
@@ -163,7 +163,7 @@ impl Coordinator {
 
                 jobs.push(JobStatusDto {
                     job_id: job.job_id.clone(),
-                    block_id: job.block_id.clone(),
+                    data_id: job.data_id.clone(),
                     phase: Some(phase.clone()),
                     state: job.state().clone(),
                     assigned_workers: job.workers.clone(),
@@ -207,7 +207,7 @@ impl Coordinator {
 
         Ok(JobStatusDto {
             job_id: job.job_id.clone(),
-            block_id: job.block_id.clone(),
+            data_id: job.data_id.clone(),
             state: job.state().clone(),
             phase: if let JobState::Running(phase) = &job.state() {
                 Some(phase.clone())
@@ -312,7 +312,7 @@ impl Coordinator {
         // Create and configure a new job
         let mut job = self
             .create_job(
-                request.block_id.clone(),
+                request.data_id.clone(),
                 required_compute_capacity,
                 request.input_mode,
                 request.simulated_node,
@@ -495,7 +495,7 @@ impl Coordinator {
     ///
     /// # Parameters
     ///
-    /// * `block_id` - Unique identifier for the data block being processed
+    /// * `data_id` - Unique identifier for the data being processed
     /// * `required_compute_capacity` - Computational resources needed for the job
     /// * `input_path` - Filesystem path to the input data
     /// * `simulated_node` - Optional node index for simulation mode
@@ -505,7 +505,7 @@ impl Coordinator {
     /// On success, returns a fully initialized job ready to start proof generation
     pub async fn create_job(
         &self,
-        block_id: BlockId,
+        data_id: DataId,
         required_compute_capacity: ComputeCapacity,
         input_mode: InputModeDto,
         simulated_node: Option<u32>,
@@ -526,7 +526,7 @@ impl Coordinator {
         }
 
         Ok(Job::new(
-            block_id,
+            data_id,
             input_mode,
             required_compute_capacity,
             selected_workers,
@@ -577,8 +577,6 @@ impl Coordinator {
     ///
     /// # Parameters
     ///
-    /// * `block_id` - Identifier for the data block being processed
-    /// * `required_compute_capacity` - Total computational requirements for the job
     /// * `job` - Job containing partition assignments and configuration
     /// * `active_workers` - List of workers that should receive tasks
     async fn dispatch_contributions_messages(
@@ -610,7 +608,7 @@ impl Coordinator {
 
         let tasks = active_workers.into_iter().enumerate().map(|(rank_id, worker_id)| {
             let job_id = job.job_id.clone();
-            let block_id = job.block_id.clone();
+            let data_id = job.data_id.clone();
             let input_source = input_source.clone();
             let worker_allocation = job.partitions[rank_id].clone();
             let job_compute_capacity = job.compute_capacity;
@@ -621,7 +619,7 @@ impl Coordinator {
                     worker_id: worker_id.clone(),
                     job_id: job_id.clone(),
                     params: ExecuteTaskRequestTypeDto::ContributionParams(ContributionParamsDto {
-                        block_id,
+                        data_id,
                         input_source,
                         rank_id: rank_id as u32,
                         total_workers,

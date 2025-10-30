@@ -10,9 +10,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_common::io::ZiskStdin;
-use zisk_distributed_common::{
-    AggregationParams, BlockContext, InputSourceDto, JobPhase, WorkerState,
-};
+use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
 use zisk_sdk::{Asm, ProverClient, ZiskProver};
 
@@ -229,7 +227,7 @@ impl ProverConfig {
 #[derive(Debug, Clone)]
 pub struct JobContext {
     pub job_id: JobId,
-    pub block: BlockContext,
+    pub data_ctx: DataCtx,
     pub rank_id: u32,
     pub total_workers: u32,
     pub allocation: Vec<u32>, // Worker allocation for this job, vector of all computed units assigned
@@ -329,7 +327,7 @@ impl Worker {
     pub fn new_job(
         &mut self,
         job_id: JobId,
-        block: BlockContext,
+        data_ctx: DataCtx,
         rank_id: u32,
         total_workers: u32,
         allocation: Vec<u32>,
@@ -337,7 +335,7 @@ impl Worker {
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id: job_id.clone(),
-            block,
+            data_ctx,
             rank_id,
             total_workers,
             allocation,
@@ -380,7 +378,7 @@ impl Worker {
             job_id,
             phase_inputs,
             options,
-            job.block.input_source.clone(),
+            job.data_ctx.input_source.clone(),
         ))
         .unwrap();
 
@@ -451,7 +449,7 @@ impl Worker {
                 job_id.clone(),
                 prover.as_ref(),
                 phase_inputs,
-                job.block.input_source.clone(),
+                job.data_ctx.input_source.clone(),
                 options,
             )
             .await;

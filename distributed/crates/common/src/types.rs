@@ -66,17 +66,17 @@ impl std::fmt::Display for JobId {
     }
 }
 
-/// Block ID wrapper for type safety
+/// Data ID wrapper for type safety
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct BlockId(String);
+pub struct DataId(String);
 
-impl Default for BlockId {
+impl Default for DataId {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BlockId {
+impl DataId {
     pub fn new() -> Self {
         Self(uuid::Uuid::new_v4().to_string())
     }
@@ -90,24 +90,24 @@ impl BlockId {
     }
 }
 
-impl From<String> for BlockId {
-    fn from(id: String) -> Self {
-        Self(id)
+impl From<String> for DataId {
+    fn from(data_id: String) -> Self {
+        Self(data_id)
     }
 }
 
-impl From<BlockId> for String {
-    fn from(block_id: BlockId) -> Self {
-        block_id.0
+impl From<DataId> for String {
+    fn from(data_id: DataId) -> Self {
+        data_id.0
     }
 }
 
-impl std::fmt::Display for BlockId {
+impl std::fmt::Display for DataId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.0.len() > 8 {
-            write!(f, "BlockId({:.8}…)", self.0)
+            write!(f, "DataId({:.8}…)", self.0)
         } else {
-            write!(f, "BlockId({})", self.0)
+            write!(f, "DataId({})", self.0)
         }
     }
 }
@@ -242,7 +242,7 @@ pub struct Job {
     pub start_times: HashMap<JobPhase, DateTime<Utc>>,
     pub duration_ms: Option<u64>,
     pub state: JobState,
-    pub block_id: BlockId,
+    pub data_id: DataId,
     pub input_mode: InputModeDto,
     pub compute_capacity: ComputeCapacity,
     pub workers: Vec<WorkerId>,
@@ -258,7 +258,7 @@ pub struct Job {
 
 impl Job {
     pub fn new(
-        block_id: BlockId,
+        data_id: DataId,
         input_mode: InputModeDto,
         compute_capacity: ComputeCapacity,
         selected_workers: Vec<WorkerId>,
@@ -270,8 +270,7 @@ impl Job {
             start_times: HashMap::new(),
             duration_ms: None,
             state: JobState::Created,
-            // block: BlockContext { block_id, input_source },
-            block_id,
+            data_id,
             input_mode,
             compute_capacity,
             workers: selected_workers,
@@ -392,8 +391,8 @@ pub struct JobResult {
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockContext {
-    pub block_id: BlockId,
+pub struct DataCtx {
+    pub data_id: DataId,
     pub input_source: InputSourceDto,
 }
 
