@@ -502,7 +502,7 @@ impl Worker {
             }
         }
 
-        let challenge = match prover.generate_proof_from_lib(phase_inputs, options, phase) {
+        let challenge = match prover.prove_phase(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Contributions(challenge)) => {
                 info!("Contribution computation successful for {job_id}");
                 challenge
@@ -571,11 +571,8 @@ impl Worker {
     ) -> Result<Vec<AggProofs>> {
         let world_rank = prover.world_rank();
 
-        let proof = match prover.generate_proof_from_lib(
-            phase_inputs,
-            options,
-            proofman::ProvePhase::Internal,
-        ) {
+        let proof = match prover.prove_phase(phase_inputs, options, proofman::ProvePhase::Internal)
+        {
             Ok(proofman::ProvePhaseResult::Internal(proof)) => {
                 if world_rank == 0 {
                     info!("Prove computation successful for {job_id}",);
@@ -622,7 +619,7 @@ impl Worker {
             let options = Self::get_proof_options_aggregation(&agg_params);
 
             let result = prover
-                .receive_aggregated_proofs(
+                .aggregate_proofs(
                     agg_proofs,
                     agg_params.last_proof,
                     agg_params.final_proof,

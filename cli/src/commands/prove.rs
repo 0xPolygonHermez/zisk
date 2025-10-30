@@ -179,7 +179,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let (execution_result, elapsed, _stats, proof) = prover.generate_proof(stdin)?;
+        let (execution_result, elapsed, _stats, proof) = prover.prove(stdin)?;
         let world_rank = prover.world_rank();
 
         Ok((proof, execution_result, elapsed, world_rank))
@@ -209,7 +209,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let (execution_result, elapsed, _stats, proof) = prover.generate_proof(stdin)?;
+        let (execution_result, elapsed, _stats, proof) = prover.prove(stdin)?;
         let world_rank = prover.world_rank();
 
         Ok((proof, execution_result, elapsed, world_rank))

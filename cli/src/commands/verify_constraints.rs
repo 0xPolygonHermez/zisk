@@ -127,7 +127,7 @@ impl ZiskVerifyConstraints {
             .print_command_info()
             .build()?;
 
-        prover.debug_verify_constraints(stdin, self.debug.clone())
+        prover.verify_constraints_debug(stdin, self.debug.clone())
     }
 
     pub fn run_asm(
@@ -148,6 +148,6 @@ impl ZiskVerifyConstraints {
             .print_command_info()
             .build()?;
 
-        prover.debug_verify_constraints(stdin, self.debug.clone())
+        prover.verify_constraints_debug(stdin, self.debug.clone())
     }
 }

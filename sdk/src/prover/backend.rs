@@ -45,7 +45,7 @@ impl ProverBackend {
         Ok((result, elapsed))
     }
 
-    pub(crate) fn debug_verify_constraints(
+    pub(crate) fn verify_constraints_debug(
         &self,
         stdin: ZiskStdin,
         debug_info: DebugInfo,
@@ -82,7 +82,7 @@ impl ProverBackend {
         &self,
         stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
-        self.debug_verify_constraints(stdin, DebugInfo::default())
+        self.verify_constraints_debug(stdin, DebugInfo::default())
     }
 
     pub(crate) fn prove(
@@ -178,7 +178,7 @@ impl ProverBackend {
         Ok((execution_result, elapsed, stats, proof))
     }
 
-    pub(crate) fn generate_proof_from_lib(
+    pub(crate) fn prove_phase(
         &self,
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
@@ -187,7 +187,7 @@ impl ProverBackend {
         self.proofman.generate_proof_from_lib(phase_inputs, options, phase)
     }
 
-    pub(crate) fn receive_aggregated_proofs(
+    pub(crate) fn aggregate_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,

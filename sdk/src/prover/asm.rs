@@ -99,7 +99,7 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.execute(stdin, output_path)
     }
 
-    fn debug_verify_constraints(
+    fn verify_constraints_debug(
         &self,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
@@ -107,7 +107,7 @@ impl ProverEngine for AsmProver {
         let debug_info =
             create_debug_info(debug_info, self.core_prover.backend.proving_key.clone());
 
-        self.core_prover.backend.debug_verify_constraints(stdin, debug_info)
+        self.core_prover.backend.verify_constraints_debug(stdin, debug_info)
     }
 
     fn verify_constraints(
@@ -124,28 +124,23 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.prove(stdin)
     }
 
-    fn generate_proof_from_lib(
+    fn prove_phase(
         &self,
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
         phase: ProvePhase,
     ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>> {
-        self.core_prover.backend.generate_proof_from_lib(phase_inputs, options, phase)
+        self.core_prover.backend.prove_phase(phase_inputs, options, phase)
     }
 
-    fn receive_aggregated_proofs(
+    fn aggregate_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
     ) -> Option<Vec<AggProofs>> {
-        self.core_prover.backend.receive_aggregated_proofs(
-            agg_proofs,
-            last_proof,
-            final_proof,
-            options,
-        )
+        self.core_prover.backend.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) {
