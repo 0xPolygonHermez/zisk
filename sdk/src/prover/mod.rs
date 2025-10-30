@@ -28,7 +28,7 @@ pub trait ProverEngine {
         output_path: PathBuf,
     ) -> Result<(ZiskExecutionResult, Duration)>;
 
-    fn debug_verify_constraints(
+    fn verify_constraints_debug(
         &self,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
@@ -44,14 +44,14 @@ pub trait ProverEngine {
         stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)>;
 
-    fn generate_proof_from_lib(
+    fn prove_phase(
         &self,
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
         phase: ProvePhase,
     ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>>;
 
-    fn receive_aggregated_proofs(
+    fn aggregate_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
@@ -71,26 +71,35 @@ pub struct ZiskProver<C: ZiskBackend> {
 }
 
 impl<C: ZiskBackend> ZiskProver<C> {
+    /// Create a new ZiskProver with the given prover engine.
     pub fn new(prover: C::Prover) -> Self {
         Self { prover }
     }
 
+    /// Set the standard input for the current proof.
     pub fn set_stdin(&self, stdin: ZiskStdin) {
         self.prover.set_stdin(stdin);
     }
 
+    /// Get the world rank of the prover. The world rank is the rank of the prover in the global MPI context.
+    /// If MPI is not used, this will always return 0.
     pub fn world_rank(&self) -> i32 {
         self.prover.world_rank()
     }
 
+    /// Get the local rank of the prover. The local rank is the rank of the prover in the local MPI context.
+    /// If MPI is not used, this will always return 0.
     pub fn local_rank(&self) -> i32 {
         self.prover.local_rank()
     }
 
+    /// Get the number of executed steps by the prover after a proof generation or execution.
     pub fn executed_steps(&self) -> u64 {
         self.prover.executed_steps()
     }
 
+    /// Execute the prover with the given standard input and output path.
+    /// It only runs the execution without generating a proof.
     pub fn execute(
         &self,
         stdin: ZiskStdin,
@@ -99,14 +108,16 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.execute(stdin, output_path)
     }
 
-    pub fn debug_verify_constraints(
+    /// Verify the constraints with the given standard input and debug information.
+    pub fn verify_constraints_debug(
         &self,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
-        self.prover.debug_verify_constraints(stdin, debug_info)
+        self.prover.verify_constraints_debug(stdin, debug_info)
     }
 
+    /// Verify the constraints with the given standard input.
     pub fn verify_constraints(
         &self,
         stdin: ZiskStdin,
@@ -114,32 +125,34 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.verify_constraints(stdin)
     }
 
-    pub fn generate_proof(
+    /// Generate a proof with the given standard input.
+    pub fn prove(
         &self,
         stdin: ZiskStdin,
     ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
         self.prover.prove(stdin)
     }
 
-    pub fn generate_proof_from_lib(
+    pub fn prove_phase(
         &self,
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
         phase: ProvePhase,
     ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>> {
-        self.prover.generate_proof_from_lib(phase_inputs, options, phase)
+        self.prover.prove_phase(phase_inputs, options, phase)
     }
 
-    pub fn receive_aggregated_proofs(
+    pub fn aggregate_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
     ) -> Option<Vec<AggProofs>> {
-        self.prover.receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
+        self.prover.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
+    /// Broadcast data to all MPI processes.
     pub fn mpi_broadcast(&self, data: &mut Vec<u8>) {
         self.prover.mpi_broadcast(data);
     }
