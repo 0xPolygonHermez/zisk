@@ -1,4 +1,4 @@
-use circuit::{GateState, PinId};
+use circuit::{GateState, PinId, ExpressionManager, ExpressionOp};
 
 use super::{bit_position, KECCAK_F_RC};
 
@@ -11,29 +11,32 @@ use super::{bit_position, KECCAK_F_RC};
 ///    `A′[0, 0, z] = A′[0, 0, z] ^ RC[z]`
 ///
 /// 3. Return `A′`
-pub fn keccak_f_iota(s: &mut GateState, ir: usize) {
+pub fn keccak_f_iota(s: &mut GateState, e: &mut ExpressionManager, ir: usize) {
     // Step 1: Copy all state bits
     for x in 0..5 {
         for y in 0..5 {
             for z in 0..64 {
                 let pos = bit_position(x, y, z);
                 s.sout_refs[pos] = s.sin_refs[pos];
+                e.sout_expr_ids[pos] = e.sin_expr_ids[pos];
             }
         }
     }
 
     // Step 2: Apply round constants to lane (0,0)
-    s.set_subcontext("ι: A'[0, 0, z] = A'[0, 0, z] ^ RC[z]");
+    e.set_subcontext("ι: A'[0, 0, z] = A'[0, 0, z] ^ RC[z]");
     for z in 0..64 {
         // Since XOR(a, 0) = a, we can skip the XOR if the constant bit is zero
         if KECCAK_F_RC[ir][z] == 1 {
             let pos = bit_position(0, 0, z);
-            let aux = s.get_free_ref();
-
+            
             // XOR with one
+            let exp_aux = e.create_op_expression(&ExpressionOp::Xor, e.sout_expr_ids[pos], e.one_expr_id);
+            let aux = s.get_free_ref();
             s.xor2(s.sout_refs[pos], PinId::D, s.config.zero_ref.unwrap(), PinId::B, aux);
 
             s.sout_refs[pos] = aux;
+            e.sout_expr_ids[pos] = exp_aux;
         }
     }
 }

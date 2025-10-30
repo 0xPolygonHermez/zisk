@@ -1,4 +1,4 @@
-use circuit::{GateState, PinId};
+use circuit::{ExpressionManager, ExpressionOp, GateState, PinId};
 
 use super::bit_position;
 
@@ -8,37 +8,35 @@ use super::bit_position;
 ///    `A′[x, y, z] = A[x, y, z] ^ (¬A[(x + 1) mod 5, y, z] & A[(x + 2) mod 5, y, z])`
 ///
 /// 2. Return `A′`
-pub fn keccak_f_chi(s: &mut GateState) {
-    s.set_subcontext(
+pub fn keccak_f_chi(s: &mut GateState, e: &mut ExpressionManager) {
+    e.set_subcontext(
         "χ: A'[x,y,z] = A[x, y, z] ^ (¬A[(x + 1) mod 5, y, z] & A[(x + 2) mod 5, y, z])",
     );
-    // Reset expressions before the nand
-    for i in 0..1600 {
-        let sin_ref = s.sin_refs[i];
-        s.manual_reset_expression(sin_ref);
-    }
     for x in 0..5 {
+        let x1 = (x + 1) % 5;
+        let x2 = (x + 2) % 5;
         for y in 0..5 {
             for z in 0..64 {
                 // Calculate array positions
-                let x1 = (x + 1) % 5;
-                let x2 = (x + 2) % 5;
-
-                // Get references to the input bits
-                let a_x1_y_z = s.sin_refs[bit_position(x1, y, z)];
-                let a_x2_y_z = s.sin_refs[bit_position(x2, y, z)];
-                let a_x_y_z = s.sin_refs[bit_position(x, y, z)];
+                let positions = [
+                    bit_position(x1, y, z),
+                    bit_position(x2, y, z),
+                    bit_position(x, y, z),
+                ];
 
                 // Compute (¬A[x+1 (mod 5),y,z]) & A[x+2 (mod 5),y,z]
+                let exp_aux1 = e.create_op_expression(&ExpressionOp::Nand, e.sin_expr_ids[positions[0]], e.sin_expr_ids[positions[1]]);
                 let aux1 = s.get_free_ref();
-                s.nand(a_x1_y_z, PinId::D, a_x2_y_z, PinId::D, aux1);
+                s.nand(s.sin_refs[positions[0]], PinId::D, s.sin_refs[positions[1]], PinId::D, aux1);
 
                 // Compute final XOR
+                let exp_aux2 = e.create_op_expression(&ExpressionOp::Xor, e.sin_expr_ids[positions[2]], exp_aux1);
                 let aux2 = s.get_free_ref();
-                s.xor2(a_x_y_z, PinId::D, aux1, PinId::D, aux2);
+                s.xor2(s.sin_refs[positions[2]], PinId::D, aux1, PinId::D, aux2);
 
                 // Store result in output references
-                s.sout_refs[bit_position(x, y, z)] = aux2;
+                s.sout_refs[positions[2]] = aux2;
+                e.sout_expr_ids[positions[2]] = exp_aux2;
             }
         }
     }

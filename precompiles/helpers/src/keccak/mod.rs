@@ -19,8 +19,6 @@ const KECCAKF_NUM: u64 = KECCAKF_CHUNKS * KECCAKF_BITS;
 
 const KECCAKF_CIRCUIT_SIZE: u64 = 93846;
 
-const KECCAKF_RESET_THRESHOLD: u32 = 1 << 20;
-
 // Keccak Configuration
 #[rustfmt::skip]
 pub static KECCAK_GATE_CONFIG: GateConfig = GateConfig::with_values(
@@ -35,7 +33,6 @@ pub static KECCAK_GATE_CONFIG: GateConfig = GateConfig::with_values(
     KECCAKF_OUTPUT_BITS_IN_PARALLEL,
     KECCAKF_OUTPUT_SIZE_BITS,
     KECCAKF_NUM,
-    KECCAKF_RESET_THRESHOLD,
 );
 
 // Main Keccak function
