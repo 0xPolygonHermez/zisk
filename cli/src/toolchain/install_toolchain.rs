@@ -26,7 +26,7 @@ impl InstallToolchainCmd {
         // Setup client.
         let client = Client::builder()
             .user_agent("Mozilla/5.0")
-            .timeout(std::time::Duration::from_secs(60))
+            .timeout(std::time::Duration::from_secs(1800))
             .build()?;
 
         // Setup variables.
