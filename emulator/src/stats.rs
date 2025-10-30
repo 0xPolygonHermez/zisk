@@ -418,7 +418,7 @@ impl Stats {
         report.add(&r);
 
         // Report unsupported RISC-V instructions, in alphabetical order
-        if unsupported_riscv_instructions.len() > 0 {
+        if !unsupported_riscv_instructions.is_empty() {
             let mut r = String::from("UNSUPPORTED RISC-V INSTRUCTIONS EXECUTED: ");
             for inst in unsupported_riscv_instructions.iter() {
                 r += &format!("{} ", inst);
