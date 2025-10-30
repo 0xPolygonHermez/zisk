@@ -195,7 +195,8 @@ inline bool sqrtF3mod4(mpz_class &r, const mpz_class &a)
     mpz_powm(r.get_mpz_t(), a.get_mpz_t(), n.get_mpz_t(), p.get_mpz_t());
     if ((r * r) % p != auxa)
     {
-        r = ScalarMask256;
+        auxa = (auxa * 3) % p;
+        mpz_powm(r.get_mpz_t(), auxa.get_mpz_t(), n.get_mpz_t(), p.get_mpz_t());
         return false;
     }
     return true;
