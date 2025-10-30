@@ -635,23 +635,45 @@ impl Coordinator {
         let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
+        let previous_state = job.state().clone();
         job.change_state(JobState::Failed);
 
-        // Reset worker statuses back to Idle
-        self.workers_pool.mark_workers_with_state(&job.workers, WorkerState::Idle).await?;
+        self.ensure_workers_idle(&job, previous_state).await?;
 
-        error!(
-            "Failed job {} (reason: {}) and freed {} workers",
-            job_id,
-            reason.as_ref(),
-            job.workers.len()
-        );
+        // Reset worker statuses back to Idle
+        // self.workers_pool.mark_workers_with_state(&job.workers, WorkerState::Idle).await?;
+
+        error!("Failed job {} (reason: {})", job_id, reason.as_ref(),);
 
         // Release job lock before calling post_launch_proof
         drop(job);
         drop(job_entry);
 
         self.post_launch_proof(job_id).await?;
+
+        Ok(())
+    }
+
+    async fn ensure_workers_idle(
+        &self,
+        job: &Job,
+        previous_state: JobState,
+    ) -> CoordinatorResult<()> {
+        if let JobState::Running(job_phase) = &previous_state {
+            let results = job.results.get(job_phase);
+
+            if let Some(results) = results {
+                for worker_id in results.keys() {
+                    let worker_state = self.workers_pool.worker_state(worker_id).await;
+
+                    if let Some(WorkerState::Computing((_, _))) = worker_state {
+                        self.workers_pool
+                            .mark_worker_with_state(worker_id, WorkerState::Idle)
+                            .await?;
+                    }
+                }
+            }
+        }
 
         Ok(())
     }
@@ -785,8 +807,8 @@ impl Coordinator {
     /// - Aggregation phases may need to be restarted with different worker assignments
     pub async fn unregister_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
         // Is this worker involved in any active jobs?
-        let affected_jobs = self.workers_pool.worker_state(worker_id).await;
-        if let Some(WorkerState::Computing((job_id, phase))) = affected_jobs {
+        let worker_state = self.workers_pool.worker_state(worker_id).await;
+        if let Some(WorkerState::Computing((job_id, phase))) = worker_state {
             error!(
                 "Worker {} unregistered while computing for job {} in phase {:?}",
                 worker_id, job_id, phase
