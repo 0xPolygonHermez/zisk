@@ -54,7 +54,7 @@ enum ZiskCoordinatorCommands {
         input: Option<PathBuf>,
 
         /// Whether to send the input data directly
-        #[clap(short = 'x', long, default_value_t = true)]
+        #[clap(short = 'x', long, default_value_t = false)]
         direct_input: bool,
 
         /// Compute capacity needed to generate the block proof
