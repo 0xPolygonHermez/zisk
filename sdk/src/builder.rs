@@ -14,14 +14,14 @@ use anyhow::Result;
 pub struct EmuB;
 pub struct AsmB;
 
-pub struct VerifyConstraints;
+pub struct WitnessGeneration;
 pub struct Prove;
 
 /// Unified builder for both EMU and ASM provers with typestate pattern
 ///
 /// This builder uses typestate pattern to ensure type-safe configuration:
 /// - Backend state: `EmulatorBackend` or `AsmBackend`  
-/// - Operation state: `VerifyConstraints` or `Prove`
+/// - Operation state: `WitnessGeneration` or `Prove`
 ///
 /// # Example
 /// ```rust
@@ -52,6 +52,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     witness_lib: Option<PathBuf>,
     proving_key: Option<PathBuf>,
     elf: Option<PathBuf>,
+    verify_constraints: bool,
     verbose: u8,
     shared_tables: bool,
     print_command_info: bool,
@@ -96,8 +97,18 @@ impl ProverClientBuilder<(), ()> {
 impl<Backend> ProverClientBuilder<Backend, ()> {
     /// Configure for constraint verification operation
     #[must_use]
-    pub fn verify_constraints(self) -> ProverClientBuilder<Backend, VerifyConstraints> {
-        self.into()
+    pub fn witness(self) -> ProverClientBuilder<Backend, WitnessGeneration> {
+        let mut builder: ProverClientBuilder<Backend, WitnessGeneration> = self.into();
+        builder.verify_constraints = false;
+        builder
+    }
+
+    /// Configure for constraint verification operation
+    #[must_use]
+    pub fn verify_constraints(self) -> ProverClientBuilder<Backend, WitnessGeneration> {
+        let mut builder: ProverClientBuilder<Backend, WitnessGeneration> = self.into();
+        builder.verify_constraints = true;
+        builder
     }
 
     /// Configure for proof generation operation
@@ -239,7 +250,7 @@ impl<Backend> ProverClientBuilder<Backend, Prove> {
 }
 
 // Build methods for Emulator
-impl ProverClientBuilder<EmuB, VerifyConstraints> {
+impl ProverClientBuilder<EmuB, WitnessGeneration> {
     /// Builds an [`EmuProver`] configured for constraint verification.
     ///
     /// # Example
@@ -347,7 +358,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
 }
 
 // Build methods for ASM
-impl ProverClientBuilder<AsmB, VerifyConstraints> {
+impl ProverClientBuilder<AsmB, WitnessGeneration> {
     /// Builds an [`AsmProver`] configured for constraint verification.
     ///
     /// # Example
@@ -365,7 +376,7 @@ impl ProverClientBuilder<AsmB, VerifyConstraints> {
         F: PrimeField64,
         GoldilocksQuinticExtension: ExtensionField<F>,
     {
-        self.build_asm(true)
+        self.build_asm()
     }
 }
 
@@ -387,12 +398,12 @@ impl ProverClientBuilder<AsmB, Prove> {
         F: PrimeField64,
         GoldilocksQuinticExtension: ExtensionField<F>,
     {
-        self.build_asm(false)
+        self.build_asm()
     }
 }
 
 impl<X> ProverClientBuilder<AsmB, X> {
-    fn build_asm<F>(self, verify_constraints: bool) -> Result<ZiskProver<Asm>>
+    fn build_asm<F>(self) -> Result<ZiskProver<Asm>>
     where
         F: PrimeField64,
         GoldilocksQuinticExtension: ExtensionField<F>,
@@ -401,7 +412,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
         let proving_key = get_proving_key(self.proving_key.as_ref());
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
 
-        let output_dir = if !verify_constraints {
+        let output_dir = if !self.verify_constraints {
             Some(self.output_dir.unwrap_or_else(|| "tmp".into()))
         } else {
             None
@@ -411,7 +422,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
 
         if self.print_command_info {
             Self::print_asm_command_info(
-                verify_constraints,
+                self.verify_constraints,
                 &witness_lib,
                 &proving_key,
                 &elf,
@@ -420,7 +431,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
         }
 
         let asm = AsmProver::new(
-            verify_constraints,
+            self.verify_constraints,
             self.aggregation,
             self.final_snark,
             witness_lib,
@@ -432,7 +443,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
             asm_rh_filename,
             self.base_port,
             self.unlock_mapped_memory,
-            self.gpu_params.filter(|_| !verify_constraints).unwrap_or_default(),
+            self.gpu_params.filter(|_| !self.verify_constraints).unwrap_or_default(),
             self.verify_proofs,
             self.minimal_memory,
             self.save_proofs,
@@ -476,6 +487,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
+            verify_constraints: builder.verify_constraints,
             elf: builder.elf,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
@@ -507,6 +519,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
+            verify_constraints: builder.verify_constraints,
             elf: builder.elf,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
@@ -531,7 +544,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
 }
 
 impl<Backend> From<ProverClientBuilder<Backend, ()>>
-    for ProverClientBuilder<Backend, VerifyConstraints>
+    for ProverClientBuilder<Backend, WitnessGeneration>
 {
     fn from(builder: ProverClientBuilder<Backend, ()>) -> Self {
         Self {
@@ -540,6 +553,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
+            verify_constraints: builder.verify_constraints,
             elf: builder.elf,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
@@ -571,6 +585,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
+            verify_constraints: false,
             elf: builder.elf,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,

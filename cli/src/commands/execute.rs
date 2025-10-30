@@ -102,7 +102,7 @@ impl ZiskExecute {
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(ZiskExecutionResult, Duration)> {
         let prover = ProverClient::builder()
             .emu()
-            .verify_constraints()
+            .witness()
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
