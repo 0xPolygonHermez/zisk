@@ -103,6 +103,20 @@ impl WorkersPool {
         ComputeCapacity::from(total_capacity)
     }
 
+    /// Calculates total available compute capacity across all registered workers.
+    pub async fn available_compute_capacity(&self) -> ComputeCapacity {
+        let total_capacity: u32 = self
+            .workers
+            .read()
+            .await
+            .values()
+            .filter(|p| p.state == WorkerState::Idle)
+            .map(|p| p.compute_capacity.compute_units)
+            .sum();
+
+        ComputeCapacity::from(total_capacity)
+    }
+
     /// Returns detailed information about all registered workers.
     pub async fn workers_list(&self) -> WorkersListDto {
         let workers = self
@@ -148,7 +162,13 @@ impl WorkersPool {
             Err(CoordinatorError::InvalidRequest(msg))
         } else {
             self.workers.write().await.insert(worker_id.clone(), connection);
-            info!("Registered worker: {} (total: {})", worker_id, self.num_workers().await);
+            info!(
+                "Registered worker: {} (total: {} CC: {} ACC: {})",
+                worker_id,
+                self.num_workers().await,
+                self.compute_capacity().await,
+                self.available_compute_capacity().await
+            );
             Ok(())
         }
     }
@@ -179,7 +199,13 @@ impl WorkersPool {
                 existing_worker.msg_sender = msg_sender;
                 existing_worker.update_last_heartbeat();
 
-                info!("Reconnected worker: {} (total: {})", worker_id, self.num_workers().await);
+                info!(
+                    "Reconnected worker: {} (total: {} CC:{} ACC: {})",
+                    worker_id,
+                    self.num_workers().await,
+                    self.compute_capacity().await,
+                    self.available_compute_capacity().await
+                );
                 Ok(())
             }
             None => {
@@ -202,7 +228,14 @@ impl WorkersPool {
             Some(_) => {
                 let total = workers.len(); // Get count from the current HashMap
                 drop(workers); // Release the lock before logging
-                info!("Unregistered worker: {} (total: {})", worker_id, total);
+                info!(
+                    "Unregistered worker: {} (total: {} CC: {} ACC: {})",
+                    worker_id,
+                    total,
+                    self.compute_capacity().await,
+                    self.available_compute_capacity().await
+                );
+
                 Ok(())
             }
             None => {
@@ -251,11 +284,21 @@ impl WorkersPool {
         state: WorkerState,
     ) -> CoordinatorResult<()> {
         if let Some(worker) = self.workers.write().await.get_mut(worker_id) {
-            worker.state = state;
-            Ok(())
+            worker.state = state.clone();
         } else {
-            Err(CoordinatorError::NotFoundOrInaccessible)
+            return Err(CoordinatorError::NotFoundOrInaccessible);
         }
+
+        if state == WorkerState::Idle {
+            info!(
+                "Worker {} available (total: {} CC:{} ACC: {})",
+                worker_id,
+                self.num_workers().await,
+                self.compute_capacity().await,
+                self.available_compute_capacity().await
+            );
+        }
+        Ok(())
     }
 
     /// Sends a message to a specific worker.
