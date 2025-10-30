@@ -1,3 +1,6 @@
+//! A file-based implementation of ZiskStdin.
+//! This module provides functionality to read input data from a file.
+
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -6,7 +9,10 @@ use crate::io::ZiskIO;
 
 /// A file-based implementation of ZiskStdin that reads from a file.
 pub struct ZiskFileStdin {
+    /// The path to the input file.
     path: PathBuf,
+
+    /// Buffered reader for the file.
     reader: BufReader<File>,
 }
 

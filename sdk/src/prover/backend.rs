@@ -1,4 +1,4 @@
-use crate::Proof;
+use crate::{Proof, RankInfo};
 use anyhow::Result;
 use bytemuck::cast_slice;
 use fields::Goldilocks;
@@ -8,7 +8,7 @@ use std::{fs::File, io::Write, path::PathBuf, time::Duration};
 use zisk_common::{io::ZiskStdin, ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
 use zstd::Encoder;
 
-pub struct ProverBackend {
+pub(crate) struct ProverBackend {
     pub verify_constraints: bool,
     pub aggregation: bool,
     pub final_snark: bool,
@@ -19,6 +19,7 @@ pub struct ProverBackend {
     pub save_proofs: bool,
     pub output_dir: Option<PathBuf>,
     pub proofman: ProofMan<Goldilocks>,
+    pub rank_info: RankInfo,
 }
 
 impl ProverBackend {
@@ -132,7 +133,7 @@ impl ProverBackend {
         if let Some(proof_id) = proof.id.clone() {
             let output_dir = self.output_dir.as_ref().unwrap();
 
-            if !output_dir.exists() {
+            if self.rank_info.local_rank == 0 && !output_dir.exists() {
                 std::fs::create_dir_all(output_dir)?;
             }
 

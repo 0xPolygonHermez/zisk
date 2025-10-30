@@ -265,6 +265,7 @@ impl AsmCoreProver {
             save_proofs,
             output_dir,
             proofman,
+            rank_info: RankInfo { world_rank, local_rank },
         };
 
         Ok(Self { backend: core, asm_services, rank_info: RankInfo { world_rank, local_rank } })
