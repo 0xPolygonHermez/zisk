@@ -9,7 +9,7 @@ use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use std::sync::Arc;
 #[cfg(not(feature = "packed"))]
-use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
+use zisk_pil::{BinaryAddAirValues, BinaryAddTrace, BinaryAddTraceRow};
 #[cfg(feature = "packed")]
 use zisk_pil::{BinaryAddTracePacked, BinaryAddTraceRowPacked};
 
@@ -93,8 +93,6 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             a >>= 32;
             b >>= 32;
         }
-        // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
-        row.set_multiplicity(true);
 
         // Return
         (row, range_checks)
@@ -152,15 +150,20 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         self.std.range_checks(self.range_id, multiplicities);
 
-        // Note: We can choose any operation that trivially satisfies the constraints on padding
-        // rows
-        let padding_row = BinaryAddTraceRowType::<F>::default();
-        add_trace.buffer[total_inputs..num_rows]
-            .par_iter_mut()
-            .for_each(|slot| *slot = padding_row);
+        // Set 0 + 0 as the padding row
+        let padding_size = num_rows - total_inputs;
+        if padding_size > 0 {
+            let padding_row = BinaryAddTraceRowType::<F>::default();
+            add_trace.buffer[total_inputs..num_rows]
+                .par_iter_mut()
+                .for_each(|slot| *slot = padding_row);
+        }
 
-        AirInstance::new_from_trace(FromTrace::new(&mut add_trace))
+        let mut air_values = BinaryAddAirValues::<F>::new();
+        air_values.padding_size = F::from_usize(padding_size);
+        AirInstance::new_from_trace(FromTrace::new(&mut add_trace).with_air_values(&mut air_values))
     }
+
     pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
         for row in frops_inputs {
             self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);

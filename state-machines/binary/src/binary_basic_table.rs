@@ -2,7 +2,7 @@
 //!
 //! This state machine is responsible for calculating basic binary table rows.
 
-use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
+use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8};
 
 use crate::binary_constants::*;
 
@@ -27,7 +27,8 @@ pub enum BinaryBasicTableOp {
     And = AND_OP,
     Or = OR_OP,
     Xor = XOR_OP,
-    Ext32 = 0x13,
+    Sext00 = 0x13,
+    SextFF = 0x14,
 }
 
 /// The `BinaryBasicTableSM` struct represents the Binary Basic Table State Machine.
@@ -61,114 +62,20 @@ impl BinaryBasicTableSM {
         debug_assert!(b <= 0xFF);
         debug_assert!(cin <= 0x01);
         debug_assert!(pos_ind <= 0x02);
-        debug_assert!(flags <= 0x0F);
+        debug_assert!(flags <= 0b1111);
 
-        // Calculate the different row offset contributors, according to the PIL
-        if opcode == BinaryBasicTableOp::Ext32 {
-            // Offset calculation for `Ext32` operation.
-            let offset_a: u64 = a;
-            let offset_cin: u64 = cin * P2_8;
-            let offset_result_is_a: u64 = match flags {
-                0 => 0,
-                2 => P2_9,
-                6 => 3 * P2_9,
-                _ => {
-                    panic!(
-                        "BinaryBasicTableSM::calculate_table_row() Unexpected flags for Ext32: {flags}"
-                    )
-                }
-            };
-            let offset_opcode: u64 = Self::offset_opcode(opcode);
+        // flags = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
+        let result_is_a_flag = if (flags & 0b10) != 0 { 1 } else { 0 };
 
-            offset_a + offset_cin + offset_result_is_a + offset_opcode
-        } else {
-            // Offset calculation for other operations.
-            let offset_a: u64 = a;
-            let offset_b: u64 = b * P2_8;
-            let offset_pos_ind: u64 =
-                if Self::opcode_has_pos_ind(opcode) { pos_ind * P2_16 } else { 0 };
-            let offset_cin: u64 = cin * Self::offset_cin(opcode);
-            let offset_result_is_a: u64 =
-                if Self::opcode_result_is_a(opcode) && ((flags & 0x02) != 0) { P2_18 } else { 0 };
-            let offset_opcode: u64 = Self::offset_opcode(opcode);
+        // Calculate the different row offset contributors
+        let offset_opcode: u64 = Self::offset_opcode(opcode);
+        let offset_a: u64 = a;
+        let offset_b: u64 = b * P2_8;
+        let offset_pos_ind: u64 = pos_ind * Self::offset_pos_ind(opcode);
+        let offset_cin: u64 = cin * Self::offset_cin(opcode);
+        let offset_result_is_a: u64 = result_is_a_flag * Self::offset_result_is_a(opcode);
 
-            offset_a + offset_b + offset_pos_ind + offset_cin + offset_result_is_a + offset_opcode
-        }
-    }
-
-    /// Determines if the given opcode requires a position indicator.
-    fn opcode_has_pos_ind(opcode: BinaryBasicTableOp) -> bool {
-        match opcode {
-            BinaryBasicTableOp::Minu
-            | BinaryBasicTableOp::Min
-            | BinaryBasicTableOp::Maxu
-            | BinaryBasicTableOp::Max
-            | BinaryBasicTableOp::LtAbsNP
-            | BinaryBasicTableOp::LtAbsPN
-            | BinaryBasicTableOp::Ltu
-            | BinaryBasicTableOp::Lt
-            | BinaryBasicTableOp::Gt
-            | BinaryBasicTableOp::Eq
-            | BinaryBasicTableOp::Add
-            | BinaryBasicTableOp::Sub
-            | BinaryBasicTableOp::Leu
-            | BinaryBasicTableOp::Le
-            | BinaryBasicTableOp::And
-            | BinaryBasicTableOp::Or
-            | BinaryBasicTableOp::Xor => true,
-
-            BinaryBasicTableOp::Ext32 => false,
-        }
-    }
-
-    /// Determines if the given opcode requires a carry-in value.
-    fn offset_cin(opcode: BinaryBasicTableOp) -> u64 {
-        match opcode {
-            BinaryBasicTableOp::Minu
-            | BinaryBasicTableOp::Min
-            | BinaryBasicTableOp::Maxu
-            | BinaryBasicTableOp::Max
-            | BinaryBasicTableOp::Ltu
-            | BinaryBasicTableOp::Lt
-            | BinaryBasicTableOp::Gt
-            | BinaryBasicTableOp::Eq
-            | BinaryBasicTableOp::Add
-            | BinaryBasicTableOp::Sub
-            | BinaryBasicTableOp::Leu
-            | BinaryBasicTableOp::Le => P2_17,
-
-            BinaryBasicTableOp::LtAbsNP | BinaryBasicTableOp::LtAbsPN => P2_18,
-
-            BinaryBasicTableOp::And
-            | BinaryBasicTableOp::Or
-            | BinaryBasicTableOp::Xor
-            | BinaryBasicTableOp::Ext32 => 0,
-        }
-    }
-
-    /// Determines if the given opcode's result depends on the "a" operand.
-    fn opcode_result_is_a(opcode: BinaryBasicTableOp) -> bool {
-        match opcode {
-            BinaryBasicTableOp::Minu
-            | BinaryBasicTableOp::Min
-            | BinaryBasicTableOp::Maxu
-            | BinaryBasicTableOp::Max => true,
-
-            BinaryBasicTableOp::LtAbsNP
-            | BinaryBasicTableOp::LtAbsPN
-            | BinaryBasicTableOp::Ltu
-            | BinaryBasicTableOp::Lt
-            | BinaryBasicTableOp::Gt
-            | BinaryBasicTableOp::Eq
-            | BinaryBasicTableOp::Add
-            | BinaryBasicTableOp::Sub
-            | BinaryBasicTableOp::Leu
-            | BinaryBasicTableOp::Le
-            | BinaryBasicTableOp::And
-            | BinaryBasicTableOp::Or
-            | BinaryBasicTableOp::Xor
-            | BinaryBasicTableOp::Ext32 => false,
-        }
+        offset_opcode + offset_a + offset_b + offset_pos_ind + offset_cin + offset_result_is_a
     }
 
     /// Computes the opcode offset for the given operation.
@@ -191,7 +98,83 @@ impl BinaryBasicTableSM {
             BinaryBasicTableOp::And => 6 * P2_19 + 8 * P2_18,
             BinaryBasicTableOp::Or => 6 * P2_19 + 8 * P2_18 + P2_17,
             BinaryBasicTableOp::Xor => 6 * P2_19 + 8 * P2_18 + 2 * P2_17,
-            BinaryBasicTableOp::Ext32 => 6 * P2_19 + 8 * P2_18 + 3 * P2_17,
+            BinaryBasicTableOp::Sext00 => 6 * P2_19 + 8 * P2_18 + 3 * P2_17,
+            BinaryBasicTableOp::SextFF => 6 * P2_19 + 9 * P2_18 + 3 * P2_17,
+        }
+    }
+
+    /// Computes the position indicator offset for the given operation.
+    fn offset_pos_ind(opcode: BinaryBasicTableOp) -> u64 {
+        match opcode {
+            BinaryBasicTableOp::Minu
+            | BinaryBasicTableOp::Min
+            | BinaryBasicTableOp::Maxu
+            | BinaryBasicTableOp::Max
+            | BinaryBasicTableOp::LtAbsNP
+            | BinaryBasicTableOp::LtAbsPN
+            | BinaryBasicTableOp::Ltu
+            | BinaryBasicTableOp::Lt
+            | BinaryBasicTableOp::Gt
+            | BinaryBasicTableOp::Eq
+            | BinaryBasicTableOp::Add
+            | BinaryBasicTableOp::Sub
+            | BinaryBasicTableOp::Leu
+            | BinaryBasicTableOp::Le
+            | BinaryBasicTableOp::And
+            | BinaryBasicTableOp::Or
+            | BinaryBasicTableOp::Xor => P2_16,
+
+            BinaryBasicTableOp::Sext00 | BinaryBasicTableOp::SextFF => 0,
+        }
+    }
+
+    /// Computes the carry-in offset for the given operation.
+    fn offset_cin(opcode: BinaryBasicTableOp) -> u64 {
+        match opcode {
+            BinaryBasicTableOp::LtAbsNP | BinaryBasicTableOp::LtAbsPN => P2_18,
+
+            BinaryBasicTableOp::Minu
+            | BinaryBasicTableOp::Min
+            | BinaryBasicTableOp::Maxu
+            | BinaryBasicTableOp::Max
+            | BinaryBasicTableOp::Ltu
+            | BinaryBasicTableOp::Lt
+            | BinaryBasicTableOp::Gt
+            | BinaryBasicTableOp::Eq
+            | BinaryBasicTableOp::Add
+            | BinaryBasicTableOp::Sub
+            | BinaryBasicTableOp::Leu
+            | BinaryBasicTableOp::Le => P2_17,
+
+            BinaryBasicTableOp::Sext00 | BinaryBasicTableOp::SextFF => P2_16,
+
+            BinaryBasicTableOp::And | BinaryBasicTableOp::Or | BinaryBasicTableOp::Xor => 0,
+        }
+    }
+
+    /// Computes the result_is_a offset for the given operation.
+    fn offset_result_is_a(opcode: BinaryBasicTableOp) -> u64 {
+        match opcode {
+            BinaryBasicTableOp::Minu
+            | BinaryBasicTableOp::Min
+            | BinaryBasicTableOp::Maxu
+            | BinaryBasicTableOp::Max
+            | BinaryBasicTableOp::Sext00
+            | BinaryBasicTableOp::SextFF => P2_18,
+
+            BinaryBasicTableOp::LtAbsNP
+            | BinaryBasicTableOp::LtAbsPN
+            | BinaryBasicTableOp::Ltu
+            | BinaryBasicTableOp::Lt
+            | BinaryBasicTableOp::Gt
+            | BinaryBasicTableOp::Eq
+            | BinaryBasicTableOp::Add
+            | BinaryBasicTableOp::Sub
+            | BinaryBasicTableOp::Leu
+            | BinaryBasicTableOp::Le
+            | BinaryBasicTableOp::And
+            | BinaryBasicTableOp::Or
+            | BinaryBasicTableOp::Xor => 0,
         }
     }
 }

@@ -72,7 +72,7 @@ airgroup Zisk {
 
     Binary(N: 2**22);
     BinaryAdd(N: 2**22);
-    virtual BinaryTable();
+    virtual BinaryTable(BINARY_TABLE_SIZE);
     BinaryExtension(N: 2**22);
     virtual BinaryExtensionTable();
 
