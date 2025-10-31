@@ -258,7 +258,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         cout = if (a_bytes[i] & SIGN_BYTE) != 0 { 1 } else { 0 };
                     }
                     if mode32 && (i >= 4) {
-                        cout = 0;
+                        cout = cin;
                     }
                     row.set_carry(i, cout != 0);
 
@@ -280,7 +280,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         } else {
                             binary_basic_table_op
                         },
-                        if mode32 && (i >= 4) { c_bytes[3] as u64 } else { a_bytes[i] as u64 },
+                        a_bytes[i] as u64,
                         b_bytes[i] as u64,
                         previous_cin,
                         plast[i],
@@ -330,7 +330,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         cout = if (a_bytes[i] & SIGN_BYTE) != 0 { 0 } else { 1 };
                     }
                     if mode32 && (i >= 4) {
-                        cout = 0;
+                        cout = cin;
                     }
                     row.set_carry(i, cout != 0);
 
@@ -352,7 +352,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         } else {
                             binary_basic_table_op
                         },
-                        if mode32 && (i >= 4) { c_bytes[3] as u64 } else { a_bytes[i] as u64 },
+                        a_bytes[i] as u64,
                         b_bytes[i] as u64,
                         previous_cin,
                         plast[i],
