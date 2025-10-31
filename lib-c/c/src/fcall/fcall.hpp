@@ -147,8 +147,8 @@ int MsbPos384 (
           uint64_t * r  // 2 x 64 bits
 );
 int BigInt256Div (
-    const uint64_t * a, // 12 x 64 bits
-          uint64_t * r  // 2 x 64 bits
+    const uint64_t * a, // 8 x 64 bits
+          uint64_t * r  // 8 x 64 bits
 );
 
 #ifdef __cplusplus
