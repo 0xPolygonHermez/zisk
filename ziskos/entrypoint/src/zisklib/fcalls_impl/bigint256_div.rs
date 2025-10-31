@@ -2,13 +2,13 @@ use num_integer::Integer;
 
 use super::utils::{from_limbs_le, to_limbs_le};
 
-/// Perform the inversion of a non-zero field element in Fp
+/// Perform the division between two 256-bit non-zero numbers
 pub fn fcall_bigint256_div(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let a = &params[0..4].try_into().unwrap();
     let b = &params[4..8].try_into().unwrap();
 
-    // Perform the inversion using fp inversion
+    // Perform the division
     let (quotient, remainder) = bigint256_div(a, b);
 
     // Store the result
