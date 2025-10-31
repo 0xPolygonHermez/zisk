@@ -20,6 +20,7 @@ pub fn keccak_f_iota(s: &mut GateState, ir: u64) {
     }
 
     // Step 4: Apply round constants to lane (0,0)
+    #[allow(clippy::needless_range_loop)]
     for z in 0..64 {
         // Since XOR(a, 0) = a, we can skip the XOR if the constant bit is zero
         if KECCAK_F_RC[ir as usize][z] == 1 {

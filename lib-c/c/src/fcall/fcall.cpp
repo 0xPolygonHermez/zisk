@@ -82,6 +82,11 @@ int Fcall (
             iresult = MsbPos384Ctx(ctx);
             break;
         }
+        case FCALL_BIGINT256_DIV_ID:
+        {
+            iresult = BigInt256DivCtx(ctx);
+            break;
+        }
         default:
         {
             printf("Fcall() found unsupported function_id=%lu\n", ctx->function_id);
@@ -806,6 +811,45 @@ int MsbPos384Ctx (
     {
         iresult = 2;
         ctx->result_size = 2;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/*************************************/
+/* BIT INT 256 DIVISION AND REMINDER */
+/*************************************/
+
+int BigInt256Div (
+    const uint64_t * _a, // 8 x 64 bits
+          uint64_t * _r  // 8 x 64 bits
+)
+{
+    mpz_class a, b;
+    array2scalar(_a, a);
+    array2scalar(_a + 4, b);
+
+    mpz_class quotient = a / b;
+    mpz_class remainder = a % b;
+
+    scalar2array(quotient, &_r[0]);
+    scalar2array(remainder, &_r[4]);
+
+    return 0;
+}
+
+int BigInt256DivCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = BigInt256Div(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 8;
+        ctx->result_size = 8;
     }
     else
     {
