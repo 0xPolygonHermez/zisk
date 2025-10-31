@@ -74,7 +74,7 @@ airgroup Zisk {
     BinaryAdd(N: 2**22);
     virtual BinaryTable(BINARY_TABLE_SIZE);
     BinaryExtension(N: 2**22);
-    virtual BinaryExtensionTable();
+    virtual BinaryExtensionTable(BINARY_EXTENSION_TABLE_SIZE);
 
     virtual FrequentOps(13084068, table_id: BINARY_BASIC_FROPS_TABLE_ID, 
                         bin_file: "state-machines/binary/src/binary_basic_frops_fixed.bin") alias BinaryBasicFrops;

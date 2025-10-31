@@ -16,11 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-<<<<<<< HEAD
-pub const PILOUT_HASH: &str = "e71b3cc36b74d9352f177b173f65e09ee21ef163c785733bd88053f41faa7c6a";
-=======
-pub const PILOUT_HASH: &str = "bf5612d0cd82e9c4ed8f946b6440d72704e14ab980dac9f0873f91853867fcdf";
->>>>>>> origin/pre-develop-0.14.0
+pub const PILOUT_HASH: &str = "e437224413556e13584b53f31094fdaab1fb579e94247968ead16dd314bf5a58";
 
 //AIRGROUP CONSTANTS
 
@@ -283,7 +279,7 @@ trace_row!(BinaryExtensionFixedRow<F> {
 pub type BinaryExtensionFixed<F> = GenericTrace<BinaryExtensionFixedRow<F>, 4194304, 0, 12>;
 
 trace_row!(BinaryExtensionTraceRow<F> {
- op:ubit(6), in1:[u8; 8], in2_low:u8, out:[[u32; 2]; 8], op_is_shift:bit, in2:[u32; 2], multiplicity:bit,
+ op:ubit(6), free_in_a:[u8; 8], free_in_b:u8, free_in_c:[[u32; 2]; 8], op_is_shift:bit, b:[u32; 2],
 });
 pub type BinaryExtensionTrace<F> = GenericTrace<BinaryExtensionTraceRow<F>, 4194304, 0, 12>;
 
@@ -373,12 +369,12 @@ pub type SpecifiedRangesTrace<F> = GenericTrace<SpecifiedRangesTraceRow<F>, 2097
 
 
 trace_row!(VirtualTable0FixedRow<F> {
- UID: [F; 10], column: [F; 56], __L1__: F,
+ UID: [F; 9], column: [F; 49], __L1__: F,
 });
 pub type VirtualTable0Fixed<F> = GenericTrace<VirtualTable0FixedRow<F>, 2097152, 0, 19>;
 
 trace_row!(VirtualTable0TraceRow<F> {
- multiplicity:[F; 10],
+ multiplicity:[F; 9],
 });
 pub type VirtualTable0Trace<F> = GenericTrace<VirtualTable0TraceRow<F>, 2097152, 0, 19>;
 
@@ -433,6 +429,10 @@ values!(BinaryAirValues<F> {
 });
 
 values!(BinaryAddAirValues<F> {
+ padding_size: F, im_direct: [FieldExtension<F>; 2],
+});
+
+values!(BinaryExtensionAirValues<F> {
  padding_size: F, im_direct: [FieldExtension<F>; 2],
 });
 
@@ -579,7 +579,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 12, PackedInfoConst {
         is_packed: true,
         num_packed_words: 11,
-        unpack_info: &[6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 32, 32, 1],
+        unpack_info: &[6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 32, 32],
     }),
     (0, 13, PackedInfoConst {
         is_packed: true,
