@@ -18,7 +18,7 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
 
     // Extract all relevant sections from the ELF file
     let payloads: Vec<ElfPayload> =
-        vec![collect_elf_payload(elf_file)?, collect_elf_payload_from_bytes(FLOAT_LIB_DATA)?];
+        vec![collect_elf_payload_from_bytes(FLOAT_LIB_DATA)?, collect_elf_payload(elf_file)?];
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
@@ -26,7 +26,7 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     // Add the end instruction, jumping over it
     add_end_and_lib(&mut rom);
 
-    for payload in payloads.into_iter() {
+    for (i, payload) in payloads.into_iter().enumerate() {
         // 1. Add executable code sections
         for section in &payload.exec {
             add_zisk_code(&mut rom, section.addr, &section.data);
@@ -49,8 +49,10 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
             add_zisk_init_data(&mut rom, section.addr, &section.data, true);
         }
 
-        // Add entry and exit jump instructions
-        add_entry_exit_jmp(&mut rom, payload.entry_point);
+        // Add entry and exit jump instructions, only for the main payload, i.e. for the second payload
+        if i == 1 {
+            add_entry_exit_jmp(&mut rom, payload.entry_point);
+        }
     }
 
     // Preprocess the ROM (experimental)

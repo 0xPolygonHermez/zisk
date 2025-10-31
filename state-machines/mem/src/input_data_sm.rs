@@ -29,6 +29,10 @@ const _: () = {
         INPUT_ADDR + MAX_INPUT_SIZE - 1 <= 0xFFFF_FFFF,
         "INPUT_DATA memory exceeds the 32-bit addressable range"
     );
+    assert!(
+        (MAX_INPUT_SIZE - 1) <= (128 << 20),
+        "INPUT_DATA is too large. Input size must be <= 128MB"
+    );
 };
 
 pub struct InputDataSM<F: PrimeField64> {
@@ -95,6 +99,8 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         let range_id = self.std.get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
         self.std.range_check(range_id, (previous_segment.addr - INPUT_DATA_W_ADDR_INIT) as i64, 1);
 
+        let mut max_range_distance_count = 0;
+
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
@@ -107,16 +113,17 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
                 break;
             }
 
-            if distance > 1 {
-                // check if has enough rows to complete the internal reads + regular memory
-                let mut internal_reads = distance - 1;
+            if distance > SEGMENT_ADDR_MAX_RANGE as u32 {
+                let mut internal_reads = (distance - 1) / SEGMENT_ADDR_MAX_RANGE as u32;
+
                 let incomplete = (i + internal_reads as usize) >= num_rows;
                 if incomplete {
                     internal_reads = (num_rows - i) as u32;
                 }
 
                 trace[i].set_addr_changes(true);
-                last_addr += 1;
+                last_addr += SEGMENT_ADDR_MAX_RANGE as u32;
+                max_range_distance_count += 1;
                 trace[i].set_addr(last_addr);
 
                 // the step, value of internal reads isn't relevant
@@ -133,7 +140,8 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
 
                 for _j in 1..internal_reads {
                     trace[i] = trace[i - 1];
-                    last_addr += 1;
+                    last_addr += SEGMENT_ADDR_MAX_RANGE as u32;
+                    max_range_distance_count += 1;
                     trace[i].set_addr(last_addr);
 
                     i += 1;
@@ -157,7 +165,12 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             }
 
             let addr_changes = last_addr != mem_op.addr;
-            trace[i].set_addr_changes(addr_changes);
+            if addr_changes {
+                trace[i].set_addr_changes(true);
+                self.std.range_check(range_id, (mem_op.addr - last_addr - 1) as i64, 1);
+            } else {
+                trace[i].set_addr_changes(false);
+            }
 
             last_addr = mem_op.addr;
             last_step = mem_op.step;
@@ -176,10 +189,6 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         for i in count..num_rows {
             last_step += 1;
 
-            // TODO CHECK
-            // trace[i].mem_segment = segment_id_field;
-            // trace[i].mem_last_segment = is_last_segment_field;
-
             trace[i].set_addr(addr);
             trace[i].set_step(last_step);
             trace[i].set_sel(false);
@@ -190,8 +199,11 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             trace[i].set_is_free_read(is_free_read);
 
             trace[i].set_addr_changes(false);
+
+            // address doesn't change in padding rows, no range check is required
         }
 
+        self.std.range_check(range_id, SEGMENT_ADDR_MAX_RANGE as i64, max_range_distance_count);
         self.std.range_check(range_id, (INPUT_DATA_W_ADDR_END - last_addr) as i64, 1);
 
         // range of chunks

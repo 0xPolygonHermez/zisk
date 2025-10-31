@@ -1,3 +1,4 @@
+mod bigint256_div;
 mod bls12_381_fp2_inv;
 mod bls12_381_fp_inv;
 mod bls12_381_fp_sqrt;

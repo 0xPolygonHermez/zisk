@@ -1,6 +1,6 @@
 //! Miller Loop for the pairings over BN254
 
-use crate::{fcall_bn254_add_line_coeffs, fcall_bn254_dbl_line_coeffs, zisklib::lib::utils::eq};
+use crate::zisklib::{eq, fcall_bn254_add_line_coeffs, fcall_bn254_dbl_line_coeffs};
 
 use super::{
     fp::{inv_fp_bn254, mul_fp_bn254, neg_fp_bn254},

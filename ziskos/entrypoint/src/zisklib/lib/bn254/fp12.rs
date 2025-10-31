@@ -1,6 +1,6 @@
 //! Operations in the degree 12 extension Fp12 of the BN254 curve
 
-use crate::{fcall_msb_pos_256, zisklib::lib::utils::eq};
+use crate::zisklib::{eq, fcall_msb_pos_256};
 
 use super::{
     constants::{

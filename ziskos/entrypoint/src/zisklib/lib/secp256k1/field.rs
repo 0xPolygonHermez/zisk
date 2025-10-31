@@ -1,6 +1,6 @@
 use crate::{
-    arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams},
-    fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt, lt,
+    syscalls::{syscall_arith256_mod, SyscallArith256ModParams},
+    zisklib::{fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt, lt},
 };
 
 use super::constants::{NQR, P, P_MINUS_ONE};

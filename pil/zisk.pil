@@ -53,8 +53,8 @@ airgroup Zisk {
 
     // Memory
     Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
-    Mem(N: 2**21, base_address: 0x8000_0000, immutable: 1, enable_flag: enable_rom_data) alias RomData;
-    Mem(N: 2**21, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
+    Mem(N: 2**21, base_address: 0x8000_0000, size_mb: 128, immutable: 1, enable_flag: enable_rom_data) alias RomData;
+    Mem(N: 2**21, base_address: 0x9000_0000, size_mb: 128, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
 
     MemAlign(N: 2**21, use_predefined_ranges: 0);
     MemAlignByte(N: 2**22, read: 1, write: 1);

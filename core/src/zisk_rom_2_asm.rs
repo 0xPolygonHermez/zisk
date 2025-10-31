@@ -33,8 +33,8 @@ const REG_FLAG: &str = "rdx";
 const REG_STEP: &str = "r14";
 const REG_VALUE: &str = "r9";
 const REG_VALUE_W: &str = "r9d";
-const REG_VALUE_H: &str = "r9w";
-const REG_VALUE_B: &str = "r9b";
+//const REG_VALUE_H: &str = "r9w";
+//const REG_VALUE_B: &str = "r9b";
 const REG_ADDRESS: &str = "r10";
 const REG_MEM_READS_ADDRESS: &str = "r12";
 const REG_MEM_READS_SIZE: &str = "r13";
@@ -3318,7 +3318,7 @@ impl ZiskRom2Asm {
         /**********************/
         /* READ_ONLY ROM DATA */
         /**********************/
-
+        /*
         *code += "\n";
         *code += ".global write_ro_data\n";
         *code += "write_ro_data:\n";
@@ -3378,6 +3378,7 @@ impl ZiskRom2Asm {
 
         Self::pop_external_registers(&mut ctx, code);
         *code += "\tret\n\n";
+        */
 
         /*****************/
         /* BRANCH TABLES */
