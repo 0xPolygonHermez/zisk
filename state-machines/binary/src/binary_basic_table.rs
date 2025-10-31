@@ -158,9 +158,9 @@ impl BinaryBasicTableSM {
             BinaryBasicTableOp::Minu
             | BinaryBasicTableOp::Min
             | BinaryBasicTableOp::Maxu
-            | BinaryBasicTableOp::Max
-            | BinaryBasicTableOp::Sext00
-            | BinaryBasicTableOp::SextFF => P2_18,
+            | BinaryBasicTableOp::Max => P2_18,
+
+            BinaryBasicTableOp::Sext00 | BinaryBasicTableOp::SextFF => P2_17,
 
             BinaryBasicTableOp::LtAbsNP
             | BinaryBasicTableOp::LtAbsPN

@@ -28,8 +28,6 @@ type BinaryTraceRowType<F> = BinaryTraceRow<F>;
 #[cfg(not(feature = "packed"))]
 type BinaryTraceType<F> = BinaryTrace<F>;
 
-const BYTES: usize = 8;
-const HALF_BYTES: usize = BYTES / 2;
 const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 const SIGN_BYTE: u8 = 0x80;
 
@@ -886,17 +884,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             BinaryBasicTableOp::Sext00 as u8
         });
 
-        // Set flags_half_byte and flags_last_byte
-        let flags_half_byte = row.get_carry(HALF_BYTES - 1) as u8
-            + 2 * row.get_result_is_a() as u8
-            + 4 * row.get_use_first_byte() as u8
-            + 8 * mode32 as u8 * row.get_c_is_signed() as u8;
-        let flags_last_byte = row.get_carry(BYTES - 1) as u8
-            + 2 * row.get_result_is_a() as u8
-            + 4 * row.get_use_first_byte() as u8
-            + 8 * mode64 as u8 * row.get_c_is_signed() as u8;
-        row.set_flags_half_byte(flags_half_byte);
-        row.set_flags_last_byte(flags_last_byte);
+        // Set mode32_and_c_is_signed
+        row.set_mode32_and_c_is_signed(mode32 && row.get_c_is_signed());
 
         row
     }

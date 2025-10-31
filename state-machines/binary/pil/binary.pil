@@ -91,27 +91,25 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, c
     where pos_ind indicates relevant byte positions
 
     Example for 8 bytes:
-        │──────────────────│────────────────────│────│────│─────────│────│──────────────────--------------------------------------------─────────│
-        │     pos_ind      │ opid               │ a  │ b  │ cin     │ c  │ cout    + flags                                                       │
-        │──────────────────│────────────────────│────│────│─────────│────│──────────────────--------------------------------------------─────────│
-        │ 2*use_first_byte │       b_op         │ a0 │ b0 │ 0       │ c0 │ cout[0] + 2*result_is_a + 4*use_first_byte                            │
-        │        0         │       b_op         │ a1 │ b1 │ cout[0] │ c1 │ cout[1] + 2*result_is_a + 4*use_first_byte                            │
-        │        0         │       b_op         │ a2 │ b2 │ cout[1] │ c2 │ cout[2] + 2*result_is_a + 4*use_first_byte                            │
-        │      mode32      │       b_op         │ a3 │ b3 │ cout[2] │ c3 │ cout[3] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
-        │        0         │ b_op|SEXT00|SEXTFF │ a4 │ b4 │ cout[3] │ c4 │ cout[4] + 2*result_is_a + 4*use_first_byte                            │
-        │        0         │ b_op|SEXT00|SEXTFF │ a5 │ b5 │ cout[4] │ c5 │ cout[5] + 2*result_is_a + 4*use_first_byte                            │
-        │        0         │ b_op|SEXT00|SEXTFF │ a6 │ b6 │ cout[5] │ c6 │ cout[6] + 2*result_is_a + 4*use_first_byte                            │
-        │      mode64      │ b_op|SEXT00|SEXTFF │ a7 │ b7 │ cout[6] │ c7 │ cout[7] + 2*result_is_a + 4*use_first_byte + 8*(mode64 * c_is_signed) │
-        │──────────────────│────────────────────│────│────│─────────│────│──────────────────--------------------------------------------─────────│
+        │──────────────────│───────────│────│────│─────────│────│──────────────────--------------------------------------------─────────│
+        │     pos_ind      │    opid   │ a  │ b  │ cin     │ c  │ cout    + flags                                                       │
+        │──────────────────│───────────│────│────│─────────│────│──────────────────--------------------------------------------─────────│
+        │ 2*use_first_byte │   b_op    │ a0 │ b0 │ 0       │ c0 │ cout[0] + 2*result_is_a + 4*use_first_byte                            │
+        │        0         │   b_op    │ a1 │ b1 │ cout[0] │ c1 │ cout[1] + 2*result_is_a + 4*use_first_byte                            │
+        │        0         │   b_op    │ a2 │ b2 │ cout[1] │ c2 │ cout[2] + 2*result_is_a + 4*use_first_byte                            │
+        │      mode32      │   b_op    │ a3 │ b3 │ cout[2] │ c3 │ cout[3] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
+        │        0         │ b_op|SEXT │ a4 │ b4 │ cout[3] │ c4 │ cout[4] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
+        │        0         │ b_op|SEXT │ a5 │ b5 │ cout[4] │ c5 │ cout[5] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
+        │        0         │ b_op|SEXT │ a6 │ b6 │ cout[5] │ c6 │ cout[6] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
+        │      mode64      │ b_op|SEXT │ a7 │ b7 │ cout[6] │ c7 │ cout[7] + 2*result_is_a + 4*use_first_byte + 8*c_is_signed            │
+        │──────────────────│───────────│────│────│─────────│────│──────────────────--------------------------------------------─────────│
     */
 
     // Auxiliary columns (primarily used to lower the lookup call complexity)
     col witness bits(5) b_op_or_sext;
-    col witness bits(4) flags_half_byte;
-    col witness bits(4) flags_last_byte;
+    col witness bits(1) mode32_and_c_is_signed;
     b_op_or_sext === mode32 * (c_is_signed * (SEXT_FF - SEXT_00) + SEXT_00 - b_op) + b_op;
-    flags_half_byte === carry[HALF_BYTES - 1] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed);
-    flags_last_byte === carry[BYTES - 1] + 2*result_is_a + 4*use_first_byte + 8*(mode64 * c_is_signed);
+    mode32_and_c_is_signed === mode32 * c_is_signed;
 
     // Lookups
     lookup_assumes(BINARY_TABLE_ID, [2*use_first_byte, b_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0] + 2*result_is_a + 4*use_first_byte]);
@@ -119,9 +117,9 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, c
         if (i < HALF_BYTES - 1) {
             lookup_assumes(BINARY_TABLE_ID, [0, b_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*result_is_a + 4*use_first_byte]);
         } else if (i == HALF_BYTES - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [mode32, b_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], flags_half_byte]);
+            lookup_assumes(BINARY_TABLE_ID, [mode32, b_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*result_is_a + 4*use_first_byte + 8*mode32_and_c_is_signed]);
         } else if (i < BYTES - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, b_op_or_sext, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*result_is_a + 4*use_first_byte]);
+            lookup_assumes(BINARY_TABLE_ID, [0, b_op_or_sext, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*result_is_a + 4*use_first_byte + 8*mode32_and_c_is_signed]);
         } else  {
             lookup_assumes(BINARY_TABLE_ID, [mode64, b_op_or_sext, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*result_is_a + 4*use_first_byte + 8*c_is_signed]);
         }

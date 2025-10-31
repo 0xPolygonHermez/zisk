@@ -302,6 +302,7 @@ airtemplate BinaryTable(const int N = 2**23) {
                 c = 0x00;
 
                 result_is_a = relative_index >= P2_17 ? 1 : 0;
+                c_is_signed = 0;
 
             case 0x14: // SEXT_FF: Sign extension with 1
                 // Example: SEXT_FF(a) = 0xFF
@@ -309,6 +310,7 @@ airtemplate BinaryTable(const int N = 2**23) {
                 c = 0xFF;
 
                 result_is_a = relative_index >= P2_17 ? 1 : 0;
+                c_is_signed = 1;
 
             default:
                 error(`Invalid operation opcode: ${op} at row ${i}`);
