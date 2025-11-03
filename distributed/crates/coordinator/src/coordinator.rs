@@ -654,23 +654,38 @@ impl Coordinator {
         Ok(())
     }
 
+    /// Updates all workers of a failed job, marking those that have finished their computation
+    /// or partial computation as idle.
+    ///
+    /// # Parameters
+    ///
+    /// * `job` - The job whose workers need to be marked as idle
+    /// * `previous_state` - The previous state of the job before it was marked as failed
     async fn ensure_workers_idle(
         &self,
         job: &Job,
         previous_state: JobState,
     ) -> CoordinatorResult<()> {
-        if let JobState::Running(job_phase) = &previous_state {
-            let results = job.results.get(job_phase);
+        if let JobState::Running(job_previous_phase) = &previous_state {
+            let mut job_worker_ids = std::collections::HashSet::new();
 
-            if let Some(results) = results {
-                for worker_id in results.keys() {
-                    let worker_state = self.workers_pool.worker_state(worker_id).await;
+            // Get results from the current job phase
+            if let Some(results) = job.results.get(job_previous_phase) {
+                job_worker_ids.extend(results.keys().cloned());
+            }
 
-                    if let Some(WorkerState::Computing((_, _))) = worker_state {
-                        self.workers_pool
-                            .mark_worker_with_state(worker_id, WorkerState::Idle)
-                            .await?;
-                    }
+            // If job_phase is Aggregate, also add workers from Prove phase
+            if job_previous_phase == &JobPhase::Aggregate {
+                if let Some(prove_results) = job.results.get(&JobPhase::Prove) {
+                    job_worker_ids.extend(prove_results.keys().cloned());
+                }
+            }
+
+            for worker_id in job_worker_ids {
+                let worker_state = self.workers_pool.worker_state(&worker_id).await;
+
+                if let Some(WorkerState::Computing((_, _))) = worker_state {
+                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await?;
                 }
             }
         }
