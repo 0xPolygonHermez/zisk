@@ -298,7 +298,7 @@ impl RomSM {
         let rom = riscv2zisk.run().expect("RomSM::prover() failed converting elf to rom");
 
         let rom_len = rom.insts.len();
-        let air_rom_len = RomTrace::<F>::NUM_ROWS as usize;
+        let air_rom_len = RomTrace::<F>::NUM_ROWS;
         if rom_len > air_rom_len {
             panic!(
                 "Error: The generated ROM has {} instructions, which exceeds the maximum supported by the Zisk PIL ROM trace ({} instructions).  Please review zisk.pil and increase the ROM trace size accordingly.",
