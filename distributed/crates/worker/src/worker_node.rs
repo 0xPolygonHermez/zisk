@@ -518,7 +518,8 @@ impl WorkerNodeGrpc {
             std::thread::sleep(Duration::from_millis(10));
         }
 
-        // Una vez que existe, canonicaliza y valida
+        info!("Found input file {:?} (elapsed: {:?})", candidate, start.elapsed());
+
         let candidate = candidate.canonicalize().map_err(|e| anyhow!("Input path error: {e}"))?;
 
         if candidate.starts_with(&base) {
