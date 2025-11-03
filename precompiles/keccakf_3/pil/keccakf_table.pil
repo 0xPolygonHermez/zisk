@@ -1,0 +1,22 @@
+require "std_lookup.pil"
+
+const int KECCAKF_TABLE_ID = 126;
+
+airtemplate KeccakfTable(const int N) {    
+    // Table size
+    const int MAX_VALUE_INPUT = 2480623;
+
+    // Ensure that the chosen size fits
+    if (N < MAX_VALUE_INPUT) {
+        error(`KeccakfTable: N (${N}) must be at least ${MAX_VALUE_INPUT}`);
+    }
+
+    col fixed A = [0..MAX_VALUE_INPUT]...;
+    col fixed B;
+    for (int i = 0; i < N; i++) {
+        B[i] = A[i] % 2;
+    }
+
+    col witness multiplicity;
+    lookup_proves(KECCAKF_TABLE_ID, [A, B], multiplicity);
+}

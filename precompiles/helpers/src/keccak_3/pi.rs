@@ -1,4 +1,4 @@
-use circuit::{GateState, ExpressionManager};
+use circuit::ExpressionManager;
 
 use super::bit_position;
 
@@ -8,7 +8,7 @@ use super::bit_position;
 ///    `A′[x, y, z] = A[(x + 3y) mod 5, x, z]`
 ///
 /// 2. Return `A′`
-pub fn keccak_f_pi(s: &mut GateState, e: &mut ExpressionManager) {
+pub fn keccak_f_pi(e: &mut ExpressionManager) {
     for x in 0..5 {
         for y in 0..5 {
             for z in 0..64 {
@@ -18,7 +18,6 @@ pub fn keccak_f_pi(s: &mut GateState, e: &mut ExpressionManager) {
                 let dst_pos = bit_position(x, y, z);
 
                 // Copy reference
-                s.sout_refs[dst_pos] = s.sin_refs[src_pos];
                 e.sout_expr_ids[dst_pos] = e.sin_expr_ids[src_pos];
             }
         }

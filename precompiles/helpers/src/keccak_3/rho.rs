@@ -1,4 +1,4 @@
-use circuit::{ExpressionManager, GateState};
+use circuit::ExpressionManager;
 
 use super::bit_position;
 
@@ -15,11 +15,10 @@ use super::bit_position;
 ///    b. Let `(x, y) = (y, (2x + 3y) mod 5)`
 ///
 /// 4. Return `A′`
-pub fn keccak_f_rho(s: &mut GateState, e: &mut ExpressionManager) {
+pub fn keccak_f_rho(e: &mut ExpressionManager) {
     // Step 1: Copy all z bits at (0,0) position
     for z in 0..64 {
         let pos = bit_position(0, 0, z);
-        s.sout_refs[pos] = s.sin_refs[pos];
         e.sout_expr_ids[pos] = e.sin_expr_ids[pos];
     }
 
@@ -40,7 +39,6 @@ pub fn keccak_f_rho(s: &mut GateState, e: &mut ExpressionManager) {
             let dst_pos = bit_position(x, y, z);
 
             // Copy reference with rotation
-            s.sout_refs[dst_pos] = s.sin_refs[src_pos];
             e.sout_expr_ids[dst_pos] = e.sin_expr_ids[src_pos].clone();
         }
 

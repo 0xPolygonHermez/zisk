@@ -7,24 +7,24 @@ const MAX_DEGREE: usize = BLOWUP_FACTOR + 1;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     /// Input reference
-    Input(u64),
+    Input(usize),
 
     /// Constant value (0 or 1)
     Constant(u8),
 
     /// Proxy expression that represents a complex expression with just its properties
     Proxy {
-        id: u64,
+        id: usize,
         original_degree: usize,
         original_max_value: u64,
         original_expression: Box<Expression>,
     },
 
-    /// Intermediate expression
-    Im { id: u64, degree: usize, max_value: u64 },
+    /// Intermediate expression that resets degree but keeps max value
+    Im { id: usize, degree: usize, max_value: u64, round: Option<usize>, prefix: Option<String> },
 
-    /// Reset expression that acts like a fresh input with reset properties
-    Reset { id: u64, degree: usize, max_value: u64 },
+    /// Reset expression that resets degree and max value
+    Reset { id: usize, degree: usize, max_value: u64, round: Option<usize>, prefix: Option<String> },
 
     /// XOR of multiple expressions
     Xor(Vec<Expression>),
@@ -36,19 +36,27 @@ pub enum Expression {
     Not(Box<Expression>),
 }
 
+pub enum ExpressionOp {
+    Xor,
+    And,
+    Not,
+    Nand,
+}
+
 impl Expression {
     pub const ZERO: Expression = Expression::Constant(0);
     pub const ONE: Expression = Expression::Constant(1);
 
-    pub fn input(ref_id: u64) -> Self {
+    pub fn input(ref_id: usize) -> Self {
         Expression::Input(ref_id)
     }
 
     pub fn constant(value: u8) -> Self {
-        Expression::Constant(value & 1)
+        assert!(value == 0 || value == 1, "Constant value must be 0 or 1");
+        Expression::Constant(value)
     }
 
-    pub fn proxy(id: u64, degree: usize, max_value: u64, expr: Expression) -> Self {
+    pub fn proxy(id: usize, degree: usize, max_value: u64, expr: Expression) -> Self {
         Expression::Proxy {
             id,
             original_degree: degree,
@@ -57,35 +65,53 @@ impl Expression {
         }
     }
 
-    // Reduces degree by 2, keeps max value
-    pub fn im(id: u64, original_degree: usize, original_max_value: u64) -> Self {
+    pub fn im(
+        id: usize,
+        original_degree: usize,
+        original_max_value: u64,
+        round: Option<usize>,
+        prefix: Option<String>,
+    ) -> Self {
         let degree =
             if original_degree >= MAX_DEGREE { original_degree - BLOWUP_FACTOR } else { 1 };
-        Expression::Im { id, degree, max_value: original_max_value }
+        Expression::Im { id, degree, max_value: original_max_value, round, prefix }
     }
 
-    // Reduces degree by 2 and resets max value
-    pub fn reset(id: u64, original_degree: usize) -> Self {
+    pub fn reset(
+        id: usize,
+        original_degree: usize,
+        round: Option<usize>,
+        prefix: Option<String>,
+    ) -> Self {
         let degree =
             if original_degree >= MAX_DEGREE { original_degree - BLOWUP_FACTOR } else { 1 };
-        Expression::Reset { id, degree, max_value: 1 }
+        Expression::Reset { id, degree, max_value: 1, round, prefix }
     }
 
-    pub fn xor(exprs: Vec<Expression>) -> Self {
-        Expression::Xor(exprs)
+    pub fn op(op: &ExpressionOp, expr1: Expression, expr2: Expression) -> Self {
+        match op {
+            ExpressionOp::Xor => Expression::Xor(vec![expr1, expr2]),
+            ExpressionOp::And => Expression::And(vec![expr1, expr2]),
+            ExpressionOp::Not => Expression::Not(Box::new(expr1)),
+            ExpressionOp::Nand => Expression::And(vec![Expression::Not(Box::new(expr1)), expr2]),
+        }
     }
 
-    pub fn and(exprs: Vec<Expression>) -> Self {
-        Expression::And(exprs)
-    }
+    // pub fn xor(exprs: Vec<Expression>) -> Self {
+    //     Expression::Xor(exprs)
+    // }
 
-    pub fn not(expr: Expression) -> Self {
-        Expression::Not(Box::new(expr))
-    }
+    // pub fn and(exprs: Vec<Expression>) -> Self {
+    //     Expression::And(exprs)
+    // }
 
-    pub fn nand(a: Expression, b: Expression) -> Self {
-        Self::and(vec![Self::not(a), b])
-    }
+    // pub fn not(expr: Expression) -> Self {
+    //     Expression::Not(Box::new(expr))
+    // }
+
+    // pub fn nand(a: Expression, b: Expression) -> Self {
+    //     Self::and(vec![Self::not(a), b])
+    // }
 
     /// Computes the maximum possible value of this expression
     /// XOR as +, AND as *, NOT as +1
@@ -149,7 +175,7 @@ impl Expression {
                     }
                 }
                 if simplified.is_empty() {
-                    Expression::Constant(0)
+                    Self::ZERO
                 } else if simplified.len() == 1 {
                     simplified.into_iter().next().unwrap()
                 } else {
@@ -159,15 +185,13 @@ impl Expression {
             Expression::And(exprs) => {
                 let exprs: Vec<_> = exprs.into_iter().map(|e| e.simplify()).collect();
                 // Check for constants
-                if exprs.iter().any(|e| matches!(e, Expression::Constant(0))) {
-                    Expression::Constant(0)
+                if exprs.iter().any(|e| matches!(e, &Self::ZERO)) {
+                    Self::ZERO
                 } else {
-                    let non_ones: Vec<_> = exprs
-                        .into_iter()
-                        .filter(|e| !matches!(e, Expression::Constant(1)))
-                        .collect();
+                    let non_ones: Vec<_> =
+                        exprs.into_iter().filter(|e| !matches!(e, &Self::ONE)).collect();
                     if non_ones.is_empty() {
-                        Expression::Constant(1)
+                        Self::ONE
                     } else if non_ones.len() == 1 {
                         non_ones.into_iter().next().unwrap()
                     } else {
@@ -176,8 +200,8 @@ impl Expression {
                 }
             }
             Expression::Not(expr) => match expr.simplify() {
-                Expression::Constant(0) => Expression::Constant(1),
-                Expression::Constant(1) => Expression::Constant(0),
+                Self::ZERO => Self::ONE,
+                Self::ONE => Self::ZERO,
                 Expression::Not(inner) => *inner,
                 simplified => Expression::Not(Box::new(simplified)),
             },
@@ -189,7 +213,7 @@ impl Expression {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Input(ref_id) => write!(f, "in[{}]", ref_id),
+            Expression::Input(ref_id) => write!(f, "sin[{}]", ref_id),
             Expression::Constant(value) => write!(f, "{}", value),
             Expression::Xor(_) => {
                 // Flatten all XOR operations into a single chain
@@ -221,10 +245,20 @@ impl fmt::Display for Expression {
                     write!(f, ")")
                 }
             }
-            Expression::Not(expr) => write!(f, "1 + {}", expr),
+            Expression::Not(expr) => write!(f, "(1 + {})", expr),
             Expression::Proxy { id, .. } => write!(f, "P[{}]", id),
-            Expression::Im { id, .. } => write!(f, "Im[{}]", id),
-            Expression::Reset { id, .. } => write!(f, "R[{}]", id),
+            Expression::Im { id, round, prefix, .. } => match (round, prefix) {
+                (Some(r), Some(p)) => write!(f, "{}{}[{}]", p, r, id),
+                (Some(r), None) => write!(f, "im{}[{}]", r, id),
+                (None, Some(p)) => write!(f, "{}[{}]", p, id),
+                (None, None) => write!(f, "im[{}]", id),
+            },
+            Expression::Reset { id, round, prefix, .. } => match (round, prefix) {
+                (Some(r), Some(p)) => write!(f, "{}{}[{}]", p, r, id),
+                (Some(r), None) => write!(f, "r{}[{}]", r, id),
+                (None, Some(p)) => write!(f, "{}[{}]", p, id),
+                (None, None) => write!(f, "r[{}]", id),
+            },
         }
     }
 }

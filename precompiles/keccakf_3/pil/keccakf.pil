@@ -1,0 +1,14 @@
+require "std_lookup.pil";
+
+// Precompile in charge of performing the Keccak-f[1600] permutation.
+// For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
+
+airtemplate Keccakf(const int N, const int operation_bus_id = OPERATION_BUS_ID) {    
+    // Keccak-f[1600] state is of 5x5x64=1600 bits
+    col witness sin[1600];
+    col witness sout[1600];
+
+    for (int r = 0; r < 24; r++) {
+        include `expressions/round${r}.pil`;
+    }
+}

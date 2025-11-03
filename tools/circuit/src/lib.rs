@@ -6,8 +6,8 @@ mod gate_state;
 mod pin;
 mod utils;
 
-use expression::Expression;
-pub use expression_manager::ExpressionManager;
+pub use expression::{Expression, ExpressionOp};
+pub use expression_manager::{ExpressionManager, ExpressionManagerConfig};
 pub use gate::{Gate, GateOperation};
 pub use gate_config::GateConfig;
 pub use gate_state::GateState;
@@ -33,7 +33,6 @@ mod tests {
             1,
             1,
             1,
-            1 << 20,
         );
 
         let mut state = GateState::new(circuit_config.clone());
@@ -124,7 +123,6 @@ mod tests {
             1,
             1,
             1,
-            1 << 20,
         );
 
         let mut state = GateState::new(circuit_config.clone());
