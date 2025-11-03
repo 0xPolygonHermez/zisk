@@ -3,12 +3,56 @@ require "std_lookup.pil";
 // Precompile in charge of performing the Keccak-f[1600] permutation.
 // For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
 
-airtemplate Keccakf(const int N, const int operation_bus_id = OPERATION_BUS_ID) {    
+airtemplate Keccakf(const int N, const int operation_bus_id = OPERATION_BUS_ID) {
     // Keccak-f[1600] state is of 5x5x64=1600 bits
-    col witness sin[1600];
-    col witness sout[1600];
+    const int WIDTH = 1600;
 
+    col witness sin[WIDTH];
+    col witness sout[WIDTH];
+
+    expr sin_exprs[WIDTH];
+    expr sout_exprs[WIDTH];
+    for (int i = 0; i < WIDTH; i++) {
+        sin_exprs[i] = sin[i];
+        sout_exprs[i] = 0;
+    }
+
+    include "expressions/round_summary.pil";
+
+    if (RESET_NUM > 0){
+        col witness air.resets[RESET_NUM];
+    }
+    if (IM_NUM > 0){
+        col witness air.ims[IM_NUM];
+    }
+
+    int resets_offset = 0;
+    int ims_offset = 0;
+    int round_resets = 0;
+    int round_ims = 0;
     for (int r = 0; r < 24; r++) {
+        println("Starting round ", r);
+
         include `expressions/round${r}.pil`;
+
+        // Copy sout expressions to sin expressions for next round
+        if (r < 23) {
+            // Perform lookups for reset expressions
+            if (round_resets > 0) {
+                for (int i = 0; i < round_resets; i++) {
+                    lookup_assumes(KECCAKF_TABLE_ID, [sout_exprs[i], resets[resets_offset + i]]);
+                }
+
+                resets_offset += round_resets;
+            }
+
+            for (int i = 0; i < WIDTH; i++) {
+                sin_exprs[i] = sout_exprs[i];
+            }
+        } else {
+            for (int i = 0; i < round_resets; i++) {
+                lookup_assumes(KECCAKF_TABLE_ID, [sout_exprs[i], sout[i]]);
+            }
+        }
     }
 }

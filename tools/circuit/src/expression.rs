@@ -7,7 +7,7 @@ const MAX_DEGREE: usize = BLOWUP_FACTOR + 1;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     /// Input reference
-    Input(usize),
+    Input { id: usize, name: Option<String> },
 
     /// Constant value (0 or 1)
     Constant(u8),
@@ -21,10 +21,10 @@ pub enum Expression {
     },
 
     /// Intermediate expression that resets degree but keeps max value
-    Im { id: usize, degree: usize, max_value: u64, round: Option<usize>, prefix: Option<String> },
+    Im { id: usize, degree: usize, max_value: u64, name: Option<String> },
 
     /// Reset expression that resets degree and max value
-    Reset { id: usize, degree: usize, max_value: u64, round: Option<usize>, prefix: Option<String> },
+    Reset { id: usize, degree: usize, max_value: u64, name: Option<String> },
 
     /// XOR of multiple expressions
     Xor(Vec<Expression>),
@@ -47,8 +47,8 @@ impl Expression {
     pub const ZERO: Expression = Expression::Constant(0);
     pub const ONE: Expression = Expression::Constant(1);
 
-    pub fn input(ref_id: usize) -> Self {
-        Expression::Input(ref_id)
+    pub fn input(ref_id: usize, name: Option<String>) -> Self {
+        Expression::Input { id: ref_id, name }
     }
 
     pub fn constant(value: u8) -> Self {
@@ -69,23 +69,17 @@ impl Expression {
         id: usize,
         original_degree: usize,
         original_max_value: u64,
-        round: Option<usize>,
-        prefix: Option<String>,
+        name: Option<String>,
     ) -> Self {
         let degree =
             if original_degree >= MAX_DEGREE { original_degree - BLOWUP_FACTOR } else { 1 };
-        Expression::Im { id, degree, max_value: original_max_value, round, prefix }
+        Expression::Im { id, degree, max_value: original_max_value, name }
     }
 
-    pub fn reset(
-        id: usize,
-        original_degree: usize,
-        round: Option<usize>,
-        prefix: Option<String>,
-    ) -> Self {
+    pub fn reset(id: usize, original_degree: usize, name: Option<String>) -> Self {
         let degree =
             if original_degree >= MAX_DEGREE { original_degree - BLOWUP_FACTOR } else { 1 };
-        Expression::Reset { id, degree, max_value: 1, round, prefix }
+        Expression::Reset { id, degree, max_value: 1, name }
     }
 
     pub fn op(op: &ExpressionOp, expr1: Expression, expr2: Expression) -> Self {
@@ -117,7 +111,7 @@ impl Expression {
     /// XOR as +, AND as *, NOT as +1
     pub fn max_value(&self) -> u64 {
         match self {
-            Expression::Input(_) => 1, // Input can be 0 or 1, maximum is 1
+            Expression::Input { .. } => 1, // Input can be 0 or 1, maximum is 1
             Expression::Constant(val) => *val as u64,
             Expression::Proxy { original_max_value, .. } => *original_max_value,
             Expression::Im { max_value, .. } => *max_value,
@@ -140,7 +134,7 @@ impl Expression {
     /// Computes the algebraic degree of this expression
     pub fn degree(&self) -> usize {
         match self {
-            Expression::Input(_) => 1,
+            Expression::Input { .. } => 1,
             Expression::Constant(_) => 0,
             Expression::Proxy { original_degree, .. } => *original_degree,
             Expression::Im { degree, .. } => *degree,
@@ -213,7 +207,10 @@ impl Expression {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Input(ref_id) => write!(f, "sin[{}]", ref_id),
+            Expression::Input { id, name } => match name {
+                Some(p) => write!(f, "{}[{}]", p, id),
+                None => write!(f, "in[{}]", id),
+            },
             Expression::Constant(value) => write!(f, "{}", value),
             Expression::Xor(_) => {
                 // Flatten all XOR operations into a single chain
@@ -247,17 +244,13 @@ impl fmt::Display for Expression {
             }
             Expression::Not(expr) => write!(f, "(1 + {})", expr),
             Expression::Proxy { id, .. } => write!(f, "P[{}]", id),
-            Expression::Im { id, round, prefix, .. } => match (round, prefix) {
-                (Some(r), Some(p)) => write!(f, "{}{}[{}]", p, r, id),
-                (Some(r), None) => write!(f, "im{}[{}]", r, id),
-                (None, Some(p)) => write!(f, "{}[{}]", p, id),
-                (None, None) => write!(f, "im[{}]", id),
+            Expression::Im { id, name, .. } => match name {
+                Some(p) => write!(f, "{}[{}]", p, id),
+                None => write!(f, "im[{}]", id),
             },
-            Expression::Reset { id, round, prefix, .. } => match (round, prefix) {
-                (Some(r), Some(p)) => write!(f, "{}{}[{}]", p, r, id),
-                (Some(r), None) => write!(f, "r{}[{}]", r, id),
-                (None, Some(p)) => write!(f, "{}[{}]", p, id),
-                (None, None) => write!(f, "r[{}]", id),
+            Expression::Reset { id, name, .. } => match name {
+                Some(p) => write!(f, "{}[{}]", p, id),
+                None => write!(f, "r[{}]", id),
             },
         }
     }

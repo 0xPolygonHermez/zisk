@@ -1,15 +1,16 @@
-require "std_lookup.pil"
+require "std_lookup.pil";
+include "expressions/round_summary.pil";
 
 const int KECCAKF_TABLE_ID = 126;
+const int KECCAKF_TABLE_SIZE = MAX_VALUE + 1;
 
-airtemplate KeccakfTable(const int N) {    
-    // Table size
-    const int MAX_VALUE_INPUT = 2480623;
-
+airtemplate KeccakfTable(const int N) {
     // Ensure that the chosen size fits
-    if (N < MAX_VALUE_INPUT) {
-        error(`KeccakfTable: N (${N}) must be at least ${MAX_VALUE_INPUT}`);
+    if (N < KECCAKF_TABLE_SIZE) {
+        error(`N must be at least ${KECCAKF_TABLE_SIZE}, but N=${N} was provided`);
     }
+
+    const int MAX_VALUE_INPUT = MAX_VALUE;
 
     col fixed A = [0..MAX_VALUE_INPUT]...;
     col fixed B;

@@ -30,8 +30,8 @@ pub fn keccak_f_expr<P: AsRef<Path>>(output_dir: P) -> std::io::Result<()> {
         reset_threshold: KECCAKF_EXPR_RESET_THRESHOLD,
         sin_count: KECCAKF_STATE_IN_BITS,
         sout_count: KECCAKF_STATE_OUT_BITS,
-        im_prefix: "im".to_string(),
-        reset_prefix: "r".to_string(),
+        in_prefix: "sin_exprs".to_string(),
+        out_prefix: "sout_exprs".to_string(),
     };
     let mut expr_manager = ExpressionManager::new(config);
 
@@ -73,12 +73,15 @@ pub fn keccak_f_expr<P: AsRef<Path>>(output_dir: P) -> std::io::Result<()> {
         // Mark end of round and generate file
         expr_manager.mark_end_of_round(r, output_dir)?;
 
-        expr_manager.copy_sout_expr_ids_to_sin_expr_ids();
+        if r < 23 {
+            expr_manager.copy_sout_expr_ids_to_sin_expr_ids();
+        }
 
         expr_manager.print_round_events(r, Some(5));
     }
 
     expr_manager.print_summary();
+    expr_manager.generate_summary_file(output_dir)?;
 
     Ok(())
 }
