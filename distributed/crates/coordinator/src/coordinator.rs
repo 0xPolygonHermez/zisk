@@ -1349,7 +1349,7 @@ impl Coordinator {
             worker_id.clone(),
             JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
         );
-        
+
         Ok(())
     }
 
