@@ -384,6 +384,7 @@ pub enum JobResultData {
 pub struct JobResult {
     pub success: bool,
     pub data: JobResultData,
+    pub end_time: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]

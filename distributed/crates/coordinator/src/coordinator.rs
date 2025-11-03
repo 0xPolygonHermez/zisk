@@ -1024,8 +1024,10 @@ impl Coordinator {
 
         let data = self.extract_challenges_data(execute_task_response.result_data)?;
 
-        contributions_results
-            .insert(worker_id.clone(), JobResult { success: execute_task_response.success, data });
+        contributions_results.insert(
+            worker_id.clone(),
+            JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
+        );
 
         Ok(())
     }
@@ -1343,9 +1345,11 @@ impl Coordinator {
             }
         };
 
-        phase2_results
-            .insert(worker_id.clone(), JobResult { success: execute_task_response.success, data });
-
+        phase2_results.insert(
+            worker_id.clone(),
+            JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
+        );
+        
         Ok(())
     }
 
@@ -1709,6 +1713,39 @@ impl Coordinator {
             job.block.input_path.display(),
             job.compute_capacity,
         );
+
+        // Print summary of the job
+        let job_phases = vec![JobPhase::Contributions, JobPhase::Prove, JobPhase::Aggregate];
+
+        let workers = job.workers.clone();
+
+        info!("[Job] Summary for {}", job_id);
+        for phase in job_phases {
+            if let Some(result) = job.results.get(&phase) {
+                let start_time = job.start_times.get(&phase);
+
+                for worker_id in &workers {
+                    if let Some(job_result) = result.get(worker_id) {
+                        let duration =
+                            job_result.end_time.signed_duration_since(start_time.unwrap());
+                        let duration = Duration::from_millis(duration.num_milliseconds() as u64);
+                        info!(
+                            "[Job] {:?} {} - Duration: {}ms, Success: {}, End Time: {}",
+                            phase,
+                            worker_id,
+                            duration.as_millis(),
+                            job_result.success,
+                            job_result.end_time
+                        );
+                    } else {
+                        info!(
+                            "[Job] {:?} {} - Duration: N/A, Success: N/A, End Time: N/A",
+                            phase, worker_id
+                        );
+                    }
+                }
+            }
+        }
 
         // Release job lock before calling post_launch_proof
         drop(job);
