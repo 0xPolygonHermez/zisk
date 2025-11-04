@@ -12,14 +12,7 @@ require "std_connection.pil"
 // SHA256-f opcode
 const int SHA256F_OP = 0xF9;
 
-airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, 
-                    const int operation_bus_id = OPERATION_BUS_ID) {
-    if (RC != 2) {
-        error(`Sha256-f is only implemented for RC=2, but received RC=${RC}`);
-    } else if (RB != 32) {
-        error(`Sha256-f is only implemented for RB=32, but received RB=${RB}`);
-    }
-
+airtemplate Sha256f(const int N = 2**22, const int operation_bus_id = OPERATION_BUS_ID) {
     /*
            ROW     a[0..32]      e[0..32]        w[0..32]             STAGE
         |  0   | 0bD₁D₂..D₃₂ | 0bH₁H₂..H₃₂ | XXXXXXXXXXXXXXXX |      LOAD STATE      |
@@ -53,10 +46,14 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32,
     }
 
     // Compute some stats
-    const int NUM_SHA256F = N / CLOCKS - 1; // The -1 is because CLOCKS is not a divisor of N
     const int NUM_NON_USABLE_ROWS = N % CLOCKS;
+    const int NUM_SHA256F;
+    if (NUM_NON_USABLE_ROWS == 0) {
+        NUM_SHA256F = N / CLOCKS;
+    } else {
+        NUM_SHA256F = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1; // The -1 is because CLOCKS is not a divisor of N
+    }
     println(`The total number of Sha256-f's is ${NUM_SHA256F}`);
-    println(`The number of non-usable rows is ${NUM_NON_USABLE_ROWS}`);
 
     // SHA256 round constants (first 32 bits of the fractional parts of the cube roots of the first 64 primes)
     const int SHA256F_RC[64] = [

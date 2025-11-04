@@ -3,56 +3,238 @@ require "std_lookup.pil";
 // Precompile in charge of performing the Keccak-f[1600] permutation.
 // For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
 
-airtemplate Keccakf(const int N, const int operation_bus_id = OPERATION_BUS_ID) {
+const int KECCAKF_OP = 0xF1;
+
+airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int operation_bus_id = OPERATION_BUS_ID) {
     // Keccak-f[1600] state is of 5x5x64=1600 bits
     const int WIDTH = 1600;
+    const int ROUNDS = 24; // 12 + 2·L, where L=log2(64)
+    const int LAST_ROUND = ROUNDS - 1;
+    const int STATE_SIZE = ROUNDS + 1;
 
-    col witness sin[WIDTH];
-    col witness sout[WIDTH];
+    const int CLOCKS = STATE_SIZE;
 
-    expr sin_exprs[WIDTH];
-    expr sout_exprs[WIDTH];
+    // Ensure that the Keccak-f[1600] fits
+    if (N < CLOCKS) {
+        error(`N must be at least ${CLOCKS} to fit the Keccak-f[1600] arithmetization, but received N=${N}`);
+    }
+
+    // Compute some stats
+    const int NUM_NON_USABLE_ROWS = N % CLOCKS;
+    const int NUM_KECCAKF;
+    if (NUM_NON_USABLE_ROWS == 0) {
+        NUM_KECCAKF = N / CLOCKS;
+    } else {
+        NUM_KECCAKF = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1; // The -1 is because CLOCKS is not a divisor of N
+    }
+    println(`The total number of Keccak-f's is ${NUM_KECCAKF}`);
+
+    // --> Constraints to assert the Keccak-f[1600] permutation
+
+    col witness state[WIDTH]; // Keccak-f[1600] state
     for (int i = 0; i < WIDTH; i++) {
-        sin_exprs[i] = sin[i];
-        sout_exprs[i] = 0;
+        state[i] * (state[i] - 1) === 0;
+    }
+
+    const expr state_by_round[STATE_SIZE][WIDTH];
+    const expr input_state[WIDTH];
+    const expr output_state[WIDTH];
+    for (int i = 0; i < STATE_SIZE; i++) {
+        if (i == 0) {
+            for (int j = 0; j < WIDTH; j++) {
+                input_state[j] = state[j]'(i);
+                state_by_round[i][j] = state[j]'(i);
+            }
+        } else if (i == STATE_SIZE - 1) {
+            for (int j = 0; j < WIDTH; j++) {
+                output_state[j] = state[j]'(i);
+                state_by_round[i][j] = state[j]'(i);
+            }
+        } else {
+            for (int j = 0; j < WIDTH; j++) {
+                state_by_round[i][j] = state[j]'(i);
+            }
+        }
+    }
+
+    col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_KECCAKF, 0...];
+
+    const expr CLK[CLOCKS];
+    for (int i = 0; i < CLOCKS; i++) {
+        CLK[i] = (i)'CLK_0;
+    }
+
+    const expr out_exprs[ROUNDS][WIDTH];
+    expr hey[WIDTH];
+    for (int i = 0; i < WIDTH; i++) {
+        hey[i] = 0;
+    }
+    for (int r = 0; r < ROUNDS; r++) {
+        include `expressions/round${r}.pil`;
+
+        for (int i = 0; i < WIDTH; i++) {
+            hey[i] += CLK[r] * out_exprs[r][i];
+        }
     }
 
     include "expressions/round_summary.pil";
 
-    if (RESET_NUM > 0){
-        col witness air.resets[RESET_NUM];
-    }
-    if (IM_NUM > 0){
-        col witness air.ims[IM_NUM];
-    }
-
-    int resets_offset = 0;
-    int ims_offset = 0;
-    int round_resets = 0;
-    int round_ims = 0;
-    for (int r = 0; r < 24; r++) {
-        println("Starting round ", r);
-
-        include `expressions/round${r}.pil`;
-
-        // Copy sout expressions to sin expressions for next round
-        if (r < 23) {
-            // Perform lookups for reset expressions
-            if (round_resets > 0) {
-                for (int i = 0; i < round_resets; i++) {
-                    lookup_assumes(KECCAKF_TABLE_ID, [sout_exprs[i], resets[resets_offset + i]]);
-                }
-
-                resets_offset += round_resets;
-            }
-
-            for (int i = 0; i < WIDTH; i++) {
-                sin_exprs[i] = sout_exprs[i];
-            }
-        } else {
-            for (int i = 0; i < round_resets; i++) {
-                lookup_assumes(KECCAKF_TABLE_ID, [sout_exprs[i], sout[i]]);
-            }
+    // Perform lookups for reset expressions
+    const int num_reduced = WIDTH / group_by;
+    col witness hey_reduced[num_reduced];
+    for (int i = 0; i < num_reduced; i++) {
+        expr acc_hey = 0;
+        for (int j = 0; j < group_by; j++) {
+            acc_hey += hey[group_by*i + j] * (MAX_VALUE + 1)**j;
         }
+        hey_reduced[i] === acc_hey;
+
+        const expr lookup_values[group_by + 1];
+        lookup_values[0] = hey_reduced[i];
+        for (int j = 0; j < group_by; j++) {
+            lookup_values[j + 1] = state[group_by*i + j]';
+        }
+        lookup_assumes(KECCAKF_TABLE_ID, lookup_values);
+    }
+
+    const int num_rem_reduced = (WIDTH % group_by);
+    if (num_rem_reduced > 0) {
+        col witness hey_rem;
+        expr acc_hey = 0;
+        for (int j = 0; j < num_rem_reduced; j++) {
+            acc_hey += hey[num_reduced * group_by + j] * (MAX_VALUE + 1)**j;
+        }
+        hey_rem === acc_hey;
+
+        const expr lookup_values[num_rem_reduced + 1];
+        lookup_values[0] = hey_rem;
+        for (int j = 0; j < num_rem_reduced; j++) {
+            lookup_values[j + 1] = state[num_reduced * group_by + j]';
+        }
+    }
+
+    // --> Constraints to read inputs from memory and write outputs to memory
+    
+    col witness step_addr; 
+    /*
+        MEMORY ACCESS MAP
+        ===============================================================================================================
+          0 | STEP_MAIN     | R | ADDR_STATE       |  state[0]   || STEP_MAIN + 1 | W | ADDR_STATE       |  state[0]  
+          1 | STEP_MAIN     | R | ADDR_STATE + 8   |  state[1]   || STEP_MAIN + 1 | W | ADDR_STATE + 8   |  state[1]   
+          2 | STEP_MAIN     | R | ADDR_STATE + 16  |  state[2]   || STEP_MAIN + 1 | W | ADDR_STATE + 16  |  state[2]       
+          3 | STEP_MAIN     | R | ADDR_STATE + 24  |  state[3]   || STEP_MAIN + 1 | W | ADDR_STATE + 24  |  state[3]  
+          . |    ...        | . |    ...           |     ...     ||    ...    + 1 | . |    ...           |     ...    
+         24 | STEP_MAIN     | R | ADDR_STATE + 192 |  state[24]  || STEP_MAIN + 1 | W | ADDR_STATE + 192 |  state[24]  
+        ===============================================================================================================
+    */
+
+    const int STEP_MAIN = 0;
+    const int ADDR_STATE = STEP_MAIN + 1;
+
+    col witness in_use_clk_0; // 1 at the first clock cycle of the Keccak-f operation, 0 otherwise
+    col witness in_use;       // 1 when the Keccak-f operation is in use, 0 otherwise
+
+    in_use_clk_0 * (1 - in_use_clk_0) === 0;
+    in_use * (1 - in_use) === 0;
+
+    in_use_clk_0 - CLK_0 * in_use === 0; // This constraint is two-fold:
+                                         //   · in_use_clk_0 can only be active when CLK_0 is active
+                                         //   · if in_use is active then so is in_use_clk_0
+
+    const expr in_use_active = clock_set(start: 1, end: 24);
+    in_use_active * (in_use - 'in_use) === 0; // selector latching
+
+    const expr mem_sel = clock_set(in_use, start: 0, end: 24);
+
+    const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: 24);
+
+    const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0, end: 24, delta: 8);
+
+    expr mem_read_value[2];
+    mem_read_value[0] = 0; // CLK_0*(input_state[0]  +   input_state[1]*2   + ... + input_state[31]*2^31) + 
+                           // CLK_1*(input_state[64] +   input_state[65]*2  + ... + input_state[95]*2^31) +
+                           // ...
+                           // CLK_24*(input_state[1536] + input_state[1537]*2 + ... + input_state[1567]*2^31)
+    mem_read_value[1] = 0; // CLK_0*(input_state[32]  +   input_state[33]*2   + ... + input_state[63]*2^31) + 
+                           // CLK_1*(input_state[96] +   input_state[97]*2  + ... + input_state[127]*2^31) +
+                           // ...
+                           // CLK_24*(input_state[1568] + input_state[1569]*2 + ... + input_state[1599]*2^31)
+    for (int i = 0; i < CLOCKS; i++) {
+        const int base = i * (WIDTH / CLOCKS);
+        expr read_value_clk_0 = 0;
+        expr read_value_clk_1 = 0;
+        for (int j = 0; j < (WIDTH / CLOCKS) / 2; j++) {
+            const int factor = 2**j;
+            read_value_clk_0 += factor * input_state[base + j];
+            read_value_clk_1 += factor * input_state[base + j + (WIDTH / CLOCKS) / 2];
+        }
+        mem_read_value[0] += CLK[i] * read_value_clk_0;
+        mem_read_value[1] += CLK[i] * read_value_clk_1;
+    }
+
+    expr mem_write_value[2];
+    mem_write_value[0] = 0;
+    mem_write_value[1] = 0;
+    for (int i = 0; i < CLOCKS; i++) {
+        const int base = i * (WIDTH / CLOCKS);
+        expr write_value_clk_0 = 0;
+        expr write_value_clk_1 = 0;
+        for (int j = 0; j < (WIDTH / CLOCKS) / 2; j++) {
+            const int factor = 2**j;
+            write_value_clk_0 += factor * output_state[base + j];
+            write_value_clk_1 += factor * output_state[base + j + (WIDTH / CLOCKS) / 2];
+        }
+        mem_write_value[0] += CLK[i] * write_value_clk_0;
+        mem_write_value[1] += CLK[i] * write_value_clk_1;
+    }
+
+    // Read the input state from memory
+    precompiled_mem_op(
+        is_write: 0,
+        sel: mem_sel,
+        main_step: main_step,
+        addr: mem_addr,
+        value: mem_read_value
+    );
+
+    // Write the output state to memory
+    precompiled_mem_op(
+        is_write: 1,
+        sel: mem_sel,
+        main_step: main_step,
+        addr: mem_addr,
+        value: mem_write_value
+    );
+
+    // --> Constraints to make sure that this coprocessor is called from the main processor
+    lookup_proves(operation_bus_id, [KECCAKF_OP, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_STATE), 0, 0, 0, 0], mul: in_use_clk_0);
+
+    function clock_set(const expr mvcol = 1, int start = 0, int end = -1): const expr {
+        if (end == -1) {
+            end = start;
+        }
+        expr res = 0;
+        for (int index = start; index <= end; index++) {
+            res += air.CLK[index];
+        }
+        return res * mvcol;
+    }
+
+    function clock_map(const expr mvcol, int pos, int start = 0, int end = -1, int delta = 0): const expr {
+        if (end == -1) {
+            end = start;
+        }
+        expr res = 0;
+        int offset = 0;
+        for (int index = start; index <= end; index++) {
+            int iclock = (pos - index) % air.CLOCKS;
+            if (offset != 0) {
+                res += air.CLK[index] * (mvcol'(iclock) + offset);
+            } else {
+                res += air.CLK[index] * mvcol'(iclock);
+            }
+            offset += delta;
+        }
+        return res;
     }
 }

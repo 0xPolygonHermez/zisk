@@ -30,13 +30,14 @@ pub fn keccak_f_expr<P: AsRef<Path>>(output_dir: P) -> std::io::Result<()> {
         reset_threshold: KECCAKF_EXPR_RESET_THRESHOLD,
         sin_count: KECCAKF_STATE_IN_BITS,
         sout_count: KECCAKF_STATE_OUT_BITS,
-        in_prefix: "sin_exprs".to_string(),
-        out_prefix: "sout_exprs".to_string(),
+        in_prefix: "state_by_round".to_string(),
+        out_prefix: "out_exprs".to_string(),
     };
     let mut expr_manager = ExpressionManager::new(config);
 
     // Apply all 24 rounds of Keccak permutations
     for r in 0..24 {
+        // Mark beginning of round
         expr_manager.mark_begin_round(r);
 
         // θ step

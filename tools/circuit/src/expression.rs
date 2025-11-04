@@ -7,7 +7,7 @@ const MAX_DEGREE: usize = BLOWUP_FACTOR + 1;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     /// Input reference
-    Input { id: usize, name: Option<String> },
+    Input { id: usize, name: Option<String>, round: Option<usize> },
 
     /// Constant value (0 or 1)
     Constant(u8),
@@ -21,10 +21,10 @@ pub enum Expression {
     },
 
     /// Intermediate expression that resets degree but keeps max value
-    Im { id: usize, degree: usize, max_value: u64, name: Option<String> },
+    Im { id: usize, degree: usize, max_value: u64, name: Option<String>, round: Option<usize> },
 
     /// Reset expression that resets degree and max value
-    Reset { id: usize, degree: usize, max_value: u64, name: Option<String> },
+    Reset { id: usize, degree: usize, max_value: u64, name: Option<String>, round: Option<usize> },
 
     /// XOR of multiple expressions
     Xor(Vec<Expression>),
@@ -47,8 +47,8 @@ impl Expression {
     pub const ZERO: Expression = Expression::Constant(0);
     pub const ONE: Expression = Expression::Constant(1);
 
-    pub fn input(ref_id: usize, name: Option<String>) -> Self {
-        Expression::Input { id: ref_id, name }
+    pub fn input(ref_id: usize, name: Option<String>, round: Option<usize>) -> Self {
+        Expression::Input { id: ref_id, name, round }
     }
 
     pub fn constant(value: u8) -> Self {
@@ -70,16 +70,17 @@ impl Expression {
         original_degree: usize,
         original_max_value: u64,
         name: Option<String>,
+        round: Option<usize>,
     ) -> Self {
         let degree =
             if original_degree >= MAX_DEGREE { original_degree - BLOWUP_FACTOR } else { 1 };
-        Expression::Im { id, degree, max_value: original_max_value, name }
+        Expression::Im { id, degree, max_value: original_max_value, name, round }
     }
 
-    pub fn reset(id: usize, original_degree: usize, name: Option<String>) -> Self {
+    pub fn reset(id: usize, original_degree: usize, name: Option<String>, round: Option<usize>) -> Self {
         let degree =
             if original_degree >= MAX_DEGREE { original_degree - BLOWUP_FACTOR } else { 1 };
-        Expression::Reset { id, degree, max_value: 1, name }
+        Expression::Reset { id, degree, max_value: 1, name, round }
     }
 
     pub fn op(op: &ExpressionOp, expr1: Expression, expr2: Expression) -> Self {
@@ -207,9 +208,11 @@ impl Expression {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Input { id, name } => match name {
-                Some(p) => write!(f, "{}[{}]", p, id),
-                None => write!(f, "in[{}]", id),
+            Expression::Input { id, name, round } => match (name, round) {
+                (Some(n), Some(r)) => write!(f, "{}[{}][{}]", n, r, id),
+                (Some(n), None) => write!(f, "{}[{}]", n, id),
+                (None, Some(r)) => write!(f, "in[{}][{}]", r, id),
+                (None, None) => write!(f, "in[{}]", id),
             },
             Expression::Constant(value) => write!(f, "{}", value),
             Expression::Xor(_) => {
@@ -244,13 +247,17 @@ impl fmt::Display for Expression {
             }
             Expression::Not(expr) => write!(f, "(1 + {})", expr),
             Expression::Proxy { id, .. } => write!(f, "P[{}]", id),
-            Expression::Im { id, name, .. } => match name {
-                Some(p) => write!(f, "{}[{}]", p, id),
-                None => write!(f, "im[{}]", id),
+            Expression::Im { id, name, round, .. } => match (name, round) {
+                (Some(n), Some(r)) => write!(f, "{}[{}][{}]", n, r, id),
+                (Some(n), None) => write!(f, "{}[{}]", n, id),
+                (None, Some(r)) => write!(f, "IM[{}][{}]", r, id),
+                (None, None) => write!(f, "IM[{}]", id),
             },
-            Expression::Reset { id, name, .. } => match name {
-                Some(p) => write!(f, "{}[{}]", p, id),
-                None => write!(f, "r[{}]", id),
+            Expression::Reset { id, name, round, .. } => match (name, round) {
+                (Some(n), Some(r)) => write!(f, "{}[{}][{}]", n, r, id),
+                (Some(n), None) => write!(f, "{}[{}]", n, id),
+                (None, Some(r)) => write!(f, "R[{}][{}]", r, id),
+                (None, None) => write!(f, "R[{}]", id),
             },
         }
     }
