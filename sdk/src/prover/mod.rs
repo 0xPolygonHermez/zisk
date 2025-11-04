@@ -13,6 +13,30 @@ use anyhow::Result;
 use std::{path::PathBuf, time::Duration};
 use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 
+pub struct ZiskExecuteResult {
+    pub execution: ZiskExecutionResult,
+    pub duration: Duration,
+}
+
+pub struct ZiskVerifyConstraintsResult {
+    pub execution: ZiskExecutionResult,
+    pub duration: Duration,
+    pub stats: ExecutorStats,
+}
+
+pub struct ZiskProveResult {
+    pub execution: ZiskExecutionResult,
+    pub duration: Duration,
+    pub stats: ExecutorStats,
+    pub proof: Proof,
+}
+
+pub type ZiskPhaseResult = ProvePhaseResult;
+
+pub struct ZiskAggPhaseResult {
+    pub agg_proofs: Vec<AggProofs>,
+}
+
 pub trait ProverEngine {
     fn world_rank(&self) -> i32;
 
@@ -22,34 +46,24 @@ pub trait ProverEngine {
 
     fn executed_steps(&self) -> u64;
 
-    fn execute(
-        &self,
-        stdin: ZiskStdin,
-        output_path: PathBuf,
-    ) -> Result<(ZiskExecutionResult, Duration)>;
+    fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult>;
 
     fn verify_constraints_debug(
         &self,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)>;
+    ) -> Result<ZiskVerifyConstraintsResult>;
 
-    fn verify_constraints(
-        &self,
-        stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)>;
+    fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult>;
 
-    fn prove(
-        &self,
-        stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)>;
+    fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult>;
 
     fn prove_phase(
         &self,
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
         phase: ProvePhase,
-    ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>>;
+    ) -> Result<ZiskPhaseResult>;
 
     fn aggregate_proofs(
         &self,
@@ -57,7 +71,7 @@ pub trait ProverEngine {
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
-    ) -> Option<Vec<AggProofs>>;
+    ) -> Option<ZiskAggPhaseResult>;
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>);
 }
@@ -100,12 +114,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     /// Execute the prover with the given standard input and output path.
     /// It only runs the execution without generating a proof.
-    pub fn execute(
-        &self,
-        stdin: ZiskStdin,
-        output_path: PathBuf,
-    ) -> Result<(ZiskExecutionResult, Duration)> {
-        self.prover.execute(stdin, output_path)
+    pub fn execute(&self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
+        self.prover.execute(stdin, None)
     }
 
     /// Verify the constraints with the given standard input and debug information.
@@ -113,23 +123,17 @@ impl<C: ZiskBackend> ZiskProver<C> {
         &self,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    ) -> Result<ZiskVerifyConstraintsResult> {
         self.prover.verify_constraints_debug(stdin, debug_info)
     }
 
     /// Verify the constraints with the given standard input.
-    pub fn verify_constraints(
-        &self,
-        stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    pub fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
         self.prover.verify_constraints(stdin)
     }
 
     /// Generate a proof with the given standard input.
-    pub fn prove(
-        &self,
-        stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
+    pub fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
         self.prover.prove(stdin)
     }
 
@@ -138,7 +142,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
         phase: ProvePhase,
-    ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>> {
+    ) -> Result<ZiskPhaseResult> {
         self.prover.prove_phase(phase_inputs, options, phase)
     }
 
@@ -148,7 +152,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
-    ) -> Option<Vec<AggProofs>> {
+    ) -> Option<ZiskAggPhaseResult> {
         self.prover.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
     }
 

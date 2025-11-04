@@ -1,11 +1,12 @@
 use anyhow::Result;
 use clap::Parser;
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 use tracing::info;
-use zisk_sdk::ProverClient;
+use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_sdk::{ProverClient, ZiskExecuteResult};
 
-use crate::{commands::cli_fail_if_gpu_mode, ux::print_banner, ZISK_VERSION_MESSAGE};
-use zisk_common::{io::ZiskStdin, ZiskExecutionResult};
+use crate::{commands::cli_fail_if_gpu_mode, ux::print_banner};
+use zisk_common::io::ZiskStdin;
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -39,9 +40,6 @@ pub struct ZiskExecute {
     /// Input path
     #[clap(short = 'i', long)]
     pub input: Option<PathBuf>,
-
-    #[clap(short = 'o', long)]
-    pub output_path: PathBuf,
 
     /// Setup folder path
     #[clap(short = 'k', long)]
@@ -80,9 +78,12 @@ impl ZiskExecute {
         let stdin = self.create_stdin()?;
 
         let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
-        let (result, elapsed) = if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin)? };
+        let result = if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin)? };
 
-        info!("Execution completed in {:.2?}, executed steps: {}", elapsed, result.executed_steps);
+        info!(
+            "Execution completed in {:.2?}, executed steps: {}",
+            result.duration, result.execution.executed_steps
+        );
 
         Ok(())
     }
@@ -99,7 +100,7 @@ impl ZiskExecute {
         Ok(stdin)
     }
 
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(ZiskExecutionResult, Duration)> {
+    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
         let prover = ProverClient::builder()
             .emu()
             .witness()
@@ -111,10 +112,10 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        prover.execute(stdin, self.output_path.clone())
+        prover.execute(stdin)
     }
 
-    pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<(ZiskExecutionResult, Duration)> {
+    pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
         let prover = ProverClient::builder()
             .asm()
             .verify_constraints()
@@ -129,6 +130,6 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        prover.execute(stdin, self.output_path.clone())
+        prover.execute(stdin)
     }
 }

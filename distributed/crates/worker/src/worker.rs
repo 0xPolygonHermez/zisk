@@ -623,7 +623,7 @@ impl Worker {
                     agg_params.final_proof,
                     &options,
                 )
-                .map(|proof| proof.into_iter().map(|p| p.proof).collect())
+                .map(|proof| proof.agg_proofs.into_iter().map(|p| p.proof).collect())
                 .unwrap_or_default();
 
             let _ = tx.send(ComputationResult::AggProof {

@@ -1,16 +1,17 @@
 use crate::{
     check_paths_exist, create_debug_info, ensure_custom_commits,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    Proof, RankInfo, ZiskLibLoader,
+    RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult,
+    ZiskProveResult, ZiskVerifyConstraintsResult,
 };
 use asm_runner::{AsmRunnerOptions, AsmServices};
-use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::DEFAULT_CACHE_PATH;
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{collections::HashMap, path::PathBuf};
 use tracing::info;
-use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
+use zisk_common::io::ZiskStdin;
 
 use anyhow::Result;
 
@@ -91,11 +92,7 @@ impl ProverEngine for AsmProver {
             .unwrap_or(0)
     }
 
-    fn execute(
-        &self,
-        stdin: ZiskStdin,
-        output_path: PathBuf,
-    ) -> Result<(ZiskExecutionResult, Duration)> {
+    fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult> {
         self.core_prover.backend.execute(stdin, output_path)
     }
 
@@ -103,24 +100,18 @@ impl ProverEngine for AsmProver {
         &self,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    ) -> Result<ZiskVerifyConstraintsResult> {
         let debug_info =
             create_debug_info(debug_info, self.core_prover.backend.proving_key.clone());
 
         self.core_prover.backend.verify_constraints_debug(stdin, debug_info)
     }
 
-    fn verify_constraints(
-        &self,
-        stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
         self.core_prover.backend.verify_constraints(stdin)
     }
 
-    fn prove(
-        &self,
-        stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
+    fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
         self.core_prover.backend.prove(stdin)
     }
 
@@ -129,7 +120,7 @@ impl ProverEngine for AsmProver {
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
         phase: ProvePhase,
-    ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>> {
+    ) -> Result<ZiskPhaseResult> {
         self.core_prover.backend.prove_phase(phase_inputs, options, phase)
     }
 
@@ -139,7 +130,7 @@ impl ProverEngine for AsmProver {
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
-    ) -> Option<Vec<AggProofs>> {
+    ) -> Option<ZiskAggPhaseResult> {
         self.core_prover.backend.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
     }
 

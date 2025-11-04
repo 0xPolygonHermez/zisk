@@ -1,11 +1,14 @@
-use crate::{Proof, RankInfo};
+use crate::{
+    Proof, RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
+    ZiskVerifyConstraintsResult,
+};
 use anyhow::Result;
 use bytemuck::cast_slice;
 use fields::Goldilocks;
 use proofman::{AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::{DebugInfo, ProofOptions};
-use std::{fs::File, io::Write, path::PathBuf, time::Duration};
-use zisk_common::{io::ZiskStdin, ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
+use std::{fs::File, io::Write, path::PathBuf};
+use zisk_common::{io::ZiskStdin, ProofLog, ZiskLib};
 use zstd::Encoder;
 
 pub(crate) struct ProverBackend {
@@ -26,8 +29,8 @@ impl ProverBackend {
     pub(crate) fn execute(
         &self,
         stdin: ZiskStdin,
-        output_path: PathBuf,
-    ) -> Result<(ZiskExecutionResult, Duration)> {
+        output_path: Option<PathBuf>,
+    ) -> Result<ZiskExecuteResult> {
         self.witness_lib.set_stdin(stdin);
 
         let start = std::time::Instant::now();
@@ -42,14 +45,14 @@ impl ProverBackend {
             anyhow::anyhow!("Failed to get execution result from emulator prover")
         })?;
 
-        Ok((result, elapsed))
+        Ok(ZiskExecuteResult { execution: result, duration: elapsed })
     }
 
     pub(crate) fn verify_constraints_debug(
         &self,
         stdin: ZiskStdin,
         debug_info: DebugInfo,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    ) -> Result<ZiskVerifyConstraintsResult> {
         if !self.verify_constraints {
             return Err(anyhow::anyhow!("Constraint verification is disabled for this prover."));
         }
@@ -75,20 +78,17 @@ impl ProverBackend {
             _stats.lock().unwrap().store_stats();
         }
 
-        Ok((result, elapsed, stats))
+        Ok(ZiskVerifyConstraintsResult { execution: result, duration: elapsed, stats })
     }
 
     pub(crate) fn verify_constraints(
         &self,
         stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    ) -> Result<ZiskVerifyConstraintsResult> {
         self.verify_constraints_debug(stdin, DebugInfo::default())
     }
 
-    pub(crate) fn prove(
-        &self,
-        stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
+    pub(crate) fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
         if self.verify_constraints {
             return Err(anyhow::anyhow!(
                 "Prover initialized with constraint verification enabled. Use `prove` instead."
@@ -175,7 +175,7 @@ impl ProverBackend {
 
         self.proofman.set_barrier();
 
-        Ok((execution_result, elapsed, stats, proof))
+        Ok(ZiskProveResult { execution: execution_result, duration: elapsed, stats, proof })
     }
 
     pub(crate) fn prove_phase(
@@ -183,8 +183,10 @@ impl ProverBackend {
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
         phase: ProvePhase,
-    ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>> {
-        self.proofman.generate_proof_from_lib(phase_inputs, options, phase)
+    ) -> Result<ZiskPhaseResult> {
+        self.proofman
+            .generate_proof_from_lib(phase_inputs, options, phase.clone())
+            .map_err(|e| anyhow::anyhow!("Error generating proof in phase {:?}: {}", phase, e))
     }
 
     pub(crate) fn aggregate_proofs(
@@ -193,8 +195,10 @@ impl ProverBackend {
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
-    ) -> Option<Vec<AggProofs>> {
-        self.proofman.receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
+    ) -> Option<ZiskAggPhaseResult> {
+        self.proofman
+            .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
+            .map(|agg_proofs| ZiskAggPhaseResult { agg_proofs })
     }
 
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) {

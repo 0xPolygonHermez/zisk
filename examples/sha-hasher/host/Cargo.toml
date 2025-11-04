@@ -1,0 +1,12 @@
+[package]
+name = "sha-hasher-host"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+zisk-sdk = { workspace = true }
+zisk-common = { workspace = true }
+anyhow = "1.0"
+
+[build-dependencies]
+zisk-build = { workspace = true }

@@ -1,12 +1,13 @@
 use crate::{
     check_paths_exist, create_debug_info, get_custom_commits_map,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    Proof, RankInfo, ZiskLibLoader,
+    RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult,
+    ZiskProveResult, ZiskVerifyConstraintsResult,
 };
-use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
-use std::{path::PathBuf, time::Duration};
-use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
+use std::path::PathBuf;
+use zisk_common::io::ZiskStdin;
 
 use anyhow::Result;
 
@@ -79,11 +80,7 @@ impl ProverEngine for EmuProver {
             .unwrap_or(0)
     }
 
-    fn execute(
-        &self,
-        stdin: ZiskStdin,
-        output_path: PathBuf,
-    ) -> Result<(ZiskExecutionResult, Duration)> {
+    fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult> {
         self.core_prover.backend.execute(stdin, output_path)
     }
 
@@ -91,24 +88,18 @@ impl ProverEngine for EmuProver {
         &self,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    ) -> Result<ZiskVerifyConstraintsResult> {
         let debug_info =
             create_debug_info(debug_info, self.core_prover.backend.proving_key.clone());
 
         self.core_prover.backend.verify_constraints_debug(stdin, debug_info)
     }
 
-    fn verify_constraints(
-        &self,
-        stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
         self.core_prover.backend.verify_constraints(stdin)
     }
 
-    fn prove(
-        &self,
-        stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats, Proof)> {
+    fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
         self.core_prover.backend.prove(stdin)
     }
 
@@ -117,7 +108,7 @@ impl ProverEngine for EmuProver {
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
         phase: ProvePhase,
-    ) -> Result<ProvePhaseResult, Box<dyn std::error::Error>> {
+    ) -> Result<ZiskPhaseResult> {
         self.core_prover.backend.prove_phase(phase_inputs, options, phase)
     }
 
@@ -127,7 +118,7 @@ impl ProverEngine for EmuProver {
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
-    ) -> Option<Vec<AggProofs>> {
+    ) -> Option<ZiskAggPhaseResult> {
         self.core_prover.backend.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
