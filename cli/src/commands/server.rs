@@ -15,7 +15,7 @@ use zisk_common::init_tracing;
 
 use crate::commands::{get_proving_key, get_witness_computation_lib};
 use crate::ux::print_banner;
-use crate::ZISK_VERSION_MESSAGE;
+use zisk_build::ZISK_VERSION_MESSAGE;
 
 pub const DEFAULT_PORT: u16 = 7878;
 const LOG_PATH: &str = "zisk_prover_server.log";

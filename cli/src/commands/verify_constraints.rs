@@ -1,13 +1,14 @@
-use crate::{commands::cli_fail_if_gpu_mode, ux::print_banner, ZISK_VERSION_MESSAGE};
+use crate::{commands::cli_fail_if_gpu_mode, ux::print_banner};
 use anyhow::Result;
 
 use clap::Parser;
 use colored::Colorize;
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
+use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::io::ZiskStdin;
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
-use zisk_sdk::ProverClient;
+use zisk_sdk::{ProverClient, ZiskVerifyConstraintsResult};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -82,8 +83,7 @@ impl ZiskVerifyConstraints {
         let stdin = self.create_stdin()?;
 
         let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
-        let (result, elapsed, _stats) =
-            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin)? };
+        let result = if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin)? };
 
         tracing::info!("");
         tracing::info!(
@@ -93,8 +93,8 @@ impl ZiskVerifyConstraints {
         tracing::info!("    ► Statistics");
         tracing::info!(
             "      time: {:.2} seconds, steps: {}",
-            elapsed.as_secs_f32(),
-            result.executed_steps
+            result.duration.as_secs_f32(),
+            result.execution.executed_steps
         );
 
         Ok(())
@@ -112,10 +112,7 @@ impl ZiskVerifyConstraints {
         Ok(stdin)
     }
 
-    pub fn run_emu(
-        &mut self,
-        stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
         let prover = ProverClient::builder()
             .emu()
             .verify_constraints()
@@ -130,10 +127,7 @@ impl ZiskVerifyConstraints {
         prover.verify_constraints_debug(stdin, self.debug.clone())
     }
 
-    pub fn run_asm(
-        &mut self,
-        stdin: ZiskStdin,
-    ) -> Result<(ZiskExecutionResult, Duration, ExecutorStats)> {
+    pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
         let prover = ProverClient::builder()
             .asm()
             .verify_constraints()

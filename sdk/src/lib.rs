@@ -19,3 +19,10 @@ pub struct Proof {
     pub id: Option<String>,
     pub proof: Option<Vec<u64>>,
 }
+
+#[macro_export]
+macro_rules! include_elf {
+    ($arg:tt) => {{
+        include_bytes!(env!(concat!("ZISK_ELF_", $arg)))
+    }};
+}

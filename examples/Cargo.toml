@@ -1,0 +1,19 @@
+[workspace]
+members = ["sha-hasher/host", "sha-hasher/guest"]
+
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+
+[profile.release.package."proofman-verifier"]
+opt-level = 0
+
+[workspace.dependencies]
+# Guest dependencies
+ziskos = { path = "../ziskos/entrypoint" }
+
+# Host dependencies
+zisk-sdk = { path = "../sdk" }
+zisk-build = { path = "../ziskbuild" }
+zisk-common = { path = "../common" }

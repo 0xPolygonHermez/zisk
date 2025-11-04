@@ -15,13 +15,13 @@ use rom_setup::{
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf, thread, time::Instant};
+use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::{ExecutorStats, Stats, ZiskExecutionResult, ZiskLibInitFn};
 use zisk_pil::*;
 
 use crate::{
     commands::{get_proving_key, get_witness_computation_lib},
     ux::print_banner,
-    ZISK_VERSION_MESSAGE,
 };
 
 #[derive(Parser)]

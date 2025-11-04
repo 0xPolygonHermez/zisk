@@ -1,0 +1,20 @@
+[package]
+name = "zisk-build"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+keywords.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[dependencies]
+clap = { workspace = true }
+cargo_metadata = "0.23.0"
+anyhow = { workspace = true }
+
+[build-dependencies]
+vergen = { version = "8", default-features = false, features = [
+    "build",
+    "git",
+    "git2",
+] }
