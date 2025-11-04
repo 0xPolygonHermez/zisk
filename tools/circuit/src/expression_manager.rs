@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
-use std::path::Path;
+use std::path::PathBuf;
 
 use super::{Expression, ExpressionOp};
 
@@ -43,8 +43,9 @@ pub struct ExpressionManagerConfig {
     pub reset_threshold: u32,
     pub sin_count: usize,
     pub sout_count: usize,
-    pub in_prefix: String,
-    pub out_prefix: String,
+    pub in_prefix: Option<String>,
+    pub out_prefix: Option<String>,
+    pub output_dir: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -55,7 +56,6 @@ struct ExpressionEvent {
     step: Option<String>,
     substep: Option<String>,
     old_expr_id: usize,
-    new_expr_id: usize,
     original_degree: usize,
     new_degree: usize,
     original_max_value: u64,
@@ -99,7 +99,7 @@ impl ExpressionManager {
         let mut sin_expr_ids = Vec::with_capacity(sin_count);
         let mut sout_expr_ids = Vec::with_capacity(sout_count);
         for i in 0..sin_count {
-            exprs.push(Expression::input(i, Some(config.in_prefix.clone()), Some(0)));
+            exprs.push(Expression::input(i, config.in_prefix.clone(), Some(0)));
             sin_expr_ids.push(2 + i);
         }
         for i in 0..sout_count {
@@ -145,25 +145,29 @@ impl ExpressionManager {
     }
 
     // TODO: Add support for im
-    pub fn mark_end_of_round(&mut self, round: usize, output_dir: &Path) -> std::io::Result<()> {
-        // Create output directory if it doesn't exist
-        fs::create_dir_all(output_dir)?;
-
-        // Get all events for this round
-        let round_events: Vec<_> =
-            self.expr_events.iter().filter(|e| e.round == round).collect();
-
-        if round_events.is_empty() {
-            return Ok(());
-        }
-
+    pub fn mark_end_of_round(&mut self, round: usize) {
         // Store the max value for this round
         while self.max_values_by_round.len() <= round {
             self.max_values_by_round.push(0);
         }
         self.max_values_by_round[round] = self.round_max_value;
+    }
 
-        // Generate file for this round
+    pub fn generate_round_file(&self, round: usize) -> std::io::Result<()> {
+        // Create output directory if it doesn't exist
+        let output_dir = match &self.config.output_dir {
+            Some(dir) => dir,
+            None => return Ok(()),
+        };
+        fs::create_dir_all(output_dir)?;
+
+        // Get all events for this round
+        let round_events: Vec<_> = self.expr_events.iter().filter(|e| e.round == round).collect();
+
+        if round_events.is_empty() {
+            return Ok(());
+        }
+
         let file_path = output_dir.join(format!("round{}.pil", round));
         let file = File::create(file_path)?;
         let mut writer = BufWriter::new(file);
@@ -187,7 +191,19 @@ impl ExpressionManager {
                     event.original_max_value,
                     event.new_max_value
                 )?;
-                writeln!(writer, "{}[{}][{}] = {};", self.config.out_prefix, self.current_round, i, old_expr)?;
+
+                match self.config.out_prefix {
+                    Some(ref prefix) => {
+                        writeln!(
+                            writer,
+                            "{}[{}][{}] = {};",
+                            prefix, self.current_round, i, old_expr
+                        )?;
+                    }
+                    None => {
+                        writeln!(writer, "out[{}][{}] = {};", self.current_round, i, old_expr)?;
+                    }
+                }
                 writeln!(writer)?;
             }
         }
@@ -340,7 +356,7 @@ impl ExpressionManager {
             new_im_id,
             original_degree,
             original_max_value,
-            Some(self.config.in_prefix.clone()),
+            self.config.in_prefix.clone(),
             Some(self.current_round + 1),
         );
         let new_degree = new_expr.degree();
@@ -356,7 +372,6 @@ impl ExpressionManager {
             manual,
             ExpressionOpType::Im,
             id,
-            new_id,
             original_degree,
             new_degree,
             original_max_value,
@@ -395,8 +410,12 @@ impl ExpressionManager {
         self.round_reset_count += 1;
         self.reset_count += 1;
 
-        let new_expr =
-            Expression::reset(new_reset_id, original_degree, Some(self.config.in_prefix.clone()), Some(self.current_round + 1));
+        let new_expr = Expression::reset(
+            new_reset_id,
+            original_degree,
+            self.config.in_prefix.clone(),
+            Some(self.current_round + 1),
+        );
         let new_degree = new_expr.degree();
         let new_max_value = new_expr.max_value();
 
@@ -410,7 +429,6 @@ impl ExpressionManager {
             manual,
             ExpressionOpType::Reset,
             id,
-            new_id,
             original_degree,
             new_degree,
             original_max_value,
@@ -433,7 +451,6 @@ impl ExpressionManager {
         manual: bool,
         op_type: ExpressionOpType,
         old_expr_id: usize,
-        new_expr_id: usize,
         original_degree: usize,
         new_degree: usize,
         original_max_value: u64,
@@ -449,7 +466,6 @@ impl ExpressionManager {
             step: self.current_step.clone(),
             substep: self.current_substep.clone(),
             old_expr_id,
-            new_expr_id,
             original_degree,
             new_degree,
             original_max_value,
@@ -546,8 +562,12 @@ impl ExpressionManager {
         println!("\tMaximum expression value: {}", max_value);
     }
 
-    pub fn generate_summary_file(&self, output_dir: &Path) -> std::io::Result<()> {
+    pub fn generate_summary_file(&self) -> std::io::Result<()> {
         // Create output directory if it doesn't exist
+        let output_dir = match &self.config.output_dir {
+            Some(dir) => dir,
+            None => return Ok(()),
+        };
         fs::create_dir_all(output_dir)?;
 
         let file_path = output_dir.join("round_summary.pil");
@@ -597,10 +617,8 @@ impl ExpressionManager {
                 .filter(|e| matches!(e.op_type, ExpressionOpType::Reset))
                 .count();
 
-            let im_count = round_events
-                .iter()
-                .filter(|e| matches!(e.op_type, ExpressionOpType::Im))
-                .count();
+            let im_count =
+                round_events.iter().filter(|e| matches!(e.op_type, ExpressionOpType::Im)).count();
 
             if reset_count > max_reset_count {
                 max_reset_count = reset_count;
@@ -630,11 +648,7 @@ impl ExpressionManager {
                 writeln!(
                     writer,
                     "// {:<10} {:<15} {:<15} {:<15} {:<15}",
-                    round,
-                    reset_count,
-                    im_count,
-                    total_events,
-                    max_val
+                    round, reset_count, im_count, total_events, max_val
                 )?;
             }
             writeln!(writer)?;

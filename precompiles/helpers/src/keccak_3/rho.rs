@@ -39,7 +39,7 @@ pub fn keccak_f_rho(e: &mut ExpressionManager) {
             let dst_pos = bit_position(x, y, z);
 
             // Copy reference with rotation
-            e.sout_expr_ids[dst_pos] = e.sin_expr_ids[src_pos].clone();
+            e.sout_expr_ids[dst_pos] = e.sin_expr_ids[src_pos]
         }
 
         // let (x, y) = (y, (2x + 3y) mod 5)

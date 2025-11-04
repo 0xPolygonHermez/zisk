@@ -77,7 +77,12 @@ impl Expression {
         Expression::Im { id, degree, max_value: original_max_value, name, round }
     }
 
-    pub fn reset(id: usize, original_degree: usize, name: Option<String>, round: Option<usize>) -> Self {
+    pub fn reset(
+        id: usize,
+        original_degree: usize,
+        name: Option<String>,
+        round: Option<usize>,
+    ) -> Self {
         let degree =
             if original_degree >= MAX_DEGREE { original_degree - BLOWUP_FACTOR } else { 1 };
         Expression::Reset { id, degree, max_value: 1, name, round }

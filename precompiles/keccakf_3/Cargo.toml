@@ -18,6 +18,8 @@ proofman-macros = { workspace = true }
 
 precompiles-helpers = { workspace = true }
 
+circuit = { workspace = true }
+
 path-clean = "1.0"
 
 

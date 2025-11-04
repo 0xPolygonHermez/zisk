@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use circuit::{ExpressionManager, ExpressionManagerConfig};
 
 mod chi;
@@ -18,21 +16,8 @@ use round_constants::KECCAK_F_RC;
 use theta::keccak_f_theta;
 use utils::bit_position;
 
-const KECCAKF_EXPR_RESET_THRESHOLD: u32 = 1 << 20;
-const KECCAKF_STATE_IN_BITS: usize = 1600;
-const KECCAKF_STATE_OUT_BITS: usize = 1600;
-
-pub fn keccak_f_expr<P: AsRef<Path>>(output_dir: P) -> std::io::Result<()> {
-    let output_dir = output_dir.as_ref();
-
+pub fn keccak_f_expr(config: ExpressionManagerConfig, generate_files: bool) -> std::io::Result<()> {
     // Initialize the expression manager
-    let config = ExpressionManagerConfig {
-        reset_threshold: KECCAKF_EXPR_RESET_THRESHOLD,
-        sin_count: KECCAKF_STATE_IN_BITS,
-        sout_count: KECCAKF_STATE_OUT_BITS,
-        in_prefix: "state_by_round".to_string(),
-        out_prefix: "out_exprs".to_string(),
-    };
     let mut expr_manager = ExpressionManager::new(config);
 
     // Apply all 24 rounds of Keccak permutations
@@ -71,18 +56,49 @@ pub fn keccak_f_expr<P: AsRef<Path>>(output_dir: P) -> std::io::Result<()> {
                 expr_manager.create_manual_reset_expression(expr_manager.sout_expr_ids[i]);
         }
 
-        // Mark end of round and generate file
-        expr_manager.mark_end_of_round(r, output_dir)?;
+        // Mark end of round
+        expr_manager.mark_end_of_round(r);
 
+        // Generate round file if required
+        if generate_files {
+            expr_manager.generate_round_file(r)?;
+        }
+
+        // Prepare for next round
         if r < 23 {
             expr_manager.copy_sout_expr_ids_to_sin_expr_ids();
         }
 
+        // Print round events
         expr_manager.print_round_events(r, Some(5));
     }
 
+    // Print final summary
     expr_manager.print_summary();
-    expr_manager.generate_summary_file(output_dir)?;
+
+    // Generate summary file if required
+    if generate_files {
+        expr_manager.generate_summary_file()?;
+    }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_keccak_f_expr() {
+        let config = ExpressionManagerConfig {
+            reset_threshold: 1 << 20,
+            sin_count: 1600,
+            sout_count: 1600,
+            in_prefix: None,
+            out_prefix: None,
+            output_dir: None,
+        };
+        let result = keccak_f_expr(config, false);
+        assert!(result.is_ok());
+    }
 }
