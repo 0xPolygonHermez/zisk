@@ -5,7 +5,10 @@
 
 use std::sync::Arc;
 
-use crate::{BinaryExtensionFrops, BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
+use crate::{
+    binary_constants::*, BinaryExtensionFrops, BinaryExtensionTableOp, BinaryExtensionTableSM,
+    BinaryInput,
+};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -40,8 +43,6 @@ const SIGN_BYTE: u64 = 0x80;
 
 const LS_5_BITS: u64 = 0x1F;
 const LS_6_BITS: u64 = 0x3F;
-
-const SE_B_OP: u8 = 0x37;
 
 /// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.
 ///
@@ -254,7 +255,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendB => {
-                binary_extension_table_op = BinaryExtensionTableOp::SignExtendB;
+                binary_extension_table_op = BinaryExtensionTableOp::SextB;
                 for j in 0..8 {
                     let out: u64;
                     if j == 0 {
@@ -271,7 +272,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendH => {
-                binary_extension_table_op = BinaryExtensionTableOp::SignExtendH;
+                binary_extension_table_op = BinaryExtensionTableOp::SextH;
                 for j in 0..8 {
                     let out: u64;
                     if j == 0 {
@@ -290,7 +291,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendW => {
-                binary_extension_table_op = BinaryExtensionTableOp::SignExtendW;
+                binary_extension_table_op = BinaryExtensionTableOp::SextW;
                 for j in 0..4 {
                     let mut out = (a_bytes[j] as u64) << (8 * j as u64);
                     if j == 3 && ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
@@ -385,9 +386,9 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             }
         }
 
-        // Set SE_B(0) as the padding row
+        // Set SEXT_B(0) as the padding row
         let mut padding_row = BinaryExtensionTraceRowType::default();
-        padding_row.set_op(SE_B_OP);
+        padding_row.set_op(SEXT_B_OP);
 
         binary_e_trace.buffer[total_inputs..num_rows]
             .par_iter_mut()
@@ -396,12 +397,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         let padding_size = num_rows - total_inputs;
         for i in 0..8 {
             let multiplicity = padding_size as u64;
-            let row = BinaryExtensionTableSM::calculate_table_row(
-                BinaryExtensionTableOp::SignExtendB,
-                i,
-                0,
-                0,
-            );
+            let row =
+                BinaryExtensionTableSM::calculate_table_row(BinaryExtensionTableOp::SextB, i, 0, 0);
             self.std.inc_virtual_row(self.table_id, row, multiplicity);
         }
 

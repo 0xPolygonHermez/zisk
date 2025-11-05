@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "e437224413556e13584b53f31094fdaab1fb579e94247968ead16dd314bf5a58";
+pub const PILOUT_HASH: &str = "6969dfe3d240d165357d81f968ff17758c4add96cd0b3160ce03da944ccd4e41";
 
 //AIRGROUP CONSTANTS
 
@@ -251,7 +251,7 @@ trace_row!(BinaryFixedRow<F> {
 pub type BinaryFixed<F> = GenericTrace<BinaryFixedRow<F>, 4194304, 0, 10>;
 
 trace_row!(BinaryTraceRow<F> {
- b_op:ubit(5), free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[bit; 8], mode32:bit, result_is_a:bit, use_first_byte:bit, c_is_signed:bit, b_op_or_sext:ubit(5), mode32_and_c_is_signed:bit,
+ b_op:ubit(7), free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[bit; 8], mode32:bit, result_is_a:bit, use_first_byte:bit, c_is_signed:bit, b_op_or_sext:ubit(10), mode32_and_c_is_signed:bit,
 });
 pub type BinaryTrace<F> = GenericTrace<BinaryTraceRow<F>, 4194304, 0, 10>;
 
@@ -425,15 +425,15 @@ values!(MemAlignWriteByteAirValues<F> {
 });
 
 values!(BinaryAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 2],
+ padding_size: F, im_direct: [FieldExtension<F>; 1],
 });
 
 values!(BinaryAddAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 2],
+ padding_size: F, im_direct: [FieldExtension<F>; 1],
 });
 
 values!(BinaryExtensionAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 2],
+ padding_size: F, im_direct: [FieldExtension<F>; 1],
 });
 
 values!(MainAirGroupValues<F> {
@@ -569,7 +569,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 10, PackedInfoConst {
         is_packed: true,
         num_packed_words: 4,
-        unpack_info: &[5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 1],
+        unpack_info: &[7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 10, 1],
     }),
     (0, 11, PackedInfoConst {
         is_packed: true,

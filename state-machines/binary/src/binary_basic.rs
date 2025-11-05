@@ -250,16 +250,11 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         }
                     }
 
-                    // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Min)
-                        && (plast[i] == 1)
-                        && (a_bytes[i] & SIGN_BYTE) != (b_bytes[i] & SIGN_BYTE)
-                    {
-                        cout = if (a_bytes[i] & SIGN_BYTE) != 0 { 1 } else { 0 };
+                    // In the last byte, set cout to 0
+                    if plast[i] == 1 {
+                        cout = 0;
                     }
-                    if mode32 && (i >= 4) {
-                        cout = cin;
-                    }
+
                     row.set_carry(i, cout != 0);
 
                     // Set carry for next iteration
@@ -322,16 +317,11 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         }
                     }
 
-                    // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Max)
-                        && (plast[i] == 1)
-                        && (a_bytes[i] & SIGN_BYTE) != (b_bytes[i] & SIGN_BYTE)
-                    {
-                        cout = if (a_bytes[i] & SIGN_BYTE) != 0 { 0 } else { 1 };
+                    // In the last byte, set cout to 0
+                    if plast[i] == 1 {
+                        cout = 0;
                     }
-                    if mode32 && (i >= 4) {
-                        cout = cin;
-                    }
+
                     row.set_carry(i, cout != 0);
 
                     // Set carry for next iteration
@@ -877,11 +867,11 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
         // Set b_op_or_sext
         row.set_b_op_or_sext(if mode64 {
-            binary_basic_table_op as u8
+            binary_basic_table_op as u16
         } else if c_is_signed == 1 {
-            BinaryBasicTableOp::SextFF as u8
+            BinaryBasicTableOp::SextFF as u16
         } else {
-            BinaryBasicTableOp::Sext00 as u8
+            BinaryBasicTableOp::Sext00 as u16
         });
 
         // Set mode32_and_c_is_signed
@@ -938,7 +928,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         if padding_size > 0 {
             let mut padding_row = BinaryTraceRowType::default();
             padding_row.set_b_op(ADD_OP);
-            padding_row.set_b_op_or_sext(ADD_OP);
+            padding_row.set_b_op_or_sext(ADD_OP as u16);
 
             binary_trace.buffer[total_inputs..num_rows]
                 .par_iter_mut()

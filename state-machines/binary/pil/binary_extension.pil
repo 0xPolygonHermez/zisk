@@ -1,23 +1,26 @@
-require "std_lookup.pil"
-require "std_range_check.pil"
+require "std_lookup.pil";
+require "std_range_check.pil";
+require "operations.pil";
+require "ids.pil";
+require "binary_extension_table.pil";
 
 // Coprocessor in charge of performing standard RISCV binary operations
 
 /*
 List:
-    ┼────────┼────────┼──────────┼
-    │  name  │  bits  │   op     │
-    ┼────────┼────────┼──────────┼
-    │  SLL   │   64   │   0x31   │
-    │  SRL   │   64   │   0x32   │
-    │  SRA   │   64   │   0x33   │
-    │  SLL_W │   32   │   0x34   │
-    │  SRL_W │   32   │   0x35   │
-    │  SRA_W │   32   │   0x36   │
-    │  SE_B  │   32   │   0x37   │
-    │  SE_H  │   32   │   0x38   │
-    │  SE_W  │   32   │   0x39   │
-    ┼────────┼────────┼──────────┼
+    ┼──────────┼────────┼──────────┼
+    │  name    │  bits  │   op     │
+    ┼──────────┼────────┼──────────┼
+    │  SLL     │   64   │   0x21   │
+    │  SRL     │   64   │   0x22   │
+    │  SRA     │   64   │   0x23   │
+    │  SLL_W   │   32   │   0x24   │
+    │  SRL_W   │   32   │   0x25   │
+    │  SRA_W   │   32   │   0x26   │
+    │  SEXT_B  │   32   │   0x27   │
+    │  SEXT_H  │   32   │   0x28   │
+    │  SEXT_W  │   32   │   0x29   │
+    ┼──────────┼────────┼──────────┼
 
 Examples:
 =======================================
@@ -50,7 +53,7 @@ x    in1[x]    out[x][0]     out[x][1]
 ---------------------------------------
 Result:        0x33221100    0x00000000
 
-SE_H
+SEXT_H
 x    in2[x]    out[x][0]     out[x][1]
 ---------------------------------------
 0    0xbc      0x000000bc    0x00000000
@@ -71,7 +74,6 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64, const int 
     }
 
     // Default values
-    const int SE_B = 0x37;
     const int BYTES = bits / 8;
     const int HALF_BYTES = BYTES / 2;
     const int BYTE_BASE = (1 << BYTES);
@@ -128,8 +130,5 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64, const int 
     );
 
     airval padding_size;
-    direct_update_assumes(operation_bus_id, [SE_B, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
-
-    // TODO: Remove, bug found
-    direct_update_assumes(operation_bus_id, [SE_B, 0, 0, 0, 0, 0, 0, 0], sel: 0);
+    direct_update_assumes(operation_bus_id, [OP_SEXT_B, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
 }

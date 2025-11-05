@@ -1,57 +1,55 @@
-require "std_lookup.pil"
+require "std_lookup.pil";
+require "operations.pil";
+require "ids.pil";
+require "binary_table.pil";
 
 /* 
     Operation table summary:
     ==========================
 
     List of 64-bit proven operations:
-    ┼───────────────┼──────────┼──────────┼────────────────┼───────┼────────────────┼─────────┼
+    ┼───────────────┼──────────┼──────────┼────────────────┼───────┼────────────────────┼─────────┼
     │     name      │    op    │   b_op   │ use_first_byte │ carry │ use_last_cout_as_c │ ZisK OP │
-    ┼───────────────┼──────────┼──────────┼────────────────┼───────┼────────────────┼─────────┼
-    │ MINU          │   0x02   │   0x02   │                │   X   │                │    X    │
-    │ MIN           │   0x03   │   0x03   │                │   X   │                │    X    │
-    │ MAXU          │   0x04   │   0x04   │                │   X   │                │    X    │
-    │ MAX           │   0x05   │   0x05   │                │   X   │                │    X    │
-    │ LT_ABS_NP (*) │   0x06   │   0x06   │        X       │   X   │       X        │         │
-    │ LT_ABS_PN (*) │   0x07   │   0x07   │        X       │   X   │       X        │         │
-    │ LTU           │   0x08   │   0x08   │                │   X   │       X        │    X    │
-    │ LT            │   0x09   │   0x09   │                │   X   │       X        │    X    │
-    │ GT (*)        │   0x0a   │   0x0a   │                │   X   │       X        │         │
-    │ EQ            │   0x0b   │   0x0b   │                │   X   │       X        │    X    │
-    │ ADD           │   0x0c   │   0x0c   │                │   X   │                │    X    │
-    │ SUB           │   0x0d   │   0x0d   │                │   X   │                │    X    │
-    │ LEU           │   0x0e   │   0x0e   │                │   X   │       X        │    X    │
-    │ LE            │   0x0f   │   0x0f   │                │   X   │       X        │    X    │
-    │ AND           │   0x10   │   0x10   │                │       │                │    X    │
-    │ OR            │   0x11   │   0x11   │                │       │                │    X    │
-    │ XOR           │   0x12   │   0x12   │                │       │                │    X    │
-    ┼───────────────┼──────────┼──────────┼────────────────┼───────┼────────────────┼─────────┼
+    ┼───────────────┼──────────┼──────────┼────────────────┼───────┼────────────────────┼─────────┼
+    │ MINU          │   0x02   │   0x02   │                │   X   │                    │    X    │
+    │ MIN           │   0x03   │   0x03   │                │   X   │                    │    X    │
+    │ MAXU          │   0x04   │   0x04   │                │   X   │                    │    X    │
+    │ MAX           │   0x05   │   0x05   │                │   X   │                    │    X    │
+    │ LTU           │   0x06   │   0x06   │                │   X   │       X            │    X    │
+    │ LT            │   0x07   │   0x07   │                │   X   │       X            │    X    │
+    │ GT (*)        │   0x08   │   0x08   │                │   X   │       X            │         │
+    │ EQ            │   0x09   │   0x09   │                │   X   │       X            │    X    │
+    │ ADD           │   0x0a   │   0x0a   │                │   X   │                    │    X    │
+    │ SUB           │   0x0b   │   0x0b   │                │   X   │                    │    X    │
+    │ LEU           │   0x0c   │   0x0c   │                │   X   │       X            │    X    │
+    │ LE            │   0x0d   │   0x0d   │                │   X   │       X            │    X    │
+    │ AND           │   0x0e   │   0x0e   │                │       │                    │    X    │
+    │ OR            │   0x0f   │   0x0f   │                │       │                    │    X    │
+    │ XOR           │   0x10   │   0x10   │                │       │                    │    X    │
+    │ LT_ABS_NP (*) │   0x50   │   0x50   │        X       │   X   │       X            │         │
+    │ LT_ABS_PN (*) │   0x51   │   0x51   │        X       │   X   │       X            │         │
+    ┼───────────────┼──────────┼──────────┼────────────────┼───────┼────────────────────┼─────────┼
     (*) This operation is used by the Arith component
 
     List of 32-bit proven operations:
-    │───────────┼──────────┼──────────┼───────┼────────────────┼─────────│
+    │───────────┼──────────┼──────────┼───────┼────────────────────┼─────────│
     │   name    │    op    │   b_op   │ carry │ use_last_cout_as_c │ ZisK OP │
-    │───────────┼──────────┼──────────┼───────┼────────────────┼─────────│
-    │ MINU_W    │   0x22   │   0x02   │   X   │                │    X    │
-    │ MIN_W     │   0x23   │   0x03   │   X   │                │    X    │
-    │ MAXU_W    │   0x24   │   0x04   │   X   │                │    X    │
-    │ MAX_W     │   0x25   │   0x05   │   X   │                │    X    │
-    │ LTU_W     │   0x28   │   0x08   │   X   │       X        │    X    │
-    │ LT_W      │   0x29   │   0x09   │   X   │       X        │    X    │
-    │ EQ_W      │   0x2b   │   0x0b   │   X   │       X        │    X    │
-    │ ADD_W     │   0x2c   │   0x0c   │   X   │                │    X    │
-    │ SUB_W     │   0x2d   │   0x0d   │   X   │                │    X    │
-    │ LEU_W     │   0x2e   │   0x0e   │   X   │       X        │    X    │
-    │ LE_W      │   0x2f   │   0x0f   │   X   │       X        │    X    │
-    │───────────┼──────────┼──────────┼───────┼────────────────┼─────────│
-    Note: op = b_op + 0x20*mode32
+    │───────────┼──────────┼──────────┼───────┼────────────────────┼─────────│
+    │ MINU_W    │   0x12   │   0x02   │   X   │                    │    X    │
+    │ MIN_W     │   0x13   │   0x03   │   X   │                    │    X    │
+    │ MAXU_W    │   0x14   │   0x04   │   X   │                    │    X    │
+    │ MAX_W     │   0x15   │   0x05   │   X   │                    │    X    │
+    │ LTU_W     │   0x16   │   0x06   │   X   │       X            │    X    │
+    │ LT_W      │   0x17   │   0x07   │   X   │       X            │    X    │
+    │ GT_W      │   0x18   │   0x08   │   X   │       X            │         │
+    │ EQ_W      │   0x19   │   0x09   │   X   │       X            │    X    │
+    │ ADD_W     │   0x1a   │   0x0a   │   X   │                    │    X    │
+    │ SUB_W     │   0x1b   │   0x0b   │   X   │                    │    X    │
+    │ LEU_W     │   0x1c   │   0x0c   │   X   │       X            │    X    │
+    │ LE_W      │   0x1d   │   0x0d   │   X   │       X            │    X    │
+    │───────────┼──────────┼──────────┼───────┼────────────────────┼─────────│
+    Note: op = b_op + 0x10*mode32
 */
-
-const int LT_ABS_NP_OP = 0x06;
-const int LT_ABS_PN_OP = 0x07;
-const int LTU_OP = 0x08;
-const int GT_OP = 0x0A;
-const int ADD_OP = 0x0C;
 
 airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, const int operation_bus_id = OPERATION_BUS_ID) {
     if (RC != 2 || bits != 64) {
@@ -65,7 +63,7 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, c
     const int BYTES_PER_CHUNK = BYTES / RC;
 
     // Primary columns
-    col witness bits(5) b_op;               // binary operation code           
+    col witness bits(7) b_op;              // binary operation code           
     col witness bits(8) free_in_a[BYTES];   // input A per byte
     col witness bits(8) free_in_b[BYTES];   // input B per byte
     col witness bits(8) free_in_c[BYTES];   // output C per byte
@@ -81,9 +79,11 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, c
     const expr cout = carry[BYTES-1];
 
     // Selectors not constrained by the table should be constrained
+    mode32 * (1 - mode32) === 0; // Resilent constraint
     cout * (1 - cout) === 0;
     result_is_a * (1 - result_is_a) === 0;
     use_first_byte * (1 - use_first_byte) === 0;
+    c_is_signed * (1 - c_is_signed) === 0;
 
     /*
     Perform, at the byte level, lookups against the binary table on inputs:
@@ -91,24 +91,24 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, c
     where pos_ind indicates relevant byte positions
 
     Example for 8 bytes:
-        │──────────────────│───────────│────│────│─────────│────│──────────────────--------------------------------------------─────────│
-        │     pos_ind      │    opid   │ a  │ b  │ cin     │ c  │ cout    + flags                                                       │
-        │──────────────────│───────────│────│────│─────────│────│──────────────────--------------------------------------------─────────│
-        │ 2*use_first_byte │   b_op    │ a0 │ b0 │ 0       │ c0 │ cout[0] + 2*result_is_a + 4*use_first_byte                            │
-        │        0         │   b_op    │ a1 │ b1 │ cout[0] │ c1 │ cout[1] + 2*result_is_a + 4*use_first_byte                            │
-        │        0         │   b_op    │ a2 │ b2 │ cout[1] │ c2 │ cout[2] + 2*result_is_a + 4*use_first_byte                            │
-        │      mode32      │   b_op    │ a3 │ b3 │ cout[2] │ c3 │ cout[3] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
-        │        0         │ b_op|SEXT │ a4 │ b4 │ cout[3] │ c4 │ cout[4] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
-        │        0         │ b_op|SEXT │ a5 │ b5 │ cout[4] │ c5 │ cout[5] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
-        │        0         │ b_op|SEXT │ a6 │ b6 │ cout[5] │ c6 │ cout[6] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
-        │      mode64      │ b_op|SEXT │ a7 │ b7 │ cout[6] │ c7 │ cout[7] + 2*result_is_a + 4*use_first_byte + 8*c_is_signed            │
-        │──────────────────│───────────│────│────│─────────│────│──────────────────--------------------------------------------─────────│
+        │──────────────────│───────────│────│────│──────────│────│──────────────────--------------------------------------------──────────│
+        │     pos_ind      │    opid   │ a  │ b  │ cin      │ c  │ cout + flags                                                           │
+        │──────────────────│───────────│────│────│──────────│────│──────────────────--------------------------------------------──────────│
+        │ 2*use_first_byte │   b_op    │ a0 │ b0 │ 0        │ c0 │ carry[0] + 2*result_is_a + 4*use_first_byte                            │
+        │        0         │   b_op    │ a1 │ b1 │ carry[0] │ c1 │ carry[1] + 2*result_is_a + 4*use_first_byte                            │
+        │        0         │   b_op    │ a2 │ b2 │ carry[1] │ c2 │ carry[2] + 2*result_is_a + 4*use_first_byte                            │
+        │      mode32      │   b_op    │ a3 │ b3 │ carry[2] │ c3 │ carry[3] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
+        │        0         │ b_op|SEXT │ a4 │ b4 │ carry[3] │ c4 │ carry[4] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
+        │        0         │ b_op|SEXT │ a5 │ b5 │ carry[4] │ c5 │ carry[5] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
+        │        0         │ b_op|SEXT │ a6 │ b6 │ carry[5] │ c6 │ carry[6] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
+        │      mode64      │ b_op|SEXT │ a7 │ b7 │ carry[6] │ c7 │ carry[7] + 2*result_is_a + 4*use_first_byte + 8*c_is_signed            │
+        │──────────────────│───────────│────│────│──────────│────│──────────────────--------------------------------------------──────────│
     */
 
     // Auxiliary columns (primarily used to lower the lookup call complexity)
-    col witness bits(5) b_op_or_sext;
+    col witness bits(10) b_op_or_sext;
     col witness bits(1) mode32_and_c_is_signed;
-    b_op_or_sext === mode32 * (c_is_signed * (SEXT_FF - SEXT_00) + SEXT_00 - b_op) + b_op;
+    b_op_or_sext === mode32 * (c_is_signed * (OP_SEXT_FF - OP_SEXT_00) + OP_SEXT_00 - b_op) + b_op;
     mode32_and_c_is_signed === mode32 * c_is_signed;
 
     // Lookups
@@ -151,15 +151,10 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, c
 
     // In comparison operations, we set c = 0 and so the result is cout
     // Otherwise, the result is simply c
-    const expr main_op = b_op + 0x20 * mode32;
-    const expr main_flag = cout - result_is_a;
-    c[0] += main_flag;
+    c[0] += cout;
 
-    lookup_proves(operation_bus_id, [main_op, ...a, ...b, ...c, main_flag]);
+    lookup_proves(operation_bus_id, [b_op + 0x10 * mode32, ...a, ...b, ...c, cout]);
 
     airval padding_size;
-    direct_update_assumes(operation_bus_id, [ADD_OP, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
-
-    // TODO: Remove, bug found
-    direct_update_assumes(operation_bus_id, [ADD_OP, 0, 0, 0, 0, 0, 0, 0], sel: 0);
+    direct_update_assumes(operation_bus_id, [OP_ADD, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
 }

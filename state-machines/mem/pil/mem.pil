@@ -1,3 +1,7 @@
+require "std_permutation.pil";
+require "std_range_check.pil";
+require "ids.pil";
+
 /*
     Memory Component (Mem)
     ======================
@@ -64,15 +68,9 @@
 
 */
 
-require "std_permutation.pil"
-require "std_range_check.pil"
-
-const int MEMORY_ID = 10;
-const int MEMORY_CONT_ID = 11;
-
-const int MEMORY_LOAD_OP = 1;
-const int MEMORY_STORE_OP = 2;
-const int MEMORY_REG_OP = 3;
+const int OP_MEMORY_LOAD = 1;
+const int OP_MEMORY_STORE = 2;
+const int OP_MEMORY_REG = 3;
 
 const int RESERVED_MEM_STEPS = 1;
 const int MAX_MEM_STEP_OFFSET = 2;
@@ -194,7 +192,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
     // this constraint "assumes" that previous values of this segment
 
-    direct_update_assumes(MEMORY_CONT_ID,
+    direct_update_assumes(MEMORY_CONTINUATION_ID,
                   [
                     base_address,               // identify area of memory
                     segment_id,                 // current segment_id
@@ -231,7 +229,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         SEGMENT_LAST * (step - segment_last_step) === 0;
     }
 
-    direct_update_proves(MEMORY_CONT_ID,
+    direct_update_proves(MEMORY_CONTINUATION_ID,
                   [
                     base_address,               // identify area of memory
                     segment_id + 1,             // next segment_id, for last segment
@@ -252,7 +250,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // to prevent redundant constraints.This flag is used to handle cases where a memory area is not
     // used during a given execution.
 
-    direct_global_update_proves(MEMORY_CONT_ID, [ base_address, 0, internal_base_address, 0, ...zeros], sel: enable_flag);
+    direct_global_update_proves(MEMORY_CONTINUATION_ID, [ base_address, 0, internal_base_address, 0, ...zeros], sel: enable_flag);
 
     // For security, ensure that the first address has the correct value to prevent adding a large
     // number of instances that could cause an "overflow" in the prime field.
@@ -432,12 +430,12 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // Notice, however, that the main can also use widths of 4, 2, 1 and addresses that are not multiples of bytes.
     // These are handled with the Memory Align component
 
-    const expr mem_op = wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
+    const expr mem_op = wr * (OP_MEMORY_STORE - OP_MEMORY_LOAD) + OP_MEMORY_LOAD;
     permutation_proves(MEMORY_ID, expressions: [mem_op, addr * bytes, step, bytes, ...value], sel: sel);
 
     if (dual_mem) {
         // dual mem memory, send to bus always a READ operation, with same address, and value, only change de step.
-        permutation_proves(MEMORY_ID, expressions: [MEMORY_LOAD_OP, addr * bytes, step_dual, bytes, ...value], sel: sel_dual);
+        permutation_proves(MEMORY_ID, expressions: [OP_MEMORY_LOAD, addr * bytes, step_dual, bytes, ...value], sel: sel_dual);
     }
 }
 
@@ -448,12 +446,12 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
 // Function to send to bus a memory load operations (only for main)
 function mem_load(int id = MEMORY_ID, expr addr, expr mem_step, expr bytes = 8, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
-    mem_assumes(id, MEMORY_LOAD_OP, addr, mem_step, bytes, value, sel, name);
+    mem_assumes(id, OP_MEMORY_LOAD, addr, mem_step, bytes, value, sel, name);
 }
 
 // Function to send to bus a memory write operation (only for main)
 function mem_store(int id = MEMORY_ID, expr addr, expr mem_step, expr bytes = 8, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
-    mem_assumes(id, MEMORY_STORE_OP, addr, mem_step, bytes, value, sel, name);
+    mem_assumes(id, OP_MEMORY_STORE, addr, mem_step, bytes, value, sel, name);
 }
 
 // Function to send to bus a memory operation (only for main)
@@ -471,31 +469,31 @@ function main_step_to_precompiled_mem_step(const expr step, const expr is_write 
 // Helpers for precompiled memory operations
 
 function precompiled_mem_op(int id = MEMORY_ID, expr addr, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT, const expr is_write = 0) {
-    const expr op = is_write * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
+    const expr op = is_write * (OP_MEMORY_STORE - OP_MEMORY_LOAD) + OP_MEMORY_LOAD;
     mem_assumes(id, op, addr, main_step_to_precompiled_mem_step(main_step, is_write), 8, value, sel, name);
 }
 
 function precompiled_mem_load(int id = MEMORY_ID, expr addr, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
-    mem_assumes(id, MEMORY_LOAD_OP, addr, main_step_to_precompiled_mem_step(main_step), 8, value, sel, name);
+    mem_assumes(id, OP_MEMORY_LOAD, addr, main_step_to_precompiled_mem_step(main_step), 8, value, sel, name);
 }
 
 function precompiled_mem_store(int id = MEMORY_ID, expr addr, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT ) {
-    mem_assumes(id, MEMORY_STORE_OP, addr, main_step_to_precompiled_mem_step(main_step, 1), 8, value, sel, name);
+    mem_assumes(id, OP_MEMORY_STORE, addr, main_step_to_precompiled_mem_step(main_step, 1), 8, value, sel, name);
 }
 
 // Helpers for main registers operations (reuse memory operations)
 
 function reg_pre_load(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
-    mem_proves(id, MEMORY_REG_OP, addr, prev_mem_step, value, sel, name: name);
+    mem_proves(id, OP_MEMORY_REG, addr, prev_mem_step, value, sel, name: name);
 }
 
 function reg_pre_store(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
-    mem_proves(id, MEMORY_REG_OP, addr, prev_mem_step, value, sel, name);
+    mem_proves(id, OP_MEMORY_REG, addr, prev_mem_step, value, sel, name);
 }
 
 // Function to send the register operation cycle initialization to the bus.
 function global_init_mem(int id = MEMORY_ID, expr addr, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
-    direct_global_update_assumes(id, [MEMORY_REG_OP, addr, 0, 8, ...value], sel: sel, name: name);
+    direct_global_update_assumes(id, [OP_MEMORY_REG, addr, 0, 8, ...value], sel: sel, name: name);
 }
 
 // Functions to translate from main step to memory step (used by main)
