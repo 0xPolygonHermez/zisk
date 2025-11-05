@@ -39,7 +39,7 @@ airgroup Zisk {
 
     // Main Program
     Main(N: 2**22);
-    Rom(N: 2**21);
+    Rom(N: 2**22);
 
     // Memory
     Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);

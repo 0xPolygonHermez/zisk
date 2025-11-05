@@ -200,9 +200,11 @@ verify_files_exist() {
     local files=("$@")
 
     for f in "${files[@]}"; do
-        if [[ ! -f "${base_path}/${f}" ]]; then
-            err "File not found: ${base_path}/${f}"
-            return 1
+        if [[ "${f}" != "empty" ]]; then # skip "empty", since this indicates that no input file is needed
+            if [[ ! -f "${base_path}/${f}" ]]; then
+                err "File not found: ${base_path}/${f}"
+                return 1
+            fi
         fi
     done
     return 0

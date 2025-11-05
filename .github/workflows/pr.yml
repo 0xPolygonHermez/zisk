@@ -90,6 +90,11 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
 
+      - name: Test ELF diagnostic
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./test_diagnostic.sh
+
       - name: Verify Constraints Ethereum block
         env:
           DISABLE_PROVE: "1"

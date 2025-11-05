@@ -47,18 +47,27 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInstruction
             if code_index == code_len {
                 // This is the last 16 bits in the code buffer, so this must be a 16-bits invalid
                 // instruction, so we must HALT
-                insts.push(RiscvInstruction::c_halt(0));
+                insts.push(RiscvInstruction::c_halt(
+                    0,
+                    rom_address + (instruction_code_index * 2) as u64,
+                ));
                 break;
             }
             let inst = code[code_index];
             if inst == 0 {
                 // Both 16 bits instructions are zero, so this is a 32-bits nop
                 code_index += 1;
-                insts.push(RiscvInstruction::nop(0));
+                insts.push(RiscvInstruction::nop(
+                    0,
+                    rom_address + (instruction_code_index * 2) as u64,
+                ));
             } else {
                 // The first 16 bits are zero, but the second 16 bits are not zero, so this is a
                 // 16-bits invalid instruction, so we must HALT
-                insts.push(RiscvInstruction::c_halt(0));
+                insts.push(RiscvInstruction::c_halt(
+                    0,
+                    rom_address + (instruction_code_index * 2) as u64,
+                ));
             }
             continue;
         }
