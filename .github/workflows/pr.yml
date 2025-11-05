@@ -106,6 +106,13 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_eth_block.sh
 
+      - name: Test ELF diagnostic
+        env:
+          DIAGNOSTIC_INPUTS: "pp_input_1_1.bin"
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./test_diagnostic.sh
+
   test-macos:
     name: Test on macOS
     runs-on: macos-14
