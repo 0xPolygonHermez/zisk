@@ -169,6 +169,8 @@ test_elf() {
         for input_file in "${inputs[@]}"; do
             if [[ "${input_file}" != "empty" ]]; then
                 input_flag="-i ${INPUTS_PATH}/${input_file}"
+            else
+                input_flag=""
             fi
 
             step "Verifying constraints for ${input_file}..."
@@ -223,6 +225,8 @@ test_elf() {
             for input_file in "${dist_inputs[@]}"; do
                 if [[ "${input_file}" != "empty" ]]; then
                     input_flag="-i ${INPUTS_PATH}/${input_file}"
+                else
+                    input_flag=""
                 fi
 
                 step "Proving (distributed) for ${input_file}..."
