@@ -124,7 +124,7 @@ do
         continue;
     else
         PASSED_COUNTER=$((PASSED_COUNTER+1))
-        echo "After processing file ${ELF_FILE} against reference ${REFERENCE_FILE} ..."
+        echo "After processing file ${ELF_FILE} ..."
         echo "✅ DIFF PASSED total passed=${PASSED_COUNTER} total failed=${FAILED_COUNTER}"
         # Record result for final report
         TESTED_FILES+=("$ELF_FILE")
