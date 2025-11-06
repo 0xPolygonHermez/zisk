@@ -46,7 +46,7 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
         // Detect the host's build profile and use it for the guest program
         let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
         let default_args = BuildArgs { release: profile == "release", ..Default::default() };
-        
+
         execute_build_program(&default_args, Some(program_dir.to_path_buf()))
     };
     if let Err(err) = path_output {
