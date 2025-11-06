@@ -30,6 +30,7 @@ impl AsmProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
+        rma: bool,
         final_snark: bool,
         witness_lib: PathBuf,
         proving_key: PathBuf,
@@ -49,6 +50,7 @@ impl AsmProver {
         let core_prover = AsmCoreProver::new(
             verify_constraints,
             aggregation,
+            rma,
             final_snark,
             witness_lib,
             proving_key,
@@ -102,7 +104,7 @@ impl ProverEngine for AsmProver {
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
         let debug_info =
-            create_debug_info(debug_info, self.core_prover.backend.proving_key.clone());
+            create_debug_info(debug_info, self.core_prover.backend.proving_key.clone())?;
 
         self.core_prover.backend.verify_constraints_debug(stdin, debug_info)
     }
@@ -164,6 +166,7 @@ impl AsmCoreProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
+        rma: bool,
         final_snark: bool,
         witness_lib: PathBuf,
         proving_key: PathBuf,
@@ -238,11 +241,12 @@ impl AsmCoreProver {
         asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
-        proofman.register_witness(&mut *witness_lib, library);
+        proofman.register_witness(&mut *witness_lib, library)?;
 
         let core = ProverBackend {
             verify_constraints,
             aggregation,
+            rma,
             final_snark,
             witness_lib,
             proving_key: proving_key.clone(),

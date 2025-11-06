@@ -1635,6 +1635,7 @@ impl Coordinator {
                 final_proof: all_done,
                 verify_constraints: true,
                 aggregation: true,
+                rma: true,
                 final_snark: false,
                 verify_proofs: true,
                 save_proofs: false,

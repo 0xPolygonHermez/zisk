@@ -61,7 +61,7 @@ pub struct ZiskProve {
     #[clap(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
 
-    #[clap(short = 'r', long, default_value_t = false)]
+    #[clap(short = 'z', long, default_value_t = false)]
     pub preallocate: bool,
 
     /// Base port for Assembly microservices (default: 23115).
@@ -101,6 +101,9 @@ pub struct ZiskProve {
 
     #[clap(short = 'j', long, default_value_t = false)]
     pub shared_tables: bool,
+
+    #[clap(short = 'r', long, default_value_t = false)]
+    pub rma: bool,
 }
 
 impl ZiskProve {
@@ -170,6 +173,8 @@ impl ZiskProve {
         let prover = ProverClient::builder()
             .emu()
             .prove()
+            .aggregation(self.aggregation)
+            .rma(self.rma)
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
@@ -197,6 +202,8 @@ impl ZiskProve {
         let prover = ProverClient::builder()
             .asm()
             .prove()
+            .aggregation(self.aggregation)
+            .rma(self.rma)
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())

@@ -78,11 +78,14 @@ impl<F: PrimeField64> KeccakfSM<F> {
         // Get the fixed columns
         let airgroup_id = KeccakfTraceType::<F>::AIRGROUP_ID;
         let air_id = KeccakfTraceType::<F>::AIR_ID;
-        let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
+        let fixed_pols =
+            sctx.get_fixed(airgroup_id, air_id).expect("Failed to get fixed polynomials");
         let keccakf_fixed = KeccakfFixed::new_from_vec(fixed_pols);
 
         // Get the table ID
-        let table_id = std.get_virtual_table_id(KeccakfTableSM::TABLE_ID);
+        let table_id = std
+            .get_virtual_table_id(KeccakfTableSM::TABLE_ID)
+            .expect("Failed to get Keccakf table ID");
 
         Arc::new(Self {
             table_id,

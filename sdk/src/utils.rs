@@ -4,7 +4,7 @@ use std::{env, fs};
 
 use anyhow::Result;
 
-use proofman_common::{json_to_debug_instances_map, DebugInfo};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ProofmanResult};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -149,10 +149,13 @@ pub fn check_paths_exist(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn create_debug_info(debug_info: Option<Option<String>>, proving_key: PathBuf) -> DebugInfo {
+pub fn create_debug_info(
+    debug_info: Option<Option<String>>,
+    proving_key: PathBuf,
+) -> ProofmanResult<DebugInfo> {
     match &debug_info {
-        None => DebugInfo::default(),
-        Some(None) => DebugInfo::new_debug(),
+        None => Ok(DebugInfo::default()),
+        Some(None) => Ok(DebugInfo::new_debug()),
         Some(Some(debug_value)) => json_to_debug_instances_map(proving_key, debug_value.clone()),
     }
 }

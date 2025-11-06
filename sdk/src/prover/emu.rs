@@ -26,6 +26,7 @@ impl EmuProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
+        rma: bool,
         final_snark: bool,
         witness_lib: PathBuf,
         proving_key: PathBuf,
@@ -41,6 +42,7 @@ impl EmuProver {
         let core_prover = EmuCoreProver::new(
             verify_constraints,
             aggregation,
+            rma,
             final_snark,
             witness_lib,
             proving_key,
@@ -90,7 +92,7 @@ impl ProverEngine for EmuProver {
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
         let debug_info =
-            create_debug_info(debug_info, self.core_prover.backend.proving_key.clone());
+            create_debug_info(debug_info, self.core_prover.backend.proving_key.clone())?;
 
         self.core_prover.backend.verify_constraints_debug(stdin, debug_info)
     }
@@ -137,6 +139,7 @@ impl EmuCoreProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
+        rma: bool,
         final_snark: bool,
         witness_lib: PathBuf,
         proving_key: PathBuf,
@@ -176,11 +179,12 @@ impl EmuCoreProver {
 
         initialize_logger(verbose.into(), Some(world_rank));
 
-        proofman.register_witness(&mut *witness_lib, library);
+        proofman.register_witness(&mut *witness_lib, library)?;
 
         let core = ProverBackend {
             verify_constraints,
             aggregation,
+            rma,
             final_snark,
             witness_lib,
             proving_key: proving_key.clone(),
