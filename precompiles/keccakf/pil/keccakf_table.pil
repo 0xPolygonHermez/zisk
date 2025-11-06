@@ -1,5 +1,5 @@
 require "std_lookup.pil";
-require "ids.pil";
+require "opids.pil";
 
 airtemplate KeccakfTable(const int N, const int chunks, const int bits) {
     // Operations

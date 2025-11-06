@@ -1,7 +1,7 @@
 require "std_permutation.pil";
 require "std_lookup.pil";
 require "std_range_check.pil";
-require "ids.pil";
+require "opids.pil";
 require "dual_byte.pil";
 
 // Specific low cost machine for specific byte unaligned memory access.
@@ -64,7 +64,7 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
     mem_read_values[0] = sel_high_4b * (direct_value - composed_value) + composed_value;
     mem_read_values[1] = sel_high_4b * (composed_value - direct_value) + direct_value;
 
-    permutation_assumes(MEMORY_ID, [OP_MEMORY_LOAD, mem_addr, step, 8, ...mem_read_values ]);
+    permutation_assumes(MEMORY_ID, [MEMORY_LOAD_OP, mem_addr, step, 8, ...mem_read_values ]);
 
 
     if (read == 1 && write == 1) {
@@ -76,7 +76,7 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
         const int air.is_write = 1;
     }
 
-    const expr mem_op = OP_MEMORY_LOAD + air.is_write * (OP_MEMORY_STORE - OP_MEMORY_LOAD);
+    const expr mem_op = MEMORY_LOAD_OP + air.is_write * (MEMORY_STORE_OP - MEMORY_LOAD_OP);
 
     if (write == 1) {
         written_composed_value === written_byte_value * byte_value_factor +
@@ -88,7 +88,7 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
         mem_write_values[0] === sel_high_4b * (direct_value - written_composed_value) + written_composed_value;
         mem_write_values[1] === sel_high_4b * (written_composed_value - direct_value) + direct_value;  
 
-        permutation_assumes(MEMORY_ID, [OP_MEMORY_STORE, mem_addr, step + 1, 8, ...mem_write_values ], sel: is_write); 
+        permutation_assumes(MEMORY_ID, [MEMORY_STORE_OP, mem_addr, step + 1, 8, ...mem_write_values ], sel: is_write); 
     }
 
     if (read == 1 && write == 1) {
@@ -96,25 +96,25 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
         bus_byte === is_write * (written_byte_value - byte_value) + byte_value;
         permutation_proves(MEMORY_ID, [mem_op, main_addr, step, 1, bus_byte, 0]);
     } else if (read == 1) {
-        permutation_proves(MEMORY_ID, [OP_MEMORY_LOAD, main_addr, step, 1, byte_value, 0]);
+        permutation_proves(MEMORY_ID, [MEMORY_LOAD_OP, main_addr, step, 1, byte_value, 0]);
     } else if (write == 1) {
-        permutation_proves(MEMORY_ID, [OP_MEMORY_STORE, main_addr, step, 1, written_byte_value, 0]);
+        permutation_proves(MEMORY_ID, [MEMORY_STORE_OP, main_addr, step, 1, written_byte_value, 0]);
     }
 
     range_check(min: 0, max: 0xFFFF, expression: value_16b);
     lookup_assumes(DUAL_BYTE_TABLE_ID, [byte_value, value_8b]);
 
     airval padding_size;
-    direct_update_proves(MEMORY_ID, [OP_MEMORY_LOAD, 0, 0, 8, 0, 0], sel: padding_size);
+    direct_update_proves(MEMORY_ID, [MEMORY_LOAD_OP, 0, 0, 8, 0, 0], sel: padding_size);
 
     // read + write => padding is_write = 0 => no extra WRITE padding
     // read => padding with LOAD
     // write => extra padding with WRITE
 
     if (read == 0 && write == 1) {
-        direct_update_assumes(MEMORY_ID, [OP_MEMORY_STORE, 0, 0, 1, 0, 0], sel: padding_size);
-        direct_update_proves(MEMORY_ID, [OP_MEMORY_STORE, 0, 1, 8, 0, 0], sel: padding_size);
+        direct_update_assumes(MEMORY_ID, [MEMORY_STORE_OP, 0, 0, 1, 0, 0], sel: padding_size);
+        direct_update_proves(MEMORY_ID, [MEMORY_STORE_OP, 0, 1, 8, 0, 0], sel: padding_size);
     } else {
-        direct_update_assumes(MEMORY_ID, [OP_MEMORY_LOAD, 0, 0, 1, 0, 0], sel: padding_size);
+        direct_update_assumes(MEMORY_ID, [MEMORY_LOAD_OP, 0, 0, 1, 0, 0], sel: padding_size);
     }
 }

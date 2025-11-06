@@ -1,7 +1,7 @@
 require "std_lookup.pil";
 require "std_permutation.pil";
 require "std_direct.pil";
-require "ids.pil";
+require "opids.pil";
 
 const int BOOT_ADDR = 0x1000;
 const int END_PC_ADDR = 0x1004;
@@ -280,7 +280,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     // Memory function to assume current register a_offset_imm0 access or memory access to addr0.
 
     mem_op(sel: a_src_mem + a_src_reg,
-           op: OP_MEMORY_LOAD * a_src_mem + OP_MEMORY_REG * a_src_reg,
+           op: MEMORY_LOAD_OP * a_src_mem + MEMORY_REG_OP * a_src_reg,
            mem_step: a_mem_step,
            addr: addr0,
            value: a);
@@ -296,7 +296,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     // Memory function to assume current register b_offset_imm0 access or memory access to addr1.
 
     mem_op(sel: sel_mem_b + b_src_reg,
-           op: OP_MEMORY_LOAD * sel_mem_b + OP_MEMORY_REG * b_src_reg,
+           op: MEMORY_LOAD_OP * sel_mem_b + MEMORY_REG_OP * b_src_reg,
            mem_step: b_mem_step,
            bytes: b_src_ind * (ind_width - 8) + 8,
            addr: addr1,
@@ -319,7 +319,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     // Memory function to assume current register store_offset access or memory access to addr2.
 
     mem_op(sel: store_mem + store_ind + store_reg,
-           op: OP_MEMORY_STORE * (store_mem + store_ind) + OP_MEMORY_REG * store_reg,
+           op: MEMORY_STORE_OP * (store_mem + store_ind) + MEMORY_REG_OP * store_reg,
            mem_step: store_mem_step,
            bytes: store_ind * (ind_width - 8) + 8,
            addr: addr2,
@@ -441,7 +441,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
 
         // Send to the bus current access, it will the previous access in the next segment.
         // Selector because this must not be send in the last segment.
-        mem_op(op: OP_MEMORY_REG, mem_step: last_segment_reg_mem_step, addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[ireg], sel: (1 - main_last_segment));
+        mem_op(op: MEMORY_REG_OP, mem_step: last_segment_reg_mem_step, addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[ireg], sel: (1 - main_last_segment));
     }
 
     // flag must be boolean

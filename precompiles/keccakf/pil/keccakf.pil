@@ -2,7 +2,7 @@ require "std_constants.pil";
 require "std_lookup.pil";
 require "std_connection.pil";
 require "operations.pil";
-require "ids.pil";
+require "opids.pil";
 require "keccakf_table.pil";
 
 // Precompile in charge of performing the Keccak-f[1600] permutation.

@@ -3,7 +3,7 @@ require "std_lookup.pil";
 require "std_range_check.pil";
 require "std_connection.pil";
 require "operations.pil";
-require "ids.pil";
+require "opids.pil";
 
 // Precompile in charge of performing the SHA2-256 permutation (named here Sha256-f). 
 // For reference: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf

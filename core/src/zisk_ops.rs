@@ -336,6 +336,7 @@ define_ops! {
     (Max, "max", Binary, BINARY_COST, 0x05, 0, 0, opc_max, op_max, ops_none),
     (Ltu, "ltu", Binary, BINARY_COST, 0x06, 0, 0, opc_ltu, op_ltu, ops_none),
     (Lt, "lt", Binary, BINARY_COST, 0x07, 0, 0, opc_lt, op_lt, ops_none),
+    // Opcode 0x08 is reserved for binary
     (Eq, "eq", Binary, BINARY_COST, 0x09, 0, 0, opc_eq, op_eq, ops_none),
     (Add, "add", Binary, BINARY_ADD_COST, 0x0a, 0, 0, opc_add, op_add, ops_none),
     (Sub, "sub", Binary, BINARY_COST, 0x0b, 0, 0, opc_sub, op_sub, ops_none),
@@ -344,17 +345,20 @@ define_ops! {
     (And, "and", Binary, BINARY_COST, 0x0e, 0, 0, opc_and, op_and, ops_none),
     (Or, "or", Binary, BINARY_COST, 0x0f, 0, 0, opc_or, op_or, ops_none),
     (Xor, "xor", Binary, BINARY_COST, 0x10, 0, 0, opc_xor, op_xor, ops_none),
+    // Opcode 0x11 is available
     (MinuW, "minu_w", Binary, BINARY_COST, 0x12, 0, 0, opc_minu_w, op_minu_w, ops_none),
     (MinW, "min_w", Binary, BINARY_COST, 0x13, 0, 0, opc_min_w, op_min_w, ops_none),
     (MaxuW, "maxu_w", Binary, BINARY_COST, 0x14, 0, 0, opc_maxu_w, op_maxu_w, ops_none),
     (MaxW, "max_w", Binary, BINARY_COST, 0x15, 0, 0, opc_max_w, op_max_w, ops_none),
     (LtuW, "ltu_w", Binary, BINARY_COST, 0x16, 0, 0, opc_ltu_w, op_ltu_w, ops_none),
     (LtW, "lt_w", Binary, BINARY_COST, 0x17, 0, 0, opc_lt_w, op_lt_w, ops_none),
+    // Opcode 0x18 is reserved for binary
     (EqW, "eq_w", Binary, BINARY_COST, 0x19, 0, 0, opc_eq_w, op_eq_w, ops_none),
     (AddW, "add_w", Binary, BINARY_COST, 0x1a, 0, 0, opc_add_w, op_add_w, ops_none),
     (SubW, "sub_w", Binary, BINARY_COST, 0x1b, 0, 0, opc_sub_w, op_sub_w, ops_none),
     (LeuW, "leu_w", Binary, BINARY_COST, 0x1c, 0, 0, opc_leu_w, op_leu_w, ops_none),
     (LeW, "le_w", Binary, BINARY_COST, 0x1d, 0, 0, opc_le_w, op_le_w, ops_none),
+    // Opcodes 0x1e,0x1f,0x20 are reserved for binary
     (Sll, "sll", BinaryE, BINARY_E_COST, 0x21, 0, 0, opc_sll, op_sll, ops_none),
     (Srl, "srl", BinaryE, BINARY_E_COST, 0x22, 0, 0, opc_srl, op_srl, ops_none),
     (Sra, "sra", BinaryE, BINARY_E_COST, 0x23, 0, 0, opc_sra, op_sra, ops_none),
@@ -365,6 +369,7 @@ define_ops! {
     (SignExtendH, "signextend_h", BinaryE, BINARY_E_COST, 0x28, 0, 0, opc_signextend_h, op_signextend_h, ops_none),
     (SignExtendW, "signextend_w", BinaryE, BINARY_E_COST, 0x29, 0, 0, opc_signextend_w, op_signextend_w, ops_none),
     (PubOut, "pubout", PubOut, 0, 0x30, 0, 0, opc_pubout, op_pubout, ops_none),
+    // Opcodes 0x50,0x51,0x60,0x61 are reserved for binary
     (Mulu, "mulu", ArithAm32, ARITHAM32_COST, 0xb0, 0, 0, opc_mulu, op_mulu, ops_none),
     (Muluh, "muluh", ArithAm32, ARITHAM32_COST, 0xb1, 0, 0, opc_muluh, op_muluh, ops_none),
     (Mulsuh, "mulsuh", ArithAm32, ARITHAM32_COST, 0xb3, 0, 0, opc_mulsuh, op_mulsuh, ops_none),

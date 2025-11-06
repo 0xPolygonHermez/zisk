@@ -1,5 +1,5 @@
 require "std_permutation.pil";
-require "ids.pil";
+require "opids.pil";
 
 airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom_bus_id = ROM_BUS_ID, 
                     const int RC = 2, const int bytes = 8, const int reads_by_row = 1) {
@@ -12,7 +12,7 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
 
     for (int i = 0; i < reads_by_row; i++) {
         sel[i] * (1 - sel[i]) === 0;
-        permutation_proves(id, expressions: [OP_MEMORY_LOAD, addr * bytes, step[i], bytes, ...value], sel: sel[i]);
+        permutation_proves(id, expressions: [MEMORY_LOAD_OP, addr * bytes, step[i], bytes, ...value], sel: sel[i]);
     }
 
     // line:0, a_offset_imm0:addr, a_imm1:0, b_offset_imm0:value[0], b_imm1:value[1], ind_width:8, 
