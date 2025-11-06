@@ -26,3 +26,7 @@ bytemuck = { workspace = true }
 default = []
 gpu = []
 stats = []
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }

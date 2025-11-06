@@ -4,11 +4,12 @@ use crate::{
 };
 use anyhow::Result;
 use bytemuck::cast_slice;
+use colored::Colorize;
 use fields::Goldilocks;
 use proofman::{AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::{DebugInfo, ProofOptions};
 use std::{fs::File, io::Write, path::PathBuf};
-use zisk_common::{io::ZiskStdin, ProofLog, ZiskLib};
+use zisk_common::{io::ZiskStdin, ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
 use zstd::Encoder;
 
 pub(crate) struct ProverBackend {
@@ -47,6 +48,63 @@ impl ProverBackend {
         })?;
 
         Ok(ZiskExecuteResult { execution: result, duration: elapsed })
+    }
+
+    pub(crate) fn stats(
+        &self,
+        stdin: ZiskStdin,
+        debug_info: DebugInfo,
+        _mpi_node: Option<u32>,
+    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+        self.witness_lib.set_stdin(stdin);
+
+        let world_rank = self.proofman.get_world_rank();
+        let local_rank = self.proofman.get_local_rank();
+        let n_processes = self.proofman.get_n_processes();
+
+        let mut is_active = true;
+
+        if let Some(mpi_node) = _mpi_node {
+            if local_rank != mpi_node as i32 {
+                is_active = false;
+            }
+        }
+
+        self.proofman.split_active_processes(is_active);
+
+        if !is_active {
+            println!(
+                "{}: {}",
+                format!("Rank {local_rank}").bright_yellow().bold(),
+                "Inactive rank, skipping computation.".bright_yellow()
+            );
+
+            return Ok((world_rank, n_processes, None));
+        }
+
+        self.proofman
+            .compute_witness_from_lib(
+                None,
+                &debug_info,
+                ProofOptions::new(
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    self.minimal_memory,
+                    false,
+                    PathBuf::new(),
+                ),
+            )
+            .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
+
+        let (_, stats): (ZiskExecutionResult, ExecutorStats) =
+            self.witness_lib.execution_result().ok_or_else(|| {
+                anyhow::anyhow!("Failed to get execution result from emulator prover")
+            })?;
+
+        Ok((world_rank, n_processes, Some(stats)))
     }
 
     pub(crate) fn verify_constraints_debug(

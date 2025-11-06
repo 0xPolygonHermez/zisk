@@ -48,6 +48,13 @@ pub trait ProverEngine {
 
     fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult>;
 
+    fn stats(
+        &self,
+        stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
+        mpi_node: Option<u32>,
+    ) -> Result<(i32, i32, Option<ExecutorStats>)>;
+
     fn verify_constraints_debug(
         &self,
         stdin: ZiskStdin,
@@ -116,6 +123,16 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// It only runs the execution without generating a proof.
     pub fn execute(&self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
         self.prover.execute(stdin, None)
+    }
+
+    /// Get the execution statistics with the given standard input and debug information.
+    pub fn stats(
+        &self,
+        stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
+        mpi_node: Option<u32>,
+    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+        self.prover.stats(stdin, debug_info, mpi_node)
     }
 
     /// Verify the constraints with the given standard input and debug information.
