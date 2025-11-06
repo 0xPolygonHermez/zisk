@@ -1,24 +1,23 @@
-require "std_direct.pil"
+require "std_direct.pil";
 
-require "operations.pil"
-require "ids.pil"
+require "operations.pil";
+require "ids.pil";
 
-require "rom/pil/rom.pil"
-require "main/pil/main.pil"
-require "mem/pil/mem.pil"
-require "mem/pil/mem_align.pil"
-require "mem/pil/mem_align_byte.pil"
-require "mem/pil/dual_byte.pil"
-require "frequent-ops/pil/frequent_ops.pil"
-require "binary/pil/binary.pil"
-require "binary/pil/binary_extension.pil"
-require "binary/pil/binary_add.pil"
-require "arith/pil/arith.pil"
-require "arith_eq/pil/arith_eq.pil"
-require "arith_eq_384/pil/arith_eq_384.pil"
-require "keccakf/pil/keccakf.pil"
-require "sha256f/pil/sha256f.pil"
-require "big_int/pil/big_int_add.pil"
+require "rom/pil/rom.pil";
+require "main/pil/main.pil";
+require "mem/pil/mem.pil";
+require "mem/pil/mem_align.pil";
+require "mem/pil/mem_align_byte.pil";
+require "frequent-ops/pil/frequent_ops.pil";
+require "binary/pil/binary.pil";
+require "binary/pil/binary_extension.pil";
+require "binary/pil/binary_add.pil";
+require "arith/pil/arith.pil";
+require "big_int/pil/big_int_add.pil";
+require "arith_eq/pil/arith_eq.pil";
+require "arith_eq_384/pil/arith_eq_384.pil";
+require "keccakf/pil/keccakf.pil";
+require "sha256f/pil/sha256f.pil";
 
 proofval enable_input_data;
 enable_input_data * (1 - enable_input_data);
@@ -72,7 +71,7 @@ airgroup Zisk {
                         bin_file: "state-machines/binary/src/binary_extension_frops_fixed.bin") alias BinaryExtensionFrops;
 
     // Precompiles
-    BigIntAdd(N: 2**20, bits: 256) alias Add256;
+    BigIntAdd(N: 2**20, bits: 256, operation_code: OP_ADD256) alias Add256;
     ArithEq(N: 2**20);
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();

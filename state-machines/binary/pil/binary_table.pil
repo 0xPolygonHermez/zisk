@@ -4,36 +4,33 @@ require "operations.pil";
 require "ids.pil";
 
 /* PIL Binary Operations Table used by Binary
-                                                                                        Running Total
-    MINU           2^8 (A) x 2^8 (B) x        0      x 2^1 (CIN) x 2^1 (FLAGS)  = 2^18 |                           + 2^18
-    MINU           2^8 (A) x 2^8 (B) x        1      x 2^1 (CIN)                = 2^17 |                           + 2^18 + 2^17
-    MIN            2^8 (A) x 2^8 (B) x        0      x 2^1 (CIN) x 2^1 (FLAGS)  = 2^18 |                    + 2^19        + 2^17
-    MIN            2^8 (A) x 2^8 (B) x        1      x 2^1 (CIN)                = 2^17 |                    + 2^19 + 2^18
-    MAXU           2^8 (A) x 2^8 (B) x        0      x 2^1 (CIN) x 2^1 (FLAGS)  = 2^18 |               2^20
-    MAXU           2^8 (A) x 2^8 (B) x        1      x 2^1 (CIN)                = 2^17 |               2^20               + 2^17
-    MAX            2^8 (A) x 2^8 (B) x        0      x 2^1 (CIN) x 2^1 (FLAGS)  = 2^18 |               2^20        + 2^18 + 2^17
-    MAX            2^8 (A) x 2^8 (B) x        1      x 2^1 (CIN)                = 2^17 |               2^20 + 2^19
-    LT_ABS_NP      2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)                = 2^19 |        2^21
-    LT_ABS_PN      2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)                = 2^19 |        2^21        + 2^19 
-    LTU            2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                = 2^18 |        2^21        + 2^19 + 2^18
-    LT             2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                = 2^18 |        2^21 + 2^20
-    GT             2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                = 2^18 |        2^21 + 2^20        + 2^18
-    EQ             2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                = 2^18 |        2^21 + 2^20 + 2^19 
-    ADD            2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                = 2^18 |        2^21 + 2^20 + 2^19 + 2^18
-    SUB            2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                = 2^18 | 2^22
-    LEU            2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                = 2^18 | 2^22                      + 2^18
-    LE             2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)                = 2^18 | 2^22               + 2^19
-    AND        *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                            = 2^17 | 2^22               + 2^19        + 2^17
-    OR         *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                            = 2^17 | 2^22               + 2^19 + 2^18     
-    XOR        *   2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                            = 2^17 | 2^22               + 2^19 + 2^18 + 2^17   
-    SEXT_00    **  2^8 (A) x 2^8 (B)                 x 2^1 (CIN) x      0       = 2^17 | 2^22        + 2^20
-    SEXT_00    **  2^8 (A) x 2^8 (B)                             x      1       = 2^16 | 2^22        + 2^20                      + 2^16
-    SEXT_FF    **  2^8 (A) x 2^8 (B)                 x 2^1 (CIN) x      0       = 2^17 | 2^22        + 2^20               + 2^17 + 2^16   
-    SEXT_FF    **  2^8 (A) x 2^8 (B)                             x      1       = 2^16 | 2^22        + 2^20         + 2^18
+                                                                                     Running Total
+    MINU       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |                           + 2^18 + 2^17
+    MIN        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |                    + 2^19 + 2^18
+    MAXU       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |               2^20               + 2^17
+    MAX        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |               2^20 + 2^19
+    LT_ABS_NP  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)          =    2^19     |        2^21
+    LT_ABS_PN  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)          =    2^19     |        2^21        + 2^19 
+    LTU        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21        + 2^19 + 2^18
+    LT         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20
+    GT         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20        + 2^18
+    EQ         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20 + 2^19 
+    ADD        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20 + 2^19 + 2^18
+    SUB        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22
+    LEU        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22                      + 2^18
+    LE         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22               + 2^19
+    AND        2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19        + 2^17
+    OR         2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19 + 2^18     
+    XOR        2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19 + 2^18 + 2^17   
+    SEXT_00    2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 | 2^22        + 2^20                      + 2^16
+    SEXT_FF    2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 | 2^22        + 2^20         + 2^18
     -------------------------------------------------------------------------------------------------------------------
-    (*)  Do not uses POS_IND in its operation, but the binary does so we need to consider it
-    (**) Do not uses A,B,CIN in its operation, but the binary does so we need to consider them
-    Note: SEXT_00, SEXT_FF are the only (unary) operation which is not a ZisK OP but are used to prove the rest
+    Notes:
+    - MINU/MIN/MAXU/MAX: POS_IND=0 (2^18 rows with FLAGS), POS_IND=1 (2^17 rows without FLAGS)
+    - SEXT_00/SEXT_FF: FLAGS=0 (2^17 rows with CIN), FLAGS=1 (2^16 rows without CIN)
+    - Bitwise ops don't use POS_IND operationally, but include it for consistency with other ops
+    - Sign extension ops don't use A,B,CIN operationally, but include them for consistency with other ops
+    - SEXT_00, SEXT_FF are the only (unary) operation which are not a ZisK OP but are used to prove the rest
 */
 
 const int BINARY_TABLE_SIZE = P2_22 + P2_20 + P2_18;
@@ -117,29 +114,19 @@ airtemplate BinaryTable(const int N = 2**23) {
                 }
                 
                 if (plast == 0) {
-                    result_is_a = relative_index >= P2_17 ? 1 : 0;
-
-                    if (result_is_a) {
-                        c = a;
-                    } else {
-                        c = b;
-                    }
+                    result_is_a = (relative_index >= P2_17) ? 1 : 0;
+                    c = result_is_a ? a : b;
                 } else {
                     result_is_a = cout;
 
+                    // For signed MIN with different signs, the negative number is smaller
                     if (op == OP_MIN && (a & SIGN_BYTE) != (b & SIGN_BYTE)) {
                         result_is_a = (a & SIGN_BYTE) ? 1 : 0;
                     }
 
-                    if (result_is_a) {
-                        c = a;
-                    } else {
-                        c = b;
-                    }
-
+                    c = result_is_a ? a : b;
                     c_is_signed = (c & SIGN_BYTE) ? 1 : 0;
-
-                    cout = 0;
+                    cout = 0;  // Clear carry for final result
                 }
 
             case OP_MAXU,OP_MAX: // MAXU,MAX: Maximum operation
@@ -154,29 +141,19 @@ airtemplate BinaryTable(const int N = 2**23) {
                 }
 
                 if (plast == 0) {
-                    result_is_a = relative_index >= P2_17 ? 1 : 0;
-
-                    if (result_is_a) {
-                        c = a;
-                    } else {
-                        c = b;
-                    }
+                    result_is_a = (relative_index >= P2_17) ? 1 : 0;
+                    c = result_is_a ? a : b;
                 } else {
                     result_is_a = cout;
 
+                    // For signed MAX with different signs, the negative number is smaller
                     if (op == OP_MAX && (a & SIGN_BYTE) != (b & SIGN_BYTE)) {
                         result_is_a = (b & SIGN_BYTE) ? 1 : 0;
                     }
 
-                    if (result_is_a) {
-                        c = a;
-                    } else {
-                        c = b;
-                    }
-
+                    c = result_is_a ? a : b;
                     c_is_signed = (c & SIGN_BYTE) ? 1 : 0;
-
-                    cout = 0;
+                    cout = 0;  // Clear carry for final result
                 }
 
             case OP_LT_ABS_NP: // LT_ABS_NP: Absolute value comparison |a| < |b| where a < 0 and b > 0
@@ -333,7 +310,7 @@ airtemplate BinaryTable(const int N = 2**23) {
                 cout = cin;
                 c = 0x00;
 
-                result_is_a = relative_index >= P2_17 ? 1 : 0;
+                result_is_a = (relative_index >= P2_17) ? 1 : 0;
                 c_is_signed = 0;
 
             case OP_SEXT_FF: // SEXT_FF: Sign extension with 1
@@ -341,7 +318,7 @@ airtemplate BinaryTable(const int N = 2**23) {
                 cout = cin;
                 c = 0xFF;
 
-                result_is_a = relative_index >= P2_17 ? 1 : 0;
+                result_is_a = (relative_index >= P2_17) ? 1 : 0;
                 c_is_signed = 1;
 
             default:
