@@ -1,3 +1,7 @@
+require "std_permutation.pil";
+require "std_range_check.pil";
+require "opids.pil";
+
 /*
     Memory Component (Mem)
     ======================
@@ -63,12 +67,6 @@
       step_dual or step, depending on whether the dual mode was active in the previous row or not.
 
 */
-
-require "std_permutation.pil"
-require "std_range_check.pil"
-
-const int MEMORY_ID = 10;
-const int MEMORY_CONT_ID = 11;
 
 const int MEMORY_LOAD_OP = 1;
 const int MEMORY_STORE_OP = 2;
@@ -194,7 +192,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
     // this constraint "assumes" that previous values of this segment
 
-    direct_update_assumes(MEMORY_CONT_ID,
+    direct_update_assumes(MEMORY_CONTINUATION_ID,
                   [
                     base_address,               // identify area of memory
                     segment_id,                 // current segment_id
@@ -231,7 +229,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         SEGMENT_LAST * (step - segment_last_step) === 0;
     }
 
-    direct_update_proves(MEMORY_CONT_ID,
+    direct_update_proves(MEMORY_CONTINUATION_ID,
                   [
                     base_address,               // identify area of memory
                     segment_id + 1,             // next segment_id, for last segment
@@ -252,7 +250,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // to prevent redundant constraints.This flag is used to handle cases where a memory area is not
     // used during a given execution.
 
-    direct_global_update_proves(MEMORY_CONT_ID, [ base_address, 0, internal_base_address, 0, ...zeros], sel: enable_flag);
+    direct_global_update_proves(MEMORY_CONTINUATION_ID, [ base_address, 0, internal_base_address, 0, ...zeros], sel: enable_flag);
 
     // For security, ensure that the first address has the correct value to prevent adding a large
     // number of instances that could cause an "overflow" in the prime field.

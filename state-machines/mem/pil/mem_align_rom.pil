@@ -1,6 +1,6 @@
-require "std_lookup.pil"
+require "std_lookup.pil";
+require "opids.pil";
 
-const int MEM_ALIGN_ROM_ID = 133;
 const int MEM_ALIGN_ROM_SIZE = P2_8;
 
 airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int CHUNK_NUM = 8, const int DEFAULT_OFFSET = 0, const int DEFAULT_WIDTH = 8, const int disable_fixed = 0) {
@@ -319,5 +319,5 @@ airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int CHUNK_NUM = 
     }
 
     // Ensure the program is being followed by the MemAlign
-    lookup_proves(MEM_ALIGN_ROM_ID, [PC, DELTA_PC, DELTA_ADDR, OFFSET, WIDTH, FLAGS], multiplicity);
+    lookup_proves(MEMORY_ALIGN_ROM_ID, [PC, DELTA_PC, DELTA_ADDR, OFFSET, WIDTH, FLAGS], multiplicity);
 }

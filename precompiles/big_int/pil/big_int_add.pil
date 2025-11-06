@@ -1,5 +1,7 @@
-require "std_lookup.pil"
-require "std_range_check.pil"
+require "std_lookup.pil";
+require "std_range_check.pil";
+require "operations.pil";
+require "opids.pil";
 
 /// BinIntAdd Precompile
 ///
@@ -43,9 +45,7 @@ require "std_range_check.pil"
 ///     addr_c + 8 * (N_RC - 1) <- c[N_RC-1] (c_chunks[N_RC-1][0] + c_chunks[N_RC-1][1] << 16, 
 ///                                           c_chunks[N_RC-1][2] + c_chunks[N_RC-1][3] << 16)
 
-airtemplate BigIntAdd(const int N = 2**21, const int operation_bus_id = OPERATION_BUS_ID, 
-                      const int bits = 256, 
-                      const int operation_code) {
+airtemplate BigIntAdd(const int N = 2**21, const int bits = 256, const int operation_code, const int operation_bus_id = OPERATION_BUS_ID) {
                         
     const int RC = 2; 
     const int N_RC = bits / (RC * 32);

@@ -1,8 +1,7 @@
-require "std_lookup.pil"
+require "std_lookup.pil";
+require "opids.pil";
 
-const int DUAL_BYTE_TABLE_ID = 88;
-
-airtemplate DualByte(int N = 2**16) {
+airtemplate DualByte(const int N = 2**16) {
 
     col fixed BYTE_A = [0:256..255:256]...;
     col fixed BYTE_B = [0..255]...;

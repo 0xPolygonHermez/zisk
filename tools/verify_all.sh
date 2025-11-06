@@ -85,7 +85,7 @@ verify_elf_with_inputs() {
         # No input path provided
         echo "Verifying ELF file: \"$elf_file\" with no inputs"
 
-        if (cargo build --release && cargo run --release --bin cargo-zisk verify-constraints \
+        if (cargo run --release --bin cargo-zisk verify-constraints \
         --emulator \
         --witness-lib target/release/libzisk_witness.so \
         --elf "$elf_file" \
@@ -99,7 +99,7 @@ verify_elf_with_inputs() {
         # Single input file provided
         echo "Verifying ELF file: \"$elf_file\" with input file: \"$input_path\""
 
-        if (cargo build --release && cargo run --release --bin cargo-zisk verify-constraints \
+        if (cargo run --release --bin cargo-zisk verify-constraints \
         --emulator \
         --witness-lib target/release/libzisk_witness.so \
         --elf "$elf_file" \
@@ -125,7 +125,7 @@ verify_elf_with_inputs() {
             input_counter=$((input_counter + 1))
             echo "Verifying input $input_counter of $input_total: \"$input_file\""
 
-            if ! (cargo build --release && cargo run --release --bin cargo-zisk verify-constraints \
+            if ! (cargo run --release --bin cargo-zisk verify-constraints \
             --emulator \
             --witness-lib target/release/libzisk_witness.so \
             --elf "$elf_file" \
@@ -178,6 +178,17 @@ print_final_report() {
         exit 1
     fi
 }
+
+# Build once at the beginning (unless we're just listing)
+if [ $list -eq 0 ]; then
+    echo "Building project..."
+    if ! cargo build --release; then
+        echo "❌ Build failed"
+        exit 1
+    fi
+    echo "✅ Build successful"
+    echo ""
+fi
 
 # Logic for multiple ELF files in a directory
 if [[ $elf_mode -eq 0 ]]; then
@@ -232,7 +243,7 @@ if [[ $elf_mode -eq 0 ]]; then
         echo ""
         echo "Verifying ELF file $counter of $max_counter: \"$elf_file\" with no inputs"
 
-        if (cargo build --release && cargo run --release --bin cargo-zisk verify-constraints \
+        if (cargo run --release --bin cargo-zisk verify-constraints \
         --emulator \
         --witness-lib target/release/libzisk_witness.so \
         --elf "$elf_file" \

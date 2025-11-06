@@ -1,8 +1,7 @@
-require "std_lookup.pil"
+require "std_lookup.pil";
+require "opids.pil";
 
-const int ARITH_EQ_LT_TABLE_ID = 5002;
-
-airtemplate ArithEqLtTable (int N = 2**18) {
+airtemplate ArithEqLtTable (const int N = 2**18) {
 
     // LT_T =  2 * 'lt + lt
 

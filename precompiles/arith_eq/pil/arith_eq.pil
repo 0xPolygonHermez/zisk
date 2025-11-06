@@ -1,18 +1,10 @@
-require "std_lookup.pil"
-require "std_range_check.pil"
-require "arith_eq_lt_table.pil"
+require "std_lookup.pil";
+require "std_range_check.pil";
+require "operations.pil";
+require "opids.pil";
+require "arith_eq_lt_table.pil";
 
-const int ARITH_256_OP = 0xF2;
-const int ARITH_256_MOD_OP = 0xF3;
-const int EC_ADD_SECP256K1_OP = 0xF4;
-const int EC_DBL_SECP256K1_OP = 0xF5;
-const int EC_ADD_BN254_OP = 0xFA;
-const int EC_DBL_BN254_OP = 0xFB;
-const int COMPLEX_ADD_BN254_OP = 0xFC;
-const int COMPLEX_SUB_BN254_OP = 0xFD;
-const int COMPLEX_MUL_BN254_OP = 0xFE;
-
-airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID) {
+airtemplate ArithEq (const int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID) {
 
     // TODO: introduction, map
     // TODO: explain concept of q
@@ -613,15 +605,15 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id = OPERATION_BUS_I
             value: mem_value[1]
     );
 
-    const expr bus_op = sel_arith256 * ARITH_256_OP +
-                        sel_arith256_mod * ARITH_256_MOD_OP +
-                        sel_secp256k1_add * EC_ADD_SECP256K1_OP +
-                        sel_secp256k1_dbl * EC_DBL_SECP256K1_OP +
-                        sel_bn254_curve_add * EC_ADD_BN254_OP +
-                        sel_bn254_curve_dbl * EC_DBL_BN254_OP +
-                        sel_bn254_complex_add * COMPLEX_ADD_BN254_OP +
-                        sel_bn254_complex_sub * COMPLEX_SUB_BN254_OP +
-                        sel_bn254_complex_mul * COMPLEX_MUL_BN254_OP;
+    const expr bus_op = sel_arith256 * OP_ARITH_256 +
+                        sel_arith256_mod * OP_ARITH_256_MOD +
+                        sel_secp256k1_add * OP_EC_ADD_SECP256K1 +
+                        sel_secp256k1_dbl * OP_EC_DBL_SECP256K1 +
+                        sel_bn254_curve_add * OP_EC_ADD_BN254 +
+                        sel_bn254_curve_dbl * OP_EC_DBL_BN254 +
+                        sel_bn254_complex_add * OP_COMPLEX_ADD_BN254 +
+                        sel_bn254_complex_sub * OP_COMPLEX_SUB_BN254 +
+                        sel_bn254_complex_mul * OP_COMPLEX_MUL_BN254;
 
     lookup_proves(operation_bus_id, [bus_op, step_addr'(MAIN_STEP), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk0);
 

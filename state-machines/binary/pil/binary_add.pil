@@ -1,10 +1,9 @@
-require "std_lookup.pil"
-require "std_range_check.pil"
+require "std_lookup.pil";
+require "std_range_check.pil";
+require "operations.pil";
+require "opids.pil";
 
-const int ADD_OP = 0x0C;
-
-airtemplate BinaryAdd(const int N = 2**21, const int operation_bus_id = OPERATION_BUS_ID, const int RC = 2, const int operation_code = ADD_OP) {
-
+airtemplate BinaryAdd(const int N = 2**21, const int operation_bus_id = OPERATION_BUS_ID, const int RC = 2) {
     col witness bits(32) a[RC];
     col witness bits(32) b[RC];
     col witness bits(16) c_chunks[RC*2];
@@ -23,6 +22,8 @@ airtemplate BinaryAdd(const int N = 2**21, const int operation_bus_id = OPERATIO
         range_check(expression: c_chunks[i * 2 + 1], min: 0, max: 2**16 - 1);
     }
 
-    col witness bits(1) multiplicity;
-    lookup_proves(operation_bus_id, [operation_code, ...a, ...b, ...c, 0], multiplicity);
+    lookup_proves(operation_bus_id, [OP_ADD, ...a, ...b, ...c, 0]);
+
+    airval padding_size;
+    direct_update_assumes(operation_bus_id, [OP_ADD, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
 }
