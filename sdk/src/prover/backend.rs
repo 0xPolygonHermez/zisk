@@ -38,7 +38,7 @@ impl ProverBackend {
         let start = std::time::Instant::now();
 
         self.proofman
-            .execute_from_lib(None, output_path)
+            .execute_from_lib(output_path)
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
         let elapsed = start.elapsed();
@@ -84,7 +84,6 @@ impl ProverBackend {
 
         self.proofman
             .compute_witness_from_lib(
-                None,
                 &debug_info,
                 ProofOptions::new(
                     false,
@@ -121,7 +120,7 @@ impl ProverBackend {
         self.witness_lib.set_stdin(stdin);
 
         self.proofman
-            .verify_proof_constraints_from_lib(None, &debug_info, false)
+            .verify_proof_constraints_from_lib(&debug_info, false)
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
         let elapsed = start.elapsed();
 

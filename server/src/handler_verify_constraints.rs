@@ -44,13 +44,12 @@ impl ZiskServiceVerifyConstraintsHandler {
         is_busy.store(true, std::sync::atomic::Ordering::SeqCst);
 
         let handle = std::thread::spawn({
-            let request_input = request.input.clone();
             let config = config.clone();
             move || {
                 let start = std::time::Instant::now();
 
                 proofman
-                    .verify_proof_constraints_from_lib(Some(request_input), &debug_info, false)
+                    .verify_proof_constraints_from_lib(&debug_info, false)
                     .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
                     .expect("Failed to generate proof");
                 proofman.set_barrier();
@@ -102,12 +101,12 @@ impl ZiskServiceVerifyConstraintsHandler {
         )
     }
     pub fn process_handle(
-        request: ZiskVerifyConstraintsRequest,
+        _request: ZiskVerifyConstraintsRequest,
         proofman: Arc<ProofMan<Goldilocks>>,
         debug_info: Arc<DebugInfo>,
     ) {
         proofman
-            .verify_proof_constraints_from_lib(Some(request.input), &debug_info, false)
+            .verify_proof_constraints_from_lib(&debug_info, false)
             .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
             .expect("Failed to generate proof");
         proofman.set_barrier();

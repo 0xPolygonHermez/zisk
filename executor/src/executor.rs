@@ -1150,8 +1150,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     fn execute(
         &self,
         pctx: Arc<ProofCtx<F>>,
-        global_ids: &RwLock<Vec<usize>>,
-        _input_data_path: Option<PathBuf>,
+        global_ids: &RwLock<Vec<usize>>
     ) -> ProofmanResult<()> {
         #[cfg(feature = "stats")]
         let parent_stats_id = self.stats.next_id();
