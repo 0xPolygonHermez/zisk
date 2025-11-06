@@ -640,9 +640,6 @@ impl Coordinator {
 
         self.ensure_workers_idle(&job, previous_state).await?;
 
-        // Reset worker statuses back to Idle
-        // self.workers_pool.mark_workers_with_state(&job.workers, WorkerState::Idle).await?;
-
         error!("Failed job {} (reason: {})", job_id, reason.as_ref(),);
 
         // Release job lock before calling post_launch_proof
