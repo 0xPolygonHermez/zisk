@@ -10,7 +10,6 @@
     ],
     "rust-analyzer.linkedProjects": [
         "Cargo.toml",
-        "examples/Cargo.toml"
     ],
     "files.associations": {
         "*.ejs": "html",
