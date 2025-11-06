@@ -79,7 +79,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
 impl ProverClientBuilder<(), ()> {
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        Self { aggregation: true, rma: true, ..Default::default() }
     }
 
     /// Configure for Emulator backend
