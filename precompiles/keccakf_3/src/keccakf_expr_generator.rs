@@ -4,7 +4,8 @@ use std::path::Path;
 use circuit::ExpressionManagerConfig;
 use precompiles_helpers::keccak_f_expr;
 
-const KECCAKF_EXPR_RESET_THRESHOLD: u32 = 1 << 20;
+const KECCAKF_EXPR_VALUE_THRESHOLD: u32 = 1 << 22;
+const KECCAKF_EXPR_DEGREE_THRESHOLD: usize = 3;
 const KECCAKF_STATE_IN_BITS: usize = 1600;
 const KECCAKF_STATE_OUT_BITS: usize = 1600;
 
@@ -16,7 +17,8 @@ pub fn main() {
 
     // Initialize the expression manager
     let config = ExpressionManagerConfig {
-        reset_threshold: KECCAKF_EXPR_RESET_THRESHOLD,
+        value_reset_threshold: KECCAKF_EXPR_VALUE_THRESHOLD,
+        degree_reset_threshold: KECCAKF_EXPR_DEGREE_THRESHOLD,
         sin_count: KECCAKF_STATE_IN_BITS,
         sout_count: KECCAKF_STATE_OUT_BITS,
         in_prefix: Some("state_by_round".to_string()),

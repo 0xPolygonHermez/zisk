@@ -49,8 +49,10 @@ pub fn keccak_f_expr(config: ExpressionManagerConfig, generate_files: bool) -> s
         expr_manager.set_context("ι");
         keccak_f_iota(&mut expr_manager, r);
 
-        // Reset expressions after each round
+        // End of round
         expr_manager.set_context("End of round");
+
+        // Reset expressions
         for i in 0..1600 {
             expr_manager.sout_expr_ids[i] =
                 expr_manager.create_manual_reset_expression(expr_manager.sout_expr_ids[i]);
@@ -91,7 +93,8 @@ mod tests {
     #[test]
     fn test_keccak_f_expr() {
         let config = ExpressionManagerConfig {
-            reset_threshold: 1 << 20,
+            value_reset_threshold: 1 << 22,
+            degree_reset_threshold: 3,
             sin_count: 1600,
             sout_count: 1600,
             in_prefix: None,

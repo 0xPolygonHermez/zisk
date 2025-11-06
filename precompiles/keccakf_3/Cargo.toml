@@ -12,14 +12,29 @@ name = "keccakf_expr_generator"
 path = "src/keccakf_expr_generator.rs"
 
 [dependencies]
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
+zisk-pil = { workspace = true }
+
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
+proofman-util = { workspace = true }
 
+precompiles-common = { workspace = true }
 precompiles-helpers = { workspace = true }
+
+pil-std-lib = { workspace = true }
+
+mem-common = { workspace = true }
 
 circuit = { workspace = true }
 
+fields = { workspace=true }
+tracing = { workspace = true }
+rayon = { workspace = true }
+
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 path-clean = "1.0"
 
 
