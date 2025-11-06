@@ -24,25 +24,26 @@ pub struct Prove;
 /// - Operation state: `WitnessGeneration` or `Prove`
 ///
 /// # Example
-/// ```rust
+/// ```rust,no_run
 /// use zisk_sdk::ProverClientBuilder;
 ///
-/// // EMU builder for constraint verification
-/// let prover = ProverClientBuilder::new()
+/// let elf_path = std::path::PathBuf::from("path/to/program.elf");
+/// let output_path = std::path::PathBuf::from("path/to/output");
+///
+/// let prover_emu = ProverClientBuilder::new()
 ///     .emu()
 ///     .verify_constraints()
-///     .elf_path(Some(elf_path))
-///     .build()?;
+///     .elf_path(elf_path.clone())
+///     .build();
 ///
-/// // ASM builder for proving
-/// let prover = ProverClientBuilder::new()
+/// let prover_asm = ProverClientBuilder::new()
 ///     .asm()
 ///     .prove()
-///     .elf_path(Some(elf_path))
+///     .elf_path(elf_path)
 ///     .save_proofs(true)
 ///     .output_dir(output_path)
 ///     .unlock_mapped_memory(true)
-///     .build()?;
+///     .build();
 /// ```
 #[derive(Default)]
 pub struct ProverClientBuilder<Backend = (), Operation = ()> {
@@ -254,14 +255,16 @@ impl ProverClientBuilder<EmuB, WitnessGeneration> {
     /// Builds an [`EmuProver`] configured for constraint verification.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
+    ///
+    /// let elf_path = std::path::PathBuf::from("path/to/program.elf");
     ///
     /// let prover = ProverClientBuilder::new()
     ///     .emu()
     ///     .verify_constraints()
     ///     .elf_path(elf_path)
-    ///     .build()?;
+    ///     .build();
     /// ```
     pub fn build(self) -> Result<ZiskProver<Emu>> {
         self.build_emu(true)
@@ -272,14 +275,16 @@ impl ProverClientBuilder<EmuB, Prove> {
     /// Builds an [`EmuProver`] configured for proof generation.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
+    ///
+    /// let elf_path = std::path::PathBuf::from("path/to/program.elf");
     ///     
     /// let prover = ProverClientBuilder::new()
     ///    .emu()
     ///    .prove()
     ///    .elf_path(elf_path)
-    ///    .build()?;
+    ///    .build();
     /// ```
     pub fn build(self) -> Result<ZiskProver<Emu>> {
         self.build_emu(false)
@@ -362,14 +367,16 @@ impl ProverClientBuilder<AsmB, WitnessGeneration> {
     /// Builds an [`AsmProver`] configured for constraint verification.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
+    ///
+    /// let elf_path = std::path::PathBuf::from("path/to/program.elf");
     ///
     /// let prover = ProverClientBuilder::new()
     ///     .asm()
     ///     .verify_constraints()
     ///     .elf_path(elf_path)
-    ///     .build()?;
+    ///     .build();
     /// ```
     pub fn build<F>(self) -> Result<ZiskProver<Asm>>
     where
@@ -384,14 +391,16 @@ impl ProverClientBuilder<AsmB, Prove> {
     /// Builds an [`AsmProver`] configured for proof generation.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
+    ///
+    /// let elf_path = std::path::PathBuf::from("path/to/program.elf");
     ///
     /// let prover = ProverClientBuilder::new()
     ///     .asm()
     ///     .prove()
     ///     .elf_path(elf_path)
-    ///     .build()?;
+    ///     .build();
     /// ```
     pub fn build<F>(self) -> Result<ZiskProver<Asm>>
     where
