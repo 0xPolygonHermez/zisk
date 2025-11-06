@@ -53,7 +53,7 @@ pub(crate) fn create_command(
     };
 
     command.env_remove("RUSTC").env("RUSTC", rustc_bin.display().to_string());
-    
+
     let canonicalized_program_dir =
         program_dir.canonicalize().expect("Failed to canonicalize program directory");
     command.current_dir(canonicalized_program_dir);
