@@ -2903,9 +2903,8 @@ name = "precomp-keccakf"
 version = "0.13.1"
 dependencies = [
  "circuit",
- "clap",
  "fields",
- "mem-common",
+ "path-clean",
  "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
@@ -2914,10 +2913,7 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
- "sm-mem",
- "tiny-keccak",
  "tracing",
- "witness",
  "zisk-common",
  "zisk-core",
  "zisk-pil",

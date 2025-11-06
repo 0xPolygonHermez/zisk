@@ -1,7 +1,8 @@
-use tiny_keccak::keccakf;
+use std::collections::VecDeque;
 
 use precompiles_common::MemBusHelpers;
-use std::collections::VecDeque;
+use precompiles_helpers::keccak_f;
+
 use zisk_common::MemCollectorInfo;
 use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
 
@@ -25,7 +26,7 @@ pub fn generate_keccakf_mem_inputs(
     let state: &mut [u64; 25] = &mut data[4..29].try_into().unwrap();
 
     // Apply the keccakf function
-    keccakf(state);
+    keccak_f(state);
 
     // Generate the memory reads/writes
     let read_params = 1;

@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::SetupCtx;
 use zisk_common::{BusDevice, PayloadType};
 
 use zisk_common::{
@@ -26,8 +25,8 @@ impl<F: PrimeField64> KeccakfManager<F> {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `KeccakfManager`.
-    pub fn new(sctx: Arc<SetupCtx<F>>, std: Arc<Std<F>>) -> Arc<Self> {
-        let keccakf_sm = KeccakfSM::new(sctx, std);
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        let keccakf_sm = KeccakfSM::new(std);
 
         Arc::new(Self { keccakf_sm })
     }

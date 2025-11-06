@@ -4,10 +4,8 @@ mod pi;
 mod rho;
 mod round_constants;
 mod theta;
-mod utils;
 
 pub use round_constants::KECCAK_F_RC;
-pub use utils::bit_position;
 
 use chi::keccak_f_chi;
 use iota::keccak_f_iota;
@@ -15,57 +13,218 @@ use pi::keccak_f_pi;
 use rho::keccak_f_rho;
 use theta::keccak_f_theta;
 
-use circuit::{GateState, PinId};
+pub fn keccak_f(state: &mut [u64; 25]) {
+    // Apply all 24 rounds of Keccak-f[1600] permutation
+    for round in 0..24 {
+        // θ (theta) step - Column parity computation and mixing
+        keccak_f_theta(state);
 
-pub fn keccak_f(s: &mut GateState) {
-    // Instead of adding 1600 dummy gates to introduce the input bits,
-    // we exploit the Keccak-f θ step structure to introduce them
-    // In particular, since we have to perform:
-    //      A′[x, y, z] = A[x, y, z] ^ D[x, z]
-    // We use this XOR to introduce the input bits
+        // ρ (rho) step - Bitwise rotation
+        keccak_f_rho(state);
 
-    // Apply all 24 rounds of Keccak permutations
-    for ir in 0..24 {
-        // θ step
-        keccak_f_theta(s, ir);
-        s.copy_sout_refs_to_sin_refs();
+        // π (pi) step - Lane permutation
+        keccak_f_pi(state);
 
-        // ρ step
-        keccak_f_rho(s);
-        s.copy_sout_refs_to_sin_refs();
+        // χ (chi) step - Nonlinear transformation
+        keccak_f_chi(state);
 
-        // π step
-        keccak_f_pi(s);
-        s.copy_sout_refs_to_sin_refs();
+        // ι (iota) step - Add round constant
+        keccak_f_iota(state, round);
+    }
+}
 
-        // χ step
-        keccak_f_chi(s);
-        s.copy_sout_refs_to_sin_refs();
+/// Iterator that yields the state after each round of Keccak-f
+pub struct KeccakRoundIterator {
+    state: [u64; 25],
+    round: usize,
+}
 
-        // ι step
-        keccak_f_iota(s, ir);
+impl KeccakRoundIterator {
+    pub fn new(initial_state: [u64; 25]) -> Self {
+        Self { state: initial_state, round: 0 }
+    }
+}
 
-        // Don't copy after last round
-        if ir != 23 {
-            s.copy_sout_refs_to_sin_refs();
+impl Iterator for KeccakRoundIterator {
+    type Item = ([u64; 25], usize); // (state_after_round, round_number)
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.round >= 24 {
+            return None;
         }
+
+        let current_round = self.round;
+
+        // Perform one round of Keccak-f
+        // θ (theta) step
+        keccak_f_theta(&mut self.state);
+
+        // ρ (rho) step
+        keccak_f_rho(&mut self.state);
+
+        // π (pi) step
+        keccak_f_pi(&mut self.state);
+
+        // χ (chi) step
+        keccak_f_chi(&mut self.state);
+
+        // ι (iota) step
+        keccak_f_iota(&mut self.state, current_round);
+
+        self.round += 1;
+
+        Some((self.state, current_round))
     }
 
-    // Add BITRATE more gates to make sure that the output is located in the expected gates
-    for i in 0..s.gate_config.sout_ref_number {
-        let group = i / s.gate_config.sout_ref_group_by;
-        let group_pos = i % s.gate_config.sout_ref_group_by;
-        let ref_idx =
-            s.gate_config.sout_first_ref + group * s.gate_config.sout_ref_distance + group_pos;
-        s.xor3(
-            s.sout_refs[i as usize],
-            PinId::D,
-            s.gate_config.zero_ref.unwrap(),
-            PinId::A,
-            s.gate_config.zero_ref.unwrap(),
-            PinId::A,
-            ref_idx,
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = 24 - self.round;
+        (remaining, Some(remaining))
+    }
+}
+
+/// Function-based iterator for Keccak-f rounds  
+pub fn keccak_f_rounds(initial_state: [u64; 25]) -> KeccakRoundIterator {
+    KeccakRoundIterator::new(initial_state)
+}
+
+/// Iterator that yields just the states (without round numbers)
+pub fn keccak_f_round_states(initial_state: [u64; 25]) -> impl Iterator<Item = [u64; 25]> {
+    keccak_f_rounds(initial_state).map(|(state, _)| state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_keccak_f_zero_state() {
+        let mut state = [0u64; 25];
+        keccak_f(&mut state);
+        assert_eq!(
+            state,
+            [
+                0xF1258F7940E1DDE7,
+                0x84D5CCF933C0478A,
+                0xD598261EA65AA9EE,
+                0xBD1547306F80494D,
+                0x8B284E056253D057,
+                0xFF97A42D7F8E6FD4,
+                0x90FEE5A0A44647C4,
+                0x8C5BDA0CD6192E76,
+                0xAD30A6F71B19059C,
+                0x30935AB7D08FFC64,
+                0xEB5AA93F2317D635,
+                0xA9A6E6260D712103,
+                0x81A57C16DBCF555F,
+                0x43B831CD0347C826,
+                0x01F22F1A11A5569F,
+                0x05E5635A21D9AE61,
+                0x64BEFEF28CC970F2,
+                0x613670957BC46611,
+                0xB87C5A554FD00ECB,
+                0x8C3EE88A1CCF32C8,
+                0x940C7922AE3A2614,
+                0x1841F924A2C509E4,
+                0x16F53526E70465C2,
+                0x75F644E97F30A13B,
+                0xEAF1FF7B5CECA249,
+            ]
         );
-        s.sout_refs[i as usize] = ref_idx;
+    }
+
+    #[test]
+    fn test_keccak_f_nonzero_state() {
+        let mut state = [
+            0xF1258F7940E1DDE7,
+            0x84D5CCF933C0478A,
+            0xD598261EA65AA9EE,
+            0xBD1547306F80494D,
+            0x8B284E056253D057,
+            0xFF97A42D7F8E6FD4,
+            0x90FEE5A0A44647C4,
+            0x8C5BDA0CD6192E76,
+            0xAD30A6F71B19059C,
+            0x30935AB7D08FFC64,
+            0xEB5AA93F2317D635,
+            0xA9A6E6260D712103,
+            0x81A57C16DBCF555F,
+            0x43B831CD0347C826,
+            0x01F22F1A11A5569F,
+            0x05E5635A21D9AE61,
+            0x64BEFEF28CC970F2,
+            0x613670957BC46611,
+            0xB87C5A554FD00ECB,
+            0x8C3EE88A1CCF32C8,
+            0x940C7922AE3A2614,
+            0x1841F924A2C509E4,
+            0x16F53526E70465C2,
+            0x75F644E97F30A13B,
+            0xEAF1FF7B5CECA249,
+        ];
+        keccak_f(&mut state);
+        assert_eq!(
+            state,
+            [
+                0x2D5C954DF96ECB3C,
+                0x6A332CD07057B56D,
+                0x093D8D1270D76B6C,
+                0x8A20D9B25569D094,
+                0x4F9C4F99E5E7F156,
+                0xF957B9A2DA65FB38,
+                0x85773DAE1275AF0D,
+                0xFAF4F247C3D810F7,
+                0x1F1B9EE6F79A8759,
+                0xE4FECC0FEE98B425,
+                0x68CE61B6B9CE68A1,
+                0xDEEA66C4BA8F974F,
+                0x33C43D836EAFB1F5,
+                0xE00654042719DBD9,
+                0x7CF8A9F009831265,
+                0xFD5449A6BF174743,
+                0x97DDAD33D8994B40,
+                0x48EAD5FC5D0BE774,
+                0xE3B8C8EE55B7B03C,
+                0x91A0226E649E42E9,
+                0x900E3129E7BADD7B,
+                0x202A9EC5FAA3CCE8,
+                0x5B3402464E1C3DB6,
+                0x609F4E62A44C1059,
+                0x20D06CD26A8FBF5C,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_keccak_f_round_iterator() {
+        let initial_state = [0u64; 25];
+        let round_iter = KeccakRoundIterator::new(initial_state);
+
+        // Test that we get exactly 24 rounds
+        let all_rounds: Vec<_> = round_iter.collect();
+        assert_eq!(all_rounds.len(), 24);
+
+        // Test that round numbers are correct
+        for (i, (_, round_num)) in all_rounds.iter().enumerate() {
+            assert_eq!(*round_num, i);
+        }
+
+        // Test that the final state matches the full keccak_f result
+        let final_state = all_rounds.last().unwrap().0;
+        let mut expected_state = [0u64; 25];
+        keccak_f(&mut expected_state);
+        assert_eq!(final_state, expected_state);
+    }
+
+    #[test]
+    fn test_keccak_f_round_states() {
+        let initial_state = [0u64; 25];
+        let states: Vec<_> = keccak_f_round_states(initial_state).collect();
+
+        assert_eq!(states.len(), 24);
+
+        // Final state should match full keccak_f
+        let mut expected_final = [0u64; 25];
+        keccak_f(&mut expected_final);
+        assert_eq!(states[23], expected_final);
     }
 }

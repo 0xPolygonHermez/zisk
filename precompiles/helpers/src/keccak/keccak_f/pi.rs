@@ -1,23 +1,19 @@
-use circuit::GateState;
+/// Pi step of Keccak-f permutation  
+/// Rearranges the positions of the lanes
+pub fn keccak_f_pi(state: &mut [u64; 25]) {
+    let mut new_state = [0u64; 25];
 
-use super::bit_position;
-
-/// Keccak-f π step.
-/// 1. For all triples (x, y, z) such that 0 ≤ x,y < 5, and 0 ≤ z < 64, let:  
-///    A′\[x, y, z]= A\[(x + 3y) mod 5, x, z].
-/// 2. Return A′.
-pub fn keccak_f_pi(s: &mut GateState) {
-    for x in 0..5 {
-        for y in 0..5 {
-            for z in 0..64 {
-                // Calculate source position with mod 5 arithmetic
-                let src_x = (x + 3 * y) % 5;
-                let src_pos = bit_position(src_x, x, z);
-                let dst_pos = bit_position(x, y, z);
-
-                // Copy reference
-                s.sout_refs[dst_pos] = s.sin_refs[src_pos];
-            }
+    // Apply the pi permutation: A'[y, (2x + 3y) mod 5] = A[x, y]
+    // In linear indexing: new_index = ((2*x + 3*y) % 5) * 5 + y
+    for y in 0..5 {
+        for x in 0..5 {
+            let old_index = 5 * y + x;
+            let new_x = (2 * x + 3 * y) % 5;
+            let new_y = y;
+            let new_index = 5 * new_x + new_y;
+            new_state[new_index] = state[old_index];
         }
     }
+
+    *state = new_state;
 }

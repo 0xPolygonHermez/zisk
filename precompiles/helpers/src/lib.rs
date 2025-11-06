@@ -8,8 +8,4 @@ pub use arith_eq::*;
 pub use arith_eq_384::*;
 pub use big_int::*;
 pub use common::*;
-pub use keccak::{
-    keccakf_topology, KECCAKF_BITS, KECCAKF_CHUNKS, KECCAKF_INPUT_BITS_IN_PARALLEL,
-    KECCAKF_INPUT_SIZE_BITS, KECCAKF_OUTPUT_BITS_IN_PARALLEL, KECCAKF_OUTPUT_SIZE_BITS,
-    KECCAK_GATE_CONFIG,
-};
+pub use keccak::{keccak_f, keccak_f_state, keccak_f_expr, keccak_f_round_states, keccak_f_rounds};

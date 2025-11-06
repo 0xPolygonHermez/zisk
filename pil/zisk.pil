@@ -76,12 +76,8 @@ airgroup Zisk {
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
 
-    const int KECCAKF_CHUNKS = 9;
-    const int KECCAKF_BITS = 7;
-    Keccakf(N: 2**21, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, RC: 2, RB: 32, mem_bits_in_parallel: 4);
-    const int KECCAKF_TABLE_CHUNKS = 1;
-    const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + KECCAKF_BITS + 1;
-    virtual KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);
+    Keccakf(N: 2**17, group_by: 3);
+    virtual KeccakfTable(KECCAKF_TABLE_SIZE, group_by: 3);
 
     Sha256f(N: 2**18);
 
