@@ -18,7 +18,7 @@ use sm_mem::{
     MemAlignWriteByteInstance, MemModuleInstance,
 };
 use sm_rom::{RomInstance, RomSM};
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use zisk_common::{BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan};
 use zisk_pil::ADD_256_AIR_IDS;
 use zisk_pil::{
@@ -135,8 +135,8 @@ impl<F: PrimeField64> StaticSMBundle<F> {
     pub fn plan_sec(
         &self,
         vec_counters: &mut NestedDeviceMetricsList,
-    ) -> HashMap<usize, Vec<Plan>> {
-        let mut plans = HashMap::new();
+    ) -> BTreeMap<usize, Vec<Plan>> {
+        let mut plans = BTreeMap::new();
 
         // Iterate over vec_counters hashmap
         for (id, (_, sm)) in self.sm.iter() {
@@ -148,7 +148,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         plans
     }
 
-    pub fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &HashMap<usize, Vec<Plan>>) {
+    pub fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &BTreeMap<usize, Vec<Plan>>) {
         for (id, (_, sm)) in self.sm.iter() {
             if let Some(plans) = plannings.get(id) {
                 sm.configure_instances(pctx, plans);
