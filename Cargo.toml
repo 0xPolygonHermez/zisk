@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.13.1"
+version = "0.14.0"
 edition = "2021"
 license = "Apache-2.0 or MIT"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
@@ -45,6 +45,8 @@ members = [
     "distributed/crates/grpc-api",
     "distributed/crates/common",
     "distributed/crates/worker",
+    "sdk",
+    "ziskbuild",
 ]
 
 resolver = "2"
@@ -91,6 +93,8 @@ zisk-witness = { path = "witness-computation" }
 ziskclib = { path = "ziskclib" }
 ziskos = { path = "ziskos/entrypoint" }
 circuit = { path = "tools/circuit" }
+zisk-sdk = { path = "sdk" }
+zisk-build = { path = "ziskbuild" }
 
 # Distributed crates
 zisk-distributed-common = { path = "distributed/crates/common" }

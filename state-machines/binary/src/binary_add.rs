@@ -8,8 +8,9 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use std::sync::Arc;
+use zisk_pil::BinaryAddAirValues;
 #[cfg(not(feature = "packed"))]
-use zisk_pil::{BinaryAddAirValues, BinaryAddTrace, BinaryAddTraceRow};
+use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
 #[cfg(feature = "packed")]
 use zisk_pil::{BinaryAddTracePacked, BinaryAddTraceRowPacked};
 
@@ -44,10 +45,12 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A new `BinaryAddSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_id = std.get_range_id(0, 0xFFFF, None);
+        let range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
 
         // Get the Arithmetic FROPS table ID
-        let frops_table_id = std.get_virtual_table_id(BinaryBasicFrops::TABLE_ID);
+        let frops_table_id = std
+            .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
+            .expect("Failed to get FROPS table ID");
         // Create the BinaryAdd state machine
         Arc::new(Self { std, range_id, frops_table_id })
     }

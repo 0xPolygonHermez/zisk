@@ -1,12 +1,10 @@
 use anyhow::{anyhow, Context, Result};
-use cargo_zisk::{
-    commands::{
-        ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskProve, ZiskProveClient,
-        ZiskRomSetup, ZiskRun, ZiskSdk, ZiskServer, ZiskStats, ZiskVerify, ZiskVerifyConstraints,
-    },
-    ZISK_VERSION_MESSAGE,
+use cargo_zisk::commands::{
+    ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskProve, ZiskProveClient, ZiskRomSetup,
+    ZiskRun, ZiskSdk, ZiskServer, ZiskStats, ZiskVerify, ZiskVerifyConstraints,
 };
 use clap::Parser;
+use zisk_build::ZISK_VERSION_MESSAGE;
 
 // Main enum defining cargo subcommands.
 #[derive(Parser)]

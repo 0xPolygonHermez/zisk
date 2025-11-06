@@ -13,9 +13,9 @@ use std::fs;
 use std::{path::PathBuf, process};
 use zisk_common::init_tracing;
 
-use crate::commands::{get_proving_key, get_witness_computation_lib, Field};
+use crate::commands::{get_proving_key, get_witness_computation_lib};
 use crate::ux::print_banner;
-use crate::ZISK_VERSION_MESSAGE;
+use zisk_build::ZISK_VERSION_MESSAGE;
 
 pub const DEFAULT_PORT: u16 = 7878;
 const LOG_PATH: &str = "zisk_prover_server.log";
@@ -58,9 +58,6 @@ pub struct ZiskServer {
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
-    #[clap(long, default_value_t = Field::Goldilocks)]
-    pub field: Field,
-
     /// Base port for Assembly microservices (default: 23115).
     /// A single execution will use 3 consecutive ports, from this port to port + 2.
     /// If you are running multiple instances of ZisK using mpi on the same machine,
@@ -93,8 +90,11 @@ pub struct ZiskServer {
     #[clap(short = 'f', long, default_value_t = false)]
     pub final_snark: bool,
 
-    /// GPU PARAMS
     #[clap(short = 'r', long, default_value_t = false)]
+    pub rma: bool,
+
+    /// GPU PARAMS
+    #[clap(short = 'z', long, default_value_t = false)]
     pub preallocate: bool,
 
     #[clap(short = 't', long)]
@@ -127,7 +127,7 @@ impl ZiskServer {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
             Some(Some(debug_value)) => {
-                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
+                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())?
             }
         };
 
