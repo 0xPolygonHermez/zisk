@@ -12,6 +12,7 @@ use rom_setup::DEFAULT_CACHE_PATH;
 use std::{collections::HashMap, path::PathBuf};
 use tracing::info;
 use zisk_common::io::ZiskStdin;
+use zisk_common::ExecutorStats;
 
 use anyhow::Result;
 
@@ -96,6 +97,18 @@ impl ProverEngine for AsmProver {
 
     fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult> {
         self.core_prover.backend.execute(stdin, output_path)
+    }
+
+    fn stats(
+        &self,
+        stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
+        mpi_node: Option<u32>,
+    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+        let debug_info =
+            create_debug_info(debug_info, self.core_prover.backend.proving_key.clone())?;
+
+        self.core_prover.backend.stats(stdin, debug_info, mpi_node)
     }
 
     fn verify_constraints_debug(
