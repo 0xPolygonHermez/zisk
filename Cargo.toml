@@ -49,8 +49,6 @@ members = [
     "ziskbuild",
 ]
 
-exclude = ["examples"]
-
 resolver = "2"
 
 [profile.release]
