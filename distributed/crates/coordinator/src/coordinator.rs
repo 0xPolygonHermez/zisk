@@ -635,23 +635,57 @@ impl Coordinator {
         let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
+        let previous_state = job.state().clone();
         job.change_state(JobState::Failed);
 
-        // Reset worker statuses back to Idle
-        self.workers_pool.mark_workers_with_state(&job.workers, WorkerState::Idle).await?;
+        self.ensure_workers_idle(&job, previous_state).await?;
 
-        error!(
-            "Failed job {} (reason: {}) and freed {} workers",
-            job_id,
-            reason.as_ref(),
-            job.workers.len()
-        );
+        error!("Failed job {} (reason: {})", job_id, reason.as_ref(),);
 
         // Release job lock before calling post_launch_proof
         drop(job);
         drop(job_entry);
 
         self.post_launch_proof(job_id).await?;
+
+        Ok(())
+    }
+
+    /// Updates all workers of a failed job, marking those that have finished their computation
+    /// or partial computation as idle.
+    ///
+    /// # Parameters
+    ///
+    /// * `job` - The job whose workers need to be marked as idle
+    /// * `previous_state` - The previous state of the job before it was marked as failed
+    async fn ensure_workers_idle(
+        &self,
+        job: &Job,
+        previous_state: JobState,
+    ) -> CoordinatorResult<()> {
+        if let JobState::Running(job_previous_phase) = &previous_state {
+            let mut job_worker_ids = std::collections::HashSet::new();
+
+            // Get results from the current job phase
+            if let Some(results) = job.results.get(job_previous_phase) {
+                job_worker_ids.extend(results.keys().cloned());
+            }
+
+            // If job_phase is Aggregate, also add workers from Prove phase
+            if job_previous_phase == &JobPhase::Aggregate {
+                if let Some(prove_results) = job.results.get(&JobPhase::Prove) {
+                    job_worker_ids.extend(prove_results.keys().cloned());
+                }
+            }
+
+            for worker_id in job_worker_ids {
+                let worker_state = self.workers_pool.worker_state(&worker_id).await;
+
+                if let Some(WorkerState::Computing((_, _))) = worker_state {
+                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await?;
+                }
+            }
+        }
 
         Ok(())
     }
@@ -785,8 +819,8 @@ impl Coordinator {
     /// - Aggregation phases may need to be restarted with different worker assignments
     pub async fn unregister_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
         // Is this worker involved in any active jobs?
-        let affected_jobs = self.workers_pool.worker_state(worker_id).await;
-        if let Some(WorkerState::Computing((job_id, phase))) = affected_jobs {
+        let worker_state = self.workers_pool.worker_state(worker_id).await;
+        if let Some(WorkerState::Computing((job_id, phase))) = worker_state {
             error!(
                 "Worker {} unregistered while computing for job {} in phase {:?}",
                 worker_id, job_id, phase
@@ -987,8 +1021,10 @@ impl Coordinator {
 
         let data = self.extract_challenges_data(execute_task_response.result_data)?;
 
-        contributions_results
-            .insert(worker_id.clone(), JobResult { success: execute_task_response.success, data });
+        contributions_results.insert(
+            worker_id.clone(),
+            JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
+        );
 
         Ok(())
     }
@@ -1306,8 +1342,10 @@ impl Coordinator {
             }
         };
 
-        phase2_results
-            .insert(worker_id.clone(), JobResult { success: execute_task_response.success, data });
+        phase2_results.insert(
+            worker_id.clone(),
+            JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
+        );
 
         Ok(())
     }
@@ -1672,6 +1710,39 @@ impl Coordinator {
             job.block.input_path.display(),
             job.compute_capacity,
         );
+
+        // Print summary of the job
+        let job_phases = vec![JobPhase::Contributions, JobPhase::Prove, JobPhase::Aggregate];
+
+        let workers = job.workers.clone();
+
+        info!("[Job] Summary for {}", job_id);
+        for phase in job_phases {
+            if let Some(result) = job.results.get(&phase) {
+                let start_time = job.start_times.get(&phase);
+
+                for worker_id in &workers {
+                    if let Some(job_result) = result.get(worker_id) {
+                        let duration =
+                            job_result.end_time.signed_duration_since(start_time.unwrap());
+                        let duration = Duration::from_millis(duration.num_milliseconds() as u64);
+                        info!(
+                            "[Job] {:?} {} - Duration: {}ms, Success: {}, End Time: {}",
+                            phase,
+                            worker_id,
+                            duration.as_millis(),
+                            job_result.success,
+                            job_result.end_time
+                        );
+                    } else {
+                        info!(
+                            "[Job] {:?} {} - Duration: N/A, Success: N/A, End Time: N/A",
+                            phase, worker_id
+                        );
+                    }
+                }
+            }
+        }
 
         // Release job lock before calling post_launch_proof
         drop(job);
