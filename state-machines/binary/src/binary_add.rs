@@ -8,8 +8,9 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use std::sync::Arc;
+use zisk_pil::BinaryAddAirValues;
 #[cfg(not(feature = "packed"))]
-use zisk_pil::{BinaryAddAirValues, BinaryAddTrace, BinaryAddTraceRow};
+use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
 #[cfg(feature = "packed")]
 use zisk_pil::{BinaryAddTracePacked, BinaryAddTraceRowPacked};
 

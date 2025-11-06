@@ -13,8 +13,9 @@ use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
+use zisk_pil::BinaryAirValues;
 #[cfg(not(feature = "packed"))]
-use zisk_pil::{BinaryAirValues, BinaryTrace, BinaryTraceRow};
+use zisk_pil::{BinaryTrace, BinaryTraceRow};
 #[cfg(feature = "packed")]
 use zisk_pil::{BinaryTracePacked, BinaryTraceRowPacked};
 

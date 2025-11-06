@@ -15,8 +15,9 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
+use zisk_pil::BinaryExtensionAirValues;
 #[cfg(not(feature = "packed"))]
-use zisk_pil::{BinaryExtensionAirValues, BinaryExtensionTrace, BinaryExtensionTraceRow};
+use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
 #[cfg(feature = "packed")]
 use zisk_pil::{BinaryExtensionTracePacked, BinaryExtensionTraceRowPacked};
 
