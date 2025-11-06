@@ -97,6 +97,12 @@ pub struct ProverConfig {
 
     /// Whether to use shared tables in the witness library
     pub shared_tables: bool,
+
+    /// Whether to use RMA for communication
+    pub rma: bool,
+
+    /// Whether to use minimal memory mode
+    pub minimal_memory: bool,
 }
 
 impl ProverConfig {
@@ -112,7 +118,7 @@ impl ProverConfig {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
             Some(Some(debug_value)) => {
-                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
+                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())?
             }
         };
 
@@ -219,6 +225,8 @@ impl ProverConfig {
             final_snark: prover_service_config.final_snark,
             gpu_params,
             shared_tables: prover_service_config.shared_tables,
+            rma: prover_service_config.rma,
+            minimal_memory: prover_service_config.minimal_memory,
         })
     }
 }
@@ -258,6 +266,7 @@ impl Worker {
                 .asm()
                 .prove()
                 .aggregation(true)
+                .rma(true)
                 .witness_lib_path(prover_config.witness_lib.clone())
                 .proving_key_path(prover_config.proving_key.clone())
                 .elf_path(prover_config.elf.clone())
@@ -371,7 +380,7 @@ impl Worker {
         );
         let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
 
-        let options = Self::get_proof_options_partial_contribution();
+        let options = self.get_proof_options_partial_contribution();
 
         let mut serialized = borsh::to_vec(&(
             JobPhase::Contributions,
@@ -405,7 +414,7 @@ impl Worker {
 
         let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
 
-        let options = Self::get_proof_options_prove();
+        let options = self.get_proof_options_prove();
 
         let mut serialized =
             borsh::to_vec(&(JobPhase::Prove, job_id, phase_inputs, options)).unwrap();
@@ -429,6 +438,8 @@ impl Worker {
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
 
+        let options = self.get_proof_options_partial_contribution();
+
         tokio::spawn(async move {
             let mut job = job.lock().await;
             let job_id = job.job_id.clone();
@@ -442,8 +453,6 @@ impl Worker {
                 job.rank_id as usize,
             );
             let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
-
-            let options = Self::get_proof_options_partial_contribution();
 
             let result = Self::execute_contribution_task(
                 job_id.clone(),
@@ -528,6 +537,8 @@ impl Worker {
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
 
+        let options = self.get_proof_options_prove();
+
         tokio::spawn(async move {
             let job = job.lock().await;
             let job_id = job.job_id.clone();
@@ -535,8 +546,6 @@ impl Worker {
             info!("Computing Prove for {job_id}");
 
             let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
-
-            let options = Self::get_proof_options_prove();
 
             let result =
                 Self::execute_prove_task(job_id.clone(), prover.as_ref(), phase_inputs, options)
@@ -635,7 +644,7 @@ impl Worker {
         })
     }
 
-    fn get_proof_options_partial_contribution() -> ProofOptions {
+    fn get_proof_options_partial_contribution(&self) -> ProofOptions {
         ProofOptions {
             verify_constraints: false,
             aggregation: false,
@@ -644,11 +653,12 @@ impl Worker {
             save_proofs: true,
             test_mode: false,
             output_dir_path: PathBuf::from("."),
-            minimal_memory: false,
+            rma: self.prover_config.rma,
+            minimal_memory: self.prover_config.minimal_memory,
         }
     }
 
-    fn get_proof_options_prove() -> ProofOptions {
+    fn get_proof_options_prove(&self) -> ProofOptions {
         ProofOptions {
             verify_constraints: false,
             aggregation: true,
@@ -657,7 +667,8 @@ impl Worker {
             save_proofs: false,
             test_mode: false,
             output_dir_path: PathBuf::default(),
-            minimal_memory: false,
+            rma: self.prover_config.rma,
+            minimal_memory: self.prover_config.minimal_memory,
         }
     }
 
@@ -665,6 +676,7 @@ impl Worker {
         ProofOptions {
             verify_constraints: agg_params.verify_constraints,
             aggregation: agg_params.aggregation,
+            rma: agg_params.rma,
             final_snark: agg_params.final_snark,
             verify_proofs: agg_params.verify_proofs,
             save_proofs: agg_params.save_proofs,

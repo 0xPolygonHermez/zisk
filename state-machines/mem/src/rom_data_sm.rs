@@ -39,12 +39,18 @@ const _: () = {
 pub struct RomDataSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
+
+    range_id: usize,
 }
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> RomDataSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        Arc::new(Self { std: std.clone() })
+        let range_id = std
+            .get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None)
+            .expect("Failed to get range ID");
+
+        Arc::new(Self { std: std.clone(), range_id })
     }
     pub fn get_from_addr() -> u32 {
         ROM_DATA_W_ADDR_INIT
@@ -112,8 +118,11 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         );
 
         // range of instance
-        let range_id = self.std.get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
-        self.std.range_check(range_id, (previous_segment.addr - ROM_DATA_W_ADDR_INIT) as i64, 1);
+        self.std.range_check(
+            self.range_id,
+            (previous_segment.addr - ROM_DATA_W_ADDR_INIT) as i64,
+            1,
+        );
 
         let mut max_range_distance_count = 0;
 
@@ -188,7 +197,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             let addr_changes = last_addr != mem_op.addr;
             if addr_changes || (i == 0 && segment_id == 0) {
                 trace[i].set_addr_changes(true);
-                self.std.range_check(range_id, (mem_op.addr - last_addr - 1) as i64, 1);
+                self.std.range_check(self.range_id, (mem_op.addr - last_addr - 1) as i64, 1);
             } else {
                 trace[i].set_addr_changes(false);
             }
@@ -214,8 +223,12 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             // address doesn't change in padding rows, no range check is required
         }
 
-        self.std.range_check(range_id, SEGMENT_ADDR_MAX_RANGE as i64, max_range_distance_count);
-        self.std.range_check(range_id, (ROM_DATA_W_ADDR_END - last_addr) as i64, 1);
+        self.std.range_check(
+            self.range_id,
+            SEGMENT_ADDR_MAX_RANGE as i64,
+            max_range_distance_count,
+        );
+        self.std.range_check(self.range_id, (ROM_DATA_W_ADDR_END - last_addr) as i64, 1);
 
         let mut air_values = RomDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());

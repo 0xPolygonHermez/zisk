@@ -14,6 +14,7 @@ use zstd::Encoder;
 pub(crate) struct ProverBackend {
     pub verify_constraints: bool,
     pub aggregation: bool,
+    pub rma: bool,
     pub final_snark: bool,
     pub witness_lib: Box<dyn ZiskLib<Goldilocks>>,
     pub proving_key: PathBuf,
@@ -107,6 +108,7 @@ impl ProverBackend {
                 ProofOptions::new(
                     self.verify_constraints,
                     self.aggregation,
+                    self.rma,
                     self.final_snark,
                     self.verify_proofs,
                     self.minimal_memory,
@@ -198,7 +200,10 @@ impl ProverBackend {
     ) -> Option<ZiskAggPhaseResult> {
         self.proofman
             .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
-            .map(|agg_proofs| ZiskAggPhaseResult { agg_proofs })
+            .ok()
+            .map(|agg_proofs| ZiskAggPhaseResult {
+                agg_proofs: agg_proofs.expect("Agg proofs not found"),
+            })
     }
 
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) {

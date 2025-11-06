@@ -267,7 +267,9 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                 for global_idx in global_idxs {
                     let secn_instance = secn_instances.get(global_idx).unwrap();
 
-                    let (_, air_id) = pctx.dctx_get_instance_info(*global_idx);
+                    let (_, air_id) = pctx
+                        .dctx_get_instance_info(*global_idx)
+                        .expect("Failed to get instance info");
                     match air_id {
                         air_id if air_id == BINARY_AIR_IDS[0] => {
                             let binary_basic_instance = secn_instance

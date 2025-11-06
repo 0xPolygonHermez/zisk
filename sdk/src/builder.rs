@@ -49,6 +49,7 @@ pub struct Prove;
 pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     // Common fields for both EMU and ASM
     aggregation: bool,
+    rma: bool,
     final_snark: bool,
     witness_lib: Option<PathBuf>,
     proving_key: Option<PathBuf>,
@@ -125,6 +126,13 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     #[must_use]
     pub fn aggregation(mut self, enable: bool) -> Self {
         self.aggregation = enable;
+        self
+    }
+
+    /// Set RMA.
+    #[must_use]
+    pub fn rma(mut self, use_rma: bool) -> Self {
+        self.rma = use_rma;
         self
     }
 
@@ -316,6 +324,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
         let emu = EmuProver::new(
             verify_constraints,
             self.aggregation,
+            self.rma,
             self.final_snark,
             witness_lib,
             proving_key,
@@ -442,6 +451,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
         let asm = AsmProver::new(
             self.verify_constraints,
             self.aggregation,
+            self.rma,
             self.final_snark,
             witness_lib,
             proving_key,
@@ -493,6 +503,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
         Self {
             // Preserve common fields
             aggregation: builder.aggregation,
+            rma: builder.rma,
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
@@ -525,6 +536,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
         Self {
             // Preserve common fields
             aggregation: builder.aggregation,
+            rma: builder.rma,
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
@@ -559,6 +571,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
         Self {
             // Preserve common fields
             aggregation: builder.aggregation,
+            rma: builder.rma,
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
@@ -591,6 +604,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
         Self {
             // Preserve common fields
             aggregation: builder.aggregation,
+            rma: builder.rma,
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,

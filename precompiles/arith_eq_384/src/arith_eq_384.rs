@@ -66,12 +66,18 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         // Compute some useful values
         let num_available_ops = ArithEq384TraceType::<F>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1;
         let num_non_usable_rows = ArithEq384TraceType::<F>::NUM_ROWS % ARITH_EQ_384_ROWS_BY_OP;
-        let q_hsc_range_id = std.get_range_id(0, ARITH_EQ_384_Q_HSC_MAX, None);
-        let chunk_range_id = std.get_range_id(0, ARITH_EQ_384_CHUNK_MAX as i64, None);
-        let carry_range_id = std.get_range_id(ARITH_EQ_384_CARRY_MIN, ARITH_EQ_384_CARRY_MAX, None);
+        let q_hsc_range_id =
+            std.get_range_id(0, ARITH_EQ_384_Q_HSC_MAX, None).expect("Failed to get range ID");
+        let chunk_range_id = std
+            .get_range_id(0, ARITH_EQ_384_CHUNK_MAX as i64, None)
+            .expect("Failed to get range ID");
+        let carry_range_id = std
+            .get_range_id(ARITH_EQ_384_CARRY_MIN, ARITH_EQ_384_CARRY_MAX, None)
+            .expect("Failed to get range ID");
 
         // Get the table ID
-        let table_id = std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID);
+        let table_id =
+            std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
 
         Arc::new(Self {
             std,

@@ -90,8 +90,11 @@ pub struct ZiskServer {
     #[clap(short = 'f', long, default_value_t = false)]
     pub final_snark: bool,
 
-    /// GPU PARAMS
     #[clap(short = 'r', long, default_value_t = false)]
+    pub rma: bool,
+
+    /// GPU PARAMS
+    #[clap(short = 'z', long, default_value_t = false)]
     pub preallocate: bool,
 
     #[clap(short = 't', long)]
@@ -124,7 +127,7 @@ impl ZiskServer {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
             Some(Some(debug_value)) => {
-                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
+                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())?
             }
         };
 
