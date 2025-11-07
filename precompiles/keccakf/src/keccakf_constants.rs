@@ -1,4 +1,3 @@
-
 pub const GROUP_BY: usize = 3;
 
 pub const MAX_VALUE: u32 = 144; // TODO: Pass from configuration

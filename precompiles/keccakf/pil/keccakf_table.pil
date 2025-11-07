@@ -1,8 +1,7 @@
 require "std_lookup.pil";
 require "opids.pil";
-include "expressions/round_summary.pil";
 
-const int KECCAKF_TABLE_SIZE = (MAX_VALUE + 1)**3;
+const int KECCAKF_TABLE_SIZE = 145**3;
 
 airtemplate KeccakfTable(const int N, const int group_by = 3) {
     // Ensure that the chosen size fits
@@ -10,7 +9,9 @@ airtemplate KeccakfTable(const int N, const int group_by = 3) {
         error(`N must be at least ${KECCAKF_TABLE_SIZE}, but N=${N} was provided`);
     }
 
+    const int MAX_VALUE = 144; // Gotten from `keccakf_expr_generator.rs`
     const int BASE = MAX_VALUE + 1;
+
     int MAX = 0;
     for (int i = 0; i < group_by; i++) {
         MAX += BASE**i * MAX_VALUE;

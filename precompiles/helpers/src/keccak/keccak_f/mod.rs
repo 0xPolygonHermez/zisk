@@ -1,35 +1,11 @@
-mod chi;
-mod iota;
-mod pi;
-mod rho;
-mod round_constants;
-mod theta;
+mod round;
 
-pub use round_constants::KECCAK_F_RC;
+use round::keccak_f_round;
 
-use chi::keccak_f_chi;
-use iota::keccak_f_iota;
-use pi::keccak_f_pi;
-use rho::keccak_f_rho;
-use theta::keccak_f_theta;
-
+/// Full Keccak-f[1600] permutation
 pub fn keccak_f(state: &mut [u64; 25]) {
-    // Apply all 24 rounds of Keccak-f[1600] permutation
     for round in 0..24 {
-        // θ (theta) step - Column parity computation and mixing
-        keccak_f_theta(state);
-
-        // ρ (rho) step - Bitwise rotation
-        keccak_f_rho(state);
-
-        // π (pi) step - Lane permutation
-        keccak_f_pi(state);
-
-        // χ (chi) step - Nonlinear transformation
-        keccak_f_chi(state);
-
-        // ι (iota) step - Add round constant
-        keccak_f_iota(state, round);
+        keccak_f_round(state, round);
     }
 }
 
@@ -56,20 +32,7 @@ impl Iterator for KeccakRoundIterator {
         let current_round = self.round;
 
         // Perform one round of Keccak-f
-        // θ (theta) step
-        keccak_f_theta(&mut self.state);
-
-        // ρ (rho) step
-        keccak_f_rho(&mut self.state);
-
-        // π (pi) step
-        keccak_f_pi(&mut self.state);
-
-        // χ (chi) step
-        keccak_f_chi(&mut self.state);
-
-        // ι (iota) step
-        keccak_f_iota(&mut self.state, current_round);
+        keccak_f_round(&mut self.state, current_round);
 
         self.round += 1;
 

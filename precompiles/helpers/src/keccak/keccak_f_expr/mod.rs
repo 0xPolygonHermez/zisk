@@ -16,7 +16,7 @@ use round_constants::KECCAK_F_RC;
 use theta::keccak_f_theta;
 use utils::bit_position;
 
-pub fn keccak_f_expr(config: ExpressionManagerConfig, generate_files: bool) -> std::io::Result<()> {
+pub fn keccak_f_expr(config: ExpressionManagerConfig, display_num: usize, generate_files: bool) -> std::io::Result<()> {
     // Initialize the expression manager
     let mut expr_manager = ExpressionManager::new(config);
 
@@ -63,7 +63,8 @@ pub fn keccak_f_expr(config: ExpressionManagerConfig, generate_files: bool) -> s
 
         // Generate round file if required
         if generate_files {
-            expr_manager.generate_round_file(r)?;
+            expr_manager.generate_pil_round_file(r)?;
+            expr_manager.generate_rust_round_file(r)?;
         }
 
         // Prepare for next round
@@ -72,7 +73,7 @@ pub fn keccak_f_expr(config: ExpressionManagerConfig, generate_files: bool) -> s
         }
 
         // Print round events
-        expr_manager.print_round_events(r, Some(5));
+        expr_manager.print_round_events(r, Some(display_num));
     }
 
     // Print final summary
@@ -99,9 +100,10 @@ mod tests {
             sout_count: 1600,
             in_prefix: None,
             out_prefix: None,
-            output_dir: None,
+            pil_output_dir: None,
+            rust_output_dir: None,
         };
-        let result = keccak_f_expr(config, false);
+        let result = keccak_f_expr(config, 5, false);
         assert!(result.is_ok());
     }
 }

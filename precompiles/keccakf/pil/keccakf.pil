@@ -10,12 +10,8 @@ const int KECCAKF_OP = 0xF1;
 
 airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int operation_bus_id = OPERATION_BUS_ID) {
     // Keccak-f[1600] state is of 5x5x64=1600 bits
-    const int WIDTH = 1600;
     const int ROUNDS = 24; // 12 + 2·L, where L=log2(64)
-    const int LAST_ROUND = ROUNDS - 1;
-    const int STATE_SIZE = ROUNDS + 1;
-
-    const int CLOCKS = STATE_SIZE;
+    const int CLOCKS = 1 + ROUNDS; // 1 for input state + 24 for rounds
 
     // Ensure that the Keccak-f[1600] fits
     if (N < CLOCKS) {
@@ -32,34 +28,6 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
     }
     println(`The total number of Keccak-f's is ${NUM_KECCAKF}`);
 
-    // --> Constraints to assert the Keccak-f[1600] permutation
-
-    col witness bits(1) state[WIDTH]; // Keccak-f[1600] state
-    for (int i = 0; i < WIDTH; i++) {
-        state[i] * (state[i] - 1) === 0;
-    }
-
-    const expr state_by_round[STATE_SIZE][WIDTH];
-    const expr input_state[WIDTH];
-    const expr output_state[WIDTH];
-    for (int i = 0; i < STATE_SIZE; i++) {
-        if (i == 0) {
-            for (int j = 0; j < WIDTH; j++) {
-                input_state[j] = state[j]'(i);
-                state_by_round[i][j] = state[j]'(i);
-            }
-        } else if (i == STATE_SIZE - 1) {
-            for (int j = 0; j < WIDTH; j++) {
-                output_state[j] = state[j]'(i);
-                state_by_round[i][j] = state[j]'(i);
-            }
-        } else {
-            for (int j = 0; j < WIDTH; j++) {
-                state_by_round[i][j] = state[j]'(i);
-            }
-        }
-    }
-
     col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_KECCAKF, 0...];
 
     const expr CLK[CLOCKS];
@@ -67,52 +35,88 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
         CLK[i] = (i)'CLK_0;
     }
 
-    const expr out_exprs[ROUNDS][WIDTH];
-    expr hey[WIDTH];
-    for (int i = 0; i < WIDTH; i++) {
-        hey[i] = 0;
-    }
-    for (int r = 0; r < ROUNDS; r++) {
-        include `expressions/round${r}.pil`;
+    // --> Constraints to assert the Keccak-f[1600] permutation
 
-        for (int i = 0; i < WIDTH; i++) {
-            hey[i] += CLK[r] * out_exprs[r][i];
+    // Round constants for Keccak-f[1600]
+    // Taken from https://keccak.team/keccak_specs_summary.html#roundConstants
+    const int RC[24] = [
+        0x0000000000000001, 0x0000000000008082, 0x800000000000808A, 0x8000000080008000, 0x000000000000808B, 0x0000000080000001,
+        0x8000000080008081, 0x8000000000008009, 0x000000000000008A, 0x0000000000000088, 0x0000000080008009, 0x000000008000000A,
+        0x000000008000808B, 0x800000000000008B, 0x8000000000008089, 0x8000000000008003, 0x8000000000008002, 0x8000000000000080,
+        0x000000000000800A, 0x800000008000000A, 0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008
+    ];
+
+    const int RC_BITS[24][64];
+    for (int i = 0; i < 24; i++) {
+        RC_BITS[i] = unpack64(RC[i]);
+    }
+
+    // Keccak-f[1600] state as a 3D array
+    col witness bits(1) state[5][5][64];
+    for (int x = 0; x < 5; x++) {
+        for (int y = 0; y < 5; y++) {
+            for (int z = 0; z < 64; z++) {
+                // state are bits
+                state[x][y][z] * (1 - state[x][y][z]) === 0;
+            }
         }
     }
 
-    include "expressions/round_summary.pil";
+    const expr keccakf_partial[5][5][64] = chi(pi(rho(theta(state))));
+    const expr keccakf[5][5][64];
+    for (int x = 0; x < 5; x++) {
+        for (int y = 0; y < 5; y++) {
+            for (int z = 0; z < 64; z++) {
+                if (x == 0 && y == 0) {
+                    keccakf[0][0][z] = iota_and_clock_set(keccakf_partial[0][0][z], RC_BITS, z, ROUNDS);
+                } else {
+                    keccakf[x][y][z] = clock_set(keccakf_partial[x][y][z], start: 0, end: ROUNDS);
+                }
+            }
+        }
+    }
+
+    const int MAX_VALUE = 144; // Gotten from `keccakf_expr_generator.rs`
+    const int BASE = MAX_VALUE + 1;
 
     // Perform lookups for reset expressions
-    const int num_reduced = WIDTH / group_by;
-    col witness bits(22) hey_reduced[num_reduced];
+    const int num_reduced = 1600 / group_by;
+    col witness bits(22) keccakf_reduced[num_reduced];
     for (int i = 0; i < num_reduced; i++) {
-        expr acc_hey = 0;
+        expr acc_keccakf = 0;
+        const int offset = group_by * i;
         for (int j = 0; j < group_by; j++) {
-            acc_hey += hey[group_by*i + j] * (MAX_VALUE + 1)**j;
+            const int pos[3] = idx_pos(offset + j);
+            acc_keccakf += keccakf[pos[0]][pos[1]][pos[2]] * (BASE ** j);
         }
-        hey_reduced[i] === acc_hey;
+        keccakf_reduced[i] === acc_keccakf;
 
         const expr lookup_values[group_by + 1];
-        lookup_values[0] = hey_reduced[i];
+        lookup_values[0] = keccakf_reduced[i];
         for (int j = 0; j < group_by; j++) {
-            lookup_values[j + 1] = state[group_by*i + j]';
+            const int pos[3] = idx_pos(offset + j);
+            lookup_values[j + 1] = state[pos[0]][pos[1]][pos[2]]';
         }
         lookup_assumes(KECCAKF_TABLE_ID, lookup_values);
     }
 
-    const int num_rem_reduced = (WIDTH % group_by);
+    const int num_rem_reduced = (1600 % group_by);
     if (num_rem_reduced > 0) {
-        col witness bits(8) hey_rem;
-        expr acc_hey = 0;
+        col witness bits(8) keccakf_rem;
+
+        const int offset = num_reduced * group_by;
+        expr acc_keccakf = 0;
         for (int j = 0; j < num_rem_reduced; j++) {
-            acc_hey += hey[num_reduced * group_by + j] * (MAX_VALUE + 1)**j;
+            const int pos[3] = idx_pos(offset + j);
+            acc_keccakf += keccakf[pos[0]][pos[1]][pos[2]] * (BASE ** j);
         }
-        hey_rem === acc_hey;
+        keccakf_rem === acc_keccakf;
 
         const expr lookup_values[num_rem_reduced + 1];
-        lookup_values[0] = hey_rem;
+        lookup_values[0] = keccakf_rem;
         for (int j = 0; j < num_rem_reduced; j++) {
-            lookup_values[j + 1] = state[num_reduced * group_by + j]';
+            const int pos[3] = idx_pos(offset + j);
+            lookup_values[j + 1] = state[pos[0]][pos[1]][pos[2]]';
         }
     }
 
@@ -144,14 +148,14 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
                                          //   · in_use_clk_0 can only be active when CLK_0 is active
                                          //   · if in_use is active then so is in_use_clk_0
 
-    const expr in_use_active = clock_set(start: 1, end: 24);
+    const expr in_use_active = clock_set(start: 1, end: CLOCKS);
     in_use_active * (in_use - 'in_use) === 0; // selector latching
 
-    const expr mem_sel = clock_set(in_use, start: 0, end: 24);
+    const expr mem_sel = clock_set(in_use, start: 0, end: CLOCKS);
 
-    const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: 24);
+    const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: CLOCKS);
 
-    const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0, end: 24, delta: 8);
+    const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0, end: CLOCKS, delta: 8);
 
     expr mem_read_value[2];
     mem_read_value[0] = 0; // CLK_0*(input_state[0]  +   input_state[1]*2   + ... + input_state[31]*2^31) + 
@@ -162,14 +166,37 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
                            // CLK_1*(input_state[96] +   input_state[97]*2  + ... + input_state[127]*2^31) +
                            // ...
                            // CLK_24*(input_state[1568] + input_state[1569]*2 + ... + input_state[1599]*2^31)
+
+    // Compute the input state
+    const expr input_state[1600];
+    for (int x = 0; x < 5; x++) {
+        for (int y = 0; y < 5; y++) {
+            for (int z = 0; z < 64; z++) {
+                const int idx = bit_pos(x, y, z);
+                input_state[idx] = state[x][y][z];
+            }
+        }
+    }
+
+    // Compute the output state
+    const expr output_state[1600];
+    for (int x = 0; x < 5; x++) {
+        for (int y = 0; y < 5; y++) {
+            for (int z = 0; z < 64; z++) {
+                const int idx = bit_pos(x, y, z);
+                output_state[idx] = state[x][y][z]'(CLOCKS - 1);
+            }
+        }
+    }
+
     for (int i = 0; i < CLOCKS; i++) {
-        const int base = i * (WIDTH / CLOCKS);
+        const int base = i * (1600 / CLOCKS);
         expr read_value_clk_0 = 0;
         expr read_value_clk_1 = 0;
-        for (int j = 0; j < (WIDTH / CLOCKS) / 2; j++) {
+        for (int j = 0; j < (1600 / CLOCKS) / 2; j++) {
             const int factor = 2**j;
             read_value_clk_0 += factor * input_state[base + j];
-            read_value_clk_1 += factor * input_state[base + j + (WIDTH / CLOCKS) / 2];
+            read_value_clk_1 += factor * input_state[base + j + (1600 / CLOCKS) / 2];
         }
         mem_read_value[0] += CLK[i] * read_value_clk_0;
         mem_read_value[1] += CLK[i] * read_value_clk_1;
@@ -179,13 +206,13 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
     mem_write_value[0] = 0;
     mem_write_value[1] = 0;
     for (int i = 0; i < CLOCKS; i++) {
-        const int base = i * (WIDTH / CLOCKS);
+        const int base = i * (1600 / CLOCKS);
         expr write_value_clk_0 = 0;
         expr write_value_clk_1 = 0;
-        for (int j = 0; j < (WIDTH / CLOCKS) / 2; j++) {
+        for (int j = 0; j < (1600 / CLOCKS) / 2; j++) {
             const int factor = 2**j;
             write_value_clk_0 += factor * output_state[base + j];
-            write_value_clk_1 += factor * output_state[base + j + (WIDTH / CLOCKS) / 2];
+            write_value_clk_1 += factor * output_state[base + j + (1600 / CLOCKS) / 2];
         }
         mem_write_value[0] += CLK[i] * write_value_clk_0;
         mem_write_value[1] += CLK[i] * write_value_clk_1;
@@ -212,12 +239,160 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
     // --> Constraints to make sure that this coprocessor is called from the main processor
     lookup_proves(operation_bus_id, [OP_KECCAKF, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_STATE), 0, 0, 0, 0], mul: in_use_clk_0);
 
+    function unpack64(const int packed): int[] {
+        const int unpacked[64];
+        for (int i = 0; i < 64; i++) {
+            unpacked[i] = (packed >> i) & 1;
+        }
+        return unpacked;
+    }
+
+    function theta(const expr a[][][]): const expr[][][] {
+        // For all pairs (x, z) such that 0 ≤ x < 5 and 0 ≤ z < 64, compute:
+        //      c[x, z] = a[x, 0, z] ^ a[x, 1, z] ^ a[x, 2, z] ^ a[x, 3, z] ^ a[x, 4, z]
+        const expr c[5][64];
+        for (int x = 0; x < 5; x++) {
+            for (int z = 0; z < 64; z++) {
+                c[x][z] = xor5(a[x][0][z], a[x][1][z], a[x][2][z], a[x][3][z], a[x][4][z]);
+            }
+        }
+
+        // For all pairs (x, z) such that 0 ≤ x < 5 and 0 ≤ z < 64, compute:
+        //      D[x, z] = C[(x - 1) mod 5, z] ^ C[(x + 1) mod 5, (z - 1) mod 64]
+        const expr d[5][64];
+        for (int x = 0; x < 5; x++) {
+            for (int z = 0; z < 64; z++) {
+                d[x][z] = xor(c[(x + 4) % 5][z], c[(x + 1) % 5][(z + 63) % 64]);
+            }
+        }
+
+        // For all triples (x, y, z) such that 0 ≤ x,y < 5 and 0 ≤ z < 64, compute:
+        //      A[x, y, z] = A[x, y, z] ^ D[x, z]
+        const expr t[5][5][64];
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                for (int z = 0; z < 64; z++) {
+                    t[x][y][z] = xor(a[x][y][z], d[x][z]);
+                }
+            }
+        }
+
+        return t;
+    }
+
+    function rho(const expr a[][][]): const expr[][][] {
+        // For all z such that 0 ≤ z < 64, let R[0, 0, z] = A[0, 0, z]
+        // Let (x, y) = (1, 0)
+        // For t from 0 to 23:  
+        //      1. For all z such that 0 ≤ z < 64, let R[x, y, z] = A[x, y, (z – (t + 1)(t + 2)/2) mod 64]  
+        //      2. Let (x, y) = (y, (2x + 3y) mod 5)
+        const expr r[5][5][64];
+        for (int z = 0; z < 64; z++) {
+            r[0][0][z] = a[0][0][z];
+        }
+
+        int x = 1;
+        int y = 0;
+        for (int t = 0; t < 24; t++) {
+            const int offset = ((t + 1) * (t + 2)) / 2;
+
+            for (int z = 0; z < 64; z++) {
+                r[x][y][z] = a[x][y][(z + 64 - (offset % 64)) % 64];
+            }
+
+            const int aux = y;
+            y = (2 * x + 3 * y) % 5;
+            x = aux;
+        }
+
+        return r;
+    }
+
+    function pi(const expr a[][][]): const expr[][][] {
+        // For all triples (x, y, z) such that 0 ≤ x,y < 5, and 0 ≤ z < 64, let:  
+        //      B[x, y, z] = R[(x + 3y) mod 5, x, z].
+        const expr p[5][5][64];
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                for (int z = 0; z < 64; z++) {
+                    p[x][y][z] = a[(x + 3 * y) % 5][x][z];
+                }
+            }
+        }
+
+        return p;
+    }
+
+    function chi(const expr a[][][]): const expr[][][] {
+        // For all triples (x, y, z) such that 0 ≤ x,y < 5 and 0 ≤ z < 64 compute:
+        //      A[x, y, z] = B[x, y, z] ^ ((¬B[(x + 1) mod 5, y, z]) & B[(x + 2) mod 5, y, z])
+        const expr c[5][5][64];
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                for (int z = 0; z < 64; z++) {
+                    c[x][y][z] = xor(a[x][y][z], nand(a[(x + 1) % 5][y][z], a[(x + 2) % 5][y][z]));
+                }
+            }
+        }
+
+        return c;
+    }
+
+    function iota_and_clock_set(const expr base_expr, const int rc_bits[][], const int z, const int rounds = 24): const expr {
+        // Let A[0, 0, z] = A[0, 0, z] ^ RC[z].
+        expr result = 0;
+        for (int round = 0; round < rounds; round++) {
+            result += air.CLK[round] * xor(base_expr, rc_bits[round][z]);
+        }
+        return result;
+    }
+
+    function bit_pos(const int x, const int y, const int z): int {
+        assert(0 <= x && x < 5);
+        assert(0 <= y && y < 5);
+        assert(0 <= z && z < 64);
+
+        return 64 * x + 320 * y + z;
+    }
+
+    function idx_pos(const int idx): int[] {
+        assert(0 <= idx && idx < 1600);
+
+        const int result[3];
+        result[0] = (idx / 64) % 5;
+        result[1] = (idx / 320) % 5;
+        result[2] = idx % 64;
+
+        return result;
+    }
+
+    function add(const expr b[]): const expr {
+        const int len = length(b);
+        expr result = 0;
+        for (int i = 0; i < len; i++) {
+            result += b[i];
+        }
+        return result;
+    }
+
+    function xor(const expr b1, const expr b2): const expr {
+        return add([b1, b2]);
+    }
+
+    function xor5(const expr b1, const expr b2, const expr b3, const expr b4, const expr b5): const expr {
+        return add([b1, b2, b3, b4, b5]);
+    }
+
+    function nand(const expr b1, const expr b2): const expr {
+        return (1 + b1) * b2;
+    }
+
     function clock_set(const expr mvcol = 1, int start = 0, int end = -1): const expr {
         if (end == -1) {
             end = start;
         }
         expr res = 0;
-        for (int index = start; index <= end; index++) {
+        for (int index = start; index < end; index++) {
             res += air.CLK[index];
         }
         return res * mvcol;
@@ -229,7 +404,7 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
         }
         expr res = 0;
         int offset = 0;
-        for (int index = start; index <= end; index++) {
+        for (int index = start; index < end; index++) {
             int iclock = (pos - index) % air.CLOCKS;
             if (offset != 0) {
                 res += air.CLK[index] * (mvcol'(iclock) + offset);
