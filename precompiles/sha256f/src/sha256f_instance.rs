@@ -168,7 +168,8 @@ impl BusDevice<PayloadType> for Sha256fCollector {
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
-        _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
+        _data_ext: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<PayloadType>, Vec<PayloadType>)>,
         _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);

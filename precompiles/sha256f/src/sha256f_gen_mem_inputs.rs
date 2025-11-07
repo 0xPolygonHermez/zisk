@@ -20,7 +20,7 @@ pub fn generate_sha256f_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
 ) {
     // Get the basic data from the input
     // op,op_type,a,b,addr[2],...

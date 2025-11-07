@@ -50,7 +50,7 @@ impl MemBusHelpers {
         addr: u32,
         step: u64,
         mem_value: u64,
-        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
     ) {
         assert!(addr % 8 == 0);
         pending.push_back((
@@ -64,13 +64,14 @@ impl MemBusHelpers {
                 0,
                 0,
             ],
+            vec![],
         ));
     }
     pub fn mem_aligned_write(
         addr: u32,
         step: u64,
         value: u64,
-        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
     ) {
         assert!(addr % 8 == 0);
         pending.push_back((
@@ -84,6 +85,7 @@ impl MemBusHelpers {
                 0,
                 value,
             ],
+            vec![],
         ));
     }
     pub fn mem_aligned_op(
@@ -91,7 +93,7 @@ impl MemBusHelpers {
         step: u64,
         value: u64,
         is_write: bool,
-        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
     ) {
         pending.push_back((
             MEM_BUS_ID,
@@ -104,6 +106,7 @@ impl MemBusHelpers {
                 0,
                 if is_write { value } else { 0 },
             ],
+            vec![],
         ));
     }
 }

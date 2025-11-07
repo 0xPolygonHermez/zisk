@@ -17,7 +17,7 @@ pub fn generate_secp256k1_dbl_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
 ) {
     // op,op_type,a,b,...
     let p1: &[u64; 8] = &data[4..12].try_into().unwrap();

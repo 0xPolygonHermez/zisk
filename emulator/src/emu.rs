@@ -320,7 +320,7 @@ impl<'a> Emu<'a> {
                         8,
                         [self.ctx.inst_ctx.a, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 } else {
                     let (required_address_1, required_address_2) =
                         Mem::required_addresses(address, 8);
@@ -340,7 +340,7 @@ impl<'a> Emu<'a> {
                         8,
                         [raw_data_1, raw_data_2],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 }
                 /*println!(
                     "Emu::source_a_mem_reads_consume() mem_leads_index={} value={:x}",
@@ -728,7 +728,7 @@ impl<'a> Emu<'a> {
                         8,
                         [self.ctx.inst_ctx.b, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 } else {
                     let (required_address_1, required_address_2) =
                         Mem::required_addresses(address, 8);
@@ -745,7 +745,7 @@ impl<'a> Emu<'a> {
                             8,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -762,7 +762,7 @@ impl<'a> Emu<'a> {
                             8,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     }
                 }
                 /*println!(
@@ -797,7 +797,7 @@ impl<'a> Emu<'a> {
                         8,
                         [self.ctx.inst_ctx.b, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 } else {
                     let (required_address_1, required_address_2) =
                         Mem::required_addresses(address, instruction.ind_width);
@@ -817,7 +817,7 @@ impl<'a> Emu<'a> {
                             instruction.ind_width as u8,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -838,7 +838,7 @@ impl<'a> Emu<'a> {
                             8,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     }
                 }
                 /*println!(
@@ -1237,7 +1237,7 @@ impl<'a> Emu<'a> {
                         value,
                         [value, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 }
                 // Otherwise, if not aligned, get old raw data from memory, then write it
                 else {
@@ -1256,7 +1256,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -1273,7 +1273,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     }
                 }
             }
@@ -1300,7 +1300,7 @@ impl<'a> Emu<'a> {
                         value,
                         [value, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 }
                 // Otherwise, if not aligned, get old raw data from memory, then write it
                 else {
@@ -1319,7 +1319,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -1336,7 +1336,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     }
                 }
             }
@@ -2042,7 +2042,7 @@ impl<'a> Emu<'a> {
                 &self.ctx.inst_ctx,
                 &mut self.static_array,
             );
-            data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload);
+            data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload, &[]);
         }
 
         // #[cfg(feature = "sp")]
@@ -2095,7 +2095,7 @@ impl<'a> Emu<'a> {
                 &self.ctx.inst_ctx,
                 &mut self.static_array,
             );
-            data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload);
+            data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload, &[]);
         }
 
         // #[cfg(feature = "sp")]
@@ -2214,14 +2214,14 @@ impl<'a> Emu<'a> {
                 &self.ctx.inst_ctx,
                 &mut self.static_array,
             );
-            _continue = data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload);
+            _continue = data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload, &[]);
         }
 
         // Get rom bus data
         let rom_payload = RomBusData::from_instruction(instruction, &self.ctx.inst_ctx);
 
         // Write rom bus data to rom bus
-        data_bus.write_to_bus(ROM_BUS_ID, &rom_payload);
+        data_bus.write_to_bus(ROM_BUS_ID, &rom_payload, &[]);
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
@@ -2231,6 +2231,17 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step += 1;
 
         _continue
+    }
+
+    fn get_slice_from_mem_reads<'b>(
+        &mut self,
+        mem_reads: &'b [u64],
+        mem_reads_index: &mut usize,
+        len: usize,
+    ) -> &'b [u64] {
+        let slice = &mem_reads[*mem_reads_index..*mem_reads_index + len];
+        *mem_reads_index += len;
+        slice
     }
 
     /// Performs one single step of the emulation

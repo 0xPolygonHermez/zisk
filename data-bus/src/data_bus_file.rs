@@ -12,6 +12,7 @@ use std::{
 
 use zisk_common::BusId;
 
+pub type ReadFromFileData<D> = Vec<(BusId, Vec<D>, Vec<D>)>;
 pub struct DataBusFileReader;
 
 impl DataBusFileReader {
@@ -35,7 +36,7 @@ impl DataBusFileReader {
     /// # Errors
     /// - Returns an error if the file cannot be opened or read.
     /// - Returns an error if any line is malformed (missing `BusId` or invalid payload values).
-    pub fn read_from_file<D: FromStr>(file_path: &str) -> Result<Vec<(BusId, Vec<D>)>, io::Error>
+    pub fn read_from_file<D: FromStr>(file_path: &str) -> Result<ReadFromFileData<D>, io::Error>
     where
         D::Err: std::fmt::Display,
     {
@@ -81,7 +82,7 @@ impl DataBusFileReader {
             }
 
             // Push the parsed data into the pre-allocated vector
-            data.push((BusId(bus_id), payload));
+            data.push((BusId(bus_id), payload, vec![]));
         }
 
         Ok(data)

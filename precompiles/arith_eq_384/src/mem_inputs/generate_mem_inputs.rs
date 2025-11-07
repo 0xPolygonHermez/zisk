@@ -16,7 +16,7 @@ pub fn generate_mem_inputs(
     data: &[u64],
     write_data: Option<&[u64]>,
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
     config: &ArithEq384MemInputConfig,
 ) {
     let params_count = config.read_params + config.write_params;

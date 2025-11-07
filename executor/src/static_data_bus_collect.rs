@@ -71,7 +71,7 @@ pub struct StaticDataBusCollect<D> {
     pub rom_collector: Vec<(usize, RomCollector)>,
 
     /// Queue of pending data transfers to be processed.
-    pending_transfers: VecDeque<(BusId, Vec<D>)>,
+    pending_transfers: VecDeque<(BusId, Vec<D>, Vec<D>)>,
 
     mem_collectors_info: Vec<MemCollectorInfo>,
 }
@@ -146,30 +146,38 @@ impl StaticDataBusCollect<PayloadType> {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn route_data(&mut self, bus_id: BusId, payload: &[PayloadType]) {
+    fn route_data(&mut self, bus_id: BusId, data: &[PayloadType], data_ext: &[PayloadType]) {
         match bus_id {
             MEM_BUS_ID => {
                 // Process mem collectors - inverted condition to avoid continue
                 for (_, mem_collector) in &mut self.mem_collector {
-                    mem_collector.process_data(&bus_id, payload, &mut self.pending_transfers, None);
+                    mem_collector.process_data(
+                        &bus_id,
+                        data,
+                        data_ext,
+                        &mut self.pending_transfers,
+                        None,
+                    );
                 }
 
                 // Only process align collectors if needed
                 for (_, mem_align_collector) in &mut self.mem_align_collector {
                     mem_align_collector.process_data(
                         &bus_id,
-                        payload,
+                        data,
+                        data_ext,
                         &mut self.pending_transfers,
                         None,
                     );
                 }
             }
-            OPERATION_BUS_ID => match payload[OP_TYPE] {
+            OPERATION_BUS_ID => match data[OP_TYPE] {
                 BINARY_TYPE => {
                     for (_, binary_add_collector) in &mut self.binary_add_collector {
                         binary_add_collector.process_data(
                             &bus_id,
-                            payload,
+                            data,
+                            data_ext,
                             &mut self.pending_transfers,
                             None,
                         );
@@ -178,7 +186,8 @@ impl StaticDataBusCollect<PayloadType> {
                     for (_, binary_basic_collector) in &mut self.binary_basic_collector {
                         binary_basic_collector.process_data(
                             &bus_id,
-                            payload,
+                            data,
+                            data_ext,
                             &mut self.pending_transfers,
                             None,
                         );
@@ -188,7 +197,8 @@ impl StaticDataBusCollect<PayloadType> {
                     for (_, binary_extension_collector) in &mut self.binary_extension_collector {
                         binary_extension_collector.process_data(
                             &bus_id,
-                            payload,
+                            data,
+                            data_ext,
                             &mut self.pending_transfers,
                             None,
                         );
@@ -198,7 +208,8 @@ impl StaticDataBusCollect<PayloadType> {
                     for (_, arith_collector) in &mut self.arith_collector {
                         arith_collector.process_data(
                             &bus_id,
-                            payload,
+                            data,
+                            data_ext,
                             &mut self.pending_transfers,
                             None,
                         );
@@ -206,7 +217,8 @@ impl StaticDataBusCollect<PayloadType> {
 
                     self.arith_inputs_generator.process_data(
                         &bus_id,
-                        payload,
+                        data,
+                        data_ext,
                         &mut self.pending_transfers,
                         None,
                     );
@@ -215,7 +227,8 @@ impl StaticDataBusCollect<PayloadType> {
                     for (_, keccakf_collector) in &mut self.keccakf_collector {
                         keccakf_collector.process_data(
                             &bus_id,
-                            payload,
+                            data,
+                            data_ext,
                             &mut self.pending_transfers,
                             None,
                         );
@@ -223,7 +236,8 @@ impl StaticDataBusCollect<PayloadType> {
 
                     self.keccakf_inputs_generator.process_data(
                         &bus_id,
-                        payload,
+                        data,
+                        data_ext,
                         &mut self.pending_transfers,
                         Some(&self.mem_collectors_info),
                     );
@@ -232,7 +246,8 @@ impl StaticDataBusCollect<PayloadType> {
                     for (_, sha256f_collector) in &mut self.sha256f_collector {
                         sha256f_collector.process_data(
                             &bus_id,
-                            payload,
+                            data,
+                            data_ext,
                             &mut self.pending_transfers,
                             None,
                         );
@@ -240,7 +255,8 @@ impl StaticDataBusCollect<PayloadType> {
 
                     self.sha256f_inputs_generator.process_data(
                         &bus_id,
-                        payload,
+                        data,
+                        data_ext,
                         &mut self.pending_transfers,
                         Some(&self.mem_collectors_info),
                     );
@@ -249,7 +265,8 @@ impl StaticDataBusCollect<PayloadType> {
                     for (_, arith_eq_collector) in &mut self.arith_eq_collector {
                         arith_eq_collector.process_data(
                             &bus_id,
-                            payload,
+                            data,
+                            data_ext,
                             &mut self.pending_transfers,
                             None,
                         );
@@ -257,7 +274,8 @@ impl StaticDataBusCollect<PayloadType> {
 
                     self.arith_eq_inputs_generator.process_data(
                         &bus_id,
-                        payload,
+                        data,
+                        data_ext,
                         &mut self.pending_transfers,
                         Some(&self.mem_collectors_info),
                     );
@@ -266,7 +284,8 @@ impl StaticDataBusCollect<PayloadType> {
                     for (_, arith_eq_384_collector) in &mut self.arith_eq_384_collector {
                         arith_eq_384_collector.process_data(
                             &bus_id,
-                            payload,
+                            data,
+                            data_ext,
                             &mut self.pending_transfers,
                             None,
                         );
@@ -274,7 +293,8 @@ impl StaticDataBusCollect<PayloadType> {
 
                     self.arith_eq_384_inputs_generator.process_data(
                         &bus_id,
-                        payload,
+                        data,
+                        data_ext,
                         &mut self.pending_transfers,
                         Some(&self.mem_collectors_info),
                     );
@@ -283,7 +303,8 @@ impl StaticDataBusCollect<PayloadType> {
                     for (_, add256_collector) in &mut self.add256_collector {
                         add256_collector.process_data(
                             &bus_id,
-                            payload,
+                            data,
+                            data_ext,
                             &mut self.pending_transfers,
                             None,
                         );
@@ -291,7 +312,8 @@ impl StaticDataBusCollect<PayloadType> {
 
                     self.add256_inputs_generator.process_data(
                         &bus_id,
-                        payload,
+                        data,
+                        data_ext,
                         &mut self.pending_transfers,
                         Some(&self.mem_collectors_info),
                     );
@@ -300,7 +322,13 @@ impl StaticDataBusCollect<PayloadType> {
             },
             ROM_BUS_ID => {
                 for (_, rom_collector) in &mut self.rom_collector {
-                    rom_collector.process_data(&bus_id, payload, &mut self.pending_transfers, None);
+                    rom_collector.process_data(
+                        &bus_id,
+                        data,
+                        data_ext,
+                        &mut self.pending_transfers,
+                        None,
+                    );
                 }
             }
             _ => {}
@@ -312,12 +340,19 @@ impl DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
     for StaticDataBusCollect<PayloadType>
 {
     #[inline(always)]
-    fn write_to_bus(&mut self, bus_id: BusId, payload: &[PayloadType]) -> bool {
-        self.route_data(bus_id, payload);
+    fn write_to_bus(
+        &mut self,
+        bus_id: BusId,
+        data: &[PayloadType],
+        data_ext: &[PayloadType],
+    ) -> bool {
+        self.route_data(bus_id, data, data_ext);
 
         // Process all pending transfers in a batch to improve cache locality
-        while let Some((pending_bus_id, pending_payload)) = self.pending_transfers.pop_front() {
-            self.route_data(pending_bus_id, &pending_payload);
+        while let Some((pending_bus_id, pending_payload, pending_data_ext)) =
+            self.pending_transfers.pop_front()
+        {
+            self.route_data(pending_bus_id, &pending_payload, &pending_data_ext);
         }
 
         true

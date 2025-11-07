@@ -283,9 +283,9 @@ impl OperationBusData<u64> {
         op_type: PayloadType,
         a: u64,
         b: u64,
-        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
     ) {
-        pending.push_back((OPERATION_BUS_ID, vec![op as u64, op_type, a, b]));
+        pending.push_back((OPERATION_BUS_ID, vec![op as u64, op_type, a, b], Vec::new()));
     }
 
     /// Creates operation data from a `ZiskInst` instruction and its context.

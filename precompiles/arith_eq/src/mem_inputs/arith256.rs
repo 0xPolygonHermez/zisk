@@ -17,7 +17,7 @@ pub fn generate_arith256_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
 ) {
     // op,op_type,a,b,addr[5],...
     let a: &[u64; 4] = &data[9..13].try_into().unwrap();

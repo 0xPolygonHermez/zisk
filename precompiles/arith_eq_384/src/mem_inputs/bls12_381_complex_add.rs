@@ -17,7 +17,7 @@ pub fn generate_bls12_381_complex_add_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
 ) {
     let mut pos_offset: usize = 6; // op,op_type,a,b,addr[2],...
     let f1: &[u64; ARITH_EQ_384_U64S_DOUBLE] =

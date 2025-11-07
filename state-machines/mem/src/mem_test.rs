@@ -44,6 +44,7 @@ fn add_test_aligned_mem_reads(
         counter.process_data(
             &MEM_BUS_ID,
             &[MEMORY_LOAD_OP as u64, addr as u64, step + i * step_delta, 8, value],
+            &[],
             &mut VecDeque::new(),
             None,
         );
@@ -75,6 +76,7 @@ fn add_mem_data(
         counter.process_data(
             &MEM_BUS_ID,
             &[op, addr, step, width, value],
+            &[],
             &mut VecDeque::new(),
             None,
         );
@@ -107,6 +109,7 @@ fn add_mem_read64(counter: &mut MemCounters, addr: u32, step: u64, value: u64) {
     counter.process_data(
         &MEM_BUS_ID,
         &[MEMORY_LOAD_OP as u64, addr as u64, step, 8, value],
+        &[],
         &mut VecDeque::new(),
         None,
     );
@@ -116,6 +119,7 @@ fn add_mem_write64(counter: &mut MemCounters, addr: u32, step: u64, value: u64) 
     counter.process_data(
         &MEM_BUS_ID,
         &[MEMORY_STORE_OP as u64, addr as u64, step, 8, value],
+        &[],
         &mut VecDeque::new(),
         None,
     );

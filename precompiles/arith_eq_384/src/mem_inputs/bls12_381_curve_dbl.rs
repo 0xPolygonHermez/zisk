@@ -17,7 +17,7 @@ pub fn generate_bls12_381_curve_dbl_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
 ) {
     let pos_offset: usize = 4; // op,op_type,a,b,...
     let p1: &[u64; ARITH_EQ_384_U64S_DOUBLE] =

@@ -47,7 +47,7 @@ pub struct StaticDataBus<D> {
     pub add_256_counter: (usize, Add256CounterInputGen),
     pub rom_counter_id: Option<usize>,
     /// Queue of pending data transfers to be processed.
-    pending_transfers: VecDeque<(BusId, Vec<D>)>,
+    pending_transfers: VecDeque<(BusId, Vec<D>, Vec<D>)>,
 }
 
 impl StaticDataBus<PayloadType> {
@@ -92,7 +92,12 @@ impl StaticDataBus<PayloadType> {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn route_data(&mut self, bus_id: BusId, payload: &[PayloadType]) -> bool {
+    fn route_data(
+        &mut self,
+        bus_id: BusId,
+        data: &[PayloadType],
+        data_ext: &[PayloadType],
+    ) -> bool {
         match bus_id {
             MEM_BUS_ID => {
                 let mut _continue = true;
@@ -101,7 +106,8 @@ impl StaticDataBus<PayloadType> {
                         // If we are not processing only operation bus, we process memory bus data.
                         _continue &= mem_counter.process_data(
                             &bus_id,
-                            payload,
+                            data,
+                            data_ext,
                             &mut self.pending_transfers,
                             None,
                         );
@@ -109,52 +115,60 @@ impl StaticDataBus<PayloadType> {
                 }
                 _continue
             }
-            OPERATION_BUS_ID => match payload[1] as u32 {
+            OPERATION_BUS_ID => match data[1] as u32 {
                 PUB_OUT_OP_TYPE_ID => self.main_counter.process_data(
                     &bus_id,
-                    payload,
+                    data,
+                    data_ext,
                     &mut self.pending_transfers,
                     None,
                 ),
                 BINARY_OP_TYPE_ID | BINARY_E_OP_TYPE_ID => self.binary_counter.1.process_data(
                     &bus_id,
-                    payload,
+                    data,
+                    data_ext,
                     &mut self.pending_transfers,
                     None,
                 ),
                 ARITH_OP_TYPE_ID => self.arith_counter.1.process_data(
                     &bus_id,
-                    payload,
+                    data,
+                    data_ext,
                     &mut self.pending_transfers,
                     None,
                 ),
                 KECCAK_OP_TYPE_ID => self.keccakf_counter.1.process_data(
                     &bus_id,
-                    payload,
+                    data,
+                    data_ext,
                     &mut self.pending_transfers,
                     None,
                 ),
                 SHA256_OP_TYPE_ID => self.sha256f_counter.1.process_data(
                     &bus_id,
-                    payload,
+                    data,
+                    data_ext,
                     &mut self.pending_transfers,
                     None,
                 ),
                 ARITH_EQ_OP_TYPE_ID => self.arith_eq_counter.1.process_data(
                     &bus_id,
-                    payload,
+                    data,
+                    data_ext,
                     &mut self.pending_transfers,
                     None,
                 ),
                 ARITH_EQ_384_OP_TYPE_ID => self.arith_eq_384_counter.1.process_data(
                     &bus_id,
-                    payload,
+                    data,
+                    data_ext,
                     &mut self.pending_transfers,
                     None,
                 ),
                 BIG_INT_OP_TYPE_ID => self.add_256_counter.1.process_data(
                     &bus_id,
-                    payload,
+                    data,
+                    data_ext,
                     &mut self.pending_transfers,
                     None,
                 ),
@@ -167,11 +181,16 @@ impl StaticDataBus<PayloadType> {
 
 impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<PayloadType> {
     #[inline(always)]
-    fn write_to_bus(&mut self, bus_id: BusId, payload: &[PayloadType]) -> bool {
-        let mut _continue = self.route_data(bus_id, payload);
+    fn write_to_bus(
+        &mut self,
+        bus_id: BusId,
+        data: &[PayloadType],
+        data_ext: &[PayloadType],
+    ) -> bool {
+        let mut _continue = self.route_data(bus_id, data, data_ext);
 
-        while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
-            _continue &= self.route_data(bus_id, &payload);
+        while let Some((bus_id, data, data_ext)) = self.pending_transfers.pop_front() {
+            _continue &= self.route_data(bus_id, &data, &data_ext);
         }
 
         _continue
