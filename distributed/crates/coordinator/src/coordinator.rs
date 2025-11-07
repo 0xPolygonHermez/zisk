@@ -824,7 +824,7 @@ impl Coordinator {
     ) -> (bool, String) {
         match self
             .workers_pool
-            .reconnect_worker(req.worker_id, req.compute_capacity, msg_sender)
+            .register_worker(req.worker_id, req.compute_capacity, msg_sender)
             .await
         {
             Ok(()) => (true, "Reconnection successful".to_string()),
@@ -870,6 +870,23 @@ impl Coordinator {
         }
 
         self.workers_pool.unregister_worker(worker_id).await
+    }
+
+    pub async fn disconnect_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
+        // Is this worker involved in any active jobs?
+        let worker_state = self.workers_pool.worker_state(worker_id).await;
+        if let Some(WorkerState::Computing((job_id, phase))) = worker_state {
+            error!(
+                "Worker {} disconnected while computing for job {} in phase {:?}",
+                worker_id, job_id, phase
+            );
+            error!("Marking job {} as failed due to worker disconnection", job_id);
+
+            // Fail the affected job
+            self.fail_job(&job_id, format!("Worker {} disconnected", worker_id)).await?;
+        }
+
+        self.workers_pool.disconnect_worker(worker_id).await
     }
 
     /// Handles heartbeat acknowledgments from workers to maintain liveness tracking.

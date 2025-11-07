@@ -70,10 +70,10 @@ impl Drop for ConnectionDropGuard {
 }
 
 async fn cleanup_worker(coordinator: Arc<Coordinator>, worker_id: WorkerId) {
-    if let Err(e) = coordinator.unregister_worker(&worker_id).await {
-        error!("Failed to unregister worker {}: {}", worker_id, e);
+    if let Err(e) = coordinator.disconnect_worker(&worker_id).await {
+        error!("Failed to disconnect worker {}: {}", worker_id, e);
     } else {
-        info!("{worker_id} unregistered successfully");
+        info!("{worker_id} disconnected successfully");
     }
 }
 
