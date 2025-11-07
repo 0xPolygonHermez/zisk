@@ -166,9 +166,8 @@ impl WorkersPool {
     ) -> CoordinatorResult<()> {
         let connection = WorkerInfo::new(worker_id.clone(), compute_capacity.into(), msg_sender);
         let mut workers = self.workers.write().await;
-        let worker = workers.get_mut(&worker_id);
 
-        let is_new_worker = if let Some(worker) = worker {
+        let is_new_worker = if let Some(worker) = workers.get_mut(&worker_id) {
             if worker.state != WorkerState::Disconnected {
                 let msg = format!("Worker {} is already connected", worker_id);
                 warn!("{}", msg);
@@ -182,7 +181,7 @@ impl WorkersPool {
                 false
             }
         } else {
-            self.workers.write().await.insert(worker_id.clone(), connection);
+            workers.insert(worker_id.clone(), connection);
 
             true
         };
