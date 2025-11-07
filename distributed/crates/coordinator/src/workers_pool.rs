@@ -292,9 +292,12 @@ impl WorkersPool {
     }
 
     pub async fn disconnect_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
-        match self.workers.write().await.get_mut(worker_id) {
+        let mut workers = self.workers.write().await;
+        match workers.get_mut(worker_id) {
             Some(existing_worker) => {
                 existing_worker.state = WorkerState::Disconnected;
+
+                drop(workers);
 
                 info!(
                     "Disconnected worker: {} (total: {} CC: {} ACC: {})",
