@@ -98,7 +98,7 @@ pub struct Coordinator {
     start_time_utc: DateTime<Utc>,
 
     /// Manages the pool of connected workers and their communication channels.
-    pub workers_pool: WorkersPool,
+    workers_pool: WorkersPool,
 
     /// Concurrent storage for active jobs with fine-grained locking.
     jobs: DashMap<JobId, Arc<RwLock<Job>>>,
@@ -983,6 +983,8 @@ impl Coordinator {
     /// * `message` - Task response containing failure details and context
     async fn handle_task_failure(&self, message: ExecuteTaskResponseDto) -> CoordinatorResult<()> {
         self.fail_job(&message.job_id, "Task execution failed").await?;
+
+        self.workers_pool.mark_worker_with_state(&message.worker_id, WorkerState::Idle).await?;
 
         Err(CoordinatorError::WorkerError(format!(
             "Worker {} failed to execute task for {}: {}",

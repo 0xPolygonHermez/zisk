@@ -10,7 +10,7 @@ use std::{pin::Pin, sync::Arc};
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
-use zisk_distributed_common::{CoordinatorMessageDto, JobId, WorkerId, WorkerState};
+use zisk_distributed_common::{CoordinatorMessageDto, JobId, WorkerId};
 use zisk_distributed_grpc_api::{zisk_distributed_api_server::*, *};
 
 use crate::config::Config;
@@ -447,10 +447,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
                         match incoming {
                             Some(Ok(message)) => {
                                 if let Err(e) = Self::handle_stream_message(&coordinator, &worker_id, message).await {
-                                    // TODO! Move to coordinator
-                                    let _ = coordinator.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await;
                                     error!("Error handling worker {worker_id}: {e}");
-                                    // cleanup_worker!(coordinator, worker_id, yield Err(Status::from(e)));
                                 }
                             }
                             Some(Err(e)) => {
