@@ -40,7 +40,15 @@ use chrono::{DateTime, Utc};
 use colored::Colorize;
 use dashmap::DashMap;
 use proofman::ContributionsInfo;
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use zisk_distributed_common::{
@@ -102,6 +110,12 @@ pub struct Coordinator {
 
     /// Concurrent storage for active jobs with fine-grained locking.
     jobs: DashMap<JobId, Arc<RwLock<Job>>>,
+
+    /// Number of registrations accumulated.
+    registrations: AtomicU64,
+
+    /// Number of reconnections accumulated.
+    reconnections: AtomicU64,
 }
 
 impl Coordinator {
@@ -113,7 +127,14 @@ impl Coordinator {
     pub fn new(config: Config) -> Self {
         let start_time_utc = Utc::now();
 
-        Self { config, start_time_utc, workers_pool: WorkersPool::new(), jobs: DashMap::new() }
+        Self {
+            config,
+            start_time_utc,
+            workers_pool: WorkersPool::new(),
+            jobs: DashMap::new(),
+            registrations: AtomicU64::new(0),
+            reconnections: AtomicU64::new(0),
+        }
     }
 
     /// Retrieves comprehensive status information about the coordinator service.
@@ -762,6 +783,8 @@ impl Coordinator {
         req: WorkerRegisterRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> (bool, String) {
+        self.registrations.fetch_add(1, Ordering::Relaxed);
+
         let max_connections = self.config.coordinator.max_total_workers as usize;
         if self.workers_pool.num_workers().await >= max_connections {
             return (
@@ -822,6 +845,9 @@ impl Coordinator {
         req: WorkerReconnectRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> (bool, String) {
+        // TODO! Since we call register_worker here, we need to make sure we have not reached
+        // the max connections limit. Otherwise, a reconnecting worker may be rejected.
+        self.reconnections.fetch_add(1, Ordering::Relaxed);
         match self
             .workers_pool
             .register_worker(req.worker_id, req.compute_capacity, msg_sender)
@@ -1801,6 +1827,22 @@ impl Coordinator {
                 }
             }
         }
+
+        let duration = Utc::now().signed_duration_since(self.start_time_utc);
+        let total_secs = duration.num_seconds().max(0) as u64; // avoid negative durations
+        let uptime = humantime::format_duration(Duration::from_secs(total_secs)).to_string();
+
+        info!(
+            "[Coordinator] Started at {} UTC — Uptime: {}",
+            self.start_time_utc.format("%Y-%m-%d %H:%M:%S"),
+            uptime
+        );
+
+        info!(
+            "[Coordinator] Registrations: {} Reconnections: {}",
+            self.registrations.load(Ordering::Relaxed),
+            self.reconnections.load(Ordering::Relaxed)
+        );
 
         // Release job lock before calling post_launch_proof
         drop(job);
