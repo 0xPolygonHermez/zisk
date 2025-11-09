@@ -296,7 +296,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             trace[i].set_q2(self.to_ranged_field(data.q2[i], q_range_id) as u32);
             trace[i].set_s(self.to_ranged_field(data.s[i], self.chunk_range_id) as u32);
 
-            // TODO Range check
             for j in 0..ARITH_EQ_384_OP_NUM {
                 let selected = j == sel_op;
                 trace[i].set_sel_op(j, selected);
