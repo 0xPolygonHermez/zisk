@@ -4,7 +4,7 @@ use fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
 #[cfg(not(feature = "packed"))]
@@ -119,8 +119,8 @@ impl<F: PrimeField64> Add256SM<F> {
         &self,
         inputs: &[Vec<Add256Input>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut trace = Add256TraceType::<F>::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = Add256TraceType::<F>::new_from_vec(trace_buffer)?;
 
         let num_rows = trace.num_rows();
 
@@ -177,6 +177,6 @@ impl<F: PrimeField64> Add256SM<F> {
         let padding_row = Add256TraceRowType::<F>::default();
         trace.buffer[total_inputs..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 
-        AirInstance::<F>::new_from_trace(FromTrace::new(&mut trace))
+        Ok(AirInstance::<F>::new_from_trace(FromTrace::new(&mut trace)))
     }
 }

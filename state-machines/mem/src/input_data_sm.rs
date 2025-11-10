@@ -5,7 +5,7 @@ use mem_common::{MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use zisk_common::SegmentId;
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::InputDataAirValues;
@@ -94,8 +94,8 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut trace = InputDataTraceType::<F>::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = InputDataTraceType::<F>::new_from_vec(trace_buffer)?;
 
         let num_rows = InputDataTraceType::<F>::NUM_ROWS;
         debug_assert!(
@@ -247,6 +247,6 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         air_values.segment_last_value[0] = F::from_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);
 
-        AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 }

@@ -2,7 +2,7 @@ use fields::PrimeField64;
 use std::sync::Arc;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{ArithEqTrace, ArithEqTraceRow};
@@ -463,8 +463,8 @@ impl<F: PrimeField64> ArithEqSM<F> {
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEqInput>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut trace = ArithEqTraceType::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = ArithEqTraceType::new_from_vec(trace_buffer)?;
         let num_rows = trace.num_rows();
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
         let num_rows_needed = total_inputs * ARITH_EQ_ROWS_BY_OP;
@@ -524,6 +524,6 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
         timer_stop_and_log_trace!(ARITH_EQ_TRACE);
 
-        AirInstance::new_from_trace(FromTrace::new(&mut trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }
 }

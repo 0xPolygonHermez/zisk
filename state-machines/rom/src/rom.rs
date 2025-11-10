@@ -21,7 +21,7 @@ use crate::{RomInstance, RomPlanner};
 use asm_runner::{AsmRHData, AsmRunnerRH};
 use fields::PrimeField64;
 use itertools::Itertools;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use zisk_common::{
     create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx,
     Planner,
@@ -88,8 +88,8 @@ impl RomSM {
         counter_stats: &CounterStats,
         calculated: &AtomicBool,
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer)?;
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
@@ -154,15 +154,15 @@ impl RomSM {
             rom_trace[i].multiplicity = F::from_u64(multiplicity);
         }
 
-        AirInstance::new_from_trace(FromTrace::new(&mut rom_trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut rom_trace)))
     }
 
     pub fn compute_witness_from_asm<F: PrimeField64>(
         rom: &ZiskRom,
         asm_romh: &AsmRHData,
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer)?;
 
         tracing::info!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
@@ -203,7 +203,7 @@ impl RomSM {
             rom_trace[i].multiplicity = F::from_u64(multiplicity);
         }
 
-        AirInstance::new_from_trace(FromTrace::new(&mut rom_trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut rom_trace)))
     }
 
     /// Computes the ROM trace based on the ROM instructions.
