@@ -5,7 +5,7 @@
 use crate::BinaryBasicFrops;
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use std::sync::Arc;
 use zisk_pil::BinaryAddAirValues;
@@ -112,8 +112,8 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         &self,
         inputs: &[Vec<[u64; 2]>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut add_trace = BinaryAddTraceType::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut add_trace = BinaryAddTraceType::new_from_vec(trace_buffer)?;
 
         let num_rows = add_trace.num_rows();
 
@@ -164,7 +164,9 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         let mut air_values = BinaryAddAirValues::<F>::new();
         air_values.padding_size = F::from_usize(padding_size);
-        AirInstance::new_from_trace(FromTrace::new(&mut add_trace).with_air_values(&mut air_values))
+        Ok(AirInstance::new_from_trace(
+            FromTrace::new(&mut add_trace).with_air_values(&mut air_values),
+        ))
     }
 
     pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {

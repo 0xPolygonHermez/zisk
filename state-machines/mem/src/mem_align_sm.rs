@@ -7,7 +7,7 @@ use fields::PrimeField64;
 use pil_std_lib::Std;
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
@@ -749,8 +749,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut trace = MemAlignTraceType::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = MemAlignTraceType::new_from_vec(trace_buffer)?;
         let mut reg_range_check = vec![0u32; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
@@ -812,7 +812,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         reg_range_check[0] += CHUNK_NUM as u32 * padding_size as u32;
         self.update_std_range_check(reg_range_check);
 
-        AirInstance::new_from_trace(FromTrace::new(&mut trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }
 
     fn update_std_range_check(&self, reg_range_check: Vec<u32>) {

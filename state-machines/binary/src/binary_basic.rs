@@ -9,7 +9,7 @@ use crate::{
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
@@ -895,8 +895,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         &self,
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut binary_trace = BinaryTraceType::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut binary_trace = BinaryTraceType::new_from_vec(trace_buffer)?;
 
         let num_rows = binary_trace.num_rows();
 
@@ -954,9 +954,9 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
         let mut air_values = BinaryAirValues::<F>::new();
         air_values.padding_size = F::from_usize(padding_size);
-        AirInstance::new_from_trace(
+        Ok(AirInstance::new_from_trace(
             FromTrace::new(&mut binary_trace).with_air_values(&mut air_values),
-        )
+        ))
     }
     pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
         for row in frops_inputs {

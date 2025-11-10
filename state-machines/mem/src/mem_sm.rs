@@ -28,7 +28,7 @@ use mem_common::{
     RAM_W_ADDR_END, RAM_W_ADDR_INIT,
 };
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use zisk_core::{RAM_ADDR, RAM_SIZE};
 
 const DUAL_RANGE_MAX: usize = (1 << 24) - 1;
@@ -109,8 +109,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut trace = MemTraceType::<F>::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = MemTraceType::<F>::new_from_vec(trace_buffer)?;
 
         let mut range_check_data: Vec<u32> = vec![0; MEM_INC_C_SIZE];
 
@@ -338,6 +338,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             Self::save_to_file(&trace, &filename);
             println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
         }
-        AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 }

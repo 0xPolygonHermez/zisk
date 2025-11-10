@@ -4,7 +4,7 @@ use crate::{MemInput, MemModule, MemPreviousSegment};
 use fields::PrimeField64;
 use mem_common::{MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 #[cfg(feature = "debug_mem")]
 use std::{
     env,
@@ -107,8 +107,8 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut trace = RomDataTraceType::<F>::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = RomDataTraceType::<F>::new_from_vec(trace_buffer)?;
         let num_rows = RomDataTraceType::<F>::NUM_ROWS;
         assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_rows,
@@ -252,6 +252,6 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             Self::save_to_file(&trace, &filename);
         }
 
-        AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 }

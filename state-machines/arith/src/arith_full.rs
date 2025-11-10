@@ -13,7 +13,7 @@ use crate::{
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
@@ -90,8 +90,8 @@ impl<F: PrimeField64> ArithFullSM<F> {
         &self,
         inputs: &[Vec<OperationData<u64>>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut arith_trace = ArithTraceType::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut arith_trace = ArithTraceType::new_from_vec(trace_buffer)?;
 
         let num_rows = arith_trace.num_rows();
 
@@ -174,7 +174,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
             self.std.inc_virtual_row(self.range_table_id, row as u64, multiplicity);
         }
 
-        AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut arith_trace)))
     }
 
     pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
