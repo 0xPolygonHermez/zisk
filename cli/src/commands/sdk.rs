@@ -3,8 +3,8 @@ use clap::Subcommand;
 use crate::toolchain::{
     build_toolchain::BuildToolchainCmd, install_toolchain::InstallToolchainCmd, new::NewCmd,
 };
-use crate::ZISK_VERSION_MESSAGE;
 use anyhow::Result;
+use zisk_build::ZISK_VERSION_MESSAGE;
 
 // Structure representing the 'sdk' subcommand of cargo.
 #[derive(clap::Args)]

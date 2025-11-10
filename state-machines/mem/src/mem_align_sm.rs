@@ -58,6 +58,9 @@ pub struct MemAlignSM<F: PrimeField64> {
 
     /// The table ID for the Mem Align ROM State Machine
     table_id: usize,
+
+    /// The range ID for the byte range check
+    range_id: usize,
 }
 
 macro_rules! debug_info {
@@ -72,13 +75,17 @@ macro_rules! debug_info {
 impl<F: PrimeField64> MemAlignSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Get the table ID
-        let table_id = std.get_virtual_table_id(MemAlignRomSM::TABLE_ID);
+        let table_id =
+            std.get_virtual_table_id(MemAlignRomSM::TABLE_ID).expect("Failed to get table ID");
+        let range_id =
+            std.get_range_id(0, CHUNK_BITS_MASK as i64, None).expect("Failed to get range ID");
 
         Arc::new(Self {
             std: std.clone(),
             #[cfg(feature = "debug_mem_align")]
             num_computed_rows: Mutex::new(0),
             table_id,
+            range_id,
         })
     }
 
@@ -810,7 +817,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
     fn update_std_range_check(&self, reg_range_check: Vec<u32>) {
         // Perform the range checks
-        let range_id = self.std.get_range_id(0, CHUNK_BITS_MASK as i64, None);
-        self.std.range_checks(range_id, reg_range_check);
+        self.std.range_checks(self.range_id, reg_range_check);
     }
 }

@@ -15,8 +15,9 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
+use zisk_pil::BinaryExtensionAirValues;
 #[cfg(not(feature = "packed"))]
-use zisk_pil::{BinaryExtensionAirValues, BinaryExtensionTrace, BinaryExtensionTraceRow};
+use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
 #[cfg(feature = "packed")]
 use zisk_pil::{BinaryExtensionTracePacked, BinaryExtensionTraceRowPacked};
 
@@ -72,13 +73,17 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     /// An `Arc`-wrapped instance of `BinaryExtensionSM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Get the range check ID
-        let range_id = std.get_range_id(0, 0xFFFFFF, None);
+        let range_id = std.get_range_id(0, 0xFFFFFF, None).expect("Failed to get range ID");
 
         // Get the table ID
-        let table_id = std.get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID);
+        let table_id = std
+            .get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID)
+            .expect("Failed to get table ID");
 
         // Get the FROPS table ID
-        let frops_table_id = std.get_virtual_table_id(BinaryExtensionFrops::TABLE_ID);
+        let frops_table_id = std
+            .get_virtual_table_id(BinaryExtensionFrops::TABLE_ID)
+            .expect("Failed to get FROPS table ID");
 
         Arc::new(Self { std, range_id, table_id, frops_table_id })
     }

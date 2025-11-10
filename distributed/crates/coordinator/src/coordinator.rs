@@ -44,11 +44,11 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use zisk_distributed_common::{
-    AggParamsDto, AggProofData, BlockId, ChallengesDto, ComputeCapacity, ContributionParamsDto,
-    CoordinatorMessageDto, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
-    ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, Job,
-    JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
-    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
+    AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
+    CoordinatorMessageDto, DataId, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
+    ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, InputModeDto,
+    InputSourceDto, Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState,
+    JobStatusDto, JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
     ProveParamsDto, StatusInfoDto, SystemStatusDto, WorkerErrorDto, WorkerId,
     WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
 };
@@ -163,7 +163,7 @@ impl Coordinator {
 
                 jobs.push(JobStatusDto {
                     job_id: job.job_id.clone(),
-                    block_id: job.block.block_id.clone(),
+                    data_id: job.data_id.clone(),
                     phase: Some(phase.clone()),
                     state: job.state().clone(),
                     assigned_workers: job.workers.clone(),
@@ -207,7 +207,7 @@ impl Coordinator {
 
         Ok(JobStatusDto {
             job_id: job.job_id.clone(),
-            block_id: job.block.block_id.clone(),
+            data_id: job.data_id.clone(),
             state: job.state().clone(),
             phase: if let JobState::Running(phase) = &job.state() {
                 Some(phase.clone())
@@ -312,9 +312,9 @@ impl Coordinator {
         // Create and configure a new job
         let mut job = self
             .create_job(
-                request.block_id.clone(),
+                request.data_id.clone(),
                 required_compute_capacity,
-                request.input_path.clone(),
+                request.input_mode,
                 request.simulated_node,
             )
             .await?;
@@ -322,7 +322,7 @@ impl Coordinator {
         info!(
             "[Job] Started {} successfully Inputs: {} Capacity: {} Workers: {}",
             job.job_id,
-            job.block.input_path.display(),
+            job.input_mode,
             job.compute_capacity,
             job.workers.len(),
         );
@@ -339,13 +339,7 @@ impl Coordinator {
         // Send Phase1 tasks to selected workers
         if let Some(job_entry) = self.jobs.get(&job_id) {
             let job = job_entry.read().await;
-            self.dispatch_contributions_messages(
-                request.block_id,
-                required_compute_capacity,
-                &job,
-                &active_workers,
-            )
-            .await?;
+            self.dispatch_contributions_messages(&job, &active_workers).await?;
         }
 
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
@@ -501,7 +495,7 @@ impl Coordinator {
     ///
     /// # Parameters
     ///
-    /// * `block_id` - Unique identifier for the data block being processed
+    /// * `data_id` - Unique identifier for the data being processed
     /// * `required_compute_capacity` - Computational resources needed for the job
     /// * `input_path` - Filesystem path to the input data
     /// * `simulated_node` - Optional node index for simulation mode
@@ -511,9 +505,9 @@ impl Coordinator {
     /// On success, returns a fully initialized job ready to start proof generation
     pub async fn create_job(
         &self,
-        block_id: BlockId,
+        data_id: DataId,
         required_compute_capacity: ComputeCapacity,
-        input_path: String,
+        input_mode: InputModeDto,
         simulated_node: Option<u32>,
     ) -> CoordinatorResult<Job> {
         let execution_mode = if let Some(node) = simulated_node {
@@ -532,8 +526,8 @@ impl Coordinator {
         }
 
         Ok(Job::new(
-            block_id,
-            PathBuf::from(input_path),
+            data_id,
+            input_mode,
             required_compute_capacity,
             selected_workers,
             partitions,
@@ -583,43 +577,87 @@ impl Coordinator {
     ///
     /// # Parameters
     ///
-    /// * `block_id` - Identifier for the data block being processed
-    /// * `required_compute_capacity` - Total computational requirements for the job
     /// * `job` - Job containing partition assignments and configuration
     /// * `active_workers` - List of workers that should receive tasks
     async fn dispatch_contributions_messages(
         &self,
-        block_id: BlockId,
-        required_compute_capacity: ComputeCapacity,
         job: &Job,
         active_workers: &[WorkerId],
     ) -> CoordinatorResult<()> {
-        for (rank_id, worker_id) in active_workers.iter().enumerate() {
-            // Create contribution task request
-            let req = ExecuteTaskRequestDto {
-                worker_id: worker_id.clone(),
-                job_id: job.job_id.clone(),
-                params: ExecuteTaskRequestTypeDto::ContributionParams(ContributionParamsDto {
-                    block_id: block_id.clone(),
-                    input_path: job.block.input_path.display().to_string(),
-                    rank_id: rank_id as u32,
-                    total_workers: active_workers.len() as u32,
-                    worker_allocation: job.partitions[rank_id].clone(),
-                    job_compute_units: required_compute_capacity,
-                }),
-            };
-            let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
+        let input_source = match job.input_mode {
+            InputModeDto::InputModePath(ref path) => {
+                InputSourceDto::InputPath(path.display().to_string())
+            }
+            InputModeDto::InputModeData(ref path) => {
+                let inputs = tokio::fs::read(path).await.map_err(|e| {
+                    CoordinatorError::Internal(format!(
+                        "Failed to read input data for job {}: {}",
+                        job.job_id, e
+                    ))
+                })?;
+                InputSourceDto::InputData(inputs)
+            }
+            InputModeDto::InputModeNone => InputSourceDto::InputNull,
+        };
 
-            // Send task to worker
-            self.workers_pool.send_message(worker_id, req).await?;
+        // Use Arc to avoid expensive clones
+        let active_workers = active_workers.to_vec();
+        let total_workers = active_workers.len() as u32;
 
-            // Update worker state
-            self.workers_pool
-                .mark_worker_with_state(
-                    worker_id,
-                    WorkerState::Computing((job.job_id.clone(), JobPhase::Contributions)),
-                )
-                .await?;
+        use futures::stream::{self, StreamExt};
+
+        let tasks = active_workers.into_iter().enumerate().map(|(rank_id, worker_id)| {
+            let job_id = job.job_id.clone();
+            let data_id = job.data_id.clone();
+            let input_source = input_source.clone();
+            let worker_allocation = job.partitions[rank_id].clone();
+            let job_compute_capacity = job.compute_capacity;
+            let workers_pool = &self.workers_pool;
+
+            async move {
+                let req = ExecuteTaskRequestDto {
+                    worker_id: worker_id.clone(),
+                    job_id: job_id.clone(),
+                    params: ExecuteTaskRequestTypeDto::ContributionParams(ContributionParamsDto {
+                        data_id,
+                        input_source,
+                        rank_id: rank_id as u32,
+                        total_workers,
+                        worker_allocation,
+                        job_compute_units: job_compute_capacity,
+                    }),
+                };
+                let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
+
+                let send_result = workers_pool.send_message(&worker_id, req).await;
+                let state_result = workers_pool
+                    .mark_worker_with_state(
+                        &worker_id,
+                        WorkerState::Computing((job_id.clone(), JobPhase::Contributions)),
+                    )
+                    .await;
+
+                (worker_id, send_result, state_result)
+            }
+        });
+
+        let results: Vec<_> = stream::iter(tasks).buffer_unordered(10).collect().await;
+
+        // Check for any errors
+        for (worker_id, send_result, state_result) in results {
+            send_result.map_err(|e| {
+                CoordinatorError::Internal(format!(
+                    "Failed to send message to worker {}: {}",
+                    worker_id, e
+                ))
+            })?;
+
+            state_result.map_err(|e| {
+                CoordinatorError::Internal(format!(
+                    "Failed to update state for worker {}: {}",
+                    worker_id, e
+                ))
+            })?;
         }
 
         Ok(())
@@ -1597,6 +1635,7 @@ impl Coordinator {
                 final_proof: all_done,
                 verify_constraints: true,
                 aggregation: true,
+                rma: true,
                 final_snark: false,
                 verify_proofs: true,
                 save_proofs: false,
@@ -1707,7 +1746,7 @@ impl Coordinator {
             phase2_duration.as_seconds_f32(),
             phase3_duration.as_seconds_f32(),
             steps_str,
-            job.block.input_path.display(),
+            job.input_mode,
             job.compute_capacity,
         );
 

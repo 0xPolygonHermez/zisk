@@ -38,12 +38,24 @@ const _: () = {
 pub struct InputDataSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
+
+    /// Range check ID
+    range_id: usize,
+
+    /// Range check ID for the 16-bit chunks of the input values
+    range_chunks_id: usize,
 }
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> InputDataSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        Arc::new(Self { std: std.clone() })
+        let range_id = std
+            .get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None)
+            .expect("Failed to get range ID");
+        let range_chunks_id =
+            std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
+
+        Arc::new(Self { range_chunks_id, std: std.clone(), range_id })
     }
     fn get_u16_values(&self, value: u64) -> [u16; 4] {
         [value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
@@ -96,8 +108,11 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         let mut range_check_data: Vec<u32> = vec![0; 1 << 16];
 
         // range of instance
-        let range_id = self.std.get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
-        self.std.range_check(range_id, (previous_segment.addr - INPUT_DATA_W_ADDR_INIT) as i64, 1);
+        self.std.range_check(
+            self.range_id,
+            (previous_segment.addr - INPUT_DATA_W_ADDR_INIT) as i64,
+            1,
+        );
 
         let mut max_range_distance_count = 0;
 
@@ -167,7 +182,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             let addr_changes = last_addr != mem_op.addr;
             if addr_changes {
                 trace[i].set_addr_changes(true);
-                self.std.range_check(range_id, (mem_op.addr - last_addr - 1) as i64, 1);
+                self.std.range_check(self.range_id, (mem_op.addr - last_addr - 1) as i64, 1);
             } else {
                 trace[i].set_addr_changes(false);
             }
@@ -203,16 +218,19 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             // address doesn't change in padding rows, no range check is required
         }
 
-        self.std.range_check(range_id, SEGMENT_ADDR_MAX_RANGE as i64, max_range_distance_count);
-        self.std.range_check(range_id, (INPUT_DATA_W_ADDR_END - last_addr) as i64, 1);
+        self.std.range_check(
+            self.range_id,
+            SEGMENT_ADDR_MAX_RANGE as i64,
+            max_range_distance_count,
+        );
+        self.std.range_check(self.range_id, (INPUT_DATA_W_ADDR_END - last_addr) as i64, 1);
 
         // range of chunks
-        let range_id = self.std.get_range_id(0, (1 << 16) - 1, None);
         for j in 0..4 {
             let value = trace[last_row_idx].get_value_word(j);
             range_check_data[value as usize] += padding_size as u32;
         }
-        self.std.range_checks(range_id, range_check_data);
+        self.std.range_checks(self.range_chunks_id, range_check_data);
 
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());

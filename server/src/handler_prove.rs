@@ -23,6 +23,7 @@ use zisk_common::ExecutorStatsEvent;
 pub struct ZiskProveRequest {
     pub input: PathBuf,
     pub aggregation: bool,
+    pub rma: bool,
     pub final_snark: bool,
     pub verify_proofs: bool,
     pub minimal_memory: bool,
@@ -65,6 +66,7 @@ impl ZiskServiceProveHandler {
                         ProofOptions::new(
                             false,
                             request.aggregation,
+                            request.rma,
                             request.final_snark,
                             request.verify_proofs,
                             request.minimal_memory,
@@ -90,7 +92,7 @@ impl ZiskServiceProveHandler {
                     let (result, mut _stats): (
                         ZiskExecutionResult,
                         ExecutorStats,
-                    ) = witness_lib.get_execution_result().expect("Failed to get execution result");
+                    ) = witness_lib.execution_result().expect("Failed to get execution result");
 
                     proofman.set_barrier();
                     let elapsed = elapsed.as_secs_f64();
@@ -186,6 +188,7 @@ impl ZiskServiceProveHandler {
                 ProofOptions::new(
                     false,
                     request.aggregation,
+                    request.rma,
                     request.final_snark,
                     request.verify_proofs,
                     request.minimal_memory,

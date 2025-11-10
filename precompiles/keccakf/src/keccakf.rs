@@ -57,7 +57,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
             (KeccakfTrace::<F>::NUM_ROWS - num_non_usable_rows) / ROWS_BY_KECCAKF;
 
         // Get the table ID
-        let table_id = std.get_virtual_table_id(KeccakfTableSM::TABLE_ID);
+        let table_id = std
+            .get_virtual_table_id(KeccakfTableSM::TABLE_ID)
+            .expect("Failed to get Keccakf table ID");
 
         Arc::new(Self { num_available_keccakfs, std, table_id })
     }

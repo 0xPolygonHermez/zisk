@@ -53,10 +53,17 @@ message WorkersListRequest {
 }
 
 message LaunchProofRequest {
-  string block_id = 1;
+  string data_id = 1;
   uint32 compute_capacity = 2;
-  string input_path = 3;
-  optional uint32 simulated_node = 4; // If set, indicates this is a simulated worker
+  InputMode input_mode = 3;
+  optional string input_path = 4;
+  optional uint32 simulated_node = 5; // If set, indicates this is a simulated worker
+}
+
+enum InputMode {
+  INPUT_MODE_NONE = 0;  // No input provided
+  INPUT_MODE_PATH = 1;  // Input will be provided as a path
+  INPUT_MODE_DATA = 2;  // Input data will be sent directly
 }
 
 // ============================================================================
@@ -113,7 +120,7 @@ message JobStatusResponse {
 
 message JobStatus {
   string job_id = 1;
-  string block_id = 2;
+  string data_id = 2;
   string phase = 3;
   string state = 4;
   repeated string assigned_workers = 5;
@@ -222,12 +229,15 @@ enum TaskType {
 }
 
 message ContributionParams {
-  string block_id = 1;
-  string input_path = 2;
-  uint32 rank_id = 3;
-  uint32 total_workers = 4;
-  repeated uint32 worker_allocation = 5;
-  uint32 job_compute_units = 6;
+  string data_id = 1;
+  oneof input_source {
+    string input_path = 2;
+    bytes input_data = 3;
+  }
+  uint32 rank_id = 4;
+  uint32 total_workers = 5;
+  repeated uint32 worker_allocation = 6;
+  uint32 job_compute_units = 7;
 }
 
 message ProveParams {
@@ -240,12 +250,13 @@ message AggParams {
   bool final_proof = 3;
   bool verify_constraints = 4;
   bool aggregation = 5;
-  bool final_snark = 6;
-  bool verify_proofs = 7;
-  bool save_proofs = 8;
-  bool test_mode = 9;
-  string output_dir_path = 10;
-  bool minimal_memory = 11;
+  bool rma = 6;
+  bool final_snark = 7;
+  bool verify_proofs = 8;
+  bool save_proofs = 9;
+  bool test_mode = 10;
+  string output_dir_path = 11;
+  bool minimal_memory = 12;
 }
 
 message ExecuteTaskResponse {

@@ -4,6 +4,8 @@ use clap::Parser;
 mod handler_coordinator;
 mod handler_prove;
 
+use std::path::PathBuf;
+
 #[derive(Parser, Debug)]
 #[command(name = "zisk-coordinator")]
 #[command(about = "The Coordinator for the Distributed ZisK Network")]
@@ -41,19 +43,26 @@ struct ZiskCoordinatorArgs {
 
 #[derive(Parser, Debug)]
 enum ZiskCoordinatorCommands {
-    /// Prove a block with the specified input file and node
+    /// Generate a proof with the specified input file and node
     Prove {
         /// Coordinator URL
-        #[arg(short, long)]
+        #[arg(long)]
         coordinator_url: Option<String>,
 
-        /// Path to the input file
-        /// NOTE: THIS IS A DEV FEATURE IT WILL BE REMOVED IN PRODUCTION
-        #[arg(long, help = "Path to the input file for block proving")]
-        input: String,
+        /// Proof id
+        #[arg(long, help = "ID of the proof to generate")]
+        data_id: Option<String>,
 
-        /// Compute capacity needed to generate the block proof
-        #[arg(long, short, help = "Compute capacity needed to generate the block proof")]
+        /// Path to the input file
+        #[arg(long, help = "Path to the input file for proof generation")]
+        input: Option<PathBuf>,
+
+        /// Whether to send the input data directly
+        #[clap(short = 'x', long, default_value_t = false)]
+        direct_inputs: bool,
+
+        /// Compute capacity needed to generate the proof
+        #[arg(long, short, help = "Compute capacity needed to generate the proof")]
         compute_capacity: u32,
 
         #[arg(long, help = "Simulated node ID")]
@@ -69,12 +78,22 @@ async fn main() -> Result<()> {
     match args.command {
         Some(ZiskCoordinatorCommands::Prove {
             coordinator_url,
+            data_id,
             input,
+            direct_inputs,
             compute_capacity,
             simulated_node,
         }) => {
             // Run the "prove" subcommand
-            handler_prove::handle(coordinator_url, input, compute_capacity, simulated_node).await
+            handler_prove::handle(
+                coordinator_url,
+                data_id,
+                input,
+                direct_inputs,
+                compute_capacity,
+                simulated_node,
+            )
+            .await
         }
         None => {
             // No subcommand was provided → default to coordinator mode
