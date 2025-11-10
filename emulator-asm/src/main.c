@@ -2436,7 +2436,7 @@ void server_setup (void)
         shm_unlink(shmem_input_name);
 
         // Create the input shared memory
-        shmem_input_fd = shm_open(shmem_input_name, O_RDWR | O_CREAT, 0666);
+        shmem_input_fd = shm_open(shmem_input_name, O_RDWR | O_CREAT | O_EXCL, 0666);
         if (shmem_input_fd < 0)
         {
             printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
@@ -2548,7 +2548,7 @@ void server_setup (void)
         shm_unlink(shmem_output_name);
 
         // Create the output shared memory
-        shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0666);
+        shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT | O_EXCL, 0666);
         if (shmem_output_fd < 0)
         {
             printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
@@ -2662,7 +2662,7 @@ void server_setup (void)
 
         sem_unlink(sem_chunk_done_name);
 
-        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0666, 0);
+        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT | O_EXCL, 0666, 0);
         if (sem_chunk_done == SEM_FAILED)
         {
             printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
@@ -2681,7 +2681,7 @@ void server_setup (void)
 
     sem_unlink(sem_shutdown_done_name);
     
-    sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT, 0666, 0);
+    sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT | O_EXCL, 0666, 0);
     if (sem_shutdown_done == SEM_FAILED)
     {
         printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
