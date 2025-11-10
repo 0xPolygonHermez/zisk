@@ -27,9 +27,7 @@ impl KeccakfTableSM {
     /// Calculates the table row offset based on the provided parameters.
     ///
     /// # Arguments
-    /// * `gate_opcode` - The operation code (`KeccakfTableGateOp`).
-    /// * `a` - The first operand a.
-    /// * `b` - The second operand b.
+    /// * `a` - The input value used to calculate the table row.
     ///
     /// # Returns
     /// The calculated table row offset.

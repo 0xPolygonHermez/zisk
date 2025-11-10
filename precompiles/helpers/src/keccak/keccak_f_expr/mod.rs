@@ -16,7 +16,11 @@ use round_constants::KECCAK_F_RC;
 use theta::keccak_f_theta;
 use utils::bit_position;
 
-pub fn keccak_f_expr(config: ExpressionManagerConfig, display_num: usize, generate_files: bool) -> std::io::Result<()> {
+pub fn keccak_f_expr(
+    config: ExpressionManagerConfig,
+    display_num: usize,
+    generate_files: bool,
+) -> std::io::Result<()> {
     // Initialize the expression manager
     let mut expr_manager = ExpressionManager::new(config);
 

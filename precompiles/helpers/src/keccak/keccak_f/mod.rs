@@ -1,28 +1,46 @@
 mod round;
+mod utils;
 
 use round::keccak_f_round;
+pub use utils::*;
+
+/// State representation as 5x5x64 bits
+pub type KeccakStateBits = [[[u64; 64]; 5]; 5];
 
 /// Full Keccak-f[1600] permutation
-pub fn keccak_f(state: &mut [u64; 25]) {
+pub fn keccak_f(state: &mut KeccakStateBits) {
     for round in 0..24 {
         keccak_f_round(state, round);
+
+        // Reduce the state modulo 2
+        reduce_state_mod2(state);
+    }
+}
+
+fn reduce_state_mod2(state: &mut KeccakStateBits) {
+    for x in 0..5 {
+        for y in 0..5 {
+            for z in 0..64 {
+                state[x][y][z] %= 2;
+            }
+        }
     }
 }
 
 /// Iterator that yields the state after each round of Keccak-f
 pub struct KeccakRoundIterator {
-    state: [u64; 25],
+    state: KeccakStateBits,
     round: usize,
 }
 
 impl KeccakRoundIterator {
-    pub fn new(initial_state: [u64; 25]) -> Self {
+    pub fn new(initial_state: KeccakStateBits) -> Self {
         Self { state: initial_state, round: 0 }
     }
 }
 
 impl Iterator for KeccakRoundIterator {
-    type Item = ([u64; 25], usize); // (state_after_round, round_number)
+    type Item = (KeccakStateBits, usize); // (state_after_round, round_number)
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.round >= 24 {
@@ -34,9 +52,15 @@ impl Iterator for KeccakRoundIterator {
         // Perform one round of Keccak-f
         keccak_f_round(&mut self.state, current_round);
 
+        // Return the unreduced state (before modulo 2)
+        let unreduced_state = self.state;
+
+        // Apply reduction for the next round
+        reduce_state_mod2(&mut self.state);
+
         self.round += 1;
 
-        Some((self.state, current_round))
+        Some((unreduced_state, current_round))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -46,25 +70,34 @@ impl Iterator for KeccakRoundIterator {
 }
 
 /// Function-based iterator for Keccak-f rounds  
-pub fn keccak_f_rounds(initial_state: [u64; 25]) -> KeccakRoundIterator {
+pub fn keccak_f_rounds(initial_state: KeccakStateBits) -> KeccakRoundIterator {
     KeccakRoundIterator::new(initial_state)
 }
 
 /// Iterator that yields just the states (without round numbers)
-pub fn keccak_f_round_states(initial_state: [u64; 25]) -> impl Iterator<Item = [u64; 25]> {
+pub fn keccak_f_round_states(
+    initial_state: KeccakStateBits,
+) -> impl Iterator<Item = KeccakStateBits> {
     keccak_f_rounds(initial_state).map(|(state, _)| state)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{
+        keccak_f, keccak_f_round_states, reduce_state_mod2,
+        utils::{state_from_linear, state_to_linear},
+        KeccakRoundIterator,
+    };
 
     #[test]
     fn test_keccak_f_zero_state() {
-        let mut state = [0u64; 25];
+        let state_linear = [0u64; 25];
+        let mut state = state_from_linear(&state_linear);
         keccak_f(&mut state);
+        let state_linear = state_to_linear(&state);
+
         assert_eq!(
-            state,
+            state_linear,
             [
                 0xF1258F7940E1DDE7,
                 0x84D5CCF933C0478A,
@@ -97,7 +130,7 @@ mod tests {
 
     #[test]
     fn test_keccak_f_nonzero_state() {
-        let mut state = [
+        let state_linear = [
             0xF1258F7940E1DDE7,
             0x84D5CCF933C0478A,
             0xD598261EA65AA9EE,
@@ -124,9 +157,12 @@ mod tests {
             0x75F644E97F30A13B,
             0xEAF1FF7B5CECA249,
         ];
+        let mut state = state_from_linear(&state_linear);
         keccak_f(&mut state);
+        let state_linear = state_to_linear(&state);
+
         assert_eq!(
-            state,
+            state_linear,
             [
                 0x2D5C954DF96ECB3C,
                 0x6A332CD07057B56D,
@@ -159,7 +195,8 @@ mod tests {
 
     #[test]
     fn test_keccak_f_round_iterator() {
-        let initial_state = [0u64; 25];
+        let initial_state_linear = [0u64; 25];
+        let initial_state = state_from_linear(&initial_state_linear);
         let round_iter = KeccakRoundIterator::new(initial_state);
 
         // Test that we get exactly 24 rounds
@@ -171,23 +208,38 @@ mod tests {
             assert_eq!(*round_num, i);
         }
 
-        // Test that the final state matches the full keccak_f result
-        let final_state = all_rounds.last().unwrap().0;
-        let mut expected_state = [0u64; 25];
+        // Test that the final state (after reduction) matches the full keccak_f result
+        let final_unreduced_state = all_rounds.last().unwrap().0;
+
+        // Apply reduction to the final unreduced state to compare with keccak_f result
+        let mut final_reduced_state = final_unreduced_state;
+        reduce_state_mod2(&mut final_reduced_state);
+        let final_reduced_linear = state_to_linear(&final_reduced_state);
+
+        let mut expected_state = state_from_linear(&initial_state_linear);
         keccak_f(&mut expected_state);
-        assert_eq!(final_state, expected_state);
+        let expected_linear = state_to_linear(&expected_state);
+
+        assert_eq!(final_reduced_linear, expected_linear);
     }
 
     #[test]
     fn test_keccak_f_round_states() {
-        let initial_state = [0u64; 25];
+        let initial_state_linear = [0u64; 25];
+        let initial_state = state_from_linear(&initial_state_linear);
         let states: Vec<_> = keccak_f_round_states(initial_state).collect();
 
         assert_eq!(states.len(), 24);
 
-        // Final state should match full keccak_f
-        let mut expected_final = [0u64; 25];
+        // Final state should match full keccak_f (after reduction)
+        let mut final_unreduced_state = states[23];
+        reduce_state_mod2(&mut final_unreduced_state);
+        let final_reduced_linear = state_to_linear(&final_unreduced_state);
+
+        let mut expected_final = state_from_linear(&initial_state_linear);
         keccak_f(&mut expected_final);
-        assert_eq!(states[23], expected_final);
+        let expected_linear = state_to_linear(&expected_final);
+
+        assert_eq!(final_reduced_linear, expected_linear);
     }
 }

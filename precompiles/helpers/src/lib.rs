@@ -8,4 +8,7 @@ pub use arith_eq::*;
 pub use arith_eq_384::*;
 pub use big_int::*;
 pub use common::*;
-pub use keccak::{keccak_f, keccak_f_expr, keccak_f_round_states, keccak_f_rounds, keccak_f_state};
+pub use keccak::{
+    keccak_f, keccak_f_expr, keccak_f_round_states, keccak_f_rounds, keccak_f_state,
+    state_from_linear,
+};

@@ -32,7 +32,8 @@ pub fn main() {
         pil_output_dir: Some(pil_code_path.clone()),
         rust_output_dir: Some(rs_code_path.clone()),
     };
-    keccak_f_expr(config, DISPLAY_NUM, GENERATE_FILES).expect("Failed to generate Keccak-f expressions");
+    keccak_f_expr(config, DISPLAY_NUM, GENERATE_FILES)
+        .expect("Failed to generate Keccak-f expressions");
 
     if GENERATE_FILES {
         println!("Keccak-f PIL expressions generated at: {}", pil_code_path.display());

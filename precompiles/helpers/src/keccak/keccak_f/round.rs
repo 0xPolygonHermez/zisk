@@ -1,81 +1,154 @@
-const RC: [u64; 24] = [
-    1u64,
-    0x8082u64,
-    0x800000000000808au64,
-    0x8000000080008000u64,
-    0x808bu64,
-    0x80000001u64,
-    0x8000000080008081u64,
-    0x8000000000008009u64,
-    0x8au64,
-    0x88u64,
-    0x80008009u64,
-    0x8000000au64,
-    0x8000808bu64,
-    0x800000000000008bu64,
-    0x8000000000008089u64,
-    0x8000000000008003u64,
-    0x8000000000008002u64,
-    0x8000000000000080u64,
-    0x800au64,
-    0x800000008000000au64,
-    0x8000000080008081u64,
-    0x8000000000008080u64,
-    0x80000001u64,
-    0x8000000080008008u64,
+use super::{bits_from_u64, KeccakStateBits};
+
+/// Round constants
+const RC: [[bool; 64]; 24] = [
+    bits_from_u64(0x0000000000000001),
+    bits_from_u64(0x0000000000008082),
+    bits_from_u64(0x800000000000808A),
+    bits_from_u64(0x8000000080008000),
+    bits_from_u64(0x000000000000808B),
+    bits_from_u64(0x0000000080000001),
+    bits_from_u64(0x8000000080008081),
+    bits_from_u64(0x8000000000008009),
+    bits_from_u64(0x000000000000008A),
+    bits_from_u64(0x0000000000000088),
+    bits_from_u64(0x0000000080008009),
+    bits_from_u64(0x000000008000000A),
+    bits_from_u64(0x000000008000808B),
+    bits_from_u64(0x800000000000008B),
+    bits_from_u64(0x8000000000008089),
+    bits_from_u64(0x8000000000008003),
+    bits_from_u64(0x8000000000008002),
+    bits_from_u64(0x8000000000000080),
+    bits_from_u64(0x000000000000800A),
+    bits_from_u64(0x800000008000000A),
+    bits_from_u64(0x8000000080008081),
+    bits_from_u64(0x8000000000008080),
+    bits_from_u64(0x0000000080000001),
+    bits_from_u64(0x8000000080008008),
 ];
 
-const RHO: [u32; 24] =
-    [1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44];
+/// Rho rotation offsets for each position
+const RHO_OFFSETS: [[usize; 5]; 5] = [
+    [0, 36, 3, 41, 18],
+    [1, 44, 10, 45, 2],
+    [62, 6, 43, 15, 61],
+    [28, 55, 25, 21, 56],
+    [27, 20, 39, 8, 14],
+];
 
-const PI: [usize; 24] =
-    [10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1];
-
-/// Super fast implementation of Keccak-f[1600] round function,
-/// inspired by https://github.com/debris/tiny-keccak/blob/master/src/lib.rs
-pub fn keccak_f_round(state: &mut [u64; 25], round: usize) {
-    let mut tmp: [u64; 5] = [0; 5];
-
+pub fn keccak_f_round(state: &mut KeccakStateBits, round: usize) {
     // θ (Theta) step - Column parity computation and mixing
-    // Compute column parities
-    for x in 0..5 {
-        for y_count in 0..5 {
-            let y = y_count * 5;
-            tmp[x] ^= state[x + y];
-        }
-    }
+    theta(state);
 
-    // Apply theta transformation
-    for x in 0..5 {
-        for y_count in 0..5 {
-            let y = y_count * 5;
-            state[y + x] ^= tmp[(x + 4) % 5] ^ tmp[(x + 1) % 5].rotate_left(1);
-        }
-    }
+    // ρ (Rho) step - Bitwise rotation
+    rho(state);
 
-    // ρ (Rho) and π (Pi) steps combined - Rotation and permutation
-    let mut last = state[1];
-    for x in 0..24 {
-        tmp[0] = state[PI[x]];
-        state[PI[x]] = last.rotate_left(RHO[x]);
-        last = tmp[0];
-    }
+    // π (Pi) step - Lane permutation
+    pi(state);
 
     // χ (Chi) step - Nonlinear transformation
-    for y_step in 0..5 {
-        let y = y_step * 5;
+    chi(state);
 
-        // Store the row
-        for x in 0..5 {
-            tmp[x] = state[y + x];
-        }
+    // ι (Iota) step - Add round constant
+    iota(state, round);
+}
 
-        // Apply chi transformation
-        for x in 0..5 {
-            state[y + x] = tmp[x] ^ ((!tmp[(x + 1) % 5]) & (tmp[(x + 2) % 5]));
+/// θ (Theta) step: For all pairs (x, z) such that 0 ≤ x < 5 and 0 ≤ z < 64:
+/// 1. C[x, z] = A[x, 0, z] ⊕ A[x, 1, z] ⊕ A[x, 2, z] ⊕ A[x, 3, z] ⊕ A[x, 4, z]
+/// 2. D[x, z] = C[(x-1) mod 5, z] ⊕ C[(x+1) mod 5, (z-1) mod 64]
+/// 3. A[x, y, z] = A[x, y, z] ⊕ D[x, z]
+fn theta(state: &mut KeccakStateBits) {
+    let mut c = [[0u64; 64]; 5];
+
+    // Step 1: Compute column parities
+    for x in 0..5 {
+        for z in 0..64 {
+            c[x][z] =
+                state[x][0][z] + state[x][1][z] + state[x][2][z] + state[x][3][z] + state[x][4][z];
         }
     }
 
-    // ι (Iota) step - Add round constant
-    state[0] ^= RC[round];
+    // Step 2: Compute D[x, z]
+    let mut d = [[0u64; 64]; 5];
+    for x in 0..5 {
+        for z in 0..64 {
+            d[x][z] = c[(x + 4) % 5][z] + c[(x + 1) % 5][(z + 63) % 64];
+        }
+    }
+
+    // Step 3: Apply theta transformation
+    for x in 0..5 {
+        for y in 0..5 {
+            for z in 0..64 {
+                state[x][y][z] += d[x][z];
+            }
+        }
+    }
+}
+
+/// ρ (Rho) step: For all z such that 0 ≤ z < 64:
+/// 1. R[0, 0, z] = A[0, 0, z] (no rotation for [0,0])
+/// 2. For other positions, rotate according to RHO_OFFSETS
+fn rho(state: &mut KeccakStateBits) {
+    let mut temp_state = [[[0u64; 64]; 5]; 5];
+
+    for x in 0..5 {
+        for y in 0..5 {
+            let rotation = RHO_OFFSETS[x][y];
+            if rotation == 0 {
+                // No rotation for position [0][0]
+                temp_state[x][y] = state[x][y];
+            } else {
+                // Apply rotation: R[x, y, z] = A[x, y, (z - rotation) mod 64]
+                for z in 0..64 {
+                    temp_state[x][y][z] = state[x][y][(z + 64 - rotation) % 64];
+                }
+            }
+        }
+    }
+
+    *state = temp_state;
+}
+
+/// π (Pi) step: For all triples (x, y, z) such that 0 ≤ x,y < 5, and 0 ≤ z < 64:
+/// B[x, y, z] = R[(x + 3y) mod 5, x, z]
+fn pi(state: &mut KeccakStateBits) {
+    let mut temp_state = [[[0u64; 64]; 5]; 5];
+
+    for x in 0..5 {
+        for y in 0..5 {
+            for z in 0..64 {
+                temp_state[x][y][z] = state[(x + 3 * y) % 5][x][z];
+            }
+        }
+    }
+
+    *state = temp_state;
+}
+
+/// χ (Chi) step: For all triples (x, y, z) such that 0 ≤ x,y < 5 and 0 ≤ z < 64:
+/// A[x, y, z] = B[x, y, z] ⊕ ((¬B[(x + 1) mod 5, y, z]) ∧ B[(x + 2) mod 5, y, z])
+fn chi(state: &mut KeccakStateBits) {
+    let mut temp_state = [[[0u64; 64]; 5]; 5];
+
+    for x in 0..5 {
+        for y in 0..5 {
+            for z in 0..64 {
+                let b1 = state[(x + 1) % 5][y][z];
+                let b2 = state[(x + 2) % 5][y][z];
+                temp_state[x][y][z] = state[x][y][z] + ((1 + b1) * b2);
+            }
+        }
+    }
+
+    *state = temp_state;
+}
+
+/// ι (Iota) step: For all z such that 0 ≤ z < 64:
+/// A[0, 0, z] = A[0, 0, z] ⊕ RC[round][z]
+fn iota(state: &mut KeccakStateBits, round: usize) {
+    for z in 0..64 {
+        state[0][0][z] += RC[round][z] as u64;
+    }
 }

@@ -20,12 +20,7 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
 
     // Compute some stats
     const int NUM_NON_USABLE_ROWS = N % CLOCKS;
-    const int NUM_KECCAKF;
-    if (NUM_NON_USABLE_ROWS == 0) {
-        NUM_KECCAKF = N / CLOCKS;
-    } else {
-        NUM_KECCAKF = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1; // The -1 is because CLOCKS is not a divisor of N
-    }
+    const int NUM_KECCAKF = (N - NUM_NON_USABLE_ROWS) / CLOCKS;
     println(`The total number of Keccak-f's is ${NUM_KECCAKF}`);
 
     col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_KECCAKF, 0...];
@@ -118,6 +113,11 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
             const int pos[3] = idx_pos(offset + j);
             lookup_values[j + 1] = state[pos[0]][pos[1]][pos[2]]';
         }
+        const expr zeroes[group_by - num_rem_reduced];
+        for (int j = 0; j < group_by - num_rem_reduced; j++) {
+            zeroes[j] = 0;
+        }
+        lookup_assumes(KECCAKF_TABLE_ID, [...lookup_values, ...zeroes]);
     }
 
     // --> Constraints to read inputs from memory and write outputs to memory
@@ -167,55 +167,39 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
                            // ...
                            // CLK_24*(input_state[1568] + input_state[1569]*2 + ... + input_state[1599]*2^31)
 
-    // Compute the input state
-    const expr input_state[1600];
-    for (int x = 0; x < 5; x++) {
-        for (int y = 0; y < 5; y++) {
-            for (int z = 0; z < 64; z++) {
-                const int idx = bit_pos(x, y, z);
-                input_state[idx] = state[x][y][z];
-            }
-        }
-    }
-
-    // Compute the output state
-    const expr output_state[1600];
-    for (int x = 0; x < 5; x++) {
-        for (int y = 0; y < 5; y++) {
-            for (int z = 0; z < 64; z++) {
-                const int idx = bit_pos(x, y, z);
-                output_state[idx] = state[x][y][z]'(CLOCKS - 1);
-            }
-        }
-    }
-
+    const int BITS_PER_CLOCK = 1600 / CLOCKS;
+    const int BITS_PER_WORD = BITS_PER_CLOCK / 2;
     for (int i = 0; i < CLOCKS; i++) {
-        const int base = i * (1600 / CLOCKS);
-        expr read_value_clk_0 = 0;
-        expr read_value_clk_1 = 0;
-        for (int j = 0; j < (1600 / CLOCKS) / 2; j++) {
+        const int offset = i * BITS_PER_CLOCK;
+        expr read_value_0 = 0;
+        expr read_value_1 = 0;
+        for (int j = 0; j < BITS_PER_WORD; j++) {
             const int factor = 2**j;
-            read_value_clk_0 += factor * input_state[base + j];
-            read_value_clk_1 += factor * input_state[base + j + (1600 / CLOCKS) / 2];
+            const int pos0[3] = idx_pos(offset + j);
+            const int pos1[3] = idx_pos(offset + BITS_PER_WORD + j);
+            read_value_0 += factor * state[pos0[0]][pos0[1]][pos0[2]];
+            read_value_1 += factor * state[pos1[0]][pos1[1]][pos1[2]];
         }
-        mem_read_value[0] += CLK[i] * read_value_clk_0;
-        mem_read_value[1] += CLK[i] * read_value_clk_1;
+        mem_read_value[0] += CLK[i] * (i)'read_value_0;
+        mem_read_value[1] += CLK[i] * (i)'read_value_1;
     }
 
     expr mem_write_value[2];
     mem_write_value[0] = 0;
     mem_write_value[1] = 0;
     for (int i = 0; i < CLOCKS; i++) {
-        const int base = i * (1600 / CLOCKS);
-        expr write_value_clk_0 = 0;
-        expr write_value_clk_1 = 0;
-        for (int j = 0; j < (1600 / CLOCKS) / 2; j++) {
+        const int offset = i * BITS_PER_CLOCK;
+        expr write_value_0 = 0;
+        expr write_value_1 = 0;
+        for (int j = 0; j < BITS_PER_WORD; j++) {
             const int factor = 2**j;
-            write_value_clk_0 += factor * output_state[base + j];
-            write_value_clk_1 += factor * output_state[base + j + (1600 / CLOCKS) / 2];
+            const int pos0[3] = idx_pos(offset + j);
+            const int pos1[3] = idx_pos(offset + BITS_PER_WORD + j);
+            write_value_0 += factor * state[pos0[0]][pos0[1]][pos0[2]];
+            write_value_1 += factor * state[pos1[0]][pos1[1]][pos1[2]];
         }
-        mem_write_value[0] += CLK[i] * write_value_clk_0;
-        mem_write_value[1] += CLK[i] * write_value_clk_1;
+        mem_write_value[0] += CLK[i] * write_value_0'(CLOCKS - 1 - i);
+        mem_write_value[1] += CLK[i] * write_value_1'(CLOCKS - 1 - i);
     }
 
     // Read the input state from memory

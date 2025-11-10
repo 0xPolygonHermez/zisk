@@ -292,8 +292,10 @@ impl ExpressionManager {
         }
 
         // Separate events by type
-        let im_events: Vec<_> = round_events.iter().filter(|e| matches!(e.op_type, ExpressionOpType::Im)).collect();
-        let reset_events: Vec<_> = round_events.iter().filter(|e| matches!(e.op_type, ExpressionOpType::Reset)).collect();
+        let im_events: Vec<_> =
+            round_events.iter().filter(|e| matches!(e.op_type, ExpressionOpType::Im)).collect();
+        let reset_events: Vec<_> =
+            round_events.iter().filter(|e| matches!(e.op_type, ExpressionOpType::Reset)).collect();
 
         // Generate IM expressions
         if !im_events.is_empty() {
@@ -302,9 +304,16 @@ impl ExpressionManager {
             for (i, event) in im_events.iter().enumerate() {
                 if let Some(old_expr) = self.get_expression(event.old_expr_id) {
                     let expr_str = format!("{}", old_expr).replace('"', "\\\"");
-                    writeln!(writer, "    \"{}\",  // IM[{}]: Degree {} -> {}, Max Value {} -> {}", 
-                        expr_str, i, event.original_degree, event.new_degree, 
-                        event.original_max_value, event.new_max_value)?;
+                    writeln!(
+                        writer,
+                        "    \"{}\",  // IM[{}]: Degree {} -> {}, Max Value {} -> {}",
+                        expr_str,
+                        i,
+                        event.original_degree,
+                        event.new_degree,
+                        event.original_max_value,
+                        event.new_max_value
+                    )?;
                 }
             }
             writeln!(writer, "];")?;
@@ -318,9 +327,16 @@ impl ExpressionManager {
             for (i, event) in reset_events.iter().enumerate() {
                 if let Some(old_expr) = self.get_expression(event.old_expr_id) {
                     let expr_str = format!("{}", old_expr).replace('"', "\\\"");
-                    writeln!(writer, "    \"{}\",  // RESET[{}]: Degree {} -> {}, Max Value {} -> {}", 
-                        expr_str, i, event.original_degree, event.new_degree, 
-                        event.original_max_value, event.new_max_value)?;
+                    writeln!(
+                        writer,
+                        "    \"{}\",  // RESET[{}]: Degree {} -> {}, Max Value {} -> {}",
+                        expr_str,
+                        i,
+                        event.original_degree,
+                        event.new_degree,
+                        event.original_max_value,
+                        event.new_max_value
+                    )?;
                 }
             }
             writeln!(writer, "];")?;
@@ -337,9 +353,17 @@ impl ExpressionManager {
                     ExpressionOpType::Im => "IM",
                     ExpressionOpType::Reset => "RESET",
                 };
-                writeln!(writer, "    \"{}\",  // {}[{}]: Degree {} -> {}, Max Value {} -> {}", 
-                    expr_str, event_type, i, event.original_degree, event.new_degree, 
-                    event.original_max_value, event.new_max_value)?;
+                writeln!(
+                    writer,
+                    "    \"{}\",  // {}[{}]: Degree {} -> {}, Max Value {} -> {}",
+                    expr_str,
+                    event_type,
+                    i,
+                    event.original_degree,
+                    event.new_degree,
+                    event.original_max_value,
+                    event.new_max_value
+                )?;
             }
         }
         writeln!(writer, "];")?;
@@ -376,9 +400,17 @@ impl ExpressionManager {
                     ExpressionOpType::Im => "ExpressionEventType::Im",
                     ExpressionOpType::Reset => "ExpressionEventType::Reset",
                 };
-                let step = event.step.as_ref().map(|s| format!("Some(\"{}\")", s)).unwrap_or_else(|| "None".to_string());
-                let substep = event.substep.as_ref().map(|s| format!("Some(\"{}\")", s)).unwrap_or_else(|| "None".to_string());
-                
+                let step = event
+                    .step
+                    .as_ref()
+                    .map(|s| format!("Some(\"{}\")", s))
+                    .unwrap_or_else(|| "None".to_string());
+                let substep = event
+                    .substep
+                    .as_ref()
+                    .map(|s| format!("Some(\"{}\")", s))
+                    .unwrap_or_else(|| "None".to_string());
+
                 writeln!(writer, "    ExpressionMetadata {{")?;
                 writeln!(writer, "        expression: \"{}\",", expr_str)?;
                 writeln!(writer, "        event_type: {},", event_type)?;

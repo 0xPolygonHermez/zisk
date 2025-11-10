@@ -2913,6 +2913,7 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
+ "tiny-keccak",
  "tracing",
  "zisk-common",
  "zisk-core",
