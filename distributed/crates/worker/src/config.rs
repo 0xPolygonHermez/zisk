@@ -185,7 +185,7 @@ impl Default for ProverServiceConfigDto {
             number_threads_witness: None,
             max_witness_stored: None,
             shared_tables: false,
-            rma: false,
+            rma: true,
             minimal_memory: false,
         }
     }
