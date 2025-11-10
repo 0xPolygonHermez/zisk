@@ -40,7 +40,15 @@ use chrono::{DateTime, Utc};
 use colored::Colorize;
 use dashmap::DashMap;
 use proofman::ContributionsInfo;
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use zisk_distributed_common::{
@@ -102,6 +110,12 @@ pub struct Coordinator {
 
     /// Concurrent storage for active jobs with fine-grained locking.
     jobs: DashMap<JobId, Arc<RwLock<Job>>>,
+
+    /// Number of registrations accumulated.
+    registrations: AtomicU64,
+
+    /// Number of reconnections accumulated.
+    reconnections: AtomicU64,
 }
 
 impl Coordinator {
@@ -113,7 +127,14 @@ impl Coordinator {
     pub fn new(config: Config) -> Self {
         let start_time_utc = Utc::now();
 
-        Self { config, start_time_utc, workers_pool: WorkersPool::new(), jobs: DashMap::new() }
+        Self {
+            config,
+            start_time_utc,
+            workers_pool: WorkersPool::new(),
+            jobs: DashMap::new(),
+            registrations: AtomicU64::new(0),
+            reconnections: AtomicU64::new(0),
+        }
     }
 
     /// Retrieves comprehensive status information about the coordinator service.
@@ -640,9 +661,6 @@ impl Coordinator {
 
         self.ensure_workers_idle(&job, previous_state).await?;
 
-        // Reset worker statuses back to Idle
-        // self.workers_pool.mark_workers_with_state(&job.workers, WorkerState::Idle).await?;
-
         error!("Failed job {} (reason: {})", job_id, reason.as_ref(),);
 
         // Release job lock before calling post_launch_proof
@@ -727,6 +745,8 @@ impl Coordinator {
         req: WorkerRegisterRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> (bool, String) {
+        self.registrations.fetch_add(1, Ordering::Relaxed);
+
         let max_connections = self.config.coordinator.max_total_workers as usize;
         if self.workers_pool.num_workers().await >= max_connections {
             return (
@@ -787,9 +807,12 @@ impl Coordinator {
         req: WorkerReconnectRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> (bool, String) {
+        // TODO! Since we call register_worker here, we need to make sure we have not reached
+        // the max connections limit. Otherwise, a reconnecting worker may be rejected.
+        self.reconnections.fetch_add(1, Ordering::Relaxed);
         match self
             .workers_pool
-            .reconnect_worker(req.worker_id, req.compute_capacity, msg_sender)
+            .register_worker(req.worker_id, req.compute_capacity, msg_sender)
             .await
         {
             Ok(()) => (true, "Reconnection successful".to_string()),
@@ -835,6 +858,23 @@ impl Coordinator {
         }
 
         self.workers_pool.unregister_worker(worker_id).await
+    }
+
+    pub async fn disconnect_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
+        // Is this worker involved in any active jobs?
+        let worker_state = self.workers_pool.worker_state(worker_id).await;
+        if let Some(WorkerState::Computing((job_id, phase))) = worker_state {
+            error!(
+                "Worker {} disconnected while computing for job {} in phase {:?}",
+                worker_id, job_id, phase
+            );
+            error!("Marking job {} as failed due to worker disconnection", job_id);
+
+            // Fail the affected job
+            self.fail_job(&job_id, format!("Worker {} disconnected", worker_id)).await?;
+        }
+
+        self.workers_pool.disconnect_worker(worker_id).await
     }
 
     /// Handles heartbeat acknowledgments from workers to maintain liveness tracking.
@@ -931,6 +971,8 @@ impl Coordinator {
     /// * `message` - Task response containing failure details and context
     async fn handle_task_failure(&self, message: ExecuteTaskResponseDto) -> CoordinatorResult<()> {
         self.fail_job(&message.job_id, "Task execution failed").await?;
+
+        self.workers_pool.mark_worker_with_state(&message.worker_id, WorkerState::Idle).await?;
 
         Err(CoordinatorError::WorkerError(format!(
             "Worker {} failed to execute task for {}: {}",
@@ -1746,6 +1788,22 @@ impl Coordinator {
                 }
             }
         }
+
+        let duration = Utc::now().signed_duration_since(self.start_time_utc);
+        let total_secs = duration.num_seconds().max(0) as u64; // avoid negative durations
+        let uptime = humantime::format_duration(Duration::from_secs(total_secs)).to_string();
+
+        info!(
+            "[Coordinator] Started at {} UTC — Uptime: {}",
+            self.start_time_utc.format("%Y-%m-%d %H:%M:%S"),
+            uptime
+        );
+
+        info!(
+            "[Coordinator] Registrations: {} Reconnections: {}",
+            self.registrations.load(Ordering::Relaxed),
+            self.reconnections.load(Ordering::Relaxed)
+        );
 
         // Release job lock before calling post_launch_proof
         drop(job);
