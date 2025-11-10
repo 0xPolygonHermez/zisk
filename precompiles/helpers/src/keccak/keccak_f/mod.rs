@@ -18,13 +18,7 @@ pub fn keccak_f(state: &mut KeccakStateBits) {
 }
 
 fn reduce_state_mod2(state: &mut KeccakStateBits) {
-    for x in 0..5 {
-        for y in 0..5 {
-            for z in 0..64 {
-                state[x][y][z] %= 2;
-            }
-        }
-    }
+    state.iter_mut().flatten().flatten().for_each(|bit| *bit %= 2);
 }
 
 /// Iterator that yields the state after each round of Keccak-f
@@ -85,16 +79,16 @@ pub fn keccak_f_round_states(
 mod tests {
     use super::{
         keccak_f, keccak_f_round_states, reduce_state_mod2,
-        utils::{state_from_linear, state_to_linear},
+        utils::{keccakf_state_from_linear, keccakf_state_to_linear},
         KeccakRoundIterator,
     };
 
     #[test]
     fn test_keccak_f_zero_state() {
         let state_linear = [0u64; 25];
-        let mut state = state_from_linear(&state_linear);
+        let mut state = keccakf_state_from_linear(&state_linear);
         keccak_f(&mut state);
-        let state_linear = state_to_linear(&state);
+        let state_linear = keccakf_state_to_linear(&state);
 
         assert_eq!(
             state_linear,
@@ -157,9 +151,9 @@ mod tests {
             0x75F644E97F30A13B,
             0xEAF1FF7B5CECA249,
         ];
-        let mut state = state_from_linear(&state_linear);
+        let mut state = keccakf_state_from_linear(&state_linear);
         keccak_f(&mut state);
-        let state_linear = state_to_linear(&state);
+        let state_linear = keccakf_state_to_linear(&state);
 
         assert_eq!(
             state_linear,
@@ -196,7 +190,7 @@ mod tests {
     #[test]
     fn test_keccak_f_round_iterator() {
         let initial_state_linear = [0u64; 25];
-        let initial_state = state_from_linear(&initial_state_linear);
+        let initial_state = keccakf_state_from_linear(&initial_state_linear);
         let round_iter = KeccakRoundIterator::new(initial_state);
 
         // Test that we get exactly 24 rounds
@@ -214,11 +208,11 @@ mod tests {
         // Apply reduction to the final unreduced state to compare with keccak_f result
         let mut final_reduced_state = final_unreduced_state;
         reduce_state_mod2(&mut final_reduced_state);
-        let final_reduced_linear = state_to_linear(&final_reduced_state);
+        let final_reduced_linear = keccakf_state_to_linear(&final_reduced_state);
 
-        let mut expected_state = state_from_linear(&initial_state_linear);
+        let mut expected_state = keccakf_state_from_linear(&initial_state_linear);
         keccak_f(&mut expected_state);
-        let expected_linear = state_to_linear(&expected_state);
+        let expected_linear = keccakf_state_to_linear(&expected_state);
 
         assert_eq!(final_reduced_linear, expected_linear);
     }
@@ -226,7 +220,7 @@ mod tests {
     #[test]
     fn test_keccak_f_round_states() {
         let initial_state_linear = [0u64; 25];
-        let initial_state = state_from_linear(&initial_state_linear);
+        let initial_state = keccakf_state_from_linear(&initial_state_linear);
         let states: Vec<_> = keccak_f_round_states(initial_state).collect();
 
         assert_eq!(states.len(), 24);
@@ -234,11 +228,11 @@ mod tests {
         // Final state should match full keccak_f (after reduction)
         let mut final_unreduced_state = states[23];
         reduce_state_mod2(&mut final_unreduced_state);
-        let final_reduced_linear = state_to_linear(&final_unreduced_state);
+        let final_reduced_linear = keccakf_state_to_linear(&final_unreduced_state);
 
-        let mut expected_final = state_from_linear(&initial_state_linear);
+        let mut expected_final = keccakf_state_from_linear(&initial_state_linear);
         keccak_f(&mut expected_final);
-        let expected_linear = state_to_linear(&expected_final);
+        let expected_linear = keccakf_state_to_linear(&expected_final);
 
         assert_eq!(final_reduced_linear, expected_linear);
     }

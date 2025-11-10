@@ -11,7 +11,8 @@ pub const fn bits_from_u64(value: u64) -> [bool; 64] {
 }
 
 /// Convert from linear [u64; 25] to 5x5x64 bit array
-pub fn state_from_linear(linear: &[u64; 25]) -> KeccakStateBits {
+#[allow(clippy::needless_range_loop)]
+pub fn keccakf_state_from_linear(linear: &[u64; 25]) -> KeccakStateBits {
     let mut state = [[[0u64; 64]; 5]; 5];
     for x in 0..5 {
         for y in 0..5 {
@@ -25,7 +26,8 @@ pub fn state_from_linear(linear: &[u64; 25]) -> KeccakStateBits {
 }
 
 /// Convert from 5x5x64 bit array to linear [u64; 25]
-pub fn state_to_linear(state: &KeccakStateBits) -> [u64; 25] {
+#[allow(clippy::needless_range_loop)]
+pub fn keccakf_state_to_linear(state: &KeccakStateBits) -> [u64; 25] {
     let mut linear = [0u64; 25];
     for x in 0..5 {
         for y in 0..5 {

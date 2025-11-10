@@ -11,13 +11,7 @@ use zisk_pil::{KeccakfTrace, KeccakfTraceRow};
 #[cfg(feature = "packed")]
 use zisk_pil::{KeccakfTracePacked, KeccakfTraceRowPacked};
 
-#[cfg(feature = "packed")]
-type KeccakfTraceRowType<F> = KeccakfTraceRowPacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type KeccakfTraceRowType<F> = KeccakfTraceRow<F>;
-
-use precompiles_helpers::{keccak_f_rounds, state_from_linear};
+use precompiles_helpers::{keccak_f_rounds, keccakf_state_from_linear};
 
 use crate::KeccakfInput;
 
@@ -70,11 +64,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// * `trace` - A mutable reference to the Keccakf trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
+    #[allow(clippy::needless_range_loop)]
     fn process_trace(&self, trace: &mut [KeccakfTraceRow<F>], input: &KeccakfInput) {
         let state = &input.state;
 
         // Convert input state to 5x5x64 representation
-        let initial_state = state_from_linear(state);
+        let initial_state = keccakf_state_from_linear(state);
 
         // Fill the input state
         for x in 0..5 {
@@ -153,6 +148,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     }
 
     #[inline(always)]
+    #[allow(clippy::needless_range_loop)]
     fn process_padding(&self, trace: &mut [KeccakfTraceRow<F>]) {
         // Fill the rest of states
         let initial_state = [[[0u64; 64]; 5]; 5];

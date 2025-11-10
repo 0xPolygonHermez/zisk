@@ -74,17 +74,17 @@ struct ExpressionEvent {
 
 #[derive(Clone)]
 enum ExpressionReason {
-    MaxValueExceeded,
-    DegreeExceeded,
-    BothThresholdsExceeded,
+    MaxValue,
+    Degree,
+    BothThresholds,
 }
 
 impl std::fmt::Display for ExpressionReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ExpressionReason::MaxValueExceeded => write!(f, "Max Value Exceeded"),
-            ExpressionReason::DegreeExceeded => write!(f, "Degree Exceeded"),
-            ExpressionReason::BothThresholdsExceeded => write!(f, "Both Thresholds Exceeded"),
+            ExpressionReason::MaxValue => write!(f, "Max Value Exceeded"),
+            ExpressionReason::Degree => write!(f, "Degree Exceeded"),
+            ExpressionReason::BothThresholds => write!(f, "Both Thresholds Exceeded"),
         }
     }
 }
@@ -495,11 +495,11 @@ impl ExpressionManager {
 
             // Determine reset reason
             let reset_reason = if exceeds_max_value && exceeds_degree {
-                ExpressionReason::BothThresholdsExceeded
+                ExpressionReason::BothThresholds
             } else if exceeds_max_value {
-                ExpressionReason::MaxValueExceeded
+                ExpressionReason::MaxValue
             } else {
-                ExpressionReason::DegreeExceeded
+                ExpressionReason::Degree
             };
 
             // Determine which operand to reset first based on which threshold was exceeded
@@ -557,11 +557,11 @@ impl ExpressionManager {
 
                 // Determine reset reason for second reset
                 let second_reset_reason = if still_exceeds_max && still_exceeds_degree {
-                    ExpressionReason::BothThresholdsExceeded
+                    ExpressionReason::BothThresholds
                 } else if still_exceeds_max {
-                    ExpressionReason::MaxValueExceeded
+                    ExpressionReason::MaxValue
                 } else {
-                    ExpressionReason::DegreeExceeded
+                    ExpressionReason::Degree
                 };
 
                 // Reset the other operand
@@ -798,10 +798,7 @@ impl ExpressionManager {
                 reason_and_values.push_str(&format!(", Reason: {}", r));
 
                 // Only show operand values for max value related resets
-                if matches!(
-                    r,
-                    ExpressionReason::MaxValueExceeded | ExpressionReason::BothThresholdsExceeded
-                ) {
+                if matches!(r, ExpressionReason::MaxValue | ExpressionReason::BothThresholds) {
                     if let (Some(op1), Some(op2), Some(res)) =
                         (event.op1_max_value, event.op2_max_value, event.res_max_value)
                     {

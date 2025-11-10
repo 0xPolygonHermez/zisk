@@ -11,6 +11,7 @@ use super::{bit_position, KECCAK_F_RC};
 ///    `A′[0, 0, z] = A′[0, 0, z] ^ RC[z]`
 ///
 /// 3. Return `A′`
+#[allow(clippy::needless_range_loop)]
 pub fn keccak_f_iota(e: &mut ExpressionManager, ir: usize) {
     // Step 1: Copy all state bits
     for x in 0..5 {

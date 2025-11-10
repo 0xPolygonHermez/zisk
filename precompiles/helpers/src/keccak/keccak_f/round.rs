@@ -58,6 +58,7 @@ pub fn keccak_f_round(state: &mut KeccakStateBits, round: usize) {
 /// 1. C[x, z] = A[x, 0, z] ⊕ A[x, 1, z] ⊕ A[x, 2, z] ⊕ A[x, 3, z] ⊕ A[x, 4, z]
 /// 2. D[x, z] = C[(x-1) mod 5, z] ⊕ C[(x+1) mod 5, (z-1) mod 64]
 /// 3. A[x, y, z] = A[x, y, z] ⊕ D[x, z]
+#[allow(clippy::needless_range_loop)]
 fn theta(state: &mut KeccakStateBits) {
     let mut c = [[0u64; 64]; 5];
 
