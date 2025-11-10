@@ -1,29 +1,41 @@
+require "std_constants.pil";
 require "std_lookup.pil";
 require "opids.pil";
 
-const int KECCAKF_TABLE_SIZE = 145**3;
+// The maximum value that any expression during keccakf computation can get
+// Obtained from `keccakf_expr_generator.rs`
+const int KECCAKF_MAX_VALUE = 144;
 
-airtemplate KeccakfTable(const int N, const int group_by = 3) {
+const int KECCAKF_BASE = KECCAKF_MAX_VALUE + 1;
+function keccakf_chunk_size(): int {
+    int chunks = 1;
+    while (KECCAKF_BASE ** (chunks + 1) < P2_23) {
+        chunks += 1;
+    }
+    return chunks;
+}
+
+const int KECCAKF_LOOKUP_CHUNK_SIZE = keccakf_chunk_size();
+const int KECCAKF_TABLE_SIZE = KECCAKF_BASE ** KECCAKF_LOOKUP_CHUNK_SIZE;
+
+airtemplate KeccakfTable(const int N) {
     // Ensure that the chosen size fits
     if (N < KECCAKF_TABLE_SIZE) {
         error(`N must be at least ${KECCAKF_TABLE_SIZE}, but N=${N} was provided`);
     }
 
-    const int MAX_VALUE = 144; // Gotten from `keccakf_expr_generator.rs`
-    const int BASE = MAX_VALUE + 1;
-
     int MAX = 0;
-    for (int i = 0; i < group_by; i++) {
-        MAX += BASE**i * MAX_VALUE;
+    for (int i = 0; i < KECCAKF_LOOKUP_CHUNK_SIZE; i++) {
+        MAX += KECCAKF_BASE**i * KECCAKF_MAX_VALUE;
     }
 
     col fixed A = [0..MAX]...;
 
-    col fixed C[group_by];
+    col fixed C[KECCAKF_LOOKUP_CHUNK_SIZE];
     #pragma transpile
     for (int i = 0; i < N; i++) {
-        for (int j = 0; j < group_by; j++) {
-            const int aj = (A[i] / (BASE**j)) % BASE;
+        for (int j = 0; j < KECCAKF_LOOKUP_CHUNK_SIZE; j++) {
+            const int aj = (A[i] / (KECCAKF_BASE**j)) % KECCAKF_BASE;
             C[j][i] = aj % 2;
         }
     }

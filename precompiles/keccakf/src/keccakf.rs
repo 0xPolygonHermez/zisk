@@ -32,10 +32,8 @@ pub struct KeccakfSM<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> KeccakfSM<F> {
-    const BASE: u32 = MAX_VALUE + 1;
-
-    const NUM_REM: usize = 1600 % GROUP_BY;
-    const NUM_REDUCED: usize = (1600 - Self::NUM_REM) / GROUP_BY;
+    const NUM_REM: usize = 1600 % TABLE_CHUNK_SIZE;
+    const NUM_REDUCED: usize = (1600 - Self::NUM_REM) / TABLE_CHUNK_SIZE;
 
     /// Creates a new Keccakf State Machine instance.
     ///
@@ -47,8 +45,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
         let num_non_usable_rows = KeccakfTrace::<F>::NUM_ROWS % ROWS_BY_KECCAKF;
-        let num_available_keccakfs =
-            (KeccakfTrace::<F>::NUM_ROWS - num_non_usable_rows) / ROWS_BY_KECCAKF;
+        let num_available_keccakfs = if num_non_usable_rows == 0 {
+            KeccakfTrace::<F>::NUM_ROWS / ROWS_BY_KECCAKF
+        } else {
+            // Subtract 1 because we can't fit a complete cycle in the remaining rows
+            (KeccakfTrace::<F>::NUM_ROWS - num_non_usable_rows) / ROWS_BY_KECCAKF - 1
+        };
 
         // Get the table ID
         let table_id = std
@@ -65,69 +67,75 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// * `input` - The operation data to process.
     #[inline(always)]
     #[allow(clippy::needless_range_loop)]
-    fn process_trace(&self, trace: &mut [KeccakfTraceRow<F>], input: &KeccakfInput) {
-        let state = &input.state;
+    fn process_trace(
+        &self,
+        trace: &mut [KeccakfTraceRow<F>],
+        initial_state: &[u64; 25],
+        addr: Option<u32>,
+        step: Option<u64>,
+    ) {
+        let lookup_active = addr.is_some() && step.is_some();
 
+        // Fill the states
         // Convert input state to 5x5x64 representation
-        let initial_state = keccakf_state_from_linear(state);
-
-        // Fill the input state
-        for x in 0..5 {
-            for y in 0..5 {
-                for z in 0..64 {
-                    trace[0].set_state(x, y, z, (initial_state[x][y][z] % 2) == 1);
-                }
-            }
-        }
-
-        // Fill the rest of states
+        let initial_state = keccakf_state_from_linear(initial_state);
         let round_states = keccak_f_rounds(initial_state);
         for (state, r) in round_states {
             // Fill keccakf_state
             for x in 0..5 {
                 for y in 0..5 {
                     for z in 0..64 {
-                        trace[1 + r].set_state(x, y, z, (state[x][y][z] % 2) == 1);
+                        trace[r].set_state(x, y, z, (state[x][y][z] % 2) == 1);
                     }
                 }
             }
 
             // Fill keccakf_reduced
             for i in 0..Self::NUM_REDUCED {
-                let offset = i * GROUP_BY;
+                let offset = i * TABLE_CHUNK_SIZE;
                 let mut acc = 0u32;
-                for j in 0..GROUP_BY {
+                for j in 0..TABLE_CHUNK_SIZE {
                     let idx = offset + j;
                     let (x, y, z) = Self::idx_pos(idx);
                     let value = state[x][y][z] as u32;
-                    acc += value * Self::BASE.pow(j as u32);
+                    acc += value * BASE.pow(j as u32);
                 }
-                trace[r].set_keccakf_reduced(i, acc);
+                if r > 0 {
+                    trace[r - 1].set_chunk_acc(i, acc);
 
-                let table_row = KeccakfTableSM::calculate_table_row(acc);
-                self.std.inc_virtual_row(self.table_id, table_row as u64, 1);
+                    if lookup_active {
+                        let table_row = KeccakfTableSM::calculate_table_row(acc);
+                        self.std.inc_virtual_row(self.table_id, table_row as u64, 1);
+                    }
+                }
             }
 
             // Fill keccakf_rem
-            let offset = Self::NUM_REDUCED * GROUP_BY;
+            let offset = Self::NUM_REDUCED * TABLE_CHUNK_SIZE;
             let mut acc = 0u8;
             for j in 0..Self::NUM_REM {
                 let idx = offset + j;
                 let (x, y, z) = Self::idx_pos(idx);
                 let bit_value = state[x][y][z] as u8;
-                acc += bit_value * (Self::BASE.pow(j as u32) as u8);
+                acc += bit_value * (BASE.pow(j as u32) as u8);
             }
-            trace[r].set_keccakf_rem(acc);
+            if r > 0 {
+                trace[r - 1].set_rem_acc(acc);
 
-            let table_row = KeccakfTableSM::calculate_table_row(acc as u32);
-            self.std.inc_virtual_row(self.table_id, table_row as u64, 1);
+                if lookup_active {
+                    let table_row = KeccakfTableSM::calculate_table_row(acc as u32);
+                    self.std.inc_virtual_row(self.table_id, table_row as u64, 1);
+                }
+            }
+        }
+
+        if !lookup_active {
+            return;
         }
 
         // Fill step and addr
-        let step_main = input.step_main;
-        let addr_main = input.addr_main;
-        trace[0].set_step_addr(step_main);
-        trace[1].set_step_addr(addr_main as u64);
+        trace[0].set_step_addr(step.unwrap());
+        trace[1].set_step_addr(addr.unwrap() as u64);
 
         // Fill in_use_clk_0
         trace[0].set_in_use_clk_0(true);
@@ -147,56 +155,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
         (x, y, z)
     }
 
-    #[inline(always)]
-    #[allow(clippy::needless_range_loop)]
-    fn process_padding(&self, trace: &mut [KeccakfTraceRow<F>]) {
-        // Fill the rest of states
-        let initial_state = [[[0u64; 64]; 5]; 5];
-        let round_states = keccak_f_rounds(initial_state);
-        const NUM_REM: usize = 1600 % GROUP_BY;
-        const NUM_REDUCED: usize = (1600 - NUM_REM) / GROUP_BY;
-        for (state, r) in round_states {
-            // Fill keccakf_state
-            for x in 0..5 {
-                for y in 0..5 {
-                    for z in 0..64 {
-                        trace[1 + r].set_state(x, y, z, (state[x][y][z] % 2) == 1);
-                    }
-                }
-            }
-
-            // Fill keccakf_reduced
-            for i in 0..NUM_REDUCED {
-                let offset = i * GROUP_BY;
-                let mut acc = 0u32;
-                for j in 0..GROUP_BY {
-                    let idx = offset + j;
-                    let (x, y, z) = Self::idx_pos(idx);
-                    let value = state[x][y][z] as u32;
-                    acc += value * Self::BASE.pow(j as u32);
-                }
-                trace[r].set_keccakf_reduced(i, acc);
-
-                let table_row = KeccakfTableSM::calculate_table_row(acc);
-                self.std.inc_virtual_row(self.table_id, table_row as u64, 1);
-            }
-
-            // Fill keccakf_rem
-            let offset = NUM_REDUCED * GROUP_BY;
-            let mut acc = 0u8;
-            for j in 0..NUM_REM {
-                let idx = offset + j;
-                let (x, y, z) = Self::idx_pos(idx);
-                let bit_value = state[x][y][z] as u8;
-                acc += bit_value * (Self::BASE.pow(j as u32) as u8);
-            }
-            trace[r].set_keccakf_rem(acc);
-
-            let table_row = KeccakfTableSM::calculate_table_row(acc as u32);
-            self.std.inc_virtual_row(self.table_id, table_row as u64, 1);
-        }
-    }
-
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
     ///
     /// # Arguments
@@ -209,24 +167,23 @@ impl<F: PrimeField64> KeccakfSM<F> {
         inputs: &[Vec<KeccakfInput>],
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        timer_start_trace!(KECCAKF_TRACE);
         let mut trace = KeccakfTrace::new_from_vec_zeroes(trace_buffer);
         let num_rows = trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace
+        let num_available_keccakfs = self.num_available_keccakfs;
         let num_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
-        let num_rows_needed = num_inputs * ROWS_BY_KECCAKF;
+        let num_rows_needed = if num_inputs < num_available_keccakfs {
+            num_inputs * ROWS_BY_KECCAKF
+        } else if num_inputs == num_available_keccakfs {
+            num_rows
+        } else {
+            panic!(
+                "Exceeded available Keccakfs inputs: requested {}, but only {} are available.",
+                num_inputs, num_available_keccakfs
+            );
+        };
 
-        // Sanity checks
-        debug_assert!(
-            num_inputs <= self.num_available_keccakfs,
-            "Exceeded available Keccakfs inputs: requested {}, but only {} are available.",
-            num_inputs,
-            self.num_available_keccakfs
-        );
-        debug_assert!(num_rows_needed <= num_rows);
-
-        // TODO: Add remaining rows when instance is fully filled
         tracing::info!(
             "··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
@@ -234,6 +191,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
             num_rows_needed as f64 / num_rows as f64 * 100.0
         );
 
+        timer_start_trace!(KECCAKF_TRACE);
+
+        // 1] Fill the trace with the provided inputs
         let mut trace_rows = &mut trace.buffer[..];
         let mut par_traces = Vec::new();
         let mut inputs_indexes = Vec::new();
@@ -249,16 +209,17 @@ impl<F: PrimeField64> KeccakfSM<F> {
         par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
             let input_index = inputs_indexes[index];
             let input = &inputs[input_index.0][input_index.1];
-            self.process_trace(trace, input);
+            self.process_trace(trace, &input.state, Some(input.addr_main), Some(input.step_main));
         });
+
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
         timer_start_trace!(KECCAKF_PADDING);
 
-        // Set the padding rows with Keccakf(0)
+        // 2] Fill the padding rows with Keccakf(0)
         let padding_rows_start = num_rows_needed;
         let padding_rows_end =
-            padding_rows_start + ((self.num_available_keccakfs - num_inputs) * ROWS_BY_KECCAKF);
+            padding_rows_start + ((num_available_keccakfs - num_inputs) * ROWS_BY_KECCAKF);
 
         // Split the padding trace into padding chunks
         let padding_trace = &mut trace.buffer[padding_rows_start..padding_rows_end];
@@ -266,15 +227,10 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         // Process padding in parallel
         padding_chunks.into_par_iter().for_each(|trace_chunk| {
-            self.process_padding(trace_chunk);
+            self.process_trace(trace_chunk, &[0u64; 25], None, None);
         });
 
-        // Set the remaining rows with 0's
-        let remaining_rows = KeccakfTrace::<F>::NUM_ROWS - padding_rows_end;
-        let zeroes_rows = self.num_available_keccakfs + remaining_rows;
-        let multiplicity = zeroes_rows * (Self::NUM_REDUCED + Self::NUM_REM);
-        let table_row = KeccakfTableSM::calculate_table_row(0);
-        self.std.inc_virtual_row(self.table_id, table_row as u64, multiplicity as u64);
+        // 3] The non-usable rows should be zeroes, which are already set at initialization
 
         timer_stop_and_log_trace!(KECCAKF_PADDING);
 

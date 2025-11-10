@@ -25,26 +25,32 @@ fn reduce_state_mod2(state: &mut KeccakStateBits) {
 pub struct KeccakRoundIterator {
     state: KeccakStateBits,
     round: usize,
+    initial_returned: bool,
 }
 
 impl KeccakRoundIterator {
     pub fn new(initial_state: KeccakStateBits) -> Self {
-        Self { state: initial_state, round: 0 }
+        Self { state: initial_state, round: 0, initial_returned: false }
     }
 }
 
 impl Iterator for KeccakRoundIterator {
-    type Item = (KeccakStateBits, usize); // (state_after_round, round_number)
+    type Item = (KeccakStateBits, usize); // (state, round_number)
 
     fn next(&mut self) -> Option<Self::Item> {
+        // First return the initial state as round 0
+        if !self.initial_returned {
+            self.initial_returned = true;
+            return Some((self.state, 0));
+        }
+
+        // Check if we've completed all 24 rounds
         if self.round >= 24 {
             return None;
         }
 
-        let current_round = self.round;
-
         // Perform one round of Keccak-f
-        keccak_f_round(&mut self.state, current_round);
+        keccak_f_round(&mut self.state, self.round);
 
         // Return the unreduced state (before modulo 2)
         let unreduced_state = self.state;
@@ -54,11 +60,15 @@ impl Iterator for KeccakRoundIterator {
 
         self.round += 1;
 
-        Some((unreduced_state, current_round))
+        Some((unreduced_state, self.round))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = 24 - self.round;
+        let remaining = if self.initial_returned {
+            24 - self.round
+        } else {
+            25 - self.round // Initial state + 24 rounds
+        };
         (remaining, Some(remaining))
     }
 }
@@ -193,14 +203,20 @@ mod tests {
         let initial_state = keccakf_state_from_linear(&initial_state_linear);
         let round_iter = KeccakRoundIterator::new(initial_state);
 
-        // Test that we get exactly 24 rounds
+        // Test that we get exactly 25 rounds
         let all_rounds: Vec<_> = round_iter.collect();
-        assert_eq!(all_rounds.len(), 24);
+        assert_eq!(all_rounds.len(), 25);
 
         // Test that round numbers are correct
         for (i, (_, round_num)) in all_rounds.iter().enumerate() {
             assert_eq!(*round_num, i);
         }
+
+        // Test that round 0 is the initial state
+        let (round_0_state, round_0_num) = &all_rounds[0];
+        assert_eq!(*round_0_num, 0);
+        let round_0_linear = keccakf_state_to_linear(round_0_state);
+        assert_eq!(round_0_linear, initial_state_linear);
 
         // Test that the final state (after reduction) matches the full keccak_f result
         let final_unreduced_state = all_rounds.last().unwrap().0;
@@ -223,10 +239,10 @@ mod tests {
         let initial_state = keccakf_state_from_linear(&initial_state_linear);
         let states: Vec<_> = keccak_f_round_states(initial_state).collect();
 
-        assert_eq!(states.len(), 24);
+        assert_eq!(states.len(), 25);
 
         // Final state should match full keccak_f (after reduction)
-        let mut final_unreduced_state = states[23];
+        let mut final_unreduced_state = states[24];
         reduce_state_mod2(&mut final_unreduced_state);
         let final_reduced_linear = keccakf_state_to_linear(&final_unreduced_state);
 

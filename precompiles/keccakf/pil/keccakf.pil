@@ -6,21 +6,32 @@ require "keccakf_table.pil";
 // Precompile in charge of performing the Keccak-f[1600] permutation.
 // For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
 
-const int KECCAKF_OP = 0xF1;
+// TODO: Write with 1600 bits
 
-airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int operation_bus_id = OPERATION_BUS_ID) {
+airtemplate Keccakf(const int N = 2**17, const int operation_bus_id = OPERATION_BUS_ID) {
     // Keccak-f[1600] state is of 5x5x64=1600 bits
     const int ROUNDS = 24; // 12 + 2·L, where L=log2(64)
     const int CLOCKS = 1 + ROUNDS; // 1 for input state + 24 for rounds
 
-    // Ensure that the Keccak-f[1600] fits
-    if (N < CLOCKS) {
-        error(`N must be at least ${CLOCKS} to fit the Keccak-f[1600] arithmetization, but received N=${N}`);
-    }
-
     // Compute some stats
     const int NUM_NON_USABLE_ROWS = N % CLOCKS;
-    const int NUM_KECCAKF = (N - NUM_NON_USABLE_ROWS) / CLOCKS;
+    const int NUM_KECCAKF;
+    if (NUM_NON_USABLE_ROWS == 0) {
+        // N is perfectly divisible by CLOCKS
+        if (N < CLOCKS) {
+            error(`N must be at least ${CLOCKS} to fit the Keccak-f[1600] arithmetization, but received N=${N}`);
+        }
+
+        NUM_KECCAKF = N / CLOCKS;
+    } else {
+        // N is not divisible by CLOCKS
+        if (N < 2*CLOCKS) {
+            error(`N must be at least ${2*CLOCKS} to fit the Keccak-f[1600] arithmetization, but received N=${N}`);
+        }
+
+        // Subtract 1 because we can't fit a complete cycle in the remaining rows
+        NUM_KECCAKF = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1;
+    }
     println(`The total number of Keccak-f's is ${NUM_KECCAKF}`);
 
     col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_KECCAKF, 0...];
@@ -29,6 +40,20 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
     for (int i = 0; i < CLOCKS; i++) {
         CLK[i] = (i)'CLK_0;
     }
+
+    // Define the clock selectors
+    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Keccak-f operation, 0 otherwise
+    col witness bits(1) in_use;       // 1 when the Keccak-f operation is in use, 0 otherwise
+
+    in_use_clk_0 * (1 - in_use_clk_0) === 0;
+    in_use * (1 - in_use) === 0;
+
+    in_use_clk_0 - CLK_0 * in_use === 0; // This constraint is two-fold:
+                                         //   · in_use_clk_0 can only be active when CLK_0 is active
+                                         //   · if in_use is active then so is in_use_clk_0
+
+    const expr in_use_active = clock_set(start: 1, end: CLOCKS);
+    in_use_active * (in_use - 'in_use) === 0; // selector latching
 
     // --> Constraints to assert the Keccak-f[1600] permutation
 
@@ -51,7 +76,6 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
     for (int x = 0; x < 5; x++) {
         for (int y = 0; y < 5; y++) {
             for (int z = 0; z < 64; z++) {
-                // state are bits
                 state[x][y][z] * (1 - state[x][y][z]) === 0;
             }
         }
@@ -71,57 +95,24 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
         }
     }
 
-    const int MAX_VALUE = 144; // Gotten from `keccakf_expr_generator.rs`
-    const int BASE = MAX_VALUE + 1;
-
     // Perform lookups for reset expressions
-    const int num_reduced = 1600 / group_by;
-    col witness bits(22) keccakf_reduced[num_reduced];
-    for (int i = 0; i < num_reduced; i++) {
-        expr acc_keccakf = 0;
-        const int offset = group_by * i;
-        for (int j = 0; j < group_by; j++) {
-            const int pos[3] = idx_pos(offset + j);
-            acc_keccakf += keccakf[pos[0]][pos[1]][pos[2]] * (BASE ** j);
-        }
-        keccakf_reduced[i] === acc_keccakf;
+    const int remaining_bits = (1600 % KECCAKF_LOOKUP_CHUNK_SIZE);
+    const int full_chunks = (1600 - remaining_bits) / KECCAKF_LOOKUP_CHUNK_SIZE;
 
-        const expr lookup_values[group_by + 1];
-        lookup_values[0] = keccakf_reduced[i];
-        for (int j = 0; j < group_by; j++) {
-            const int pos[3] = idx_pos(offset + j);
-            lookup_values[j + 1] = state[pos[0]][pos[1]][pos[2]]';
-        }
-        lookup_assumes(KECCAKF_TABLE_ID, lookup_values);
+    // Process full chunks
+    // TODO: Compute the number of bits as a function of MAX_VALUE
+    col witness bits(22) chunk_acc[full_chunks];
+    for (int i = 0; i < full_chunks; i++) {
+        process_lookup_chunk(bit_offset: i * KECCAKF_LOOKUP_CHUNK_SIZE, num_bits: KECCAKF_LOOKUP_CHUNK_SIZE, col_acc: chunk_acc[i]);
     }
 
-    const int num_rem_reduced = (1600 % group_by);
-    if (num_rem_reduced > 0) {
-        col witness bits(8) keccakf_rem;
-
-        const int offset = num_reduced * group_by;
-        expr acc_keccakf = 0;
-        for (int j = 0; j < num_rem_reduced; j++) {
-            const int pos[3] = idx_pos(offset + j);
-            acc_keccakf += keccakf[pos[0]][pos[1]][pos[2]] * (BASE ** j);
-        }
-        keccakf_rem === acc_keccakf;
-
-        const expr lookup_values[num_rem_reduced + 1];
-        lookup_values[0] = keccakf_rem;
-        for (int j = 0; j < num_rem_reduced; j++) {
-            const int pos[3] = idx_pos(offset + j);
-            lookup_values[j + 1] = state[pos[0]][pos[1]][pos[2]]';
-        }
-        const expr zeroes[group_by - num_rem_reduced];
-        for (int j = 0; j < group_by - num_rem_reduced; j++) {
-            zeroes[j] = 0;
-        }
-        lookup_assumes(KECCAKF_TABLE_ID, [...lookup_values, ...zeroes]);
+    // Handle remaining chunks if any
+    if (remaining_bits > 0) {
+        col witness bits(8) rem_acc;
+        process_lookup_chunk(bit_offset: full_chunks * KECCAKF_LOOKUP_CHUNK_SIZE, num_bits: remaining_bits, col_acc: rem_acc);
     }
 
     // --> Constraints to read inputs from memory and write outputs to memory
-    
     col witness bits(40) step_addr; 
     /*
         MEMORY ACCESS MAP
@@ -137,19 +128,6 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
 
     const int STEP_MAIN = 0;
     const int ADDR_STATE = STEP_MAIN + 1;
-
-    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Keccak-f operation, 0 otherwise
-    col witness bits(1) in_use;       // 1 when the Keccak-f operation is in use, 0 otherwise
-
-    in_use_clk_0 * (1 - in_use_clk_0) === 0;
-    in_use * (1 - in_use) === 0;
-
-    in_use_clk_0 - CLK_0 * in_use === 0; // This constraint is two-fold:
-                                         //   · in_use_clk_0 can only be active when CLK_0 is active
-                                         //   · if in_use is active then so is in_use_clk_0
-
-    const expr in_use_active = clock_set(start: 1, end: CLOCKS);
-    in_use_active * (in_use - 'in_use) === 0; // selector latching
 
     const expr mem_sel = clock_set(in_use, start: 0, end: CLOCKS);
 
@@ -371,7 +349,7 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
         return (1 + b1) * b2;
     }
 
-    function clock_set(const expr mvcol = 1, int start = 0, int end = -1): const expr {
+    function clock_set(const expr mvcol = 1, const int start = 0, int end = -1): const expr {
         if (end == -1) {
             end = start;
         }
@@ -382,14 +360,14 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
         return res * mvcol;
     }
 
-    function clock_map(const expr mvcol, int pos, int start = 0, int end = -1, int delta = 0): const expr {
+    function clock_map(const expr mvcol, const int bit_pos, const int start = 0, int end = -1, int delta = 0): const expr {
         if (end == -1) {
             end = start;
         }
         expr res = 0;
         int offset = 0;
         for (int index = start; index < end; index++) {
-            int iclock = (pos - index) % air.CLOCKS;
+            int iclock = (bit_pos - index) % air.CLOCKS;
             if (offset != 0) {
                 res += air.CLK[index] * (mvcol'(iclock) + offset);
             } else {
@@ -398,5 +376,32 @@ airtemplate Keccakf(const int N = 2**17, const int group_by = 3, const int opera
             offset += delta;
         }
         return res;
+    }
+
+    function process_lookup_chunk(const int bit_offset, const int num_bits, const expr col_acc) {
+        // Calculate accumulated value for this chunk using base encoding
+        expr acc_val = 0;
+        for (int j = 0; j < num_bits; j++) {
+            const int bit_pos[3] = idx_pos(bit_offset + j);
+            acc_val += air.keccakf[bit_pos[0]][bit_pos[1]][bit_pos[2]] * (KECCAKF_BASE ** j);
+        }
+        col_acc === acc_val;
+
+        const expr table_lookup_values[KECCAKF_LOOKUP_CHUNK_SIZE + 1];
+        table_lookup_values[0] = col_acc;
+        
+        // Add the actual state bit values
+        for (int j = 0; j < num_bits; j++) {
+            const int bit_pos[3] = idx_pos(bit_offset + j);
+            table_lookup_values[j + 1] = air.state[bit_pos[0]][bit_pos[1]][bit_pos[2]]';
+        }
+        
+        // Pad with zeros if this is a partial chunk
+        for (int j = num_bits + 1; j < KECCAKF_LOOKUP_CHUNK_SIZE + 1; j++) {
+            table_lookup_values[j] = 0;
+        }
+        
+        const expr lookup_active = air.in_use - (air.CLOCKS - 1)'air.in_use_clk_0;
+        lookup_assumes(KECCAKF_TABLE_ID, table_lookup_values, sel: lookup_active);
     }
 }

@@ -76,8 +76,8 @@ airgroup Zisk {
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
 
-    Keccakf(N: 2**17, group_by: 3);
-    virtual KeccakfTable(KECCAKF_TABLE_SIZE, group_by: 3);
+    Keccakf(N: 2**17);
+    virtual KeccakfTable(KECCAKF_TABLE_SIZE);
 
     Sha256f(N: 2**18);
 
