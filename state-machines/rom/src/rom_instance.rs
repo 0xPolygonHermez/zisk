@@ -14,7 +14,7 @@ use std::{
 use crate::{rom_counter::RomCounter, RomSM};
 use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::sync::Mutex;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
@@ -121,7 +121,7 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
-    ) -> Option<AirInstance<F>> {
+    ) -> ProofmanResult<Option<AirInstance<F>>> {
         // Case 1: Use ROM assembly output
         if self.is_asm_execution() {
             // Check if we already have the result cached
@@ -142,11 +142,11 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
             *self.prog_inst_count.lock().unwrap() =
                 Arc::new(create_atomic_vec(result_rh.asm_rowh_output.prog_inst_count.len()));
 
-            return Some(RomSM::compute_witness_from_asm(
+            return Ok(Some(RomSM::compute_witness_from_asm(
                 &self.zisk_rom,
                 &result_rh.asm_rowh_output,
                 trace_buffer,
-            ));
+            )?));
         }
 
         // Case 2: Fallback to counter stats when not using assembly
@@ -174,9 +174,9 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
             self.counter_stats.lock().unwrap().as_ref().unwrap(),
             &self.calculated,
             trace_buffer,
-        ));
+        )?);
         self.calculated.store(true, std::sync::atomic::Ordering::Relaxed);
-        air_instance
+        Ok(air_instance)
     }
 
     fn reset(&self) {

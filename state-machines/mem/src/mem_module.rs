@@ -1,5 +1,5 @@
 use crate::{MemInput, MemPreviousSegment};
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, ProofmanResult};
 use zisk_common::SegmentId;
 
 impl MemInput {
@@ -16,7 +16,7 @@ pub trait MemModule<F: Clone>: Send + Sync {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F>;
+    ) -> ProofmanResult<AirInstance<F>>;
     fn get_addr_range(&self) -> (u32, u32);
     fn is_dual(&self) -> bool;
 }

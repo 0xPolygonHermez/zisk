@@ -15,29 +15,47 @@ use zisk_distributed_common::{DataId, JobId};
 use zisk_distributed_grpc_api::contribution_params::InputSource;
 use zisk_distributed_grpc_api::execute_task_response::ResultData;
 use zisk_distributed_grpc_api::*;
+use zisk_sdk::{Asm, Emu, ZiskBackend};
 
 use crate::config::WorkerServiceConfig;
 
-pub enum WorkerNode {
-    WorkerGrpc(WorkerNodeGrpc),
-    WorkerMpi(WorkerNodeMpi),
+pub enum WorkerNode<T: ZiskBackend + 'static> {
+    WorkerGrpc(WorkerNodeGrpc<T>),
+    WorkerMpi(WorkerNodeMpi<T>),
 }
 
-impl WorkerNode {
-    pub async fn new(
+impl<T: ZiskBackend + 'static> WorkerNode<T> {
+    pub async fn new_emu(
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
-    ) -> Result<Self> {
-        let worker = Worker::new(
+    ) -> Result<WorkerNode<Emu>> {
+        let worker = Worker::<Emu>::new_emu(
             worker_config.worker.worker_id.clone(),
             worker_config.worker.compute_capacity,
             prover_config,
         )?;
 
         if worker.local_rank() == 0 {
-            Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::new(worker_config, worker).await?))
+            Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Emu>::new(worker_config, worker).await?))
         } else {
-            Ok(WorkerNode::WorkerMpi(WorkerNodeMpi::new(worker).await?))
+            Ok(WorkerNode::WorkerMpi(WorkerNodeMpi::<Emu>::new(worker).await?))
+        }
+    }
+
+    pub async fn new_asm(
+        worker_config: WorkerServiceConfig,
+        prover_config: ProverConfig,
+    ) -> Result<WorkerNode<Asm>> {
+        let worker = Worker::<Asm>::new_asm(
+            worker_config.worker.worker_id.clone(),
+            worker_config.worker.compute_capacity,
+            prover_config,
+        )?;
+
+        if worker.local_rank() == 0 {
+            Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Asm>::new(worker_config, worker).await?))
+        } else {
+            Ok(WorkerNode::WorkerMpi(WorkerNodeMpi::<Asm>::new(worker).await?))
         }
     }
 
@@ -49,12 +67,12 @@ impl WorkerNode {
     }
 }
 
-pub struct WorkerNodeMpi {
-    worker: Worker,
+pub struct WorkerNodeMpi<T: ZiskBackend + 'static> {
+    worker: Worker<T>,
 }
 
-impl WorkerNodeMpi {
-    pub async fn new(worker: Worker) -> Result<Self> {
+impl<T: ZiskBackend + 'static> WorkerNodeMpi<T> {
+    pub async fn new(worker: Worker<T>) -> Result<Self> {
         Ok(Self { worker })
     }
 
@@ -68,13 +86,13 @@ impl WorkerNodeMpi {
     }
 }
 
-pub struct WorkerNodeGrpc {
+pub struct WorkerNodeGrpc<T: ZiskBackend + 'static> {
     worker_config: WorkerServiceConfig,
-    worker: Worker,
+    worker: Worker<T>,
 }
 
-impl WorkerNodeGrpc {
-    pub async fn new(worker_config: WorkerServiceConfig, worker: Worker) -> Result<Self> {
+impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
+    pub async fn new(worker_config: WorkerServiceConfig, worker: Worker<T>) -> Result<Self> {
         Ok(Self { worker_config, worker })
     }
 

@@ -97,8 +97,19 @@ impl WorkersPool {
 
     /// Calculates total compute capacity across all registered workers.
     pub async fn compute_capacity(&self) -> ComputeCapacity {
-        let total_capacity: u32 =
-            self.workers.read().await.values().map(|p| p.compute_capacity.compute_units).sum();
+        let total_capacity: u32 = self
+            .workers
+            .read()
+            .await
+            .values()
+            .map(|p| {
+                if p.state != WorkerState::Disconnected {
+                    p.compute_capacity.compute_units
+                } else {
+                    0
+                }
+            })
+            .sum();
 
         ComputeCapacity::from(total_capacity)
     }
@@ -154,68 +165,102 @@ impl WorkersPool {
         msg_sender: Box<dyn MessageSender + Send + Sync>,
     ) -> CoordinatorResult<()> {
         let connection = WorkerInfo::new(worker_id.clone(), compute_capacity.into(), msg_sender);
+        let mut workers = self.workers.write().await;
 
-        // Check if worker_id is already registered
-        if self.workers.read().await.contains_key(&worker_id) {
-            let msg = format!("Worker {} is already registered", worker_id);
-            warn!("{}", msg);
-            Err(CoordinatorError::InvalidRequest(msg))
-        } else {
-            self.workers.write().await.insert(worker_id.clone(), connection);
-            info!(
-                "Registered worker: {} (total: {} CC: {} ACC: {})",
-                worker_id,
-                self.num_workers().await,
-                self.compute_capacity().await,
-                self.available_compute_capacity().await
-            );
-            Ok(())
-        }
-    }
-
-    /// Reconnects an existing worker with updated connection details.
-    ///
-    /// Resets worker state to Idle and updates capacity and message channel.
-    ///
-    /// # Parameters
-    ///
-    /// - `worker_id`: Unique identifier for the worker.
-    /// - `compute_capacity`: The new compute capacity of the worker.
-    /// - `msg_sender`: New channel to send messages to the worker.
-    ///
-    /// # Returns
-    ///
-    /// `InvalidRequest` error if worker ID is not registered.
-    pub async fn reconnect_worker(
-        &self,
-        worker_id: WorkerId,
-        compute_capacity: impl Into<ComputeCapacity>,
-        msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> CoordinatorResult<()> {
-        match self.workers.write().await.get_mut(&worker_id) {
-            Some(existing_worker) => {
-                existing_worker.state = WorkerState::Idle;
-                existing_worker.compute_capacity = compute_capacity.into();
-                existing_worker.msg_sender = msg_sender;
-                existing_worker.update_last_heartbeat();
-
-                info!(
-                    "Reconnected worker: {} (total: {} CC:{} ACC: {})",
-                    worker_id,
-                    self.num_workers().await,
-                    self.compute_capacity().await,
-                    self.available_compute_capacity().await
-                );
-                Ok(())
-            }
-            None => {
-                let msg =
-                    format!("Worker ID {} is not registered. Impossible to reconnect.", worker_id);
+        let is_new_worker = if let Some(worker) = workers.get_mut(&worker_id) {
+            if worker.state != WorkerState::Disconnected {
+                let msg = format!("Worker {} is already connected", worker_id);
                 warn!("{}", msg);
-                Err(CoordinatorError::InvalidRequest(msg))
+                return Err(CoordinatorError::InvalidRequest(msg));
+            } else {
+                worker.state = WorkerState::Idle;
+                worker.compute_capacity = connection.compute_capacity;
+                worker.msg_sender = connection.msg_sender;
+                worker.update_last_heartbeat();
+
+                false
             }
-        }
+        } else {
+            workers.insert(worker_id.clone(), connection);
+
+            true
+        };
+
+        drop(workers);
+
+        let action = if is_new_worker { "Registered" } else { "Reconnected" };
+        info!(
+            "{} worker: {} (total: {} CC: {} ACC: {})",
+            action,
+            worker_id,
+            self.num_workers().await,
+            self.compute_capacity().await,
+            self.available_compute_capacity().await
+        );
+
+        Ok(())
     }
+
+    // /// Reconnects an existing worker with updated connection details.
+    // ///
+    // /// Resets worker state to Idle and updates capacity and message channel.
+    // ///
+    // /// # Parameters
+    // ///
+    // /// - `worker_id`: Unique identifier for the worker.
+    // /// - `compute_capacity`: The new compute capacity of the worker.
+    // /// - `msg_sender`: New channel to send messages to the worker.
+    // ///
+    // /// # Returns
+    // ///
+    // /// `InvalidRequest` error if worker ID is not registered.
+    // pub async fn reconnect_worker(
+    //     &self,
+    //     worker_id: WorkerId,
+    //     compute_capacity: impl Into<ComputeCapacity>,
+    //     msg_sender: Box<dyn MessageSender + Send + Sync>,
+    // ) -> CoordinatorResult<()> {
+    //     let mut workers = self.workers.write().await;
+
+    //     if let Some(worker) = workers.get_mut(&worker_id) {
+    //         if worker.state != WorkerState::Disconnected {
+    //             let msg = format!("Worker {} is already registered", worker_id);
+    //             warn!("{}", msg);
+    //             return Err(CoordinatorError::InvalidRequest(msg));
+    //         } else {
+    //             worker.state = WorkerState::Idle;
+    //             worker.compute_capacity = compute_capacity.into();
+    //             worker.msg_sender = msg_sender;
+    //             worker.update_last_heartbeat();
+    //         }
+
+    //         drop(workers);
+
+    //         info!(
+    //             "Reconnected worker: {} (total: {} CC: {} ACC: {})",
+    //             worker_id,
+    //             self.num_workers().await,
+    //             self.compute_capacity().await,
+    //             self.available_compute_capacity().await
+    //         );
+    //     } else {
+    //         let connection =
+    //             WorkerInfo::new(worker_id.clone(), compute_capacity.into(), msg_sender);
+    //         workers.insert(worker_id.clone(), connection);
+
+    //         drop(workers);
+
+    //         info!(
+    //             "Registered worker: {} (total: {} CC: {} ACC: {})",
+    //             worker_id,
+    //             self.num_workers().await,
+    //             self.compute_capacity().await,
+    //             self.available_compute_capacity().await
+    //         );
+    //     }
+
+    //     Ok(())
+    // }
 
     /// Removes a worker from the pool.
     ///
@@ -242,6 +287,32 @@ impl WorkersPool {
                 let msg = format!("Worker {worker_id} not found for removal");
                 warn!("{}", msg);
                 Err(CoordinatorError::NotFoundOrInaccessible)
+            }
+        }
+    }
+
+    pub async fn disconnect_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
+        let mut workers = self.workers.write().await;
+        match workers.get_mut(worker_id) {
+            Some(existing_worker) => {
+                existing_worker.state = WorkerState::Disconnected;
+
+                drop(workers);
+
+                info!(
+                    "Disconnected worker: {} (total: {} CC: {} ACC: {})",
+                    worker_id,
+                    self.num_workers().await,
+                    self.compute_capacity().await,
+                    self.available_compute_capacity().await
+                );
+                Ok(())
+            }
+            None => {
+                let msg =
+                    format!("Worker ID {} is not registered. Impossible to disconnect.", worker_id);
+                warn!("{}", msg);
+                Err(CoordinatorError::InvalidRequest(msg))
             }
         }
     }
@@ -291,7 +362,7 @@ impl WorkersPool {
 
         if state == WorkerState::Idle {
             info!(
-                "Worker {} available (total: {} CC:{} ACC: {})",
+                "Worker {} available (total: {} CC: {} ACC: {})",
                 worker_id,
                 self.num_workers().await,
                 self.compute_capacity().await,
