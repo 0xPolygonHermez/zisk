@@ -7,7 +7,7 @@ repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_pil2_proofman_js_branch = "tags/v0.13.0"
+gha_pil2_proofman_js_branch = "pre-develop-0.14.0"
 gha_pil2_compiler_branch = "tags/v0.8.0"
 
 [workspace]
