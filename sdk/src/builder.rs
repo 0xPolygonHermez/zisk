@@ -110,6 +110,7 @@ impl<Backend> ProverClientBuilder<Backend, ()> {
     pub fn verify_constraints(self) -> ProverClientBuilder<Backend, WitnessGeneration> {
         let mut builder: ProverClientBuilder<Backend, WitnessGeneration> = self.into();
         builder.verify_constraints = true;
+        builder.aggregation = false;
         builder
     }
 

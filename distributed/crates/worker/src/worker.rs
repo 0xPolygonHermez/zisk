@@ -12,7 +12,7 @@ use tokio::task::JoinHandle;
 use zisk_common::io::ZiskStdin;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
-use zisk_sdk::{Asm, ProverClient, ZiskProver};
+use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProver};
 
 use proofman::ProofInfo;
 use proofman::ProvePhaseInputs;
@@ -244,23 +244,55 @@ pub struct JobContext {
     pub executed_steps: u64,
 }
 
-pub struct Worker {
+pub struct Worker<T: ZiskBackend + 'static> {
     _worker_id: WorkerId,
     _compute_capacity: ComputeCapacity,
     state: WorkerState,
     current_job: Option<Arc<Mutex<JobContext>>>,
     current_computation: Option<JoinHandle<()>>,
 
-    prover: Arc<ZiskProver<Asm>>,
+    prover: Arc<ZiskProver<T>>,
     prover_config: ProverConfig,
 }
 
-impl Worker {
-    pub fn new(
+impl<T: ZiskBackend + 'static> Worker<T> {
+    pub fn new_emu(
         worker_id: WorkerId,
         compute_capacity: ComputeCapacity,
         prover_config: ProverConfig,
-    ) -> Result<Self> {
+    ) -> Result<Worker<Emu>> {
+        let prover = Arc::new(
+            ProverClient::builder()
+                .emu()
+                .prove()
+                .aggregation(true)
+                .rma(true)
+                .witness_lib_path(prover_config.witness_lib.clone())
+                .proving_key_path(prover_config.proving_key.clone())
+                .elf_path(prover_config.elf.clone())
+                .verbose(prover_config.verbose)
+                .shared_tables(prover_config.shared_tables)
+                .gpu(prover_config.gpu_params.clone())
+                .print_command_info()
+                .build()?,
+        );
+
+        Ok(Worker::<Emu> {
+            _worker_id: worker_id,
+            _compute_capacity: compute_capacity,
+            state: WorkerState::Disconnected,
+            current_job: None,
+            current_computation: None,
+            prover,
+            prover_config,
+        })
+    }
+
+    pub fn new_asm(
+        worker_id: WorkerId,
+        compute_capacity: ComputeCapacity,
+        prover_config: ProverConfig,
+    ) -> Result<Worker<Asm>> {
         let prover = Arc::new(
             ProverClient::builder()
                 .asm()
@@ -280,7 +312,7 @@ impl Worker {
                 .build()?,
         );
 
-        Ok(Self {
+        Ok(Worker::<Asm> {
             _worker_id: worker_id,
             _compute_capacity: compute_capacity,
             state: WorkerState::Disconnected,
@@ -487,7 +519,7 @@ impl Worker {
 
     pub async fn execute_contribution_task(
         job_id: JobId,
-        prover: &ZiskProver<Asm>,
+        prover: &ZiskProver<T>,
         phase_inputs: ProvePhaseInputs,
         input_source: InputSourceDto,
         options: ProofOptions,
@@ -572,7 +604,7 @@ impl Worker {
 
     pub async fn execute_prove_task(
         job_id: JobId,
-        prover: &ZiskProver<Asm>,
+        prover: &ZiskProver<T>,
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
     ) -> Result<Vec<AggProofs>> {

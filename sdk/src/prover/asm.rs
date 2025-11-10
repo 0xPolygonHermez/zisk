@@ -256,6 +256,8 @@ impl AsmCoreProver {
 
         proofman.register_witness(&mut *witness_lib, library)?;
 
+        proofman.set_barrier();
+
         let core = ProverBackend {
             verify_constraints,
             aggregation,

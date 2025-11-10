@@ -10,6 +10,7 @@ use zisk_distributed_worker::{
     config::{ProverServiceConfigDto, WorkerServiceConfig},
     ProverConfig, WorkerNode,
 };
+use zisk_sdk::{Asm, Emu};
 
 #[derive(Parser)]
 #[command(name = "zisk-worker")]
@@ -166,8 +167,13 @@ async fn main() -> Result<()> {
 
     print_command_info(&prover_config, &worker_config, cli.debug.is_some());
 
-    let mut worker = WorkerNode::new(worker_config, prover_config).await?;
-    worker.run().await
+    if prover_config.emulator {
+        let mut worker = WorkerNode::<Emu>::new_emu(worker_config, prover_config).await?;
+        return worker.run().await;
+    } else {
+        let mut worker = WorkerNode::<Asm>::new_asm(worker_config, prover_config).await?;
+        return worker.run().await;
+    };
 }
 
 fn print_command_info(
