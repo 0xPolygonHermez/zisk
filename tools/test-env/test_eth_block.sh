@@ -5,8 +5,8 @@ source "./test_elf.sh"
 main() {
     info "▶️  Running $(basename "$0") script..."
 
-    ELF_FILE="eth-client/bin/client/rsp/zec-rsp.elf"
-    INPUTS_PATH="eth-client/bin/client/rsp/inputs"
+    ELF_FILE="eth-client/elf/zec-rsp.elf"
+    INPUTS_PATH="eth-client/inputs"
     test_elf "${ELF_FILE}" "${INPUTS_PATH}" "BLOCK_INPUTS" "BLOCK_INPUTS_DISTRIBUTED" "Ethereum blocks" || return 1
 
     # DIR="./path"
