@@ -1768,7 +1768,7 @@ extern uint64_t _opcode_add256(uint64_t * address)
     if (emu_verbose) printf("opcode_add256() called Add256()\n");
     if (emu_verbose)
     {
-        printf("cout = %lu\n", cout);
+        printf("cout = %u\n", cout);
         printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
     }
 #endif
