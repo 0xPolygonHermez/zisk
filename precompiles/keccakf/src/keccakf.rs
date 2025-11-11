@@ -618,7 +618,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         debug_assert!(num_circuits_needed <= self.num_available_circuits);
         debug_assert!(num_rows_needed <= num_rows);
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,

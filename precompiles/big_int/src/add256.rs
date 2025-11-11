@@ -127,7 +127,7 @@ impl<F: PrimeField64> Add256SM<F> {
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(total_inputs <= num_rows);
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Add256 instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,

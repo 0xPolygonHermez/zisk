@@ -120,7 +120,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(total_inputs <= num_rows);
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating BinaryAdd instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
