@@ -701,7 +701,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         main_instance: &MainInstance<F>,
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
-    ) {
+    ) -> ProofmanResult<()> {
         let (airgroup_id, air_id) = pctx
             .dctx_get_instance_info(main_instance.ictx.global_id)
             .expect("Failed to get instance info");
@@ -733,7 +733,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             self.chunk_size,
             main_instance,
             trace_buffer,
-        );
+        )?;
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
 
@@ -757,6 +757,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
 
         self.stats.insert_witness_stats(main_instance.ictx.global_id, stats);
+
+        Ok(())
     }
 
     /// computes witness for a secondary state machines instance.
@@ -774,7 +776,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         secn_instance: &dyn Instance<F>,
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
-    ) {
+    ) -> ProofmanResult<()> {
         let witness_start_time = Instant::now();
 
         #[cfg(feature = "stats")]
@@ -802,7 +804,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
 
         if let Some(air_instance) =
-            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, trace_buffer)
+            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, trace_buffer)?
         {
             pctx.add_air_instance(air_instance, global_id);
         }
@@ -817,6 +819,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             );
         }
         self.stats.set_witness_duration(global_id, witness_start_time.elapsed().as_millis());
+        Ok(())
     }
 
     fn order_chunks(
@@ -1053,7 +1056,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         table_instance: &dyn Instance<F>,
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
-    ) {
+    ) -> ProofmanResult<()> {
         #[cfg(feature = "stats")]
         let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
         #[cfg(feature = "stats")]
@@ -1068,7 +1071,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         );
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
-        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], trace_buffer)
+        if let Some(air_instance) =
+            table_instance.compute_witness(pctx, sctx, vec![], trace_buffer)?
         {
             if pctx
                 .dctx_is_my_process_instance(global_id)
@@ -1086,6 +1090,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             air_id,
             ExecutorStatsEvent::Begin,
         );
+
+        Ok(())
     }
 
     /// Computes all the chunks to be executed to generate the witness given an instance.
@@ -1378,7 +1384,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         self.stats.add_stat(0, parent_stats_id, "CALCULATE_WITNESS", 0, ExecutorStatsEvent::Begin);
 
         let pool = create_pool(n_cores);
-        pool.install(|| {
+        pool.install(|| -> ProofmanResult<()> {
             for &global_id in global_ids {
                 let (airgroup_id, air_id) =
                     pctx.dctx_get_instance_info(global_id).expect("Failed to get instance info");
@@ -1394,7 +1400,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                         parent_stats_id,
                         #[cfg(not(feature = "stats"))]
                         0,
-                    );
+                    )?;
                 } else {
                     let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
 
@@ -1434,7 +1440,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                                 parent_stats_id,
                                 #[cfg(not(feature = "stats"))]
                                 0,
-                            );
+                            )?;
                         }
                         InstanceType::Table => self.witness_table(
                             &pctx,
@@ -1446,11 +1452,12 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                             parent_stats_id,
                             #[cfg(not(feature = "stats"))]
                             0,
-                        ),
+                        )?,
                     }
                 }
             }
-        });
+            Ok(())
+        })?;
 
         // Add to executor stats
         #[cfg(feature = "stats")]

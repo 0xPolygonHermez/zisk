@@ -10,7 +10,7 @@ use crate::{
     Secp256k1AddInput, Secp256k1DblInput,
 };
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::collections::VecDeque;
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
@@ -95,13 +95,13 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
         sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
-    ) -> Option<AirInstance<F>> {
+    ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<ArithEqCollector>().unwrap().inputs)
             .collect();
 
-        Some(self.arith_eq_sm.compute_witness(sctx, &inputs, trace_buffer))
+        Ok(Some(self.arith_eq_sm.compute_witness(sctx, &inputs, trace_buffer)?))
     }
 
     /// Retrieves the checkpoint associated with this instance.

@@ -258,9 +258,7 @@ impl ProverBackend {
         self.proofman
             .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
             .ok()
-            .map(|agg_proofs| ZiskAggPhaseResult {
-                agg_proofs: agg_proofs.expect("Agg proofs not found"),
-            })
+            .and_then(|agg_proofs| agg_proofs.map(|agg_proofs| ZiskAggPhaseResult { agg_proofs }))
     }
 
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) {

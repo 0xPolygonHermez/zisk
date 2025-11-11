@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use fields::{Field, Goldilocks};
-use proofman_common::{write_custom_commit_trace, GlobalInfo, ProofType, StarkInfo};
+use proofman_common::{
+    write_custom_commit_trace, GlobalInfo, ProofType, ProofmanResult, StarkInfo,
+};
 use sm_rom::RomSM;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,20 +15,16 @@ pub fn gen_elf_hash(
     rom_buffer_path: &Path,
     blowup_factor: u64,
     check: bool,
-) -> Result<Vec<Goldilocks>, anyhow::Error> {
+) -> ProofmanResult<Vec<Goldilocks>> {
     let buffer = vec![
         Goldilocks::ZERO;
         RomRomTrace::<Goldilocks>::NUM_ROWS * RomRomTrace::<Goldilocks>::ROW_SIZE
     ];
-    let mut custom_rom_trace: RomRomTrace<Goldilocks> = RomRomTrace::new_from_vec(buffer);
+    let mut custom_rom_trace: RomRomTrace<Goldilocks> = RomRomTrace::new_from_vec(buffer)?;
 
     RomSM::compute_custom_trace_rom(rom_path.to_path_buf(), &mut custom_rom_trace);
 
-    let result =
-        write_custom_commit_trace(&mut custom_rom_trace, blowup_factor, rom_buffer_path, check)
-            .map_err(|e| anyhow::anyhow!("Error writing custom commit trace: {}", e))?;
-
-    Ok(result)
+    write_custom_commit_trace(&mut custom_rom_trace, blowup_factor, rom_buffer_path, check)
 }
 
 pub fn get_elf_data_hash(elf_path: &Path) -> Result<String> {
