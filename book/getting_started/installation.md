@@ -191,7 +191,6 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
 4. Generate fixed data:
     ```bash
-    cargo run --release --bin keccakf_fixed_gen
     cargo run --release --bin arith_frops_fixed_gen
     cargo run --release --bin binary_basic_frops_fixed_gen
     cargo run --release --bin binary_extension_frops_fixed_gen
@@ -206,7 +205,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
 6. Generate setup data: (this step may take 30-45 minutes):
     ```bash
-    node ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r
+    node ../pil2-proofman-js/src/main_setup.js --stack-size=8192 -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r
     ```
 
     This command generates the `build/provingKey` directory.

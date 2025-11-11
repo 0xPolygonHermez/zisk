@@ -70,7 +70,7 @@ mod tests {
 
         //      c
         //      |
-        //    (¬ ^)
+        //    (¬ &)
         //    /   \
         //   a     b
         let inputs = [[0, 0], [0, 1], [1, 0], [1, 1]];
@@ -107,9 +107,9 @@ mod tests {
         //        (^)
         //       /   \
         //      /     \
-        //     (&)     b
+        //    (¬ &)    b
         //    /   \
-        //   1     a
+        //   a     1
         #[rustfmt::skip]
         let circuit_config = GateConfig::with_values(
             6,
@@ -127,7 +127,7 @@ mod tests {
 
         let mut state = GateState::new(circuit_config.clone());
         let inputs = [[0, 0], [1, 1], [0, 1], [1, 0]];
-        let expected_outputs = [0, 0, 1, 1];
+        let expected_outputs = [1, 1, 0, 0];
         for (i, input) in inputs.iter().enumerate() {
             // Copy input bits to the state
             for (j, &bit) in input.iter().enumerate() {
@@ -139,13 +139,13 @@ mod tests {
             // The ZeroRef is by default XOR(0,1) = 1, so we dont need to modify it
 
             // Perform the circuit operation
-            // 1] res := AND(1, a)
+            // 1] res := NAND(a, 1)
             let free_ref1 = state.get_free_ref();
             state.nand(
-                state.config.zero_ref.unwrap(),
-                PinId::B,
                 state.sin_refs[0],
                 PinId::A,
+                state.config.zero_ref.unwrap(),
+                PinId::B,
                 free_ref1,
             );
 
