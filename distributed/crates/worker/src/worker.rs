@@ -327,6 +327,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.local_rank()
     }
 
+    pub fn world_rank(&self) -> i32 {
+        self.prover.world_rank()
+    }
+
     pub fn state(&self) -> &WorkerState {
         &self.state
     }
@@ -739,21 +743,31 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     InputSourceDto,
                 ) = borsh::from_slice(&bytes[1..]).unwrap();
 
-                Self::execute_contribution_task(
+                let result = Self::execute_contribution_task(
                     job_id,
                     self.prover.as_ref(),
                     phase_inputs,
                     input_source_dto,
                     options,
                 )
-                .await?;
+                .await;
+                if let Err(e) = result {
+                    error!("Error during Contributions MPI broadcast execution: {}. Waiting for new job...", e);
+                }
             }
             JobPhase::Prove => {
                 let (job_id, phase_inputs, options): (JobId, ProvePhaseInputs, ProofOptions) =
                     borsh::from_slice(&bytes[1..]).unwrap();
 
-                Self::execute_prove_task(job_id, self.prover.as_ref(), phase_inputs, options)
-                    .await?;
+                let result =
+                    Self::execute_prove_task(job_id, self.prover.as_ref(), phase_inputs, options)
+                        .await;
+                if let Err(e) = result {
+                    error!(
+                        "Error during Prove MPI broadcast execution: {}. Waiting for new job...",
+                        e
+                    );
+                }
             }
             JobPhase::Aggregate => {
                 unreachable!("Aggregate phase is not supported in MPI broadcast");
