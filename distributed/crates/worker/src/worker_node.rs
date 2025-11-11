@@ -25,6 +25,15 @@ pub enum WorkerNode<T: ZiskBackend + 'static> {
 }
 
 impl<T: ZiskBackend + 'static> WorkerNode<T> {
+    pub fn world_rank(&self) -> i32 {
+        match self {
+            WorkerNode::WorkerGrpc(worker) => worker.world_rank(),
+            WorkerNode::WorkerMpi(worker) => worker.world_rank(),
+        }
+    }
+}
+
+impl<T: ZiskBackend + 'static> WorkerNode<T> {
     pub async fn new_emu(
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
@@ -76,6 +85,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeMpi<T> {
         Ok(Self { worker })
     }
 
+    pub fn world_rank(&self) -> i32 {
+        self.worker.world_rank()
+    }
+
     async fn run(&mut self) -> Result<()> {
         assert!(self.worker.local_rank() != 0, "WorkerMpi should not be run by rank 0");
 
@@ -94,6 +107,10 @@ pub struct WorkerNodeGrpc<T: ZiskBackend + 'static> {
 impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     pub async fn new(worker_config: WorkerServiceConfig, worker: Worker<T>) -> Result<Self> {
         Ok(Self { worker_config, worker })
+    }
+
+    pub fn world_rank(&self) -> i32 {
+        self.worker.world_rank()
     }
 
     pub async fn run(&mut self) -> Result<()> {
