@@ -3,13 +3,19 @@ use std::sync::Arc;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{KeccakfTrace, KeccakfTraceRow};
 #[cfg(feature = "packed")]
 use zisk_pil::{KeccakfTracePacked, KeccakfTraceRowPacked};
+
+#[cfg(feature = "packed")]
+type KeccakfTraceType<F> = KeccakfTracePacked<F>;
+
+#[cfg(not(feature = "packed"))]
+type KeccakfTraceType<F> = KeccakfTrace<F>;
 
 use precompiles_helpers::{keccak_f_rounds, keccakf_state_from_linear};
 
@@ -166,8 +172,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
         &self,
         inputs: &[Vec<KeccakfInput>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut trace = KeccakfTrace::new_from_vec_zeroes(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = KeccakfTraceType::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace
@@ -234,6 +240,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         timer_stop_and_log_trace!(KECCAKF_PADDING);
 
-        AirInstance::new_from_trace(FromTrace::new(&mut trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }
 }
