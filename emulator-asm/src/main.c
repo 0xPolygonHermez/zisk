@@ -318,8 +318,6 @@ int main(int argc, char *argv[])
     gettimeofday(&total_start_time, NULL);
 #endif
 
-    file_lock();
-
     // Result, to be used in calls to functions returning int
     int result;
 
@@ -331,6 +329,9 @@ int main(int argc, char *argv[])
 
     // Configure based on parguments
     configure();
+
+    // Lock file
+    file_lock();
 
     // If this is a client, run it and quit
     if (client)
