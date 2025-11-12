@@ -469,7 +469,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
         let num_rows_needed = total_inputs * ARITH_EQ_ROWS_BY_OP;
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating ArithEq instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,

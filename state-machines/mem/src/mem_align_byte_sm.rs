@@ -396,7 +396,7 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         let mut trace = R::create_trace(trace_buffer)?;
         let num_rows = R::get_num_rows(&trace);
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating {} instance [{} / {} rows filled {:.2}%]",
             R::name(),
             used_rows,

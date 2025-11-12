@@ -105,7 +105,7 @@ impl<F: PrimeField64> MainInstance<F> {
         let filled_rows: usize =
             segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             segment_id,
             filled_rows,

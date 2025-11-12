@@ -409,7 +409,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             );
         };
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating ArithEq384 instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,

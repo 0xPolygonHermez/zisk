@@ -7,6 +7,7 @@ use crate::{
 use colored::Colorize;
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use proofman_common::ParamsGPU;
+use zisk_distributed_common::LoggingConfig;
 
 use anyhow::Result;
 
@@ -57,6 +58,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     verify_constraints: bool,
     verbose: u8,
     shared_tables: bool,
+    logging_config: Option<LoggingConfig>,
     print_command_info: bool,
 
     // ASM-specific fields (only available when Backend = AsmBackend)
@@ -183,6 +185,12 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     #[must_use]
     pub fn shared_tables(mut self, shared: bool) -> Self {
         self.shared_tables = shared;
+        self
+    }
+
+    #[must_use]
+    pub fn logging_config(mut self, logging_config: LoggingConfig) -> Self {
+        self.logging_config = Some(logging_config);
         self
     }
 
@@ -337,6 +345,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
             self.minimal_memory,
             self.save_proofs,
             output_dir.clone(),
+            self.logging_config,
         )?;
 
         Ok(ZiskProver::<Emu>::new(emu))
@@ -468,6 +477,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
             self.minimal_memory,
             self.save_proofs,
             output_dir.clone(),
+            self.logging_config,
         )?;
 
         Ok(ZiskProver::<Asm>::new(asm))
@@ -513,6 +523,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
+            logging_config: builder.logging_config,
 
             // Reset ASM-specific fields for EMU backend
             asm_path: None,
@@ -546,6 +557,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
+            logging_config: builder.logging_config,
 
             // Preserve ASM-specific fields (user may have set defaults)
             asm_path: builder.asm_path,
@@ -581,6 +593,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
+            logging_config: builder.logging_config,
 
             // Preserve backend-specific fields (ASM or EMU)
             asm_path: builder.asm_path,
@@ -614,6 +627,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
+            logging_config: builder.logging_config,
 
             // Preserve backend-specific fields (ASM or EMU)
             asm_path: builder.asm_path,

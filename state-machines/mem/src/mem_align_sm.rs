@@ -67,7 +67,7 @@ macro_rules! debug_info {
     ($prefix:expr, $($arg:tt)*) => {
         #[cfg(feature = "debug_mem_align")]
         {
-            tracing::info!(concat!("MemAlign: ",$prefix), $($arg)*);
+            tracing::debug!(concat!("MemAlign: ",$prefix), $($arg)*);
         }
     };
 }
@@ -755,7 +755,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
         let num_rows = trace.num_rows();
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
             used_rows,
             num_rows,

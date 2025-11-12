@@ -1,10 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
+use std::path::PathBuf;
 
 mod handler_coordinator;
 mod handler_prove;
-
-use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(name = "zisk-coordinator")]
@@ -21,6 +20,10 @@ struct ZiskCoordinatorArgs {
     /// Port where the ZisK Coordinator gRPC server will listen for incoming connections.
     #[arg(short, long, help = "Port number to bind the ZisK Coordinator gRPC server to")]
     port: Option<u16>,
+
+    /// Directory where to save generated proofs
+    #[arg(long, help = "Directory to save generated proofs")]
+    proofs_dir: Option<PathBuf>,
 
     /// Webhook URL to notify when a job finishes.
     ///
@@ -97,7 +100,8 @@ async fn main() -> Result<()> {
         }
         None => {
             // No subcommand was provided → default to coordinator mode
-            handler_coordinator::handle(args.config, args.port, args.webhook_url).await
+            handler_coordinator::handle(args.config, args.port, args.proofs_dir, args.webhook_url)
+                .await
         }
     }
 }

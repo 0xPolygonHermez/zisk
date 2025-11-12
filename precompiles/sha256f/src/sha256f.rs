@@ -360,7 +360,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
             );
         };
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Sha256f instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,

@@ -93,7 +93,7 @@ impl RomSM {
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
-        tracing::info!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
+        tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
@@ -164,7 +164,7 @@ impl RomSM {
     ) -> ProofmanResult<AirInstance<F>> {
         let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer)?;
 
-        tracing::info!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
+        tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 

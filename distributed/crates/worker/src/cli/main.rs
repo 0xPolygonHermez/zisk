@@ -136,9 +136,6 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    // Initialize tracing - keep guard alive for application lifetime
-    let _log_guard = zisk_distributed_common::tracing::init(Some(&worker_config.logging))?;
-
     print_banner();
 
     let prover_config_dto = ProverServiceConfigDto {

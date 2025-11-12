@@ -42,7 +42,6 @@ use dashmap::DashMap;
 use proofman::ContributionsInfo;
 use std::{
     collections::HashMap,
-    path::PathBuf,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -423,7 +422,7 @@ impl Coordinator {
 
         // Save proof to disk
         if state == JobState::Completed {
-            let folder = PathBuf::from("proofs");
+            let folder = self.config.server.proofs_dir.clone();
             zisk_common::save_proof(job_id.as_str(), folder, &final_proof, true).map_err(|e| {
                 error!("Failed to save proof for job {}: {}", job_id, e);
                 job.cleanup();

@@ -101,7 +101,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         let mut range_table_inputs = ArithRangeTableInputs::new();
         let mut table_inputs = ArithTableInputs::new();
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Arith instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,

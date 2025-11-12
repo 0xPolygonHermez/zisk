@@ -13,6 +13,7 @@ use std::{collections::HashMap, path::PathBuf};
 use tracing::info;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ExecutorStats;
+use zisk_distributed_common::LoggingConfig;
 
 use anyhow::Result;
 
@@ -47,6 +48,7 @@ impl AsmProver {
         minimal_memory: bool,
         save_proofs: bool,
         output_dir: Option<PathBuf>,
+        logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         let core_prover = AsmCoreProver::new(
             verify_constraints,
@@ -67,6 +69,7 @@ impl AsmProver {
             minimal_memory,
             save_proofs,
             output_dir,
+            logging_config,
         )?;
 
         Ok(Self { core_prover })
@@ -195,6 +198,7 @@ impl AsmCoreProver {
         minimal_memory: bool,
         save_proofs: bool,
         output_dir: Option<PathBuf>,
+        logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         let rom_bin_path = ensure_custom_commits(&proving_key, &elf)?;
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path)]);
@@ -239,7 +243,11 @@ impl AsmCoreProver {
         let world_rank = proofman.get_world_rank();
         let local_rank = proofman.get_local_rank();
 
-        initialize_logger(verbose.into(), Some(world_rank));
+        if logging_config.is_some() {
+            zisk_distributed_common::init(logging_config.as_ref(), Some(world_rank))?;
+        } else {
+            initialize_logger(verbose.into(), Some(world_rank));
+        }
 
         timer_start_info!(STARTING_ASM_MICROSERVICES);
         let asm_services = AsmServices::new(world_rank, local_rank, base_port);

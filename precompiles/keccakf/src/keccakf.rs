@@ -190,7 +190,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
             );
         };
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,

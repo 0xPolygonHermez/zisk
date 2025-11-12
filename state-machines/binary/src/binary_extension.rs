@@ -354,7 +354,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             BinaryExtensionTraceType::<F>::NUM_ROWS
         );
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
