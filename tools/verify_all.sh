@@ -142,6 +142,39 @@ record_result() {
     fi
 }
 
+print_final_report() {
+    echo ""
+    echo "======================================"
+    echo "           FINAL REPORT"
+    echo "======================================"
+    echo "Total files processed: $((passed_counter + failed_counter))"
+    echo "Passed: ${passed_counter}"
+    echo "Failed: ${failed_counter}"
+    echo ""
+
+    if [ ${#tested_files[@]} -gt 0 ]; then
+        echo "Detailed Results:"
+        echo "=================="
+        for i in "${!tested_files[@]}"; do
+            if [ "${test_results[$i]}" = "PASSED" ]; then
+                echo "✅ ${test_indexes[$i]} ${tested_files[$i]}"
+            else
+                echo "❌ ${test_indexes[$i]} ${tested_files[$i]}"
+            fi
+        done
+        echo ""
+    fi
+
+    echo "Total files processed: $((passed_counter + failed_counter)): ✅${passed_counter} passed, ❌${failed_counter} failed"
+
+    if [ $failed_counter -eq 0 ]; then
+        echo "✅ All ELF files verified successfully."
+    else
+        echo "❌ ${failed_counter} ELF files have failed verification."
+        exit 1
+    fi
+}
+
 # Build the project
 echo "Building project..."
 if ! cargo build --release; then
@@ -198,7 +231,12 @@ if [[ $elf_mode -eq 0 ]]; then
         else
             record_result "$elf_file" "FAILED" "$counter"
         fi
+
+        echo ""
     done
+
+    # Print final report for directory mode
+    print_final_report
 else
     # Logic for single ELF file with input directory or file
     input_counter=0
@@ -263,6 +301,8 @@ else
             --proving-key "$proving_key"); then
                 all_passed=false
             fi
+
+            echo ""
         done
 
         if [ "$all_passed" = true ]; then
@@ -274,35 +314,7 @@ else
         echo "Invalid input path: $input_path"
         exit 1
     fi
-fi
 
-echo ""
-echo "======================================"
-echo "           FINAL REPORT"
-echo "======================================"
-echo "Total files processed: $((passed_counter + failed_counter))"
-echo "Passed: ${passed_counter}"
-echo "Failed: ${failed_counter}"
-echo ""
-
-if [ ${#tested_files[@]} -gt 0 ]; then
-    echo "Detailed Results:"
-    echo "=================="
-    for i in "${!tested_files[@]}"; do
-        if [ "${test_results[$i]}" = "PASSED" ]; then
-            echo "✅ ${test_indexes[$i]} ${tested_files[$i]}"
-        else
-            echo "❌ ${test_indexes[$i]} ${tested_files[$i]}"
-        fi
-    done
-    echo ""
-fi
-
-echo "Total files processed: $((passed_counter + failed_counter)): ✅${passed_counter} passed, ❌${failed_counter} failed"
-
-if [ $failed_counter -eq 0 ]; then
-    echo "✅ All ELF files verified successfully."
-else
-    echo "❌ ${failed_counter} ELF files have failed verification."
-    exit 1
+    # Print final report for single file mode
+    print_final_report
 fi

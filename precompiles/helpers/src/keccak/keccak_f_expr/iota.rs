@@ -24,7 +24,7 @@ pub fn keccak_f_iota(e: &mut ExpressionManager, ir: usize) {
     }
 
     // Step 2: Apply round constants to lane (0,0)
-    e.set_subcontext("ι: A'[0, 0, z] = A'[0, 0, z] ^ RC[z]");
+    e.set_subcontext(Some("ι: A'[0, 0, z] = A'[0, 0, z] ^ RC[z]"));
     for z in 0..64 {
         // Since XOR(a, 0) = a, we can skip the XOR if the constant bit is zero
         if KECCAK_F_RC[ir][z] == 1 {

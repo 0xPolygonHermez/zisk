@@ -9,9 +9,9 @@ use super::bit_position;
 ///
 /// 2. Return `A′`
 pub fn keccak_f_chi(e: &mut ExpressionManager) {
-    e.set_subcontext(
+    e.set_subcontext(Some(
         "χ: A'[x,y,z] = A[x, y, z] ^ (¬A[(x + 1) mod 5, y, z] & A[(x + 2) mod 5, y, z])",
-    );
+    ));
     for x in 0..5 {
         let x1 = (x + 1) % 5;
         let x2 = (x + 2) % 5;

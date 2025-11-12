@@ -15,7 +15,9 @@ use super::bit_position;
 /// 3. For all triples `(x, y, z)` such that `0 ≤ x, y < 5` and `0 ≤ z < 64`:  
 ///    `A′[x, y, z] = A[x, y, z] ^ D[x, z]`
 pub fn keccak_f_theta(e: &mut ExpressionManager) {
-    e.set_subcontext("θ: C[x, z] = A[x, 0, z] ^ A[x, 1, z] ^ A[x, 2, z] ^ A[x, 3, z] ^ A[x, 4, z]");
+    e.set_subcontext(Some(
+        "θ: C[x, z] = A[x, 0, z] ^ A[x, 1, z] ^ A[x, 2, z] ^ A[x, 3, z] ^ A[x, 4, z]",
+    ));
 
     // Step 1: C[x, z] = A[x, 0, z] ^ A[x, 1, z] ^ A[x, 2, z] ^ A[x, 3, z] ^ A[x, 4, z]
     let mut exp_c = [[0usize; 64]; 5];
@@ -54,7 +56,7 @@ pub fn keccak_f_theta(e: &mut ExpressionManager) {
     }
 
     // Step 2: Compute D[x, z] = C[(x-1) mod 5, z] ^ C[(x+1) mod 5, (z –1) mod 64]
-    e.set_subcontext("θ: D[x, z] = C[(x-1) mod 5, z] ^ C[(x+1) mod 5, (z –1) mod 64]");
+    e.set_subcontext(Some("θ: D[x, z] = C[(x-1) mod 5, z] ^ C[(x+1) mod 5, (z –1) mod 64]"));
     let mut exp_d = [[0usize; 64]; 5];
     for x in 0..5 {
         for z in 0..64 {
@@ -67,7 +69,7 @@ pub fn keccak_f_theta(e: &mut ExpressionManager) {
     }
 
     // Step 3: Compute A'[x,y,z] = A[x, y, z] ^ D[x, z]
-    e.set_subcontext("θ: A'[x,y,z] = A[x, y, z] ^ D[x, z]");
+    e.set_subcontext(Some("θ: A'[x,y,z] = A[x, y, z] ^ D[x, z]"));
     for x in 0..5 {
         for y in 0..5 {
             for z in 0..64 {

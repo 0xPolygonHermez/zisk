@@ -30,37 +30,37 @@ pub fn keccak_f_expr(
         expr_manager.mark_begin_round(r);
 
         // θ step
-        expr_manager.set_context("θ");
+        expr_manager.set_context(Some("θ"));
         keccak_f_theta(&mut expr_manager);
         expr_manager.copy_sout_expr_ids_to_sin_expr_ids();
 
         // ρ step
-        expr_manager.set_context("ρ");
+        expr_manager.set_context(Some("ρ"));
         keccak_f_rho(&mut expr_manager);
         expr_manager.copy_sout_expr_ids_to_sin_expr_ids();
 
         // π step
-        expr_manager.set_context("π");
+        expr_manager.set_context(Some("π"));
         keccak_f_pi(&mut expr_manager);
         expr_manager.copy_sout_expr_ids_to_sin_expr_ids();
 
+        // Reset expressions
+        for i in 0..1600 {
+            expr_manager.sin_expr_ids[i] =
+                expr_manager.create_manual_reset_expression(expr_manager.sin_expr_ids[i]);
+        }
+
         // χ step
-        expr_manager.set_context("χ");
+        expr_manager.set_context(Some("χ"));
         keccak_f_chi(&mut expr_manager);
         expr_manager.copy_sout_expr_ids_to_sin_expr_ids();
 
         // ι step
-        expr_manager.set_context("ι");
+        expr_manager.set_context(Some("ι"));
         keccak_f_iota(&mut expr_manager, r);
 
         // End of round
-        expr_manager.set_context("End of round");
-
-        // Reset expressions
-        for i in 0..1600 {
-            expr_manager.sout_expr_ids[i] =
-                expr_manager.create_manual_reset_expression(expr_manager.sout_expr_ids[i]);
-        }
+        expr_manager.set_context(Some("End of round"));
 
         // Mark end of round
         expr_manager.mark_end_of_round(r);

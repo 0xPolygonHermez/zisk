@@ -165,12 +165,13 @@ impl ExpressionManager {
         self.round_max_degree = 0;
     }
 
-    pub fn set_context(&mut self, step: &str) {
-        self.current_step = Some(step.to_string());
+    pub fn set_context(&mut self, step: Option<&str>) {
+        self.current_step = step.map(|s| s.to_string());
+        self.current_substep = None;
     }
 
-    pub fn set_subcontext(&mut self, substep: &str) {
-        self.current_substep = Some(substep.to_string());
+    pub fn set_subcontext(&mut self, substep: Option<&str>) {
+        self.current_substep = substep.map(|s| s.to_string());
     }
 
     // TODO: Add support for im
@@ -810,14 +811,28 @@ impl ExpressionManager {
                 }
             }
 
+            let mut step_substep = String::new();
+            match (event.step.clone(), event.substep.clone()) {
+                (Some(ref s), Some(ref ss)) => {
+                    step_substep.push_str(&format!("Step: {},", s));
+                    step_substep.push_str(&format!(" Substep: {},", ss));
+                }
+                (Some(ref s), None) => {
+                    step_substep.push_str(&format!("Step: {},", s));
+                }
+                (None, Some(ref ss)) => {
+                    step_substep.push_str(&format!("Substep: {},", ss));
+                }
+                (None, None) => {}
+            }
+
             println!(
-                "  {}. [{}] Type: {}{}, Step: \"{}\", Substep: \"{}\", Degree: {}→{}, Max Value: {}→{}",
+                "  {}. [{}] Type: {}{}, {} Degree: {}→{}, Max Value: {}→{}",
                 i + 1,
                 event_type,
                 event.op_type,
                 reason_and_values,
-                event.step.clone().unwrap_or("N/A".to_string()),
-                event.substep.clone().unwrap_or("N/A".to_string()),
+                step_substep,
                 event.original_degree,
                 event.new_degree,
                 event.original_max_value,
