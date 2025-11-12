@@ -5,8 +5,6 @@ use std::path::PathBuf;
 mod handler_coordinator;
 mod handler_prove;
 
-use std::path::PathBuf;
-
 #[derive(Parser, Debug)]
 #[command(name = "zisk-coordinator")]
 #[command(about = "The Coordinator for the Distributed ZisK Network")]

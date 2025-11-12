@@ -42,7 +42,6 @@ use dashmap::DashMap;
 use proofman::ContributionsInfo;
 use std::{
     collections::HashMap,
-    path::PathBuf,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
