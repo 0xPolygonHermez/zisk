@@ -21,6 +21,7 @@ colored = { workspace = true }
 tracing = { workspace = true }
 zstd = { workspace = true }
 bytemuck = { workspace = true }
+zisk-distributed-common = { workspace = true }
 
 [features]
 default = []
