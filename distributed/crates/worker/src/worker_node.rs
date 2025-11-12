@@ -517,7 +517,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let job_id = JobId::from(request.job_id);
         let input_source = match params.input_source {
             Some(InputSource::InputPath(ref path)) => {
-                println!("Input path received: {}", path);
                 let input_path = self.worker_config.worker.inputs_folder.join(PathBuf::from(path));
 
                 // Validate that input_path is a subdirectory of inputs_folder
