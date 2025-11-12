@@ -331,7 +331,10 @@ int main(int argc, char *argv[])
     configure();
 
     // Lock file
-    file_lock();
+    // if (server)
+    // {
+    //     file_lock();
+    // }
 
     // If this is a client, run it and quit
     if (client)
