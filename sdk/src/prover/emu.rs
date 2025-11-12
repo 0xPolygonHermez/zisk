@@ -9,6 +9,7 @@ use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
 use std::path::PathBuf;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ExecutorStats;
+use zisk_distributed_common::LoggingConfig;
 
 use anyhow::Result;
 
@@ -39,6 +40,7 @@ impl EmuProver {
         minimal_memory: bool,
         save_proofs: bool,
         output_dir: Option<PathBuf>,
+        logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         let core_prover = EmuCoreProver::new(
             verify_constraints,
@@ -55,6 +57,7 @@ impl EmuProver {
             minimal_memory,
             save_proofs,
             output_dir,
+            logging_config,
         )?;
 
         Ok(Self { core_prover })
@@ -164,6 +167,7 @@ impl EmuCoreProver {
         minimal_memory: bool,
         save_proofs: bool,
         output_dir: Option<PathBuf>,
+        logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         let custom_commits_map = get_custom_commits_map(&proving_key, &elf)?;
 
@@ -190,7 +194,11 @@ impl EmuCoreProver {
         let world_rank = proofman.get_world_rank();
         let local_rank = proofman.get_local_rank();
 
-        initialize_logger(verbose.into(), Some(world_rank));
+        if logging_config.is_some() {
+            zisk_distributed_common::init(logging_config.as_ref(), Some(world_rank))?;
+        } else {
+            initialize_logger(verbose.into(), Some(world_rank));
+        }
 
         proofman.register_witness(&mut *witness_lib, library)?;
 
