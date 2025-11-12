@@ -75,7 +75,7 @@ main() {
     ensure cargo run --release --bin binary_extension_frops_fixed_gen || return 1
 
     step "Compiling ZisK PIL..."
-    ensure node "${WORKSPACE_DIR}/pil2-compiler/src/pil.js" pil/zisk.pil \
+    ensure node --max-old-space-size=16384 "${WORKSPACE_DIR}/pil2-compiler/src/pil.js" pil/zisk.pil \
 	-I pil,"${WORKSPACE_DIR}/pil2-proofman/pil2-components/lib/std/pil",state-machines,precompiles \
 	-o pil/zisk.pilout -u tmp/fixed -O fixed-to-file || return 1
 
