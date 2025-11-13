@@ -1,6 +1,6 @@
 use libc::{
-    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
-    PROT_WRITE, S_IRUSR, S_IWUSR,
+    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, S_IRUSR,
+    S_IWUSR,
 };
 use std::{
     ffi::CString,
@@ -16,7 +16,7 @@ use zisk_common::io::{ZiskIO, ZiskStdin};
 use anyhow::anyhow;
 use anyhow::Result;
 
-use crate::{AsmInputC2, AsmService, AsmServices};
+use crate::{AsmInputC2, AsmService, AsmServices, SharedMemoryWriter};
 
 pub enum AsmSharedMemoryMode {
     ReadOnly,
@@ -343,11 +343,7 @@ pub unsafe fn unmap(ptr: *mut c_void, size: usize) {
     }
 }
 
-pub fn write_input(
-    stdin: &mut ZiskStdin,
-    shmem_input_name: &str,
-    unlock_mapped_memory: bool,
-) -> Result<()> {
+pub fn write_input(stdin: &mut ZiskStdin, shmem_input_writer: &SharedMemoryWriter) {
     let inputs = stdin.read();
     let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
     let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
@@ -359,18 +355,5 @@ pub fn write_input(
         full_input.push(0);
     }
 
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR)?;
-    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-    let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR as u32 | S_IWUSR as u32)?;
-
-    let ptr =
-        map(fd, shmem_input_size, PROT_READ | PROT_WRITE, unlock_mapped_memory, "RH input mmap");
-    unsafe {
-        ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
-        unmap(ptr, shmem_input_size);
-        close(fd);
-    }
-
-    Ok(())
+    shmem_input_writer.write_input(&full_input).expect("Failed to write input to shared memory");
 }

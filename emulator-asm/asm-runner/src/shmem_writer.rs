@@ -1,0 +1,96 @@
+use std::io::{self, Result};
+use std::ptr;
+
+use libc::{
+    c_void, close, mmap, munmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE, S_IRUSR,
+    S_IWUSR,
+};
+use std::ffi::CString;
+
+pub struct SharedMemoryWriter {
+    ptr: *mut u8,
+    size: usize,
+    fd: i32,
+    name: String,
+}
+
+unsafe impl Send for SharedMemoryWriter {}
+unsafe impl Sync for SharedMemoryWriter {}
+
+impl SharedMemoryWriter {
+    pub fn new(name: &str, size: usize, unlock_mapped_memory: bool) -> Result<Self> {
+        // Open existing shared memory (read/write)
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        let fd = Self::open_shmem(name, libc::O_RDWR, S_IRUSR | S_IWUSR);
+
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        let fd = open_shmem(name, libc::O_RDWR, S_IRUSR as u32 | S_IWUSR as u32);
+
+        // Map the memory region for read/write
+        let ptr = Self::map(fd, size, PROT_READ | PROT_WRITE, unlock_mapped_memory, name);
+
+        Ok(Self { ptr: ptr as *mut u8, size, fd, name: name.to_string() })
+    }
+
+    fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
+        let c_name = CString::new(name).expect("CString::new failed");
+        let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
+        if fd == -1 {
+            let errno_value = unsafe { *libc::__errno_location() };
+            let err = io::Error::from_raw_os_error(errno_value);
+            let err2 = io::Error::last_os_error();
+            panic!("shm_open('{name}') failed: libc::errno:{err} #### last_os_error:{err2}");
+        }
+        fd
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &str) -> *mut c_void {
+        let mut flags = MAP_SHARED;
+        if !unlock_mapped_memory {
+            flags |= libc::MAP_LOCKED;
+        }
+        let mapped = unsafe { mmap(ptr::null_mut(), size, prot, flags, fd, 0) };
+        if mapped == MAP_FAILED {
+            let err = io::Error::last_os_error();
+            panic!("mmap failed for '{desc}': {err:?} ({size} bytes)");
+        }
+        mapped
+    }
+
+    unsafe fn unmap(ptr: *mut c_void, size: usize) {
+        if munmap(ptr, size) != 0 {
+            tracing::error!("munmap failed: {:?}", io::Error::last_os_error());
+        }
+    }
+
+    /// Writes data to the shared memory, always from the start
+    pub fn write_input(&self, data: &[u8]) -> Result<()> {
+        if data.len() > self.size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "Data size ({}) exceeds shared memory capacity ({}) for '{}'",
+                    data.len(),
+                    self.size,
+                    self.name
+                ),
+            ));
+        }
+
+        unsafe {
+            ptr::copy_nonoverlapping(data.as_ptr(), self.ptr, data.len());
+        }
+
+        Ok(())
+    }
+}
+
+impl Drop for SharedMemoryWriter {
+    fn drop(&mut self) {
+        unsafe {
+            Self::unmap(self.ptr as *mut _, self.size);
+            close(self.fd);
+        }
+    }
+}
