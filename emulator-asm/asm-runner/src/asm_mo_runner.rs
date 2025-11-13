@@ -198,6 +198,11 @@ impl AsmRunnerMO {
                         (data_ptr as *mut u64).add(chunk.mem_ops_size as usize) as *const AsmMOChunk
                     };
                 }
+                Err(named_sem::Error::WaitFailed(e))
+                    if e.kind() == std::io::ErrorKind::Interrupted =>
+                {
+                    continue
+                }
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
