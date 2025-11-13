@@ -337,7 +337,7 @@ int main(int argc, char *argv[])
     // }
 
     // Send a message to stderr
-    fprintf(stderr, "%s stderr test (not an error): Starting Ziskemu ASM emulator process id=%d server=%d client=%d gen_method=%d port=%u\n", log_name, process_id, server, client, gen_method, port);
+    // fprintf(stderr, "%s stderr test (not an error): Starting Ziskemu ASM emulator process id=%d server=%d client=%d gen_method=%d port=%u\n", log_name, process_id, server, client, gen_method, port);
 
     // If this is a client, run it and quit
     if (client)
