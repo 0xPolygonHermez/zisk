@@ -175,6 +175,11 @@ impl AsmRunnerMT {
                     }
                     chunk_id.0 += 1;
                 }
+                Err(named_sem::Error::WaitFailed(e))
+                    if e.kind() == std::io::ErrorKind::Interrupted =>
+                {
+                    continue
+                }
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
