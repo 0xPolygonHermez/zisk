@@ -336,6 +336,9 @@ int main(int argc, char *argv[])
     //     file_lock();
     // }
 
+    // Send a message to stderr
+    fprintf(stderr, "%s stderr test (not an error): Starting Ziskemu ASM emulator process id=%d server=%d client=%d gen_method=%d port=%u\n", log_name, process_id, server, client, gen_method, port);
+
     // If this is a client, run it and quit
     if (client)
     {
@@ -2522,6 +2525,9 @@ void server_setup (void)
             exit(-1);
         }
 
+        // Sync
+        fsync(shmem_input_fd);
+
         // Map input address space
         if (verbose) gettimeofday(&start_time, NULL);
         void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
@@ -2633,6 +2639,9 @@ void server_setup (void)
             fflush(stderr);
             exit(-1);
         }
+
+        // Sync
+        fsync(shmem_output_fd);
 
         // Map it to the trace address
         if (verbose) gettimeofday(&start_time, NULL);
@@ -3182,6 +3191,9 @@ extern void _realloc_trace (void)
         fflush(stderr);
         exit(-1);
     }
+
+    // Sync
+    fsync(shmem_output_fd);
 
     // Remap the memory
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
