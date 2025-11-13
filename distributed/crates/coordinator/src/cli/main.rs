@@ -22,8 +22,17 @@ struct ZiskCoordinatorArgs {
     port: Option<u16>,
 
     /// Directory where to save generated proofs
-    #[arg(long, help = "Directory to save generated proofs")]
+    #[arg(long, help = "Directory to save generated proofs", conflicts_with = "no_save_proof")]
     proofs_dir: Option<PathBuf>,
+
+    /// Disable saving proofs
+    #[arg(
+        long,
+        help = "Do not save proofs",
+        conflicts_with = "proofs_dir",
+        default_value_t = false
+    )]
+    no_save_proofs: bool,
 
     /// Webhook URL to notify when a job finishes.
     ///
@@ -100,8 +109,14 @@ async fn main() -> Result<()> {
         }
         None => {
             // No subcommand was provided → default to coordinator mode
-            handler_coordinator::handle(args.config, args.port, args.proofs_dir, args.webhook_url)
-                .await
+            handler_coordinator::handle(
+                args.config,
+                args.port,
+                args.proofs_dir,
+                args.no_save_proofs,
+                args.webhook_url,
+            )
+            .await
         }
     }
 }
