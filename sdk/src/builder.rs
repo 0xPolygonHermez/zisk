@@ -56,6 +56,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     proving_key: Option<PathBuf>,
     elf: Option<PathBuf>,
     verify_constraints: bool,
+    witness: bool,
     verbose: u8,
     shared_tables: bool,
     logging_config: Option<LoggingConfig>,
@@ -104,6 +105,8 @@ impl<Backend> ProverClientBuilder<Backend, ()> {
     pub fn witness(self) -> ProverClientBuilder<Backend, WitnessGeneration> {
         let mut builder: ProverClientBuilder<Backend, WitnessGeneration> = self.into();
         builder.verify_constraints = false;
+        builder.witness = true;
+        builder.aggregation = false;
         builder
     }
 
@@ -284,7 +287,7 @@ impl ProverClientBuilder<EmuB, WitnessGeneration> {
     ///     .build();
     /// ```
     pub fn build(self) -> Result<ZiskProver<Emu>> {
-        self.build_emu(true)
+        self.build_emu()
     }
 }
 
@@ -304,17 +307,17 @@ impl ProverClientBuilder<EmuB, Prove> {
     ///    .build();
     /// ```
     pub fn build(self) -> Result<ZiskProver<Emu>> {
-        self.build_emu(false)
+        self.build_emu()
     }
 }
 
 impl<X> ProverClientBuilder<EmuB, X> {
-    fn build_emu(self, verify_constraints: bool) -> Result<ZiskProver<Emu>> {
+    fn build_emu(self) -> Result<ZiskProver<Emu>> {
         let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
 
-        let output_dir = if !verify_constraints {
+        let output_dir = if !self.verify_constraints {
             Some(self.output_dir.unwrap_or_else(|| "tmp".into()))
         } else {
             None
@@ -322,7 +325,8 @@ impl<X> ProverClientBuilder<EmuB, X> {
 
         if self.print_command_info {
             Self::print_emu_command_info(
-                verify_constraints,
+                self.witness,
+                self.verify_constraints,
                 &witness_lib,
                 &proving_key,
                 &elf,
@@ -331,7 +335,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
         }
 
         let emu = EmuProver::new(
-            verify_constraints,
+            self.verify_constraints,
             self.aggregation,
             self.rma,
             self.final_snark,
@@ -340,7 +344,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
             elf,
             self.verbose,
             self.shared_tables,
-            self.gpu_params.filter(|_| !verify_constraints).unwrap_or_default(),
+            self.gpu_params.filter(|_| !self.verify_constraints).unwrap_or_default(),
             self.verify_proofs,
             self.minimal_memory,
             self.save_proofs,
@@ -352,13 +356,16 @@ impl<X> ProverClientBuilder<EmuB, X> {
     }
 
     fn print_emu_command_info(
+        witness: bool,
         verify_constraints: bool,
         witness_lib: &Path,
         proving_key: &Path,
         elf: &Path,
         output_dir: Option<&PathBuf>,
     ) {
-        if verify_constraints {
+        if witness {
+            println!("{: >12} StatsConstraints", "Command".bright_green().bold());
+        } else if verify_constraints {
             println!("{: >12} VerifyConstraints", "Command".bright_green().bold());
         } else {
             println!("{: >12} Prove", "Command".bright_green().bold());
@@ -450,6 +457,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
 
         if self.print_command_info {
             Self::print_asm_command_info(
+                self.witness,
                 self.verify_constraints,
                 &witness_lib,
                 &proving_key,
@@ -484,13 +492,16 @@ impl<X> ProverClientBuilder<AsmB, X> {
     }
 
     fn print_asm_command_info(
+        witness: bool,
         verify_constraints: bool,
         witness_lib: &Path,
         proving_key: &Path,
         elf: &Path,
         output_dir: Option<&PathBuf>,
     ) {
-        if verify_constraints {
+        if witness {
+            println!("{: >12} StatsConstraints", "Command".bright_green().bold());
+        } else if verify_constraints {
             println!("{: >12} VerifyConstraints", "Command".bright_green().bold());
         } else {
             println!("{: >12} Prove", "Command".bright_green().bold());
@@ -514,6 +525,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
         Self {
             // Preserve common fields
             aggregation: builder.aggregation,
+            witness: builder.witness,
             rma: builder.rma,
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
@@ -548,6 +560,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
         Self {
             // Preserve common fields
             aggregation: builder.aggregation,
+            witness: builder.witness,
             rma: builder.rma,
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
@@ -584,6 +597,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
         Self {
             // Preserve common fields
             aggregation: builder.aggregation,
+            witness: builder.witness,
             rma: builder.rma,
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
@@ -618,6 +632,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
         Self {
             // Preserve common fields
             aggregation: builder.aggregation,
+            witness: builder.witness,
             rma: builder.rma,
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
