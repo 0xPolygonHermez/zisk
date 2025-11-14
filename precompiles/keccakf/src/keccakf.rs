@@ -13,11 +13,15 @@ use zisk_pil::{KeccakfTracePacked, KeccakfTraceRowPacked};
 
 #[cfg(feature = "packed")]
 type KeccakfTraceType<F> = KeccakfTracePacked<F>;
+#[cfg(feature = "packed")]
+type KeccakfTraceRowType<F> = KeccakfTraceRowPacked<F>;
 
 #[cfg(not(feature = "packed"))]
 type KeccakfTraceType<F> = KeccakfTrace<F>;
+#[cfg(not(feature = "packed"))]
+type KeccakfTraceRowType<F> = KeccakfTraceRow<F>;
 
-use precompiles_helpers::{keccak_f_rounds, keccakf_state_from_linear};
+use precompiles_helpers::{keccak_f_rounds, keccakf_state_from_linear, keccakf_state_to_linear_1d};
 
 use crate::KeccakfInput;
 
@@ -38,8 +42,8 @@ pub struct KeccakfSM<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> KeccakfSM<F> {
-    const NUM_REM: usize = 1600 % TABLE_CHUNK_SIZE;
-    const NUM_REDUCED: usize = (1600 - Self::NUM_REM) / TABLE_CHUNK_SIZE;
+    const NUM_REM: usize = WIDTH % TABLE_CHUNK_SIZE;
+    const NUM_REDUCED: usize = (WIDTH - Self::NUM_REM) / TABLE_CHUNK_SIZE;
 
     /// Creates a new Keccakf State Machine instance.
     ///
@@ -50,12 +54,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// A new `KeccakfSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_non_usable_rows = KeccakfTrace::<F>::NUM_ROWS % ROWS_BY_KECCAKF;
+        let num_non_usable_rows = KeccakfTraceType::<F>::NUM_ROWS % ROWS_BY_KECCAKF;
         let num_available_keccakfs = if num_non_usable_rows == 0 {
-            KeccakfTrace::<F>::NUM_ROWS / ROWS_BY_KECCAKF
+            KeccakfTraceType::<F>::NUM_ROWS / ROWS_BY_KECCAKF
         } else {
             // Subtract 1 because we can't fit a complete cycle in the remaining rows
-            (KeccakfTrace::<F>::NUM_ROWS - num_non_usable_rows) / ROWS_BY_KECCAKF - 1
+            (KeccakfTraceType::<F>::NUM_ROWS - num_non_usable_rows) / ROWS_BY_KECCAKF - 1
         };
 
         // Get the table ID
@@ -75,7 +79,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     #[allow(clippy::needless_range_loop)]
     fn process_trace(
         &self,
-        trace: &mut [KeccakfTraceRow<F>],
+        trace: &mut [KeccakfTraceRowType<F>],
         initial_state: &[u64; 25],
         addr: Option<u32>,
         step: Option<u64>,
@@ -86,14 +90,13 @@ impl<F: PrimeField64> KeccakfSM<F> {
         // Convert input state to 5x5x64 representation
         let initial_state = keccakf_state_from_linear(initial_state);
         let round_states = keccak_f_rounds(initial_state);
-        for (state, r) in round_states {
+        for (state_3d, r) in round_states {
+            // Convert 3D state to 1D for processing
+            let state_1d = keccakf_state_to_linear_1d(&state_3d);
+
             // Fill keccakf_state
-            for x in 0..5 {
-                for y in 0..5 {
-                    for z in 0..64 {
-                        trace[r].set_state(x, y, z, (state[x][y][z] % 2) == 1);
-                    }
-                }
+            for i in 0..1600 {
+                trace[r].set_state(i, (state_1d[i] % 2) == 1);
             }
 
             // Fill keccakf_reduced
@@ -102,8 +105,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 let mut acc = 0u32;
                 for j in 0..TABLE_CHUNK_SIZE {
                     let idx = offset + j;
-                    let (x, y, z) = Self::idx_pos(idx);
-                    let value = state[x][y][z] as u32;
+                    let value = state_1d[idx] as u32;
                     acc += value * BASE.pow(j as u32);
                 }
                 if r > 0 {
@@ -121,8 +123,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
             let mut acc = 0u8;
             for j in 0..Self::NUM_REM {
                 let idx = offset + j;
-                let (x, y, z) = Self::idx_pos(idx);
-                let bit_value = state[x][y][z] as u8;
+                let bit_value = state_1d[idx] as u8;
                 acc += bit_value * (BASE.pow(j as u32) as u8);
             }
             if r > 0 {
@@ -152,15 +153,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
         }
     }
 
-    fn idx_pos(idx: usize) -> (usize, usize, usize) {
-        debug_assert!(idx < 1600);
-
-        let x = (idx / 64) % 5;
-        let y = (idx / 320) % 5;
-        let z = idx % 64;
-        (x, y, z)
-    }
-
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
     ///
     /// # Arguments
@@ -173,6 +165,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
         inputs: &[Vec<KeccakfInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
+        // TODO: Multiplicity update in this function
+
         let mut trace = KeccakfTraceType::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
 

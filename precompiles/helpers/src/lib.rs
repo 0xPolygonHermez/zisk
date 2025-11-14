@@ -10,5 +10,5 @@ pub use big_int::*;
 pub use common::*;
 pub use keccak::{
     keccak_f, keccak_f_expr, keccak_f_round_states, keccak_f_rounds, keccak_f_state,
-    keccakf_state_from_linear, keccakf_state_to_linear,
+    keccakf_state_from_linear, keccakf_state_to_linear, keccakf_state_to_linear_1d, keccakf_idx_pos
 };

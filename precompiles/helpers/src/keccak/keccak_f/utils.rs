@@ -42,3 +42,31 @@ pub fn keccakf_state_to_linear(state: &KeccakStateBits) -> [u64; 25] {
     }
     linear
 }
+
+pub fn keccakf_state_to_linear_1d(state: &KeccakStateBits) -> [u64; 1600] {
+    let mut linear_1d = [0u64; 1600];
+    for x in 0..5 {
+        for y in 0..5 {
+            for z in 0..64 {
+                let idx = keccakf_bit_pos(x, y, z);
+                linear_1d[idx] = state[x][y][z];
+            }
+        }
+    }
+    linear_1d
+}
+
+pub const fn keccakf_idx_pos(idx: usize) -> (usize, usize, usize) {
+    debug_assert!(idx < 1600);
+
+    let x = (idx / 64) % 5;
+    let y = (idx / 320) % 5;
+    let z = idx % 64;
+    (x, y, z)
+}
+
+pub const fn keccakf_bit_pos(x: usize, y: usize, z: usize) -> usize {
+    assert!(x < 5 && y < 5 && z < 64);
+
+    64 * x + 320 * y + z
+}

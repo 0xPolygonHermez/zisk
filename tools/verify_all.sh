@@ -288,28 +288,24 @@ else
         echo ""
 
         input_counter=0
-        all_passed=true
         for input_file in $input_files; do
             input_counter=$((input_counter + 1))
+
             echo "Verifying input $input_counter of $input_total: \"$input_file\""
 
-            if ! (cargo run --release --bin cargo-zisk verify-constraints \
+            if (cargo run --release --bin cargo-zisk verify-constraints \
             --emulator \
             --witness-lib target/release/libzisk_witness.so \
             --elf "$elf_file" \
             --input "$input_file" \
             --proving-key "$proving_key"); then
-                all_passed=false
+                record_result "$input_file" "PASSED" "$input_counter"
+            else
+                record_result "$input_file" "FAILED" "$input_counter"
             fi
 
             echo ""
         done
-
-        if [ "$all_passed" = true ]; then
-            record_result "$elf_file" "PASSED"
-        else
-            record_result "$elf_file" "FAILED"
-        fi
     else
         echo "Invalid input path: $input_path"
         exit 1

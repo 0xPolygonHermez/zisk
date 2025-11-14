@@ -114,7 +114,8 @@ main() {
 
         rm -rf build/provingKey
         ensure node "${WORKSPACE_DIR}/pil2-proofman-js/src/main_setup.js" \
-            --stack-size=8192 \
+            --max-old-space-size=8192 \
+            --stack-size=65500 \
             -a ./pil/zisk.pilout -b build \
             -u tmp/fixed ${setup_flags}
     fi
