@@ -6,16 +6,9 @@ require "keccakf_table.pil";
 // Precompile in charge of performing the Keccak-f[1600] permutation.
 // For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
 
-airtemplate Keccakf(const int N = 2**17, const int operation_bus_id = OPERATION_BUS_ID, const int split_state_by = 1, const int mem_ops_in_parallel = 25) {
+airtemplate Keccakf(const int N = 2**17, const int operation_bus_id = OPERATION_BUS_ID, const int mem_ops_in_parallel = 25) {
     // Validate individual inputs
     const int WIDTH = 1600;
-    const int STATE_SIZE = WIDTH / split_state_by;
-    if (split_state_by < 1) {
-        error(`Input split_state_by must be at least 1 to fit the Keccak-f arithmetization, but received split_state_by=${split_state_by}`);
-    } else if (STATE_SIZE % 64 != 0) {
-        error(`Input split_state_by must be in {1, 5, 25} to fit the Keccak-f arithmetization, but received split_state_by=${split_state_by}`);
-    }
-
     const int BITS_PER_LIMB = 32;
     const int U64_LIMBS = 64 / BITS_PER_LIMB;
     const int BITS_PER_CLOCK = BITS_PER_LIMB * U64_LIMBS;
@@ -26,17 +19,9 @@ airtemplate Keccakf(const int N = 2**17, const int operation_bus_id = OPERATION_
         error(`Input mem_ops_in_parallel must divide ${MEM_OPS} to fit the Keccak-f arithmetization, but received mem_ops_in_parallel=${mem_ops_in_parallel}`);
     }
 
-    // Input consistency
-    if (STATE_SIZE < mem_ops_in_parallel*BITS_PER_CLOCK) {
-        error(`Input mem_ops_in_parallel=${mem_ops_in_parallel} is too large for the chosen split_state_by=${split_state_by} in the Keccak-f arithmetization`);
-    }
-
-    // For simplicity, let's assume for now that we always have full 64-bit lanes
-    assert(split_state_by == 1 || split_state_by == 5 || split_state_by == 25);
-
     // Compute some stats
     const int ROUNDS = 24;
-    const int CLOCKS = 1 + ROUNDS * split_state_by; // 1 for input state
+    const int CLOCKS = 1 + ROUNDS; // 1 for input state
 
     const int NUM_NON_USABLE_ROWS = N % CLOCKS;
     const int NUM_KECCAKF;
@@ -82,19 +67,10 @@ airtemplate Keccakf(const int N = 2**17, const int operation_bus_id = OPERATION_
     // --> Constraints to assert the Keccak-f[1600] permutation
 
     // Keccak-f[1600] state represented as a 1D array of 1600 bits
-    col witness bits(1) state[STATE_SIZE];
-    for (int i = 0; i < STATE_SIZE; i++) {
+    col witness bits(1) state[WIDTH];
+    for (int i = 0; i < WIDTH; i++) {
         state[i] * (1 - state[i]) === 0;
     }
-
-    // Reconstruct the complete state from the split representation
-    const expr complete_state[WIDTH];
-    for (int i = 0; i < WIDTH; i++) {
-        const int bit_in_row = i % STATE_SIZE;
-        const int row_in_state = i / STATE_SIZE;
-        complete_state[i] = state[bit_in_row]'(row_in_state);
-    }
-
 
     // Round constants for Keccak-f[1600]
     const int RC[ROUNDS] = [
@@ -105,17 +81,14 @@ airtemplate Keccakf(const int N = 2**17, const int operation_bus_id = OPERATION_
     ];
 
     // Compute the keccakf round function over the state
-    const expr keccakf[WIDTH] = iota_and_clock_set(chi(pi(rho(theta(complete_state)))), RC);
+    const expr keccakf[WIDTH] = iota_and_clock_set(chi(pi(rho(theta(state)))), RC);
 
     // Perform lookups for reset expressions
     const int remaining_bits = (WIDTH % KECCAKF_LOOKUP_CHUNK_SIZE);
     const int num_chunks = (WIDTH - remaining_bits) / KECCAKF_LOOKUP_CHUNK_SIZE;
 
-    // The lookup is active in all clock cycles except the last split_state_by cycles
-    expr lookup_active = in_use;
-    for (int i = 0; i < split_state_by; i++) {
-        lookup_active -= (CLOCKS - 1 - i)'in_use_clk_0;
-    }
+    // The lookup is active in all clock cycles except the output cycle
+    const expr lookup_active = in_use - (CLOCKS - 1)'in_use_clk_0;
 
     // Process full chunks
     col witness bits(22) chunk_acc[num_chunks];
@@ -183,22 +156,19 @@ airtemplate Keccakf(const int N = 2**17, const int operation_bus_id = OPERATION_
                           //                                 ...                                +
                           // CLK_4*(4'state[1568] + 4'state[1569]*2 + ... + 4'state[1599]*2^31)
 
-        // Note: STATE_SIZE is a multiple of 64
         const int bit_offset = i * BITS_PER_CLOCK;
         for (int j = 0; j < CLOCKS_WITH_MEM_OPS; j++) {
             const int inner_bit_offset = bit_offset + j * (BITS_PER_CLOCK * mem_ops_in_parallel);
-            const int bit_in_row = inner_bit_offset % STATE_SIZE;
-            const int row_in_state = inner_bit_offset / STATE_SIZE;
 
             expr value_0 = 0;
             expr value_1 = 0;
             for (int k = 0; k < BITS_PER_LIMB; k++) {
                 const int factor = 2**k;
-                value_0 += factor * state[bit_in_row + k];
-                value_1 += factor * state[bit_in_row + BITS_PER_LIMB + k];
+                value_0 += factor * state[inner_bit_offset + k];
+                value_1 += factor * state[inner_bit_offset + BITS_PER_LIMB + k];
             }
-            mem_value[0] += (CLK[j] + CLK[CLOCKS - CLOCKS_WITH_MEM_OPS + j]) * (j - row_in_state)'value_0;
-            mem_value[1] += (CLK[j] + CLK[CLOCKS - CLOCKS_WITH_MEM_OPS + j]) * (j - row_in_state)'value_1;
+            mem_value[0] += (CLK[j] + CLK[CLOCKS - CLOCKS_WITH_MEM_OPS + j]) * (j)'value_0;
+            mem_value[1] += (CLK[j] + CLK[CLOCKS - CLOCKS_WITH_MEM_OPS + j]) * (j)'value_1;
         }
 
         precompiled_mem_op(
@@ -425,11 +395,7 @@ airtemplate Keccakf(const int N = 2**17, const int operation_bus_id = OPERATION_
         
         // Add the actual state bit values
         for (int j = 0; j < num_bits; j++) {
-            const int bit_index = bit_offset + j;
-            const int bit_in_row = bit_index % air.STATE_SIZE;
-            const int row_in_state = bit_index / air.STATE_SIZE;
-
-            table_lookup_values[j + 1] = air.state[bit_in_row]'(air.split_state_by + row_in_state);
+            table_lookup_values[j + 1] = air.state[bit_offset + j]';
         }
         
         // Pad with zeros if this is a partial chunk
