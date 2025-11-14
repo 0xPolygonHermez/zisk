@@ -24,7 +24,7 @@ impl SharedMemoryWriter {
         let fd = Self::open_shmem(name, libc::O_RDWR, S_IRUSR | S_IWUSR);
 
         #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-        let fd = open_shmem(name, libc::O_RDWR, S_IRUSR as u32 | S_IWUSR as u32);
+        let fd = Self::open_shmem(name, libc::O_RDWR, S_IRUSR as u32 | S_IWUSR as u32);
 
         // Map the memory region for read/write
         let ptr = Self::map(fd, size, PROT_READ | PROT_WRITE, unlock_mapped_memory, name);
@@ -58,9 +58,18 @@ impl SharedMemoryWriter {
         mapped
     }
 
-    unsafe fn unmap(ptr: *mut c_void, size: usize) {
-        if munmap(ptr, size) != 0 {
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    pub fn map(_: i32, _: usize, _: i32, _: bool, _: &str) -> *mut c_void {
+        ptr::null_mut()
+    }
+
+    unsafe fn unmap(&mut self) {
+        if munmap(self.ptr as *mut _, self.size) != 0 {
             tracing::error!("munmap failed: {:?}", io::Error::last_os_error());
+        } else {
+            self.ptr = ptr::null_mut();
+            self.size = 0;
+            tracing::trace!("Unmapped shared memory '{}'", self.name);
         }
     }
 
@@ -89,7 +98,7 @@ impl SharedMemoryWriter {
 impl Drop for SharedMemoryWriter {
     fn drop(&mut self) {
         unsafe {
-            Self::unmap(self.ptr as *mut _, self.size);
+            self.unmap();
             close(self.fd);
         }
     }
