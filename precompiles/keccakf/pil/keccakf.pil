@@ -190,16 +190,15 @@ airtemplate Keccakf(const int N = 2**17, const int operation_bus_id = OPERATION_
             const int bit_in_row = inner_bit_offset % STATE_SIZE;
             const int row_in_state = inner_bit_offset / STATE_SIZE;
 
-            expr read_value_0 = 0;
-            expr read_value_1 = 0;
+            expr value_0 = 0;
+            expr value_1 = 0;
             for (int k = 0; k < BITS_PER_LIMB; k++) {
                 const int factor = 2**k;
-                read_value_0 += factor * state[bit_in_row + k];
-                read_value_1 += factor * state[bit_in_row + BITS_PER_LIMB + k];
+                value_0 += factor * state[bit_in_row + k];
+                value_1 += factor * state[bit_in_row + BITS_PER_LIMB + k];
             }
-
-            mem_value[0] += CLK[j] * (j - row_in_state)'read_value_0;
-            mem_value[1] += CLK[j] * (j - row_in_state)'read_value_1;
+            mem_value[0] += (CLK[j] + CLK[CLOCKS - CLOCKS_WITH_MEM_OPS + j]) * (j - row_in_state)'value_0;
+            mem_value[1] += (CLK[j] + CLK[CLOCKS - CLOCKS_WITH_MEM_OPS + j]) * (j - row_in_state)'value_1;
         }
 
         precompiled_mem_op(

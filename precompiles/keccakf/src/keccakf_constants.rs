@@ -2,7 +2,6 @@ use zisk_core::P2_23;
 
 pub(crate) const WIDTH: usize = 1600;
 // pub(crate) const SPLIT_STATE_BY: usize = 5; // Can be 1, 5, or 25
-// pub(crate) const MEM_OPS_IN_PARALLEL: usize = 25; // Can be 1, 5, or 25
 // pub(crate) const STATE_SIZE: usize = WIDTH / SPLIT_STATE_BY;
 
 pub(crate) const ROWS_BY_KECCAKF: usize = 25;

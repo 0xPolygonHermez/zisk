@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "2a32c2c204da00b1367ef9c99161165ecc91e69bfa1c95b7c859878826aabe63";
+pub const PILOUT_HASH: &str = "91f09a8a38057a8d73c8da4b7cc8e1e8a2b49f446e1eb1b9c5b526e5376b99a1";
 
 //AIRGROUP CONSTANTS
 
@@ -332,15 +332,15 @@ pub type ArithEq384TracePacked<F> = GenericTrace<ArithEq384TraceRowPacked<F>, 10
 trace_row!(KeccakfFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 131072, 0, 16>;
+pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 65536, 0, 16>;
 
 trace_row!(KeccakfTraceRow<F> {
- in_use_clk_0:bit, in_use:bit, state:[[[bit; 64]; 5]; 5], chunk_acc:[ubit(22); 533], rem_acc:u8, step_addr:ubit(40),
+ in_use_clk_0:bit, in_use:bit, state:[bit; 1600], chunk_acc:[ubit(22); 533], rem_acc:u8, step_addr:ubit(40),
 });
-pub type KeccakfTrace<F> = GenericTrace<KeccakfTraceRow<F>, 131072, 0, 16>;
+pub type KeccakfTrace<F> = GenericTrace<KeccakfTraceRow<F>, 65536, 0, 16>;
 
 
-pub type KeccakfTracePacked<F> = GenericTrace<KeccakfTraceRowPacked<F>, 131072, 0, 16>;
+pub type KeccakfTracePacked<F> = GenericTrace<KeccakfTraceRowPacked<F>, 65536, 0, 16>;
 
 
 trace_row!(Sha256fFixedRow<F> {

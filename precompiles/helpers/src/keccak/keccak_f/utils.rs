@@ -43,6 +43,7 @@ pub fn keccakf_state_to_linear(state: &KeccakStateBits) -> [u64; 25] {
     linear
 }
 
+#[allow(clippy::needless_range_loop)]
 pub fn keccakf_state_to_linear_1d(state: &KeccakStateBits) -> [u64; 1600] {
     let mut linear_1d = [0u64; 1600];
     for x in 0..5 {
