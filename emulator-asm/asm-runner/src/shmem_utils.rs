@@ -292,7 +292,10 @@ pub fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
     let c_name = CString::new(name).expect("CString::new failed");
     let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
     if fd == -1 {
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         let errno_value = unsafe { *libc::__errno_location() };
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        let errno_value = unsafe { *libc::__error() };
         let err = io::Error::from_raw_os_error(errno_value);
         let err2 = io::Error::last_os_error();
         panic!("shm_open('{name}') failed: libc::errno:{err} #### last_os_error:{err2}");
