@@ -254,11 +254,13 @@ impl ProverBackend {
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
-    ) -> Option<ZiskAggPhaseResult> {
-        self.proofman
+    ) -> Result<Option<ZiskAggPhaseResult>> {
+        let result = self
+            .proofman
             .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
-            .ok()
-            .and_then(|agg_proofs| agg_proofs.map(|agg_proofs| ZiskAggPhaseResult { agg_proofs }))
+            .map_err(|e| anyhow::anyhow!("Error aggregating proofs: {}", e))?;
+
+        Ok(result.map(|agg| ZiskAggPhaseResult { agg_proofs: agg }))
     }
 
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) {

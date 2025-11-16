@@ -78,7 +78,7 @@ pub trait ProverEngine {
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
-    ) -> Option<ZiskAggPhaseResult>;
+    ) -> Result<Option<ZiskAggPhaseResult>>;
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>);
 }
@@ -169,7 +169,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
-    ) -> Option<ZiskAggPhaseResult> {
+    ) -> Result<Option<ZiskAggPhaseResult>> {
         self.prover.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
     }
 

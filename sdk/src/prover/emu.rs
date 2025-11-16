@@ -136,7 +136,7 @@ impl ProverEngine for EmuProver {
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
-    ) -> Option<ZiskAggPhaseResult> {
+    ) -> Result<Option<ZiskAggPhaseResult>> {
         self.core_prover.backend.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
