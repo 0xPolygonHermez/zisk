@@ -314,9 +314,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     .with_world_rank(world_rank)
                     .with_local_rank(local_rank)
                     .with_unlock_mapped_memory(self.unlock_mapped_memory);
+
+                let runner_path = self.asm_runner_path.as_ref().unwrap().to_str().unwrap();
+
+                let runner_path_stripped =
+                    runner_path.strip_suffix("-mt.bin").unwrap_or(runner_path);
                 AsmServices::start_asm_service(
                     service,
-                    self.asm_runner_path.as_ref().unwrap().to_str().unwrap(),
+                    runner_path_stripped,
                     &asm_runner_options,
                 );
 
