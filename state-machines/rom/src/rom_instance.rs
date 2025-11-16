@@ -14,7 +14,7 @@ use std::{
 use crate::{rom_counter::RomCounter, RomSM};
 use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
 use std::sync::Mutex;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
@@ -44,7 +44,7 @@ pub struct RomInstance {
     counter_stats: Mutex<Option<CounterStats>>,
 
     /// Optional handle for the ROM assembly runner thread.
-    handle_rh: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
+    handle_rh: Mutex<Option<JoinHandle<Result<AsmRunnerRH, anyhow::Error>>>>,
 
     /// Cached result from the assembly runner thread.
     asm_result: Mutex<Option<AsmRunnerRH>>,
@@ -66,7 +66,7 @@ impl RomInstance {
         ictx: InstanceCtx,
         bios_inst_count: Arc<Vec<AtomicU32>>,
         prog_inst_count: Arc<Vec<AtomicU32>>,
-        handle_rh: Option<JoinHandle<AsmRunnerRH>>,
+        handle_rh: Option<JoinHandle<Result<AsmRunnerRH, anyhow::Error>>>,
     ) -> Self {
         Self {
             zisk_rom,
@@ -130,7 +130,8 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
                 let handle_rh = self.handle_rh.lock().unwrap().take().unwrap();
                 let result_rh =
                     handle_rh.join().expect("Error during Rom Histogram thread execution");
-                *self.asm_result.lock().unwrap() = Some(result_rh);
+                *self.asm_result.lock().unwrap() =
+                    Some(result_rh.map_err(|e| ProofmanError::ProofmanError(e.to_string()))?);
             }
 
             // Use the cached result

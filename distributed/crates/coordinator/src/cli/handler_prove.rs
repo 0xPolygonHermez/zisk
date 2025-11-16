@@ -16,6 +16,7 @@ pub async fn handle(
     direct_inputs: bool,
     compute_capacity: u32,
     simulated_node: Option<u32>,
+    minimal_compute_capacity: Option<u32>,
 ) -> Result<()> {
     // Initialize tracing - keep guard alive for application lifetime
     let _log_guard = zisk_distributed_common::tracing::init(None, None)?;
@@ -54,6 +55,7 @@ pub async fn handle(
     let launch_proof_request = LaunchProofRequest {
         data_id,
         compute_capacity,
+        minimal_compute_capacity,
         input_mode: input_mode.into(),
         input_path,
         simulated_node,

@@ -98,7 +98,7 @@ impl AsmServices {
                 service,
                 Self::port_for(service, self.base_port, self.local_rank)
             );
-            self.start_asm_service(service, trimmed_path, &options);
+            Self::start_asm_service(service, trimmed_path, &options);
         }
 
         for service in &Self::SERVICES {
@@ -139,7 +139,13 @@ impl AsmServices {
         Ok(())
     }
 
-    fn wait_for_service_ready(service: &AsmService, port: u16) {
+    pub fn is_service_running(port: u16) -> bool {
+        let addr = format!("127.0.0.1:{port}");
+
+        TcpStream::connect(&addr).is_ok()
+    }
+
+    pub fn wait_for_service_ready(service: &AsmService, port: u16) {
         let addr = format!("127.0.0.1:{port}");
         let timeout = Duration::from_secs(60);
         let retry_delay = Duration::from_millis(100);
@@ -157,8 +163,7 @@ impl AsmServices {
         panic!("Timeout: service `{service}` not ready on {addr}");
     }
 
-    fn start_asm_service(
-        &self,
+    pub fn start_asm_service(
         asm_service: &AsmService,
         trimmed_path: &str,
         options: &AsmRunnerOptions,

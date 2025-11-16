@@ -57,7 +57,8 @@ message LaunchProofRequest {
   uint32 compute_capacity = 2;
   InputMode input_mode = 3;
   optional string input_path = 4;
-  optional uint32 simulated_node = 5; // If set, indicates this is a simulated worker
+  optional uint32 minimal_compute_capacity = 5;
+  optional uint32 simulated_node = 6; // If set, indicates this is a simulated worker
 }
 
 enum InputMode {

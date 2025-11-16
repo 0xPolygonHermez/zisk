@@ -427,6 +427,7 @@ impl WorkersPool {
     pub async fn partition_and_allocate_by_capacity(
         &self,
         required_compute_capacity: ComputeCapacity,
+        minimal_compute_capacity: Option<ComputeCapacity>,
         execution_mode: JobExecutionMode,
     ) -> CoordinatorResult<(Vec<WorkerId>, Vec<Vec<u32>>)> {
         // Simulation mode requires exactly one worker
@@ -443,6 +444,14 @@ impl WorkersPool {
             return Err(CoordinatorError::InvalidArgument(
                 "Compute capacity must be greater than 0".to_string(),
             ));
+        }
+
+        if let Some(min_cc) = minimal_compute_capacity {
+            if min_cc.compute_units > required_compute_capacity.compute_units {
+                return Err(CoordinatorError::InvalidArgument(
+                    "Minimal compute capacity cannot exceed required capacity".to_string(),
+                ));
+            }
         }
 
         let workers = self.workers.write().await;
@@ -470,7 +479,14 @@ impl WorkersPool {
             available_workers.iter().map(|(_, p)| p.compute_capacity.compute_units).sum();
 
         // Check if we have enough total capacity
-        if required_compute_capacity.compute_units > available_capacity {
+
+        let compute_capacity_needed = if let Some(min_cc) = minimal_compute_capacity {
+            min_cc.compute_units
+        } else {
+            required_compute_capacity.compute_units
+        };
+
+        if compute_capacity_needed > available_capacity {
             return Err(CoordinatorError::InsufficientCapacity);
         }
 
@@ -496,11 +512,10 @@ impl WorkersPool {
 
         // Step 2: Distribute work units using round-robin allocation
         let num_workers = selected_workers.len();
-        let total_units = required_compute_capacity.compute_units;
         let mut worker_allocations = vec![Vec::new(); num_workers];
 
         // Round-robin assignment of compute units
-        for unit in 0..total_units {
+        for unit in 0..total_capacity {
             let worker_idx = (unit as usize) % num_workers;
 
             // Check if this worker still has capacity

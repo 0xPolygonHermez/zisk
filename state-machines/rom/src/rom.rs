@@ -42,7 +42,7 @@ pub struct RomSM {
     /// Shared program instruction counter for monitoring ROM operations.
     prog_inst_count: Arc<Vec<AtomicU32>>,
 
-    asm_runner_handler: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
+    asm_runner_handler: Mutex<Option<JoinHandle<Result<AsmRunnerRH, anyhow::Error>>>>,
 }
 
 impl RomSM {
@@ -71,7 +71,7 @@ impl RomSM {
         })
     }
 
-    pub fn set_asm_runner_handler(&self, handler: JoinHandle<AsmRunnerRH>) {
+    pub fn set_asm_runner_handler(&self, handler: JoinHandle<Result<AsmRunnerRH, anyhow::Error>>) {
         *self.asm_runner_handler.lock().unwrap() = Some(handler);
     }
 

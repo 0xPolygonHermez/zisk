@@ -84,7 +84,7 @@ impl AsmRunnerRH {
         let asm_services = AsmServices::new(world_rank, local_rank, base_port);
         asm_services.send_rom_histogram_request(max_steps)?;
 
-        match sem_chunk_done.timed_wait(Duration::from_secs(30)) {
+        match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
             Err(e) => {
                 error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 

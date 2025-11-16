@@ -77,6 +77,9 @@ enum ZiskCoordinatorCommands {
         #[arg(long, short, help = "Compute capacity needed to generate the proof")]
         compute_capacity: u32,
 
+        #[arg(long, short, help = "Minimal compute capacity needed to generate the proof")]
+        minimal_compute_capacity: Option<u32>,
+
         #[arg(long, help = "Simulated node ID")]
         simulated_node: Option<u32>,
     },
@@ -94,6 +97,7 @@ async fn main() -> Result<()> {
             input,
             direct_inputs,
             compute_capacity,
+            minimal_compute_capacity,
             simulated_node,
         }) => {
             // Run the "prove" subcommand
@@ -104,6 +108,7 @@ async fn main() -> Result<()> {
                 direct_inputs,
                 compute_capacity,
                 simulated_node,
+                minimal_compute_capacity,
             )
             .await
         }

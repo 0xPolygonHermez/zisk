@@ -19,9 +19,10 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
+use anyhow::Context;
 use asm_runner::{
-    write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory,
-    MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, Task, TaskFactory,
+    write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerOptions, AsmRunnerRH, AsmServices,
+    AsmSharedMemory, MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, Task, TaskFactory,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -233,8 +234,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
-    fn execute_with_emulator(&self) -> MinimalTraces {
-        let min_traces = self.run_emulator(Self::NUM_THREADS, &mut self.stdin.lock().unwrap());
+    fn execute_with_emulator(&self) -> Result<MinimalTraces, anyhow::Error> {
+        let min_traces = self.run_emulator(Self::NUM_THREADS, &mut self.stdin.lock().unwrap())?;
 
         // Store execute steps
         let steps = if let MinimalTraces::EmuTrace(min_traces) = &min_traces {
@@ -245,7 +246,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         self.execution_result.lock().unwrap().executed_steps = steps;
 
-        min_traces
+        Ok(min_traces)
     }
 
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
@@ -261,8 +262,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         &self,
         pctx: &ProofCtx<F>,
         _caller_stats_id: u64,
-    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<JoinHandle<AsmRunnerMO>>)
-    {
+    ) -> Result<
+        (
+            MinimalTraces,
+            DeviceMetricsList,
+            NestedDeviceMetricsList,
+            Option<JoinHandle<Result<AsmRunnerMO, anyhow::Error>>>,
+        ),
+        anyhow::Error,
+    > {
         #[cfg(feature = "stats")]
         let parent_stats_id = self.stats.next_id();
         #[cfg(feature = "stats")]
@@ -274,7 +282,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             ExecutorStatsEvent::Begin,
         );
 
-        AsmServices::SERVICES.par_iter().for_each(|service| {
+        let (world_rank, local_rank, base_port) =
+            (self.world_rank, self.local_rank, self.base_port);
+
+        AsmServices::SERVICES.par_iter().try_for_each(|service| -> anyhow::Result<()> {
             #[cfg(feature = "stats")]
             let stats_id = self.stats.next_id();
             #[cfg(feature = "stats")]
@@ -291,6 +302,29 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             } else {
                 AsmServices::default_port(service, self.local_rank)
             };
+
+            let is_running = AsmServices::is_service_running(port);
+
+            if !is_running {
+                let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+
+                let asm_runner_options = AsmRunnerOptions::new()
+                    .with_verbose(true)
+                    .with_base_port(base_port)
+                    .with_world_rank(world_rank)
+                    .with_local_rank(local_rank)
+                    .with_unlock_mapped_memory(self.unlock_mapped_memory);
+                AsmServices::start_asm_service(
+                    service,
+                    self.asm_runner_path.as_ref().unwrap().to_str().unwrap(),
+                    &asm_runner_options,
+                );
+
+                AsmServices::wait_for_service_ready(service, port);
+                asm_services
+                    .send_status_request(service)
+                    .with_context(|| format!("Service {service} failed to respond to ping"))?;
+            }
 
             let shmem_input_name =
                 AsmSharedMemory::<AsmMTHeader>::shmem_input_name(port, *service, self.local_rank);
@@ -310,19 +344,19 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 0,
                 ExecutorStatsEvent::End,
             );
-        });
+
+            Ok(())
+        })?;
 
         let chunk_size = self.chunk_size;
-        let (world_rank, local_rank, base_port) =
-            (self.world_rank, self.local_rank, self.base_port);
 
         let stats = self.stats.clone();
 
         // Run the assembly Memory Operations (MO) runner thread
         let handle_mo = std::thread::spawn({
             let asm_shmem_mo = self.asm_shmem_mo.clone();
-            move || {
-                AsmRunnerMO::run(
+            move || -> anyhow::Result<AsmRunnerMO> {
+                let asm_runner = AsmRunnerMO::run(
                     asm_shmem_mo.lock().unwrap().as_mut().unwrap(),
                     Self::MAX_NUM_STEPS,
                     chunk_size,
@@ -330,8 +364,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     local_rank,
                     base_port,
                     stats,
-                )
-                .expect("Error during Assembly Memory Operations execution")
+                )?;
+                Ok(asm_runner)
             }
         });
 
@@ -343,8 +377,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let handle_rh = (has_rom_sm).then(|| {
             let asm_shmem_rh = self.asm_shmem_rh.clone();
             let unlock_mapped_memory = self.unlock_mapped_memory;
-            std::thread::spawn(move || {
-                AsmRunnerRH::run(
+            std::thread::spawn(move || -> anyhow::Result<AsmRunnerRH> {
+                let asm_runner = AsmRunnerRH::run(
                     &mut asm_shmem_rh.lock().unwrap(),
                     Self::MAX_NUM_STEPS,
                     world_rank,
@@ -352,12 +386,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     base_port,
                     unlock_mapped_memory,
                     stats,
-                )
-                .expect("Error during ROM Histogram execution")
+                )?;
+                Ok(asm_runner)
             })
         });
 
-        let (min_traces, main_count, secn_count) = self.run_mt_assembly();
+        let (min_traces, main_count, secn_count) = self.run_mt_assembly()?;
 
         // Store execute steps
         let steps = if let MinimalTraces::AsmEmuTrace(asm_min_traces) = &min_traces {
@@ -370,9 +404,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         // If the world rank is 0, wait for the ROM Histogram thread to finish and set the handler
         if has_rom_sm {
-            self.rom_sm.as_ref().unwrap().set_asm_runner_handler(
-                handle_rh.expect("Error during Assembly ROM Histogram thread execution"),
-            );
+            self.rom_sm.as_ref().unwrap().set_asm_runner_handler(handle_rh.unwrap());
         }
 
         #[cfg(feature = "stats")]
@@ -384,10 +416,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             ExecutorStatsEvent::End,
         );
 
-        (min_traces, main_count, secn_count, Some(handle_mo))
+        Ok((min_traces, main_count, secn_count, Some(handle_mo)))
     }
 
-    fn run_mt_assembly(&self) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
+    fn run_mt_assembly(
+        &self,
+    ) -> Result<(MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList), anyhow::Error> {
         #[cfg(feature = "stats")]
         let parent_stats_id = self.stats.next_id();
         #[cfg(feature = "stats")]
@@ -474,8 +508,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             self.local_rank,
             self.base_port,
             self.stats.clone(),
-        )
-        .expect("Error during ASM execution");
+        )?;
 
         data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 
@@ -502,10 +535,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         #[cfg(feature = "stats")]
         self.stats.add_stat(0, parent_stats_id, "RUN_MT_ASSEMBLY", 0, ExecutorStatsEvent::End);
-        (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_count)
+        Ok((MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_count))
     }
 
-    fn run_emulator(&self, num_threads: usize, stdin: &mut ZiskStdin) -> MinimalTraces {
+    fn run_emulator(
+        &self,
+        num_threads: usize,
+        stdin: &mut ZiskStdin,
+    ) -> Result<MinimalTraces, anyhow::Error> {
         // Call emulate with these options
         let input_data = stdin.read();
 
@@ -521,10 +558,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &input_data,
             &emu_options,
             num_threads,
-        )
-        .expect("Error during emulator execution");
+        )?;
 
-        MinimalTraces::EmuTrace(min_traces)
+        Ok(MinimalTraces::EmuTrace(min_traces))
     }
 
     /// Adds main state machine instances to the proof context and assigns global IDs.
@@ -1184,9 +1220,20 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                 #[cfg(not(feature = "stats"))]
                 0,
             )
+            .map_err(|e| {
+                ProofmanError::ProofmanError(format!(
+                    "Failed to execute with assembly: {:?}",
+                    e.to_string()
+                ))
+            })?
         } else {
             // Otherwise, use the emulator
-            let min_traces = self.execute_with_emulator();
+            let min_traces = self.execute_with_emulator().map_err(|e| {
+                ProofmanError::ProofmanError(format!(
+                    "Failed to execute with emulator: {:?}",
+                    e.to_string()
+                ))
+            })?;
 
             timer_start_info!(COUNT);
             let (main_count, secn_count) = self.count(&min_traces);
@@ -1239,8 +1286,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             );
 
             // Wait for the memory operations thread to finish
-            let asm_runner_mo =
-                handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
+            let asm_runner_mo = handle_mo.join().unwrap().map_err(|e| {
+                ProofmanError::ProofmanError(format!("Asm Runner MO execution failed: {:?}", e))
+            })?;
 
             // Add to executor stats
             #[cfg(feature = "stats")]

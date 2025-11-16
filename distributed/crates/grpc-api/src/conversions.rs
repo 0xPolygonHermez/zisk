@@ -168,6 +168,7 @@ impl From<LaunchProofRequestDto> for LaunchProofRequest {
         LaunchProofRequest {
             data_id: dto.data_id.into(),
             compute_capacity: dto.compute_capacity,
+            minimal_compute_capacity: dto.minimal_compute_capacity,
             input_mode: input_mode.into(),
             input_path,
             simulated_node: dto.simulated_node,
@@ -184,6 +185,7 @@ impl TryFrom<LaunchProofRequest> for LaunchProofRequestDto {
         Ok(LaunchProofRequestDto {
             data_id: req.data_id.into(),
             compute_capacity: req.compute_capacity,
+            minimal_compute_capacity: req.minimal_compute_capacity,
             input_mode: match InputMode::try_from(req.input_mode).unwrap_or(InputMode::None) {
                 InputMode::None => InputModeDto::InputModeNone,
                 InputMode::Path => {

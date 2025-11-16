@@ -42,6 +42,8 @@ sm-binary = { workspace = true }
 sm-mem = { workspace = true }
 sm-frequent-ops = { workspace = true }
 
+anyhow = { workspace = true }
+
 [features]
 default = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

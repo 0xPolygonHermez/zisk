@@ -284,6 +284,15 @@ impl Coordinator {
             ));
         }
 
+        if let Some(minimal_compute_capacity) = request.minimal_compute_capacity {
+            if minimal_compute_capacity > request.compute_capacity {
+                error!("Invalid requested minimal compute capacity");
+                return Err(CoordinatorError::InvalidArgument(
+                    "Minimal compute capacity must not exceed compute capacity".to_string(),
+                ));
+            }
+        }
+
         // Check if we have enough capacity to compute the proof is already checked
         // in create_job > partition_and_allocate_by_capacity
 
@@ -329,18 +338,25 @@ impl Coordinator {
 
         let required_compute_capacity = ComputeCapacity::from(request.compute_capacity);
 
+        let minimal_compute_capacity = if request.minimal_compute_capacity.is_some() {
+            request.minimal_compute_capacity.map(ComputeCapacity::from)
+        } else {
+            None
+        };
+
         // Create and configure a new job
         let mut job = self
             .create_job(
                 request.data_id.clone(),
                 required_compute_capacity,
+                minimal_compute_capacity,
                 request.input_mode,
                 request.simulated_node,
             )
             .await?;
 
         info!(
-            "[Job] Started {} successfully Inputs: {} Capacity: {} Workers: {}",
+            "[Job] Started {} successfully Inputs: {} Compute Capacity: {} Workers: {}",
             job.job_id,
             job.input_mode,
             job.compute_capacity,
@@ -527,6 +543,7 @@ impl Coordinator {
         &self,
         data_id: DataId,
         required_compute_capacity: ComputeCapacity,
+        minimal_compute_capacity: Option<ComputeCapacity>,
         input_mode: InputModeDto,
         simulated_node: Option<u32>,
     ) -> CoordinatorResult<Job> {
@@ -538,7 +555,11 @@ impl Coordinator {
 
         let (selected_workers, mut partitions) = self
             .workers_pool
-            .partition_and_allocate_by_capacity(required_compute_capacity, execution_mode)
+            .partition_and_allocate_by_capacity(
+                required_compute_capacity,
+                minimal_compute_capacity,
+                execution_mode,
+            )
             .await?;
 
         if let Some(simulated_node) = simulated_node {
@@ -549,6 +570,7 @@ impl Coordinator {
             data_id,
             input_mode,
             required_compute_capacity,
+            minimal_compute_capacity,
             selected_workers,
             partitions,
             execution_mode,
