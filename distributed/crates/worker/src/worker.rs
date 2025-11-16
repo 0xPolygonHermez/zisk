@@ -672,7 +672,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 Ok(data) => {
                     let proof = data
                         .map(|proof| proof.agg_proofs.into_iter().map(|p| p.proof).collect())
-                        .unwrap();
+                        .unwrap_or_default();
                     let _ = tx.send(ComputationResult::AggProof {
                         job_id,
                         success: true,

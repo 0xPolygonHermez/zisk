@@ -298,7 +298,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 &mut self.stdin.lock().unwrap(),
                 &shmem_input_name,
                 self.unlock_mapped_memory,
-            );
+            )
+            .expect("Write input failed");
 
             // Add to executor stats
             #[cfg(feature = "stats")]

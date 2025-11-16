@@ -13,6 +13,7 @@ use std::{
 use tracing::debug;
 use zisk_common::io::{ZiskIO, ZiskStdin};
 
+use anyhow::anyhow;
 use anyhow::Result;
 
 use crate::{AsmInputC2, AsmService, AsmServices};
@@ -288,16 +289,26 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
     }
 }
 
-pub fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
+pub fn open_shmem(name: &str, flags: i32, mode: u32) -> Result<i32> {
     let c_name = CString::new(name).expect("CString::new failed");
     let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
     if fd == -1 {
-        let errno_value = unsafe { *libc::__errno_location() };
-        let err = io::Error::from_raw_os_error(errno_value);
-        let err2 = io::Error::last_os_error();
-        panic!("shm_open('{name}') failed: libc::errno:{err} #### last_os_error:{err2}");
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        {
+            return Err(anyhow!(format!("shm_open('{name}') failed")));
+        }
+
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            let errno_value = unsafe { *libc::__errno_location() };
+            let err = io::Error::from_raw_os_error(errno_value);
+            let err2 = io::Error::last_os_error();
+            return Err(anyhow!(format!(
+                "shm_open('{name}') failed: libc::errno:{err} #### last_os_error:{err2}"
+            )));
+        }
     }
-    fd
+    Ok(fd)
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -332,7 +343,11 @@ pub unsafe fn unmap(ptr: *mut c_void, size: usize) {
     }
 }
 
-pub fn write_input(stdin: &mut ZiskStdin, shmem_input_name: &str, unlock_mapped_memory: bool) {
+pub fn write_input(
+    stdin: &mut ZiskStdin,
+    shmem_input_name: &str,
+    unlock_mapped_memory: bool,
+) -> Result<()> {
     let inputs = stdin.read();
     let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
     let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
@@ -345,9 +360,9 @@ pub fn write_input(stdin: &mut ZiskStdin, shmem_input_name: &str, unlock_mapped_
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
+    let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR)?;
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-    let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR as u32 | S_IWUSR as u32);
+    let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR as u32 | S_IWUSR as u32)?;
 
     let ptr =
         map(fd, shmem_input_size, PROT_READ | PROT_WRITE, unlock_mapped_memory, "RH input mmap");
@@ -356,4 +371,6 @@ pub fn write_input(stdin: &mut ZiskStdin, shmem_input_name: &str, unlock_mapped_
         unmap(ptr, shmem_input_size);
         close(fd);
     }
+
+    Ok(())
 }
