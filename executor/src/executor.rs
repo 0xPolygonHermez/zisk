@@ -285,22 +285,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let (world_rank, local_rank, base_port) =
             (self.world_rank, self.local_rank, self.base_port);
 
-        AsmServices::SERVICES.par_iter().try_for_each(|service| -> anyhow::Result<()> {
-            #[cfg(feature = "stats")]
-            let stats_id = self.stats.next_id();
-            #[cfg(feature = "stats")]
-            self.stats.add_stat(
-                parent_stats_id,
-                stats_id,
-                "ASM_WRITE_INPUT",
-                0,
-                ExecutorStatsEvent::Begin,
-            );
-
+        
+        for service in AsmServices::SERVICES {
             let port = if let Some(base_port) = self.base_port {
-                AsmServices::port_for(service, base_port, self.local_rank)
+                AsmServices::port_for(&service, base_port, self.local_rank)
             } else {
-                AsmServices::default_port(service, self.local_rank)
+                AsmServices::default_port(&service, self.local_rank)
             };
 
             let is_running = AsmServices::is_service_running(port);
@@ -320,16 +310,35 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 let runner_path_stripped =
                     runner_path.strip_suffix("-mt.bin").unwrap_or(runner_path);
                 AsmServices::start_asm_service(
-                    service,
+                    &service,
                     runner_path_stripped,
                     &asm_runner_options,
                 );
 
-                AsmServices::wait_for_service_ready(service, port);
+                AsmServices::wait_for_service_ready(&service, port);
                 asm_services
-                    .send_status_request(service)
+                    .send_status_request(&service)
                     .with_context(|| format!("Service {service} failed to respond to ping"))?;
             }
+        }
+
+        AsmServices::SERVICES.par_iter().try_for_each(|service| -> anyhow::Result<()> {
+            #[cfg(feature = "stats")]
+            let stats_id = self.stats.next_id();
+            #[cfg(feature = "stats")]
+            self.stats.add_stat(
+                parent_stats_id,
+                stats_id,
+                "ASM_WRITE_INPUT",
+                0,
+                ExecutorStatsEvent::Begin,
+            );
+
+            let port = if let Some(base_port) = self.base_port {
+                AsmServices::port_for(service, base_port, self.local_rank)
+            } else {
+                AsmServices::default_port(service, self.local_rank)
+            };
 
             let shmem_input_name =
                 AsmSharedMemory::<AsmMTHeader>::shmem_input_name(port, *service, self.local_rank);
