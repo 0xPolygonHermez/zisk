@@ -1707,8 +1707,8 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = &execute_task_response.job_id;
 
-        let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
-        let mut job = job_entry.write().await;
+        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job = job_entry.write().await;
 
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
