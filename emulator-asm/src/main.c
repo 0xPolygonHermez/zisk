@@ -2509,7 +2509,7 @@ void server_setup (void)
         shmem_input_fd = shm_open(shmem_input_name, O_RDWR | O_CREAT | O_EXCL, 0666);
         if (shmem_input_fd < 0)
         {
-            printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            printf("ERROR: Failed calling shm_open(%s) as read-write errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -2528,9 +2528,28 @@ void server_setup (void)
         // Sync
         fsync(shmem_input_fd);
 
+        // Close the descriptor
+        if (close(shmem_input_fd) != 0)
+        {
+            printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Open the input shared memory as read-only
+        shmem_input_fd = shm_open(shmem_input_name, O_RDONLY | O_EXCL, 0666);
+        if (shmem_input_fd < 0)
+        {
+            printf("ERROR: Failed calling shm_open(%s) as read-only errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
         // Map input address space
         if (verbose) gettimeofday(&start_time, NULL);
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
         if (verbose)
         {
             gettimeofday(&stop_time, NULL);
@@ -2817,6 +2836,14 @@ void server_run (void)
         
         // Reset trace used size
         trace_used_size = 0;
+    }
+
+    // Sync input shared memory
+    if (msync((void *)INPUT_ADDR, MAX_INPUT_SIZE, MS_SYNC) != 0) {
+        printf("ERROR: msync failed for shmem_input_address errno=%d=%s\n", errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
     }
 
     /*******/

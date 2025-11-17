@@ -1,5 +1,7 @@
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use libc::MS_SYNC;
 use libc::{
-    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
+    c_uint, close, mmap, msync, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
     PROT_WRITE, S_IRUSR, S_IWUSR,
 };
 use std::{
@@ -12,6 +14,7 @@ use std::{
 };
 use tracing::debug;
 use zisk_common::io::{ZiskIO, ZiskStdin};
+use zisk_core::MAX_INPUT_SIZE;
 
 use anyhow::Result;
 
@@ -347,10 +350,21 @@ pub fn write_input(stdin: &mut ZiskStdin, shmem_input_name: &str, unlock_mapped_
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
     let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR as u32 | S_IWUSR as u32);
 
-    let ptr =
-        map(fd, shmem_input_size, PROT_READ | PROT_WRITE, unlock_mapped_memory, "RH input mmap");
+    let shmem_total_input_size = MAX_INPUT_SIZE as usize;
+    let ptr = map(
+        fd,
+        shmem_total_input_size,
+        PROT_READ | PROT_WRITE,
+        unlock_mapped_memory,
+        "RH input mmap",
+    );
     unsafe {
         ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
+        // Force changes to be flushed to the shared memory
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        if msync(ptr as *mut _, shmem_total_input_size, MS_SYNC /*| MS_INVALIDATE*/) != 0 {
+            panic!("msync failed: {}", std::io::Error::last_os_error());
+        }
         unmap(ptr, shmem_input_size);
         close(fd);
     }
