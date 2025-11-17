@@ -661,22 +661,35 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let options = Self::get_proof_options_aggregation(&agg_params);
 
-            let result = prover
-                .aggregate_proofs(
-                    agg_proofs,
-                    agg_params.last_proof,
-                    agg_params.final_proof,
-                    &options,
-                )
-                .map(|proof| proof.agg_proofs.into_iter().map(|p| p.proof).collect())
-                .unwrap_or_default();
+            let result = prover.aggregate_proofs(
+                agg_proofs,
+                agg_params.last_proof,
+                agg_params.final_proof,
+                &options,
+            );
 
-            let _ = tx.send(ComputationResult::AggProof {
-                job_id,
-                success: true,
-                result: Ok(Some(result)),
-                executed_steps: job.executed_steps,
-            });
+            match result {
+                Ok(data) => {
+                    let proof = data
+                        .map(|proof| proof.agg_proofs.into_iter().map(|p| p.proof).collect())
+                        .unwrap_or_default();
+                    let _ = tx.send(ComputationResult::AggProof {
+                        job_id,
+                        success: true,
+                        result: Ok(Some(proof)),
+                        executed_steps: job.executed_steps,
+                    });
+                }
+                Err(error) => {
+                    tracing::error!("Aggregation failed for {}: {}", job_id, error);
+                    let _ = tx.send(ComputationResult::AggProof {
+                        job_id,
+                        success: false,
+                        result: Err(error),
+                        executed_steps: job.executed_steps,
+                    });
+                }
+            }
         })
     }
 

@@ -382,7 +382,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         executed_steps,
                     }))
                 } else {
-                    None
+                    Some(ResultData::FinalProof(FinalProof { values: vec![], executed_steps }))
                 }
             }
             Err(e) => {
@@ -390,7 +390,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     return Err(anyhow!("Aggregation returned Err but reported success"));
                 }
                 error_message = e.to_string();
-                None
+                Some(ResultData::FinalProof(FinalProof { values: vec![], executed_steps }))
             }
         };
 
@@ -649,7 +649,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         // Extract the Aggregate params
         let Some(execute_task_request::Params::AggParams(agg_params)) = request.params else {
-            return Err(anyhow!("Expected ContributionParams params for Aggregate task"));
+            return Err(anyhow!("Expected AggParams params for Aggregate task"));
         };
 
         let agg_proofs = agg_params.agg_proofs.unwrap().proofs;

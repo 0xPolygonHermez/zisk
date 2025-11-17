@@ -1707,6 +1707,19 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = &execute_task_response.job_id;
 
+        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job = job_entry.write().await;
+
+        // If job has Failed, mark worker as Idle and return early
+        if matches!(job.state(), JobState::Failed) {
+            self.workers_pool
+                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
+                .await?;
+            return Ok(());
+        }
+
+        drop(job);
+
         // An aggregation request has failed, fail the job
         if !execute_task_response.success {
             let reason = format!("Aggregation failed in job {}", job_id);
