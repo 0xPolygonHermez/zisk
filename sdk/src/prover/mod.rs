@@ -5,7 +5,7 @@ mod emu;
 pub use asm::*;
 use backend::*;
 pub use emu::*;
-use proofman::{AggProofs, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman::{AggProofs, ExecutionInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::ProofOptions;
 
 use crate::Proof;
@@ -45,6 +45,8 @@ pub trait ProverEngine {
     fn set_stdin(&self, stdin: ZiskStdin);
 
     fn executed_steps(&self) -> u64;
+
+    fn get_execution_info(&self) -> ExecutionInfo;
 
     fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult>;
 
@@ -117,6 +119,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Get the number of executed steps by the prover after a proof generation or execution.
     pub fn executed_steps(&self) -> u64 {
         self.prover.executed_steps()
+    }
+
+    pub fn get_execution_info(&self) -> ExecutionInfo {
+        self.prover.get_execution_info()
     }
 
     /// Execute the prover with the given standard input and output path.

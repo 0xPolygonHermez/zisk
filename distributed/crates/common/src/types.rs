@@ -6,7 +6,7 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
-use proofman::ContributionsInfo;
+use proofman::{ContributionsInfo, ExecutionInfo};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -251,6 +251,7 @@ pub struct Job {
     pub results: HashMap<JobPhase, HashMap<WorkerId, JobResult>>,
     pub stats: HashMap<JobPhase, JobStats>,
     pub challenges: Option<Vec<ContributionsInfo>>,
+    pub execution_info: Option<ExecutionInfo>,
     pub execution_mode: JobExecutionMode,
     pub final_proof: Option<Vec<u64>>,
     pub executed_steps: Option<u64>,
@@ -279,6 +280,7 @@ impl Job {
             results: HashMap::new(),
             stats: HashMap::new(),
             challenges: None,
+            execution_info: None,
             execution_mode,
             final_proof: None,
             executed_steps: None,
@@ -379,8 +381,14 @@ pub struct AggProofData {
 }
 
 #[derive(Debug, Clone)]
+pub struct ContributionsResult {
+    pub challenges: Vec<ContributionsInfo>,
+    pub execution_info: ExecutionInfo,
+}
+
+#[derive(Debug, Clone)]
 pub enum JobResultData {
-    Challenges(Vec<ContributionsInfo>),
+    Challenges(ContributionsResult),
     AggProofs(Vec<AggProofData>),
 }
 

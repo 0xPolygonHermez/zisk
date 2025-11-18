@@ -14,6 +14,7 @@ use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPha
 use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
 use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProver};
 
+use proofman::ExecutionInfo;
 use proofman::ProofInfo;
 use proofman::ProvePhaseInputs;
 use proofman_common::ParamsGPU;
@@ -31,7 +32,7 @@ pub enum ComputationResult {
     Challenge {
         job_id: JobId,
         success: bool,
-        result: Result<Vec<ContributionsInfo>>,
+        result: Result<(ExecutionInfo, Vec<ContributionsInfo>)>,
     },
     Proofs {
         job_id: JobId,
@@ -501,12 +502,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             job.executed_steps = prover.executed_steps();
 
+            let execution_info = prover.get_execution_info();
+
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Challenge {
                         job_id,
                         success: true,
-                        result: Ok(data),
+                        result: Ok((execution_info, data)),
                     });
                 }
                 Err(error) => {

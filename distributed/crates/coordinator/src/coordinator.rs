@@ -39,7 +39,7 @@ use crate::{
 use chrono::{DateTime, Utc};
 use colored::Colorize;
 use dashmap::DashMap;
-use proofman::ContributionsInfo;
+use proofman::{ContributionsInfo, ExecutionInfo};
 use std::{
     collections::HashMap,
     sync::{
@@ -52,12 +52,13 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use zisk_distributed_common::{
     AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
-    CoordinatorMessageDto, DataId, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
-    ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, InputModeDto,
-    InputSourceDto, Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState,
-    JobStatusDto, JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
-    ProveParamsDto, StatusInfoDto, SystemStatusDto, WorkerErrorDto, WorkerId,
-    WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
+    ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
+    ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
+    HeartbeatAckDto, InputModeDto, InputSourceDto, Job, JobExecutionMode, JobId, JobPhase,
+    JobResult, JobResultData, JobState, JobStatusDto, JobsListDto, LaunchProofRequestDto,
+    LaunchProofResponseDto, MetricsDto, ProofDto, ProveParamsDto, StatusInfoDto, SystemStatusDto,
+    WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
+    WorkersListDto,
 };
 
 /// Trait for sending messages to workers through various communication channels.
@@ -1121,14 +1122,15 @@ impl Coordinator {
         result_data: ExecuteTaskResponseResultDataDto,
     ) -> CoordinatorResult<JobResultData> {
         match result_data {
-            ExecuteTaskResponseResultDataDto::Challenges(challenges) => {
-                if challenges.is_empty() {
+            ExecuteTaskResponseResultDataDto::Challenges(ch_list) => {
+                if ch_list.challenges.is_empty() {
                     return Err(CoordinatorError::InvalidRequest(
                         "Received empty Challenges result data".to_string(),
                     ));
                 }
 
-                let contributions: Vec<ContributionsInfo> = challenges
+                let contributions: Vec<ContributionsInfo> = ch_list
+                    .challenges
                     .into_iter()
                     .map(|challenge| ContributionsInfo {
                         worker_index: challenge.worker_index,
@@ -1137,7 +1139,17 @@ impl Coordinator {
                     })
                     .collect();
 
-                Ok(JobResultData::Challenges(contributions))
+                let execution_info = ExecutionInfo {
+                    summary_info: ch_list.execution_info.summary_info,
+                    publics: ch_list.execution_info.publics,
+                    proof_values: ch_list.execution_info.proof_values,
+                    execution_time: ch_list.execution_info.execution_time,
+                };
+
+                Ok(JobResultData::Challenges(ContributionsResult {
+                    execution_info,
+                    challenges: contributions,
+                }))
             }
             _ => Err(CoordinatorError::InvalidRequest(
                 "Expected Challenges result data for Phase1".to_string(),
@@ -1232,7 +1244,7 @@ impl Coordinator {
             // Simulation mode: replicate single worker's challenges across all expected workers
             // This maintains algorithm correctness while using minimal computational resources
             let first_challenges = match phase1_results.values().next().unwrap().data {
-                JobResultData::Challenges(ref values) => values,
+                JobResultData::Challenges(ref values) => &values.challenges,
                 _ => unreachable!("Expected Challenges data in Phase1 results"),
             };
 
@@ -1244,7 +1256,7 @@ impl Coordinator {
             let challenges: Vec<Vec<ContributionsInfo>> = phase1_results
                 .values()
                 .map(|results| match &results.data {
-                    JobResultData::Challenges(values) => values.clone(),
+                    JobResultData::Challenges(values) => values.challenges.clone(),
                     _ => unreachable!("Expected Challenges data in Phase1 results"),
                 })
                 .collect();

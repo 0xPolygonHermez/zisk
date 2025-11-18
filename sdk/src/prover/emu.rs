@@ -4,7 +4,7 @@ use crate::{
     RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult,
     ZiskProveResult, ZiskVerifyConstraintsResult,
 };
-use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs};
+use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
 use std::path::PathBuf;
 use zisk_common::io::ZiskStdin;
@@ -84,6 +84,10 @@ impl ProverEngine for EmuProver {
             .execution_result()
             .map(|(exec_result, _)| exec_result.executed_steps)
             .unwrap_or(0)
+    }
+
+    fn get_execution_info(&self) -> ExecutionInfo {
+        self.core_prover.backend.get_execution_info()
     }
 
     fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult> {

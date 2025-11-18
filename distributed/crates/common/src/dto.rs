@@ -170,6 +170,14 @@ pub struct ProveParamsDto {
 }
 
 #[derive(Clone)]
+pub struct ExecutionInfoDto {
+    pub execution_time: u64,
+    pub publics: Vec<u64>,
+    pub proof_values: Vec<u64>,
+    pub summary_info: String,
+}
+
+#[derive(Clone)]
 pub struct ChallengesDto {
     pub worker_index: u32,
     pub airgroup_id: u32,
@@ -210,8 +218,13 @@ pub struct ExecuteTaskResponseDto {
     pub result_data: ExecuteTaskResponseResultDataDto,
 }
 
+pub struct ContributionsResultDataDto {
+    pub challenges: Vec<ChallengesDto>,
+    pub execution_info: ExecutionInfoDto,
+}
+
 pub enum ExecuteTaskResponseResultDataDto {
-    Challenges(Vec<ChallengesDto>),
+    Challenges(ContributionsResultDataDto),
     Proofs(Vec<ProofDto>),
     FinalProof(FinalProofDto),
 }

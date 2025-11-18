@@ -6,7 +6,9 @@ use anyhow::Result;
 use bytemuck::cast_slice;
 use colored::Colorize;
 use fields::Goldilocks;
-use proofman::{AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman::{
+    AggProofs, ExecutionInfo, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
+};
 use proofman_common::{DebugInfo, ProofOptions};
 use std::{fs::File, io::Write, path::PathBuf};
 use zisk_common::{io::ZiskStdin, ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
@@ -246,6 +248,10 @@ impl ProverBackend {
         self.proofman
             .generate_proof_from_lib(phase_inputs, options, phase.clone())
             .map_err(|e| anyhow::anyhow!("Error generating proof in phase {:?}: {}", phase, e))
+    }
+
+    pub(crate) fn get_execution_info(&self) -> ExecutionInfo {
+        self.proofman.get_execution_info()
     }
 
     pub(crate) fn aggregate_proofs(
