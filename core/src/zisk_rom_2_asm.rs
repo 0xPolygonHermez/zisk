@@ -1347,7 +1347,7 @@ impl ZiskRom2Asm {
                 SRC_MEM => {
                     *code += &ctx.full_line_comment("b=SRC_MEM".to_string());
 
-                    let b_is_free_input = instruction.b_offset_imm0 == FREE_INPUT_ADDR as u64
+                    let b_is_free_input = instruction.b_offset_imm0 == FREE_INPUT_ADDR
                         && instruction.b_use_sp_imm1 == 0;
 
                     if !ctx.chunk_player_mem_reads_collect_main() {
