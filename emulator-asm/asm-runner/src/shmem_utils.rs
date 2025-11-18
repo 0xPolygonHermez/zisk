@@ -292,7 +292,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
 pub fn open_shmem(name: &str, flags: i32, mode: u32) -> Result<i32> {
     let c_name = CString::new(name).expect("CString::new failed");
     let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
-    
+
     if fd == -1 {
         #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
         {
