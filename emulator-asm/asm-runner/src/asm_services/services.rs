@@ -291,15 +291,26 @@ impl AsmServices {
         })?;
 
         // Wait for the shutdown signal (up to 30s)
-        sem.timed_wait(Duration::from_secs(30)).map_err(|e| {
-            tracing::error!(
-                "[{}] Timeout or error waiting on semaphore {}: {}",
-                self.world_rank,
-                sem_name,
-                e
-            );
-            crate::AsmRunError::SemaphoreError(sem_name.clone(), e)
-        })?;
+        loop {
+            match sem.timed_wait(Duration::from_secs(30)) {
+                Ok(_) => break,
+                Err(named_sem::Error::WaitFailed(e))
+                    if e.kind() == std::io::ErrorKind::Interrupted =>
+                {
+                    continue
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "[{}] Timeout or error waiting on semaphore {}: {}",
+                        self.world_rank,
+                        sem_name,
+                        e
+                    );
+
+                    return Err(crate::AsmRunError::SemaphoreError(sem_name.clone(), e).into());
+                }
+            }
+        }
 
         // Manually drop and unlink the semaphore to clean up
         // This is necessary to ensure the semaphore is properly cleaned up
