@@ -1,3 +1,7 @@
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use libc::msync;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use libc::MS_SYNC;
 use std::io::{self, Result};
 use std::ptr;
 
@@ -89,6 +93,11 @@ impl SharedMemoryWriter {
 
         unsafe {
             ptr::copy_nonoverlapping(data.as_ptr(), self.ptr, data.len());
+            // Force changes to be flushed to the shared memory
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            if msync(self.ptr as *mut _, self.size, MS_SYNC /*| MS_INVALIDATE*/) != 0 {
+                panic!("msync failed: {}", std::io::Error::last_os_error());
+            }
         }
 
         Ok(())
