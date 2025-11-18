@@ -1,9 +1,12 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use libc::msync;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use libc::MS_SYNC;
 use libc::{
-    c_uint, close, mmap, msync, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
+    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
     PROT_WRITE, S_IRUSR, S_IWUSR,
 };
+
 use std::{
     ffi::CString,
     fmt::Debug,
