@@ -85,7 +85,7 @@ impl AsmRunnerRH {
         asm_services.send_rom_histogram_request(max_steps)?;
 
         loop {
-            match sem_chunk_done.timed_wait(Duration::from_secs(30)) {
+            match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
