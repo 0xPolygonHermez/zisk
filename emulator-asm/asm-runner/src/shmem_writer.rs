@@ -1,14 +1,9 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use libc::msync;
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use libc::MS_SYNC;
+use libc::{mmap, msync, MAP_FAILED, MAP_SHARED, MS_SYNC};
 use std::io::{self, Result};
 use std::ptr;
 
-use libc::{
-    c_void, close, mmap, munmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE, S_IRUSR,
-    S_IWUSR,
-};
+use libc::{c_void, close, munmap, shm_open, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 use std::ffi::CString;
 
 pub struct SharedMemoryWriter {
@@ -47,6 +42,9 @@ impl SharedMemoryWriter {
         }
         fd
     }
+
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {}
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &str) -> *mut c_void {
