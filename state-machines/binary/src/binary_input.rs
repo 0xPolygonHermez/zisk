@@ -11,6 +11,7 @@ impl BinaryInput {
     pub fn new(op: u8, a: u64, b: u64) -> Self {
         Self { op, a, b }
     }
+
     pub fn from(data: &ExtOperationData<u64>) -> Self {
         Self {
             op: OperationBusData::get_op(data),

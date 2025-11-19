@@ -1,7 +1,8 @@
 #include "immutable_mem_planner.hpp"
 
-ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size):
-    rows_by_segment(rows) {
+ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size, bool intermediate_rows):
+    rows_by_segment(rows),
+    intermediate_rows(intermediate_rows) {
     #ifndef MEM_CHECK_POINT_MAP
     hash_table = new MemSegmentHashTable(MAX_CHUNKS);   // 2^18 * 2^18 = 2^36   // 2^14 * 2^18 = 2^32
     #endif
@@ -50,12 +51,10 @@ void ImmutableMemPlanner::execute(const std::vector<MemCounter *> &workers) {
     uint32_t offset;
     uint32_t last_offset;
     last_addr = initial_last_addr;
-    for (uint32_t page = from_page; page < to_page; ++page) {
+    for (uint32_t page = from_page; page <= to_page; ++page) {
         get_offset_limits(workers, page, offset, last_offset);
-        // printf("##### page:%d offsets:0x%08X-0x%08X\n", page, offset, last_offset);
         addr = MemCounter::offset_to_addr(offset, 0);
         for (;offset <= last_offset; ++offset) {
-            // printf("offset:0x%08X page:%d addr:0x%08X segments:%d\n", offset, page, addr, segments.size());
             for (uint32_t i = 0; i < MAX_THREADS; ++i, addr += 8) {
                 uint32_t pos = workers[i]->get_addr_table(offset);
                 if (pos == 0) continue;
@@ -83,8 +82,6 @@ void ImmutableMemPlanner::get_offset_limits(const std::vector<MemCounter *> &wor
 }
 
 void ImmutableMemPlanner::close_segment() {
-    // current_segment->is_last_segment = last;
-    // printf("MemPlanner::close_segment: %d chunks from_page:%d\n", current_segment->chunks.size(), from_page);
     #ifdef SEGMENT_STATS
     uint32_t segment_chunks = current_segment->size();
     if (segment_chunks > max_chunks) {
@@ -116,7 +113,6 @@ void ImmutableMemPlanner::open_segment() {
         #endif
     }
     rows_available = rows_by_segment;
-    // printf("MemPlanner::open_segment: rows_available: %d from_page:%d\n", rows_available, from_page);
 }
 
 void ImmutableMemPlanner::preopen_segment(uint32_t addr, uint32_t intermediate_rows) {
@@ -199,7 +195,7 @@ uint32_t ImmutableMemPlanner::add_intermediate_addr(uint32_t from_addr, uint32_t
 
 uint32_t ImmutableMemPlanner::add_intermediates(uint32_t addr) {
     uint32_t count = 0;
-    if ((addr - last_addr) > 8) {
+    if (intermediate_rows && (addr - last_addr) > 8) {
         count = add_intermediate_addr(last_addr + 8, addr - 8);
     }
     last_addr = addr;

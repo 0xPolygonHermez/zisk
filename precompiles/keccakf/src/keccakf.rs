@@ -7,7 +7,7 @@ use tiny_keccak::keccakf;
 
 use circuit::{Gate, GateOperation, PinId};
 use precompiles_helpers::keccakf_topology;
-use proofman_common::{AirInstance, FromTrace, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::KeccakfFixed;
 #[cfg(not(feature = "packed"))]
@@ -78,11 +78,14 @@ impl<F: PrimeField64> KeccakfSM<F> {
         // Get the fixed columns
         let airgroup_id = KeccakfTraceType::<F>::AIRGROUP_ID;
         let air_id = KeccakfTraceType::<F>::AIR_ID;
-        let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
-        let keccakf_fixed = KeccakfFixed::new_from_vec(fixed_pols);
+        let fixed_pols =
+            sctx.get_fixed(airgroup_id, air_id).expect("Failed to get fixed polynomials");
+        let keccakf_fixed = KeccakfFixed::new_from_vec(fixed_pols).unwrap();
 
         // Get the table ID
-        let table_id = std.get_virtual_table_id(KeccakfTableSM::TABLE_ID);
+        let table_id = std
+            .get_virtual_table_id(KeccakfTableSM::TABLE_ID)
+            .expect("Failed to get Keccakf table ID");
 
         Arc::new(Self {
             table_id,
@@ -592,9 +595,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
         &self,
         inputs: &[Vec<KeccakfInput>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
+    ) -> ProofmanResult<AirInstance<F>> {
         timer_start_trace!(KECCAKF_TRACE);
-        let mut keccakf_trace = KeccakfTraceType::new_from_vec_zeroes(trace_buffer);
+        let mut keccakf_trace = KeccakfTraceType::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = keccakf_trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace
@@ -615,7 +618,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         debug_assert!(num_circuits_needed <= self.num_available_circuits);
         debug_assert!(num_rows_needed <= num_rows);
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,
@@ -674,6 +677,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
         }
         timer_stop_and_log_trace!(KECCAKF_PADDING);
 
-        AirInstance::new_from_trace(FromTrace::new(&mut keccakf_trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut keccakf_trace)))
     }
 }

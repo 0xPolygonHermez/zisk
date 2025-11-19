@@ -8,8 +8,10 @@ on:
       - "pre-develop-[0-9]+.[0-9]+.[0-9]+"
     paths:
       - "emulator/**"
+      - "emulator-asm/**"
       - "riscv/**"
       - "core/**"
+      - "lib-c/**"
       - "lib-float/**"
   workflow_dispatch:
 

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqLtTableSM;
-use proofman_common::{AirInstance, FromTrace, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{ArithEq384Trace, ArithEq384TraceRow};
@@ -66,12 +66,18 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         // Compute some useful values
         let num_available_ops = ArithEq384TraceType::<F>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1;
         let num_non_usable_rows = ArithEq384TraceType::<F>::NUM_ROWS % ARITH_EQ_384_ROWS_BY_OP;
-        let q_hsc_range_id = std.get_range_id(0, ARITH_EQ_384_Q_HSC_MAX, None);
-        let chunk_range_id = std.get_range_id(0, ARITH_EQ_384_CHUNK_MAX as i64, None);
-        let carry_range_id = std.get_range_id(ARITH_EQ_384_CARRY_MIN, ARITH_EQ_384_CARRY_MAX, None);
+        let q_hsc_range_id =
+            std.get_range_id(0, ARITH_EQ_384_Q_HSC_MAX, None).expect("Failed to get range ID");
+        let chunk_range_id = std
+            .get_range_id(0, ARITH_EQ_384_CHUNK_MAX as i64, None)
+            .expect("Failed to get range ID");
+        let carry_range_id = std
+            .get_range_id(ARITH_EQ_384_CARRY_MIN, ARITH_EQ_384_CARRY_MAX, None)
+            .expect("Failed to get range ID");
 
         // Get the table ID
-        let table_id = std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID);
+        let table_id =
+            std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
 
         Arc::new(Self {
             std,
@@ -385,8 +391,8 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEq384Input>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut trace = ArithEq384TraceType::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = ArithEq384TraceType::new_from_vec(trace_buffer)?;
         let num_rows = trace.num_rows();
         let num_available_ops = self.num_available_ops;
 
@@ -403,7 +409,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             );
         };
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating ArithEq384 instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,
@@ -468,6 +474,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
 
         timer_stop_and_log_trace!(ARITH_EQ_384_TRACE);
 
-        AirInstance::new_from_trace(FromTrace::new(&mut trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }
 }

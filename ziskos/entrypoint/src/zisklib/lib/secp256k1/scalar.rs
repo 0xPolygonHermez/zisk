@@ -1,6 +1,6 @@
 use crate::{
-    arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams},
-    fcall_secp256k1_fn_inv, lt,
+    syscalls::{syscall_arith256_mod, SyscallArith256ModParams},
+    zisklib::{fcall_secp256k1_fn_inv, lt},
 };
 
 use super::constants::{N, N_MINUS_ONE};

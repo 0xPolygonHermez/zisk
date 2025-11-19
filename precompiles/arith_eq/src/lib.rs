@@ -10,6 +10,7 @@ mod equations;
 mod executors;
 pub mod generator;
 mod mem_inputs;
+pub mod test_data;
 
 pub use arith_eq::*;
 pub use arith_eq_bus_device::*;

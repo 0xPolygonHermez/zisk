@@ -9,11 +9,12 @@ use std::{
     io::Read,
     process::Command,
 };
+use zisk_build::RUSTUP_TOOLCHAIN_NAME;
 
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 
-use crate::{get_target, get_toolchain_download_url, is_supported_target, RUSTUP_TOOLCHAIN_NAME};
+use crate::{get_target, get_toolchain_download_url, is_supported_target};
 
 #[derive(Parser)]
 #[command(name = "install-toolchain", about = "Install the cargo-zisk toolchain.")]
@@ -26,7 +27,7 @@ impl InstallToolchainCmd {
         // Setup client.
         let client = Client::builder()
             .user_agent("Mozilla/5.0")
-            .timeout(std::time::Duration::from_secs(60))
+            .timeout(std::time::Duration::from_secs(600))
             .build()?;
 
         // Setup variables.

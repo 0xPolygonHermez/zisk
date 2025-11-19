@@ -1,6 +1,8 @@
-require "std_permutation.pil"
-require "std_lookup.pil"
-require "std_range_check.pil"
+require "std_permutation.pil";
+require "std_lookup.pil";
+require "std_range_check.pil";
+require "opids.pil";
+require "mem_align_rom.pil";
 
 // Problem to solve:
 // =================
@@ -138,7 +140,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     col witness bits(64, signed) delta_addr;
     delta_pc = pc' - pc;
     delta_addr === (addr - 'addr) * (1 - reset);
-    lookup_assumes(MEM_ALIGN_ROM_ID, [pc, delta_pc, delta_addr, offset, width, flags]);
+    lookup_assumes(MEMORY_ALIGN_ROM_ID, [pc, delta_pc, delta_addr, offset, width, flags]);
 
     // 2] Assume aligned memory accesses against the Memory component
     const expr sel_assume = sel_up_to_down + sel_down_to_up;

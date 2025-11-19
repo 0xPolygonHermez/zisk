@@ -1,6 +1,6 @@
 //! Finite field Fr operations for BLS12-381
 
-use crate::arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams};
+use crate::syscalls::{syscall_arith256_mod, SyscallArith256ModParams};
 
 use super::constants::{R, R_MINUS_ONE};
 

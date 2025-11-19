@@ -1,6 +1,7 @@
+require "std_lookup.pil";
+require "opids.pil";
 
-
-airtemplate FrequentOps(int N = 2**24, int RC = 2, const int operation_bus_id = OPERATION_BUS_ID, 
+airtemplate FrequentOps(const int N = 2**24, int RC = 2, const int operation_bus_id = OPERATION_BUS_ID, 
                         const string bin_file = "../src/frequent_ops_fixed.bin", const int table_id = -1) {
 
     #pragma extern_fixed_file `${bin_file}`

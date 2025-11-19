@@ -21,10 +21,10 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
+#include <sys/file.h>
 
 // Assembly-provided functions
 void emulator_start(void);
-void write_ro_data(void);
 uint64_t get_max_bios_pc(void);
 uint64_t get_max_program_pc(void);
 uint64_t get_gen_method(void);
@@ -254,6 +254,8 @@ void log_chunk_player_main_trace(void);
 
 int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, int timeout_sec);
 
+void file_lock(void);
+
 // Configuration
 bool output = false;
 bool silent = false;
@@ -298,6 +300,13 @@ sem_t * sem_chunk_done = NULL;
 char sem_shutdown_done_name[128];
 sem_t * sem_shutdown_done = NULL;
 
+// File lock name
+char file_lock_name[128];
+int file_lock_fd = -1;
+
+// Log name
+char log_name[128];
+
 int process_id = 0;
 
 uint64_t input_size = 0;
@@ -320,6 +329,15 @@ int main(int argc, char *argv[])
 
     // Configure based on parguments
     configure();
+
+    // Lock file
+    // if (server)
+    // {
+    //     file_lock();
+    // }
+
+    // Send a message to stderr
+    // fprintf(stderr, "%s stderr test (not an error): Starting Ziskemu ASM emulator process id=%d server=%d client=%d gen_method=%d port=%u\n", log_name, process_id, server, client, gen_method, port);
 
     // If this is a client, run it and quit
     if (client)
@@ -347,7 +365,7 @@ int main(int argc, char *argv[])
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == 0)
     {
-        printf("ERROR: Failed calling socket() errno=%d=%s\n", errno, strerror(errno));
+        printf("%s ERROR: Failed calling socket() errno=%d=%s\n", log_name, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -358,7 +376,7 @@ int main(int argc, char *argv[])
     result = setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt));
     if (result != 0)
     {
-        printf("ERROR: Failed calling setsockopt() result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        printf("%s ERROR: Failed calling setsockopt() result=%d errno=%d=%s\n", log_name, result, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -373,7 +391,7 @@ int main(int argc, char *argv[])
     result = bind(server_fd, (struct sockaddr *)&address, sizeof(address));
     if (result != 0)
     {
-        printf("ERROR: Failed calling bind() result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        printf("%s ERROR: Failed calling bind() result=%d errno=%d=%s\n", log_name, result, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -383,7 +401,7 @@ int main(int argc, char *argv[])
     result = listen(server_fd, 5);
     if (result != 0)
     {
-        printf("ERROR: Failed calling listen() result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        printf("%s ERROR: Failed calling listen() result=%d errno=%d=%s\n", log_name, result, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -395,7 +413,7 @@ int main(int argc, char *argv[])
         struct sockaddr_in address;
         int addrlen = sizeof(address);
         int client_fd;
-        if (!silent) printf("Waiting for incoming connections to port %u...\n", port);
+        if (!silent) printf("%s Waiting for incoming connections to port %u...\n", log_name, port);
         client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
         if (client_fd < 0)
         {
@@ -405,7 +423,7 @@ int main(int argc, char *argv[])
             exit(-1);
         }
 #ifdef DEBUG
-        if (verbose) printf("New client: %s:%d\n", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+        if (verbose) printf("%s New client: %s:%d\n", log_name, inet_ntoa(address.sin_addr), ntohs(address.sin_port));
 #endif
 
         // Configure linger to send data before closing the socket
@@ -427,21 +445,21 @@ int main(int argc, char *argv[])
             ssize_t bytes_read = recv(client_fd, request, sizeof(request), MSG_WAITALL);
             if (bytes_read < 0)
             {
-                printf("ERROR: Failed calling recv() bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
+                printf("%s ERROR: Failed calling recv() bytes_read=%ld errno=%d=%s\n", log_name, bytes_read, errno, strerror(errno));
                 break;
             }
             if (bytes_read != sizeof(request))
             {
                 if ((errno != 0) && (errno != 2))
                 {
-                    printf("ERROR: Failed calling recv() invalid bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
+                    printf("%s ERROR: Failed calling recv() invalid bytes_read=%ld errno=%d=%s\n", log_name, bytes_read, errno, strerror(errno));
                 }
                 break;
             }
 #ifdef DEBUG
-            if (verbose) printf("recv() returned: %ld\n", bytes_read);
+            if (verbose) printf("%s recv() returned: %ld\n", log_name, bytes_read);
 #endif
-            if (verbose) printf("recv()'d request=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", request[0], request[1], request[2], request[3], request[4]);
+            if (verbose) printf("%s recv()'d request=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", log_name, request[0], request[1], request[2], request[3], request[4]);
 
             uint64_t response[5];
             bReset = false;
@@ -450,7 +468,7 @@ int main(int argc, char *argv[])
                 case TYPE_PING:
                 {
 #ifdef DEBUG
-                    if (verbose) printf("PING received\n");
+                    if (verbose) printf("%s PING received\n", log_name);
 #endif
                     response[0] = TYPE_PONG;
                     response[1] = gen_method;
@@ -462,7 +480,7 @@ int main(int argc, char *argv[])
                 case TYPE_MT_REQUEST:
                 {
 #ifdef DEBUG
-                    if (verbose) printf("MINIMAL TRACE received\n");
+                    if (verbose) printf("%s MINIMAL TRACE received\n", log_name);
 #endif
                     if (gen_method == MinimalTrace)
                     {
@@ -492,7 +510,7 @@ int main(int argc, char *argv[])
                 case TYPE_RH_REQUEST:
                 {
 #ifdef DEBUG
-                    if (verbose) printf("ROM HISTOGRAM received\n");
+                    if (verbose) printf("%s ROM HISTOGRAM received\n", log_name);
 #endif
                     if (gen_method == RomHistogram)
                     {
@@ -521,7 +539,7 @@ int main(int argc, char *argv[])
                 case TYPE_MO_REQUEST:
                 {
 #ifdef DEBUG
-                    if (verbose) printf("MEMORY OPERATIONS received\n");
+                    if (verbose) printf("%s MEMORY OPERATIONS received\n", log_name);
 #endif
                     if (gen_method == MemOp)
                     {
@@ -551,7 +569,7 @@ int main(int argc, char *argv[])
                 case TYPE_MA_REQUEST:
                 {
 #ifdef DEBUG
-                    if (verbose) printf("MAIN TRACE received\n");
+                    if (verbose) printf("%s MAIN TRACE received\n", log_name);
 #endif
                     if (gen_method == MainTrace)
                     {
@@ -581,7 +599,7 @@ int main(int argc, char *argv[])
                 case TYPE_CM_REQUEST:
                 {
 #ifdef DEBUG
-                    if (verbose) printf("COLLECT MEMORY received\n");
+                    if (verbose) printf("%s COLLECT MEMORY received\n", log_name);
 #endif
                     if (gen_method == ChunkPlayerMTCollectMem)
                     {
@@ -614,7 +632,7 @@ int main(int argc, char *argv[])
                 case TYPE_FA_REQUEST:
                 {
 #ifdef DEBUG
-                    if (verbose) printf("FAST received\n");
+                    if (verbose) printf("%s FAST received\n", log_name);
 #endif
                     if (gen_method == Fast)
                     {
@@ -644,7 +662,7 @@ int main(int argc, char *argv[])
                 case TYPE_MR_REQUEST:
                 {
 #ifdef DEBUG
-                    if (verbose) printf("MEMORY READS received\n");
+                    if (verbose) printf("%s MEMORY READS received\n", log_name);
 #endif
                     if (gen_method == MemReads)
                     {
@@ -674,7 +692,7 @@ int main(int argc, char *argv[])
                 case TYPE_CA_REQUEST:
                 {
 #ifdef DEBUG
-                    if (verbose) printf("COLLECT MAIN received\n");
+                    if (verbose) printf("%s COLLECT MAIN received\n", log_name);
 #endif
                     if (gen_method == ChunkPlayerMemReadsCollectMain)
                     {
@@ -706,7 +724,7 @@ int main(int argc, char *argv[])
                 }
                 case TYPE_SD_REQUEST:
                 {
-                    if (!silent) printf("SHUTDOWN received\n");
+                    if (!silent) printf("%s SHUTDOWN received\n", log_name);
                     bShutdown = true;
 
                     response[0] = TYPE_SD_RESPONSE;
@@ -718,19 +736,19 @@ int main(int argc, char *argv[])
                 }
                 default:
                 {
-                    printf("ERROR: Invalid request id=%lu\n", request[0]);
+                    printf("%s ERROR: Invalid request id=%lu\n", log_name, request[0]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);                
                 }
             }
 
-            if (verbose) printf("send()'ing response=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", response[0], response[1], response[2], response[3], response[4]);
+            if (verbose) printf("%s send()'ing response=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", log_name, response[0], response[1], response[2], response[3], response[4]);
 
             ssize_t bytes_sent = send(client_fd, response, sizeof(response), MSG_WAITALL);
             if (bytes_sent != sizeof(response))
             {
-                printf("ERROR: Failed calling send() invalid bytes_sent=%ld errno=%d=%s\n", bytes_sent, errno, strerror(errno));
+                printf("%s ERROR: Failed calling send() invalid bytes_sent=%ld errno=%d=%s\n", log_name, bytes_sent, errno, strerror(errno));
                 break;
             }
 #ifdef DEBUG
@@ -1217,6 +1235,11 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_FT_shutdown_done");
             strcpy(shmem_mt_name, "");
+            strcpy(file_lock_name, "/tmp/");
+            strcat(file_lock_name, shm_prefix);
+            strcat(file_lock_name, ".lock");
+            strcpy(log_name, shm_prefix);
+            strcat(log_name, "_FT");
             port = 23120;
             break;
         }
@@ -1231,6 +1254,11 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MT_shutdown_done");
             strcpy(shmem_mt_name, "");
+            strcpy(file_lock_name, "/tmp/");
+            strcat(file_lock_name, shm_prefix);
+            strcat(file_lock_name, ".lock");
+            strcpy(log_name, shm_prefix);
+            strcat(log_name, "_MT");
             call_chunk_done = true;
             port = 23115;
             break;
@@ -1246,6 +1274,11 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_RH_shutdown_done");
             strcpy(shmem_mt_name, "");
+            strcpy(file_lock_name, "/tmp/");
+            strcat(file_lock_name, shm_prefix);
+            strcat(file_lock_name, ".lock");
+            strcpy(log_name, shm_prefix);
+            strcat(log_name, "_RH");
             call_chunk_done = true;
             port = 23116;
             break;
@@ -1261,6 +1294,11 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MA_shutdown_done");
             strcpy(shmem_mt_name, "");
+            strcpy(file_lock_name, "/tmp/");
+            strcat(file_lock_name, shm_prefix);
+            strcat(file_lock_name, ".lock");
+            strcpy(log_name, shm_prefix);
+            strcat(log_name, "_MA");
             call_chunk_done = true;
             port = 23118;
             break;
@@ -1276,6 +1314,11 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_CH_shutdown_done");
             strcpy(shmem_mt_name, "");
+            strcpy(file_lock_name, "/tmp/");
+            strcat(file_lock_name, shm_prefix);
+            strcat(file_lock_name, ".lock");
+            strcpy(log_name, shm_prefix);
+            strcat(log_name, "_CH");
             call_chunk_done = true;
             port = 23115;
             break;
@@ -1300,6 +1343,11 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_ZP_shutdown_done");
             strcpy(shmem_mt_name, "");
+            strcpy(file_lock_name, "/tmp/");
+            strcat(file_lock_name, shm_prefix);
+            strcat(file_lock_name, ".lock");
+            strcpy(log_name, shm_prefix);
+            strcat(log_name, "_ZP");
             call_chunk_done = true;
             port = 23115;
             break;
@@ -1315,6 +1363,11 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MO_shutdown_done");
             strcpy(shmem_mt_name, "");
+            strcpy(file_lock_name, "/tmp/");
+            strcat(file_lock_name, shm_prefix);
+            strcat(file_lock_name, ".lock");
+            strcpy(log_name, shm_prefix);
+            strcat(log_name, "_MO");
             call_chunk_done = true;
             port = 23117;
             break;
@@ -1328,6 +1381,11 @@ void configure (void)
             strcpy(sem_shutdown_done_name, "");
             strcpy(shmem_mt_name, shm_prefix);
             strcat(shmem_mt_name, "_MT_output");
+            strcpy(file_lock_name, "/tmp/");
+            strcat(file_lock_name, shm_prefix);
+            strcat(file_lock_name, ".lock");
+            strcpy(log_name, shm_prefix);
+            strcat(log_name, "_CM");
             call_chunk_done = false;
             port = 23119;
             break;
@@ -1343,6 +1401,11 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MT_shutdown_done");
             strcpy(shmem_mt_name, "");
+            strcpy(file_lock_name, "/tmp/");
+            strcat(file_lock_name, shm_prefix);
+            strcat(file_lock_name, ".lock");
+            strcpy(log_name, shm_prefix);
+            strcat(log_name, "_MT");
             call_chunk_done = true;
             port = 23115;
             break;
@@ -1356,6 +1419,11 @@ void configure (void)
             strcpy(sem_shutdown_done_name, "");
             strcpy(shmem_mt_name, shm_prefix);
             strcat(shmem_mt_name, "_MT_output");
+            strcpy(file_lock_name, "/tmp/");
+            strcat(file_lock_name, shm_prefix);
+            strcat(file_lock_name, ".lock");
+            strcpy(log_name, shm_prefix);
+            strcat(log_name, "_CA");
             call_chunk_done = false;
             port = 23120;
             break;
@@ -1379,6 +1447,8 @@ void configure (void)
         printf("ziskemuasm configuration:\n");
         printf("\tgen_method=%u\n", gen_method);
         printf("\tshm_prefix=%s\n", shm_prefix);
+        printf("\tfile_lock_name=%s\n", file_lock_name);
+        printf("\tlog_name=%s\n", log_name);
         printf("\tport=%u\n", port);
         printf("\tcall_chunk_done=%u\n", call_chunk_done);
         printf("\tchunk_size=%lu\n", chunk_size);
@@ -2436,10 +2506,10 @@ void server_setup (void)
         shm_unlink(shmem_input_name);
 
         // Create the input shared memory
-        shmem_input_fd = shm_open(shmem_input_name, O_RDWR | O_CREAT, 0666);
+        shmem_input_fd = shm_open(shmem_input_name, O_RDWR | O_CREAT | O_EXCL, 0666);
         if (shmem_input_fd < 0)
         {
-            printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            printf("ERROR: Failed calling shm_open(%s) as read-write errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -2455,9 +2525,31 @@ void server_setup (void)
             exit(-1);
         }
 
+        // Sync
+        fsync(shmem_input_fd);
+
+        // Close the descriptor
+        if (close(shmem_input_fd) != 0)
+        {
+            printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Open the input shared memory as read-only
+        shmem_input_fd = shm_open(shmem_input_name, O_RDONLY | O_EXCL, 0666);
+        if (shmem_input_fd < 0)
+        {
+            printf("ERROR: Failed calling shm_open(%s) as read-only errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
         // Map input address space
         if (verbose) gettimeofday(&start_time, NULL);
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
         if (verbose)
         {
             gettimeofday(&stop_time, NULL);
@@ -2548,7 +2640,7 @@ void server_setup (void)
         shm_unlink(shmem_output_name);
 
         // Create the output shared memory
-        shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0666);
+        shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT | O_EXCL, 0666);
         if (shmem_output_fd < 0)
         {
             printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
@@ -2566,6 +2658,9 @@ void server_setup (void)
             fflush(stderr);
             exit(-1);
         }
+
+        // Sync
+        fsync(shmem_output_fd);
 
         // Map it to the trace address
         if (verbose) gettimeofday(&start_time, NULL);
@@ -2662,7 +2757,7 @@ void server_setup (void)
 
         sem_unlink(sem_chunk_done_name);
 
-        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0666, 0);
+        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT | O_EXCL, 0666, 0);
         if (sem_chunk_done == SEM_FAILED)
         {
             printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
@@ -2681,7 +2776,7 @@ void server_setup (void)
 
     sem_unlink(sem_shutdown_done_name);
     
-    sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT, 0666, 0);
+    sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT | O_EXCL, 0666, 0);
     if (sem_shutdown_done == SEM_FAILED)
     {
         printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
@@ -2690,9 +2785,6 @@ void server_setup (void)
         exit(-1);
     }
     if (verbose) printf("sem_open(%s) succeeded\n", sem_shutdown_done_name);
-
-    /* Write read-only ROM data */
-    write_ro_data();
 }
 
 void server_reset (void)
@@ -2744,6 +2836,14 @@ void server_run (void)
         
         // Reset trace used size
         trace_used_size = 0;
+    }
+
+    // Sync input shared memory
+    if (msync((void *)INPUT_ADDR, MAX_INPUT_SIZE, MS_SYNC) != 0) {
+        printf("ERROR: msync failed for shmem_input_address errno=%d=%s\n", errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
     }
 
     /*******/
@@ -3118,6 +3218,9 @@ extern void _realloc_trace (void)
         fflush(stderr);
         exit(-1);
     }
+
+    // Sync
+    fsync(shmem_output_fd);
 
     // Remap the memory
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
@@ -3798,4 +3901,25 @@ void log_chunk_player_main_trace(void)
     }
 
     printf("Chunk=%p size=%lu\n", chunk, mem_reads_size);
+}
+
+void file_lock(void)
+{
+    // Open (or create) the lock file. We don't need to write to it.
+    file_lock_fd = open(file_lock_name, O_CREAT | O_RDONLY, 0644);
+    if (file_lock_fd == -1) {
+        printf("ERROR: file_lock() failed calling open(%s) errno=%d=%s\n", file_lock_name, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(1);
+    }
+
+    // Try to acquire an exclusive lock, non-blocking.
+    if (flock(file_lock_fd, LOCK_EX | LOCK_NB) == -1) {
+        // If we fail to get the lock, another instance is running.
+        printf("ERROR: Another instance of this program is already running.\n");
+        fflush(stdout);
+        fflush(stderr);
+        exit(1);
+    }
 }

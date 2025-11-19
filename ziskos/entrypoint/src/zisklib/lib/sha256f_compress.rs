@@ -1,4 +1,4 @@
-use crate::syscalls::sha256f::{syscall_sha256_f, SyscallSha256Params};
+use crate::syscalls::{syscall_sha256_f, SyscallSha256Params};
 
 #[inline]
 pub fn sha256f_compress(state: &mut [u32; 8], blocks: &[[u8; 64]]) {

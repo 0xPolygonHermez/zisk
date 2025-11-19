@@ -1,3 +1,7 @@
+require "std_permutation.pil";
+require "std_range_check.pil";
+require "opids.pil";
+
 /*
     Memory Component (Mem)
     ======================
@@ -64,12 +68,6 @@
 
 */
 
-require "std_permutation.pil"
-require "std_range_check.pil"
-
-const int MEMORY_ID = 10;
-const int MEMORY_CONT_ID = 11;
-
 const int MEMORY_LOAD_OP = 1;
 const int MEMORY_STORE_OP = 2;
 const int MEMORY_REG_OP = 3;
@@ -83,7 +81,7 @@ const int MAX_RANGE_CHECK_CHUNK = 2**16;
 airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int bytes = 8,
                 const int base_address = 0, const int size_mb = 128, int immutable = 0,
                 const int free_input_mem = 0, const expr enable_flag = 1, const int use_predefined_ranges = 0, 
-                const int large_mem = 0, const int dual_mem = 0) {
+                const int large_mem = 0, const int dual_mem = 0, const int continuous_addresses = 0) {
 
     col fixed SEGMENT_L1 = [1,0...];
     const expr SEGMENT_LAST = SEGMENT_L1';
@@ -194,7 +192,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
     // this constraint "assumes" that previous values of this segment
 
-    direct_update_assumes(MEMORY_CONT_ID,
+    direct_update_assumes(MEMORY_CONTINUATION_ID,
                   [
                     base_address,               // identify area of memory
                     segment_id,                 // current segment_id
@@ -231,7 +229,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         SEGMENT_LAST * (step - segment_last_step) === 0;
     }
 
-    direct_update_proves(MEMORY_CONT_ID,
+    direct_update_proves(MEMORY_CONTINUATION_ID,
                   [
                     base_address,               // identify area of memory
                     segment_id + 1,             // next segment_id, for last segment
@@ -252,7 +250,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // to prevent redundant constraints.This flag is used to handle cases where a memory area is not
     // used during a given execution.
 
-    direct_global_update_proves(MEMORY_CONT_ID, [ base_address, 0, internal_base_address, 0, ...zeros], sel: enable_flag);
+    direct_global_update_proves(MEMORY_CONTINUATION_ID, [ base_address, 0, internal_base_address, 0, ...zeros], sel: enable_flag);
 
     // For security, ensure that the first address has the correct value to prevent adding a large
     // number of instances that could cause an "overflow" in the prime field.
@@ -337,15 +335,16 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
         const expr air.read_same_addr = (1 - addr_changes);
 
-        // If the address changes, the difference must be one
-
-        addr_changes * (delta_addr - 1) === 0;
+        if (continuous_addresses) {
+            // If the address changes, the difference must be one
+            addr_changes * (delta_addr - 1) === 0;
+        } else {
+            range_check(expression: delta_addr - 1, min: 0, max: 2**24 - 1, sel: addr_changes);
+        }
 
         // If the address does not change, the current address and previous must be the same.
 
         (1 - addr_changes) * (addr - previous_addr) === 0;
-
-
     } else {
 
         // In this case we don't need to substract one, as happends on immutable memory, because the step of first

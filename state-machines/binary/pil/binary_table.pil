@@ -1,321 +1,337 @@
 require "std_constants.pil";
-require "std_lookup.pil"
+require "std_lookup.pil";
+require "operations.pil";
+require "opids.pil";
 
 /* PIL Binary Operations Table used by Binary
-                                                                                                            Running Total
-    MINU       (OP:0x02)       2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |                     2^19
-    MIN        (OP:0x03)       2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |              2^20
-    MAXU       (OP:0x04)       2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |              2^20 + 2^19
-    MAX        (OP:0x05)       2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN) x 2^1 (RESULT_IS_A)     = 2^19 |       2^21
-    LT_ABS_NP  (OP:0x06)   *   2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^2 (CIN)                         = 2^19 |       2^21        + 2^19
-    LT_ABS_PN  (OP:0x07)   *   2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^2 (CIN)                         = 2^19 |       2^21 + 2^20
-    LTU        (OP:0x08)   *   2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20        + 2^18
-    LT         (OP:0x09)   *   2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20 + 2^19
-    GT         (OP:0x0a)   *   2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 |       2^21 + 2^20 + 2^19 + 2^18
-    EQ         (OP:0x0b)   *   2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^22
-    ADD        (OP:0x0c)       2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^22                     + 2^18
-    SUB        (OP:0x0d)       2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^22              + 2^19
-    LEU        (OP:0x0e)   *   2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^22              + 2^19 + 2^18
-    LE         (OP:0x0f)   *   2^8 (A) x 2^8 (B) x 2^1 (LAST) x 2^1 (CIN)                         = 2^18 | 2^22       + 2^20
-    AND        (OP:0x10)   **  2^8 (A) x 2^8 (B) x 2^1 (LAST)                                     = 2^17 | 2^22       + 2^20               + 2^17
-    OR         (OP:0x11)   **  2^8 (A) x 2^8 (B) x 2^1 (LAST)                                     = 2^17 | 2^22       + 2^20        + 2^18
-    XOR        (OP:0x12)   **  2^8 (A) x 2^8 (B) x 2^1 (LAST)                                     = 2^17 | 2^22       + 2^20        + 2^18 + 2^17
-    EXT_32     (OP:0x13)   *** 2^8 (A)                        x 2^1 (CIN) x 2^2 (FLAGS)           = 2^11 | 2^22       + 2^20        + 2^18 + 2^17 + 2^11 => < 2^23
-    --------------------------------------------------------------------------------------------------------------------------
-    (*)   Uses the carry of the last byte as its result
-    (**)  Do not use LAST, but the binary does so we need to consider it
-    (***) Do not use CIN, but we add it to simplify the FLAGS column
-    Note: EXT_32 is the only (unary) operation which is not a ZisK OP but it is used to prove the rest
+                                                                                     Running Total
+    MINU       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |                           + 2^18 + 2^17
+    MIN        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |                    + 2^19 + 2^18
+    MAXU       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |               2^20               + 2^17
+    MAX        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |               2^20 + 2^19
+    LT_ABS_NP  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)          =    2^19     |        2^21
+    LT_ABS_PN  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)          =    2^19     |        2^21        + 2^19 
+    LTU        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21        + 2^19 + 2^18
+    LT         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20
+    GT         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20        + 2^18
+    EQ         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20 + 2^19 
+    ADD        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20 + 2^19 + 2^18
+    SUB        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22
+    LEU        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22                      + 2^18
+    LE         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22               + 2^19
+    AND        2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19        + 2^17
+    OR         2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19 + 2^18     
+    XOR        2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19 + 2^18 + 2^17   
+    SEXT_00    2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 | 2^22        + 2^20                      + 2^16
+    SEXT_FF    2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 | 2^22        + 2^20         + 2^18
+    -------------------------------------------------------------------------------------------------------------------
+    Notes:
+    - MINU/MIN/MAXU/MAX: POS_IND=0 (2^18 rows with FLAGS), POS_IND=1 (2^17 rows without FLAGS)
+    - SEXT_00/SEXT_FF: FLAGS=0 (2^17 rows with CIN), FLAGS=1 (2^16 rows without CIN)
+    - Bitwise ops don't use POS_IND operationally, but include it for consistency with other ops
+    - Sign extension ops don't use A,B,CIN operationally, but include them for consistency with other ops
+    - SEXT_00, SEXT_FF are the only (unary) operation which are not a ZisK OP but are used to prove the rest
 */
 
-const int BINARY_TABLE_ID = 125;
-const int EXT_32_OP = 0x13;
-const int INITIAL_CARRY_LT_ABS = 0x02;
+const int BINARY_TABLE_SIZE = P2_22 + P2_20 + P2_18;
+const int OP_SEXT_00 = 0x200;
+const int OP_SEXT_FF = 0x201;
 
 airtemplate BinaryTable(const int N = 2**23) {
-    if (N < 2**23) {
-        error(`N must be at least 2^23, but N=${N} was provided`);
+    if (N < BINARY_TABLE_SIZE) {
+        error(`N must be at least ${BINARY_TABLE_SIZE}, but N=${N} was provided`);
     }
+
+    const int SIGN_BYTE = 0x80;
 
     // Input A (8 bits)
     col fixed A = [0..255]...;                          
 
     // Input B (8 bits)
-    col fixed B = [[0:P2_8..255:P2_8]:86, // 86 = 4*8 + 2*8 + 4*4 + 2*4 + 2*4 + 3*2
-                    0:P2_11]...;          // B is 0 for EXT_32
+    col fixed B = [0:P2_8..255:P2_8]...;
 
-    // Indicator of the last byte (1 bit)
-    col fixed LAST = [[0:P2_16, 1:P2_16]:(4*4), // MINU,MIN,MAXU,MAX
-                      [0:P2_16, 1:P2_16]:(2*4), // LT_ABS_NP,LT_ABS_PN
-                      [0:P2_16, 1:P2_16]:(4*2), // LTU,LT,GT,EQ
-                      [0:P2_16, 1:P2_16]:(2*2), // ADD,SUB
-                      [0:P2_16, 1:P2_16]:(2*2), // LEU,LE
-                      [0:P2_16, 1:P2_16]:3,     // AND,OR,XOR
-                       0:P2_11]...;
+    // Indicator of the byte position (<=2 bits)
+    //  - 2 indicates the first byte
+    //  - 1 indicates the last byte
+    //  - 0 indicates a middle byte
+    col fixed POS_IND = [[0:P2_18, 1:P2_17]:2,              // MINU,MIN
+                         [0:P2_18, 1:P2_17]:2,              // MAXU,MAX
+                         [0:P2_16..2:P2_16, 2:P2_16]:(2*2), // LT_ABS_NP,LT_ABS_PN
+                         [0:P2_16, 1:P2_16]:(4*2),          // LTU,LT,GT,EQ
+                         [0:P2_16, 1:P2_16]:(2*2),          // ADD,SUB
+                         [0:P2_16, 1:P2_16]:(2*2),          // LEU,LE
+                         [0:P2_16, 1:P2_16]:3,              // AND,OR,XOR
+                          0:(P2_17 + P2_16),                // SEXT_00
+                          0:(P2_17 + P2_16)]...;            // SEXT_FF
 
-    // Input carry (2 bits)
-    col fixed CIN = [[0:P2_17, 1:P2_17]:(4*2), // MINU,MIN,MAXU,MAX
-                     [0:P2_17..3:P2_17]:2,     // LT_ABS_NP,LT_ABS_PN
-                     [0:P2_17, 1:P2_17]:4,     // LTU,LT,GT,EQ
-                     [0:P2_17, 1:P2_17]:2,     // ADD,SUB
-                     [0:P2_17, 1:P2_17]:2,     // LEU,LE
-                      0:(P2_17*3),             // AND,OR,XOR
-                     [0:P2_8, 1:P2_8]:4]...;   // EXT_32
+    // Input carry (1 bit)
+    col fixed CIN = [[0:P2_16, 1:P2_16]:(3*2),        // MINU,MIN
+                     [0:P2_16, 1:P2_16]:(3*2),        // MAXU,MAX
+                     [0:P2_18, 1:P2_18]:2,            // LT_ABS_NP,LT_ABS_PN
+                     [0:P2_17, 1:P2_17]:4,            // LTU,LT,GT,EQ
+                     [0:P2_17, 1:P2_17]:2,            // ADD,SUB
+                     [0:P2_17, 1:P2_17]:2,            // LEU,LE
+                      0:(P2_17*3),                    // AND,OR,XOR
+                     [0:P2_16, 1:P2_16, 0:P2_16],     // SEXT_00,SEXT_FF
+                     [0:P2_16, 1:P2_16, 0:P2_16]]...; // SEXT_00,SEXT_FF
 
-    // Operation opcode (fixed values)
-    col fixed OP = [0x02:P2_19, 0x03:P2_19, 0x04:P2_19, 0x05:P2_19, // MINU,MIN,MAXU,MAX
-                    0x06:P2_19, 0x07:P2_19,                         // LT_ABS_NP,LT_ABS_PN
-                    0x08:P2_18, 0x09:P2_18, 0x0a:P2_18, 0x0b:P2_18, // LTU,LT,GT,EQ
-                    0x0c:P2_18, 0x0d:P2_18,                         // ADD,SUB
-                    0x0e:P2_18, 0x0f:P2_18,                         // LEU,LE
-                    0x10:P2_17, 0x11:P2_17, 0x12:P2_17,             // AND,OR,XOR
-                    0x13:P2_11]...;                                 // EXT_32
+    // Operation opcode
+    col fixed OP = [OP_MINU:(P2_18 + P2_17), OP_MIN:(P2_18 + P2_17),     // MINU,MIN
+                    OP_MAXU:(P2_18 + P2_17), OP_MAX:(P2_18 + P2_17),     // MAXU,MAX
+                    OP_LT_ABS_NP:P2_19, OP_LT_ABS_PN:P2_19,              // LT_ABS_NP,LT_ABS_PN
+                    OP_LTU:P2_18, OP_LT:P2_18, OP_GT:P2_18, OP_EQ:P2_18, // LTU,LT,GT,EQ
+                    OP_ADD:P2_18, OP_SUB:P2_18,                          // ADD,SUB
+                    OP_LEU:P2_18, OP_LE:P2_18,                           // LEU,LE
+                    OP_AND:P2_17, OP_OR:P2_17, OP_XOR:P2_17,             // AND,OR,XOR
+                    OP_SEXT_00:(P2_17 + P2_16),                          // SEXT_00
+                    OP_SEXT_FF:(P2_17 + P2_16)]...;                      // SEXT_FF
 
-    const int TABLE_SIZE = P2_19 * 6 + P2_18 * 8 + P2_17 * 3 + P2_11;
-    const int TABLE_BASE_EXT32 = P2_16 * 86;
+    col fixed C;     // Output C (8 bits)
+    col fixed FLAGS; // Combined flags (8 bits): cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
 
-    col fixed C;             // Output C (8 bits)
-    col fixed FLAGS;         // Combined flags (8 bits)
-
+    int relative_index = 0;
     #pragma transpile logfile:/tmp/binary_table.txt
     for (int i = 0; i < N; i++) {
-        const int [plast, op, a, b, cin] = [LAST[i], OP[i], A[i], B[i], CIN[i]];
+        const int [pos_ind, op, a, b, cin] = [POS_IND[i], OP[i], A[i], B[i], CIN[i]];
+        relative_index = (i == 0 || OP[i-1] != op) ? 0 : relative_index + 1;
+        const int pfirst = (pos_ind == 2) ? 1 : 0;
+        const int plast = (pos_ind == 1) ? 1 : 0;
         int c = 0;
         int cout = 0;
-        int op_is_min_max = 0;
-        int use_last_carry = 0;
-        int index = i % TABLE_SIZE;
-        int result_is_a = index < P2_21 ? ((index >> 18) & 0x01) : 0;
+        int result_is_a = 0;
+        int use_first_byte = 0;
+        int c_is_signed = 0;
         switch (op) {
-            case 0x02,0x03: // MINU,MIN: Minimum operation
+            case OP_MINU,OP_MIN: // MINU,MIN: Minimum operation
                 // Returns min(a,b). MINU for unsigned, MIN for signed.
                 // Example: MINU(5,3) = 3, MIN(-1,3) = -1
                 if (a < b) {
                     cout = 1;
                 } else if (a == b) {
                     cout = cin;
-                }
-
-                if (result_is_a) {
-                    c = a;
                 } else {
-                    c = b;
+                    cout = 0;
+                }
+                
+                if (plast == 0) {
+                    result_is_a = (relative_index >= P2_17) ? 1 : 0;
+                    c = result_is_a ? a : b;
+                } else {
+                    result_is_a = cout;
+
+                    // For signed MIN with different signs, the negative number is smaller
+                    if (op == OP_MIN && (a & SIGN_BYTE) != (b & SIGN_BYTE)) {
+                        result_is_a = (a & SIGN_BYTE) ? 1 : 0;
+                    }
+
+                    c = result_is_a ? a : b;
+                    c_is_signed = (c & SIGN_BYTE) ? 1 : 0;
+                    cout = 0;  // Clear carry for final result
                 }
 
-                if (op == 0x03 && plast && (a & 0x80) != (b & 0x80)) {
-                    cout = (a & 0x80) ? 1 : 0;
-                }
-
-                op_is_min_max = 1;
-
-            case 0x04,0x05: // MAXU,MAX: Maximum operation
+            case OP_MAXU,OP_MAX: // MAXU,MAX: Maximum operation
                 // Returns max(a,b). MAXU for unsigned, MAX for signed.
                 // Example: MAXU(5,3) = 5, MAX(-1,3) = 3
                 if (a > b) {
                     cout = 1;
                 } else if (a == b) {
                     cout = cin;
-                }
-
-                if (result_is_a) {
-                    c = a;
                 } else {
-                    c = b;
+                    cout = 0;
                 }
 
-                if (op == 0x05 && plast && (a & 0x80) != (b & 0x80)) {
-                    cout = (a & 0x80) ? 0 : 1;
+                if (plast == 0) {
+                    result_is_a = (relative_index >= P2_17) ? 1 : 0;
+                    c = result_is_a ? a : b;
+                } else {
+                    result_is_a = cout;
+
+                    // For signed MAX with different signs, the negative number is smaller
+                    if (op == OP_MAX && (a & SIGN_BYTE) != (b & SIGN_BYTE)) {
+                        result_is_a = (b & SIGN_BYTE) ? 1 : 0;
+                    }
+
+                    c = result_is_a ? a : b;
+                    c_is_signed = (c & SIGN_BYTE) ? 1 : 0;
+                    cout = 0;  // Clear carry for final result
                 }
 
-                op_is_min_max = 1;
-
-            case 0x06: // LT_ABS_NP: Absolute value comparison |a| < |b| where a < 0 and b > 0
+            case OP_LT_ABS_NP: // LT_ABS_NP: Absolute value comparison |a| < |b| where a < 0 and b > 0
                 // Compares absolute values when a is negative and b is positive
                 // Example: LT_ABS_NP(-3, 5) = 1 (|-3| < |5|), LT_ABS_NP(-7, 5) = 0 (|-7| > |5|)
+                const int _a = a ^ 0xFF;
+                const int _b = b;
+                const int sub = pfirst ? (_a + 1) - _b : _a - _b; // |a| - b
 
-                // The comparison is done by computing -a and comparing it to b
-                //
-                // Both necessary carries are encoded by cin in binary as 
-                //                  cin = 0bYX,
-                // where X is the carry of the LT operation and Y is 
-                // the carry of the operation a ^ 0xFF + _cop
-                //
-                // Since a < 0, _cop should be 1 at the first byte and _a >> 8 at the rest
-
-                // Decode the carries
-                const int _clt = cin & 0x01;
-                const int _cop = (cin & 0x02) >> 1;
-
-                const int _a = (a ^ 0xFF) + _cop;
-                const int _b = b;    
-
-                if ((_a  & 0xFF) < _b) {
+                if (sub < 0) {
                     cout = 1;
-                    c = plast;
-                } else if ((_a  & 0xFF) == _b) {
-                    cout = _clt;
-                    c = plast * _clt;
+                } else if (sub == 0) {
+                    cout = cin;
+                } else {
+                    cout = 0;
                 }
+                
+                c = 0;
 
-                // Encode the result carries
-                cout += 2*(_a >> 8);
+                use_first_byte = 1;
 
-                use_last_carry = plast;
-
-            case 0x07: // LT_ABS_PN: Absolute value comparison |a| < |b| where a > 0 and b < 0
+            case OP_LT_ABS_PN: // LT_ABS_PN: Absolute value comparison |a| < |b| where a > 0 and b < 0
                 // Compares absolute values when a is positive and b is negative
                 // Example: LT_ABS_PN(3, -5) = 1 (|3| < |-5|), LT_ABS_PN(7, -5) = 0 (|7| > |-5|)
-
-                // The comparison is done by computing -b and comparing it to a
-                //
-                // Both necessary carries are encoded by cin in binary as 
-                //                  cin = 0bYX,
-                // where X is the carry of the LT operation and Y is 
-                // the carry of the operation b ^ 0xFF + _cop
-                //
-                // Since b < 0, _cop should be 1 at the first byte and _b >> 8 at the rest
-
-                // Decode the carries
-                const int _clt = cin & 0x01;
-                const int _cop = (cin & 0x02) >> 1;
-
                 const int _a = a;
-                const int _b = (b ^ 0xFF) + _cop;            
+                const int _b = b ^ 0xFF;
+                const int sub = pfirst ? _a - (_b + 1) : _a - _b; // a - |b|
 
-                if (_a < (_b & 0xFF)) {
+                if (sub < 0) {
                     cout = 1;
-                    c = plast;
-                } else if (_a == (_b & 0xFF)) {
-                    cout = _clt;
-                    c = plast * _clt;
+                } else if (sub == 0) {
+                    cout = cin;
+                } else {
+                    cout = 0;
                 }
 
-                // Encode the result carries
-                cout += 2*(_b >> 8);
+                c = 0;
 
-                use_last_carry = plast;
+                use_first_byte = 1;
 
-            case 0x08,0x09: // LTU,LT: Less than comparison
+            case OP_LTU,OP_LT: // LTU,LT: Less than comparison
                 // Returns 1 if a < b, 0 otherwise. LTU for unsigned, LT for signed.
                 // Example: LTU(3,5) = 1, LT(-1,3) = 1, LTU(5,3) = 0
                 if (a < b) {
                     cout = 1;
-                    c = plast;
                 } else if (a == b) {
                     cout = cin;
-                    c = plast * cin;
+                } else {
+                    cout = 0;
                 }
+
+                c = 0;
 
                 // If the chunk is signed, then the result is the sign of a
-                if (op == 0x09 && plast && (a & 0x80) != (b & 0x80)) {
-                    c = (a & 0x80) ? 1 : 0;
-                    cout = c;
+                if (op == OP_LT && plast && (a & SIGN_BYTE) != (b & SIGN_BYTE)) {
+                    cout = (a & SIGN_BYTE) ? 1 : 0;
                 }
 
-                use_last_carry = plast;
-
-            case 0x0a: // GT: Greater than comparison (signed)
+            case OP_GT: // GT: Greater than comparison (signed)
                 // Returns 1 if a > b, 0 otherwise (signed comparison)
                 // Example: GT(5,3) = 1, GT(-1,3) = 0, GT(3,3) = 0
                 if (a > b) {
                     cout = 1;
-                    c = plast;
                 } else if (a == b) {
                     cout = cin;
-                    c = plast * cin;
+                } else {
+                    cout = 0;
                 }
+
+                c = 0;
 
                 // The result is the sign of b
-                if (plast && (a & 0x80) != (b & 0x80)) {
-                    c = (b & 0x80) ? 1 : 0;
-                    cout = c;
+                if (plast && (a & SIGN_BYTE) != (b & SIGN_BYTE)) {
+                    cout = (b & SIGN_BYTE) ? 1 : 0;
                 }
 
-                use_last_carry = plast;
-
-            case 0x0b: // EQ: Equality comparison
+            case OP_EQ: // EQ: Equality comparison
                 // Returns 1 if a == b, 0 otherwise
                 // Example: EQ(5,5) = 1, EQ(3,5) = 0
-                if (a == b && !cin) {
-                    c = plast;
+                if (cin == 0 && a == b) {
+                    cout = 0; // is_eq
                 } else {
-                    cout = 1;
+                    cout = 1; // is_neq
                 }
 
+                c = 0;
+
                 if (plast) {
+                    // cout = 0 means a == b => change cout = 1
                     cout = 1 - cout;
                 }
 
-                use_last_carry = plast;
-
-            case 0x0c: // ADD: Addition with carry
+            case OP_ADD: // ADD: Addition with carry
                 // Performs a + b + cin
                 // Example: ADD(5,3,0) = 8, ADD(255,1,0) = 0
-                c = (cin + a + b) & 0xFF;
-                cout = plast ? 0 : (cin + a + b) >> 8;
+                const int sum = cin + a + b;
+                c = sum & 0xFF;
+                cout = plast ? 0 : sum >> 8;
 
-            case 0x0d: // SUB: Subtraction with borrow
+                if (plast) {
+                    c_is_signed = (c & SIGN_BYTE) ? 1 : 0;
+                }
+
+            case OP_SUB: // SUB: Subtraction with borrow
                 // Performs a - b - cin (where cin is borrow)
                 // Example: SUB(5,3,0) = 2, SUB(3,5,0) = 254 with borrow=1
-                sign = (a - cin) >= b ? 0 : 1;
-                c = 256 * sign + a - cin - b;
-                cout = plast ? 0 : sign;
+                const int borrow = (a - cin) < b ? 1 : 0;
+                c = P2_8 * borrow + a - cin - b;
+                cout = plast ? 0 : borrow;
 
-            case 0x0e,0x0f: // LEU,LE: Less than or equal comparison
+                if (plast) {
+                    c_is_signed = (c & SIGN_BYTE) ? 1 : 0;
+                }
+
+            case OP_LEU,OP_LE: // LEU,LE: Less than or equal comparison
                 // Returns 1 if a <= b, 0 otherwise. LEU for unsigned, LE for signed.
                 // Example: LEU(3,5) = 1, LE(-1,3) = 1, LEU(5,3) = 0, LEU(3,3) = 1
                 if (a < b) {
-                    c = plast;
+                    cout = 0; // is_le
                 } else if (a == b) {
-                    c = plast * (1 - cin);
                     cout = cin;
                 } else {
-                    cout = 1;
+                    cout = 1; // is_gt
                 }
+
+                c = 0;
 
                 if (plast) {
+                    // cout = 0 means a <= b => change cout = 1
                     cout = 1 - cout;
+
+                    // If the chunk is signed, then the result is the sign of a
+                    if (op == OP_LE && (a & SIGN_BYTE) != (b & SIGN_BYTE)) {
+                        cout = (a & SIGN_BYTE) ? 1 : 0;
+                    }
                 }
 
-                use_last_carry = plast;
-
-            case 0x10: // AND: Bitwise AND
+            case OP_AND: // AND: Bitwise AND
                 // Performs bitwise AND operation: a & b
                 // Example: AND(0b1100, 0b1010) = 0b1000 = 8
                 c = a & b;
 
-            case 0x11: // OR: Bitwise OR
+            case OP_OR: // OR: Bitwise OR
                 // Performs bitwise OR operation: a | b
                 // Example: OR(0b1100, 0b1010) = 0b1110 = 14
                 c = a | b;
 
-            case 0x12: // XOR: Bitwise XOR
+            case OP_XOR: // XOR: Bitwise XOR
                 // Performs bitwise XOR operation: a ^ b
                 // Example: XOR(0b1100, 0b1010) = 0b0110 = 6
                 c = a ^ b;
 
-            case 0x13: // EXT_32: Sign extension
-                // Extends sign bit (bit 7) to all 8 bits of output
-                // Example: EXT_32(0x80) = 0xFF, EXT_32(0x7F) = 0x00
-                c = (a & 0x80) ? 0xFF : 0x00;
-                const int index_offset = (index - TABLE_BASE_EXT32) >> 9;
-                op_is_min_max = index_offset & 0x01;
-                if ((index_offset & 0x03) == 0x03) {
-                    result_is_a = 1;
-                } else {
-                    result_is_a = 0;
-                }
+            case OP_SEXT_00: // SEXT_00: Sign extension with 0
+                // Example: SEXT_00(a) = 0x00
+                cout = cin;
+                c = 0x00;
+
+                result_is_a = (relative_index >= P2_17) ? 1 : 0;
+                c_is_signed = 0;
+
+            case OP_SEXT_FF: // SEXT_FF: Sign extension with 1
+                // Example: SEXT_FF(a) = 0xFF
+                cout = cin;
+                c = 0xFF;
+
+                result_is_a = (relative_index >= P2_17) ? 1 : 0;
+                c_is_signed = 1;
 
             default:
-                error(`Invalid operation opcode: ${op} in row ${i}`);
+                error(`Invalid operation opcode: ${op} at row ${i}`);
         }
 
         C[i] = c;
-        const int flags = cout + 2*op_is_min_max + 4*result_is_a + 8*use_last_carry;
+        const int flags = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed;
         FLAGS[i] = flags;
-        log(`T[${i}] = [${plast}, ${op}, ${a}, ${b}, ${cin}, ${c}, ${flags}]`);
+        log(`T[${i}] = [${pos_ind}, ${op}, ${a}, ${b}, ${cin}, ${c}, ${flags}]`);
     }
 
     col witness multiplicity;
-    lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
+    lookup_proves(BINARY_TABLE_ID, [POS_IND, OP, A, B, CIN, C, FLAGS], multiplicity);
 }

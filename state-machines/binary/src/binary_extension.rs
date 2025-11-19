@@ -5,13 +5,17 @@
 
 use std::sync::Arc;
 
-use crate::{BinaryExtensionFrops, BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
+use crate::{
+    binary_constants::*, BinaryExtensionFrops, BinaryExtensionTableOp, BinaryExtensionTableSM,
+    BinaryInput,
+};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
+use zisk_pil::BinaryExtensionAirValues;
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
 #[cfg(feature = "packed")]
@@ -41,8 +45,6 @@ const SIGN_BYTE: u64 = 0x80;
 const LS_5_BITS: u64 = 0x1F;
 const LS_6_BITS: u64 = 0x3F;
 
-const SE_W_OP: u8 = 0x39;
-
 /// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.
 ///
 /// It processes binary extension-related operations and generates necessary traces and multiplicity
@@ -71,13 +73,17 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     /// An `Arc`-wrapped instance of `BinaryExtensionSM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Get the range check ID
-        let range_id = std.get_range_id(0, 0xFFFFFF, None);
+        let range_id = std.get_range_id(0, 0xFFFFFF, None).expect("Failed to get range ID");
 
         // Get the table ID
-        let table_id = std.get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID);
+        let table_id = std
+            .get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID)
+            .expect("Failed to get table ID");
 
         // Get the FROPS table ID
-        let frops_table_id = std.get_virtual_table_id(BinaryExtensionFrops::TABLE_ID);
+        let frops_table_id = std
+            .get_virtual_table_id(BinaryExtensionFrops::TABLE_ID)
+            .expect("Failed to get FROPS table ID");
 
         Arc::new(Self { std, range_id, table_id, frops_table_id })
     }
@@ -145,12 +151,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // Split a in bytes and store them in in1
         let a_bytes: [u8; 8] = a_val.to_le_bytes();
         for (i, value) in a_bytes.iter().enumerate() {
-            row.set_in1(i, *value);
+            row.set_free_in_a(i, *value);
         }
 
         // Store b low part into in2_low
         let in2_low: u64 = if op_is_shift { b_val & 0xFF } else { 0 };
-        row.set_in2_low(in2_low as u8);
+        row.set_free_in_b(in2_low as u8);
 
         // Store b lower bits when shifting, depending on operation size
         let b_low = if op_is_shift_word { b_val & LS_5_BITS } else { b_val & LS_6_BITS };
@@ -163,8 +169,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         };
         let in2_1: u32 = ((b_val >> 32) & 0xFFFFFFFF) as u32;
 
-        row.set_in2(0, in2_0);
-        row.set_in2(1, in2_1);
+        row.set_b(0, in2_0);
+        row.set_b(1, in2_1);
 
         // Calculate the trace output
         let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
@@ -254,7 +260,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendB => {
-                binary_extension_table_op = BinaryExtensionTableOp::SignExtendB;
+                binary_extension_table_op = BinaryExtensionTableOp::SextB;
                 for j in 0..8 {
                     let out: u64;
                     if j == 0 {
@@ -271,7 +277,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendH => {
-                binary_extension_table_op = BinaryExtensionTableOp::SignExtendH;
+                binary_extension_table_op = BinaryExtensionTableOp::SextH;
                 for j in 0..8 {
                     let out: u64;
                     if j == 0 {
@@ -290,7 +296,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 }
             }
             ZiskOp::SignExtendW => {
-                binary_extension_table_op = BinaryExtensionTableOp::SignExtendW;
+                binary_extension_table_op = BinaryExtensionTableOp::SextW;
                 for j in 0..4 {
                     let mut out = (a_bytes[j] as u64) << (8 * j as u64);
                     if j == 3 && ((a_bytes[j] as u64) & SIGN_BYTE) != 0 {
@@ -306,12 +312,9 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
         // Convert the trace output to field elements
         for (j, out) in t_out.iter().enumerate() {
-            row.set_out(j, 0, out[0] as u32);
-            row.set_out(j, 1, out[1] as u32);
+            row.set_free_in_c(j, 0, out[0] as u32);
+            row.set_free_in_c(j, 1, out[1] as u32);
         }
-
-        // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
-        row.set_multiplicity(true);
 
         for (i, a_byte) in a_bytes.iter().enumerate() {
             let row = BinaryExtensionTableSM::calculate_table_row(
@@ -323,7 +326,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             self.std.inc_virtual_row(self.table_id, row, 1);
         }
 
-        // Return successfully
         row
     }
 
@@ -338,8 +340,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         &self,
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut binary_e_trace = BinaryExtensionTraceType::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut binary_e_trace = BinaryExtensionTraceType::new_from_vec(trace_buffer)?;
 
         let num_rows = binary_e_trace.num_rows();
 
@@ -352,7 +354,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             BinaryExtensionTraceType::<F>::NUM_ROWS
         );
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
@@ -389,10 +391,9 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             }
         }
 
-        // Note: We can choose any operation that trivially satisfies the constraints on padding
-        // rows
+        // Set SEXT_B(0) as the padding row
         let mut padding_row = BinaryExtensionTraceRowType::default();
-        padding_row.set_op(SE_W_OP);
+        padding_row.set_op(SEXT_B_OP);
 
         binary_e_trace.buffer[total_inputs..num_rows]
             .par_iter_mut()
@@ -401,16 +402,16 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         let padding_size = num_rows - total_inputs;
         for i in 0..8 {
             let multiplicity = padding_size as u64;
-            let row = BinaryExtensionTableSM::calculate_table_row(
-                BinaryExtensionTableOp::SignExtendW,
-                i,
-                0,
-                0,
-            );
+            let row =
+                BinaryExtensionTableSM::calculate_table_row(BinaryExtensionTableOp::SextB, i, 0, 0);
             self.std.inc_virtual_row(self.table_id, row, multiplicity);
         }
 
-        AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
+        let mut air_values = BinaryExtensionAirValues::<F>::new();
+        air_values.padding_size = F::from_usize(padding_size);
+        Ok(AirInstance::new_from_trace(
+            FromTrace::new(&mut binary_e_trace).with_air_values(&mut air_values),
+        ))
     }
     pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
         for row in frops_inputs {

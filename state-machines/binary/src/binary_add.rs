@@ -5,9 +5,10 @@
 use crate::BinaryBasicFrops;
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use std::sync::Arc;
+use zisk_pil::BinaryAddAirValues;
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
 #[cfg(feature = "packed")]
@@ -44,10 +45,12 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A new `BinaryAddSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_id = std.get_range_id(0, 0xFFFF, None);
+        let range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
 
         // Get the Arithmetic FROPS table ID
-        let frops_table_id = std.get_virtual_table_id(BinaryBasicFrops::TABLE_ID);
+        let frops_table_id = std
+            .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
+            .expect("Failed to get FROPS table ID");
         // Create the BinaryAdd state machine
         Arc::new(Self { std, range_id, frops_table_id })
     }
@@ -93,8 +96,6 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             a >>= 32;
             b >>= 32;
         }
-        // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
-        row.set_multiplicity(true);
 
         // Return
         (row, range_checks)
@@ -111,15 +112,15 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         &self,
         inputs: &[Vec<[u64; 2]>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut add_trace = BinaryAddTraceType::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut add_trace = BinaryAddTraceType::new_from_vec(trace_buffer)?;
 
         let num_rows = add_trace.num_rows();
 
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(total_inputs <= num_rows);
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating BinaryAdd instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
@@ -152,15 +153,22 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         self.std.range_checks(self.range_id, multiplicities);
 
-        // Note: We can choose any operation that trivially satisfies the constraints on padding
-        // rows
-        let padding_row = BinaryAddTraceRowType::<F>::default();
-        add_trace.buffer[total_inputs..num_rows]
-            .par_iter_mut()
-            .for_each(|slot| *slot = padding_row);
+        // Set 0 + 0 as the padding row
+        let padding_size = num_rows - total_inputs;
+        if padding_size > 0 {
+            let padding_row = BinaryAddTraceRowType::<F>::default();
+            add_trace.buffer[total_inputs..num_rows]
+                .par_iter_mut()
+                .for_each(|slot| *slot = padding_row);
+        }
 
-        AirInstance::new_from_trace(FromTrace::new(&mut add_trace))
+        let mut air_values = BinaryAddAirValues::<F>::new();
+        air_values.padding_size = F::from_usize(padding_size);
+        Ok(AirInstance::new_from_trace(
+            FromTrace::new(&mut add_trace).with_air_values(&mut air_values),
+        ))
     }
+
     pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
         for row in frops_inputs {
             self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);

@@ -33,8 +33,8 @@ const REG_FLAG: &str = "rdx";
 const REG_STEP: &str = "r14";
 const REG_VALUE: &str = "r9";
 const REG_VALUE_W: &str = "r9d";
-const REG_VALUE_H: &str = "r9w";
-const REG_VALUE_B: &str = "r9b";
+//const REG_VALUE_H: &str = "r9w";
+//const REG_VALUE_B: &str = "r9b";
 const REG_ADDRESS: &str = "r10";
 const REG_MEM_READS_ADDRESS: &str = "r12";
 const REG_MEM_READS_SIZE: &str = "r13";
@@ -119,6 +119,7 @@ pub struct ZiskAsmContext {
     mem_chunk_id: String,   // 0, 1, 2, 3, 4...
     mem_chunk_mask: String, // Module 8 of the chunks we want to activate, e.g. 0x03
     mem_rsp: String,        // Backup of rsp register value from caller
+    mem_free_input: String, // Free input address (0x90000000) used in free call operations
 
     comments: bool, // true if we want to generate comments in the assembly source code
     boc: String,    // begin of comment: '/*', ';', '#', etc.
@@ -432,6 +433,7 @@ impl ZiskRom2Asm {
         ctx.mem_chunk_id = format!("qword {}[MEM_CHUNK_ID]", ctx.ptr);
         ctx.mem_chunk_mask = format!("qword {}[chunk_mask]", ctx.ptr);
         ctx.mem_rsp = format!("qword {}[MEM_RSP]", ctx.ptr);
+        ctx.mem_free_input = format!("qword {}[MEM_FREE_INPUT]", ctx.ptr);
 
         // Preamble
         *code += ".intel_syntax noprefix\n";
@@ -448,6 +450,7 @@ impl ZiskRom2Asm {
         *code += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
         *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
         *code += ".comm MEM_RSP, 8, 8\n";
+        *code += ".comm MEM_FREE_INPUT, 8, 8\n";
         if ctx.zip() {
             *code += ".comm MEM_CHUNK_ID, 8, 8\n";
         }
@@ -657,6 +660,8 @@ impl ZiskRom2Asm {
                     ctx.comment_str("active_chunk = 0")
                 );
             }
+            *code +=
+                &format!("\tmov {}, 0 {}\n", ctx.mem_free_input, ctx.comment_str("free_input = 0"));
         }
         if ctx.minimal_trace()
             || ctx.main_trace()
@@ -1342,6 +1347,9 @@ impl ZiskRom2Asm {
                 SRC_MEM => {
                     *code += &ctx.full_line_comment("b=SRC_MEM".to_string());
 
+                    let b_is_free_input = instruction.b_offset_imm0 == FREE_INPUT_ADDR
+                        && instruction.b_use_sp_imm1 == 0;
+
                     if !ctx.chunk_player_mem_reads_collect_main() {
                         // Calculate memory address
                         *code += &format!(
@@ -1368,15 +1376,27 @@ impl ZiskRom2Asm {
                     if !ctx.chunk_player_mt_collect_mem()
                         && !ctx.chunk_player_mem_reads_collect_main()
                     {
-                        *code += &format!(
-                            "\tmov {}, [{}] {}\n",
-                            if ctx.store_b_in_c { REG_C } else { REG_B },
-                            REG_ADDRESS,
-                            ctx.comment(format!(
-                                "{} = mem[address]",
-                                if ctx.store_b_in_c { "c" } else { "b" }
-                            ))
-                        );
+                        if b_is_free_input {
+                            *code += &format!(
+                                "\tmov {}, {} {}\n",
+                                if ctx.store_b_in_c { REG_C } else { REG_B },
+                                ctx.mem_free_input,
+                                ctx.comment(format!(
+                                    "{} = mem_free_input",
+                                    if ctx.store_b_in_c { "c" } else { "b" }
+                                ))
+                            );
+                        } else {
+                            *code += &format!(
+                                "\tmov {}, [{}] {}\n",
+                                if ctx.store_b_in_c { REG_C } else { REG_B },
+                                REG_ADDRESS,
+                                ctx.comment(format!(
+                                    "{} = mem[address]",
+                                    if ctx.store_b_in_c { "c" } else { "b" }
+                                ))
+                            );
+                        }
                     }
 
                     // Generate mem reads
@@ -3318,7 +3338,7 @@ impl ZiskRom2Asm {
         /**********************/
         /* READ_ONLY ROM DATA */
         /**********************/
-
+        /*
         *code += "\n";
         *code += ".global write_ro_data\n";
         *code += "write_ro_data:\n";
@@ -3378,6 +3398,7 @@ impl ZiskRom2Asm {
 
         Self::pop_external_registers(&mut ctx, code);
         *code += "\tret\n\n";
+        */
 
         /*****************/
         /* BRANCH TABLES */
@@ -5553,17 +5574,16 @@ impl ZiskRom2Asm {
                         ctx.comment_str("value = ctx.result[0]")
                     );
                     *code += &format!(
-                        "\tmov [{}], {} {}\n",
-                        REG_ADDRESS,
+                        "\tmov {}, {} {}\n",
+                        ctx.mem_free_input,
                         REG_VALUE,
                         ctx.comment_str("free_input = value")
                     );
                     *code += &format!("\tjmp pc_{:x}_fcall_result_done\n", ctx.pc);
                     *code += &format!("pc_{:x}_fcall_result_zero:\n", ctx.pc);
                     *code += &format!(
-                        "\tmov qword {}[{}], 0 {}\n",
-                        ctx.ptr,
-                        REG_ADDRESS,
+                        "\tmov {}, 0 {}\n",
+                        ctx.mem_free_input,
                         ctx.comment_str("free_input = 0")
                     );
                     *code += &format!("pc_{:x}_fcall_result_done:\n", ctx.pc);
@@ -5615,14 +5635,7 @@ impl ZiskRom2Asm {
                     );
                     *code += &format!(
                         "\tmov {}, {} {}\n",
-                        REG_ADDRESS,
-                        FREE_INPUT_ADDR,
-                        ctx.comment_str("address = free_input")
-                    );
-                    *code += &format!(
-                        "\tmov qword {}[{}], {} {}\n",
-                        ctx.ptr,
-                        REG_ADDRESS,
+                        ctx.mem_free_input,
                         REG_VALUE,
                         ctx.comment_str("free_input = value")
                     );

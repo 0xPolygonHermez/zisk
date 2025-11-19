@@ -1,5 +1,5 @@
 // extern crate env_logger;
-use crate::commands::{get_proving_key, Field};
+use crate::commands::get_proving_key;
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
@@ -17,9 +17,6 @@ pub struct ZiskCheckSetup {
     /// Setup folder path
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
-
-    #[clap(long, default_value_t = Field::Goldilocks)]
-    pub field: Field,
 
     #[clap(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
@@ -39,15 +36,13 @@ impl ZiskCheckSetup {
 
         initialize_logger(self.verbose.into(), None);
 
-        match self.field {
-            Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
-                get_proving_key(self.proving_key.as_ref()),
-                self.aggregation,
-                self.final_snark,
-                self.verbose.into(),
-            )
-            .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
-        };
+        ProofMan::<Goldilocks>::check_setup(
+            get_proving_key(self.proving_key.as_ref()),
+            self.aggregation,
+            self.final_snark,
+            self.verbose.into(),
+        )
+        .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?;
 
         Ok(())
     }
