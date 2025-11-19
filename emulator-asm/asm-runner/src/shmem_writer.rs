@@ -31,6 +31,7 @@ impl SharedMemoryWriter {
         Ok(Self { ptr: ptr as *mut u8, size, fd, name: name.to_string() })
     }
 
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
         let c_name = CString::new(name).expect("CString::new failed");
         let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
@@ -44,7 +45,9 @@ impl SharedMemoryWriter {
     }
 
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-    fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {}
+    fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
+        0
+    }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &str) -> *mut c_void {
