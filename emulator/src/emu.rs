@@ -1687,7 +1687,7 @@ impl<'a> Emu<'a> {
         // Print stats report
         if self.ctx.do_stats {
             self.ctx.stats.update_costs();
-            let report = self.ctx.stats.report();
+            let report = self.ctx.stats.report(self.rom);
             println!("{report}");
             if let Some(store_op_output_file) = &options.store_op_output {
                 self.ctx.stats.flush_op_data_to_file(store_op_output_file).unwrap();

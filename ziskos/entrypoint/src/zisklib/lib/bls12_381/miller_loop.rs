@@ -1,17 +1,11 @@
 //! Miller loop for BLS12-381
 
-use crate::{
-    fcall_bls12_381_add_line_coeffs, fcall_bls12_381_dbl_line_coeffs,
-    zisklib::lib::{
-        bls12_381::{constants::EXT_U_INV, fp12::conjugate_fp12_bls12_381},
-        utils::eq,
-    },
-};
+use crate::zisklib::{eq, fcall_bls12_381_add_line_coeffs, fcall_bls12_381_dbl_line_coeffs};
 
 use super::{
-    constants::X_ABS_BIN_BE,
+    constants::{EXT_U_INV, X_ABS_BIN_BE},
     fp::{inv_fp_bls12_381, mul_fp_bls12_381, neg_fp_bls12_381},
-    fp12::{sparse_mul_fp12_bls12_381, square_fp12_bls12_381},
+    fp12::{conjugate_fp12_bls12_381, sparse_mul_fp12_bls12_381, square_fp12_bls12_381},
     fp2::{
         add_fp2_bls12_381, dbl_fp2_bls12_381, mul_fp2_bls12_381, neg_fp2_bls12_381,
         scalar_mul_fp2_bls12_381, square_fp2_bls12_381, sub_fp2_bls12_381,

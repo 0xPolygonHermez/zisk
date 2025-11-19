@@ -1,6 +1,6 @@
 //! Operations on the twist E': y² = x³ + 4·(1+u) of the BLS12-381 curve
 
-use crate::{fcall_msb_pos_384, zisklib::lib::utils::eq};
+use crate::zisklib::{eq, fcall_msb_pos_384};
 
 use super::{
     constants::{ETWISTED_B, EXT_U, EXT_U_INV, FROBENIUS_GAMMA13, FROBENIUS_GAMMA14, X_ABS_BIN_BE},

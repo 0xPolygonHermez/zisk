@@ -1,0 +1,33 @@
+[package]
+name = "zisk-sdk"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+proofman-common = { workspace = true }
+proofman-util = { workspace = true }
+zisk-common = { workspace = true }
+fields = { workspace = true }
+libloading = { workspace = true }
+anyhow = { workspace = true }
+proofman = { workspace = true }
+rom-setup = { workspace = true }
+asm-runner = { workspace = true }
+colored = { workspace = true }
+tracing = { workspace = true }
+zstd = { workspace = true }
+bytemuck = { workspace = true }
+zisk-distributed-common = { workspace = true }
+
+[features]
+default = []
+gpu = []
+stats = []
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }

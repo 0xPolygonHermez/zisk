@@ -1,11 +1,11 @@
 //! Operations on the BLS12-381 curve E: y² = x³ + 4
 
 use crate::{
-    bls12_381_curve_add::{syscall_bls12_381_curve_add, SyscallBls12_381CurveAddParams},
-    bls12_381_curve_dbl::syscall_bls12_381_curve_dbl,
-    fcall_msb_pos_384,
-    point::SyscallPoint384,
-    zisklib::lib::utils::eq,
+    syscalls::{
+        syscall_bls12_381_curve_add, syscall_bls12_381_curve_dbl, SyscallBls12_381CurveAddParams,
+        SyscallPoint384,
+    },
+    zisklib::{eq, fcall_msb_pos_384},
 };
 
 use super::{

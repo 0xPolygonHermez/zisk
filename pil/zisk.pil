@@ -1,57 +1,49 @@
-const int OPERATION_BUS_ID = 5000;
+require "std_direct.pil";
 
-require "std_direct.pil"
-require "rom/pil/rom.pil"
-require "main/pil/main.pil"
-require "mem/pil/mem.pil"
-require "mem/pil/mem_align.pil"
-require "mem/pil/mem_align_byte.pil"
-require "mem/pil/mem_align_rom.pil"
-require "mem/pil/dual_byte.pil"
-require "frequent-ops/pil/frequent_ops.pil"
-require "binary/pil/binary.pil"
-require "binary/pil/binary_table.pil"
-require "binary/pil/binary_extension.pil"
-require "binary/pil/binary_extension_table.pil"
-require "binary/pil/binary_add.pil"
-require "arith/pil/arith.pil"
-require "arith_eq/pil/arith_eq.pil"
-require "arith_eq_384/pil/arith_eq_384.pil"
-require "keccakf/pil/keccakf.pil"
-require "keccakf/pil/keccakf_table.pil"
-require "sha256f/pil/sha256f.pil"
-require "big_int/pil/big_int_add.pil"
+require "operations.pil";
+require "opids.pil";
+
+require "rom/pil/rom.pil";
+require "main/pil/main.pil";
+require "mem/pil/mem.pil";
+require "mem/pil/mem_align.pil";
+require "mem/pil/mem_align_byte.pil";
+require "frequent-ops/pil/frequent_ops.pil";
+require "binary/pil/binary.pil";
+require "binary/pil/binary_extension.pil";
+require "binary/pil/binary_add.pil";
+require "arith/pil/arith.pil";
+require "big_int/pil/big_int_add.pil";
+require "arith_eq/pil/arith_eq.pil";
+require "arith_eq_384/pil/arith_eq_384.pil";
+require "keccakf/pil/keccakf.pil";
+require "sha256f/pil/sha256f.pil";
 
 proofval enable_input_data;
 enable_input_data * (1 - enable_input_data);
 
+proofval enable_rom_data;
+enable_rom_data * (1 - enable_rom_data);
+
 const int PUBLIC_INPUTS_64_BITS = 32;  // 32 x 64 bits = 2048 bits
 public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
 
-const int PUBLIC_OP = 0x30;
-
-const int ARITH_FROPS_TABLE_ID = 5010;
-const int BINARY_BASIC_FROPS_TABLE_ID = 5011;
-const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
-
-const int ADD256_OP = 0xF0; 
-
 airgroup Zisk {
     // Virtual Tables Configuration
-    set_max_std_tables_bits(21);
-    set_max_num_rows_virtual(1 << 21); // Set the maximum rows for virtual tables
+    set_max_std_tables_bits(20);
+    set_max_num_rows_virtual(1 << 20); // Set the maximum rows for virtual tables
     set_max_num_virtual_tables(2);
-    set_group_virtual_tables(table_ids: [ARITH_TABLE_ID, ARITH_RANGE_TABLE_ID, ARITH_EQ_LT_TABLE_ID, BINARY_EXTENSION_TABLE_ID, BINARY_TABLE_ID, MEM_ALIGN_ROM_ID, KECCAKF_TABLE_ID]);
-    set_group_virtual_tables(table_ids: [BINARY_EXTENSION_FROPS_TABLE_ID, BINARY_BASIC_FROPS_TABLE_ID, ARITH_FROPS_TABLE_ID]);
+    set_group_virtual_tables(table_ids: [ARITH_TABLE_ID, ARITH_RANGE_TABLE_ID, ARITH_EQ_LT_TABLE_ID, BINARY_EXTENSION_TABLE_ID, BINARY_TABLE_ID, MEMORY_ALIGN_ROM_ID, KECCAKF_TABLE_ID]);
+    set_group_virtual_tables(table_ids: [BINARY_EXTENSION_FROPS_TABLE_ID, BINARY_FROPS_TABLE_ID, ARITH_FROPS_TABLE_ID]);
 
     // Main Program
     Main(N: 2**22);
-    Rom(N: 2**21);
+    Rom(N: 2**22);
 
     // Memory
     Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
-    Mem(N: 2**21, base_address: 0x8000_0000, immutable: 1) alias RomData;
-    Mem(N: 2**21, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
+    Mem(N: 2**21, base_address: 0x8000_0000, size_mb: 128, immutable: 1, enable_flag: enable_rom_data) alias RomData;
+    Mem(N: 2**21, base_address: 0x9000_0000, size_mb: 128, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
 
     MemAlign(N: 2**21, use_predefined_ranges: 0);
     MemAlignByte(N: 2**22, read: 1, write: 1);
@@ -69,17 +61,17 @@ airgroup Zisk {
 
     Binary(N: 2**22);
     BinaryAdd(N: 2**22);
-    virtual BinaryTable();
+    virtual BinaryTable(BINARY_TABLE_SIZE);
     BinaryExtension(N: 2**22);
-    virtual BinaryExtensionTable();
+    virtual BinaryExtensionTable(BINARY_EXTENSION_TABLE_SIZE);
 
-    virtual FrequentOps(13084068, table_id: BINARY_BASIC_FROPS_TABLE_ID, 
+    virtual FrequentOps(13084068, table_id: BINARY_FROPS_TABLE_ID, 
                         bin_file: "state-machines/binary/src/binary_basic_frops_fixed.bin") alias BinaryBasicFrops;
     virtual FrequentOps(1607204, table_id: BINARY_EXTENSION_FROPS_TABLE_ID, 
                         bin_file: "state-machines/binary/src/binary_extension_frops_fixed.bin") alias BinaryExtensionFrops;
 
     // Precompiles
-    BigIntAdd(N: 2**20, bits: 256, operation_code: ADD256_OP) alias Add256;
+    BigIntAdd(N: 2**20, bits: 256, operation_code: OP_ADD256) alias Add256;
     ArithEq(N: 2**20);
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
@@ -91,10 +83,10 @@ airgroup Zisk {
     const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + KECCAKF_BITS + 1;
     virtual KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);
 
-    Sha256f(N: 2**18, RC: 2, RB: 32);
+    Sha256f(N: 2**18);
 
     // Public Inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {
-        direct_global_update_proves(OPERATION_BUS_ID, [PUBLIC_OP, i, 0, inputs[i*2], inputs[i*2 + 1], inputs[i*2], inputs[i*2 + 1], 0]);
+        direct_global_update_proves(OPERATION_BUS_ID, [OP_PUBOUT, i, 0, inputs[i*2], inputs[i*2 + 1], inputs[i*2], inputs[i*2 + 1], 0]);
     }
 }

@@ -2,7 +2,7 @@ use fields::PrimeField64;
 use std::sync::Arc;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{ArithEqTrace, ArithEqTraceRow};
@@ -65,12 +65,14 @@ impl<F: PrimeField64> ArithEqSM<F> {
         // Compute some useful values
         let num_available_ops = ArithEqTraceType::<F>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP;
         let p2_22 = 1 << 22;
-        let q_hsc_range_id = std.get_range_id(0, p2_22 - 1, None);
-        let chunk_range_id = std.get_range_id(0, 0xFFFF, None);
-        let carry_range_id = std.get_range_id(-(p2_22 - 1), p2_22, None);
+        let q_hsc_range_id = std.get_range_id(0, p2_22 - 1, None).expect("Failed to get range ID");
+        let chunk_range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
+        let carry_range_id =
+            std.get_range_id(-(p2_22 - 1), p2_22, None).expect("Failed to get range ID");
 
         // Get the table ID
-        let table_id = std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID);
+        let table_id =
+            std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
 
         Arc::new(Self {
             std,
@@ -461,13 +463,13 @@ impl<F: PrimeField64> ArithEqSM<F> {
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEqInput>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut trace = ArithEqTraceType::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = ArithEqTraceType::new_from_vec(trace_buffer)?;
         let num_rows = trace.num_rows();
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
         let num_rows_needed = total_inputs * ARITH_EQ_ROWS_BY_OP;
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating ArithEq instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,
@@ -522,6 +524,6 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
         timer_stop_and_log_trace!(ARITH_EQ_TRACE);
 
-        AirInstance::new_from_trace(FromTrace::new(&mut trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }
 }

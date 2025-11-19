@@ -13,7 +13,7 @@ use crate::{
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
@@ -64,13 +64,17 @@ impl<F: PrimeField64> ArithFullSM<F> {
     /// An `Arc`-wrapped instance of `ArithFullSM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Get the Arithmetic table ID
-        let table_id = std.get_virtual_table_id(ArithTableSM::TABLE_ID);
+        let table_id =
+            std.get_virtual_table_id(ArithTableSM::TABLE_ID).expect("Failed to get table ID");
 
         // Get the Arithmetic Range table ID
-        let range_table_id = std.get_virtual_table_id(ArithRangeTableSM::TABLE_ID);
+        let range_table_id = std
+            .get_virtual_table_id(ArithRangeTableSM::TABLE_ID)
+            .expect("Failed to get range table ID");
 
         // Get the Arithmetic FROPS table ID
-        let frops_table_id = std.get_virtual_table_id(ArithFrops::TABLE_ID);
+        let frops_table_id =
+            std.get_virtual_table_id(ArithFrops::TABLE_ID).expect("Failed to get FROPS table ID");
 
         Arc::new(Self { std, table_id, range_table_id, frops_table_id })
     }
@@ -86,8 +90,8 @@ impl<F: PrimeField64> ArithFullSM<F> {
         &self,
         inputs: &[Vec<OperationData<u64>>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut arith_trace = ArithTraceType::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut arith_trace = ArithTraceType::new_from_vec(trace_buffer)?;
 
         let num_rows = arith_trace.num_rows();
 
@@ -97,7 +101,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         let mut range_table_inputs = ArithRangeTableInputs::new();
         let mut table_inputs = ArithTableInputs::new();
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Arith instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
@@ -170,7 +174,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
             self.std.inc_virtual_row(self.range_table_id, row as u64, multiplicity);
         }
 
-        AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut arith_trace)))
     }
 
     pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {

@@ -1,8 +1,8 @@
-require "std_lookup.pil"
+require "std_lookup.pil";
+require "operations.pil";
+require "opids.pil";
 
-const int ARITH_TABLE_ID = 331;
-
-airtemplate ArithTable(int N = 2**7, int generate_table = 0) {
+airtemplate ArithTable(const int N = 2**7, const int generate_table = 0) {
 
     // N = 74
 
@@ -20,8 +20,6 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 0) {
     //  1   1   0   0  divu_w   remu_w     0xbc 188  0xbd 189  =0   =0   =0   =0   a1   d1               a1      ,d1
     //  1   1   1   1  div_w    rem_w      0xbe 190  0xbf 191  a1   b1   c1   d1   a1   d1               a1,b1,c1,d1
 
-    const int OPS[14] = [0xb0, 0xb1, 0xb3, 0xb4, 0xb5, 0xb6, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf];
-
     col fixed OP;
     col fixed FLAGS;
     col fixed RANGE_AB;
@@ -38,10 +36,11 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 0) {
         }
     }
 
-    for (int opcode = 0xb0; opcode <= 0xbf; ++opcode) {
-        if (opcode == 0xb2 || opcode == 0xb7) {
-            continue;
-        }
+    const int OPS[14] = [OP_MULU, OP_MULUH, OP_MULSUH, OP_MUL, OP_MULH, OP_MUL_W,
+                         OP_DIVU, OP_REMU, OP_DIV, OP_REM,
+                         OP_DIVU_W, OP_REMU_W, OP_DIV_W, OP_REM_W];
+    for (int iop = 0; iop < 14; ++iop) {
+        const int opcode = OPS[iop];
         int m32 = 0;    // 32 bits operation
         int div = 0;    // division operation (div,rem)
         int sa = 0;
@@ -50,62 +49,62 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 0) {
         int main_div = 0;
         string opname = "";
         switch (opcode) {
-            case 0xb0:
+            case OP_MULU:
                 opname = "mulu";
                 main_mul = 1;
-            case 0xb1:
+            case OP_MULUH:
                 opname = "mulh";
-            case 0xb3:
+            case OP_MULSUH:
                 opname = "mulsuh";
                 sa = 1;
-            case 0xb4:
+            case OP_MUL:
                 opname = "mul";
                 sa = 1;
                 sb = 1;
                 main_mul = 1;
-            case 0xb5:
+            case OP_MULH:
                 opname = "mulh";
                 sa = 1;
                 sb = 1;
-            case 0xb6:
+            case OP_MUL_W:
                 opname = "mul_w";
                 m32 = 1;
                 main_mul = 1;
-            case 0xb8:
+            case OP_DIVU:
                 opname = "divu";
                 div = 1;
                 main_div = 1;
-            case 0xb9:
+            case OP_REMU:
                 opname = "remu";
                 div = 1;
-            case 0xba:
+            case OP_DIV:
                 opname = "div";
                 sa = 1;
                 sb = 1;
                 div = 1;
                 main_div = 1;
-            case 0xbb:
+            case OP_REM:
                 opname = "rem";
                 sa = 1;
                 sb = 1;
                 div = 1;
-            case 0xbc:
+            case OP_DIVU_W:
                 opname = "divu_w";
                 div = 1;
                 m32 = 1;
                 main_div = 1;
-            case 0xbd:
+            case OP_REMU_W:
                 opname = "remu_w";
                 div = 1;
                 m32 = 1;
-            case 0xbe:
+            case OP_DIV_W:
                 opname = "div_w";
                 sa = 1;
                 sb = 1;
                 div = 1;
                 m32 = 1;
                 main_div = 1;
-            case 0xbf:
+            case OP_REM_W:
                 opname = "rem_w";
                 sa = 1;
                 sb = 1;
@@ -229,9 +228,9 @@ airtemplate ArithTable(int N = 2**7, int generate_table = 0) {
             if (generate_table) {
                 // println(`OP:${opcode} na:${na} nb:${nb} np:${np} nr:${nr} sext:${sext} m32:${m32} div:${div}`,
                 //         `div_by_zero:${div_by_zero} div_overflow:${div_overflow} sa:${sa} sb:${sb} main_mul:${main_mul}`,
-                //         `main_div:${main_div} signed:${signed} range_ab:${range_ab} range_cd:${range_cd} index:${(opcode - 0xb0) * 128 + icase} icase:${icase}`);
+                //         `main_div:${main_div} signed:${signed} range_ab:${range_ab} range_cd:${range_cd} index:${(opcode - OP_MULU) * 128 + icase} icase:${icase}`);
 
-                op2row[(opcode - 0xb0) * 128 + icase] = index;
+                op2row[(opcode - OP_MULU) * 128 + icase] = index;
                 code = code + `[${opcode}, ${flags}, ${range_ab}, ${range_cd}],`;
             }
             ++index;

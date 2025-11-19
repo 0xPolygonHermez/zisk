@@ -197,27 +197,27 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
     cargo run --release --bin binary_extension_frops_fixed_gen
     ```
 
-4. Compile ZisK PIL:
+5. Compile ZisK PIL:
     ```bash
     node ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
     ```
 
     This command will create the `pil/zisk.pilout` file
 
-7. Generate setup data: (this step may take 30-45 minutes):
+6. Generate setup data: (this step may take 30-45 minutes):
     ```bash
     node ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r
     ```
 
     This command generates the `build/provingKey` directory.
 
-8. Copy (or move) the `build/provingKey` directory to `$HOME/.zisk` directory:
+7. Copy (or move) the `build/provingKey` directory to `$HOME/.zisk` directory:
 
     ```bash
     cp -R build/provingKey $HOME/.zisk
     ```
 
-9. Generate constant tree files:
+8. Generate constant tree files:
     ```bash
     cargo-zisk check-setup -a
     ```

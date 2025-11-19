@@ -1,23 +1,26 @@
-require "std_lookup.pil"
-require "std_range_check.pil"
+require "std_lookup.pil";
+require "std_range_check.pil";
+require "operations.pil";
+require "opids.pil";
+require "binary_extension_table.pil";
 
 // Coprocessor in charge of performing standard RISCV binary operations
 
 /*
 List:
-    ┼────────┼────────┼──────────┼
-    │  name  │  bits  │   op     │
-    ┼────────┼────────┼──────────┼
-    │  SLL   │   64   │   0x31   │
-    │  SRL   │   64   │   0x32   │
-    │  SRA   │   64   │   0x33   │
-    │  SLL_W │   32   │   0x34   │
-    │  SRL_W │   32   │   0x35   │
-    │  SRA_W │   32   │   0x36   │
-    │  SE_B  │   32   │   0x37   │
-    │  SE_H  │   32   │   0x38   │
-    │  SE_W  │   32   │   0x39   │
-    ┼────────┼────────┼──────────┼
+    ┼──────────┼────────┼──────────┼
+    │  name    │  bits  │   op     │
+    ┼──────────┼────────┼──────────┼
+    │  SLL     │   64   │   0x21   │
+    │  SRL     │   64   │   0x22   │
+    │  SRA     │   64   │   0x23   │
+    │  SLL_W   │   32   │   0x24   │
+    │  SRL_W   │   32   │   0x25   │
+    │  SRA_W   │   32   │   0x26   │
+    │  SEXT_B  │   32   │   0x27   │
+    │  SEXT_H  │   32   │   0x28   │
+    │  SEXT_W  │   32   │   0x29   │
+    ┼──────────┼────────┼──────────┼
 
 Examples:
 =======================================
@@ -50,7 +53,7 @@ x    in1[x]    out[x][0]     out[x][1]
 ---------------------------------------
 Result:        0x33221100    0x00000000
 
-SE_H
+SEXT_H
 x    in2[x]    out[x][0]     out[x][1]
 ---------------------------------------
 0    0xbc      0x000000bc    0x00000000
@@ -65,44 +68,67 @@ x    in2[x]    out[x][0]     out[x][1]
 Result:        0xFFFF8abc    0xFFFFFFFF
 */
 
-airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID) {
+airtemplate BinaryExtension(const int N = 2**18, const int bits = 64, const int operation_bus_id = OPERATION_BUS_ID) {
+    if (bits != 64) {
+        error(`Currently only bits=64 is supported, got bits=${bits}`);
+    }
 
-    const int bits = 64;
-    const int bytes = bits / 8;
+    // Default values
+    const int BYTES = bits / 8;
+    const int HALF_BYTES = BYTES / 2;
+    const int BYTE_BASE = (1 << BYTES);
 
-    col witness bits(6) op;
-    col witness bits(8) in1[bytes];
-    col witness bits(8) in2_low;
+    // Primary columns
+    col witness bits(6)  op;                  // operation code
+    col witness bits(8)  free_in_a[BYTES];    // input A per byte
+    col witness bits(8)  free_in_b;           // input B (only one byte)
+    col witness bits(32) free_in_c[BYTES][2]; // output C byte, split in 2 parts
     
-    col witness bits(32) out[bytes][2];
-    col witness bits(1) op_is_shift;
+    // Flags and helpers
+    col witness bits(1)  op_is_shift;         // 1 if operation is in the shift family; 0 otherwise
 
     // Constraints to check the correctness of each binary operation
-    for (int j = 0; j < bytes; j++) {
-       lookup_assumes(BINARY_EXTENSION_TABLE_ID, [op, j, in1[j], in2_low, out[j][0], out[j][1], op_is_shift]);
+    for (int j = 0; j < BYTES; j++) {
+       lookup_assumes(BINARY_EXTENSION_TABLE_ID, [op, j, free_in_a[j], free_in_b, free_in_c[j][0], free_in_c[j][1], op_is_shift]);
     }
 
     // Constraints to make sure that this component is called from the main component
-    col witness bits(32) in2[2]; // in2[0] only requires 24 bits
+    col witness bits(32) b[2];
+    range_check(expression: b[0], min: 0, max: 2**24 - 1, sel: op_is_shift);
 
-    expr in1_low = in1[0] + in1[1]*2**8 + in1[2]*2**16 + in1[3]*2**24;
-    expr in1_high = in1[4] + in1[5]*2**8 + in1[6]*2**16 + in1[7]*2**24;
+    expr a[2];
+    a[0] = 0;
+    a[1] = 0;
+    for (int j = 0; j < HALF_BYTES; j++) {
+        const int byte_weight = BYTE_BASE ** j;
+        a[0] += (byte_weight * free_in_a[j]);
+        a[1] += (byte_weight * free_in_a[HALF_BYTES + j]);
+    }
 
-    col witness bits(1) multiplicity;
+    expr c[2];
+    c[0] = 0;
+    c[1] = 0;
+    for (int j = 0; j < BYTES; j++) {
+        c[0] += free_in_c[j][0];
+        c[1] += free_in_c[j][1];
+    }
+
+    // if op_is_shift == 1 => [op, a[0],  a[1], free_in_b + 256 * b[0], b[1], sum(free_in_c[*][0]), sum(free_in_c[*][1]), 0]
+    // if op_is_shift == 0 => [op, b[0],  b[1], a[0],                   a[1], sum(free_in_c[*][0]), sum(free_in_c[*][1]), 0]
     lookup_proves(
         operation_bus_id,
         [
             op,
-            op_is_shift * (in1_low - in2[0]) + in2[0],
-            op_is_shift * (in1_high - in2[1]) + in2[1],
-            op_is_shift * (in2_low + 256 * in2[0] - in1_low) + in1_low,
-            op_is_shift * (in2[1] - in1_high) + in1_high,
-            out[0][0] + out[1][0] + out[2][0] + out[3][0] + out[4][0] + out[5][0] + out[6][0] + out[7][0],
-            out[0][1] + out[1][1] + out[2][1] + out[3][1] + out[4][1] + out[5][1] + out[6][1] + out[7][1],
+            op_is_shift * (a[0] - b[0]) + b[0],
+            op_is_shift * (a[1] - b[1]) + b[1],
+            op_is_shift * (free_in_b + BYTE_BASE * b[0] - a[0]) + a[0],
+            op_is_shift * (b[1] - a[1]) + a[1],
+            c[0],
+            c[1],
             0
-        ],
-        multiplicity
+        ]
     );
 
-    range_check(expression: in2[0], min: 0, max: 2**24 - 1, sel: op_is_shift);
+    airval padding_size;
+    direct_update_assumes(operation_bus_id, [OP_SEXT_B, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
 }

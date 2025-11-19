@@ -1,6 +1,5 @@
-require "std_lookup.pil"
-
-const int KECCAKF_TABLE_ID = 126;
+require "std_lookup.pil";
+require "opids.pil";
 
 airtemplate KeccakfTable(const int N, const int chunks, const int bits) {
     // Operations

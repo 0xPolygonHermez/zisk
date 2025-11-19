@@ -57,9 +57,10 @@ private:
     MemSegmentHashTable *hash_table;
     #endif
     std::vector<MemSegment *> segments;
+    bool intermediate_rows;
 
 public:
-    ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size);
+    ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size, bool intermediate_rows = true);
     ~ImmutableMemPlanner();
     void execute(const std::vector<MemCounter *> &workers);
     void get_offset_limits(const std::vector<MemCounter *> &workers, uint32_t page, uint32_t &first_offset, uint32_t &last_offset);

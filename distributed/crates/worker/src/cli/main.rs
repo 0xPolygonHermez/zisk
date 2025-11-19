@@ -10,6 +10,7 @@ use zisk_distributed_worker::{
     config::{ProverServiceConfigDto, WorkerServiceConfig},
     ProverConfig, WorkerNode,
 };
+use zisk_sdk::{Asm, Emu};
 
 #[derive(Parser)]
 #[command(name = "zisk-worker")]
@@ -102,7 +103,7 @@ struct Cli {
     pub final_snark: bool,
 
     /// GPU parameters
-    #[clap(short = 'r', long, default_value_t = false)]
+    #[clap(short = 'z', long, default_value_t = false)]
     pub preallocate: bool,
 
     /// Maximum number of GPU streams
@@ -114,6 +115,12 @@ struct Cli {
 
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
+
+    #[clap(short = 'm', long, default_value_t = false)]
+    pub minimal_memory: bool,
+
+    #[clap(short = 'r', long, default_value_t = false)]
+    pub rma: bool,
 }
 
 #[tokio::main]
@@ -128,9 +135,6 @@ async fn main() -> Result<()> {
         cli.inputs_folder,
     )
     .await?;
-
-    // Initialize tracing - keep guard alive for application lifetime
-    let _log_guard = zisk_distributed_common::tracing::init(Some(&worker_config.logging))?;
 
     print_banner();
 
@@ -152,14 +156,21 @@ async fn main() -> Result<()> {
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
         shared_tables: cli.shared_tables,
+        rma: cli.rma,
+        minimal_memory: cli.minimal_memory,
     };
 
     let prover_config = ProverConfig::load(prover_config_dto)?;
 
     print_command_info(&prover_config, &worker_config, cli.debug.is_some());
 
-    let mut worker = WorkerNode::new(worker_config, prover_config).await?;
-    worker.run().await
+    if prover_config.emulator {
+        let mut worker = WorkerNode::<Emu>::new_emu(worker_config, prover_config).await?;
+        return worker.run().await;
+    } else {
+        let mut worker = WorkerNode::<Asm>::new_asm(worker_config, prover_config).await?;
+        return worker.run().await;
+    };
 }
 
 fn print_command_info(

@@ -5,7 +5,7 @@ use fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{Sha256fTrace, Sha256fTraceRow};
@@ -49,8 +49,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
         let num_available_sha256fs = Sha256fTraceType::<F>::NUM_ROWS / CLOCKS - 1;
         let num_non_usable_rows = Sha256fTraceType::<F>::NUM_ROWS % CLOCKS;
 
-        let a_range_id = std.get_range_id(0, (1 << 3) - 1, None);
-        let e_range_id = std.get_range_id(0, (1 << 3) - 1, None);
+        let a_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
+        let e_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
 
         Arc::new(Self { std, num_available_sha256fs, num_non_usable_rows, a_range_id, e_range_id })
     }
@@ -338,8 +338,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
         &self,
         inputs: &[Vec<Sha256fInput>],
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut sha256f_trace = Sha256fTraceType::new_from_vec_zeroes(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut sha256f_trace = Sha256fTraceType::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = sha256f_trace.num_rows();
         let num_available_sha256fs = self.num_available_sha256fs;
 
@@ -360,7 +360,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
             );
         };
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Sha256f instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,
@@ -468,6 +468,6 @@ impl<F: PrimeField64> Sha256fSM<F> {
 
         timer_stop_and_log_trace!(SHA256F_PADDING);
 
-        AirInstance::new_from_trace(FromTrace::new(&mut sha256f_trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut sha256f_trace)))
     }
 }

@@ -156,10 +156,12 @@ impl AsmRunnerOptions {
 
         if self.verbose {
             command.arg("-v");
-            command.stdout(std::process::Stdio::inherit()).stderr(std::process::Stdio::inherit());
+            command.stdout(std::process::Stdio::inherit());
         } else {
-            command.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+            command.stdout(std::process::Stdio::null());
         }
+
+        command.stderr(std::process::Stdio::inherit());
 
         match self.trace_level {
             AsmRunnerTraceLevel::None => {}

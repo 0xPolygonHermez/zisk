@@ -4,7 +4,7 @@ cfg_if! {
     if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
         use core::arch::asm;
         use crate::{ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param};
-        use crate::FCALL_SECP256K1_FN_INV_ID;
+        use super::FCALL_SECP256K1_FN_INV_ID;
     }
 }
 /// Executes the multiplicative inverse computation over the scalar field of the `secp256k1` curve.

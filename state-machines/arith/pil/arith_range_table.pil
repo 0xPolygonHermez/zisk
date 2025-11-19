@@ -1,11 +1,10 @@
-require "std_lookup.pil"
-require "operations.pil"
+require "std_lookup.pil";
+require "opids.pil";
 
-const int ARITH_RANGE_TABLE_ID = 330;
 const int ARITH_RANGE_CARRY = 100;
 const int ARITH_RANGE_16_BITS = 0;
 
-airtemplate ArithRangeTable(int N = 2**22) {
+airtemplate ArithRangeTable(const int N = 2**22) {
 
     //     a3 a1 b3 b1
     // rid c3 c1 d3 d1 range 2^16 2^15 notes

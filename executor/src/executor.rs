@@ -21,17 +21,18 @@
 
 use asm_runner::{
     write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory,
-    MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, Task, TaskFactory,
+    MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, SharedMemoryWriter, Task, TaskFactory,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{create_pool, BufferPool, ProofCtx, SetupCtx};
+use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::prelude::*;
 use rom_setup::gen_elf_hash;
 use sm_rom::{RomInstance, RomSM};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use witness::WitnessComponent;
+use zisk_common::io::{ZiskIO, ZiskStdin};
 
 use crate::DummyCounter;
 use data_bus::DataBusTrait;
@@ -50,7 +51,6 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 use std::{
     collections::HashMap,
-    fs,
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
 };
@@ -60,7 +60,7 @@ use zisk_common::ExecutorStatsEvent;
 use crossbeam::atomic::AtomicCell;
 
 use zisk_common::EmuTrace;
-use zisk_core::ZiskRom;
+use zisk_core::{ZiskRom, MAX_INPUT_SIZE};
 use ziskemu::{EmuOptions, ZiskEmulator};
 
 use crate::StaticSMBundle;
@@ -78,6 +78,8 @@ enum MinimalTraceExecutionMode {
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
 pub struct ZiskExecutor<F: PrimeField64> {
+    stdin: Mutex<ZiskStdin>,
+
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
 
@@ -140,6 +142,8 @@ pub struct ZiskExecutor<F: PrimeField64> {
     asm_shmem_mt: Arc<Mutex<Option<PreloadedMT>>>,
     asm_shmem_mo: Arc<Mutex<Option<PreloadedMO>>>,
     asm_shmem_rh: Arc<Mutex<Option<PreloadedRH>>>,
+
+    shmem_input_writer: [Arc<Mutex<Option<SharedMemoryWriter>>>; AsmServices::SERVICES.len()],
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
@@ -183,6 +187,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
 
         Self {
+            stdin: Mutex::new(ZiskStdin::null()),
             rom_path,
             asm_runner_path: asm_path,
             asm_rom_path,
@@ -205,7 +210,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             asm_shmem_mt: Arc::new(Mutex::new(asm_shmem_mt)),
             asm_shmem_mo: Arc::new(Mutex::new(asm_shmem_mo)),
             asm_shmem_rh: Arc::new(Mutex::new(None)),
+            shmem_input_writer: std::array::from_fn(|_| Arc::new(Mutex::new(None))),
         }
+    }
+
+    pub fn set_stdin(&self, stdin: ZiskStdin) {
+        let mut guard = self.stdin.lock().unwrap();
+        *guard = stdin;
     }
 
     #[allow(clippy::type_complexity)]
@@ -225,8 +236,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
-    fn execute_with_emulator(&self, input_data_path: Option<PathBuf>) -> MinimalTraces {
-        let min_traces = self.run_emulator(Self::NUM_THREADS, input_data_path);
+    fn execute_with_emulator(&self) -> MinimalTraces {
+        let min_traces = self.run_emulator(Self::NUM_THREADS, &mut self.stdin.lock().unwrap());
 
         // Store execute steps
         let steps = if let MinimalTraces::EmuTrace(min_traces) = &min_traces {
@@ -252,7 +263,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     fn execute_with_assembly(
         &self,
         pctx: &ProofCtx<F>,
-        input_data_path: Option<PathBuf>,
         _caller_stats_id: u64,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<JoinHandle<AsmRunnerMO>>)
     {
@@ -267,43 +277,56 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             ExecutorStatsEvent::Begin,
         );
 
-        if let Some(input_path) = input_data_path.as_ref() {
-            AsmServices::SERVICES.par_iter().for_each(|service| {
-                #[cfg(feature = "stats")]
-                let stats_id = self.stats.next_id();
-                #[cfg(feature = "stats")]
-                self.stats.add_stat(
-                    parent_stats_id,
-                    stats_id,
-                    "ASM_WRITE_INPUT",
-                    0,
-                    ExecutorStatsEvent::Begin,
-                );
+        AsmServices::SERVICES.par_iter().enumerate().for_each(|(idx, service)| {
+            #[cfg(feature = "stats")]
+            let stats_id = self.stats.next_id();
+            #[cfg(feature = "stats")]
+            self.stats.add_stat(
+                parent_stats_id,
+                stats_id,
+                "ASM_WRITE_INPUT",
+                0,
+                ExecutorStatsEvent::Begin,
+            );
 
-                let port = if let Some(base_port) = self.base_port {
-                    AsmServices::port_for(service, base_port, self.local_rank)
-                } else {
-                    AsmServices::default_port(service, self.local_rank)
-                };
+            let port = if let Some(base_port) = self.base_port {
+                AsmServices::port_for(service, base_port, self.local_rank)
+            } else {
+                AsmServices::default_port(service, self.local_rank)
+            };
 
-                let shmem_input_name = AsmSharedMemory::<AsmMTHeader>::shmem_input_name(
-                    port,
-                    *service,
-                    self.local_rank,
-                );
-                write_input(input_path, &shmem_input_name, self.unlock_mapped_memory);
+            let shmem_input_name =
+                AsmSharedMemory::<AsmMTHeader>::shmem_input_name(port, *service, self.local_rank);
 
-                // Add to executor stats
-                #[cfg(feature = "stats")]
-                self.stats.add_stat(
-                    parent_stats_id,
-                    stats_id,
-                    "ASM_WRITE_INPUT",
-                    0,
-                    ExecutorStatsEvent::End,
+            let mut input_writer = self.shmem_input_writer[idx].lock().unwrap();
+            if input_writer.is_none() {
+                tracing::info!(
+                    "Initializing SharedMemoryWriter for service {:?} at '{}'",
+                    service,
+                    shmem_input_name
                 );
-            });
-        }
+                *input_writer = Some(
+                    SharedMemoryWriter::new(
+                        &shmem_input_name,
+                        MAX_INPUT_SIZE as usize,
+                        self.unlock_mapped_memory,
+                    )
+                    .expect("Failed to create SharedMemoryWriter"),
+                );
+            }
+
+            write_input(&mut self.stdin.lock().unwrap(), input_writer.as_ref().unwrap());
+
+            // Add to executor stats
+            #[cfg(feature = "stats")]
+            self.stats.add_stat(
+                parent_stats_id,
+                stats_id,
+                "ASM_WRITE_INPUT",
+                0,
+                ExecutorStatsEvent::End,
+            );
+        });
 
         let chunk_size = self.chunk_size;
         let (world_rank, local_rank, base_port) =
@@ -498,15 +521,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_count)
     }
 
-    fn run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>) -> MinimalTraces {
+    fn run_emulator(&self, num_threads: usize, stdin: &mut ZiskStdin) -> MinimalTraces {
         // Call emulate with these options
-        let input_data = if let Some(path) = &input_data_path {
-            // Read inputs data from the provided inputs path
-            let path = PathBuf::from(path.display().to_string());
-            fs::read(path).expect("Could not read inputs file")
-        } else {
-            Vec::new()
-        };
+        let input_data = stdin.read();
 
         // Settings for the emulator
         let emu_options = EmuOptions {
@@ -540,7 +557,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let mut main_instances = self.main_instances.write().unwrap();
 
         for mut plan in main_planning {
-            let global_id = pctx.add_instance_assign(plan.airgroup_id, plan.air_id);
+            let global_id = pctx
+                .add_instance_assign(plan.airgroup_id, plan.air_id)
+                .expect("Failed to add instance");
             plan.set_global_id(global_id);
             global_ids.write().unwrap().push(global_id);
             main_instances
@@ -646,10 +665,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 // If this is the ROM instance, we need to add it to the proof context
                 // with the rank 0.
                 pctx.add_instance_assign_first_partition(plan.airgroup_id, plan.air_id)
+                    .expect("Failed to add ROM instance")
             } else {
                 match plan.instance_type {
-                    InstanceType::Instance => pctx.add_instance(plan.airgroup_id, plan.air_id),
-                    InstanceType::Table => pctx.add_table(plan.airgroup_id, plan.air_id),
+                    InstanceType::Instance => pctx
+                        .add_instance(plan.airgroup_id, plan.air_id)
+                        .expect("Failed to add instance"),
+                    InstanceType::Table => {
+                        pctx.add_table(plan.airgroup_id, plan.air_id).expect("Failed to add table")
+                    }
                 }
             };
 
@@ -694,8 +718,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         main_instance: &MainInstance<F>,
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
-    ) {
-        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
+    ) -> ProofmanResult<()> {
+        let (airgroup_id, air_id) = pctx
+            .dctx_get_instance_info(main_instance.ictx.global_id)
+            .expect("Failed to get instance info");
         let witness_start_time = Instant::now();
 
         #[cfg(feature = "stats")]
@@ -724,7 +750,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             self.chunk_size,
             main_instance,
             trace_buffer,
-        );
+        )?;
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
 
@@ -748,6 +774,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
 
         self.stats.insert_witness_stats(main_instance.ictx.global_id, stats);
+
+        Ok(())
     }
 
     /// computes witness for a secondary state machines instance.
@@ -765,7 +793,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         secn_instance: &dyn Instance<F>,
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
-    ) {
+    ) -> ProofmanResult<()> {
         let witness_start_time = Instant::now();
 
         #[cfg(feature = "stats")]
@@ -793,7 +821,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
 
         if let Some(air_instance) =
-            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, trace_buffer)
+            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, trace_buffer)?
         {
             pctx.add_air_instance(air_instance, global_id);
         }
@@ -808,6 +836,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             );
         }
         self.stats.set_witness_duration(global_id, witness_start_time.elapsed().as_millis());
+        Ok(())
     }
 
     fn order_chunks(
@@ -904,7 +933,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             .collect();
 
         for global_id in global_ids.iter() {
-            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(*global_id);
+            let (airgroup_id, air_id) =
+                pctx.dctx_get_instance_info(*global_id).expect("Failed to get instance info");
             let stats = Stats {
                 airgroup_id,
                 air_id,
@@ -1001,8 +1031,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                                     let collect_duration =
                                         collect_start_time.elapsed().as_millis() as u64;
 
-                                    let (airgroup_id, air_id) =
-                                        pctx_clone.dctx_get_instance_info(global_id);
+                                    let (airgroup_id, air_id) = pctx_clone
+                                        .dctx_get_instance_info(global_id)
+                                        .expect("Failed to get instance info");
                                     let stats = Stats {
                                         airgroup_id,
                                         air_id,
@@ -1042,7 +1073,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         table_instance: &dyn Instance<F>,
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
-    ) {
+    ) -> ProofmanResult<()> {
         #[cfg(feature = "stats")]
         let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
         #[cfg(feature = "stats")]
@@ -1057,9 +1088,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         );
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
-        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], trace_buffer)
+        if let Some(air_instance) =
+            table_instance.compute_witness(pctx, sctx, vec![], trace_buffer)?
         {
-            if pctx.dctx_is_my_process_instance(global_id) {
+            if pctx
+                .dctx_is_my_process_instance(global_id)
+                .expect("Failed to check instance ownership")
+            {
                 pctx.add_air_instance(air_instance, global_id);
             }
         }
@@ -1072,6 +1107,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             air_id,
             ExecutorStatsEvent::Begin,
         );
+
+        Ok(())
     }
 
     /// Computes all the chunks to be executed to generate the witness given an instance.
@@ -1137,8 +1174,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         &self,
         pctx: Arc<ProofCtx<F>>,
         global_ids: &RwLock<Vec<usize>>,
-        input_data_path: Option<PathBuf>,
-    ) {
+    ) -> ProofmanResult<()> {
         #[cfg(feature = "stats")]
         let parent_stats_id = self.stats.next_id();
         #[cfg(feature = "stats")]
@@ -1159,7 +1195,6 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             // If we are executing in assembly mode
             self.execute_with_assembly(
                 &pctx,
-                input_data_path,
                 #[cfg(feature = "stats")]
                 parent_stats_id,
                 #[cfg(not(feature = "stats"))]
@@ -1167,7 +1202,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             )
         } else {
             // Otherwise, use the emulator
-            let min_traces = self.execute_with_emulator(input_data_path);
+            let min_traces = self.execute_with_emulator();
 
             timer_start_info!(COUNT);
             let (main_count, secn_count) = self.count(&min_traces);
@@ -1312,7 +1347,8 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                         chunk_ids.iter().map(|id| id.as_usize()).collect()
                     }
                 };
-                let (_, air_id) = pctx.dctx_get_instance_info(*global_id);
+                let (_, air_id) =
+                    pctx.dctx_get_instance_info(*global_id).expect("Failed to get instance info");
                 let mem_global_id = air_id == MEM_AIR_IDS[0]
                     || air_id == ROM_DATA_AIR_IDS[0]
                     || air_id == INPUT_DATA_AIR_IDS[0];
@@ -1334,7 +1370,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         self.stats.add_stat(0, parent_stats_id, "EXECUTE", 0, ExecutorStatsEvent::End);
 
         // #[cfg(feature = "stats")]
-        // self.stats.store_stats();
+        // self.stats.lock().unwrap().store_stats();
+
+        Ok(())
     }
 
     /// Computes the witness for the main and secondary state machines.
@@ -1352,9 +1390,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         global_ids: &[usize],
         n_cores: usize,
         buffer_pool: &dyn BufferPool<F>,
-    ) {
+    ) -> ProofmanResult<()> {
         if stage != 1 {
-            return;
+            return Ok(());
         }
 
         #[cfg(feature = "stats")]
@@ -1363,9 +1401,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         self.stats.add_stat(0, parent_stats_id, "CALCULATE_WITNESS", 0, ExecutorStatsEvent::Begin);
 
         let pool = create_pool(n_cores);
-        pool.install(|| {
+        pool.install(|| -> ProofmanResult<()> {
             for &global_id in global_ids {
-                let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+                let (airgroup_id, air_id) =
+                    pctx.dctx_get_instance_info(global_id).expect("Failed to get instance info");
 
                 if MAIN_AIR_IDS.contains(&air_id) {
                     let main_instance = &self.main_instances.read().unwrap()[&global_id];
@@ -1378,7 +1417,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                         parent_stats_id,
                         #[cfg(not(feature = "stats"))]
                         0,
-                    );
+                    )?;
                 } else {
                     let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
 
@@ -1418,7 +1457,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                                 parent_stats_id,
                                 #[cfg(not(feature = "stats"))]
                                 0,
-                            );
+                            )?;
                         }
                         InstanceType::Table => self.witness_table(
                             &pctx,
@@ -1430,15 +1469,18 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                             parent_stats_id,
                             #[cfg(not(feature = "stats"))]
                             0,
-                        ),
+                        )?,
                     }
                 }
             }
-        });
+            Ok(())
+        })?;
 
         // Add to executor stats
         #[cfg(feature = "stats")]
         self.stats.add_stat(0, parent_stats_id, "CALCULATE_WITNESS", 0, ExecutorStatsEvent::End);
+
+        Ok(())
     }
 
     fn pre_calculate_witness(
@@ -1449,7 +1491,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         global_ids: &[usize],
         n_cores: usize,
         _buffer_pool: &dyn BufferPool<F>,
-    ) {
+    ) -> ProofmanResult<()> {
         #[cfg(feature = "stats")]
         let parent_stats_id = self.stats.next_id();
         #[cfg(feature = "stats")]
@@ -1462,13 +1504,14 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         );
 
         if stage != 1 {
-            return;
+            return Ok(());
         }
         let secn_instances_guard = self.secn_instances.read().unwrap();
 
         let mut secn_instances = HashMap::new();
         for &global_id in global_ids {
-            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+            let (airgroup_id, air_id) =
+                pctx.dctx_get_instance_info(global_id).expect("Failed to get instance info");
             if MAIN_AIR_IDS.contains(&air_id) {
                 pctx.set_witness_ready(global_id, false);
             } else if air_id == ROM_AIR_IDS[0] {
@@ -1525,6 +1568,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             0,
             ExecutorStatsEvent::End,
         );
+        Ok(())
     }
 
     /// Debugs the main and secondary state machines.
@@ -1533,9 +1577,15 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     /// * `pctx` - Proof context.
     /// * `sctx` - Setup context.
     /// * `global_ids` - Global IDs of the instances to debug.
-    fn debug(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>, global_ids: &[usize]) {
+    fn debug(
+        &self,
+        pctx: Arc<ProofCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
+        global_ids: &[usize],
+    ) -> ProofmanResult<()> {
         for &global_id in global_ids {
-            let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+            let (_airgroup_id, air_id) =
+                pctx.dctx_get_instance_info(global_id).expect("Failed to get instance info");
 
             if MAIN_AIR_IDS.contains(&air_id) {
                 MainSM::debug(&pctx, &sctx);
@@ -1546,6 +1596,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                 secn_instance.debug(&pctx, &sctx);
             }
         }
+        Ok(())
     }
 
     fn gen_custom_commits_fixed(
@@ -1553,14 +1604,16 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         pctx: Arc<ProofCtx<F>>,
         sctx: Arc<SetupCtx<F>>,
         check: bool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> ProofmanResult<()> {
         let file_name = pctx.get_custom_commits_fixed_buffer("rom", false)?;
 
-        let setup = sctx.get_setup(RomRomTrace::<F>::AIRGROUP_ID, RomRomTrace::<F>::AIR_ID);
+        let setup = sctx.get_setup(RomRomTrace::<F>::AIRGROUP_ID, RomRomTrace::<F>::AIR_ID)?;
         let blowup_factor =
             1 << (setup.stark_info.stark_struct.n_bits_ext - setup.stark_info.stark_struct.n_bits);
 
-        gen_elf_hash(&self.rom_path, file_name.as_path(), blowup_factor, check)?;
+        gen_elf_hash(&self.rom_path, file_name.as_path(), blowup_factor, check).map_err(|e| {
+            ProofmanError::ProofmanError(format!("Failed to generate custom commits fixed: {}", e))
+        })?;
         Ok(())
     }
 }

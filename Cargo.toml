@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.13.0"
+version = "0.14.0"
 edition = "2021"
 license = "Apache-2.0 or MIT"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
@@ -7,7 +7,7 @@ repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_pil2_proofman_js_branch = "tags/v0.13.0"
+gha_pil2_proofman_js_branch = "tags/v0.14.0"
 gha_pil2_compiler_branch = "tags/v0.8.0"
 
 [workspace]
@@ -45,6 +45,8 @@ members = [
     "distributed/crates/grpc-api",
     "distributed/crates/common",
     "distributed/crates/worker",
+    "sdk",
+    "ziskbuild",
 ]
 
 resolver = "2"
@@ -91,6 +93,8 @@ zisk-witness = { path = "witness-computation" }
 ziskclib = { path = "ziskclib" }
 ziskos = { path = "ziskos/entrypoint" }
 circuit = { path = "tools/circuit" }
+zisk-sdk = { path = "sdk" }
+zisk-build = { path = "ziskbuild" }
 
 # Distributed crates
 zisk-distributed-common = { path = "distributed/crates/common" }
@@ -99,14 +103,14 @@ zisk-distributed-grpc-api = { path = "distributed/crates/grpc-api" }
 zisk-distributed-prover = { path = "distributed/crates/worker" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.13.0" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.13.0" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.13.0" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.13.0" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.13.0" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.13.0" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.13.0" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.13.0" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.14.0" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.14.0" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.14.0" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.14.0" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.14.0" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.14.0" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.14.0" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.14.0" }
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
@@ -121,6 +125,7 @@ fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "
 rayon = "1.10"
 num-bigint = "0.4"
 num-traits = "0.2"
+num-integer = "0.1"
 itertools = "0.14"
 colored = "3"
 ark-ff = "0.5.0"

@@ -1,13 +1,8 @@
-require "std_lookup.pil"
-require "std_range_check.pil"
-require "arith_eq_lt_table.pil"
-
-const int ARITH_384_MOD_OP = 0xE2;
-const int EC_ADD_BLS12_381_OP = 0xE3;
-const int EC_DBL_BLS12_381_OP = 0xE4;
-const int COMPLEX_ADD_BLS12_381_OP = 0xE5;
-const int COMPLEX_SUB_BLS12_381_OP = 0xE6;
-const int COMPLEX_MUL_BLS12_381_OP = 0xE7;
+require "std_lookup.pil";
+require "std_range_check.pil";
+require "operations.pil";
+require "opids.pil";
+require "arith_eq_lt_table.pil";
 
 airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_ID) {
     /*
@@ -565,12 +560,12 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
             value: mem_value[1]
     );
 
-    const expr bus_op = sel_arith384_mod * ARITH_384_MOD_OP +
-                        sel_bls12_381_curve_add * EC_ADD_BLS12_381_OP +
-                        sel_bls12_381_curve_dbl * EC_DBL_BLS12_381_OP +
-                        sel_bls12_381_complex_add * COMPLEX_ADD_BLS12_381_OP +
-                        sel_bls12_381_complex_sub * COMPLEX_SUB_BLS12_381_OP +
-                        sel_bls12_381_complex_mul * COMPLEX_MUL_BLS12_381_OP;
+    const expr bus_op = sel_arith384_mod * OP_ARITH_384_MOD +
+                        sel_bls12_381_curve_add * OP_EC_ADD_BLS12_381 +
+                        sel_bls12_381_curve_dbl * OP_EC_DBL_BLS12_381 +
+                        sel_bls12_381_complex_add * OP_COMPLEX_ADD_BLS12_381 +
+                        sel_bls12_381_complex_sub * OP_COMPLEX_SUB_BLS12_381 +
+                        sel_bls12_381_complex_mul * OP_COMPLEX_MUL_BLS12_381;
 
     lookup_proves(operation_bus_id, [bus_op, step_addr'(MAIN_STEP), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk0);
 
