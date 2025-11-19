@@ -84,16 +84,24 @@ impl AsmRunnerRH {
         let asm_services = AsmServices::new(world_rank, local_rank, base_port);
         asm_services.send_rom_histogram_request(max_steps)?;
 
-        match sem_chunk_done.timed_wait(Duration::from_secs(30)) {
-            Err(e) => {
-                error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
+        loop {
+            match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
+                Ok(()) => {
+                    // Synchronize with memory changes from the C++ side
+                    fence(Ordering::Acquire);
+                    break;
+                }
+                Err(named_sem::Error::WaitFailed(e))
+                    if e.kind() == std::io::ErrorKind::Interrupted =>
+                {
+                    continue
+                }
+                Err(e) => {
+                    error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
-                return Err(AsmRunError::SemaphoreError(sem_chunk_done_name, e))
-                    .context("Child process returned error");
-            }
-            Ok(()) => {
-                // Synchronize with memory changes from the C++ side
-                fence(Ordering::Acquire);
+                    return Err(AsmRunError::SemaphoreError(sem_chunk_done_name, e))
+                        .context("Child process returned error");
+                }
             }
         }
 

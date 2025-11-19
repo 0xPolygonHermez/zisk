@@ -21,7 +21,7 @@
 
 use asm_runner::{
     write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory,
-    MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, Task, TaskFactory,
+    MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, SharedMemoryWriter, Task, TaskFactory,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -60,7 +60,7 @@ use zisk_common::ExecutorStatsEvent;
 use crossbeam::atomic::AtomicCell;
 
 use zisk_common::EmuTrace;
-use zisk_core::ZiskRom;
+use zisk_core::{ZiskRom, MAX_INPUT_SIZE};
 use ziskemu::{EmuOptions, ZiskEmulator};
 
 use crate::StaticSMBundle;
@@ -142,6 +142,8 @@ pub struct ZiskExecutor<F: PrimeField64> {
     asm_shmem_mt: Arc<Mutex<Option<PreloadedMT>>>,
     asm_shmem_mo: Arc<Mutex<Option<PreloadedMO>>>,
     asm_shmem_rh: Arc<Mutex<Option<PreloadedRH>>>,
+
+    shmem_input_writer: [Arc<Mutex<Option<SharedMemoryWriter>>>; AsmServices::SERVICES.len()],
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
@@ -208,6 +210,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             asm_shmem_mt: Arc::new(Mutex::new(asm_shmem_mt)),
             asm_shmem_mo: Arc::new(Mutex::new(asm_shmem_mo)),
             asm_shmem_rh: Arc::new(Mutex::new(None)),
+            shmem_input_writer: std::array::from_fn(|_| Arc::new(Mutex::new(None))),
         }
     }
 
@@ -274,7 +277,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             ExecutorStatsEvent::Begin,
         );
 
-        AsmServices::SERVICES.par_iter().for_each(|service| {
+        AsmServices::SERVICES.par_iter().enumerate().for_each(|(idx, service)| {
             #[cfg(feature = "stats")]
             let stats_id = self.stats.next_id();
             #[cfg(feature = "stats")]
@@ -294,12 +297,25 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
             let shmem_input_name =
                 AsmSharedMemory::<AsmMTHeader>::shmem_input_name(port, *service, self.local_rank);
-            write_input(
-                &mut self.stdin.lock().unwrap(),
-                &shmem_input_name,
-                self.unlock_mapped_memory,
-            )
-            .expect("Write input failed");
+
+            let mut input_writer = self.shmem_input_writer[idx].lock().unwrap();
+            if input_writer.is_none() {
+                tracing::info!(
+                    "Initializing SharedMemoryWriter for service {:?} at '{}'",
+                    service,
+                    shmem_input_name
+                );
+                *input_writer = Some(
+                    SharedMemoryWriter::new(
+                        &shmem_input_name,
+                        MAX_INPUT_SIZE as usize,
+                        self.unlock_mapped_memory,
+                    )
+                    .expect("Failed to create SharedMemoryWriter"),
+                );
+            }
+
+            write_input(&mut self.stdin.lock().unwrap(), input_writer.as_ref().unwrap());
 
             // Add to executor stats
             #[cfg(feature = "stats")]
