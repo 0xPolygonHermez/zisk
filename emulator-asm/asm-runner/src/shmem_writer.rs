@@ -1,10 +1,9 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use libc::{mmap, msync, MAP_FAILED, MAP_SHARED, MS_SYNC};
+use libc::{mmap, msync, shm_open, MAP_FAILED, MAP_SHARED, MS_SYNC};
 use std::io::{self, Result};
 use std::ptr;
 
-use libc::{c_void, close, munmap, shm_open, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
-use std::ffi::CString;
+use libc::{c_void, close, munmap, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 
 pub struct SharedMemoryWriter {
     ptr: *mut u8,
@@ -33,7 +32,7 @@ impl SharedMemoryWriter {
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
-        let c_name = CString::new(name).expect("CString::new failed");
+        let c_name = std::ffi::CString::new(name).expect("CString::new failed");
         let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
         if fd == -1 {
             let errno_value = unsafe { *libc::__errno_location() };
@@ -45,7 +44,7 @@ impl SharedMemoryWriter {
     }
 
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-    fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
+    fn open_shmem(_name: &str, _flags: i32, _mode: u32) -> i32 {
         0
     }
 
