@@ -4,13 +4,16 @@ use circuit::{GateState, PinId};
 
 use super::bit_position;
 
-/// Keccak-f θ step.
-/// 1. For all pairs (x, z) such that 0 ≤ x < 5 and 0 ≤ z < 64:  
-///    C\[x, z] = A\[x, 0, z] ^ A\[x, 1, z] ^ A\[x, 2, z] ^ A\[x, 3, z] ^ A\[x, 4, z]
-/// 2. For all pairs (x, z) such that 0 ≤ x < 5 and 0 ≤ z < 64:  
-///    D\[x, z] = C\[(x-1) mod 5, z] ^ C\[(x+1) mod 5, (z –1) mod 64]
-/// 3. For all triples (x, y, z) such that 0 ≤ x,y < 5, and 0 ≤ z < 64:   
-///    A′\[x, y, z] = A\[x, y, z] ^ D\[x, z]
+/// Keccak-f **θ step**.
+///
+/// 1. For all pairs `(x, z)` such that `0 ≤ x < 5` and `0 ≤ z < 64`:
+///    `C[x, z] = A[x, 0, z] ^ A[x, 1, z] ^ A[x, 2, z] ^ A[x, 3, z] ^ A[x, 4, z]`
+///
+/// 2. For all pairs `(x, z)` such that `0 ≤ x < 5` and `0 ≤ z < 64`:  
+///    `D[x, z] = C[(x - 1) mod 5, z] ^ C[(x + 1) mod 5, (z - 1) mod 64]`
+///
+/// 3. For all triples `(x, y, z)` such that `0 ≤ x, y < 5` and `0 ≤ z < 64`:  
+///    `A′[x, y, z] = A[x, y, z] ^ D[x, z]`
 pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
     // Step 1: C[x, z] = A[x, 0, z] ^ A[x, 1, z] ^ A[x, 2, z] ^ A[x, 3, z] ^ A[x, 4, z]
     let mut c = [[0u64; 64]; 5];
@@ -28,31 +31,25 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
             // aux = A[x, 0, z] ^ A[x, 1, z] ^ A[x, 2, z]
             let aux = s.get_free_ref();
             if ir == 0 {
-                let group_0 = positions[0] as u64 / s.gate_config.sin_ref_group_by;
-                let group_pos_0 = positions[0] as u64 % s.gate_config.sin_ref_group_by;
+                let group_0 = positions[0] as u64 / s.config.sin_ref_group_by;
+                let group_pos_0 = positions[0] as u64 % s.config.sin_ref_group_by;
                 // First round uses pin_a directly
                 assert_eq!(
                     s.sin_refs[positions[0]],
-                    s.gate_config.sin_first_ref
-                        + s.gate_config.sin_ref_distance * group_0
-                        + group_pos_0
+                    s.config.sin_first_ref + s.config.sin_ref_distance * group_0 + group_pos_0
                 );
-                let group_1 = positions[1] as u64 / s.gate_config.sin_ref_group_by;
-                let group_pos_1 = positions[1] as u64 % s.gate_config.sin_ref_group_by;
+                let group_1 = positions[1] as u64 / s.config.sin_ref_group_by;
+                let group_pos_1 = positions[1] as u64 % s.config.sin_ref_group_by;
                 assert_eq!(
                     s.sin_refs[positions[1]],
-                    s.gate_config.sin_first_ref
-                        + s.gate_config.sin_ref_distance * group_1
-                        + group_pos_1
+                    s.config.sin_first_ref + s.config.sin_ref_distance * group_1 + group_pos_1
                 );
 
-                let group_2 = positions[2] as u64 / s.gate_config.sin_ref_group_by;
-                let group_pos_2 = positions[2] as u64 % s.gate_config.sin_ref_group_by;
+                let group_2 = positions[2] as u64 / s.config.sin_ref_group_by;
+                let group_pos_2 = positions[2] as u64 % s.config.sin_ref_group_by;
                 assert_eq!(
                     s.sin_refs[positions[2]],
-                    s.gate_config.sin_first_ref
-                        + s.gate_config.sin_ref_distance * group_2
-                        + group_pos_2
+                    s.config.sin_first_ref + s.config.sin_ref_distance * group_2 + group_pos_2
                 );
 
                 s.xor3(
@@ -80,13 +77,11 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
             let cxy = s.get_free_ref();
             c[x][z] = cxy;
             if ir == 0 {
-                let group_3 = positions[3] as u64 / s.gate_config.sin_ref_group_by;
-                let group_pos_3 = positions[3] as u64 % s.gate_config.sin_ref_group_by;
+                let group_3 = positions[3] as u64 / s.config.sin_ref_group_by;
+                let group_pos_3 = positions[3] as u64 % s.config.sin_ref_group_by;
                 assert_eq!(
                     s.sin_refs[positions[3]],
-                    s.gate_config.sin_first_ref
-                        + s.gate_config.sin_ref_distance * group_3
-                        + group_pos_3
+                    s.config.sin_first_ref + s.config.sin_ref_distance * group_3 + group_pos_3
                 );
                 s.xor3(
                     aux,
@@ -119,11 +114,10 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                 let pos = bit_position(x, y, z);
                 let aux = if ir == 0 {
                     // In the first round we use the first 1600 Sin bit slots to store these gates
-                    let group = pos as u64 / s.gate_config.sin_ref_group_by;
-                    let group_pos = pos as u64 % s.gate_config.sin_ref_group_by;
-                    let ref_idx = s.gate_config.sin_first_ref
-                        + s.gate_config.sin_ref_distance * group
-                        + group_pos;
+                    let group = pos as u64 / s.config.sin_ref_group_by;
+                    let group_pos = pos as u64 % s.config.sin_ref_group_by;
+                    let ref_idx =
+                        s.config.sin_first_ref + s.config.sin_ref_distance * group + group_pos;
                     assert_eq!(s.sin_refs[pos], ref_idx);
                     s.xor3(
                         ref_idx,
