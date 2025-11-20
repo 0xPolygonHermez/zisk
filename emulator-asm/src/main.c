@@ -1229,7 +1229,7 @@ void configure (void)
         case Fast:
         {
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_FT_input");
+            strcat(shmem_input_name, "_input");
             strcpy(shmem_output_name, "");
             strcpy(sem_chunk_done_name, "");
             strcpy(sem_shutdown_done_name, shm_prefix);
@@ -1246,7 +1246,7 @@ void configure (void)
         case MinimalTrace:
         {
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_MT_input");
+            strcat(shmem_input_name, "_input");
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MT_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1266,7 +1266,7 @@ void configure (void)
         case RomHistogram:
         {
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_RH_input");
+            strcat(shmem_input_name, "_input");
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_RH_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1286,7 +1286,7 @@ void configure (void)
         case MainTrace:
         {
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_MA_input");
+            strcat(shmem_input_name, "_input");
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MA_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1306,7 +1306,7 @@ void configure (void)
         case ChunksOnly:
         {
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_CH_input");
+            strcat(shmem_input_name, "_input");
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_CH_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1335,7 +1335,7 @@ void configure (void)
         case Zip:
         {
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_ZP_input");
+            strcat(shmem_input_name, "_input");
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_ZP_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1355,7 +1355,7 @@ void configure (void)
         case MemOp:
         {
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_MO_input");
+            strcat(shmem_input_name, "_input");
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MO_output");
             strcpy(sem_chunk_done_name, shm_prefix);
@@ -1393,7 +1393,7 @@ void configure (void)
         case MemReads:
         {
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_MT_input");
+            strcat(shmem_input_name, "_input");
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MT_output");
             strcpy(sem_chunk_done_name, shm_prefix);
