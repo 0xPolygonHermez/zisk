@@ -20,8 +20,9 @@
 //! maintaining clarity and modularity in the computation process.
 
 use asm_runner::{
-    write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory,
-    MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, SharedMemoryWriter, Task, TaskFactory,
+    write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmService, AsmServices,
+    AsmSharedMemory, MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, SharedMemoryWriter,
+    Task, TaskFactory,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -143,7 +144,7 @@ pub struct ZiskExecutor<F: PrimeField64> {
     asm_shmem_mo: Arc<Mutex<Option<PreloadedMO>>>,
     asm_shmem_rh: Arc<Mutex<Option<PreloadedRH>>>,
 
-    shmem_input_writer: [Arc<Mutex<Option<SharedMemoryWriter>>>; AsmServices::SERVICES.len()],
+    shmem_input_writer: Arc<Mutex<Option<SharedMemoryWriter>>>,
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
@@ -210,7 +211,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             asm_shmem_mt: Arc::new(Mutex::new(asm_shmem_mt)),
             asm_shmem_mo: Arc::new(Mutex::new(asm_shmem_mo)),
             asm_shmem_rh: Arc::new(Mutex::new(None)),
-            shmem_input_writer: std::array::from_fn(|_| Arc::new(Mutex::new(None))),
+            shmem_input_writer: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -277,56 +278,57 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             ExecutorStatsEvent::Begin,
         );
 
-        AsmServices::SERVICES.par_iter().enumerate().for_each(|(idx, service)| {
-            #[cfg(feature = "stats")]
-            let stats_id = self.stats.next_id();
-            #[cfg(feature = "stats")]
-            self.stats.add_stat(
-                parent_stats_id,
-                stats_id,
-                "ASM_WRITE_INPUT",
-                0,
-                ExecutorStatsEvent::Begin,
+        // Write the input in the shared memory
+        let mo_service = &AsmServices::SERVICES[AsmService::MO as usize];
+
+        #[cfg(feature = "stats")]
+        let stats_id = self.stats.next_id();
+        #[cfg(feature = "stats")]
+        self.stats.add_stat(
+            parent_stats_id,
+            stats_id,
+            "ASM_WRITE_INPUT",
+            0,
+            ExecutorStatsEvent::Begin,
+        );
+
+        let port = if let Some(base_port) = self.base_port {
+            AsmServices::port_for(mo_service, base_port, self.local_rank)
+        } else {
+            AsmServices::default_port(mo_service, self.local_rank)
+        };
+
+        let shmem_input_name =
+            AsmSharedMemory::<AsmMTHeader>::shmem_input_name(port, self.local_rank);
+
+        let mut input_writer = self.shmem_input_writer.lock().unwrap();
+        if input_writer.is_none() {
+            tracing::info!(
+                "Initializing SharedMemoryWriter for service {:?} at '{}'",
+                mo_service,
+                shmem_input_name
             );
-
-            let port = if let Some(base_port) = self.base_port {
-                AsmServices::port_for(service, base_port, self.local_rank)
-            } else {
-                AsmServices::default_port(service, self.local_rank)
-            };
-
-            let shmem_input_name =
-                AsmSharedMemory::<AsmMTHeader>::shmem_input_name(port, *service, self.local_rank);
-
-            let mut input_writer = self.shmem_input_writer[idx].lock().unwrap();
-            if input_writer.is_none() {
-                tracing::info!(
-                    "Initializing SharedMemoryWriter for service {:?} at '{}'",
-                    service,
-                    shmem_input_name
-                );
-                *input_writer = Some(
-                    SharedMemoryWriter::new(
-                        &shmem_input_name,
-                        MAX_INPUT_SIZE as usize,
-                        self.unlock_mapped_memory,
-                    )
-                    .expect("Failed to create SharedMemoryWriter"),
-                );
-            }
-
-            write_input(&mut self.stdin.lock().unwrap(), input_writer.as_ref().unwrap());
-
-            // Add to executor stats
-            #[cfg(feature = "stats")]
-            self.stats.add_stat(
-                parent_stats_id,
-                stats_id,
-                "ASM_WRITE_INPUT",
-                0,
-                ExecutorStatsEvent::End,
+            *input_writer = Some(
+                SharedMemoryWriter::new(
+                    &shmem_input_name,
+                    MAX_INPUT_SIZE as usize,
+                    self.unlock_mapped_memory,
+                )
+                .expect("Failed to create SharedMemoryWriter"),
             );
-        });
+        }
+
+        write_input(&mut self.stdin.lock().unwrap(), input_writer.as_ref().unwrap());
+
+        // Add to executor stats
+        #[cfg(feature = "stats")]
+        self.stats.add_stat(
+            parent_stats_id,
+            stats_id,
+            "ASM_WRITE_INPUT",
+            0,
+            ExecutorStatsEvent::End,
+        );
 
         let chunk_size = self.chunk_size;
         let (world_rank, local_rank, base_port) =

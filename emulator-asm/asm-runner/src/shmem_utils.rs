@@ -272,8 +272,8 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         unsafe { self.mapped_ptr.add(size_of::<H>()) }
     }
 
-    pub fn shmem_input_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-        format!("{}_{}_input", AsmServices::shmem_prefix(port, local_rank), asm_service.as_str())
+    pub fn shmem_input_name(port: u16, local_rank: i32) -> String {
+        format!("{}_input", AsmServices::shmem_prefix(port, local_rank))
     }
 
     pub fn shmem_output_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
