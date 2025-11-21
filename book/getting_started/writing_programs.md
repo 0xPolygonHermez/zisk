@@ -40,15 +40,18 @@ ziskos::entrypoint!(main);
 
 use sha2::{Digest, Sha256};
 use std::convert::TryInto;
-use ziskos::{read_input, set_output};
+use ziskos::{read_input_slice, set_output};
 use byteorder::ByteOrder;
 
 fn main() {
     // Read the input data as a byte array from ziskos
-    let input: Vec<u8> = read_input();
+    let input = read_input_slice();
 
-    // Get the 'n' value converting the input byte array into a u64 value
-    let n: u64 = u64::from_le_bytes(input.try_into().unwrap());
+    // Convert the input data to a u64 integer
+    let n: u64 = match input.as_ref().try_into() {
+        Ok(input_bytes) => u64::from_le_bytes(input_bytes),
+        Err(e) => panic!("Invalid input, error: {}", e),
+    };
 
     let mut hash = [0u8; 32];
 
@@ -87,11 +90,11 @@ To provide input data for ZisK, you need to write that data in a binary file (e.
 
 If your program requires complex input data, consider using a serialization mechanism (like [`bincode`](https://crates.io/crates/bincode) crate) to store it in `input.bin` file.
 
-In your program, use the `ziskos::read_input()` function to retrieve the input data from the `input.bin` file:
+In your program, use the `ziskos::read_input_slice()` function to retrieve the input data from the `input.bin` file:
 
 ```rust
 // Read the input data as a byte array from ziskos
-let input: Vec<u8> = read_input();
+let input = read_input_slice();
 ```
 
 To write public output data, use the `ziskos::set_output()` function. Since the function accepts `u32` values, split the output data into 32-bit chunks if necessary and increase the `id` parameter of the function in each call:
