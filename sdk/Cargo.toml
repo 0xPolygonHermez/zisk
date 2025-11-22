@@ -25,7 +25,7 @@ zisk-distributed-common = { workspace = true }
 
 [features]
 default = []
-gpu = []
+gpu = ["proofman/gpu", "proofman-common/gpu", "zisk-distributed-common/gpu"]
 stats = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
 
