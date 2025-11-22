@@ -28,3 +28,32 @@ pub use regular_planner::*;
 pub use types::*;
 pub use utils::*;
 pub use zisk_lib_init::*;
+
+pub struct ElfInfo {
+    elf_hash: &'static str,
+    pilout_hash: &'static str,
+    rom_setup_num_rows: u64,
+    rom_setup_blowup_factor: usize,
+}
+
+// Now I'd like to compose this name as a file name
+impl ElfInfo {
+    pub fn custom_commits_filename(&self) -> String {
+        format!(
+            "{}_{}_{}_{}.bin",
+            self.elf_hash, self.pilout_hash, self.rom_setup_num_rows, self.rom_setup_blowup_factor
+        )
+    }
+
+    pub fn asm_mo_filename(&self) -> String {
+        format!("{}-mo.bin", self.elf_hash)
+    }
+
+    pub fn asm_mt_filename(&self) -> String {
+        format!("{}-mt.bin", self.elf_hash)
+    }
+
+    pub fn asm_rh_filename(&self) -> String {
+        format!("{}-rh.bin", self.elf_hash)
+    }
+}
