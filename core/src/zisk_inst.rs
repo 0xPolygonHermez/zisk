@@ -61,6 +61,8 @@ pub const STORE_IND: u64 = 2;
 /// c register value is stored stored in register at a constant index
 pub const STORE_REG: u64 = 3;
 
+pub const ROM_DATA_FLAGS: u64 = 0x4000_0000;
+
 /// Describes the type of the Zisk opcode.
 ///
 /// This type determines how the operation result will be proven.
