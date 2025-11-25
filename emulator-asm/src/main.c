@@ -28,6 +28,7 @@ void emulator_start(void);
 uint64_t get_max_bios_pc(void);
 uint64_t get_max_program_pc(void);
 uint64_t get_gen_method(void);
+void write_ro_data(void);
 
 // Address map
 #define ROM_ADDR (uint64_t)0x80000000
@@ -2494,6 +2495,9 @@ void server_setup (void)
             exit(-1);
         }
         if (verbose) printf("mmap(rom) mapped %ld B and returned address %p in %lu us\n", ROM_SIZE, pRom, duration);
+
+        // Write ROM data to memory
+        write_ro_data();
     }
 
     /*********/
