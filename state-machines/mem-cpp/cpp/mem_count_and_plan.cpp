@@ -211,7 +211,6 @@ void MemCountAndPlan::stats() {
         plan_workers[i].stats();
     }
     printf("prepare: %04.2f ms\n", t_prepare_us / 1000.0);
-    printf("execution: %04.2f ms\n", (TIME_US_BY_CHUNK * context->size()) / 1000.0);
     printf("completed: %04.2f ms\n", context->get_completed_us() / 1000.0);
     printf("count_phase: %04.2f ms\n", t_count_us / 1000.0);
     printf("plan_phase: %04.2f ms\n", t_plan_us / 1000.0);
@@ -332,7 +331,7 @@ void MemCountAndPlan::wait() {
 void MemCountAndPlan::detach_execute() {
     count_phase();
     plan_phase();
-    //stats();
+    // stats();
     // printf("MemCountAndPlan count(ms):%ld plan(ms):%ld tot(ms):%ld\n", 
     //        t_count_us / 1000, t_plan_us / 1000, (t_count_us + t_plan_us) / 1000);
 }

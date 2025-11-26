@@ -7,7 +7,7 @@
 
 #define CHUNK_SIZE_BITS 18
 #define CHUNK_SIZE (1 << CHUNK_SIZE_BITS)
-#define MAX_LOCATORS 2048
+#define MAX_LOCATORS 4096
 #define MAX_MEM_PLANNERS 8
 #define USE_ADDR_COUNT_TABLE
 #define MAX_SEGMENTS 512
@@ -28,7 +28,7 @@
 #define ROM_ROWS (1 << 21)
 #define INPUT_ROWS (1 << 21)
 #define MEM_ROWS (1 << 22)
-#define MAX_CHUNKS 8192     // 2^13 * 2^18 = 2^31
+#define MAX_CHUNKS 16384   // 2^13 * 2^18 = 2^32
 
 // THREAD_BITS >= 1
 #define THREAD_BITS 2

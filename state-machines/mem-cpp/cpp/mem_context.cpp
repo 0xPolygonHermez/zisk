@@ -111,7 +111,8 @@ void MemContext::add_chunk(MemCountersBusData *data, uint32_t count) {
 #ifdef MEM_CONTEXT_CV
         std::lock_guard<std::mutex> lock(chunk_mutex);
 #endif
-        uint32_t chunk_id = chunks_count.load(std::memory_order_relaxed);        
+        uint32_t chunk_id = chunks_count.load(std::memory_order_relaxed);     
+        assert(chunk_id < MAX_CHUNKS);   
         chunks[chunk_id].data = data;
         chunks[chunk_id].count = count;
         #ifdef CHUNK_STATS
