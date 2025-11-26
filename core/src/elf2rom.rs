@@ -41,18 +41,7 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
         // Merge adjacent read-only sections for efficiency
         let merged_ro = merge_adjacent_ro_sections(&payload.ro);
         for section in &merged_ro {
-            if section.addr < ROM_ADDR || section.addr > ROM_ADDR_MAX {
-                rom.ro_data.push(RoData::new(
-                    section.addr,
-                    section.data.len(),
-                    section.data.clone(),
-                ));
-            }
-        }
-
-        // Add RO data initialization code instructions
-        for section in &merged_ro {
-            add_zisk_init_data(&mut rom, section.addr, &section.data, true);
+            rom.ro_data.push(RoData::new(section.addr, section.data.len(), section.data.clone()));
         }
 
         // Add entry and exit jump instructions, only for the main payload, i.e. for the second payload
