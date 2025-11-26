@@ -147,21 +147,31 @@ pub fn mul_bn254(p: &[u64; 8], k: &[u64; 4]) -> [u64; 8] {
     // Perform the loop, based on the binary representation of k
 
     // We do the first iteration separately
-    let _max_limb = max_limb as usize;
-    let k_bit = (k[_max_limb] >> max_bit) & 1;
-    assert_eq!(k_bit, 1); // the first received bit should be 1
+    let max_limb = max_limb as usize;
+    let max_bit = max_bit as usize;
+
+    // The first received bit should be 1
+    assert_eq!((k[max_limb] >> max_bit) & 1, 1);
 
     // Start at P
     let mut q = SyscallPoint256 { x: x1, y: y1 };
     let mut k_rec = [0u64; 4];
-    k_rec[_max_limb] |= 1 << max_bit;
+    k_rec[max_limb] |= 1 << max_bit;
+
+    // Determine starting limb/bit for the loop
+    let mut limb = max_limb;
+    let mut bit = if max_bit == 0 {
+        // If max_bit is 0 then limb > 0; otherwise k = 1, which is excluded here
+        limb -= 1;
+        63
+    } else {
+        max_bit - 1
+    };
 
     // Perform the rest of the loop
     let p = SyscallPoint256 { x: x1, y: y1 };
-    let _max_bit = max_bit as usize;
-    for i in (0..=_max_limb).rev() {
-        let bit_len = if i == _max_limb { _max_bit - 1 } else { 63 };
-        for j in (0..=bit_len).rev() {
+    for i in (0..=limb).rev() {
+        for j in (0..=bit).rev() {
             // Always double
             syscall_bn254_curve_dbl(&mut q);
 
@@ -175,6 +185,7 @@ pub fn mul_bn254(p: &[u64; 8], k: &[u64; 4]) -> [u64; 8] {
                 k_rec[i] |= 1 << j;
             }
         }
+        bit = 63;
     }
 
     // Check that the reconstructed k is equal to the input k

@@ -138,22 +138,34 @@ pub fn secp256k1_double_scalar_mul_with_g(
     let mut gp_is_infinity = false;
     add_points_complete_assign(&mut gp, &mut gp_is_infinity, p);
 
+    let one = [1u64, 0, 0, 0];
+    if *k1 == one && *k2 == one {
+        // Return G + p
+        return (gp_is_infinity, gp);
+    }
+    // From here on, at least one of k1 or k2 is greater than 1
+
     // Hint the maximum length between the binary representations of k1 and k2
     // We will verify the output by recomposing both k1 and k2
     // Moreover, we should check that the first received bit (of either k1 or k2) is 1
     let (max_limb, max_bit) = fcall_msb_pos_256(k1, k2);
 
     // Perform the loop, based on the binary representation of k1 and k2
+
+    // We do the first iteration separately
+    let max_limb = max_limb as usize;
+    let max_bit = max_bit as usize;
+
+    // At least one of the scalars should have the first received bit as 1
+    let k1_bit = (k1[max_limb] >> max_bit) & 1;
+    let k2_bit = (k2[max_limb] >> max_bit) & 1;
+    assert!(k1_bit == 1 || k2_bit == 1);
+
     // Start at 𝒪
     let mut res = SyscallPoint256 { x: [0u64; 4], y: [0u64; 4] };
     let mut res_is_infinity = true;
     let mut k1_rec = [0u64; 4];
     let mut k2_rec = [0u64; 4];
-    // We do the first iteration separately
-    let _max_limb = max_limb as usize;
-    let k1_bit = (k1[_max_limb] >> max_bit) & 1;
-    let k2_bit = (k2[_max_limb] >> max_bit) & 1;
-    assert!(k1_bit == 1 || k2_bit == 1); // At least one of the scalars should start with 1
     if (k1_bit == 0) && (k2_bit == 1) {
         // If res is 𝒪, set res = p; otherwise, double res and add p
         if res_is_infinity {
@@ -166,7 +178,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
         }
 
         // Update k2_rec
-        k2_rec[_max_limb] |= 1 << max_bit;
+        k2_rec[max_limb] |= 1 << max_bit;
     } else if (k1_bit == 1) && (k2_bit == 0) {
         // If res is 𝒪, set res = g; otherwise, double res and add g
         if res_is_infinity {
@@ -183,7 +195,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
         }
 
         // Update k1_rec
-        k1_rec[_max_limb] |= 1 << max_bit;
+        k1_rec[max_limb] |= 1 << max_bit;
     } else if (k1_bit == 1) && (k2_bit == 1) {
         if res_is_infinity {
             // If (g + p) is 𝒪, do nothing; otherwise set res = (g + p)
@@ -201,17 +213,25 @@ pub fn secp256k1_double_scalar_mul_with_g(
         }
 
         // Update k1_rec and k2_rec
-        k1_rec[_max_limb] |= 1 << max_bit;
-        k2_rec[_max_limb] |= 1 << max_bit;
+        k1_rec[max_limb] |= 1 << max_bit;
+        k2_rec[max_limb] |= 1 << max_bit;
     }
 
+    // Determine starting limb/bit for the loop
+    let mut limb = max_limb;
+    let mut bit = if max_bit == 0 {
+        // If max_bit is 0 then limb > 0; otherwise k1,k2 = 1, which is excluded here
+        limb -= 1;
+        63
+    } else {
+        max_bit - 1
+    };
+
     // Perform the rest of the loop
-    for i in (0..=max_limb).rev() {
-        let _i = i as usize;
-        let bit_len = if i == max_limb { max_bit - 1 } else { 63 };
-        for j in (0..=bit_len).rev() {
-            let k1_bit = (k1[_i] >> j) & 1;
-            let k2_bit = (k2[_i] >> j) & 1;
+    for i in (0..=limb).rev() {
+        for j in (0..=bit).rev() {
+            let k1_bit = (k1[i] >> j) & 1;
+            let k2_bit = (k2[i] >> j) & 1;
 
             if (k1_bit == 0) && (k2_bit == 0) {
                 // If res is 𝒪, do nothing; otherwise, double
@@ -230,7 +250,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
                 }
 
                 // Update k2_rec
-                k2_rec[_i] |= 1 << j;
+                k2_rec[i] |= 1 << j;
             } else if (k1_bit == 1) && (k2_bit == 0) {
                 // If res is 𝒪, set res = g; otherwise, double res and add g
                 if res_is_infinity {
@@ -247,7 +267,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
                 }
 
                 // Update k1_rec
-                k1_rec[_i] |= 1 << j;
+                k1_rec[i] |= 1 << j;
             } else if (k1_bit == 1) && (k2_bit == 1) {
                 if res_is_infinity {
                     // If (g + p) is 𝒪, do nothing; otherwise set res = (g + p)
@@ -265,10 +285,11 @@ pub fn secp256k1_double_scalar_mul_with_g(
                 }
 
                 // Update k1_rec and k2_rec
-                k1_rec[_i] |= 1 << j;
-                k2_rec[_i] |= 1 << j;
+                k1_rec[i] |= 1 << j;
+                k2_rec[i] |= 1 << j;
             }
         }
+        bit = 63;
     }
 
     // Check that the recomposed scalars are the same as the received scalars

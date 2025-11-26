@@ -10,6 +10,17 @@ use super::{
     twist::{is_on_curve_twist_bls12_381, is_on_subgroup_twist_bls12_381},
 };
 
+const IDENTITY_G1: [u64; 12] = {
+    let mut tmp = [0u64; 12];
+    tmp[6] = 1;
+    tmp
+};
+const IDENTITY_G2: [u64; 24] = {
+    let mut tmp = [0u64; 24];
+    tmp[12] = 1;
+    tmp
+};
+
 /// Optimal Ate Pairing e: G1 x G2 -> GT over the BLS12-381 curve
 /// where G1 = E(Fp)[r] = E(Fp), G2 = E'(Fp2)[r] and GT = μ_r (the r-th roots of unity over Fp12*)
 /// the involved curves are E/Fp: y² = x³ + 4 and E'/Fp2: y² = x³ + 4·(1+u)
@@ -84,9 +95,9 @@ pub fn pairing_bls12_381(p: &[u64; 12], q: &[u64; 24]) -> ([u64; 72], u8) {
     }
 
     // Is p = 𝒪?
-    if *p == [0; 12] {
+    if *p == IDENTITY_G1 {
         // Is q = 𝒪?
-        if *q == [0; 24] {
+        if *q == IDENTITY_G2 {
             // Both are 𝒪, then e(𝒪,𝒪) = 1
             let mut one = [0; 72];
             one[0] = 1;
@@ -116,7 +127,7 @@ pub fn pairing_bls12_381(p: &[u64; 12], q: &[u64; 24]) -> ([u64; 72], u8) {
     }
 
     // Is Q = 𝒪?
-    if *q == [0; 24] {
+    if *q == IDENTITY_G2 {
         // Is p on the curve?
         if is_on_curve_bls12_381(p) {
             // Is p on the subgroup G1?
