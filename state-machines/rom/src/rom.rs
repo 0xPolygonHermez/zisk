@@ -27,7 +27,8 @@ use zisk_common::{
     Planner,
 };
 use zisk_core::{
-    zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,
+    zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_DATA_FLAGS, ROM_ENTRY,
+    ROM_EXIT, SRC_IMM,
 };
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
 
@@ -270,12 +271,86 @@ impl RomSM {
         }
 
         // Padd with zeroes
-        let num_rows: usize = RomRomTrace::<F>::NUM_ROWS;
-        for i in rom.insts.len()..num_rows {
+        // let num_rows: usize = RomRomTrace::<F>::NUM_ROWS;
+        // for i in rom.insts.len()..num_rows {
+        let mut i_rom = rom.insts.len();
+
+        if let Some(rom_data) = rom
+            .ro_data
+            .iter()
+            .find(|&ro_data| ro_data.from >= ROM_ADDR && ro_data.from < (ROM_ADDR + ROM_ADDR_MAX))
+        {
+            let mut addr = rom_data.from as u32;
+            let offset = (addr & 0x7) as usize;
+
+            // Special case when address isn't aligned 64-bits
+            let mut it = if offset != 0 {
+                let mut bytes = [0u8; 8];
+                let take = 8 - offset;
+                addr = addr & 0xFFFF_FFF8;
+                bytes[offset..offset + take].copy_from_slice(&rom_data.data[0..take]);
+                let value = u64::from_le_bytes(bytes);
+                Self::set_rom_addr_value(addr, value, &mut rom_custom_trace[i_rom]);
+                i_rom += 1;
+                addr += 8;
+                rom_data.data[take..].chunks_exact(8)
+            } else {
+                rom_data.data.chunks_exact(8)
+            };
+
+            // For rest of aligned u64
+            for chunk in &mut it {
+                let value = u64::from_le_bytes(chunk.try_into().unwrap());
+                Self::set_rom_addr_value(addr, value, &mut rom_custom_trace[i_rom]);
+                addr += 8;
+                i_rom += 1;
+            }
+
+            // Special case when remain some bytes
+            let rem = it.remainder();
+            if !rem.is_empty() {
+                let mut bytes = [0u8; 8];
+                bytes[..rem.len()].copy_from_slice(rem);
+                Self::set_rom_addr_value(
+                    addr,
+                    u64::from_le_bytes(bytes),
+                    &mut rom_custom_trace[i_rom],
+                );
+                i_rom += 1;
+            }
+        };
+
+        // Padding with zeros. The values flags = 0 isn't valid from
+        // rom trace, to avoid use it.
+        for i in i_rom..rom_custom_trace.num_rows() {
             rom_custom_trace[i] = RomRomTraceRow::default();
+            rom_custom_trace[i].line = F::ZERO;
+            rom_custom_trace[i].a_offset_imm0 = F::ZERO;
+            rom_custom_trace[i].a_imm1 = F::ZERO;
+            rom_custom_trace[i].b_offset_imm0 = F::ZERO;
+            rom_custom_trace[i].b_imm1 = F::ZERO;
+            rom_custom_trace[i].ind_width = F::ZERO;
+            rom_custom_trace[i].op = F::ZERO;
+            rom_custom_trace[i].store_offset = F::ZERO;
+            rom_custom_trace[i].jmp_offset1 = F::ZERO;
+            rom_custom_trace[i].jmp_offset2 = F::ZERO;
+            rom_custom_trace[i].flags = F::ZERO;
         }
     }
 
+    fn set_rom_addr_value<F: PrimeField64>(addr: u32, value: u64, rom_row: &mut RomRomTraceRow<F>) {
+        rom_row.line = F::ZERO;
+        rom_row.a_offset_imm0 = F::from_u32(addr);
+        rom_row.a_imm1 = F::ZERO;
+        rom_row.b_offset_imm0 = F::from_u32(value as u32);
+        rom_row.b_imm1 = F::from_u32((value >> 32) as u32);
+        rom_row.ind_width = F::ZERO;
+        rom_row.op = F::ZERO;
+        rom_row.store_offset = F::ZERO;
+        rom_row.jmp_offset1 = F::ZERO;
+        rom_row.jmp_offset2 = F::ZERO;
+        rom_row.flags = F::from_u64(ROM_DATA_FLAGS);
+    }
     /// Computes a custom trace ROM from the given ELF file.
     ///
     /// # Arguments

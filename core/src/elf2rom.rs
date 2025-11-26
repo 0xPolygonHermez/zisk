@@ -44,11 +44,6 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
             rom.ro_data.push(RoData::new(section.addr, section.data.len(), section.data.clone()));
         }
 
-        // Add RO data initialization code instructions
-        for section in &merged_ro {
-            add_zisk_init_data(&mut rom, section.addr, &section.data, true);
-        }
-
         // Add entry and exit jump instructions, only for the main payload, i.e. for the second payload
         if i == 1 {
             add_entry_exit_jmp(&mut rom, payload.entry_point);
