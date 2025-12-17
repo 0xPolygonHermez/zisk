@@ -11,10 +11,9 @@ pub use fcall::*;
 pub use profile::*;
 
 pub mod zisklib;
-
 pub mod syscalls;
-
 pub mod ziskos_definitions;
+pub mod hints;
 
 #[macro_export]
 macro_rules! entrypoint {
