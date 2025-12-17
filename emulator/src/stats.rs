@@ -185,6 +185,8 @@ impl Stats {
 
         // First, handle RETURN even if we're not changing ROI
         let return_call = if self.is_return && !self.call_stack.is_empty() {
+            #[cfg(feature = "debug_call_stack")]
+            println!("CALL_STACK_DEBUG: RETURN P_PC:0x{:08x} => PC:0x{pc:08x}", self.previous_pc);
             self.call_stack.pop()
         } else {
             None
@@ -212,6 +214,11 @@ impl Stats {
             if let Some(roi_index) = self.current_roi {
                 // Tail call
                 if let Some(top) = self.call_stack.last_mut() {
+                    #[cfg(feature = "debug_call_stack")]
+                    println!(
+                        "CALL_STACK_DEBUG: TAIL CALL P_PC:0x{:08x} => PC:0x{pc:08x}",
+                        self.previous_pc
+                    );
                     top.tail_calls.push((roi_index, self.costs.clone()));
                     self.rois[roi_index].tail_jmp(previous_roi_index);
                     if top.tail_calls.len() < 2 {
@@ -236,7 +243,34 @@ impl Stats {
             // If return after call, need to add delta costs
             if let Some(return_call) = return_call {
                 if return_call.caller_roi_index != Some(roi_index) {
-                    panic!("{:?} {:?}", return_call, self.rois[roi_index]);
+                    println!("**** STACK MISMATCH DETECTED ****\n");
+                    println!(
+                        "PC:[0x{pc:08x}] RA:[0x{:08x}] P_PC:[0x{:08x}]",
+                        regs[1], self.previous_pc
+                    );
+                    if let Some(caller_roi_index) = return_call.caller_roi_index {
+                        let _roi = &self.rois[caller_roi_index];
+                        println!("caller_roi_index (expected): {caller_roi_index} [0x{:08x}, 0x{:08x}] {}", _roi.from_pc, _roi.to_pc, _roi.name);
+                    } else {
+                        println!("caller_roi_index (expected): None !!");
+                    }
+                    let _roi = &self.rois[roi_index];
+                    println!(
+                        "caller_roi_index (current): {roi_index} [0x{:08x}, 0x{:08x}] {}",
+                        _roi.from_pc, _roi.to_pc, _roi.name
+                    );
+                    if let Some(called_roi_index) = return_call.called_roi_index {
+                        let _roi = &self.rois[called_roi_index];
+                        println!(
+                            "called_roi_index: {called_roi_index} [0x{:08x}, 0x{:08x}] {}",
+                            _roi.from_pc, _roi.to_pc, _roi.name
+                        );
+                    } else {
+                        println!("called_roi_index (expected): None !!");
+                    }
+                    println!("\n");
+                    Self::static_print_call_stack(&self.call_stack, "");
+                    // panic!("{:?} {:?}", return_call, self.rois[roi_index]);
                 }
 
                 self.rois[roi_index].return_call(self.call_stack.len());
@@ -286,6 +320,11 @@ impl Stats {
                     if let Some(previous_roi_index) = previous_roi_index {
                         self.rois[previous_roi_index].caller_call();
                     }
+                    #[cfg(feature = "debug_call_stack")]
+                    println!(
+                        "CALL_STACK_DEBUG: CALL P_PC:0x{:08x} => PC:0x{pc:08x} CALLER_ROI:{} CALLED_ROI:{}",
+                        self.previous_pc, previous_roi_index.unwrap_or(900_000_000), self.current_roi.unwrap_or(900_000_000)
+                    );
                     self.call_stack.push(CallStackEntry {
                         pc: pc as u64,
                         ra: regs[REG_RA_IDX],
@@ -448,7 +487,10 @@ impl Stats {
         self.pc_histogram.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         self.previous_pc = pc;
         self.previous_verbose = instruction.verbose.clone();
-        if instruction.set_pc {
+        let is_jmp = instruction.set_pc
+            || (instruction.op == 0
+                && (instruction.jmp_offset1 > 4 || instruction.jmp_offset1 < 0));
+        if is_jmp {
             // CALL: set_pc=true, store_ra=true, store_offset=1 (stores PC+4 or PC+2 in ra)
             // self.is_call = instruction.store_ra && instruction.store_offset == 1;
             self.is_call = instruction.store_ra;
@@ -457,6 +499,7 @@ impl Stats {
             // RETURN: set_pc=true, store_ra=false (no stores RA), b_src=SRC_REG, b_offset_imm0=1 (jumps to ra/x1)
             // Additionally, verify that the target PC matches the expected return address from the call stack
             let is_jalr_ra = !instruction.store_ra
+                && instruction.set_pc
                 && instruction.b_src == SRC_REG
                 && instruction.b_offset_imm0 == 1;
 
