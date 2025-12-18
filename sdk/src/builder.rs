@@ -55,6 +55,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     witness_lib: Option<PathBuf>,
     proving_key: Option<PathBuf>,
     elf: Option<PathBuf>,
+    input: Option<PathBuf>,
     verify_constraints: bool,
     witness: bool,
     verbose: u8,
@@ -176,6 +177,12 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     #[must_use]
     pub fn elf_path(mut self, elf_path: PathBuf) -> Self {
         self.elf = Some(elf_path);
+        self
+    }
+
+    #[must_use]
+    pub fn input_path_opt(mut self, input_path: Option<PathBuf>) -> Self {
+        self.input = input_path;
         self
     }
 
@@ -330,6 +337,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
                 &witness_lib,
                 &proving_key,
                 &elf,
+                self.input.as_ref(),
                 output_dir.as_ref(),
             );
         }
@@ -361,6 +369,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
         witness_lib: &Path,
         proving_key: &Path,
         elf: &Path,
+        input: Option<&PathBuf>,
         output_dir: Option<&PathBuf>,
     ) {
         if witness {
@@ -372,13 +381,16 @@ impl<X> ProverClientBuilder<EmuB, X> {
         }
 
         println!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib.display());
-        println!("{: >12} {}", "Elf".bright_green().bold(), elf.display());
+        println!("{: >12} {}", "ELF".bright_green().bold(), elf.display());
+        if let Some(input) = input {
+            println!("{: >12} {}", "Input".bright_green().bold(), input.display());
+        }
         println!(
             "{: >12} {}",
             "Emulator".bright_green().bold(),
             "Running in emulator mode".bright_yellow()
         );
-        println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key.display());
+        println!("{: >12} {}", "Proving Key".bright_green().bold(), proving_key.display());
 
         if let Some(output_dir) = output_dir {
             println!("{: >12} {}", "Output Dir".bright_green().bold(), output_dir.display());
@@ -462,6 +474,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
                 &witness_lib,
                 &proving_key,
                 &elf,
+                self.input.as_ref(),
                 output_dir.as_ref(),
             );
         }
@@ -497,6 +510,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
         witness_lib: &Path,
         proving_key: &Path,
         elf: &Path,
+        input: Option<&PathBuf>,
         output_dir: Option<&PathBuf>,
     ) {
         if witness {
@@ -508,8 +522,11 @@ impl<X> ProverClientBuilder<AsmB, X> {
         }
 
         println!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib.display());
-        println!("{: >12} {}", "Elf".bright_green().bold(), elf.display());
-        println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key.display());
+        println!("{: >12} {}", "ELF".bright_green().bold(), elf.display());
+        if let Some(input) = input {
+            println!("{: >12} {}", "Input".bright_green().bold(), input.display());
+        }
+        println!("{: >12} {}", "Proving Key".bright_green().bold(), proving_key.display());
 
         if let Some(output_dir) = output_dir {
             println!("{: >12} {}", "Output Dir".bright_green().bold(), output_dir.display());
@@ -532,6 +549,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             proving_key: builder.proving_key,
             verify_constraints: builder.verify_constraints,
             elf: builder.elf,
+            input: builder.input,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
@@ -567,6 +585,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             proving_key: builder.proving_key,
             verify_constraints: builder.verify_constraints,
             elf: builder.elf,
+            input: builder.input,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
@@ -604,6 +623,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             proving_key: builder.proving_key,
             verify_constraints: builder.verify_constraints,
             elf: builder.elf,
+            input: builder.input,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
@@ -639,6 +659,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             proving_key: builder.proving_key,
             verify_constraints: false,
             elf: builder.elf,
+            input: builder.input,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
