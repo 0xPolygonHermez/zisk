@@ -16,6 +16,8 @@ extern mpz_class ScalarMask256;
 extern mpz_class ScalarMask384;
 extern mpz_class ScalarP_DIV_4;
 extern mpz_class ScalarP;
-extern mpz_class ScalarNQR;
+extern mpz_class ScalarNQR_FP;
+extern mpz_class ScalarP_MINUS_3_DIV_4;
+extern mpz_class ScalarP_MINUS_1_DIV_2;
 
 #endif

@@ -2,6 +2,7 @@
 #include "../common/utils.hpp"
 #include "../bn254/bn254_fe.hpp"
 #include "../bls12_381/bls12_381_fe.hpp"
+#include "../bls12_381/bls12_381.hpp"
 #include <stdint.h>
 #include <assert.h>
 
@@ -96,6 +97,11 @@ int Fcall (
         case FCALL_BIN_DECOMP_ID:
         {
             iresult = BinDecompCtx(ctx);
+            break;
+        }
+        case FCALL_BLS12_381_FP2_SQRT_ID:
+        {
+            iresult = BLS12_381Fp2SqrtCtx(ctx);
             break;
         }
         default:
@@ -598,7 +604,7 @@ int BLS12_381FpSqrt (
     {
         // To check that a is indeed a non-quadratic residue, we check that
         // a * NQR is a quadratic residue for some fixed known non-quadratic residue NQR
-        mpz_class a_nqr = (a * ScalarNQR) % ScalarP;
+        mpz_class a_nqr = (a * ScalarNQR_FP) % ScalarP;
 
         // Compute the square root of a * NQR
         mpz_powm(r.get_mpz_t(), a_nqr.get_mpz_t(), ScalarP_DIV_4.get_mpz_t(), ScalarP.get_mpz_t());
@@ -962,6 +968,53 @@ int BinDecompCtx (
     // Store the result size at the beginning of the result array
     ctx->result[0] = ctx->result_size;
     ctx->result_size++;
+    
+    return 0;
+}
+
+/**********************/
+/* BLS12 381 FP2 SQRT */
+/**********************/
+
+uint64_t NQR[12] = {1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0};
+
+/// Computes the square root of a non-zero field element in Fp2
+int BLS12_381Fp2SqrtCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int result;
+
+    // Perform the square root
+    result = BLS12_381ComplexSqrtP(
+        &ctx->params[0], // 12 x 64 bits input parameter: real(6) + imaginary(6)
+        &ctx->result[1], // 12 x 64 bits output parameter: real(6) + imaginary(6)
+        &ctx->result[0]  // 1 x 64 bits output parameter: is_quadratic_residue (1)
+    );
+    if (result != 0) return result;
+
+    // Check if a is a quadratic residue
+    if (!ctx->result[0])
+    {
+        // To check that a is indeed a non-quadratic residue, we check that
+        // a * NQR is a quadratic residue for some fixed known non-quadratic residue NQR
+        uint64_t a_nqr[12];
+        result = BLS12_381ComplexMulP(
+            &ctx->params[0], // 12 x 64 bits input parameter: real(6) + imaginary(6)
+            &NQR[0], // 12 x 64 bits input parameter: real(6) + imaginary(6)
+            &a_nqr[0] // 12 x 64 bits output parameter: real(6) + imaginary(6)
+        );
+        if (result != 0) return result;
+
+        // Compute the square root of a * NQR
+        uint64_t aux; // Unused
+        result = BLS12_381ComplexSqrtP(
+            &a_nqr[0], // 12 x 64 bits input parameter: real(6) + imaginary(6)
+            &ctx->result[1], // 12 x 64 bits output parameter: real(6) + imaginary(6)
+            &aux  // 1 x 64 bits output parameter: is_quadratic_residue (1)
+        );
+        if (result != 0) return result;
+    }
     
     return 0;
 }

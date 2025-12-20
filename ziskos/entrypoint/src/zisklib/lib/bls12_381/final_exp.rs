@@ -14,6 +14,8 @@ use super::{
 // However, I dont think its a good idea in general to optimize verification "at all costs".
 
 /// Given f ∈ Fp12*, computes f^((p¹²-1)/r) ∈ Fp12*
+///
+/// Note: Unoptimized for the case f == 1
 pub fn final_exp_bls12_381(f: &[u64; 72]) -> [u64; 72] {
     //////////////////
     // The easy part: exp by (p^6-1)(p^2+1)
@@ -56,4 +58,14 @@ pub fn final_exp_bls12_381(f: &[u64; 72]) -> [u64; 72] {
     f = mul_fp12_bls12_381(&f, &m);
 
     f
+}
+
+/// # Safety
+/// - `f` must point to a valid `[u64; 72]` (576 bytes), used as both input and output.
+/// - Input must be a valid non-zero Fp12 element.
+#[no_mangle]
+pub unsafe extern "C" fn final_exp_bls12_381_c(f: *mut u64) {
+    let f_arr: &[u64; 72] = &*(f as *const [u64; 72]);
+    let result = final_exp_bls12_381(f_arr);
+    std::ptr::copy_nonoverlapping(result.as_ptr(), f, 72);
 }

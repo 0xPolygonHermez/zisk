@@ -6,10 +6,10 @@ use crate::{
         syscall_bls12_381_complex_sub, SyscallBls12_381ComplexAddParams,
         SyscallBls12_381ComplexMulParams, SyscallBls12_381ComplexSubParams, SyscallComplex384,
     },
-    zisklib::{eq, fcall_bls12_381_fp2_inv},
+    zisklib::{eq, fcall_bls12_381_fp2_inv, fcall_bls12_381_fp2_sqrt},
 };
 
-use super::constants::P_MINUS_ONE;
+use super::constants::{NQR_FP2, P_MINUS_ONE};
 
 /// Helper to convert from array representation to syscall representation
 #[inline]
@@ -101,6 +101,29 @@ pub fn square_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
     let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
     syscall_bls12_381_complex_mul(&mut params);
     from_syscall_complex(&f1)
+}
+
+/// Square root in Fp2
+#[inline]
+pub fn sqrt_fp2_bls12_381(x: &[u64; 12]) -> ([u64; 12], bool) {
+    // Hint the sqrt
+    let hint = fcall_bls12_381_fp2_sqrt(x);
+    let is_qr = hint[0] == 1;
+    let sqrt = hint[1..13].try_into().unwrap();
+
+    // Compute sqrt * sqrt
+    let mul = mul_fp2_bls12_381(&sqrt, &sqrt);
+
+    if is_qr {
+        // Check that sqrt * sqrt == x
+        assert!(eq(&mul, x));
+        (sqrt, true)
+    } else {
+        // Check that sqrt * sqrt == x * NQR
+        let nqr = mul_fp2_bls12_381(x, &NQR_FP2);
+        assert!(eq(&mul, &nqr));
+        (sqrt, false)
+    }
 }
 
 /// Inversion in Fp2: returns a⁻¹

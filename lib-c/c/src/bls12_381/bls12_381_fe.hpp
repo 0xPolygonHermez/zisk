@@ -136,6 +136,116 @@ int inline BLS12_381ComplexInvFe (const RawBLS12_381_384::Element &real, const R
     return 0;
 };
 
+int inline BLS12_381ComplexExpFe (const RawBLS12_381_384::Element &x1, const RawBLS12_381_384::Element &y1, const mpz_class &_exp, RawBLS12_381_384::Element &x2, RawBLS12_381_384::Element &y2)
+{
+    // Exponentiation of a complex number using square-and-multiply algorithm
+
+    // Get a local copy of the base to modify it
+    RawBLS12_381_384::Element base_x, base_y;
+    base_x = x1;
+    base_y = y1;
+
+    // Get a scalar copy of the exponent to modify it
+    mpz_class exp(_exp);
+
+    // Initialize result to 1 + 0i
+    x2 = bls12_381.one(); // x2 = 1
+    y2 = bls12_381.zero(); // y2 = 0
+
+    // Loop until exponent becomes zero
+    while (exp != 0)
+    {
+        // If exponent is odd, multiply the result by the base
+        if ((exp & 1) == 1)
+        {
+            BLS12_381ComplexMulFe(x2, y2, base_x, base_y, x2, y2);
+        }
+
+        // Square the base
+        BLS12_381ComplexMulFe(base_x, base_y, base_x, base_y, base_x, base_y);
+
+        // Divide exponent by 2
+        exp = exp >> 1;
+    }
+    
+    return 0;
+}
+
+int inline BLS12_381ComplexSqrtFe (const RawBLS12_381_384::Element &x1, const RawBLS12_381_384::Element &y1, RawBLS12_381_384::Element &x2, RawBLS12_381_384::Element &y2, uint64_t &is_qr)
+{
+    /// Algorithm 9 from https://eprint.iacr.org/2012/685.pdf
+    /// Square root computation over F_p^2, with p ≡ 3 (mod 4)
+
+    // Step 1: a1 ← a^((p-3)/4)
+    RawBLS12_381_384::Element a1_x, a1_y;
+    BLS12_381ComplexExpFe(x1, y1, ScalarP_MINUS_3_DIV_4, a1_x, a1_y);
+
+    // Step 2: α ← a1 * a1 * a
+    RawBLS12_381_384::Element a1_a_x, a1_a_y;
+    BLS12_381ComplexMulFe(a1_x, a1_y, x1, y1, a1_a_x, a1_a_y);
+    RawBLS12_381_384::Element alpha_x, alpha_y;
+    BLS12_381ComplexMulFe(a1_x, a1_y, a1_a_x, a1_a_y, alpha_x, alpha_y);
+
+    // Step 3: a0 ← α^p * α = conjugate(α) * α
+    RawBLS12_381_384::Element alpha_conj_x, alpha_conj_y;
+    bls12_381.copy(alpha_conj_x, alpha_x);
+    bls12_381.neg(alpha_conj_y, alpha_y);
+    RawBLS12_381_384::Element a0_x, a0_y;
+    BLS12_381ComplexMulFe(alpha_conj_x, alpha_conj_y, alpha_x, alpha_y, a0_x, a0_y);
+    
+    // Step 4-6: if a0 == -1 then return false (no square root)
+    if (bls12_381.eq(a0_x, bls12_381.negOne()) && bls12_381.isZero(a0_y))
+    {
+        // Return false (no square root exists)
+        is_qr = 0;
+        x2 = bls12_381.zero();
+        y2 = bls12_381.zero();
+        return 0;
+    }
+
+    // Step 7: x0 ← a1 * a
+    #define x0_x a1_a_x
+    #define x0_y a1_a_y
+
+    // Step 8-13: compute x based on α
+    // If α == -1 then x ← i * x0 else x ← b * x0
+    if (bls12_381.eq(a0_x, bls12_381.negOne()) && bls12_381.isZero(a0_y))
+    {
+        // Step 9: x ← i * x0
+        BLS12_381ComplexMulFe(
+            bls12_381.zero(), // i real part = 0
+            bls12_381.one(), // i imaginary part = 1
+            x0_x,
+            x0_y,
+            x2,
+            y2
+        );
+    }
+    else
+    {
+        // Step 11: b ← (1 + α)^((p-1)/2)
+        RawBLS12_381_384::Element one_plus_alpha_x, one_plus_alpha_y;
+        BLS12_381ComplexAddFe(
+            bls12_381.one(), // 1 real part = 1
+            bls12_381.zero(), // 1 imaginary part = 0
+            alpha_x,
+            alpha_y,
+            one_plus_alpha_x,
+            one_plus_alpha_y
+        );
+        RawBLS12_381_384::Element b_x, b_y;
+        BLS12_381ComplexExpFe(one_plus_alpha_x, one_plus_alpha_y, ScalarP_MINUS_1_DIV_2, b_x, b_y);
+
+        // Step 12: x ← b * x0
+        BLS12_381ComplexMulFe(b_x, b_y, x0_x, x0_y, x2, y2);
+    }
+
+    // Return true (square root exists)
+    is_qr = 1;
+
+    return 0;
+}
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

@@ -13,6 +13,8 @@ use super::{
 };
 
 /// Computes the Miller loop of a non-zero point `p` in G1 and a non-zero point `q` in G2
+///
+/// Note: It is not optimized for the case where either `p` or `q` is the point at infinity.
 pub fn miller_loop_bls12_381(p: &[u64; 12], q: &[u64; 24]) -> [u64; 72] {
     // Before the loop starts, compute xp' = (-xp/yp)·1/(1+u) and yp' = (1/yp)·1/(1+u)
     let mut xp: [u64; 6] = p[0..6].try_into().unwrap();
@@ -248,4 +250,19 @@ fn dbl_twist_with_hints_bls12_381(q: &[u64; 24], lambda: &[u64; 12], mu: &[u64; 
     result[0..12].copy_from_slice(&x3);
     result[12..24].copy_from_slice(&y3);
     result
+}
+
+/// # Safety
+/// - `ret` must point to a valid `[u64; 72]` for the Fp12 output.
+/// - `q` must point to a valid `[u64; 24]` for the G2 affine point.
+/// - `p` must point to a valid `[u64; 12]` for the G1 affine point.
+#[no_mangle]
+pub unsafe extern "C" fn miller_loop_bls12_381_c(ret: *mut u64, q: *const u64, p: *const u64) {
+    let p_arr: &[u64; 12] = &*(p as *const [u64; 12]);
+    let q_arr: &[u64; 24] = &*(q as *const [u64; 24]);
+
+    let result = miller_loop_bls12_381(p_arr, q_arr);
+
+    let ret_arr: &mut [u64; 72] = &mut *(ret as *mut [u64; 72]);
+    *ret_arr = result;
 }

@@ -99,6 +99,24 @@ int BLS12_381ComplexMulP (
     uint64_t * p3  // 12 x 64 bits
 );
 
+/**************************/
+/* BLS12_381 complex sqrt */
+/**************************/
+
+int BLS12_381ComplexSqrt (
+    const uint64_t * x1, // 6 x 64 bits
+    const uint64_t * y1, // 6 x 64 bits
+    uint64_t * x2, // 6 x 64 bits
+    uint64_t * y3, // 6 x 64 bits
+    uint64_t * is_qr // 1 x 64 bits
+);
+
+int BLS12_381ComplexSqrtP (
+    const uint64_t * p1, // 12 x 64 bits
+    uint64_t * p2,  // 12 x 64 bits
+    uint64_t * is_qr // 1 x 64 bits
+);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

@@ -5,7 +5,7 @@ use crate::{
     zisklib::{eq, fcall_bls12_381_fp_inv, fcall_bls12_381_fp_sqrt},
 };
 
-use super::constants::{NQR, P, P_MINUS_ONE};
+use super::constants::{NQR_FP, P, P_MINUS_ONE};
 
 /// Addition in Fp
 #[inline]
@@ -121,7 +121,7 @@ pub fn sqrt_fp_bls12_381(x: &[u64; 6]) -> ([u64; 6], bool) {
         (sqrt, true)
     } else {
         // Check that sqrt * sqrt == x * NQR
-        let nqr = mul_fp_bls12_381(x, &NQR);
+        let nqr = mul_fp_bls12_381(x, &NQR_FP);
         assert_eq!(*params.d, nqr);
         (sqrt, false)
     }
