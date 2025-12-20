@@ -277,17 +277,3 @@ pub fn exp_fp12_bls12_381(e: u64, a: &[u64; 72]) -> [u64; 72] {
 
     result
 }
-
-/// # Safety
-/// - `ret` must point to a valid `[u64; 72]` for the output.
-/// - `a` and `b` must point to valid `[u64; 72]` Fp12 elements.
-#[no_mangle]
-pub unsafe extern "C" fn mul_fp12_bls12_381_c(ret: *mut u64, a: *const u64, b: *const u64) {
-    let a_arr: &[u64; 72] = &*(a as *const [u64; 72]);
-    let b_arr: &[u64; 72] = &*(b as *const [u64; 72]);
-
-    let result = mul_fp12_bls12_381(a_arr, b_arr);
-
-    let ret_arr: &mut [u64; 72] = &mut *(ret as *mut [u64; 72]);
-    *ret_arr = result;
-}
