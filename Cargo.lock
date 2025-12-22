@@ -292,7 +292,7 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "asm-runner"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -541,9 +541,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.19.0"
+version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
+checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
 
 [[package]]
 name = "bytemuck"
@@ -578,7 +578,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-zisk"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "asm-runner",
@@ -712,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "circuit"
-version = "0.15.0"
+version = "0.16.0"
 
 [[package]]
 name = "clang-sys"
@@ -795,7 +795,7 @@ dependencies = [
  "serde-untagged",
  "serde_core",
  "serde_json",
- "toml 0.9.8",
+ "toml 0.9.10+spec-1.1.0",
  "winnow",
  "yaml-rust2",
 ]
@@ -1039,8 +1039,8 @@ dependencies = [
 
 [[package]]
 name = "curves"
-version = "0.15.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fverify-mt-optimization#5befcf2b68b0252194b5155afb476fea2ec7bee2"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#844a7c2b38f28eefc28171d76a2f4dcce52216fb"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1070,7 +1070,7 @@ dependencies = [
 
 [[package]]
 name = "data-bus"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "zisk-common",
  "zisk-core",
@@ -1330,7 +1330,7 @@ dependencies = [
 
 [[package]]
 name = "executor"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "asm-runner",
  "crossbeam",
@@ -1382,8 +1382,8 @@ dependencies = [
 
 [[package]]
 name = "fields"
-version = "0.15.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fverify-mt-optimization#5befcf2b68b0252194b5155afb476fea2ec7bee2"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#844a7c2b38f28eefc28171d76a2f4dcce52216fb"
 dependencies = [
  "num-bigint",
  "paste",
@@ -2160,11 +2160,11 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "lib-c"
-version = "0.15.0"
+version = "0.16.0"
 
 [[package]]
 name = "lib-float"
-version = "0.15.0"
+version = "0.16.0"
 
 [[package]]
 name = "libc"
@@ -2285,7 +2285,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mem-common"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "clap",
  "fields",
@@ -2307,7 +2307,7 @@ dependencies = [
 
 [[package]]
 name = "mem-planner-cpp"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "mem-common",
  "proofman-common",
@@ -2712,8 +2712,8 @@ dependencies = [
 
 [[package]]
 name = "pil-std-lib"
-version = "0.15.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fverify-mt-optimization#5befcf2b68b0252194b5155afb476fea2ec7bee2"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#844a7c2b38f28eefc28171d76a2f4dcce52216fb"
 dependencies = [
  "colored",
  "fields",
@@ -2867,7 +2867,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-arith-eq"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "ark-bn254",
  "ark-ff",
@@ -2905,7 +2905,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-arith-eq-384"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -2944,7 +2944,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-big-int"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "fields",
  "generic-array",
@@ -2966,7 +2966,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-keccakf"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "circuit",
  "fields",
@@ -2988,7 +2988,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-sha256f"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "fields",
  "mem-common",
@@ -3009,7 +3009,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-common"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "fields",
  "zisk-common",
@@ -3018,7 +3018,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-helpers"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -3048,7 +3048,7 @@ version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "219cb19e96be00ab2e37d6e299658a0cfa83e52429179969b0f0121b4ac46983"
 dependencies = [
- "toml_edit 0.23.9",
+ "toml_edit 0.23.10+spec-1.0.0",
 ]
 
 [[package]]
@@ -3062,8 +3062,8 @@ dependencies = [
 
 [[package]]
 name = "proofman"
-version = "0.15.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fverify-mt-optimization#5befcf2b68b0252194b5155afb476fea2ec7bee2"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#844a7c2b38f28eefc28171d76a2f4dcce52216fb"
 dependencies = [
  "blake3",
  "borsh",
@@ -3097,8 +3097,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-common"
-version = "0.15.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fverify-mt-optimization#5befcf2b68b0252194b5155afb476fea2ec7bee2"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#844a7c2b38f28eefc28171d76a2f4dcce52216fb"
 dependencies = [
  "borsh",
  "colored",
@@ -3128,8 +3128,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-hints"
-version = "0.15.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fverify-mt-optimization#5befcf2b68b0252194b5155afb476fea2ec7bee2"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#844a7c2b38f28eefc28171d76a2f4dcce52216fb"
 dependencies = [
  "fields",
  "proofman-common",
@@ -3140,8 +3140,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-macros"
-version = "0.15.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fverify-mt-optimization#5befcf2b68b0252194b5155afb476fea2ec7bee2"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#844a7c2b38f28eefc28171d76a2f4dcce52216fb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3151,8 +3151,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-starks-lib-c"
-version = "0.15.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fverify-mt-optimization#5befcf2b68b0252194b5155afb476fea2ec7bee2"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#844a7c2b38f28eefc28171d76a2f4dcce52216fb"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3160,8 +3160,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-util"
-version = "0.15.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fverify-mt-optimization#5befcf2b68b0252194b5155afb476fea2ec7bee2"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#844a7c2b38f28eefc28171d76a2f4dcce52216fb"
 dependencies = [
  "colored",
  "fields",
@@ -3171,8 +3171,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-verifier"
-version = "0.15.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fverify-mt-optimization#5befcf2b68b0252194b5155afb476fea2ec7bee2"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#844a7c2b38f28eefc28171d76a2f4dcce52216fb"
 dependencies = [
  "bytemuck",
  "fields",
@@ -3537,14 +3537,14 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "elf",
 ]
 
 [[package]]
 name = "rom-setup"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -3642,9 +3642,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-pki-types"
-version = "1.13.1"
+version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "708c0f9d5f54ba0272468c1d306a52c495b31fa155e91bc25371e6df7996908c"
+checksum = "21e6f2ab2928ca4291b86736a8bd920a277a399bba1589409d72154ff87c1282"
 dependencies = [
  "web-time",
  "zeroize",
@@ -3797,9 +3797,9 @@ dependencies = [
 
 [[package]]
 name = "serde_spanned"
-version = "1.0.3"
+version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e24345aa0fe688594e73770a5f6d1b216508b4f93484c0026d521acd30134392"
+checksum = "f8bbf91e5a4d6315eee45e704372590b30e260ee83af6639d64557f51b067776"
 dependencies = [
  "serde_core",
 ]
@@ -3818,7 +3818,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "asm-runner",
@@ -3929,7 +3929,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
 name = "sm-arith"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "fields",
  "num-bigint",
@@ -3950,7 +3950,7 @@ dependencies = [
 
 [[package]]
 name = "sm-binary"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "fields",
  "num-bigint",
@@ -3970,7 +3970,7 @@ dependencies = [
 
 [[package]]
 name = "sm-frequent-ops"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "clap",
  "fields",
@@ -3990,7 +3990,7 @@ dependencies = [
 
 [[package]]
 name = "sm-main"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "asm-runner",
  "fields",
@@ -4012,7 +4012,7 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "fields",
  "mem-common",
@@ -4034,7 +4034,7 @@ dependencies = [
 
 [[package]]
 name = "sm-rom"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "asm-runner",
  "fields",
@@ -4233,9 +4233,9 @@ dependencies = [
 
 [[package]]
 name = "target-lexicon"
-version = "0.13.3"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df7f62577c25e07834649fc3b39fafdc597c0a3527dc1c60129201ccfcbaa50c"
+checksum = "b1dd07eb858a2067e2f3c7155d54e929265c264e6f37efe3ee7a8d1b5a1dd0ba"
 
 [[package]]
 name = "tempfile"
@@ -4452,14 +4452,14 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.9.8"
+version = "0.9.10+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0dc8b1fb61449e27716ec0e1bdf0f6b8f3e8f6b05391e8497b8b6d7804ea6d8"
+checksum = "0825052159284a1a8b4d6c0c86cbc801f2da5afd2b225fa548c72f2e74002f48"
 dependencies = [
  "indexmap",
  "serde_core",
- "serde_spanned 1.0.3",
- "toml_datetime 0.7.3",
+ "serde_spanned 1.0.4",
+ "toml_datetime 0.7.5+spec-1.1.0",
  "toml_parser",
  "toml_writer",
  "winnow",
@@ -4476,9 +4476,9 @@ dependencies = [
 
 [[package]]
 name = "toml_datetime"
-version = "0.7.3"
+version = "0.7.5+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2cdb639ebbc97961c51720f858597f7f24c4fc295327923af55b74c3c724533"
+checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
 dependencies = [
  "serde_core",
 ]
@@ -4499,21 +4499,21 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.23.9"
+version = "0.23.10+spec-1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d7cbc3b4b49633d57a0509303158ca50de80ae32c265093b24c414705807832"
+checksum = "84c8b9f757e028cee9fa244aea147aab2a9ec09d5325a9b01e0a49730c2b5269"
 dependencies = [
  "indexmap",
- "toml_datetime 0.7.3",
+ "toml_datetime 0.7.5+spec-1.1.0",
  "toml_parser",
  "winnow",
 ]
 
 [[package]]
 name = "toml_parser"
-version = "1.0.4"
+version = "1.0.6+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0cbe268d35bdb4bb5a56a2de88d0ad0eb70af5384a99d648cd4b3d04039800e"
+checksum = "a3198b4b0a8e11f09dd03e133c0280504d0801269e9afa46362ffde1cbeebf44"
 dependencies = [
  "winnow",
 ]
@@ -4526,9 +4526,9 @@ checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "toml_writer"
-version = "1.0.4"
+version = "1.0.6+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df8b2b54733674ad286d16267dcfc7a71ed5c776e4ac7aa3c3e2561f7c637bf2"
+checksum = "ab16f14aed21ee8bfd8ec22513f7287cd4a91aa92e44edfe2c17ddd004e92607"
 
 [[package]]
 name = "tonic"
@@ -4662,9 +4662,9 @@ checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
 name = "tracing"
-version = "0.1.43"
+version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d15d90a0b5c19378952d479dc858407149d7bb45a14de0142f6c534b16fc647"
+checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
 dependencies = [
  "pin-project-lite",
  "tracing-attributes",
@@ -4696,9 +4696,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-core"
-version = "0.1.35"
+version = "0.1.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a04e24fab5c89c6a36eb8558c9656f30d81de51dfa4d3b45f26b21d61fa0a6c"
+checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
  "valuable",
@@ -5421,8 +5421,8 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 
 [[package]]
 name = "witness"
-version = "0.15.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fverify-mt-optimization#5befcf2b68b0252194b5155afb476fea2ec7bee2"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#844a7c2b38f28eefc28171d76a2f4dcce52216fb"
 dependencies = [
  "colored",
  "fields",
@@ -5575,7 +5575,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-build"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -5585,7 +5585,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-common"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -5606,7 +5606,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-core"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "elf",
  "fields",
@@ -5644,7 +5644,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-distributed-coordinator"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -5677,7 +5677,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-distributed-grpc-api"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5695,7 +5695,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-distributed-worker"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "asm-runner",
@@ -5712,7 +5712,7 @@ dependencies = [
  "serde",
  "tokio",
  "tokio-stream",
- "toml 0.9.8",
+ "toml 0.9.10+spec-1.1.0",
  "tonic",
  "tracing",
  "uuid",
@@ -5728,7 +5728,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-pil"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "fields",
  "proofman",
@@ -5741,7 +5741,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-sdk"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "asm-runner",
@@ -5761,7 +5761,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-witness"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "data-bus",
  "env_logger",
@@ -5795,7 +5795,7 @@ dependencies = [
 
 [[package]]
 name = "ziskclib"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "sha2",
  "tiny-keccak",
@@ -5803,7 +5803,7 @@ dependencies = [
 
 [[package]]
 name = "ziskemu"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "clap",
  "criterion",
@@ -5831,7 +5831,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "bincode",
  "cfg-if",

@@ -47,7 +47,10 @@ pub const R: [u64; 4] =
 pub const R_MINUS_ONE: [u64; 4] = [R[0] - 1, R[1], R[2], R[3]];
 
 /// A known non-quadratic residue in Fp
-pub const NQR: [u64; 6] = [2, 0, 0, 0, 0, 0];
+pub const NQR_FP: [u64; 6] = [2, 0, 0, 0, 0, 0];
+
+/// A known non-quadratic residue in Fp2
+pub const NQR_FP2: [u64; 12] = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0];
 
 /// This is the the order-3 element of for the σ endomorphism
 pub const GAMMA: [u64; 6] = [

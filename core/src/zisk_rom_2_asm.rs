@@ -53,15 +53,20 @@ const REG_CHUNK_PLAYER_ADDRESS: &str = "rbp"; // Used only in chunk player
 // Only used to calculate histogram position for every rom pc
 const TRACE_ADDR_NUMBER: u64 = 0xc0000020;
 
+// Fcall params and result lengths
+const FCALL_PARAMS_LENGTH: u64 = 386;
+const FCALL_RESULT_LENGTH: u64 = 8193;
+
 // Fcall context offsets of the different fields
 const FCALL_FUNCTION_ID: u64 = 0;
-const FCALL_PARAMS_CAPACITY: u64 = 1;
-const FCALL_PARAMS_SIZE: u64 = 2;
-const FCALL_PARAMS: u64 = 3;
-const FCALL_RESULT_CAPACITY: u64 = 35;
-const FCALL_RESULT_SIZE: u64 = 36;
-const FCALL_RESULT: u64 = 37;
-const FCALL_RESULT_GOT: u64 = 69;
+const FCALL_PARAMS_CAPACITY: u64 = FCALL_FUNCTION_ID + 1;
+const FCALL_PARAMS_SIZE: u64 = FCALL_PARAMS_CAPACITY + 1;
+const FCALL_PARAMS: u64 = FCALL_PARAMS_SIZE + 1;
+const FCALL_RESULT_CAPACITY: u64 = FCALL_PARAMS + FCALL_PARAMS_LENGTH;
+const FCALL_RESULT_SIZE: u64 = FCALL_RESULT_CAPACITY + 1;
+const FCALL_RESULT: u64 = FCALL_RESULT_SIZE + 1;
+const FCALL_RESULT_GOT: u64 = FCALL_RESULT + FCALL_RESULT_LENGTH;
+const FCALL_LENGTH: u64 = FCALL_RESULT_GOT + 1;
 
 const XMM_MAPPED_REGS: [u64; 16] = [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 //const XMM_MAPPED_REGS: [u64; 0] = []; // Used for debugging
@@ -486,7 +491,7 @@ impl ZiskRom2Asm {
         //     result_size
         //     result[32]
         //     result_got
-        *code += ".comm fcall_ctx, 8*70, 8\n";
+        *code += &format!(".comm fcall_ctx, 8*{}, 8\n", FCALL_LENGTH);
 
         // for k in 0..keys.len() {
         //     let pc = keys[k];
@@ -708,13 +713,58 @@ impl ZiskRom2Asm {
             ctx.fcall_ctx,
             ctx.comment_str("address = fcall context")
         );
-        for i in 0..70 {
-            if (i == FCALL_PARAMS_CAPACITY) || (i == FCALL_RESULT_CAPACITY) {
-                *code += &format!("\tmov qword {}[{} + {}*8], 32\n", ctx.ptr, REG_ADDRESS, i);
-            } else {
-                *code += &format!("\tmov qword {}[{} + {}*8], 0\n", ctx.ptr, REG_ADDRESS, i);
-            }
-        }
+        // for i in 0..FCALL_LENGTH {
+        //     if i == FCALL_PARAMS_CAPACITY {
+        //         *code += &format!(
+        //             "\tmov qword {}[{} + {}*8], {}\n",
+        //             ctx.ptr, REG_ADDRESS, i, FCALL_PARAMS_LENGTH
+        //         );
+        //     } else if i == FCALL_RESULT_CAPACITY {
+        //         *code += &format!(
+        //             "\tmov qword {}[{} + {}*8], {}\n",
+        //             ctx.ptr, REG_ADDRESS, i, FCALL_RESULT_LENGTH
+        //         );
+        //     } else {
+        //         *code += &format!("\tmov qword {}[{} + {}*8], 0\n", ctx.ptr, REG_ADDRESS, i);
+        //     }
+        // }
+        *code += &format!(
+            "\tmov qword {}[{} + {}*8], {} {}\n",
+            ctx.ptr,
+            REG_ADDRESS,
+            FCALL_PARAMS_CAPACITY,
+            FCALL_PARAMS_LENGTH,
+            ctx.comment(format!("fcall_ctx.params_capacity = {}", FCALL_PARAMS_LENGTH))
+        );
+        *code += &format!(
+            "\tmov qword {}[{} + {}*8], 0 {}\n",
+            ctx.ptr,
+            REG_ADDRESS,
+            FCALL_PARAMS_SIZE,
+            ctx.comment_str("fcall_ctx.params_size = 0")
+        );
+        *code += &format!(
+            "\tmov qword {}[{} + {}*8], {} {}\n",
+            ctx.ptr,
+            REG_ADDRESS,
+            FCALL_RESULT_CAPACITY,
+            FCALL_RESULT_LENGTH,
+            ctx.comment(format!("fcall_ctx.result_capacity = {}", FCALL_RESULT_LENGTH))
+        );
+        *code += &format!(
+            "\tmov qword {}[{} + {}*8], 0 {}\n",
+            ctx.ptr,
+            REG_ADDRESS,
+            FCALL_RESULT_SIZE,
+            ctx.comment_str("fcall_ctx.result_size = 0")
+        );
+        *code += &format!(
+            "\tmov qword {}[{} + {}*8], 0 {}\n",
+            ctx.ptr,
+            REG_ADDRESS,
+            FCALL_RESULT_GOT,
+            ctx.comment_str("fcall_ctx.result_got = 0")
+        );
 
         if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
             Self::chunk_player_start(&mut ctx, code);

@@ -1,18 +1,124 @@
 //! Operations on the twist E': y² = x³ + 4·(1+u) of the BLS12-381 curve
 
-use crate::zisklib::{eq, fcall_msb_pos_384};
+use crate::zisklib::{eq, fcall_msb_pos_384, lt};
 
 use super::{
     constants::{
-        ETWISTED_B, EXT_U, EXT_U_INV, FROBENIUS_GAMMA13, FROBENIUS_GAMMA14, IDENTITY_G2,
+        ETWISTED_B, EXT_U, EXT_U_INV, FROBENIUS_GAMMA13, FROBENIUS_GAMMA14, IDENTITY_G2, P,
         X_ABS_BIN_BE,
     },
     fp2::{
         add_fp2_bls12_381, conjugate_fp2_bls12_381, dbl_fp2_bls12_381, inv_fp2_bls12_381,
-        mul_fp2_bls12_381, neg_fp2_bls12_381, scalar_mul_fp2_bls12_381, square_fp2_bls12_381,
-        sub_fp2_bls12_381,
+        mul_fp2_bls12_381, neg_fp2_bls12_381, scalar_mul_fp2_bls12_381, sqrt_fp2_bls12_381,
+        square_fp2_bls12_381, sub_fp2_bls12_381,
     },
 };
+
+/// Decompresses a G2 point on the BLS12-381 twist from 96 bytes (compressed format).
+///
+/// Format: Big-endian x-coordinate (in Fp2) with flag bits in the top 3 bits of the first byte:
+/// - Bit 7 (0x80): Compression flag (must be 1 for compressed)
+/// - Bit 6 (0x40): Infinity flag (1 = point at infinity)
+/// - Bit 5 (0x20): Sign flag (1 = y is lexicographically largest)
+pub fn decompress_twist_bls12_381(input: &[u8; 96]) -> Result<([u64; 24], bool), &'static str> {
+    let flags = input[0];
+
+    // Check compression bit
+    if (flags & 0x80) == 0 {
+        return Err("Expected compressed point (0x80 flag not set)");
+    }
+
+    // Check infinity bit
+    if (flags & 0x40) != 0 {
+        // Verify rest is zero
+        if (flags & 0x3f) != 0 {
+            return Err("Invalid infinity encoding");
+        }
+        for item in input.iter().skip(1) {
+            if *item != 0 {
+                return Err("Invalid infinity encoding");
+            }
+        }
+        return Ok((IDENTITY_G2, true));
+    }
+
+    // Extract sign bit
+    let y_sign = (flags & 0x20) != 0;
+
+    // Extract x-coordinate from big-endian bytes
+    // Format: first 48 bytes = x_i (imaginary), next 48 bytes = x_r (real)
+    let mut x_i = [0u64; 6];
+    let mut x_r = [0u64; 6];
+
+    // Parse x_i (first 48 bytes, masking flag bits in first byte)
+    let mut bytes_i = [0u8; 48];
+    bytes_i.copy_from_slice(&input[0..48]);
+    bytes_i[0] &= 0x1f; // Clear flag bits
+
+    for i in 0..6 {
+        for j in 0..8 {
+            x_i[5 - i] |= (bytes_i[i * 8 + j] as u64) << (8 * (7 - j));
+        }
+    }
+
+    // Parse x_r (next 48 bytes)
+    for i in 0..6 {
+        for j in 0..8 {
+            x_r[5 - i] |= (input[48 + i * 8 + j] as u64) << (8 * (7 - j));
+        }
+    }
+
+    // Verify x_r < p and x_i < p
+    if !lt(&x_r, &P) {
+        return Err("x_r coordinate >= field modulus");
+    }
+    if !lt(&x_i, &P) {
+        return Err("x_i coordinate >= field modulus");
+    }
+
+    // Build x = x_r + x_i * u as [u64; 12]
+    let mut x = [0u64; 12];
+    x[0..6].copy_from_slice(&x_r);
+    x[6..12].copy_from_slice(&x_i);
+
+    // Calculate y² = x³ + 4(1+u)
+    let x_sq = square_fp2_bls12_381(&x);
+    let x_cb = mul_fp2_bls12_381(&x_sq, &x);
+    let y_sq = add_fp2_bls12_381(&x_cb, &ETWISTED_B);
+
+    // Compute sqrt
+    let (y, has_sqrt) = sqrt_fp2_bls12_381(&y_sq);
+    if !has_sqrt {
+        return Err("No square root exists - point not on curve");
+    }
+
+    // Determine sign of y using lexicographic ordering on Fp2
+    // y = y_r + y_i * u is "larger" if:
+    //   - y_i > -y_i, OR
+    //   - y_i == -y_i (i.e., y_i == 0) AND y_r > -y_r
+    let y_neg = neg_fp2_bls12_381(&y);
+    let y_r: [u64; 6] = y[0..6].try_into().unwrap();
+    let y_i: [u64; 6] = y[6..12].try_into().unwrap();
+    let y_neg_r: [u64; 6] = y_neg[0..6].try_into().unwrap();
+    let y_neg_i: [u64; 6] = y_neg[6..12].try_into().unwrap();
+
+    let y_is_larger = if !eq(&y_i, &y_neg_i) {
+        // Compare i components
+        lt(&y_neg_i, &y_i)
+    } else {
+        // i components equal, compare r
+        lt(&y_neg_r, &y_r)
+    };
+
+    // Select the correct y based on sign bit
+    let final_y = if y_is_larger == y_sign { y } else { y_neg };
+
+    // Return the point (x, final_y)
+    let mut result = [0u64; 24];
+    result[0..12].copy_from_slice(&x);
+    result[12..24].copy_from_slice(&final_y);
+    Ok((result, false))
+}
 
 /// Check if a non-zero point `p` is on the BLS12-381 twist
 pub fn is_on_curve_twist_bls12_381(p: &[u64; 24]) -> bool {
@@ -244,4 +350,80 @@ pub fn utf_endomorphism_twist_bls12_381(p: &[u64; 24]) -> [u64; 24] {
     result[0..12].copy_from_slice(&x);
     result[12..24].copy_from_slice(&y);
     result
+}
+
+/// # Safety
+/// - `ret` must point to a valid `[u64; 24]` (192 bytes) for the output.
+/// - `input` must point to a valid `[u8; 96]` (96 bytes) for the compressed input.
+///   Returns:
+///   - 0 = success (regular point)
+///   - 1 = success (point at infinity)
+///   - 2 = error
+#[no_mangle]
+pub unsafe extern "C" fn decompress_twist_bls12_381_c(ret: *mut u64, input: *const u8) -> u8 {
+    let input_arr: &[u8; 96] = &*(input as *const [u8; 96]);
+
+    match decompress_twist_bls12_381(input_arr) {
+        Ok((result, is_infinity)) => {
+            let ret_arr: &mut [u64; 24] = &mut *(ret as *mut [u64; 24]);
+            *ret_arr = result;
+            if is_infinity {
+                1
+            } else {
+                0
+            }
+        }
+        Err(_) => 2,
+    }
+}
+
+/// # Safety
+/// - `p` must point to a valid `[u64; 24]` (192 bytes) for the input point.
+///   Returns true if the point is on the twist curve, false otherwise.
+#[no_mangle]
+pub unsafe extern "C" fn is_on_curve_twist_bls12_381_c(p: *const u64) -> bool {
+    let p_arr: &[u64; 24] = &*(p as *const [u64; 24]);
+    is_on_curve_twist_bls12_381(p_arr)
+}
+
+/// # Safety
+/// - `p` must point to a valid `[u64; 24]` (192 bytes) for the input point.
+///   Returns true if the point is in the G2 subgroup, false otherwise.
+#[no_mangle]
+pub unsafe extern "C" fn is_on_subgroup_twist_bls12_381_c(p: *const u64) -> bool {
+    let p_arr: &[u64; 24] = &*(p as *const [u64; 24]);
+    is_on_subgroup_twist_bls12_381(p_arr)
+}
+
+/// # Safety
+/// - `p1` must point to a valid `[u64; 24]` (192 bytes), used as both input and output.
+/// - `p2` must point to a valid `[u64; 24]` (192 bytes).
+#[no_mangle]
+pub unsafe extern "C" fn add_twist_bls12_381_c(p1: *mut u64, p2: *const u64) -> bool {
+    let p1_arr: &[u64; 24] = &*(p1 as *const [u64; 24]);
+    let p2_arr: &[u64; 24] = &*(p2 as *const [u64; 24]);
+
+    let result = add_twist_bls12_381(p1_arr, p2_arr);
+    if result == IDENTITY_G2 {
+        return true;
+    }
+
+    let ret_arr: &mut [u64; 24] = &mut *(p1 as *mut [u64; 24]);
+    *ret_arr = result;
+    false
+}
+
+/// # Safety
+/// - `ret` must point to a valid `[u64; 24]` for the output affine point.
+/// - `p` must point to a valid `[u64; 24]` affine point.
+/// - `k` must point to a valid `[u64; 6]` scalar.
+#[no_mangle]
+pub unsafe extern "C" fn scalar_mul_twist_bls12_381_c(ret: *mut u64, p: *const u64, k: *const u64) {
+    let p_arr: &[u64; 24] = &*(p as *const [u64; 24]);
+    let k_arr: &[u64; 6] = &*(k as *const [u64; 6]);
+
+    let result = scalar_mul_twist_bls12_381(p_arr, k_arr);
+
+    let ret_arr: &mut [u64; 24] = &mut *(ret as *mut [u64; 24]);
+    *ret_arr = result;
 }

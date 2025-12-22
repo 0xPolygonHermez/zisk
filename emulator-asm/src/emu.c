@@ -1716,7 +1716,6 @@ extern int _opcode_bls12_381_complex_mul(uint64_t * address)
 
 extern uint64_t _opcode_add256(uint64_t * address)
 {
-    printf("_opcode_add256() address=%p\n", address);
 #ifdef ASM_CALL_METRICS
     gettimeofday(&asm_call_start, NULL);
 #endif

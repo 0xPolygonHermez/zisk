@@ -187,6 +187,48 @@ int BLS12_381ComplexMulP (const uint64_t * p1, const uint64_t * p2, uint64_t * p
     return result;
 }
 
+/**************************/
+/* BLS12_381 complex sqrt */
+/**************************/
+
+int BLS12_381ComplexSqrt (
+    const uint64_t * _x1, // 6 x 64 bits
+    const uint64_t * _y1, // 6 x 64 bits
+    uint64_t * _x2, // 6 x 64 bits
+    uint64_t * _y2, // 6 x 64 bits
+    uint64_t * is_qr // 1 x 64 bits
+)
+{
+    RawBLS12_381_384::Element x1, y1, x2, y2;
+    array2fe(_x1, x1);
+    array2fe(_y1, y1);
+
+    int result = BLS12_381ComplexSqrtFe (x1, y1, x2, y2, *is_qr);
+
+    fe2array(x2, _x2);
+    fe2array(y2, _y2);
+
+    return result;
+}
+
+int BLS12_381ComplexSqrtP (
+    const uint64_t * p1, // 12 x 64 bits
+    uint64_t * p2,  // 12 x 64 bits
+    uint64_t * is_qr // 1 x 64 bits
+)
+{
+    RawBLS12_381_384::Element x1, y1, x2, y2;
+    array2fe(p1, x1);
+    array2fe(p1 + 6, y1);
+
+    int result = BLS12_381ComplexSqrtFe (x1, y1, x2, y2, *is_qr);
+
+    fe2array(x2, p2);
+    fe2array(y2, p2 + 6);
+
+    return result;
+}
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

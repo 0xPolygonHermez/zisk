@@ -55,8 +55,9 @@ brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nloh
 2. During the installation, you will be prompted to select a setup option. You can choose from the following:
 
     1. **Install proving key (default)** – Required for generating and verifying proofs.
-    2. **Install verify key** – Needed only if you want to verify proofs.
-    3. **None** – Choose this if you only want to compile programs and execute them using the ZisK emulator.
+    2. **Install proving key (no constant tree files)** – Install proving key but without constant tree files generation.
+    3. **Install verify key** – Needed only if you want to verify proofs.
+    4. **None** – Choose this if you only want to compile programs and execute them using the ZisK emulator.
 
 3. Verify the Rust toolchain: (which includes support for the `riscv64ima-zisk-zkvm` compilation target):
     ```bash
