@@ -1,6 +1,7 @@
 use once_cell::sync::{Lazy, OnceCell};
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, VecDeque};
+use std::convert;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
@@ -21,6 +22,7 @@ const HINTS_TYPE_ECRECOVER: u32 = 5;
 static HINT_QUEUE: Lazy<HintQueue> = Lazy::new(HintQueue::new);
 static HINT_FILE_WRITER_HANDLE: Lazy<HintFileWriterHandleCell> = Lazy::new(HintFileWriterHandleCell::new);
 static KECCAKF_THREAD_COUNTS: Lazy<Mutex<HashMap<ThreadId, usize>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static SHA2_THREAD_COUNTS: Lazy<Mutex<HashMap<ThreadId, usize>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static ECRECOVER_THREAD_COUNTS: Lazy<Mutex<HashMap<ThreadId, usize>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
 static REF_FILE: Lazy<Mutex<Option<std::fs::File>>> = Lazy::new(|| Mutex::new(None));
@@ -52,16 +54,22 @@ impl HintFileWriterHandleCell {
     }
 }
 
+#[derive(Clone, Debug)]
+
 enum Hint {
     KeccakF([u64; 25]),
+    SHA2([u32; 8]),
     ECRecover(ECRecover),
 }
 
+#[derive(Clone, Debug)]
 pub struct ECRecover {
     pub pk: [u8; 33],
     pub z: [u8; 32],
     pub sig: [u8; 64],
 }
+
+#[derive(Debug)]
 
 struct HintQueue {
     states: Mutex<VecDeque<Hint>>,
@@ -85,24 +93,35 @@ impl HintQueue {
     }
 
     #[inline(always)]
-    fn push_keccakf(&self, state: [u64; 25]) {
+    fn push_keccakf(&self, state: &[u64; 25]) {
         if self.closed.load(Ordering::SeqCst) {
             return;
         }
 
         let mut states = self.states.lock().unwrap();
-        states.push_back(Hint::KeccakF(state));
+        states.push_back(Hint::KeccakF(*state));
         self.condvar.notify_one();
     }
 
     #[inline(always)]
-    fn push_ecrecover(&self, rec: ECRecover) {
+    fn push_sha2(&self, state: &[u32; 8]) {
         if self.closed.load(Ordering::SeqCst) {
             return;
         }
 
         let mut states = self.states.lock().unwrap();
-        states.push_back(Hint::ECRecover(rec));
+        states.push_back(Hint::SHA2(*state));
+        self.condvar.notify_one();
+    }
+
+    #[inline(always)]
+    fn push_ecrecover(&self, rec: &ECRecover) {
+        if self.closed.load(Ordering::SeqCst) {
+            return;
+        }
+
+        let mut states = self.states.lock().unwrap();
+        states.push_back(Hint::ECRecover(rec.clone()));
         self.condvar.notify_one();
     }
 
@@ -125,6 +144,16 @@ impl HintQueue {
         self.closed.store(true, Ordering::SeqCst);
         self.condvar.notify_all();
     }
+}
+
+#[inline(always)]
+fn convert_u32_to_u64(words: &[u32; 8]) -> [u64; 4] {
+    [
+        ((words[0] as u64) << 32) | (words[1] as u64),
+        ((words[2] as u64) << 32) | (words[3] as u64),
+        ((words[4] as u64) << 32) | (words[5] as u64),
+        ((words[6] as u64) << 32) | (words[7] as u64),
+    ]
 }
 
 pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
@@ -177,17 +206,13 @@ pub fn is_precompile_hints_enabled() -> bool {
 
 #[inline(always)]
 pub fn hint_keccakf(state: &[u64; 25]) {
-    if HINT_QUEUE.closed.load(Ordering::SeqCst) {
-        return;
-    }
-
     // Panic on calls from a different thread to quickly capture a stacktrace.
     let tid = std::thread::current().id();
     match MAIN_TID.get() {
         Some(main) => {
             if *main != tid {
                 panic!(
-                    "hint_keccakf llamado desde hilo no principal: main={:?} now={:?}",
+                    "hint_keccakf called from non-main thread, main={:?}, current={:?}",
                     main, tid
                 );
             }
@@ -197,6 +222,7 @@ pub fn hint_keccakf(state: &[u64; 25]) {
             let _ = MAIN_TID.set(tid);
         }
     }
+
     {
         let tid = std::thread::current().id();
         let mut map = KECCAKF_THREAD_COUNTS.lock().unwrap();
@@ -205,6 +231,7 @@ pub fn hint_keccakf(state: &[u64; 25]) {
         //     panic!("hint_keccakf number 53317, thread id: {:?}", tid);
         // }
     }
+
     // Validate against reference file if available: read header (8 bytes) then 200 bytes payload
     {
         let compare_ref = std::env::var("HINTS_COMPARE_REF_FILE").is_ok();
@@ -215,16 +242,16 @@ pub fn hint_keccakf(state: &[u64; 25]) {
                 let seq = KECCAKF_SEQ.fetch_add(1, Ordering::SeqCst);
                 let mut header = [0u8; 8];
                 if let Err(e) = f.read_exact(&mut header) {
-                    println!("fallo leyendo cabecera keccakf de referencia en #{}: {:?}", seq, e);
+                    println!("Failed reading keccakf header at #{}: {:?}", seq, e);
                 }
                 // Assert header matches expected KeccakF header (type/result + length=25)
                 let expected_header = (((HINTS_TYPE_RESULT as u64) << 32) | (25u64)).to_le_bytes();
                 if header != expected_header {
-                    println!("cabecera keccakf inesperada en #{}", seq);
+                    println!("Unexpected keccakf header at #{}", seq);
                 }
                 let mut ref_payload = [0u8; 25 * std::mem::size_of::<u64>()];
                 if let Err(e) = f.read_exact(&mut ref_payload) {
-                    println!("fallo leyendo payload keccakf de referencia en #{}: {:?}", seq, e);
+                    println!("Failed reading keccakf payload at #{}: {:?}", seq, e);
                 }
                 let state_bytes = unsafe {
                     std::slice::from_raw_parts(
@@ -233,13 +260,24 @@ pub fn hint_keccakf(state: &[u64; 25]) {
                     )
                 };
                 if ref_payload.as_slice() != state_bytes {
-                    panic!("discrepancia en keccakf #{}", seq);
+                    panic!("Discrepancy in keccakf #{}", seq);
                 }
             }
         }
     }
     // Arrays up to length 32 implement `Copy`, so this is a fast memcpy without extra loops.
-    HINT_QUEUE.push_keccakf(*state);
+    HINT_QUEUE.push_keccakf(state);
+}
+
+#[inline(always)]
+pub fn hint_sha2(state: &[u32; 8]) {
+    {
+        let tid = std::thread::current().id();
+        let mut map = SHA2_THREAD_COUNTS.lock().unwrap();
+        *map.entry(tid).or_insert(0) += 1;
+    }
+
+    HINT_QUEUE.push_sha2(state);
 }
 
 #[inline(always)]
@@ -253,12 +291,12 @@ pub fn hint_ecrecover(pk: &[u8; 33], z: &[u8; 32], sig: &[u8; 64]) {
         // }
     }
 
-    let owned = ECRecover {
+    let ecrecover = ECRecover {
         pk: *pk,
         z: *z,
         sig: *sig,
     };
-    HINT_QUEUE.push_ecrecover(owned);
+    HINT_QUEUE.push_ecrecover(&ecrecover);
 }
 
 pub fn close_precompile_hints() -> io::Result<()> {
@@ -315,10 +353,14 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
 
     let mut file = std::fs::File::create(path)?;
     let mut total_keccakf = 0usize;
+    let mut total_sha2 = 0usize;
     let mut total_ecrecover = 0usize;
 
     const KECCAKF_LENGTH: usize = 25; // kecakkf length in u64s
     let header_keccakf = (((HINTS_TYPE_RESULT as u64) << 32) | (KECCAKF_LENGTH as u64)).to_le_bytes();
+
+    const SHA2_LENGTH: usize = 4; // sha2 length in u64s
+    let header_sha2 = (((HINTS_TYPE_RESULT as u64) << 32) | (SHA2_LENGTH as u64)).to_le_bytes();
 
     const ECRECOVER_LENGTH: usize = 129; // ECRecover length in bytes: pk (33) + z (32) + sig (64)
     let header_ecrecover = (((HINTS_TYPE_ECRECOVER as u64) << 32) | (ECRECOVER_LENGTH as u64)).to_le_bytes();
@@ -349,31 +391,42 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
                 file.write_all(state_bytes)?;
                 total_keccakf += 1;
             }
-            Hint::ECRecover(rec) => {
-                let ecrecover_enabled = std::env::var("HINTS_ECRECOVER").unwrap_or_default() == "1";
-
-                if ecrecover_enabled {
-                    unsafe {
-                        // Copy pk, z, sig into u8 buffer_ecrecover array
-                        std::ptr::copy_nonoverlapping(rec.pk.as_ptr(), buffer_ecrecover.as_mut_ptr(), 33);
-                        std::ptr::copy_nonoverlapping(rec.z.as_ptr(), buffer_ecrecover.as_mut_ptr().add(33), 32);
-                        std::ptr::copy_nonoverlapping(rec.sig.as_ptr(), buffer_ecrecover.as_mut_ptr().add(65), 64);
-                    }
-
-                    // Safety: buf is [u64; 20] and the target is little-endian
-                    let bytes = unsafe {
-                        std::slice::from_raw_parts(
-                            buffer_ecrecover.as_ptr(),
-                            ECRECOVER_LENGTH * std::mem::size_of::<u64>(),
-                        )
-                    };
-
-                    if !disable_prefix {
-                        file.write_all(&header_ecrecover)?;
-                    }
-                    file.write_all(bytes)?;
-                    total_ecrecover += 1;
+            Hint::SHA2(sha2) => {
+                let sha2_u64 = convert_u32_to_u64(&sha2);
+                // Safety: state is [u32; 8] and the target is little-endian
+                let state_bytes = unsafe {
+                    std::slice::from_raw_parts(
+                        sha2_u64.as_ptr() as *const u8,
+                        4 * std::mem::size_of::<u64>(),
+                    )
+                };
+                if !disable_prefix {
+                    file.write_all(&header_sha2)?;
                 }
+                file.write_all(state_bytes)?;
+                total_sha2 += 1;
+            }
+            Hint::ECRecover(rec) => {
+                unsafe {
+                    // Copy pk, z, sig into u8 buffer_ecrecover array
+                    std::ptr::copy_nonoverlapping(rec.pk.as_ptr(), buffer_ecrecover.as_mut_ptr(), 33);
+                    std::ptr::copy_nonoverlapping(rec.z.as_ptr(), buffer_ecrecover.as_mut_ptr().add(33), 32);
+                    std::ptr::copy_nonoverlapping(rec.sig.as_ptr(), buffer_ecrecover.as_mut_ptr().add(65), 64);
+                }
+
+                // Safety: buf is [u64; 20] and the target is little-endian
+                let bytes = unsafe {
+                    std::slice::from_raw_parts(
+                        buffer_ecrecover.as_ptr(),
+                        ECRECOVER_LENGTH * std::mem::size_of::<u64>(),
+                    )
+                };
+
+                if !disable_prefix {
+                    file.write_all(&header_ecrecover)?;
+                }
+                file.write_all(bytes)?;
+                total_ecrecover += 1;
             }
         }
     }
@@ -388,6 +441,7 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
     file.flush()?;
 
     println!("Total keccakf hints written: {}", total_keccakf);
+    println!("Total sha2 hints written: {}", total_sha2);
     println!("Total ecrecover hints written: {}", total_ecrecover);
 
     Ok(())
