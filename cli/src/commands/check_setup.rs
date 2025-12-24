@@ -21,9 +21,6 @@ pub struct ZiskCheckSetup {
     #[clap(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
 
-    #[clap(short = 'f', long, default_value_t = false)]
-    pub final_snark: bool,
-
     /// Verbosity (-v, -vv)
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
@@ -39,7 +36,6 @@ impl ZiskCheckSetup {
         ProofMan::<Goldilocks>::check_setup(
             get_proving_key(self.proving_key.as_ref()),
             self.aggregation,
-            self.final_snark,
             self.verbose.into(),
         )
         .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?;

@@ -29,6 +29,12 @@ pub fn get_default_proving_key() -> PathBuf {
     PathBuf::from(proving_key)
 }
 
+/// Gets the default proving key file location in the home installation directory.
+pub fn get_default_proving_key_snark() -> PathBuf {
+    let proving_key_snark = format!("{}/.zisk/provingKeySnark", get_home_dir());
+    PathBuf::from(proving_key_snark)
+}
+
 /// Gets the default zisk folder location in the home installation directory.
 pub fn get_home_zisk_path() -> PathBuf {
     let zisk_path = format!("{}/.zisk", get_home_dir());
@@ -92,6 +98,12 @@ pub fn get_witness_computation_lib(witness_lib: Option<&PathBuf>) -> PathBuf {
 /// Uses the default one if not specified by user.
 pub fn get_proving_key(proving_key: Option<&PathBuf>) -> PathBuf {
     proving_key.cloned().unwrap_or_else(get_default_proving_key)
+}
+
+/// Gets the proving key file location.
+/// Uses the default one if not specified by user.
+pub fn get_proving_key_snark(proving_key_snark: Option<&PathBuf>) -> PathBuf {
+    proving_key_snark.cloned().unwrap_or_else(get_default_proving_key_snark)
 }
 
 /// Gets the zisk folder.
