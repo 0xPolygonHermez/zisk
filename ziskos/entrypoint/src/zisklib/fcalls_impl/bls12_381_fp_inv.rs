@@ -31,10 +31,7 @@ pub(crate) fn bls12_381_fp_inv(a: &[u64; 6]) -> [u64; 6] {
     let inv = a_big.modinv(&P);
     match inv {
         Some(inverse) => n_u64_digits_from_biguint::<6>(&inverse),
-        None => {
-            // Handle the case where the inverse does not exist
-            panic!("Inverse does not exist");
-        }
+        None => panic!("Inverse does not exist"),
     }
 }
 

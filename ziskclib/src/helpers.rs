@@ -4,21 +4,13 @@ use sha2::digest::generic_array::{typenum::U64, GenericArray};
 
 pub fn sha256f(state: &mut [u64; 4], input: &[u64; 8]) {
     // Convert both the state and the input to appropriate types
-    let mut state_u32: [u32; 8] = convert_u64_to_u32(state).try_into().unwrap();
-    let block = convert_u64_to_generic_array_bytes(input);
-    compress256(&mut state_u32, &[block]);
+    let state_u32: &mut [u32; 8] = unsafe { &mut *(state.as_mut_ptr() as *mut [u32; 8]) };
+    let input_u8 = convert_u64_to_generic_array_bytes(input);
+
+    compress256(state_u32, &[input_u8]);
 
     // Convert the state back to u64 and write it to the memory address
-    *state = convert_u32_to_u64(&state_u32);
-}
-
-pub fn convert_u64_to_u32(input: &[u64]) -> Vec<u32> {
-    let mut out = Vec::with_capacity(input.len() * 2);
-    for &word in input {
-        out.push((word >> 32) as u32);
-        out.push((word & 0xFFFFFFFF) as u32);
-    }
-    out
+    *state = unsafe { *(state_u32 as *mut [u32; 8] as *mut [u64; 4]) };
 }
 
 #[allow(deprecated)]
@@ -30,12 +22,4 @@ pub fn convert_u64_to_generic_array_bytes(input: &[u64; 8]) -> GenericArray<u8, 
         }
     }
     GenericArray::<u8, U64>::clone_from_slice(&out)
-}
-
-pub fn convert_u32_to_u64(words: &[u32; 8]) -> [u64; 4] {
-    let mut out = [0u64; 4];
-    for i in 0..4 {
-        out[i] = ((words[2 * i] as u64) << 32) | (words[2 * i + 1] as u64);
-    }
-    out
 }
