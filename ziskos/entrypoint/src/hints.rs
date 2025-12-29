@@ -60,8 +60,10 @@ enum Hint {
     KeccakF([u64; 25]),
     SHA2([u32; 8]),
     ECRecover(ECRecover),
+    ModExp(Vec<u8>),
 }
 
+#[repr(C, align(8))]
 #[derive(Clone, Debug)]
 pub struct ECRecover {
     pub pk: [u8; 33],
@@ -70,7 +72,6 @@ pub struct ECRecover {
 }
 
 #[derive(Debug)]
-
 struct HintQueue {
     states: Mutex<VecDeque<Hint>>,
     condvar: Condvar,
@@ -125,6 +126,17 @@ impl HintQueue {
         self.condvar.notify_one();
     }
 
+    #[inline(always)]
+    fn push_modexp(&self, data: Vec<u8>) {
+        if self.closed.load(Ordering::SeqCst) {
+            return;
+        }
+
+        let mut states = self.states.lock().unwrap();
+        states.push_back(Hint::ModExp(data));
+        self.condvar.notify_one();
+    }
+
     fn pop(&self) -> Option<Hint> {
         let mut states = self.states.lock().unwrap();
         loop {
@@ -146,15 +158,15 @@ impl HintQueue {
     }
 }
 
-#[inline(always)]
-fn convert_u32_to_u64(words: &[u32; 8]) -> [u64; 4] {
-    [
-        ((words[0] as u64) << 32) | (words[1] as u64),
-        ((words[2] as u64) << 32) | (words[3] as u64),
-        ((words[4] as u64) << 32) | (words[5] as u64),
-        ((words[6] as u64) << 32) | (words[7] as u64),
-    ]
-}
+// #[inline(always)]
+// fn convert_u32_to_u64(words: &[u32; 8]) -> [u64; 4] {
+//     [
+//         ((words[0] as u64) << 32) | (words[1] as u64),
+//         ((words[2] as u64) << 32) | (words[3] as u64),
+//         ((words[4] as u64) << 32) | (words[5] as u64),
+//         ((words[6] as u64) << 32) | (words[7] as u64),
+//     ]
+// }
 
 pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
     // Record the main thread id to validate single-threaded calls later
@@ -205,14 +217,14 @@ pub fn is_precompile_hints_enabled() -> bool {
 }
 
 #[inline(always)]
-pub fn hint_keccakf(state: &[u64; 25]) {
-    // Panic on calls from a different thread to quickly capture a stacktrace.
+pub fn check_main_thread() {
+    // Panic on calls from a different thread
     let tid = std::thread::current().id();
     match MAIN_TID.get() {
         Some(main) => {
             if *main != tid {
                 panic!(
-                    "hint_keccakf called from non-main thread, main={:?}, current={:?}",
+                    "Precompile hint function called from non-main thread, main={:?}, current={:?}",
                     main, tid
                 );
             }
@@ -222,6 +234,11 @@ pub fn hint_keccakf(state: &[u64; 25]) {
             let _ = MAIN_TID.set(tid);
         }
     }
+}
+
+#[inline(always)]
+pub fn hint_keccakf(state: &[u64; 25]) {
+    check_main_thread();
 
     {
         let tid = std::thread::current().id();
@@ -296,7 +313,15 @@ pub fn hint_ecrecover(pk: &[u8; 33], z: &[u8; 32], sig: &[u8; 64]) {
         z: *z,
         sig: *sig,
     };
+
     HINT_QUEUE.push_ecrecover(&ecrecover);
+}
+
+#[inline(always)]
+pub fn hint_modexp(data: Vec<u8>) {
+    check_main_thread();
+
+    HINT_QUEUE.push_modexp(data);
 }
 
 pub fn close_precompile_hints() -> io::Result<()> {
@@ -362,9 +387,9 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
     const SHA2_LENGTH: usize = 4; // sha2 length in u64s
     let header_sha2 = (((HINTS_TYPE_RESULT as u64) << 32) | (SHA2_LENGTH as u64)).to_le_bytes();
 
-    const ECRECOVER_LENGTH: usize = 129; // ECRecover length in bytes: pk (33) + z (32) + sig (64)
+    assert!(std::mem::size_of::<ECRecover>() % 8 == 0);
+    const ECRECOVER_LENGTH: usize = std::mem::size_of::<ECRecover>() / 8;
     let header_ecrecover = (((HINTS_TYPE_ECRECOVER as u64) << 32) | (ECRECOVER_LENGTH as u64)).to_le_bytes();
-    let mut buffer_ecrecover = [0u8; ECRECOVER_LENGTH];
 
     let disable_prefix = std::env::var("HINTS_DISABLE_PREFIX").unwrap_or_default() == "1";
 
@@ -392,11 +417,11 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
                 total_keccakf += 1;
             }
             Hint::SHA2(sha2) => {
-                let sha2_u64 = convert_u32_to_u64(&sha2);
+                // let sha2_u64 = convert_u32_to_u64(&sha2);
                 // Safety: state is [u32; 8] and the target is little-endian
                 let state_bytes = unsafe {
                     std::slice::from_raw_parts(
-                        sha2_u64.as_ptr() as *const u8,
+                        sha2.as_ptr() as *const u8,
                         4 * std::mem::size_of::<u64>(),
                     )
                 };
@@ -407,18 +432,10 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
                 total_sha2 += 1;
             }
             Hint::ECRecover(rec) => {
-                unsafe {
-                    // Copy pk, z, sig into u8 buffer_ecrecover array
-                    std::ptr::copy_nonoverlapping(rec.pk.as_ptr(), buffer_ecrecover.as_mut_ptr(), 33);
-                    std::ptr::copy_nonoverlapping(rec.z.as_ptr(), buffer_ecrecover.as_mut_ptr().add(33), 32);
-                    std::ptr::copy_nonoverlapping(rec.sig.as_ptr(), buffer_ecrecover.as_mut_ptr().add(65), 64);
-                }
-
-                // Safety: buf is [u64; 20] and the target is little-endian
                 let bytes = unsafe {
                     std::slice::from_raw_parts(
-                        buffer_ecrecover.as_ptr(),
-                        ECRECOVER_LENGTH * std::mem::size_of::<u64>(),
+                        (&rec as *const ECRecover).cast::<u8>(),
+                        std::mem::size_of::<ECRecover>(),
                     )
                 };
 
@@ -427,6 +444,15 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
                 }
                 file.write_all(bytes)?;
                 total_ecrecover += 1;
+            }
+            Hint::ModExp(result) => {
+                let length = result.len() as u64;
+                println!("Writing ModExp hint with length: {}", length);
+                let header_modexp = (((HINTS_TYPE_RESULT as u64) << 32) | length).to_le_bytes();
+                if !disable_prefix {
+                    file.write_all(&header_modexp)?;
+                }
+                file.write_all(&result)?;
             }
         }
     }
