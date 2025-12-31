@@ -11,7 +11,7 @@ pub const HEADER_SHA2: [u8; 8] =
     (((HINTS_TYPE_RESULT as u64) << 32) | SHA2_LEN_U64).to_le_bytes();
 
 #[repr(C, align(8))]
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Sha2 {
     pub state: [u32; 8],
 }

@@ -12,6 +12,10 @@ pub const HINTS_TYPE_ECRECOVER: u32 = 5;
 pub const HINTS_TYPE_REDMOD256: u32 = 6;
 pub const HINTS_TYPE_ADDMOD256: u32 = 7;
 pub const HINTS_TYPE_MULMOD256: u32 = 8;
+pub const HINTS_TYPE_DIVREM256: u32 = 9;
+pub const HINTS_TYPE_WPOW256: u32 = 10;
+pub const HINTS_TYPE_OMUL256: u32 = 11;
+pub const HINTS_TYPE_WMUL256: u32 = 12;
 pub const HINT_WRITE_BATCH: usize = 64;
 
 pub struct HintFileWriterHandleCell {
@@ -52,6 +56,10 @@ pub struct HintTotals {
     redmod256: u64,
     addmod256: u64,
     mulmod256: u64,
+    divrem256: u64,
+    wpow256: u64,
+    omul256: u64,
+    wmul256: u64,
 }
 
 #[cfg(feature = "hints-metrics")]
@@ -66,33 +74,47 @@ impl HintTotals {
             HintKind::RedMod256 => self.redmod256 += 1,
             HintKind::AddMod256 => self.addmod256 += 1,
             HintKind::MulMod256 => self.mulmod256 += 1,
+            HintKind::DivRem256 => self.divrem256 += 1,
+            HintKind::WPow256 => self.wpow256 += 1,
+            HintKind::OMul256 => self.omul256 += 1,
+            HintKind::WMul256 => self.wmul256 += 1,
         }
     }
 
     pub fn print_summary(&self) {
-        use log::info;
-
-        info!("Precompile hints summary:");
+        println!("Precompile hints summary:");
         if self.keccakf != 0 {
-            info!("  KeccakF: {}", self.keccakf);
+            println!("  KeccakF: {}", self.keccakf);
         }
         if self.sha2 != 0 {
-            info!("  SHA2: {}", self.sha2);
+            println!("  SHA2: {}", self.sha2);
         }
         if self.ecrecover != 0 {
-            info!("  ECRecover: {}", self.ecrecover);
+            println!("  ECRecover: {}", self.ecrecover);
         }
         if self.modexp != 0 {
-            info!("  ModExp: {}", self.modexp);
+            println!("  ModExp: {}", self.modexp);
         }
         if self.redmod256 != 0 {
-            info!("  RedMod256: {}", self.redmod256);
+            println!("  RedMod256: {}", self.redmod256);
         }
         if self.addmod256 != 0 {
-            info!("  AddMod256: {}", self.addmod256);
+            println!("  AddMod256: {}", self.addmod256);
         }
         if self.mulmod256 != 0 {
-            info!("  MulMod256: {}", self.mulmod256);
+            println!("  MulMod256: {}", self.mulmod256);
+        }
+        if self.divrem256 != 0 {
+            println!("  DivRem256: {}", self.divrem256);
+        }
+        if self.wpow256 != 0 {
+            println!("  WPow256: {}", self.wpow256);
+        }
+        if self.omul256 != 0 {
+            println!("  OMul256: {}", self.omul256);
+        }
+        if self.wmul256 != 0 {
+            println!("  WMul256: {}", self.wmul256);
         }
     }
 }

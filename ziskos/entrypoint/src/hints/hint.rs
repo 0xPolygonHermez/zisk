@@ -1,6 +1,10 @@
 use crate::hints::bigint256::AddMod256;
+use crate::hints::bigint256::DivRem256;
 use crate::hints::bigint256::MulMod256;
+use crate::hints::bigint256::OMul256;
 use crate::hints::bigint256::RedMod256;
+use crate::hints::bigint256::WMul256;
+use crate::hints::bigint256::WPow256;
 use crate::hints::secp256k1::ECRecover;
 
 use crate::hints::keccakf::*;
@@ -23,6 +27,10 @@ pub enum HintKind {
     RedMod256,
     AddMod256,
     MulMod256,
+    DivRem256,
+    WPow256,
+    OMul256,
+    WMul256,
 }
 
 #[derive(Clone, Debug)]
@@ -34,6 +42,10 @@ pub enum Hint {
     RedMod256(RedMod256),
     AddMod256(AddMod256),
     MulMod256(MulMod256),
+    DivRem256(DivRem256),
+    WPow256(WPow256),
+    OMul256(OMul256),
+    WMul256(WMul256),
 }
 
 impl Hint {
@@ -48,6 +60,10 @@ impl Hint {
             Hint::RedMod256(_) => HintKind::RedMod256,
             Hint::AddMod256(_) => HintKind::AddMod256,
             Hint::MulMod256(_) => HintKind::MulMod256,
+            Hint::DivRem256(_) => HintKind::DivRem256,
+            Hint::WPow256(_) => HintKind::WPow256,
+            Hint::OMul256(_) => HintKind::OMul256,
+            Hint::WMul256(_) => HintKind::WMul256,
         }
     }
 
@@ -103,6 +119,10 @@ impl Hint {
             Hint::RedMod256(redmod256) => redmod256.header_and_payload(),
             Hint::AddMod256(addmod256) => addmod256.header_and_payload(),
             Hint::MulMod256(mulmod256) => mulmod256.header_and_payload(),
+            Hint::DivRem256(divrem256) => divrem256.header_and_payload(),
+            Hint::WPow256(wpow256) => wpow256.header_and_payload(),
+            Hint::OMul256(omul256) => omul256.header_and_payload(),
+            Hint::WMul256(wmul256) => wmul256.header_and_payload(),
             // Hint::ModExp(buf) => {
             //     let len = buf.len() as u64;
             //     let header = (((HINTS_TYPE_RESULT as u64) << 32) | len).to_le_bytes();

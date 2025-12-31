@@ -21,7 +21,6 @@ use std::thread::{self, ThreadId};
 
 #[cfg(feature = "hints-reference")]
 use std::io::Read;
-use log::info;
 
 static HINT_QUEUE: Lazy<HintQueue> = Lazy::new(HintQueue::new);
 static HINT_FILE_WRITER_HANDLE: Lazy<HintFileWriterHandleCell> = Lazy::new(HintFileWriterHandleCell::new);
@@ -30,7 +29,7 @@ static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
 pub use keccakf::hint_keccakf;
 pub use sha256f::hint_sha2;
 pub use secp256k1::hint_ecrecover;
-pub use bigint256::{hint_redmod256, hint_addmod256, hint_mulmod256};
+pub use bigint256::{hint_redmod256, hint_addmod256, hint_mulmod256, hint_divrem256, hint_wpow256, hint_omul256, hint_wmul256};
 
 pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
     // Record the main thread id to validate single-threaded calls later
@@ -124,7 +123,7 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
     let mut ref_idx: usize = 0;
     #[cfg(feature = "hints-reference")]
     if let Ok(path) = std::env::var("HINTS_REF_FILE") {
-        info!("Comparing precompile hints against reference file {}", path);
+        println!("Comparing precompile hints against reference file {}", path);
         let mut f = std::fs::File::open(path)?;
         let mut start = [0u8; 8];
         let _ = f.read_exact(&mut start);

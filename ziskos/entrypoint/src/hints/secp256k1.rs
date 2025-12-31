@@ -16,7 +16,7 @@ pub const HEADER_ECRECOVER: [u8; 8] =
     (((HINTS_TYPE_ECRECOVER as u64) << 32) | ECRECOVER_LEN_U64).to_le_bytes();
 
 #[repr(C, align(8))]
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ECRecover {
     pub pk: [u8; 33],
     pub z: [u8; 32],
