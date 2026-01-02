@@ -29,6 +29,6 @@ libc = "0.2"
 log = "0.4.26"
 
 [features]
-default = []
+default = ["hints-metrics", "hints-reference"]
 hints-metrics = []
 hints-reference = []

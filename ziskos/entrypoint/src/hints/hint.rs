@@ -5,6 +5,7 @@ use crate::hints::bigint256::OMul256;
 use crate::hints::bigint256::RedMod256;
 use crate::hints::bigint256::WMul256;
 use crate::hints::bigint256::WPow256;
+use crate::hints::modexp::ModExp;
 use crate::hints::secp256k1::ECRecover;
 
 use crate::hints::keccakf::*;
@@ -31,6 +32,7 @@ pub enum HintKind {
     WPow256,
     OMul256,
     WMul256,
+    ModExp,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +48,7 @@ pub enum Hint {
     WPow256(WPow256),
     OMul256(OMul256),
     WMul256(WMul256),
+    ModExp(ModExp),
 }
 
 impl Hint {
@@ -64,6 +67,7 @@ impl Hint {
             Hint::WPow256(_) => HintKind::WPow256,
             Hint::OMul256(_) => HintKind::OMul256,
             Hint::WMul256(_) => HintKind::WMul256,
+            Hint::ModExp(_) => HintKind::ModExp,
         }
     }
 
@@ -123,11 +127,7 @@ impl Hint {
             Hint::WPow256(wpow256) => wpow256.header_and_payload(),
             Hint::OMul256(omul256) => omul256.header_and_payload(),
             Hint::WMul256(wmul256) => wmul256.header_and_payload(),
-            // Hint::ModExp(buf) => {
-            //     let len = buf.len() as u64;
-            //     let header = (((HINTS_TYPE_RESULT as u64) << 32) | len).to_le_bytes();
-            //     (header, buf.as_slice())
-            // }
+            Hint::ModExp(modexp) => modexp.header_and_payload(),
         }
     }
 }
@@ -185,5 +185,9 @@ impl HintQueue {
     pub fn close(&self) {
         self.closed.store(true, Ordering::SeqCst);
         self.condvar.notify_all();
+    }
+
+    pub fn is_open(&self) -> bool {
+        !self.closed.load(Ordering::SeqCst)
     }
 }

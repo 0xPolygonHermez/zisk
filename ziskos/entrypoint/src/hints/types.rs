@@ -16,6 +16,7 @@ pub const HINTS_TYPE_DIVREM256: u32 = 9;
 pub const HINTS_TYPE_WPOW256: u32 = 10;
 pub const HINTS_TYPE_OMUL256: u32 = 11;
 pub const HINTS_TYPE_WMUL256: u32 = 12;
+pub const HINTS_TYPE_MODEXP: u32 = 13;
 pub const HINT_WRITE_BATCH: usize = 64;
 
 pub struct HintFileWriterHandleCell {
@@ -52,7 +53,6 @@ pub struct HintTotals {
     keccakf: u64,
     sha2: u64,
     ecrecover: u64,
-    modexp: u64,
     redmod256: u64,
     addmod256: u64,
     mulmod256: u64,
@@ -60,6 +60,7 @@ pub struct HintTotals {
     wpow256: u64,
     omul256: u64,
     wmul256: u64,
+    modexp: u64,
 }
 
 #[cfg(feature = "hints-metrics")]
@@ -78,6 +79,7 @@ impl HintTotals {
             HintKind::WPow256 => self.wpow256 += 1,
             HintKind::OMul256 => self.omul256 += 1,
             HintKind::WMul256 => self.wmul256 += 1,
+            HintKind::ModExp => self.modexp += 1,
         }
     }
 
@@ -91,9 +93,6 @@ impl HintTotals {
         }
         if self.ecrecover != 0 {
             println!("  ECRecover: {}", self.ecrecover);
-        }
-        if self.modexp != 0 {
-            println!("  ModExp: {}", self.modexp);
         }
         if self.redmod256 != 0 {
             println!("  RedMod256: {}", self.redmod256);
@@ -115,6 +114,9 @@ impl HintTotals {
         }
         if self.wmul256 != 0 {
             println!("  WMul256: {}", self.wmul256);
+        }
+        if self.modexp != 0 {
+            println!("  ModExp: {}", self.modexp);
         }
     }
 }
