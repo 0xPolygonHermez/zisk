@@ -1,5 +1,5 @@
 #![allow(unexpected_cfgs)]
-//#![allow(unused_imports)]
+#![allow(unused_imports)]
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use core::arch::asm;
