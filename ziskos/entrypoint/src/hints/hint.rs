@@ -5,6 +5,14 @@ use crate::hints::bigint256::OMul256;
 use crate::hints::bigint256::RedMod256;
 use crate::hints::bigint256::WMul256;
 use crate::hints::bigint256::WPow256;
+use crate::hints::bn254::AddBN254;
+use crate::hints::bn254::IsOnCurveBN254;
+use crate::hints::bn254::IsOnCurveTwistBN254;
+use crate::hints::bn254::IsOnSubgroupTwistBN254;
+use crate::hints::bn254::MulBN254;
+use crate::hints::bn254::PairingBatchBN254;
+use crate::hints::bn254::ToAffineBN254;
+use crate::hints::bn254::ToAffineTwistBN254;
 use crate::hints::modexp::ModExp;
 use crate::hints::secp256k1::ECRecover;
 
@@ -33,6 +41,14 @@ pub enum HintKind {
     OMul256,
     WMul256,
     ModExp,
+    IsOnCurveBN254,
+    ToAffineBN254,
+    AddBN254,
+    MulBN254,
+    ToAffineTwistBN254,
+    IsOnCurveTwistBN254,
+    IsOnSubgroupTwistBN254,
+    PairingBatchBN254,
 }
 
 #[derive(Clone, Debug)]
@@ -49,6 +65,14 @@ pub enum Hint {
     OMul256(OMul256),
     WMul256(WMul256),
     ModExp(ModExp),
+    IsOnCurveBN254(IsOnCurveBN254),
+    ToAffineBN254(ToAffineBN254),
+    AddBN254(AddBN254),
+    MulBN254(MulBN254),
+    ToAffineTwistBN254(ToAffineTwistBN254),
+    IsOnCurveTwistBN254(IsOnCurveTwistBN254),
+    IsOnSubgroupTwistBN254(IsOnSubgroupTwistBN254),
+    PairingBatchBN254(PairingBatchBN254),
 }
 
 impl Hint {
@@ -68,6 +92,14 @@ impl Hint {
             Hint::OMul256(_) => HintKind::OMul256,
             Hint::WMul256(_) => HintKind::WMul256,
             Hint::ModExp(_) => HintKind::ModExp,
+            Hint::IsOnCurveBN254(_) => HintKind::IsOnCurveBN254,
+            Hint::ToAffineBN254(_) => HintKind::ToAffineBN254,
+            Hint::AddBN254(_) => HintKind::AddBN254,
+            Hint::MulBN254(_) => HintKind::MulBN254,
+            Hint::ToAffineTwistBN254(_) => HintKind::ToAffineTwistBN254,
+            Hint::IsOnCurveTwistBN254(_) => HintKind::IsOnCurveTwistBN254,
+            Hint::IsOnSubgroupTwistBN254(_) => HintKind::IsOnSubgroupTwistBN254,
+            Hint::PairingBatchBN254(_) => HintKind::PairingBatchBN254,
         }
     }
 
@@ -128,6 +160,14 @@ impl Hint {
             Hint::OMul256(omul256) => omul256.header_and_payload(),
             Hint::WMul256(wmul256) => wmul256.header_and_payload(),
             Hint::ModExp(modexp) => modexp.header_and_payload(),
+            Hint::IsOnCurveBN254(is_on_curve_bn254) => is_on_curve_bn254.header_and_payload(),
+            Hint::ToAffineBN254(to_affine_bn254) => to_affine_bn254.header_and_payload(),
+            Hint::AddBN254(add_bn254) => add_bn254.header_and_payload(),
+            Hint::MulBN254(mul_bn254) => mul_bn254.header_and_payload(),
+            Hint::ToAffineTwistBN254(to_affine_twist_bn254) => to_affine_twist_bn254.header_and_payload(),
+            Hint::IsOnCurveTwistBN254(is_on_curve_twist_bn254) => is_on_curve_twist_bn254.header_and_payload(),
+            Hint::IsOnSubgroupTwistBN254(is_on_subgroup_twist_bn254) => is_on_subgroup_twist_bn254.header_and_payload(),
+            Hint::PairingBatchBN254(pairing_batch_bn254) => pairing_batch_bn254.header_and_payload(),
         }
     }
 }

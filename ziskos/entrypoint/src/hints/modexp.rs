@@ -12,18 +12,17 @@ pub struct ModExp {
 
 impl ModExp {
     pub fn new(base: Vec<u64>, exp: Vec<u64>, modulus: Vec<u64>) -> Self {
-        let mut payload = Vec::with_capacity(base.len() + exp.len() + modulus.len());
+        let mut payload = Vec::with_capacity(3 + base.len() + exp.len() + modulus.len());
         // Append base length and base
         payload.push(base.len() as u64);
-        payload.append(&mut base.clone());
+        payload.extend_from_slice(&base);
         // Append exponent length and exponent
         payload.push(exp.len() as u64);
-        payload.append(&mut exp.clone());
+        payload.extend_from_slice(&exp);
         // Append modulus length and modulus
         payload.push(modulus.len() as u64);
         // Append modulus
-        payload.append(&mut modulus.clone());
-
+        payload.extend_from_slice(&modulus);
 
         Self {
             payload,
@@ -42,18 +41,18 @@ impl Default for ModExp {
 impl HintData for ModExp {
     #[inline(always)]
     fn header_and_payload(&self) -> ([u8; 8], &[u8]) {
-        let header_modexp: [u8; 8] =
-            (((HINTS_TYPE_MODEXP as u64) << 32) | (self.payload.len() * core::mem::size_of::<u64>()) as u64).to_le_bytes();
+        let header: [u8; 8] =
+            (((HINTS_TYPE_MODEXP as u64) << 32) | self.payload.len() as u64).to_le_bytes();
 
         // Convert payload to bytes
-        let payload_bytes = unsafe {
+        let bytes = unsafe {
             core::slice::from_raw_parts(
                 self.payload.as_ptr() as *const u8,
                 self.payload.len() * core::mem::size_of::<u64>(),
             )
         };
 
-        (header_modexp, payload_bytes)
+        (header, bytes)
     }
 }
 

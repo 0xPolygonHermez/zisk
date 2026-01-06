@@ -17,6 +17,15 @@ pub const HINTS_TYPE_WPOW256: u32 = 10;
 pub const HINTS_TYPE_OMUL256: u32 = 11;
 pub const HINTS_TYPE_WMUL256: u32 = 12;
 pub const HINTS_TYPE_MODEXP: u32 = 13;
+pub const HINTS_TYPE_IS_ON_CURVE_BN254: u32 = 14;
+pub const HINTS_TYPE_TO_AFFINE_BN254: u32 = 15;
+pub const HINTS_TYPE_ADD_BN254: u32 = 16;
+pub const HINTS_TYPE_MUL_BN254: u32 = 17;
+pub const HINTS_TYPE_TO_AFFINE_TWIST_BN254: u32 = 18;
+pub const HINTS_TYPE_IS_ON_CURVE_TWIST_BN254: u32 = 19;
+pub const HINTS_TYPE_IS_ON_SUBGROUP_TWIST_BN254: u32 = 20;
+pub const HINTS_TYPE_PAIRING_BATCH_BN254: u32 = 21;
+
 pub const HINT_WRITE_BATCH: usize = 64;
 
 pub struct HintFileWriterHandleCell {
@@ -61,6 +70,14 @@ pub struct HintTotals {
     omul256: u64,
     wmul256: u64,
     modexp: u64,
+    is_on_curve_bn254: u64,
+    to_affine_bn254: u64,
+    add_bn254: u64,
+    mul_bn254: u64,
+    to_affine_twist_bn254: u64,
+    is_on_curve_twist_bn254: u64,
+    is_on_subgroup_twist_bn254: u64,
+    pairing_batch_bn254: u64,
 }
 
 #[cfg(feature = "hints-metrics")]
@@ -80,6 +97,14 @@ impl HintTotals {
             HintKind::OMul256 => self.omul256 += 1,
             HintKind::WMul256 => self.wmul256 += 1,
             HintKind::ModExp => self.modexp += 1,
+            HintKind::IsOnCurveBN254 => self.is_on_curve_bn254 += 1,
+            HintKind::ToAffineBN254 => self.to_affine_bn254 += 1,
+            HintKind::AddBN254 => self.add_bn254 += 1,
+            HintKind::MulBN254 => self.mul_bn254 += 1,
+            HintKind::ToAffineTwistBN254 => self.to_affine_twist_bn254 += 1,
+            HintKind::IsOnCurveTwistBN254 => self.is_on_curve_twist_bn254 += 1,
+            HintKind::IsOnSubgroupTwistBN254 => self.is_on_subgroup_twist_bn254 += 1,
+            HintKind::PairingBatchBN254 => self.pairing_batch_bn254 += 1,
         }
     }
 
@@ -117,6 +142,30 @@ impl HintTotals {
         }
         if self.modexp != 0 {
             println!("  ModExp: {}", self.modexp);
+        }
+        if self.is_on_curve_bn254 != 0 {
+            println!("  IsOnCurveBN254: {}", self.is_on_curve_bn254);
+        }
+        if self.to_affine_bn254 != 0 {
+            println!("  ToAffineBN254: {}", self.to_affine_bn254);
+        }
+        if self.add_bn254 != 0 {
+            println!("  AddBN254: {}", self.add_bn254);
+        }
+        if self.mul_bn254 != 0 {
+            println!("  MulBN254: {}", self.mul_bn254);
+        }
+        if self.to_affine_twist_bn254 != 0 {
+            println!("  ToAffineTwistBN254: {}", self.to_affine_twist_bn254);
+        }
+        if self.is_on_curve_twist_bn254 != 0 {
+            println!("  IsOnCurveTwistBN254: {}", self.is_on_curve_twist_bn254);
+        }
+        if self.is_on_subgroup_twist_bn254 != 0 {
+            println!("  IsOnSubgroupTwistBN254: {}", self.is_on_subgroup_twist_bn254);
+        }
+        if self.pairing_batch_bn254 != 0 {
+            println!("  PairingBatchBN254: {}", self.pairing_batch_bn254);
         }
     }
 }

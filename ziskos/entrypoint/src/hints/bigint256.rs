@@ -9,6 +9,8 @@ use crate::hints::{
 pub const UINT256_LEN_U64: u64 = 4; // 256 bits
 pub const UINT256_BYTES: usize = (UINT256_LEN_U64 as usize) * core::mem::size_of::<u64>();
 
+// TODO: Check use of a macro to generate BigInt256 hints
+
 // === BigInt two param struct ===
 #[repr(C, align(8))]
 #[derive(Clone, Debug, Eq, PartialEq)]

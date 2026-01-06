@@ -1,5 +1,6 @@
 #![warn(unused_imports)]
 
+mod bn254;
 mod bigint256;
 mod hint;
 mod keccakf;
@@ -32,8 +33,26 @@ static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
 pub use keccakf::hint_keccakf;
 pub use sha256f::hint_sha2;
 pub use secp256k1::hint_ecrecover;
-pub use bigint256::{hint_redmod256, hint_addmod256, hint_mulmod256, hint_divrem256, hint_wpow256, hint_omul256, hint_wmul256};
+pub use bigint256::{
+    hint_redmod256,
+    hint_addmod256,
+    hint_mulmod256,
+    hint_divrem256,
+    hint_wpow256,
+    hint_omul256,
+    hint_wmul256
+};
 pub use modexp::hint_modexp;
+pub use bn254::{
+    hint_is_on_curve_bn254,
+    hint_to_affine_bn254,
+    hint_add_bn254,
+    hint_mul_bn254,
+    hint_to_affine_twist_bn254,
+    hint_is_on_curve_twist_bn254,
+    hint_is_on_subgroup_twist_bn254,
+    hint_pairing_batch_bn254,
+};
 
 pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
     // Record the main thread id to validate single-threaded calls later
@@ -64,7 +83,7 @@ pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
     Ok(())
 }
 
-pub fn is_precompile_hints_enabled() -> bool {
+pub fn is_hints_enabled() -> bool {
     HINT_QUEUE.is_open()
 }
 
