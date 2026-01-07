@@ -255,15 +255,17 @@ test_elf() {
     cd ..
 
     # Print results
-    if [ ${num_inputs} -gt 0 ]; then
-        echo
-        info "Non-distributed results:"
-        print_proofs_result "${PROOF_RESULTS_DIR}/non-distributed" "${result_files[@]}"
-    fi
-    if [ ${num_dist_inputs} -gt 0 ]; then
-        echo
-        info "Distributed results:"
-        print_proofs_result "${PROOF_RESULTS_DIR}/distributed" "${result_dist_files[@]}"
+    if [[ "${DISABLE_PROVE}" != "1" ]]; then
+        if [ ${num_inputs} -gt 0 ]; then
+            echo
+            info "Non-distributed results:"
+            print_proofs_result "${PROOF_RESULTS_DIR}/non-distributed" "${result_files[@]}"
+        fi
+        if [ ${num_dist_inputs} -gt 0 ]; then
+            echo
+            info "Distributed results:"
+            print_proofs_result "${PROOF_RESULTS_DIR}/distributed" "${result_dist_files[@]}"
+        fi
     fi
 
     # Clean up result files
