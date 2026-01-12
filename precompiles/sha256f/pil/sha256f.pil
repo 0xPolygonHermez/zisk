@@ -1,9 +1,9 @@
-require "std_constants.pil";
-require "std_lookup.pil";
-require "std_range_check.pil";
-require "std_connection.pil";
-require "operations.pil";
-require "opids.pil";
+require "std_constants.pil"
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "std_connection.pil"
+require "operations.pil"
+require "opids.pil"
 
 // Precompile in charge of performing the SHA2-256 permutation (named here Sha256-f). 
 // For reference: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf
@@ -45,10 +45,14 @@ airtemplate Sha256f(const int N = 2**22, const int operation_bus_id = OPERATION_
     }
 
     // Compute some stats
-    const int NUM_SHA256F = N / CLOCKS - 1; // The -1 is because CLOCKS is not a divisor of N
     const int NUM_NON_USABLE_ROWS = N % CLOCKS;
+    const int NUM_SHA256F;
+    if (NUM_NON_USABLE_ROWS == 0) {
+        NUM_SHA256F = N / CLOCKS;
+    } else {
+        NUM_SHA256F = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1; // The -1 is because CLOCKS is not a divisor of N
+    }
     println(`The total number of Sha256-f's is ${NUM_SHA256F}`);
-    println(`The number of non-usable rows is ${NUM_NON_USABLE_ROWS}`);
 
     // SHA256 round constants (first 32 bits of the fractional parts of the cube roots of the first 64 primes)
     const int SHA256F_RC[64] = [

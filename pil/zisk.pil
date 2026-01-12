@@ -52,7 +52,7 @@ function range_dual_byte(expr byte_a, expr byte_b, expr sel = 1) {
 airgroup Zisk {
     // Virtual Tables Configuration
     set_max_std_tables_bits(20);
-    set_max_num_rows_virtual(1 << 20); // Set the maximum rows for virtual tables
+    set_max_num_rows_virtual(1 << 21); // Set the maximum rows for virtual tables
     set_max_num_virtual_tables(2);
     set_group_virtual_tables(table_ids: [ARITH_TABLE_ID, ARITH_RANGE_TABLE_ID, ARITH_EQ_LT_TABLE_ID, BINARY_EXTENSION_TABLE_ID, 
                                          BINARY_TABLE_ID, MEMORY_ALIGN_ROM_ID, KECCAKF_TABLE_ID, DMA_ROM_ID, DMA_PRE_POST_TABLE_ID]);
@@ -107,12 +107,8 @@ airgroup Zisk {
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
 
-    const int KECCAKF_CHUNKS = 9;
-    const int KECCAKF_BITS = 7;
-    Keccakf(N: 2**21, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, RC: 2, RB: 32, mem_bits_in_parallel: 4);
-    const int KECCAKF_TABLE_CHUNKS = 1;
-    const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + KECCAKF_BITS + 1;
-    virtual KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);
+    Keccakf(N: 2**17, mem_ops_in_parallel: 25);
+    virtual KeccakfTable(KECCAKF_TABLE_SIZE);
 
     Sha256f(N: 2**18);
 

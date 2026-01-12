@@ -110,7 +110,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let arith_sm = ArithSM::new(std.clone());
         let mem_sm = Mem::new(std.clone());
         // Step 4: Initialize the precompiles state machines
-        let keccakf_sm = KeccakfManager::new(wcm.get_sctx(), std.clone());
+        let keccakf_sm = KeccakfManager::new(std.clone());
         let sha256f_sm = Sha256fManager::new(std.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
         let arith_eq_384_sm = ArithEq384Manager::new(std.clone());

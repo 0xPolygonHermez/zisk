@@ -1,8 +1,8 @@
-require "std_permutation.pil";
-require "std_lookup.pil";
-require "std_range_check.pil";
-require "opids.pil";
-require "mem_align_rom.pil";
+require "std_permutation.pil"
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "opids.pil"
+require "mem_align_rom.pil"
 
 // Problem to solve:
 // =================

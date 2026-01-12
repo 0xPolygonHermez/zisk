@@ -1,8 +1,8 @@
-require "std_lookup.pil";
-require "std_range_check.pil";
-require "operations.pil";
-require "opids.pil";
-require "arith_eq_lt_table.pil";
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "operations.pil"
+require "opids.pil"
+require "arith_eq_lt_table.pil"
 
 airtemplate ArithEq (const int N = 2**18, const int operation_bus_id = OPERATION_BUS_ID) {
 

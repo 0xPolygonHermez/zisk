@@ -3,7 +3,7 @@ use clap::Parser;
 use colored::Colorize;
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::{
-    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
+    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor_and_arity,
     DEFAULT_CACHE_PATH,
 };
 use server::ZiskServerParams;
@@ -170,14 +170,24 @@ impl ZiskServer {
             }
         }
 
-        let blowup_factor = get_rom_blowup_factor(&proving_key);
+        let (blowup_factor, merkle_tree_arity) = get_rom_blowup_factor_and_arity(&proving_key);
 
-        let rom_bin_path =
-            get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
+        let rom_bin_path = get_elf_bin_file_path(
+            &self.elf.to_path_buf(),
+            &default_cache_path,
+            blowup_factor,
+            merkle_tree_arity,
+        )?;
 
         if !rom_bin_path.exists() {
-            let _ = gen_elf_hash(&self.elf.clone(), rom_bin_path.as_path(), blowup_factor, false)
-                .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
+            let _ = gen_elf_hash(
+                &self.elf.clone(),
+                rom_bin_path.as_path(),
+                blowup_factor,
+                merkle_tree_arity,
+                false,
+            )
+            .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
         self.print_command_info();

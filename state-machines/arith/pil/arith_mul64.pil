@@ -1,9 +1,9 @@
-require "std_lookup.pil";
-require "std_range_check.pil";
-require "operations.pil";
-require "opids.pil";
-require "arith_table.pil";
-require "arith_range_table.pil";
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "operations.pil"
+require "opids.pil"
+require "arith_table.pil"
+require "arith_range_table.pil"
 
 //          full   mul_64  full_32  mul_32
 // TOTAL      88       77       57      44

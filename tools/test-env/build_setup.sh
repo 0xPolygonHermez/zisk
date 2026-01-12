@@ -70,13 +70,12 @@ main() {
     cd "$(get_zisk_repo_dir)"
 
     step "Generate fixed data..."
-    ensure cargo run --release --bin keccakf_fixed_gen || return 1
     ensure cargo run --release --bin arith_frops_fixed_gen || return 1
     ensure cargo run --release --bin binary_basic_frops_fixed_gen || return 1
     ensure cargo run --release --bin binary_extension_frops_fixed_gen || return 1
 
     step "Compiling ZisK PIL..."
-    ensure node "${WORKSPACE_DIR}/pil2-compiler/src/pil.js" pil/zisk.pil \
+    ensure node --max-old-space-size=16384 "${WORKSPACE_DIR}/pil2-compiler/src/pil.js" pil/zisk.pil \
 	-I pil,"${WORKSPACE_DIR}/pil2-proofman/pil2-components/lib/std/pil",state-machines,precompiles \
 	-o pil/zisk.pilout -u tmp/fixed -O fixed-to-file || return 1
 
@@ -114,9 +113,11 @@ main() {
         fi
 
         rm -rf build/provingKey
-        ensure node "${WORKSPACE_DIR}/pil2-proofman-js/src/main_setup.js" \
+        ensure node --max-old-space-size=16384 --stack-size=8192 \
+            "${WORKSPACE_DIR}/pil2-proofman-js/src/main_setup.js" \
             -a ./pil/zisk.pilout -b build \
-            -u tmp/fixed ${setup_flags}
+            -u tmp/fixed ${setup_flags} \
+            -s state-machines/starkstructs.json
     fi
 
     if [[ ${USE_CACHE_SETUP} == "1" && ${cached} == "0" ]]; then

@@ -1,7 +1,7 @@
-require "std_constants.pil";
-require "std_lookup.pil";
-require "operations.pil";
-require "opids.pil";
+require "std_constants.pil"
+require "std_lookup.pil"
+require "operations.pil"
+require "opids.pil"
 
 /* PIL Binary Operations Table used by Binary Extension
                                                        Running Total

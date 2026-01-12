@@ -25,7 +25,7 @@ main() {
     -v | --version)
       shift
       ZISK_VERSION=$1
-      ;;    
+      ;;
     --arch)
       shift
       ZISKUP_ARCH=$1
@@ -42,7 +42,7 @@ main() {
       ;;
     --nokey)
       SETUP_KEY="none"
-      ;;    
+      ;;
     -h | --help)
       usage
       exit 0
@@ -83,7 +83,7 @@ main() {
 
   ZISKUP_REPO="0xPolygonHermez/zisk"
   EXT="tar.gz"
-  
+
   step "Installing ZisK ${ZISK_VERSION} version..."
 
   uname_m=$(uname -m)
@@ -111,8 +111,9 @@ main() {
   if [[ -z "${SETUP_KEY}" ]]; then
     step "Setup installation options:"
     say "1) Install proving key (default - just press enter)"
-    say "2) Install verify key"
-    say "3) None"
+    say "2) Install proving key (no constant tree files)"
+    say "3) Install verify key"
+    say "4) None"
 
     # Read user input with default option set to 1
     read -p ">" user_choice < /dev/tty
@@ -123,9 +124,12 @@ main() {
           SETUP_KEY="proving"
           ;;
         2)
-          SETUP_KEY="verify"
+          SETUP_KEY="proving-no-consttree"
           ;;
         3)
+          SETUP_KEY="verify"
+          ;;
+        4)
           SETUP_KEY="none"
           ;;
         *)
@@ -138,7 +142,7 @@ main() {
   # Compute the URL of the release tarball in the zisk repository
   if [ "${ZISK_VERSION}" = "latest" ]; then
     RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/latest/download/"
-  else 
+  else
     RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISK_VERSION}/"
   fi
 
@@ -191,10 +195,13 @@ EOF
   SETUP_VERSION="${major}.${minor}.0"
   case "${SETUP_KEY}" in
     proving)
-      install_setup "proving"
+      install_setup "proving" 1
+      ;;
+    proving-no-consttree)
+      install_setup "proving" 0
       ;;
     verify)
-      install_setup "verify"
+      install_setup "verify" 0
       ;;
     none)
       # Do nothing
@@ -295,8 +302,8 @@ check_cmd() {
 # Run a command that should never fail. If the command fails execution
 # will immediately terminate with an error showing the failing command.
 ensure() {
-  if ! "$@"; then 
-    err "command failed: $*"; 
+  if ! "$@"; then
+    err "command failed: $*";
     exit 1
   fi
 }
@@ -323,6 +330,7 @@ download() {
 # Install the proving or verify key
 install_setup() {
     local KEY_TYPE=$1  # proving or verify
+    local CONST_TREE=$2
     local KEY_FILE="zisk-${KEY_TYPE}key-${SETUP_VERSION}.tar.gz"
 
     step "Downloading ${KEY_TYPE} key version ${SETUP_VERSION}..."
@@ -350,7 +358,7 @@ install_setup() {
     say "Installed ${KEY_TYPE} key version ${SETUP_VERSION}"
 
     # Generate constant tree files for proving key
-    if [[ "${KEY_TYPE}" == "proving" ]]; then
+    if [[ "${KEY_TYPE}" == "proving" && "${CONST_TREE}" -eq 1 ]]; then
       step "Generating constant tree files. This may take a while..."
       ensure_silent "${CARGO_ZISK}" check-setup -a
       say "Constant tree files generated successfully."
@@ -363,8 +371,8 @@ banner() {
 ########################################################################################
  ______     _  __
 |__  (_)___| |/ /
-  / /| / __| ' / 
- / /_| \__ \ . \ 
+  / /| / __| ' /
+ / /_| \__ \ . \
 /____|_|___/_|\_\
 
 Ziskup - The ZisK Installer

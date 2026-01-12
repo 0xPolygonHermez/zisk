@@ -1,5 +1,5 @@
-require "std_permutation.pil";
-require "opids.pil";
+require "std_permutation.pil"
+require "opids.pil"
 
 airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom_bus_id = ROM_BUS_ID, 
                     const int RC = 2, const int bytes = 8, const int reads_by_row = 1) {

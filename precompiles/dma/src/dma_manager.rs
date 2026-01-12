@@ -78,22 +78,15 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
     /// # Panics
     /// Panics if the provided `air_id` is not supported.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
-        println!("BUILD DMA INSTANCE {}", ictx.plan.air_id);
         match ictx.plan.air_id {
-            DmaTrace::<F>::AIR_ID => {
-                println!("BUILD DMA INSTANCE");
-                Box::new(DmaInstance::new(self.dma_sm.clone(), ictx))
-            }
+            DmaTrace::<F>::AIR_ID => Box::new(DmaInstance::new(self.dma_sm.clone(), ictx)),
             DmaPrePostTrace::<F>::AIR_ID => {
-                println!("BUILD DMA PRE-POST INSTANCE");
                 Box::new(DmaPrePostInstance::new(self.dma_pre_post_sm.clone(), ictx))
             }
             Dma64AlignedTrace::<F>::AIR_ID => {
-                println!("BUILD DMA 64-ALIGNED INSTANCE");
                 Box::new(Dma64AlignedInstance::new(self.dma_64_aligned_sm.clone(), ictx))
             }
             DmaUnalignedTrace::<F>::AIR_ID => {
-                println!("BUILD DMA UNALIGNED INSTANCE");
                 Box::new(DmaUnalignedInstance::new(self.dma_unaligned_sm.clone(), ictx))
             }
             _ => {

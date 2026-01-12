@@ -1,6 +1,6 @@
-require "std_lookup.pil";
-require "operations.pil";
-require "opids.pil";
+require "std_lookup.pil"
+require "operations.pil"
+require "opids.pil"
 
 airtemplate ArithTable(const int N = 2**7, const int generate_table = 0) {
 

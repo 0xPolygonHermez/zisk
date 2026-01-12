@@ -2,7 +2,7 @@ use anyhow::Result;
 use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
 use proofman::{AggProofs, ContributionsInfo};
 use rom_setup::{
-    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
+    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor_and_arity,
     DEFAULT_CACHE_PATH,
 };
 use std::fs;
@@ -178,17 +178,19 @@ impl ProverConfig {
                 return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
             }
         }
-        let blowup_factor = get_rom_blowup_factor(&proving_key);
+        let (blowup_factor, merkle_tree_arity) = get_rom_blowup_factor_and_arity(&proving_key);
         let rom_bin_path = get_elf_bin_file_path(
             &prover_service_config.elf.to_path_buf(),
             &default_cache_path,
             blowup_factor,
+            merkle_tree_arity,
         )?;
         if !rom_bin_path.exists() {
             let _ = gen_elf_hash(
                 &prover_service_config.elf.clone(),
                 rom_bin_path.as_path(),
                 blowup_factor,
+                merkle_tree_arity,
                 false,
             )
             .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));

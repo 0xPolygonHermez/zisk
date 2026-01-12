@@ -1,6 +1,6 @@
-require "std_permutation.pil";
-require "std_range_check.pil";
-require "opids.pil";
+require "std_permutation.pil"
+require "std_range_check.pil"
+require "opids.pil"
 
 /*
     Memory Component (Mem)

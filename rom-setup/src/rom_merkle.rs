@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::{gen_elf_hash, get_elf_bin_file_path_with_hash, get_rom_blowup_factor};
+use crate::{gen_elf_hash, get_elf_bin_file_path_with_hash, get_rom_blowup_factor_and_arity};
 
 pub fn rom_merkle_setup(
     elf: &Path,
@@ -15,15 +15,21 @@ pub fn rom_merkle_setup(
         std::process::exit(1);
     }
 
-    let blowup_factor = get_rom_blowup_factor(proving_key);
+    let (blowup_factor, merkle_tree_arity) = get_rom_blowup_factor_and_arity(proving_key);
 
-    let elf_bin_path = get_elf_bin_file_path_with_hash(elf, elf_hash, output_path, blowup_factor)?;
+    let elf_bin_path = get_elf_bin_file_path_with_hash(
+        elf,
+        elf_hash,
+        output_path,
+        blowup_factor,
+        merkle_tree_arity,
+    )?;
 
     if !elf_bin_path.exists() {
         check = false;
     }
 
-    let root = gen_elf_hash(elf, elf_bin_path.as_path(), blowup_factor, check)?;
+    let root = gen_elf_hash(elf, elf_bin_path.as_path(), blowup_factor, merkle_tree_arity, check)?;
 
     tracing::info!("Root hash: {:?}", root);
 

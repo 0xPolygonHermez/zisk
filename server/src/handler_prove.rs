@@ -10,7 +10,6 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::{fs::File, path::PathBuf};
 use zisk_common::{ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
-use zstd::stream::write::Encoder;
 
 use crate::{
     ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode, ZiskService,
@@ -137,27 +136,6 @@ impl ZiskServiceProveHandler {
                         let mut file =
                             File::create(&output_file_path).expect("Error while creating file");
                         file.write_all(proof_data).expect("Error while writing to file");
-
-                        // Save the compressed vadcop final proof using zstd (fastest compression level)
-                        let compressed_output_path = request
-                            .folder
-                            .join(format!("{}-vadcop_final_proof.compressed.bin", request.prefix));
-                        let compressed_file = File::create(&compressed_output_path).unwrap();
-                        let mut encoder = Encoder::new(compressed_file, 1).unwrap();
-                        encoder.write_all(proof_data).unwrap();
-                        encoder.finish().unwrap();
-
-                        let original_size = vadcop_proof.len() * 8;
-                        let compressed_size =
-                            std::fs::metadata(&compressed_output_path).unwrap().len();
-                        let compression_ratio = compressed_size as f64 / original_size as f64;
-
-                        println!("Vadcop final proof saved:");
-                        println!("  Original: {} bytes", original_size);
-                        println!(
-                            "  Compressed: {} bytes (ratio: {:.2}x)",
-                            compressed_size, compression_ratio
-                        );
                     }
                 }
                 is_busy.store(false, std::sync::atomic::Ordering::SeqCst);

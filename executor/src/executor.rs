@@ -1615,10 +1615,16 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         let setup = sctx.get_setup(RomRomTrace::<F>::AIRGROUP_ID, RomRomTrace::<F>::AIR_ID)?;
         let blowup_factor =
             1 << (setup.stark_info.stark_struct.n_bits_ext - setup.stark_info.stark_struct.n_bits);
+        let arity = setup.stark_info.stark_struct.merkle_tree_arity;
 
-        gen_elf_hash(&self.rom_path, file_name.as_path(), blowup_factor, check).map_err(|e| {
-            ProofmanError::ProofmanError(format!("Failed to generate custom commits fixed: {}", e))
-        })?;
+        gen_elf_hash(&self.rom_path, file_name.as_path(), blowup_factor, arity, check).map_err(
+            |e| {
+                ProofmanError::ProofmanError(format!(
+                    "Failed to generate custom commits fixed: {}",
+                    e
+                ))
+            },
+        )?;
         Ok(())
     }
 }

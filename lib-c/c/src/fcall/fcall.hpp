@@ -23,6 +23,11 @@ extern "C" {
 #define FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID 14
 #define FCALL_MSB_POS_384_ID 15
 #define FCALL_BIGINT256_DIV_ID 16
+#define FCALL_BIG_INT_DIV_ID 17
+#define FCALL_BIN_DECOMP_ID 18
+
+#define FCALL_PARAMS_MAX_SIZE 386
+#define FCALL_RESULT_MAX_SIZE 8193
 
 // Fcall context
 struct FcallContext
@@ -30,10 +35,10 @@ struct FcallContext
     uint64_t function_id; // identifies what function to call
     uint64_t params_max_size; // max length of input parameters array
     uint64_t params_size; // input parameters array valid data size
-    uint64_t params[32]; // input parameters array
+    uint64_t params[FCALL_PARAMS_MAX_SIZE]; // input parameters array
     uint64_t result_max_size; // max length of output result array
     uint64_t result_size; // output result array valid data size (written by fcall)
-    uint64_t result[32]; // output result array (written by fcall)
+    uint64_t result[FCALL_RESULT_MAX_SIZE]; // output result array (written by fcall)
 };
 
 // Fcall function; calls the corresponding function based on function identifier
@@ -85,6 +90,12 @@ int MsbPos384Ctx (
     struct FcallContext * ctx  // fcall context
 );
 int BigInt256DivCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int BigIntDivCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int BinDecompCtx (
     struct FcallContext * ctx  // fcall context
 );
 

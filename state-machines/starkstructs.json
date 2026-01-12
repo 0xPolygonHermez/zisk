@@ -1,0 +1,8 @@
+{
+    "Keccakf": { "powBits": 23, "lastLevelVerification": 1, "hasCompressor": true },
+    "Sha256f": { "hasCompressor": true },
+    "ArithEq": { "hasCompressor": true },
+    "ArithEq384": { "hasCompressor": true },
+    "VirtualTable0": { "lastLevelVerification": 1 },
+    "VirtualTable1": { "lastLevelVerification": 1 }
+}

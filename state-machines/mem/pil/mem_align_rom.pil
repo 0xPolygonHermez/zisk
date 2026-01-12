@@ -1,5 +1,5 @@
-require "std_lookup.pil";
-require "opids.pil";
+require "std_lookup.pil"
+require "opids.pil"
 
 const int MEM_ALIGN_ROM_SIZE = P2_8;
 

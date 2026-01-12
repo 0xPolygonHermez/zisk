@@ -10,7 +10,6 @@ use proofman::{AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, Pro
 use proofman_common::{DebugInfo, ProofOptions};
 use std::{fs::File, io::Write, path::PathBuf};
 use zisk_common::{io::ZiskStdin, ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
-use zstd::Encoder;
 
 pub(crate) struct ProverBackend {
     pub verify_constraints: bool,
@@ -207,21 +206,6 @@ impl ProverBackend {
             let vadcop_proof = proof.proof.clone().unwrap();
             let mut file = File::create(output_file_path)?;
             file.write_all(cast_slice(&vadcop_proof))?;
-
-            // Save the compressed vadcop final proof using zstd (fastest compression level)
-            let compressed_output_path = output_dir.join("vadcop_final_proof.compressed.bin");
-            let compressed_file = File::create(&compressed_output_path)?;
-            let mut encoder = Encoder::new(compressed_file, 1)?;
-            encoder.write_all(cast_slice(&vadcop_proof))?;
-            encoder.finish()?;
-
-            let original_size = vadcop_proof.len() * 8;
-            let compressed_size = std::fs::metadata(&compressed_output_path)?.len();
-            let compression_ratio = compressed_size as f64 / original_size as f64;
-
-            println!("Vadcop final proof saved:");
-            println!("  Original: {} bytes", original_size);
-            println!("  Compressed: {} bytes (ratio: {:.2}x)", compressed_size, compression_ratio);
         }
 
         // Store the stats in stats.json

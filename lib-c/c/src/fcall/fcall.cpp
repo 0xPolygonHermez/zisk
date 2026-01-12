@@ -3,6 +3,7 @@
 #include "../bn254/bn254_fe.hpp"
 #include "../bls12_381/bls12_381_fe.hpp"
 #include <stdint.h>
+#include <assert.h>
 
 int Fcall (
     struct FcallContext * ctx  // fcall context
@@ -85,6 +86,16 @@ int Fcall (
         case FCALL_BIGINT256_DIV_ID:
         {
             iresult = BigInt256DivCtx(ctx);
+            break;
+        }
+        case FCALL_BIG_INT_DIV_ID:
+        {
+            iresult = BigIntDivCtx(ctx);
+            break;
+        }
+        case FCALL_BIN_DECOMP_ID:
+        {
+            iresult = BinDecompCtx(ctx);
             break;
         }
         default:
@@ -856,4 +867,101 @@ int BigInt256DivCtx (
         ctx->result_size = 0;
     }
     return iresult;
+}
+
+/********************/
+/* BIG INT DIVISION */
+/********************/
+
+int BigIntDivCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    // Parse input parameters lengths
+    uint64_t len_a = ctx->params[0];
+    assert(len_a < FCALL_PARAMS_MAX_SIZE);
+    uint64_t len_b = ctx->params[1 + len_a];
+    assert(len_b < FCALL_PARAMS_MAX_SIZE);
+
+    // Convert first parameter to mpz_class
+    mpz_class a;
+    mpz_import(a.get_mpz_t(), len_a, -1, 8, -1, 0, (const void *)&ctx->params[1]);
+
+    // Convert second parameter to mpz_class
+    mpz_class b;
+    mpz_import(b.get_mpz_t(), len_b, -1, 8, -1, 0, (const void *)&ctx->params[2 + len_a]);
+
+    // Compute quotient and remainder
+    mpz_class quotient = a / b;
+    mpz_class remainder = a % b;
+
+    // Convert quotient to an array of u64 starting at ctx->result[1], with length multiple of 4
+    size_t exported_size = 0;
+    mpz_export((void *)&ctx->result[1], &exported_size, -1, 8, -1, 0, quotient.get_mpz_t());
+    size_t quotient_size = (exported_size == 0) ? 4 : ((exported_size + 3)/4)*4;
+    ctx->result[0] = quotient_size;
+    for (size_t i=exported_size; i<quotient_size; i++)
+    {
+        ctx->result[1 + i] = 0;
+    }
+
+    // Convert remainder to an array of u64 starting at ctx->result[2 + quotient_size],
+    // with length multiple of 4
+    mpz_export((void *)&ctx->result[2 + quotient_size], &exported_size, -1, 8, -1, 0, remainder.get_mpz_t());
+    size_t remainder_size = (exported_size == 0) ? 4 : ((exported_size + 3)/4)*4;
+    ctx->result[1 + quotient_size] = remainder_size;
+    for (size_t i=exported_size; i<remainder_size; i++)
+    {
+        ctx->result[2 + quotient_size + i] = 0;
+    }
+
+    return 2 + quotient_size + remainder_size;
+}
+
+/************************/
+/* BINARY DECOMPOSITION */
+/************************/
+
+int BinDecompCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    // Parse input parameter length
+    uint64_t len_x = ctx->params[0];
+    assert(len_x < FCALL_PARAMS_MAX_SIZE);
+
+    // Perform binary decomposition
+    ctx->result_size = 0;
+    bool started = false;
+
+    // For every u64 in the input parameter, in reverse order
+    for (int i = len_x - 1; i >= 0; i--)
+    {
+        // For every bit in the u64, in reverse order
+        for (int bit_pos = 63; bit_pos >= 0; bit_pos--)
+        {
+            // Obtain the bit value
+            uint8_t bit = (ctx->params[1 + i] >> bit_pos) & 1;
+
+            // Start recording once we hit the first 1 bit
+            if (!started && bit == 1)
+            {
+                started = true;
+            }
+
+            // If started, record the bit
+            if (started)
+            {
+                ctx->result[1 + ctx->result_size] = bit;
+                ctx->result_size += 1;
+                assert(ctx->result_size < FCALL_RESULT_MAX_SIZE);
+            }
+        }
+    }
+
+    // Store the result size at the beginning of the result array
+    ctx->result[0] = ctx->result_size;
+    ctx->result_size++;
+    
+    return 0;
 }
