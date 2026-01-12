@@ -33,3 +33,4 @@ paste = "1.0"
 default = ["hints-metrics", "hints-reference"]
 hints-metrics = []
 hints-reference = []
+hints-debug = []

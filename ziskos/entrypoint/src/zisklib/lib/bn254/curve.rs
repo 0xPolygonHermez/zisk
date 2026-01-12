@@ -185,6 +185,9 @@ pub fn mul_bn254(p: &[u64; 8], k: &[u64; 4]) -> [u64; 8] {
 #[no_mangle]
 pub unsafe extern "C" fn is_on_curve_bn254_c(p_ptr: *const u64) -> bool {
     let p = unsafe { &*(p_ptr as *const [u64; 8]) };
+    #[cfg(feature = "hints-debug")]
+    println!("is_on_curve_bn254_c called with p = {:?}", p);
+
     is_on_curve_bn254(p)
 }
 
@@ -194,6 +197,9 @@ pub unsafe extern "C" fn is_on_curve_bn254_c(p_ptr: *const u64) -> bool {
 #[no_mangle]
 pub unsafe extern "C" fn to_affine_bn254_c(p_ptr: *const u64, out_ptr: *mut u64) -> bool {
     let p = unsafe { &*(p_ptr as *const [u64; 12]) };
+    #[cfg(feature = "hints-debug")]
+    println!("to_affine_bn254_c called with p = {:?}", p);
+
     let result = to_affine_bn254(p);
 
     *out_ptr.add(0) = result[0];
@@ -220,6 +226,9 @@ pub unsafe extern "C" fn add_bn254_c(
 ) -> bool {
     let p1 = unsafe { &*(p1_ptr as *const [u64; 8]) };
     let p2 = unsafe { &*(p2_ptr as *const [u64; 8]) };
+    #[cfg(feature = "hints-debug")]
+    println!("add_bn254_c called with p1 = {:?}, p2 = {:?}", p1, p2);
+
     let result = add_bn254(p1, p2);
 
     *out_ptr.add(0) = result[0];
@@ -246,6 +255,9 @@ pub unsafe extern "C" fn mul_bn254_c(
 ) -> bool {
     let p = unsafe { &*(p_ptr as *const [u64; 8]) };
     let k = unsafe { &*(k_ptr as *const [u64; 4]) };
+    #[cfg(feature = "hints-debug")]
+    println!("mul_bn254_c called with p = {:?}, k = {:?}", p, k);
+
     let result = mul_bn254(p, k);
 
     *out_ptr.add(0) = result[0];

@@ -53,6 +53,16 @@ macro_rules! define_bn254_hint {
             #[inline(always)]
             pub fn $hint_fn($( $field_name: &[u64; $len] ),+) {
                 check_main_thread();
+                
+                #[cfg(feature = "hints-debug")]
+                println!(
+                    concat!(
+                        stringify!($hint_fn),
+                        " args: ",
+                        $( stringify!($field_name), "={:?}; ", )+
+                    ),
+                    $( $field_name, )+
+                );
 
                 let hint = Hint::$variant($variant::new($( *$field_name ),+));
                 HINT_QUEUE.push(hint);

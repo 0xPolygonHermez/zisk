@@ -192,6 +192,9 @@ pub fn utf_endomorphism_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
 #[no_mangle]
 pub unsafe extern "C" fn is_on_curve_twist_bn254_c(p_ptr: *const u64) -> bool {
     let p = unsafe { &*(p_ptr as *const [u64; 16]) };
+    #[cfg(feature = "hints-debug")]
+    println!("is_on_curve_twist_bn254_c called with p = {:?}", p);
+
     is_on_curve_twist_bn254(p)
 }
 
@@ -200,6 +203,9 @@ pub unsafe extern "C" fn is_on_curve_twist_bn254_c(p_ptr: *const u64) -> bool {
 #[no_mangle]
 pub unsafe extern "C" fn is_on_subgroup_twist_bn254_c(p_ptr: *const u64) -> bool {
     let p = unsafe { &*(p_ptr as *const [u64; 16]) };
+    #[cfg(feature = "hints-debug")]
+    println!("is_on_subgroup_twist_bn254_c called with p = {:?}", p);
+
     is_on_subgroup_twist_bn254(p)
 }
 
@@ -209,6 +215,9 @@ pub unsafe extern "C" fn is_on_subgroup_twist_bn254_c(p_ptr: *const u64) -> bool
 #[no_mangle]
 pub unsafe extern "C" fn to_affine_twist_bn254_c(p_ptr: *const u64, out_ptr: *mut u64) {
     let p = unsafe { &*(p_ptr as *const [u64; 24]) };
+    #[cfg(feature = "hints-debug")]
+    println!("to_affine_twist_bn254_c called with p = {:?}", p);
+
     let result = to_affine_twist_bn254(p);
 
     *out_ptr.add(0) = result[0];
