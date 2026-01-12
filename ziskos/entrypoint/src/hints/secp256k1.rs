@@ -18,21 +18,25 @@ pub const HEADER_ECRECOVER: [u8; 8] =
 #[repr(C, align(8))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ECRecover {
-    pub pk: [u8; 40],
+    pub x: [u8; 32],
+    pub y: [u8; 32],
+    pub infinity: u64,
     pub z: [u8; 32],
     pub sig: [u8; 64],
 }
 
 impl ECRecover {
-    pub fn new(pk: [u8; 40], z: [u8; 32], sig: [u8; 64]) -> Self {
-        Self { pk, z, sig }
+    pub fn new(x: [u8; 32], y: [u8; 32], infinity: u64, z: [u8; 32], sig: [u8; 64]) -> Self {
+        Self { x, y, infinity, z, sig }
     }
 }
 
 impl Default for ECRecover {
     fn default() -> Self {
         Self {
-            pk: [0u8; 40],
+            x: [0u8; 32],
+            y: [0u8; 32],
+            infinity: 0u64,
             z: [0u8; 32],
             sig: [0u8; 64],
         }
@@ -53,12 +57,9 @@ impl HintData for ECRecover {
 }
 
 #[inline(always)]
-pub fn hint_ecrecover(pk: &[u8; 33], z: &[u8; 32], sig: &[u8; 64]) {
+pub fn hint_ecrecover(x: &[u8; 32], y: &[u8; 32], infinity: u64, z: &[u8; 32], sig: &[u8; 64]) {
     check_main_thread();
 
-    let mut pk_aligned: [u8; 40] = [0u8; 40];
-    pk_aligned[..33].copy_from_slice(pk);
-
-    let hint = Hint::ECRecover(ECRecover::new(pk_aligned, *z, *sig));
+    let hint = Hint::ECRecover(ECRecover::new(*x, *y, infinity, *z, *sig));
     HINT_QUEUE.push(hint);
 }
