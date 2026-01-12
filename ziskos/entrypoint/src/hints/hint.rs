@@ -177,6 +177,7 @@ pub struct HintQueue {
     states: Mutex<VecDeque<Hint>>,
     condvar: Condvar,
     closed: AtomicBool,
+    paused: AtomicBool,
 }
 
 impl HintQueue {
@@ -185,6 +186,7 @@ impl HintQueue {
             states: Mutex::new(VecDeque::new()),
             condvar: Condvar::new(),
             closed: AtomicBool::new(true),
+            paused: AtomicBool::new(false),
         }
     }
 
@@ -227,7 +229,23 @@ impl HintQueue {
         self.condvar.notify_all();
     }
 
+     #[inline(always)]
     pub fn is_open(&self) -> bool {
         !self.closed.load(Ordering::SeqCst)
+    }
+
+     #[inline(always)]
+    pub fn pause(&self) {
+        self.paused.store(true, Ordering::SeqCst);
+    }
+
+    #[inline(always)]
+    pub fn resume(&self) {
+        self.paused.store(false, Ordering::SeqCst);
+    }
+
+    #[inline(always)]
+    pub fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::SeqCst)
     }
 }

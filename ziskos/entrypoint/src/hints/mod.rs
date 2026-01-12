@@ -83,8 +83,19 @@ pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
     Ok(())
 }
 
+#[inline(always)]
 pub fn is_hints_enabled() -> bool {
     HINT_QUEUE.is_open()
+}
+
+#[inline(always)]
+pub fn pause_hints() {
+    HINT_QUEUE.pause();
+}
+
+#[inline(always)]
+pub fn resume_hints() {
+    HINT_QUEUE.resume();
 }
 
 pub fn close_precompile_hints() -> io::Result<()> {

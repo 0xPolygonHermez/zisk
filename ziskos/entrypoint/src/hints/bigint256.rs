@@ -105,6 +105,10 @@ impl HintData for RedMod256 {
 pub fn hint_redmod256(a: &[u64; 4], m: &[u64; 4]) {
     check_main_thread();
 
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
+
     let hint = Hint::RedMod256(RedMod256::new(*a, *m));
     HINT_QUEUE.push(hint);
 }
@@ -134,6 +138,10 @@ impl HintData for AddMod256 {
 #[inline(always)]
 pub fn hint_addmod256(a: &[u64; 4], b: &[u64; 4], m: &[u64; 4]) {
     check_main_thread();
+
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
 
     let hint = Hint::AddMod256(AddMod256::new(*a, *b, *m));
     HINT_QUEUE.push(hint);
@@ -165,13 +173,17 @@ impl HintData for MulMod256 {
 pub fn hint_mulmod256(a: &[u64; 4], b: &[u64; 4], m: &[u64; 4]) {
     check_main_thread();
 
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
+
     let hint = Hint::MulMod256(MulMod256::new(*a, *b, *m));
     HINT_QUEUE.push(hint);
 }
 
-// === divrem256 (a, b, q, r) ===
+// === divrem256 (a, b) ===
 pub const HEADER_DIVREM256: [u8; 8] =
-    (((HINTS_TYPE_DIVREM256 as u64) << 32) | UINT256_LEN_U64 * 4).to_le_bytes();
+    (((HINTS_TYPE_DIVREM256 as u64) << 32) | UINT256_LEN_U64 * 2).to_le_bytes();
 
 #[repr(C, align(8))]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -194,6 +206,10 @@ impl HintData for DivRem256 {
 #[inline(always)]
 pub fn hint_divrem256(a: &[u64; 4], b: &[u64; 4]) {
     check_main_thread();
+
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
 
     let hint = Hint::DivRem256(DivRem256::new(*a, *b));
     HINT_QUEUE.push(hint);
@@ -225,6 +241,10 @@ impl HintData for WPow256 {
 pub fn hint_wpow256(a: &[u64; 4], exp: &[u64; 4]) {
     check_main_thread();
 
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
+
     let hint = Hint::WPow256(WPow256::new(*a, *exp));
     HINT_QUEUE.push(hint);
 }
@@ -254,6 +274,10 @@ impl HintData for OMul256 {
 #[inline(always)]
 pub fn hint_omul256(a: &[u64; 4], b: &[u64; 4]) {
     check_main_thread();
+
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
 
     let hint = Hint::OMul256(OMul256::new(*a, *b));
     HINT_QUEUE.push(hint);
@@ -285,6 +309,10 @@ impl HintData for WMul256 {
 pub fn hint_wmul256(a: &[u64; 4], b: &[u64; 4]) {
     check_main_thread();
 
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
+    
     let hint = Hint::WMul256(WMul256::new(*a, *b));
     HINT_QUEUE.push(hint);
 }
