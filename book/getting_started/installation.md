@@ -199,14 +199,14 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
 5. Compile ZisK PIL:
     ```bash
-    node ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
+    node --max-old-space-size=16384 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
     ```
 
     This command will create the `pil/zisk.pilout` file
 
 6. Generate setup data: (this step may take 30-45 minutes):
     ```bash
-    node ../pil2-proofman-js/src/main_setup.js --stack-size=8192 -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r -s ./state-machines/starkstructs.json
+    node --max-old-space-size=16384 --stack-size=8192 ../pil2-proofman-js/src/main_setup.js --stack-size=8192 -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r -s ./state-machines/starkstructs.json -f -w ../powersOfTau28_hez_final_27.ptau -p ./state-machines/publics.json
     ```
 
     This command generates the `build/provingKey` directory.

@@ -103,3 +103,11 @@ pub fn get_rom_blowup_factor_and_arity(proving_key_path: &Path) -> (u64, u64) {
         stark_info.stark_struct.merkle_tree_arity,
     )
 }
+
+pub fn ensure_dir_exists(path: &PathBuf) {
+    if let Err(e) = std::fs::create_dir_all(path) {
+        if e.kind() != std::io::ErrorKind::AlreadyExists {
+            panic!("Failed to create cache directory {path:?}: {e}");
+        }
+    }
+}

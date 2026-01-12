@@ -25,10 +25,9 @@ use asm_runner::{
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
+use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::prelude::*;
-use rom_setup::gen_elf_hash;
 use sm_rom::{RomInstance, RomSM};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use witness::WitnessComponent;
@@ -43,8 +42,8 @@ use zisk_common::{
 };
 use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{
-    RomRomTrace, ZiskPublicValues, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS,
-    ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
+    ZiskPublicValues, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
+    ZISK_AIRGROUP_ID,
 };
 
 use std::thread::JoinHandle;
@@ -1601,30 +1600,6 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                 secn_instance.debug(&pctx, &sctx);
             }
         }
-        Ok(())
-    }
-
-    fn gen_custom_commits_fixed(
-        &self,
-        pctx: Arc<ProofCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
-        check: bool,
-    ) -> ProofmanResult<()> {
-        let file_name = pctx.get_custom_commits_fixed_buffer("rom", false)?;
-
-        let setup = sctx.get_setup(RomRomTrace::<F>::AIRGROUP_ID, RomRomTrace::<F>::AIR_ID)?;
-        let blowup_factor =
-            1 << (setup.stark_info.stark_struct.n_bits_ext - setup.stark_info.stark_struct.n_bits);
-        let arity = setup.stark_info.stark_struct.merkle_tree_arity;
-
-        gen_elf_hash(&self.rom_path, file_name.as_path(), blowup_factor, arity, check).map_err(
-            |e| {
-                ProofmanError::ProofmanError(format!(
-                    "Failed to generate custom commits fixed: {}",
-                    e
-                ))
-            },
-        )?;
         Ok(())
     }
 }

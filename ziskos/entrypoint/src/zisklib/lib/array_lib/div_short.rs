@@ -52,7 +52,7 @@ pub fn div_short(a: &[U256], b: &U256) -> (Vec<U256>, U256) {
     assert!(!quo[len_quo - 1].is_zero(), "Quotient must not have leading zeros");
 
     // Multiply the quotient by b
-    let mut q_b = [U256::ZERO; 2];
+    let mut q_b = vec![U256::ZERO; len_a + 1]; // The +1 is because mul_short is a general purpose function
     let q_b_len = mul_short(quo, b, &mut q_b);
 
     if rem.is_zero() {
@@ -62,7 +62,7 @@ pub fn div_short(a: &[U256], b: &U256) -> (Vec<U256>, U256) {
         // If the remainder is non-zero, then we should check that a must be equal to q·b + r and r < b
         assert!(rem.lt(b), "Remainder must be less than divisor");
 
-        let mut q_b_r = [U256::ZERO; 2];
+        let mut q_b_r = vec![U256::ZERO; len_a + 1]; // The +1 is because add_short is a general purpose function
         let q_b_r_len = add_short(&q_b[..q_b_len], &rem, &mut q_b_r);
         assert!(U256::eq_slices(a, &q_b_r[..q_b_r_len]), "a != q·b + r");
     }

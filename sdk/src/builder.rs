@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    get_asm_paths, get_proving_key, get_witness_computation_lib,
+    get_asm_paths, get_proving_key, get_proving_key_snark, get_witness_computation_lib,
     prover::{Asm, AsmProver, Emu, EmuProver, ZiskProver},
 };
 use colored::Colorize;
@@ -54,6 +54,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     final_snark: bool,
     witness_lib: Option<PathBuf>,
     proving_key: Option<PathBuf>,
+    proving_key_snark: Option<PathBuf>,
     elf: Option<PathBuf>,
     verify_constraints: bool,
     witness: bool,
@@ -170,6 +171,18 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     #[must_use]
     pub fn proving_key_path_opt(mut self, proving_key: Option<PathBuf>) -> Self {
         self.proving_key = proving_key;
+        self
+    }
+
+    #[must_use]
+    pub fn proving_key_snark_path(mut self, proving_key_snark: PathBuf) -> Self {
+        self.proving_key_snark = Some(proving_key_snark);
+        self
+    }
+
+    #[must_use]
+    pub fn proving_key_snark_path_opt(mut self, proving_key_snark: Option<PathBuf>) -> Self {
+        self.proving_key_snark = proving_key_snark;
         self
     }
 
@@ -315,6 +328,10 @@ impl<X> ProverClientBuilder<EmuB, X> {
     fn build_emu(self) -> Result<ZiskProver<Emu>> {
         let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
+        let proving_key_snark = match self.final_snark {
+            true => Some(get_proving_key_snark(self.proving_key_snark.as_ref())),
+            false => None,
+        };
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
 
         let output_dir = if !self.verify_constraints {
@@ -329,6 +346,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
                 self.verify_constraints,
                 &witness_lib,
                 &proving_key,
+                &proving_key_snark,
                 &elf,
                 output_dir.as_ref(),
             );
@@ -341,6 +359,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
             self.final_snark,
             witness_lib,
             proving_key,
+            proving_key_snark,
             elf,
             self.verbose,
             self.shared_tables,
@@ -360,6 +379,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
         verify_constraints: bool,
         witness_lib: &Path,
         proving_key: &Path,
+        proving_key_snark: &Option<PathBuf>,
         elf: &Path,
         output_dir: Option<&PathBuf>,
     ) {
@@ -379,6 +399,14 @@ impl<X> ProverClientBuilder<EmuB, X> {
             "Running in emulator mode".bright_yellow()
         );
         println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key.display());
+
+        if let Some(proving_key_snark) = proving_key_snark {
+            println!(
+                "{: >12} {}",
+                "Proving key SNARK".bright_green().bold(),
+                proving_key_snark.display()
+            );
+        }
 
         if let Some(output_dir) = output_dir {
             println!("{: >12} {}", "Output Dir".bright_green().bold(), output_dir.display());
@@ -445,6 +473,10 @@ impl<X> ProverClientBuilder<AsmB, X> {
     {
         let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
+        let proving_key_snark = match self.final_snark {
+            true => Some(get_proving_key_snark(self.proving_key_snark.as_ref())),
+            false => None,
+        };
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
 
         let output_dir = if !self.verify_constraints {
@@ -461,6 +493,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
                 self.verify_constraints,
                 &witness_lib,
                 &proving_key,
+                &proving_key_snark,
                 &elf,
                 output_dir.as_ref(),
             );
@@ -473,6 +506,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
             self.final_snark,
             witness_lib,
             proving_key,
+            proving_key_snark,
             elf,
             self.verbose,
             self.shared_tables,
@@ -496,6 +530,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
         verify_constraints: bool,
         witness_lib: &Path,
         proving_key: &Path,
+        proving_key_snark: &Option<PathBuf>,
         elf: &Path,
         output_dir: Option<&PathBuf>,
     ) {
@@ -510,6 +545,14 @@ impl<X> ProverClientBuilder<AsmB, X> {
         println!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib.display());
         println!("{: >12} {}", "Elf".bright_green().bold(), elf.display());
         println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key.display());
+
+        if let Some(proving_key_snark) = proving_key_snark {
+            println!(
+                "{: >12} {}",
+                "Proving key SNARK".bright_green().bold(),
+                proving_key_snark.display()
+            );
+        }
 
         if let Some(output_dir) = output_dir {
             println!("{: >12} {}", "Output Dir".bright_green().bold(), output_dir.display());
@@ -530,6 +573,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
+            proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
             elf: builder.elf,
             verbose: builder.verbose,
@@ -565,6 +609,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
+            proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
             elf: builder.elf,
             verbose: builder.verbose,
@@ -602,6 +647,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
+            proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
             elf: builder.elf,
             verbose: builder.verbose,
@@ -637,6 +683,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             final_snark: builder.final_snark,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
+            proving_key_snark: builder.proving_key_snark,
             verify_constraints: false,
             elf: builder.elf,
             verbose: builder.verbose,
