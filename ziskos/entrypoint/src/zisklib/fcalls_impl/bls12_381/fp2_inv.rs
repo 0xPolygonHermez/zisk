@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 
-use super::bls12_381_fp_inv::{
+use super::fp_inv::{
     bls12_381_fp_add, bls12_381_fp_dbl, bls12_381_fp_inv, bls12_381_fp_mul, bls12_381_fp_neg,
     bls12_381_fp_square, bls12_381_fp_sub,
 };

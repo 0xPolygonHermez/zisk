@@ -1,6 +1,8 @@
 //! Miller loop for BLS12-381
 
-use crate::zisklib::{eq, fcall_bls12_381_add_line_coeffs, fcall_bls12_381_dbl_line_coeffs};
+use crate::zisklib::{
+    eq, fcall_bls12_381_twist_add_line_coeffs, fcall_bls12_381_twist_dbl_line_coeffs,
+};
 
 use super::{
     constants::{EXT_U_INV, X_ABS_BIN_BE},
@@ -35,7 +37,7 @@ pub fn miller_loop_bls12_381(p: &[u64; 12], q: &[u64; 24]) -> [u64; 72] {
     };
     for &bit in X_ABS_BIN_BE.iter().skip(1) {
         // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(r)}
-        let (lambda, mu) = fcall_bls12_381_dbl_line_coeffs(&r);
+        let (lambda, mu) = fcall_bls12_381_twist_dbl_line_coeffs(&r);
 
         // Check that the line is correct
         assert!(is_tangent_twist_bls12_381(&r, &lambda, &mu));
@@ -50,7 +52,7 @@ pub fn miller_loop_bls12_381(p: &[u64; 12], q: &[u64; 24]) -> [u64; 72] {
 
         if bit == 1 {
             // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(q)}
-            let (lambda, mu) = fcall_bls12_381_add_line_coeffs(&r, q);
+            let (lambda, mu) = fcall_bls12_381_twist_add_line_coeffs(&r, q);
 
             // Check that the line is correct
             assert!(is_line_twist_bls12_381(&r, q, &lambda, &mu));
@@ -99,7 +101,7 @@ pub fn miller_loop_batch_bls12_381(g1_points: &[[u64; 12]], g2_points: &[[u64; 2
             let r = &mut r[i];
 
             // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(r)}
-            let (lambda, mu) = fcall_bls12_381_dbl_line_coeffs(r);
+            let (lambda, mu) = fcall_bls12_381_twist_dbl_line_coeffs(r);
 
             // Check that the line is correct
             assert!(is_tangent_twist_bls12_381(r, &lambda, &mu));
@@ -116,7 +118,7 @@ pub fn miller_loop_batch_bls12_381(g1_points: &[[u64; 12]], g2_points: &[[u64; 2
                 let q = &g2_points[i];
 
                 // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(q')}
-                let (lambda, mu) = fcall_bls12_381_add_line_coeffs(r, q);
+                let (lambda, mu) = fcall_bls12_381_twist_add_line_coeffs(r, q);
 
                 // Check that the line is correct
                 assert!(is_line_twist_bls12_381(r, q, &lambda, &mu));

@@ -26,6 +26,7 @@ extern "C" {
 #define FCALL_BIG_INT_DIV_ID 17
 #define FCALL_BIN_DECOMP_ID 18
 #define FCALL_BLS12_381_FP2_SQRT_ID 19
+#define FCALL_SECP256K1_ECDSA_VERIFY_ID 20
 
 #define FCALL_PARAMS_MAX_SIZE 386
 #define FCALL_RESULT_MAX_SIZE 8193
@@ -100,6 +101,9 @@ int BinDecompCtx (
     struct FcallContext * ctx  // fcall context
 );
 int BLS12_381Fp2SqrtCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int Secp256k1EcdsaVerifyCtx (
     struct FcallContext * ctx  // fcall context
 );
 

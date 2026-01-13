@@ -1,6 +1,6 @@
 use num_integer::Integer;
 
-use super::utils::{biguint_from_u64_digits, u64_digits_from_biguint};
+use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, u64_digits_from_biguint};
 
 /// Perform the division of an unsigned integer `a` by another unsigned integer `b`,
 /// returning the quotient `q` and the remainder `r`, such that `a = b * q + r`

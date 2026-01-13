@@ -1,4 +1,5 @@
 use cfg_if::cfg_if;
+
 cfg_if! {
     if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
         use core::arch::asm;

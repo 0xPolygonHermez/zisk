@@ -37,3 +37,26 @@ pub fn eq(x: &[u64], y: &[u64]) -> bool {
     }
     true
 }
+
+/// Returns true if x == 0
+pub fn is_zero(x: &[u64]) -> bool {
+    for &word in x {
+        if word != 0 {
+            return false;
+        }
+    }
+    true
+}
+
+/// Returns true if x == 1
+pub fn is_one(x: &[u64]) -> bool {
+    if x[0] != 1 {
+        return false;
+    }
+    for &word in &x[1..] {
+        if word != 0 {
+            return false;
+        }
+    }
+    true
+}

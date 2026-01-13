@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 
-use super::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
+use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
 
 lazy_static! {
     pub static ref P: BigUint = BigUint::parse_bytes(

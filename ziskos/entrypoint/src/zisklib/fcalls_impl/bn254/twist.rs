@@ -1,4 +1,4 @@
-use super::bn254_fp2::{
+use super::fp2::{
     bn254_fp2_dbl, bn254_fp2_inv, bn254_fp2_mul, bn254_fp2_scalar_mul, bn254_fp2_square,
     bn254_fp2_sub,
 };

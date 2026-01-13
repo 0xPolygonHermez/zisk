@@ -1,4 +1,4 @@
-use super::bls12_381_fp2_inv::{
+use super::fp2_inv::{
     bls12_381_fp2_dbl, bls12_381_fp2_inv, bls12_381_fp2_mul, bls12_381_fp2_scalar_mul,
     bls12_381_fp2_square, bls12_381_fp2_sub,
 };

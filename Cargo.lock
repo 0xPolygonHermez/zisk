@@ -2987,7 +2987,6 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
- "sha2",
  "sm-mem",
  "tracing",
  "zisk-common",

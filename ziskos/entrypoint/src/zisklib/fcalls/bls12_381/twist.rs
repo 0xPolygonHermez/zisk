@@ -1,9 +1,12 @@
 use cfg_if::cfg_if;
+
 cfg_if! {
     if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
         use core::arch::asm;
-        use crate::{ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param};
-        use super::{FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID, FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID};
+        use crate::{
+            ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param,
+            zisklib::{FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID, FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID},
+        };
     }
 }
 
@@ -16,7 +19,7 @@ cfg_if! {
 /// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
-pub fn fcall_bls12_381_add_line_coeffs(
+pub fn fcall_bls12_381_twist_add_line_coeffs(
     p1_value: &[u64; 24],
     p2_value: &[u64; 24],
 ) -> ([u64; 12], [u64; 12]) {
@@ -69,7 +72,7 @@ pub fn fcall_bls12_381_add_line_coeffs(
 /// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
-pub fn fcall_bls12_381_dbl_line_coeffs(p_value: &[u64; 24]) -> ([u64; 12], [u64; 12]) {
+pub fn fcall_bls12_381_twist_dbl_line_coeffs(p_value: &[u64; 24]) -> ([u64; 12], [u64; 12]) {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     unreachable!();
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]

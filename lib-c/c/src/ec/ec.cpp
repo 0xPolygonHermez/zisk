@@ -182,6 +182,93 @@ int AddPointEcP (uint64_t _dbl, const uint64_t * p1, const uint64_t * p2, uint64
     return result;
 }
 
+uint64_t G[8] = {
+    0x59F2815B16F81798,
+    0x029BFCDB2DCE28D9,
+    0x55A06295CE870B07,
+    0x79BE667EF9DCBBAC,
+    0x9C47D08FFB10D4B8,
+    0xFD17B448A6855419,
+    0x5DA4FBFC0E1108A8,
+    0x483ADA7726A3C465,
+};
+
+int secp256k1_ecdsa_verify (
+    const uint64_t * pk,     // 8 x 64 bits
+    const uint64_t * _z,      // 4 x 64 bits
+    const uint64_t * _r,      // 4 x 64 bits
+    const uint64_t * _s,      // 4 x 64 bits
+          uint64_t * result  // 8 x 64 bits
+)
+{
+    // Convert z, r, s inputs to field elements
+    RawFec::Element z, r, s;
+    array2fe(_z, z);
+    array2fe(_r, r);
+    array2fe(_s, s);
+
+    // Given the public key pk and the signature (r, s) over the message hash z:
+    // 1. Computes s_inv = s⁻¹ mod n
+    // 2. Computes u1 = z·s_inv mod n
+    // 3. Computes u2 = r·s_inv mod n
+    // 4. Computes and returns the curve point p = u1·G + u2·PK
+    
+    // s_inv = s⁻¹ mod n
+    RawFec::Element s_inv;
+    fec.inv(s_inv, s);
+
+    // u1 = z·s_inv mod n
+    RawFec::Element u1;
+    fec.mul(u1, z, s_inv);
+
+    // u2 = r·s_inv mod n
+    RawFec::Element u2;
+    fec.mul(u2, r, s_inv);
+
+    uint64_t u1_array[4];
+    uint64_t u2_array[4];
+    fe2array(u1, u1_array);
+    fe2array(u2, u2_array);
+
+    secp256k1_curve_dbl_scalar_mul(u1_array, G, u2_array, pk, result);
+
+    return 0;
+}
+
+int secp256k1_curve_dbl_scalar_mul(
+    const uint64_t * k1, // 4 x 64 bits
+    const uint64_t * p1, // 8 x 64 bits
+    const uint64_t * k2, // 4 x 64 bits
+    const uint64_t * p2, // 8 x 64 bits
+    uint64_t * r // 8 x 64 bits
+)
+{
+    for (uint64_t i = 0; i < 8; i++) {
+        r[i] = 0;
+    }
+
+    for (int64_t ii=255; ii>=0; ii--) {
+        uint64_t i = ii;
+
+        // r = r + r
+        AddPointEcDbl(r, r);
+
+        // If k1[i] == 1 then r = r + p1
+        uint64_t k1_bit = (k1[i / 64] >> (i % 64)) & 1;
+        if (k1_bit == 1) {
+            AddPointEcP(0, r, p1, r);
+        }
+
+        // If k2[i] == 1 then r = r + p2
+        uint64_t k2_bit = (k2[i / 64] >> (i % 64)) & 1;
+        if (k2_bit == 1) {
+            AddPointEcP(0, r, p2, r);
+        }
+    }
+
+    return 0;
+}
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

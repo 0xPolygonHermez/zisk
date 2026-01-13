@@ -1,29 +1,9 @@
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 
-use super::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
+use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
 
-lazy_static! {
-    pub static ref P: BigUint = BigUint::parse_bytes(
-        b"fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
-        16
-    )
-    .unwrap();
-
-    pub static ref P_HALF: BigUint = BigUint::parse_bytes(
-        b"7fffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffffe17",
-        16
-    )
-    .unwrap();
-
-    pub static ref P_DIV_4: BigUint = BigUint::parse_bytes(
-        b"3fffffffffffffffffffffffffffffffffffffffffffffffffffffffbfffff0c",
-        16
-    )
-    .unwrap();
-
-    pub static ref NQR: BigUint = BigUint::from(3u64); // First non-quadratic residue in Fp
-}
+use super::{NQR, P, P_DIV_4};
 
 pub fn fcall_secp256k1_fp_sqrt(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input

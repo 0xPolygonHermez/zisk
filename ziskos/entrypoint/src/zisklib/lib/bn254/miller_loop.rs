@@ -1,6 +1,6 @@
 //! Miller Loop for the pairings over BN254
 
-use crate::zisklib::{eq, fcall_bn254_add_line_coeffs, fcall_bn254_dbl_line_coeffs};
+use crate::zisklib::{eq, fcall_bn254_twist_add_line_coeffs, fcall_bn254_twist_dbl_line_coeffs};
 
 use super::{
     fp::{inv_fp_bn254, mul_fp_bn254, neg_fp_bn254},
@@ -35,7 +35,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
     f[0] = 1;
     for &bit in LOOP_LENGTH.iter().skip(1) {
         // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(r)}
-        let (lambda, mu) = fcall_bn254_dbl_line_coeffs(&r);
+        let (lambda, mu) = fcall_bn254_twist_dbl_line_coeffs(&r);
 
         // Check that the line is correct
         assert!(is_tangent_twist_bn254(&r, &lambda, &mu));
@@ -52,7 +52,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
             let q_prime = if bit == 1 { q } else { &neg_twist_bn254(q) };
 
             // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(q')}
-            let (lambda, mu) = fcall_bn254_add_line_coeffs(&r, q_prime);
+            let (lambda, mu) = fcall_bn254_twist_add_line_coeffs(&r, q_prime);
 
             // Check that the line is correct
             assert!(is_line_twist_bn254(&r, q_prime, &lambda, &mu));
@@ -72,7 +72,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
     let q_frob = utf_endomorphism_twist_bn254(q);
 
     // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(utf(q))}
-    let (lambda, mu) = fcall_bn254_add_line_coeffs(&r, &q_frob);
+    let (lambda, mu) = fcall_bn254_twist_add_line_coeffs(&r, &q_frob);
     assert!(is_line_twist_bn254(&r, &q_frob, &lambda, &mu));
 
     let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
@@ -85,7 +85,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
     let q_frob2 = neg_twist_bn254(&utf_endomorphism_twist_bn254(&q_frob));
 
     // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(-utf(utf(q)))}
-    let (lambda, mu) = fcall_bn254_add_line_coeffs(&r, &q_frob2);
+    let (lambda, mu) = fcall_bn254_twist_add_line_coeffs(&r, &q_frob2);
     assert!(is_line_twist_bn254(&r, &q_frob2, &lambda, &mu));
 
     let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
@@ -123,7 +123,7 @@ pub fn miller_loop_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) 
             let r = &mut r[i];
 
             // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(r)}
-            let (lambda, mu) = fcall_bn254_dbl_line_coeffs(r);
+            let (lambda, mu) = fcall_bn254_twist_dbl_line_coeffs(r);
 
             // Check that the line is correct
             assert!(is_tangent_twist_bn254(r, &lambda, &mu));
@@ -141,7 +141,7 @@ pub fn miller_loop_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) 
                 let q_prime = if bit == 1 { q } else { &neg_twist_bn254(q) };
 
                 // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(q')}
-                let (lambda, mu) = fcall_bn254_add_line_coeffs(r, q_prime);
+                let (lambda, mu) = fcall_bn254_twist_add_line_coeffs(r, q_prime);
 
                 // Check that the line is correct
                 assert!(is_line_twist_bn254(r, q_prime, &lambda, &mu));
@@ -167,7 +167,7 @@ pub fn miller_loop_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) 
         let q_frob = utf_endomorphism_twist_bn254(q);
 
         // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(utf(q))}
-        let (lambda, mu) = fcall_bn254_add_line_coeffs(r, &q_frob);
+        let (lambda, mu) = fcall_bn254_twist_add_line_coeffs(r, &q_frob);
         assert!(is_line_twist_bn254(r, &q_frob, &lambda, &mu));
 
         let l = line_eval_twist_bn254(&lambda, &mu, xp_prime, yp_prime);
@@ -180,7 +180,7 @@ pub fn miller_loop_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) 
         let q_frob2 = neg_twist_bn254(&utf_endomorphism_twist_bn254(&q_frob));
 
         // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(-utf(utf(q)))}
-        let (lambda, mu) = fcall_bn254_add_line_coeffs(r, &q_frob2);
+        let (lambda, mu) = fcall_bn254_twist_add_line_coeffs(r, &q_frob2);
         assert!(is_line_twist_bn254(r, &q_frob2, &lambda, &mu));
 
         let l = line_eval_twist_bn254(&lambda, &mu, xp_prime, yp_prime);

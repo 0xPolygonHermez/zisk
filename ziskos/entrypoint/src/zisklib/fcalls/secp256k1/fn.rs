@@ -1,12 +1,12 @@
-//! fcall_secp256k1_fn_inv free call
 use cfg_if::cfg_if;
+
 cfg_if! {
     if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
         use core::arch::asm;
-        use crate::{ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param};
-        use super::FCALL_SECP256K1_FN_INV_ID;
+        use crate::{ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param, zisklib::FCALL_SECP256K1_FN_INV_ID};
     }
 }
+
 /// Executes the multiplicative inverse computation over the scalar field of the `secp256k1` curve.
 ///
 /// Both `fcall_secp256k1_fn_inv` and `fcall2_secp256k1_fn_inv` perform an inversion of a 256-bit
@@ -35,7 +35,7 @@ pub fn fcall_secp256k1_fn_inv(p_value: &[u64; 4]) -> [u64; 4] {
 }
 
 #[allow(unused_variables)]
-pub fn fcall2_secp256k1_fn_inv(p_value: &[u64; 4]) {
+pub fn fcall_secp256k1_fn_inv_in_place(p_value: &[u64; 4]) {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     unreachable!();
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]

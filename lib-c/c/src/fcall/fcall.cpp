@@ -3,6 +3,7 @@
 #include "../bn254/bn254_fe.hpp"
 #include "../bls12_381/bls12_381_fe.hpp"
 #include "../bls12_381/bls12_381.hpp"
+#include "../ec/ec.hpp"
 #include <stdint.h>
 #include <assert.h>
 
@@ -102,6 +103,11 @@ int Fcall (
         case FCALL_BLS12_381_FP2_SQRT_ID:
         {
             iresult = BLS12_381Fp2SqrtCtx(ctx);
+            break;
+        }
+        case FCALL_SECP256K1_ECDSA_VERIFY_ID:
+        {
+            iresult = Secp256k1EcdsaVerifyCtx(ctx);
             break;
         }
         default:
@@ -1016,5 +1022,14 @@ int BLS12_381Fp2SqrtCtx (
         if (result != 0) return result;
     }
     
+    return 0;
+}
+
+int Secp256k1EcdsaVerifyCtx(
+    struct FcallContext * ctx  // fcall context
+)
+{
+    secp256k1_ecdsa_verify( &ctx->params[0], &ctx->params[8], &ctx->params[12], &ctx->params[16], &ctx->result[0]);
+    ctx->result_size = 8;
     return 0;
 }

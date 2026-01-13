@@ -1,7 +1,8 @@
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
+use num_traits::Zero;
 
-use super::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
+use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
 
 lazy_static! {
     pub static ref P: BigUint = BigUint::parse_bytes(
@@ -47,6 +48,9 @@ pub fn bn254_fp_sub(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
 
 pub fn bn254_fp_neg(a: &[u64; 4]) -> [u64; 4] {
     let a_big = biguint_from_u64_digits(a);
+    if a_big.is_zero() {
+        return [0u64; 4];
+    }
     let neg = &*P - a_big;
     n_u64_digits_from_biguint(&neg)
 }

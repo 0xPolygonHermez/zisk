@@ -2,10 +2,11 @@ use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
 
+use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, u64_digits_from_biguint};
+
 use super::{
-    bls12_381_fp2_inv::{bls12_381_fp2_mul, bls12_381_fp2_square},
-    bls12_381_fp_inv::{bls12_381_fp_add, bls12_381_fp_neg},
-    utils::{biguint_from_u64_digits, n_u64_digits_from_biguint},
+    fp2_inv::{bls12_381_fp2_mul, bls12_381_fp2_square},
+    fp_inv::{bls12_381_fp_add, bls12_381_fp_neg},
 };
 
 const ONE: [u64; 12] = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
