@@ -5,6 +5,19 @@ use crate::hints::bigint256::OMul256;
 use crate::hints::bigint256::RedMod256;
 use crate::hints::bigint256::WMul256;
 use crate::hints::bigint256::WPow256;
+use crate::hints::bls12_381::AddBls12_381;
+use crate::hints::bls12_381::AddTwistBls12_381;
+use crate::hints::bls12_381::DecompressBls12_381;
+use crate::hints::bls12_381::DecompressTwistBls12_381;
+use crate::hints::bls12_381::FinalExpBls12_381;
+use crate::hints::bls12_381::IsOnCurveBls12_381;
+use crate::hints::bls12_381::IsOnCurveTwistBls12_381;
+use crate::hints::bls12_381::IsOnSubgroupBls12_381;
+use crate::hints::bls12_381::IsOnSubgroupTwistBls12_381;
+use crate::hints::bls12_381::MillerLoopBls12_381;
+use crate::hints::bls12_381::MulFp12Bls12_381;
+use crate::hints::bls12_381::ScalarMulBls12_381;
+use crate::hints::bls12_381::ScalarMulTwistBls12_381;
 use crate::hints::bn254::AddBN254;
 use crate::hints::bn254::IsOnCurveBN254;
 use crate::hints::bn254::IsOnCurveTwistBN254;
@@ -49,6 +62,19 @@ pub enum HintKind {
     IsOnCurveTwistBN254,
     IsOnSubgroupTwistBN254,
     PairingBatchBN254,
+    MulFp12Bls12_381,
+    ScalarMulBls12_381,
+    ScalarMulTwistBls12_381,
+    AddBls12_381,
+    AddTwistBls12_381,
+    IsOnCurveBls12_381,
+    IsOnCurveTwistBls12_381,
+    IsOnSubgroupBls12_381,
+    IsOnSubgroupTwistBls12_381,
+    MillerLoopBls12_381,
+    FinalExpBls12_381,
+    DecompressBls12_381,
+    DecompressTwistBls12_381,
 }
 
 #[derive(Clone, Debug)]
@@ -73,6 +99,19 @@ pub enum Hint {
     IsOnCurveTwistBN254(IsOnCurveTwistBN254),
     IsOnSubgroupTwistBN254(IsOnSubgroupTwistBN254),
     PairingBatchBN254(PairingBatchBN254),
+    MulFp12Bls12_381(MulFp12Bls12_381),
+    ScalarMulBls12_381(ScalarMulBls12_381),
+    ScalarMulTwistBls12_381(ScalarMulTwistBls12_381),
+    AddBls12_381(AddBls12_381),
+    AddTwistBls12_381(AddTwistBls12_381),
+    IsOnCurveBls12_381(IsOnCurveBls12_381),
+    IsOnCurveTwistBls12_381(IsOnCurveTwistBls12_381),
+    IsOnSubgroupBls12_381(IsOnSubgroupBls12_381),
+    IsOnSubgroupTwistBls12_381(IsOnSubgroupTwistBls12_381),
+    MillerLoopBls12_381(MillerLoopBls12_381),
+    FinalExpBls12_381(FinalExpBls12_381),
+    DecompressBls12_381(DecompressBls12_381),
+    DecompressTwistBls12_381(DecompressTwistBls12_381),
 }
 
 impl Hint {
@@ -100,6 +139,19 @@ impl Hint {
             Hint::IsOnCurveTwistBN254(_) => HintKind::IsOnCurveTwistBN254,
             Hint::IsOnSubgroupTwistBN254(_) => HintKind::IsOnSubgroupTwistBN254,
             Hint::PairingBatchBN254(_) => HintKind::PairingBatchBN254,
+            Hint::MulFp12Bls12_381(_) => HintKind::MulFp12Bls12_381,
+            Hint::ScalarMulBls12_381(_) => HintKind::ScalarMulBls12_381,
+            Hint::ScalarMulTwistBls12_381(_) => HintKind::ScalarMulTwistBls12_381,
+            Hint::AddBls12_381(_) => HintKind::AddBls12_381,
+            Hint::AddTwistBls12_381(_) => HintKind::AddTwistBls12_381,
+            Hint::IsOnCurveBls12_381(_) => HintKind::IsOnCurveBls12_381,
+            Hint::IsOnCurveTwistBls12_381(_) => HintKind::IsOnCurveTwistBls12_381,
+            Hint::IsOnSubgroupBls12_381(_) => HintKind::IsOnSubgroupBls12_381,
+            Hint::IsOnSubgroupTwistBls12_381(_) => HintKind::IsOnSubgroupTwistBls12_381,
+            Hint::MillerLoopBls12_381(_) => HintKind::MillerLoopBls12_381,
+            Hint::FinalExpBls12_381(_) => HintKind::FinalExpBls12_381,
+            Hint::DecompressBls12_381(_) => HintKind::DecompressBls12_381,
+            Hint::DecompressTwistBls12_381(_) => HintKind::DecompressTwistBls12_381,
         }
     }
 
@@ -168,6 +220,19 @@ impl Hint {
             Hint::IsOnCurveTwistBN254(is_on_curve_twist_bn254) => is_on_curve_twist_bn254.header_and_payload(),
             Hint::IsOnSubgroupTwistBN254(is_on_subgroup_twist_bn254) => is_on_subgroup_twist_bn254.header_and_payload(),
             Hint::PairingBatchBN254(pairing_batch_bn254) => pairing_batch_bn254.header_and_payload(),
+            Hint::MulFp12Bls12_381(mul_fp12_bls12_381) => mul_fp12_bls12_381.header_and_payload(),
+            Hint::ScalarMulBls12_381(scalar_mul_bls12_381) => scalar_mul_bls12_381.header_and_payload(),
+            Hint::ScalarMulTwistBls12_381(scalar_mul_twist_bls12_381) => scalar_mul_twist_bls12_381.header_and_payload(),
+            Hint::AddBls12_381(add_bls12_381) => add_bls12_381.header_and_payload(),
+            Hint::AddTwistBls12_381(add_twist_bls12_381) => add_twist_bls12_381.header_and_payload(),
+            Hint::IsOnCurveBls12_381(is_on_curve_bls12_381) => is_on_curve_bls12_381.header_and_payload(),
+            Hint::IsOnCurveTwistBls12_381(is_on_curve_twist_bls12_381) => is_on_curve_twist_bls12_381.header_and_payload(),
+            Hint::IsOnSubgroupBls12_381(is_on_subgroup_bls12_381) => is_on_subgroup_bls12_381.header_and_payload(),
+            Hint::IsOnSubgroupTwistBls12_381(is_on_subgroup_twist_bls12_381) => is_on_subgroup_twist_bls12_381.header_and_payload(),
+            Hint::MillerLoopBls12_381(miller_loop_bls12_381) => miller_loop_bls12_381.header_and_payload(),
+            Hint::FinalExpBls12_381(final_exp_bls12_381) => final_exp_bls12_381.header_and_payload(),
+            Hint::DecompressBls12_381(decompress_bls12_381) => decompress_bls12_381.header_and_payload(),
+            Hint::DecompressTwistBls12_381(decompress_twist_bls12_381) => decompress_twist_bls12_381.header_and_payload(),
         }
     }
 }

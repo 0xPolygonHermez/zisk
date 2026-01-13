@@ -1,9 +1,11 @@
 #![warn(unused_imports)]
 
+mod bls12_381;
 mod bn254;
 mod bigint256;
 mod hint;
 mod keccakf;
+mod macros;
 mod modexp;
 mod secp256k1;
 mod sha256f;
@@ -52,6 +54,21 @@ pub use bn254::{
     hint_is_on_curve_twist_bn254,
     hint_is_on_subgroup_twist_bn254,
     hint_pairing_batch_bn254,
+};
+pub use bls12_381::{
+    hint_mul_fp12_bls12_381,
+    hint_is_on_curve_bls12_381,
+    hint_is_on_subgroup_bls12_381,
+    hint_add_bls12_381,
+    hint_scalar_mul_bls12_381,
+    hint_is_on_curve_twist_bls12_381,
+    hint_is_on_subgroup_twist_bls12_381,
+    hint_add_twist_bls12_381,
+    hint_scalar_mul_twist_bls12_381,
+    hint_miller_loop_bls12_381,
+    hint_final_exp_bls12_381,
+    hint_decompress_bls12_381,
+    hint_decompress_twist_bls12_381,
 };
 
 pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {

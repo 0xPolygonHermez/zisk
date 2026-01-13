@@ -26,6 +26,21 @@ pub const HINTS_TYPE_IS_ON_CURVE_TWIST_BN254: u32 = 19;
 pub const HINTS_TYPE_IS_ON_SUBGROUP_TWIST_BN254: u32 = 20;
 pub const HINTS_TYPE_PAIRING_BATCH_BN254: u32 = 21;
 
+// BLS12-381 hint codes
+pub const HINT_MUL_FP12_BLS12_381: u32 = 0x16;
+pub const HINT_DECOMPRESS_BLS12_381: u32 = 0x17;
+pub const HINT_IS_ON_CURVE_BLS12_381: u32 = 0x18;
+pub const HINT_IS_ON_SUBGROUP_BLS12_381: u32 = 0x19;
+pub const HINT_ADD_BLS12_381: u32 = 0x1A;
+pub const HINT_SCALAR_MUL_BLS12_381: u32 = 0x1B;
+pub const HINT_DECOMPRESS_TWIST_BLS12_381: u32 = 0x1C;
+pub const HINT_IS_ON_CURVE_TWIST_BLS12_381: u32 = 0x1D;
+pub const HINT_IS_ON_SUBGROUP_TWIST_BLS12_381: u32 = 0x1E;
+pub const HINT_ADD_TWIST_BLS12_381: u32 = 0x1F;
+pub const HINT_SCALAR_MUL_TWIST_BLS12_381: u32 = 0x20;
+pub const HINT_MILLER_LOOP_BLS12_381: u32 = 0x21;
+pub const HINT_FINAL_EXP_BLS12_381: u32 = 0x22;
+
 pub const HINT_WRITE_BATCH: usize = 64;
 
 pub struct HintFileWriterHandleCell {
@@ -78,6 +93,19 @@ pub struct HintTotals {
     is_on_curve_twist_bn254: u64,
     is_on_subgroup_twist_bn254: u64,
     pairing_batch_bn254: u64,
+    mul_fp12_bls12_381: u64,
+    is_on_curve_bls12_381: u64,
+    is_on_subgroup_bls12_381: u64,
+    add_bls12_381: u64,
+    scalar_mul_bls12_381: u64,
+    is_on_curve_twist_bls12_381: u64,
+    is_on_subgroup_twist_bls12_381: u64,
+    add_twist_bls12_381: u64,
+    scalar_mul_twist_bls12_381: u64,
+    miller_loop_bls12_381: u64,
+    final_exp_bls12_381: u64,
+    decompress_bls12_381: u64,
+    decompress_twist_bls12_381: u64,
 }
 
 #[cfg(feature = "hints-metrics")]
@@ -105,6 +133,19 @@ impl HintTotals {
             HintKind::IsOnCurveTwistBN254 => self.is_on_curve_twist_bn254 += 1,
             HintKind::IsOnSubgroupTwistBN254 => self.is_on_subgroup_twist_bn254 += 1,
             HintKind::PairingBatchBN254 => self.pairing_batch_bn254 += 1,
+            HintKind::MulFp12Bls12_381 => self.mul_fp12_bls12_381 += 1,
+            HintKind::IsOnCurveBls12_381 => self.is_on_curve_bls12_381 += 1,
+            HintKind::IsOnSubgroupBls12_381 => self.is_on_subgroup_bls12_381 += 1,
+            HintKind::AddBls12_381 => self.add_bls12_381 += 1,
+            HintKind::ScalarMulBls12_381 => self.scalar_mul_bls12_381 += 1,
+            HintKind::IsOnCurveTwistBls12_381 => self.is_on_curve_twist_bls12_381 += 1,
+            HintKind::IsOnSubgroupTwistBls12_381 => self.is_on_subgroup_twist_bls12_381 += 1,
+            HintKind::AddTwistBls12_381 => self.add_twist_bls12_381 += 1,
+            HintKind::ScalarMulTwistBls12_381 => self.scalar_mul_twist_bls12_381 += 1,
+            HintKind::MillerLoopBls12_381 => self.miller_loop_bls12_381 += 1,
+            HintKind::FinalExpBls12_381 => self.final_exp_bls12_381 += 1,
+            HintKind::DecompressBls12_381 => self.decompress_bls12_381 += 1,
+            HintKind::DecompressTwistBls12_381 => self.decompress_twist_bls12_381 += 1,
         }
     }
 
@@ -166,6 +207,45 @@ impl HintTotals {
         }
         if self.pairing_batch_bn254 != 0 {
             println!("  PairingBatchBN254: {}", self.pairing_batch_bn254);
+        }
+        if self.mul_fp12_bls12_381 != 0 {
+            println!("  MulFp12Bls12_381: {}", self.mul_fp12_bls12_381);
+        }
+        if self.is_on_curve_bls12_381 != 0 {
+            println!("  IsOnCurveBls12_381: {}", self.is_on_curve_bls12_381);
+        }
+        if self.is_on_subgroup_bls12_381 != 0 {
+            println!("  IsOnSubgroupBls12_381: {}", self.is_on_subgroup_bls12_381);
+        }
+        if self.add_bls12_381 != 0 {
+            println!("  AddBls12_381: {}", self.add_bls12_381);
+        }
+        if self.scalar_mul_bls12_381 != 0 {
+            println!("  ScalarMulBls12_381: {}", self.scalar_mul_bls12_381);
+        }
+        if self.is_on_curve_twist_bls12_381 != 0 {
+            println!("  IsOnCurveTwistBls12_381: {}", self.is_on_curve_twist_bls12_381);
+        }
+        if self.is_on_subgroup_twist_bls12_381 != 0 {
+            println!("  IsOnSubgroupTwistBls12_381: {}", self.is_on_subgroup_twist_bls12_381);
+        }
+        if self.add_twist_bls12_381 != 0 {
+            println!("  AddTwistBls12_381: {}", self.add_twist_bls12_381);
+        }
+        if self.scalar_mul_twist_bls12_381 != 0 {
+            println!("  ScalarMulTwistBls12_381: {}", self.scalar_mul_twist_bls12_381);
+        }
+        if self.miller_loop_bls12_381 != 0 {
+            println!("  MillerLoopBls12_381: {}", self.miller_loop_bls12_381);
+        }
+        if self.final_exp_bls12_381 != 0 {
+            println!("  FinalExpBls12_381: {}", self.final_exp_bls12_381);
+        }
+        if self.decompress_bls12_381 != 0 {
+            println!("  DecompressBls12_381: {}", self.decompress_bls12_381);
+        }
+        if self.decompress_twist_bls12_381 != 0 {
+            println!("  DecompressTwistBls12_381: {}", self.decompress_twist_bls12_381);
         }
     }
 }

@@ -1,80 +1,24 @@
-use crate::hints::{HINT_QUEUE, check_main_thread, hint::Hint, types::{HINTS_TYPE_ADD_BN254, HINTS_TYPE_IS_ON_CURVE_BN254, HINTS_TYPE_IS_ON_CURVE_TWIST_BN254, HINTS_TYPE_IS_ON_SUBGROUP_TWIST_BN254, HINTS_TYPE_MUL_BN254, HINTS_TYPE_PAIRING_BATCH_BN254, HINTS_TYPE_TO_AFFINE_BN254, HINTS_TYPE_TO_AFFINE_TWIST_BN254, HintData}};
-
-macro_rules! define_bn254_hint {
-    (
-        variant $variant:ident {
-            $( $field_name:ident : $len:literal ),+ $(,)?
-        }
-        hint(
-            fn $hint_fn:ident,
-            ty = $hint_type_const:ident
-        );
-    ) => {
-        paste::paste! {
-            #[repr(C, align(8))]
-            #[derive(Clone, Debug, Eq, PartialEq)]
-            pub struct $variant {
-                $( pub $field_name: [u64; $len], )+
-            }
-
-            impl $variant {
-                pub fn new($( $field_name: [u64; $len] ),+) -> Self {
-                    Self { $( $field_name ),+ }
-                }
-            }
-
-            impl Default for $variant {
-                fn default() -> Self {
-                    Self {
-                        $( $field_name: [0u64; $len], )+
-                    }
-                }
-            }
-
-            pub const [<$variant:upper _BYTES>]: usize = core::mem::size_of::<$variant>();
-            pub const [<$variant:upper _LEN_U64>]: u64 = ([<$variant:upper _BYTES>] as u64) / 8;
-            pub const [<HEADER_ $variant:upper>]: [u8; 8] =
-                ((( $hint_type_const as u64) << 32) | [<$variant:upper _LEN_U64>]).to_le_bytes();
-
-            impl HintData for $variant {
-                #[inline(always)]
-                fn header_and_payload(&self) -> ([u8; 8], &[u8]) {
-                    let bytes = unsafe {
-                        core::slice::from_raw_parts(
-                            (self as *const $variant).cast::<u8>(),
-                            [<$variant:upper _BYTES>],
-                        )
-                    };
-
-                    ([<HEADER_ $variant:upper>], bytes)
-                }
-            }
-
-            #[inline(always)]
-            pub fn $hint_fn($( $field_name: &[u64; $len] ),+) {
-                check_main_thread();
-                
-                #[cfg(feature = "hints-debug")]
-                println!(
-                    concat!(
-                        stringify!($hint_fn),
-                        " args: ",
-                        $( stringify!($field_name), "={:?}; ", )+
-                    ),
-                    $( $field_name, )+
-                );
-
-                let hint = Hint::$variant($variant::new($( *$field_name ),+));
-                HINT_QUEUE.push(hint);
-            }
-        }
-    };
-}
+use crate::hints::{
+    HINT_QUEUE, check_main_thread,
+    hint::Hint,
+    macros::define_hint,
+    types::{
+        HINTS_TYPE_ADD_BN254,
+        HINTS_TYPE_IS_ON_CURVE_BN254,
+        HINTS_TYPE_IS_ON_CURVE_TWIST_BN254,
+        HINTS_TYPE_IS_ON_SUBGROUP_TWIST_BN254,
+        HINTS_TYPE_MUL_BN254,
+        HINTS_TYPE_PAIRING_BATCH_BN254,
+        HINTS_TYPE_TO_AFFINE_BN254,
+        HINTS_TYPE_TO_AFFINE_TWIST_BN254,
+        HintData
+    }
+};
 
 // === is_on_curve_bn254 (p) ===
 
-define_bn254_hint! {
-    variant IsOnCurveBN254 { p: 8 }
+define_hint! {
+    variant IsOnCurveBN254 { p: u64;8 }
     hint(
         fn hint_is_on_curve_bn254,
         ty = HINTS_TYPE_IS_ON_CURVE_BN254
@@ -83,8 +27,8 @@ define_bn254_hint! {
 
 // === to_affine_bn254 (p) ===
 
-define_bn254_hint! {
-    variant ToAffineBN254 { p: 12 }
+define_hint! {
+    variant ToAffineBN254 { p: u64;12 }
     hint(
         fn hint_to_affine_bn254,
         ty = HINTS_TYPE_TO_AFFINE_BN254
@@ -93,8 +37,8 @@ define_bn254_hint! {
 
 // === add_bn254 (p1, p2) ===
 
-define_bn254_hint! {
-    variant AddBN254 { p1: 8, p2: 8 }
+define_hint! {
+    variant AddBN254 { p1: u64;8, p2: u64;8 }
     hint(
         fn hint_add_bn254,
         ty = HINTS_TYPE_ADD_BN254
@@ -103,8 +47,8 @@ define_bn254_hint! {
 
 // === mul_bn254 (p, k) ===
 
-define_bn254_hint! {
-    variant MulBN254 { p: 8, k: 4 }
+define_hint! {
+    variant MulBN254 { p: u64;8, k: u64;4 }
     hint(
         fn hint_mul_bn254,
         ty = HINTS_TYPE_MUL_BN254
@@ -113,8 +57,8 @@ define_bn254_hint! {
 
 // === to_affine_twist_bn254 (p) ===
 
-define_bn254_hint! {
-    variant ToAffineTwistBN254 { p: 24 }
+define_hint! {
+    variant ToAffineTwistBN254 { p: u64;24 }
     hint(
         fn hint_to_affine_twist_bn254,
         ty = HINTS_TYPE_TO_AFFINE_TWIST_BN254
@@ -123,8 +67,8 @@ define_bn254_hint! {
 
 // === is_on_curve_twist_bn254 (p) ===
 
-define_bn254_hint! {
-    variant IsOnCurveTwistBN254 { p: 16 }
+define_hint! {
+    variant IsOnCurveTwistBN254 { p: u64;16 }
     hint(
         fn hint_is_on_curve_twist_bn254,
         ty = HINTS_TYPE_IS_ON_CURVE_TWIST_BN254
@@ -133,8 +77,8 @@ define_bn254_hint! {
 
 // === is_on_subgroup_twist_bn254 (p) ===
 
-define_bn254_hint! {
-    variant IsOnSubgroupTwistBN254 { p: 16 }
+define_hint! {
+    variant IsOnSubgroupTwistBN254 { p: u64;16 }
     hint(
         fn hint_is_on_subgroup_twist_bn254,
         ty = HINTS_TYPE_IS_ON_SUBGROUP_TWIST_BN254
