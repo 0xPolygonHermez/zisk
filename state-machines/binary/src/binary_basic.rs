@@ -285,7 +285,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             MAXU_OP | MAXUW_OP | MAX_OP | MAXW_OP => {
@@ -352,7 +352,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             LT_ABS_NP_OP => {
@@ -404,7 +404,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         if i == 0 { 2 * pfirst[i] } else { plast[i] },
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             LT_ABS_PN_OP => {
@@ -456,7 +456,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         if i == 0 { 2 * pfirst[i] } else { plast[i] },
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             LTU_OP | LTUW_OP | LT_OP | LTW_OP => {
@@ -520,7 +520,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             GT_OP => {
@@ -573,7 +573,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             EQ_OP | EQW_OP => {
@@ -622,7 +622,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             ADD_OP | ADDW_OP => {
@@ -667,7 +667,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             SUB_OP | SUBW_OP => {
@@ -711,7 +711,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             LEU_OP | LEUW_OP | LE_OP | LEW_OP => {
@@ -764,7 +764,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             AND_OP => {
@@ -796,7 +796,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             OR_OP => {
@@ -828,7 +828,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             XOR_OP => {
@@ -860,7 +860,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                 }
             }
             _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={opcode}"),
@@ -960,7 +960,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
     }
     pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
         for row in frops_inputs {
-            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
+            self.std.inc_virtual_row_one(self.frops_table_id, *row);
         }
     }
 }

@@ -350,16 +350,16 @@ impl<F: PrimeField64> MainInstance<F> {
             .std
             .get_range_id(0, MEM_REGS_MAX_DIFF as i64, None)
             .expect("Failed to get range ID");
-        self.std.range_checks(range_id, step_range_check);
+        self.std.range_check_ranged(range_id, None, &step_range_check);
 
         for range in large_range_checks {
-            self.std.range_check(range_id, *range as i64, 1);
+            self.std.range_check_one(range_id, *range);
         }
         let range_id = self
             .std
             .get_range_id(0, Self::MAX_SEGMENT_ID as i64, None)
             .expect("Failed to get range ID");
-        self.std.range_check(range_id, segment_id.as_usize() as i64, 1);
+        self.std.range_check_one(range_id, segment_id.as_usize());
     }
 }
 

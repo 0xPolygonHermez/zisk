@@ -108,11 +108,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         let mut range_check_data: Vec<u32> = vec![0; 1 << 16];
 
         // range of instance
-        self.std.range_check(
-            self.range_id,
-            (previous_segment.addr - INPUT_DATA_W_ADDR_INIT) as i64,
-            1,
-        );
+        self.std.range_check_one(self.range_id, previous_segment.addr - INPUT_DATA_W_ADDR_INIT);
 
         let mut max_range_distance_count = 0;
 
@@ -182,7 +178,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             let addr_changes = last_addr != mem_op.addr;
             if addr_changes {
                 trace[i].set_addr_changes(true);
-                self.std.range_check(self.range_id, (mem_op.addr - last_addr - 1) as i64, 1);
+                self.std.range_check_one(self.range_id, mem_op.addr - last_addr - 1);
             } else {
                 trace[i].set_addr_changes(false);
             }
@@ -220,17 +216,17 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
 
         self.std.range_check(
             self.range_id,
-            SEGMENT_ADDR_MAX_RANGE as i64,
-            max_range_distance_count,
+            SEGMENT_ADDR_MAX_RANGE,
+            max_range_distance_count as u32,
         );
-        self.std.range_check(self.range_id, (INPUT_DATA_W_ADDR_END - last_addr) as i64, 1);
+        self.std.range_check_one(self.range_id, INPUT_DATA_W_ADDR_END - last_addr);
 
         // range of chunks
         for j in 0..4 {
             let value = trace[last_row_idx].get_value_word(j);
             range_check_data[value as usize] += padding_size as u32;
         }
-        self.std.range_checks(self.range_chunks_id, range_check_data);
+        self.std.range_check_ranged(self.range_chunks_id, None, &range_check_data);
 
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());

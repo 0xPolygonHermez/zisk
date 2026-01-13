@@ -256,7 +256,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
 
     #[inline(always)]
     fn to_ranged_field(&self, value: i64, range_id: usize) -> u64 {
-        self.std.range_check(range_id, value, 1);
+        self.std.range_check_one(range_id, value);
         if value >= 0 {
             value as u64
         } else {
@@ -321,7 +321,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
                         x3_lt,
                         data.x3[i] - data.y2[i],
                     );
-                    self.std.inc_virtual_row(self.table_id, row as u64, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                     prev_x3_lt = x3_lt;
 
                     trace[i].set_y3_lt(false);
@@ -339,7 +339,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
                         x3_lt,
                         data.x3[i] - BLS12_381_PRIME_CHUNKS[i],
                     );
-                    self.std.inc_virtual_row(self.table_id, row as u64, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                     prev_x3_lt = x3_lt;
 
                     let y3_lt = data.y3[i] < BLS12_381_PRIME_CHUNKS[i]
@@ -350,7 +350,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
                         y3_lt,
                         data.y3[i] - BLS12_381_PRIME_CHUNKS[i],
                     );
-                    self.std.inc_virtual_row(self.table_id, row as u64, 1);
+                    self.std.inc_virtual_row_one(self.table_id, row);
                     prev_y3_lt = y3_lt;
                 }
                 _ => {

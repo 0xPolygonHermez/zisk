@@ -557,12 +557,11 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
             addr_w,
             step,
         );
-        self.std.inc_virtual_row(
+        self.std.inc_virtual_row_one(
             self.table_dual_byte_id,
-            (value_8b as u16 + ((byte_value as u16) << 8)) as u64,
-            1,
+            value_8b as u16 + ((byte_value as u16) << 8),
         );
-        self.std.range_check(self.table_16b_id, value_16b as i64, 1);
+        self.std.range_check_one(self.table_16b_id, value_16b);
 
         let written_byte_value = input.value as u8;
         let written_composed_value = match offset {
@@ -583,7 +582,7 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         };
 
         if R::valid_for_write() {
-            self.std.range_check(self.table_8b_id, written_byte_value as i64, 1);
+            self.std.range_check_one(self.table_8b_id, written_byte_value as u16);
         }
         row.set_write_fields(
             input.is_write,

@@ -179,7 +179,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
 
     pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
         for row in frops_inputs {
-            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
+            self.std.inc_virtual_row_one(self.frops_table_id, *row);
         }
     }
 

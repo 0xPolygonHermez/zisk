@@ -151,7 +151,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         }
         multiplicities[0] += 4 * (num_rows - total_inputs) as u32;
 
-        self.std.range_checks(self.range_id, multiplicities);
+        self.std.range_check_ranged(self.range_id, None, &multiplicities);
 
         // Set 0 + 0 as the padding row
         let padding_size = num_rows - total_inputs;
@@ -171,7 +171,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
     pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
         for row in frops_inputs {
-            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
+            self.std.inc_virtual_row_one(self.frops_table_id, *row);
         }
     }
 }

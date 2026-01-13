@@ -817,6 +817,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
     fn update_std_range_check(&self, reg_range_check: Vec<u32>) {
         // Perform the range checks
-        self.std.range_checks(self.range_id, reg_range_check);
+        self.std.range_check_ranged(self.range_id, None, &reg_range_check);
     }
 }

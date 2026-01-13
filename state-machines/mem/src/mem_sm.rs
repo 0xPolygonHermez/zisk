@@ -166,12 +166,12 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                         increment_step
                     );
                     if increment_step >= DUAL_PARTIAL_RANGE_MAX as u64 {
-                        self.std.range_check(self.dual_range_id, increment_step as i64, 1);
+                        self.std.range_check_one(self.dual_range_id, increment_step);
                     } else if dual_partial_range[increment_step as usize] == u16::MAX {
                         dual_partial_range[increment_step as usize] = 0;
                         self.std.range_check(
                             self.dual_range_id,
-                            increment_step as i64,
+                            increment_step,
                             u16::MAX as u64 + 1,
                         );
                     } else {
@@ -289,7 +289,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
         let distance_end = RAM_W_ADDR_END - last_addr;
 
-        self.std.range_checks(self.range_id, range_check_data);
+        self.std.range_check_ranged(self.range_id, None, &range_check_data);
 
         // Add one in range_check_data_max because it's used by intermediate reads, and reads
         // add one to distance to allow same step on read operations.
@@ -318,16 +318,16 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         air_values.distance_end[0] = F::from_u16(distance_end[0]);
         air_values.distance_end[1] = F::from_u16(distance_end[1]);
 
-        self.std.range_check(self.range_16bits_id, distance_base[0] as i64, 1);
-        self.std.range_check(self.range_16bits_id, distance_base[1] as i64, 1);
-        self.std.range_check(self.range_16bits_id, distance_end[0] as i64, 1);
-        self.std.range_check(self.range_16bits_id, distance_end[1] as i64, 1);
+        self.std.range_check_one(self.range_16bits_id, distance_base[0]);
+        self.std.range_check_one(self.range_16bits_id, distance_base[1]);
+        self.std.range_check_one(self.range_16bits_id, distance_end[0]);
+        self.std.range_check_one(self.range_16bits_id, distance_end[1]);
 
         for (value, count) in dual_partial_range.iter().enumerate() {
             if *count == 0 {
                 continue;
             }
-            self.std.range_check(self.dual_range_id, value as i64, *count as u64);
+            self.std.range_check(self.dual_range_id, value, *count);
         }
 
         #[cfg(feature = "debug_mem")]
