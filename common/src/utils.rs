@@ -75,3 +75,51 @@ pub fn init_tracing(log_path: &str) {
         .with(file_layer)
         .init();
 }
+
+/// Reinterprets a `Vec<T>` as a `Vec<U>` by transmuting the underlying memory.
+///
+/// This function converts between vector types by reinterpreting the raw memory,
+/// adjusting length and capacity based on the size ratio between types.
+/// It performs internal unsafe operations but validates all safety requirements
+/// before the conversion.
+///
+/// # Arguments
+/// * `v` - The source vector to reinterpret.
+///
+/// # Returns
+/// * `Ok(Vec<U>)` - A new vector that owns the same memory as the input vector
+/// * `Err` - If validation fails (size incompatibility or alignment issues)
+///
+/// # Type Parameters
+/// * `T` - Source element type
+/// * `U` - Destination element type
+pub fn reinterpret_vec<T, U>(v: Vec<T>) -> anyhow::Result<Vec<U>> {
+    let size_t = std::mem::size_of::<T>();
+    let size_u = std::mem::size_of::<U>();
+
+    // Check that total byte size is compatible
+    if (v.len() * size_t) % size_u != 0 {
+        return Err(anyhow::anyhow!(
+            "Total byte size {} is not divisible by target type size {}",
+            v.len() * size_t,
+            size_u
+        ));
+    }
+
+    // Check that the pointer is properly aligned for U
+    if v.as_ptr() as usize % std::mem::align_of::<U>() != 0 {
+        return Err(anyhow::anyhow!(
+            "Vec<{}> is not properly aligned for Vec<{}> (requires {}-byte alignment)",
+            std::any::type_name::<T>(),
+            std::any::type_name::<U>(),
+            std::mem::align_of::<U>()
+        ));
+    }
+
+    let len = (v.len() * size_t) / size_u;
+    let cap = (v.capacity() * size_t) / size_u;
+    let ptr = v.as_ptr() as *mut U;
+
+    std::mem::forget(v);
+    Ok(unsafe { Vec::from_raw_parts(ptr, len, cap) })
+}

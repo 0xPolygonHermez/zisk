@@ -11,7 +11,10 @@ use proofman_common::ProofOptions;
 use crate::Proof;
 use anyhow::Result;
 use std::{path::PathBuf, time::Duration};
-use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
+use zisk_common::{
+    io::{StreamSource, ZiskStdin},
+    ExecutorStats, ZiskExecutionResult,
+};
 
 pub struct ZiskExecuteResult {
     pub execution: ZiskExecutionResult,
@@ -44,13 +47,21 @@ pub trait ProverEngine {
 
     fn set_stdin(&self, stdin: ZiskStdin);
 
+    fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()>;
+
     fn executed_steps(&self) -> u64;
 
-    fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult>;
+    fn execute(
+        &self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+        output_path: Option<PathBuf>,
+    ) -> Result<ZiskExecuteResult>;
 
     fn stats(
         &self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
         debug_info: Option<Option<String>>,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStats>)>;
@@ -58,12 +69,21 @@ pub trait ProverEngine {
     fn verify_constraints_debug(
         &self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult>;
 
-    fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult>;
+    fn verify_constraints(
+        &self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<ZiskVerifyConstraintsResult>;
 
-    fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult>;
+    fn prove(
+        &self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<ZiskProveResult>;
 
     fn prove_phase(
         &self,
@@ -102,6 +122,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_stdin(stdin);
     }
 
+    /// Set the hints stream for the current proof.
+    pub fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()> {
+        self.prover.set_hints_stream(hints_stream)
+    }
+
     /// Get the world rank of the prover. The world rank is the rank of the prover in the global MPI context.
     /// If MPI is not used, this will always return 0.
     pub fn world_rank(&self) -> i32 {
@@ -121,37 +146,51 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     /// Execute the prover with the given standard input and output path.
     /// It only runs the execution without generating a proof.
-    pub fn execute(&self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
-        self.prover.execute(stdin, None)
+    pub fn execute(
+        &self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<ZiskExecuteResult> {
+        self.prover.execute(stdin, hints_stream, None)
     }
 
     /// Get the execution statistics with the given standard input and debug information.
     pub fn stats(
         &self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
         debug_info: Option<Option<String>>,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStats>)> {
-        self.prover.stats(stdin, debug_info, mpi_node)
+        self.prover.stats(stdin, hints_stream, debug_info, mpi_node)
     }
 
     /// Verify the constraints with the given standard input and debug information.
     pub fn verify_constraints_debug(
         &self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        self.prover.verify_constraints_debug(stdin, debug_info)
+        self.prover.verify_constraints_debug(stdin, hints_stream, debug_info)
     }
 
     /// Verify the constraints with the given standard input.
-    pub fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
-        self.prover.verify_constraints(stdin)
+    pub fn verify_constraints(
+        &self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<ZiskVerifyConstraintsResult> {
+        self.prover.verify_constraints(stdin, hints_stream)
     }
 
     /// Generate a proof with the given standard input.
-    pub fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
-        self.prover.prove(stdin)
+    pub fn prove(
+        &self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<ZiskProveResult> {
+        self.prover.prove(stdin, hints_stream)
     }
 
     pub fn prove_phase(

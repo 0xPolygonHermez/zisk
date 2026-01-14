@@ -28,10 +28,22 @@ pub struct SyscallAdd256Params<'a> {
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
 #[allow(unused_variables)]
-#[no_mangle]
-pub extern "C" fn syscall_add256(params: &mut SyscallAdd256Params) -> u64 {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_syscall_add256")]
+pub extern "C" fn syscall_add256(
+    params: &mut SyscallAdd256Params,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u64 {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    unreachable!();
+    {
+        let cout = precompiles_helpers::add256(params.a, params.b, params.cin, params.c);
+        #[cfg(feature = "hints")]
+        {
+            hints.extend_from_slice(params.c);
+            hints.push(cout);
+        }
+        cout
+    }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     ziskos_syscall_ret_u64!(0x811, params)
 }

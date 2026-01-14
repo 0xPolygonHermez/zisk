@@ -1,14 +1,16 @@
 use tracing::error;
 use zisk_common::ExecutorStatsHandle;
 
-use crate::{AsmRHData, AsmRHHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
+use crate::{
+    sem_chunk_done_name, shmem_output_name, AsmRHData, AsmRHHeader, AsmRunError, AsmService,
+    AsmServices, AsmSharedMemory, SEM_CHUNK_DONE_WAIT_DURATION,
+};
 use anyhow::{Context, Result};
 use named_sem::NamedSemaphore;
 use std::sync::atomic::{fence, Ordering};
-use std::time::Duration;
 
 pub struct PreloadedRH {
-    pub output_shmem: AsmSharedMemory<AsmRHHeader>,
+    pub output_shmem: AsmSharedMemory,
 }
 
 impl PreloadedRH {
@@ -23,11 +25,10 @@ impl PreloadedRH {
             AsmServices::default_port(&AsmService::RH, local_rank)
         };
 
-        let output_name =
-            AsmSharedMemory::<AsmRHHeader>::shmem_output_name(port, AsmService::RH, local_rank);
+        let output_name = shmem_output_name(port, AsmService::RH, local_rank);
 
         let output_shared_memory =
-            AsmSharedMemory::<AsmRHHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
+            AsmSharedMemory::open_and_map::<AsmRHHeader>(&output_name, unlock_mapped_memory)?;
 
         Ok(Self { output_shmem: output_shared_memory })
     }
@@ -75,8 +76,7 @@ impl AsmRunnerRH {
             AsmServices::default_port(&AsmService::RH, local_rank)
         };
 
-        let sem_chunk_done_name =
-            AsmSharedMemory::<AsmRHHeader>::shmem_chunk_done_name(port, AsmService::RH, local_rank);
+        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::RH, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -85,7 +85,7 @@ impl AsmRunnerRH {
         asm_services.send_rom_histogram_request(max_steps)?;
 
         loop {
-            match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
+            match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);

@@ -1,0 +1,32 @@
+[package]
+name = "precompiles-hints"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[lib]
+name = "precompiles_hints"
+path = "src/lib.rs"
+
+[dependencies]
+ziskos-hints = { workspace = true }
+lib-c = { workspace = true }
+precompiles-helpers = { workspace = true }
+anyhow = { workspace = true }
+rayon = { workspace = true }
+tracing = { workspace = true }
+zisk-common = { workspace = true }
+
+[[bin]]
+name = "hints-socket-server"
+path = "src/bin/hints_socket_server.rs"
+
+[dev-dependencies]
+criterion = "0.8"
+
+[[bench]]
+name = "hints_benchmarks"
+harness = false

@@ -33,6 +33,8 @@ rom-setup = { workspace = true }
 zisk-pil = { workspace = true }
 zisk-sdk = { workspace = true }
 
+precompiles-hints = { workspace = true }
+
 tonic = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }

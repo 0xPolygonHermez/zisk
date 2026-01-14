@@ -209,7 +209,7 @@ fn print_command_info(
         get_witness_computation_lib(Some(&prover_config.witness_lib)).display()
     );
 
-    println!("{: >12} {}", "Elf".bright_green().bold(), prover_config.elf.display());
+    println!("{: >12} {}", "ELF".bright_green().bold(), prover_config.elf.display());
     if prover_config.asm.is_some() {
         if let Some(asm_port) = prover_config.asm_port.as_ref() {
             println!("{: >12} {}", "Asm port".bright_green().bold(), asm_port);
@@ -225,7 +225,7 @@ fn print_command_info(
     }
     println!(
         "{: >12} {}",
-        "Proving key".bright_green().bold(),
+        "Proving Key".bright_green().bold(),
         get_proving_key(Some(&prover_config.proving_key)).display()
     );
 

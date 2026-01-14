@@ -248,7 +248,7 @@ impl ZiskServer {
             get_witness_computation_lib(self.witness_lib.as_ref()).display()
         );
 
-        println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
+        println!("{: >12} {}", "ELF".bright_green().bold(), self.elf.display());
 
         if self.asm.is_some() {
             let asm_path = self.asm.as_ref().unwrap().display();
@@ -263,7 +263,7 @@ impl ZiskServer {
 
         println!(
             "{: >12} {}",
-            "Proving key".bright_green().bold(),
+            "Proving Key".bright_green().bold(),
             get_proving_key(self.proving_key.as_ref()).display()
         );
 

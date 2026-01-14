@@ -1,10 +1,8 @@
-use sha2::compress256;
-
 use precompiles_common::MemBusHelpers;
 use std::collections::VecDeque;
 use zisk_common::MemCollectorInfo;
 use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
-use zisk_core::convert_u64_to_generic_array_bytes;
+use zisk_core::sha256f;
 
 #[derive(Debug)]
 pub struct Sha256MemInputConfig {
@@ -28,11 +26,7 @@ pub fn generate_sha256f_mem_inputs(
     let input: &[u64; 8] = &data[10..18].try_into().unwrap();
 
     // Apply the sha256f function and get the output
-    let mut state_u32: &mut [u32; 8] = unsafe { &mut *(state.as_mut_ptr() as *mut [u32; 8]) };
-    let block = convert_u64_to_generic_array_bytes(input);
-    compress256(&mut state_u32, &[block]);
-
-    *state = unsafe { *(state_u32 as *mut [u32; 8] as *mut [u64; 4]) };
+    sha256f(state, input);
 
     // Generate the memory reads/writes
     let indirect_params = 2;

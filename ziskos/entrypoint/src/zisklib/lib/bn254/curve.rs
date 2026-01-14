@@ -14,20 +14,38 @@ use super::{
 };
 
 /// Check if a non-zero point `p` is on the BN254 curve
-pub fn is_on_curve_bn254(p: &[u64; 8]) -> bool {
+pub fn is_on_curve_bn254(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> bool {
     let x: [u64; 4] = p[0..4].try_into().unwrap();
     let y: [u64; 4] = p[4..8].try_into().unwrap();
 
     // p in E iff y² == x³ + 3
-    let lhs = square_fp_bn254(&y);
-    let mut rhs = square_fp_bn254(&x);
-    rhs = mul_fp_bn254(&rhs, &x);
-    rhs = add_fp_bn254(&rhs, &E_B);
+    let lhs = square_fp_bn254(
+        &y,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let mut rhs = square_fp_bn254(
+        &x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    rhs = mul_fp_bn254(
+        &rhs,
+        &x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    rhs = add_fp_bn254(
+        &rhs,
+        &E_B,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     eq(&lhs, &rhs)
 }
 
 /// Converts a point `p` on the BN254 curve from Jacobian coordinates to affine coordinates
-pub fn to_affine_bn254(p: &[u64; 12]) -> [u64; 8] {
+pub fn to_affine_bn254(p: &[u64; 12], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 8] {
     let z: [u64; 4] = p[8..12].try_into().unwrap();
 
     if z == [0u64; 4] {
@@ -39,18 +57,44 @@ pub fn to_affine_bn254(p: &[u64; 12]) -> [u64; 8] {
     let x: [u64; 4] = p[0..4].try_into().unwrap();
     let y: [u64; 4] = p[4..8].try_into().unwrap();
 
-    let zinv = inv_fp_bn254(&z);
-    let zinv_sq = square_fp_bn254(&zinv);
+    let zinv = inv_fp_bn254(
+        &z,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let zinv_sq = square_fp_bn254(
+        &zinv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
-    let x_res = mul_fp_bn254(&x, &zinv_sq);
-    let mut y_res = mul_fp_bn254(&y, &zinv_sq);
-    y_res = mul_fp_bn254(&y_res, &zinv);
-
+    let x_res = mul_fp_bn254(
+        &x,
+        &zinv_sq,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let mut y_res = mul_fp_bn254(
+        &y,
+        &zinv_sq,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    y_res = mul_fp_bn254(
+        &y_res,
+        &zinv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     [x_res[0], x_res[1], x_res[2], x_res[3], y_res[0], y_res[1], y_res[2], y_res[3]]
 }
 
 /// Adds two points `p1` and `p2` on the BN254 curve
-pub fn add_bn254(p1: &[u64; 8], p2: &[u64; 8]) -> [u64; 8] {
+pub fn add_bn254(
+    p1: &[u64; 8],
+    p2: &[u64; 8],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 8] {
     if *p1 == IDENTITY_G1 {
         return *p2;
     } else if *p2 == IDENTITY_G1 {
@@ -67,7 +111,11 @@ pub fn add_bn254(p1: &[u64; 8], p2: &[u64; 8]) -> [u64; 8] {
         // Is y1 == y2?
         if eq(&y1, &y2) {
             // Compute the doubling
-            return dbl_bn254(p1);
+            return dbl_bn254(
+                p1,
+                #[cfg(feature = "hints")]
+                hints,
+            );
         } else {
             // Return 𝒪
             return IDENTITY_G1;
@@ -82,7 +130,11 @@ pub fn add_bn254(p1: &[u64; 8], p2: &[u64; 8]) -> [u64; 8] {
 
     // Call the syscall to add the two points
     let mut params = SyscallBn254CurveAddParams { p1: &mut p1, p2: &p2 };
-    syscall_bn254_curve_add(&mut params);
+    syscall_bn254_curve_add(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Convert the result back to a single array
     let x3 = params.p1.x;
@@ -90,14 +142,22 @@ pub fn add_bn254(p1: &[u64; 8], p2: &[u64; 8]) -> [u64; 8] {
     [x3[0], x3[1], x3[2], x3[3], y3[0], y3[1], y3[2], y3[3]]
 }
 
-pub fn dbl_bn254(p: &[u64; 8]) -> [u64; 8] {
+pub fn dbl_bn254(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 8] {
     let mut p1 = SyscallPoint256 { x: p[0..4].try_into().unwrap(), y: p[4..8].try_into().unwrap() };
-    syscall_bn254_curve_dbl(&mut p1);
+    syscall_bn254_curve_dbl(
+        &mut p1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     [p1.x[0], p1.x[1], p1.x[2], p1.x[3], p1.y[0], p1.y[1], p1.y[2], p1.y[3]]
 }
 
 /// Multiplies a point `p` on the BN254 curve by a scalar `k` on the BN254 scalar field
-pub fn mul_bn254(p: &[u64; 8], k: &[u64; 4]) -> [u64; 8] {
+pub fn mul_bn254(
+    p: &[u64; 8],
+    k: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 8] {
     if *p == IDENTITY_G1 {
         return IDENTITY_G1;
     }
@@ -114,7 +174,11 @@ pub fn mul_bn254(p: &[u64; 8], k: &[u64; 4]) -> [u64; 8] {
         }
         [2, 0, 0, 0] => {
             // Return 2p
-            return dbl_bn254(p);
+            return dbl_bn254(
+                p,
+                #[cfg(feature = "hints")]
+                hints,
+            );
         }
         _ => {}
     }
@@ -123,7 +187,12 @@ pub fn mul_bn254(p: &[u64; 8], k: &[u64; 4]) -> [u64; 8] {
     // Hint the length the binary representations of k
     // We will verify the output by recomposing k
     // Moreover, we should check that the first received bit is 1
-    let (max_limb, max_bit) = fcall_msb_pos_256(k, &[0, 0, 0, 0]);
+    let (max_limb, max_bit) = fcall_msb_pos_256(
+        k,
+        &[0, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Perform the loop, based on the binary representation of k
 
@@ -156,13 +225,21 @@ pub fn mul_bn254(p: &[u64; 8], k: &[u64; 4]) -> [u64; 8] {
     for i in (0..=limb).rev() {
         for j in (0..=bit).rev() {
             // Always double
-            syscall_bn254_curve_dbl(&mut q);
+            syscall_bn254_curve_dbl(
+                &mut q,
+                #[cfg(feature = "hints")]
+                hints,
+            );
 
             // Get the next bit b of k.
             // If b == 1, we should add P to Q, otherwise start the next iteration
             if ((k[i] >> j) & 1) == 1 {
                 let mut params = SyscallBn254CurveAddParams { p1: &mut q, p2: &p };
-                syscall_bn254_curve_add(&mut params);
+                syscall_bn254_curve_add(
+                    &mut params,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
 
                 // Reconstruct k
                 k_rec[i] |= 1 << j;
@@ -182,25 +259,42 @@ pub fn mul_bn254(p: &[u64; 8], k: &[u64; 4]) -> [u64; 8] {
 
 /// # Safety
 /// `p` must point to a valid `[u64; 8]` (64 bytes, affine G1 point).
-#[no_mangle]
-pub unsafe extern "C" fn is_on_curve_bn254_c(p_ptr: *const u64) -> bool {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_is_on_curve_bn254_c")]
+pub unsafe extern "C" fn is_on_curve_bn254_c(
+    p_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
     let p = unsafe { &*(p_ptr as *const [u64; 8]) };
     #[cfg(feature = "hints-debug")]
     println!("is_on_curve_bn254_c called with p = {:?}", p);
 
-    is_on_curve_bn254(p)
+    is_on_curve_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }
 
 /// # Safety
 /// - `p` must point to a valid `[u64; 12]` (96 bytes, Jacobian G1 point).
 /// - `out` must point to a valid `[u64; 8]` (64 bytes) writable buffer.
-#[no_mangle]
-pub unsafe extern "C" fn to_affine_bn254_c(p_ptr: *const u64, out_ptr: *mut u64) -> bool {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_to_affine_bn254_c")]
+pub unsafe extern "C" fn to_affine_bn254_c(
+    p_ptr: *const u64,
+    out_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
     let p = unsafe { &*(p_ptr as *const [u64; 12]) };
     #[cfg(feature = "hints-debug")]
     println!("to_affine_bn254_c called with p = {:?}", p);
 
-    let result = to_affine_bn254(p);
+    let result = to_affine_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     *out_ptr.add(0) = result[0];
     *out_ptr.add(1) = result[1];
@@ -218,19 +312,25 @@ pub unsafe extern "C" fn to_affine_bn254_c(p_ptr: *const u64, out_ptr: *mut u64)
 /// - `p1_ptr` must point to a valid `[u64; 8]` (64 bytes, affine G1 point).
 /// - `p2_ptr` must point to a valid `[u64; 8]` (64 bytes, affine G1 point).
 /// - `out_ptr` must point to a valid `[u64; 8]` (64 bytes) writable buffer.
-#[no_mangle]
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_add_bn254_c")]
 pub unsafe extern "C" fn add_bn254_c(
     p1_ptr: *const u64,
     p2_ptr: *const u64,
     out_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     let p1 = unsafe { &*(p1_ptr as *const [u64; 8]) };
     let p2 = unsafe { &*(p2_ptr as *const [u64; 8]) };
     #[cfg(feature = "hints-debug")]
     println!("add_bn254_c called with p1 = {:?}, p2 = {:?}", p1, p2);
 
-    let result = add_bn254(p1, p2);
-
+    let result = add_bn254(
+        p1,
+        p2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     *out_ptr.add(0) = result[0];
     *out_ptr.add(1) = result[1];
     *out_ptr.add(2) = result[2];
@@ -247,19 +347,25 @@ pub unsafe extern "C" fn add_bn254_c(
 /// - `p_ptr` must point to a valid `[u64; 8]` (64 bytes, affine G1 point).
 /// - `k_ptr` must point to a valid `[u64; 4]` (32 bytes, scalar).
 /// - `out_ptr` must point to a valid `[u64; 8]` (64 bytes) writable buffer.
-#[no_mangle]
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_mul_bn254_c")]
 pub unsafe extern "C" fn mul_bn254_c(
     p_ptr: *const u64,
     k_ptr: *const u64,
     out_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     let p = unsafe { &*(p_ptr as *const [u64; 8]) };
     let k = unsafe { &*(k_ptr as *const [u64; 4]) };
     #[cfg(feature = "hints-debug")]
     println!("mul_bn254_c called with p = {:?}, k = {:?}", p, k);
 
-    let result = mul_bn254(p, k);
-
+    let result = mul_bn254(
+        p,
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     *out_ptr.add(0) = result[0];
     *out_ptr.add(1) = result[1];
     *out_ptr.add(2) = result[2];

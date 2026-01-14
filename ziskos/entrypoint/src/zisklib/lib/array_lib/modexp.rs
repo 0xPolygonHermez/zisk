@@ -13,7 +13,12 @@ use super::{
 /// Modular exponentiation of three large numbers
 ///
 /// It assumes that modulus > 0 and len(base),len(exp),len(modulus) > 0
-pub fn modexp(base: &[U256], exp: &[u64], modulus: &[U256]) -> Vec<U256> {
+pub fn modexp(
+    base: &[U256],
+    exp: &[u64],
+    modulus: &[U256],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> Vec<U256> {
     let len_b = base.len();
     let len_e = exp.len();
     let len_m = modulus.len();
@@ -67,10 +72,19 @@ pub fn modexp(base: &[U256], exp: &[u64], modulus: &[U256]) -> Vec<U256> {
         let modulus = &modulus[0];
 
         // Compute base = base (mod modulus)
-        let base = rem_short_init(base, modulus);
+        let base = rem_short_init(
+            base,
+            modulus,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         // Hint exponent bits
-        let (len, bits) = fcall_bin_decomp(exp);
+        let (len, bits) = fcall_bin_decomp(
+            exp,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         // We should recompose the exponent from bits to verify correctness
         let mut rec_exp = vec![0u64; len_e];
@@ -92,12 +106,24 @@ pub fn modexp(base: &[U256], exp: &[u64], modulus: &[U256]) -> Vec<U256> {
             }
 
             // Compute out = out² (mod modulus)
-            out = square_and_reduce_short(&out, modulus, &mut scratch);
+            out = square_and_reduce_short(
+                &out,
+                modulus,
+                &mut scratch,
+                #[cfg(feature = "hints")]
+                hints,
+            );
 
             if bit == 1 {
                 // Compute out = (out * base) (mod modulus);
-                out = mul_and_reduce_short(&out, &base, modulus, &mut scratch);
-
+                out = mul_and_reduce_short(
+                    &out,
+                    &base,
+                    modulus,
+                    &mut scratch,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
                 // Recompose the exponent
                 let bits_pos = len - 1 - bit_idx;
                 let limb_idx = bits_pos / 64;
@@ -111,10 +137,19 @@ pub fn modexp(base: &[U256], exp: &[u64], modulus: &[U256]) -> Vec<U256> {
         vec![out]
     } else {
         // Compute base = base (mod modulus)
-        let base = rem_long_init(base, modulus);
+        let base = rem_long_init(
+            base,
+            modulus,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         // Hint exponent bits
-        let (len, bits) = fcall_bin_decomp(exp);
+        let (len, bits) = fcall_bin_decomp(
+            exp,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         // We should recompose the exponent from bits to verify correctness
         let mut rec_exp = vec![0u64; len_e];
@@ -136,11 +171,24 @@ pub fn modexp(base: &[U256], exp: &[u64], modulus: &[U256]) -> Vec<U256> {
             }
 
             // Compute out = out² (mod modulus)
-            out = square_and_reduce_long(&out, modulus, &mut scratch);
+            out = square_and_reduce_long(
+                &out,
+                modulus,
+                &mut scratch,
+                #[cfg(feature = "hints")]
+                hints,
+            );
 
             if bit == 1 {
                 // Compute out = (out * base) (mod modulus);
-                out = mul_and_reduce_long(&out, &base, modulus, &mut scratch);
+                out = mul_and_reduce_long(
+                    &out,
+                    &base,
+                    modulus,
+                    &mut scratch,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
                 // Recompose the exponent
                 let bits_pos = len - 1 - bit_idx;
                 let limb_idx = bits_pos / 64;
@@ -155,7 +203,12 @@ pub fn modexp(base: &[U256], exp: &[u64], modulus: &[U256]) -> Vec<U256> {
     }
 }
 
-pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64]) -> Vec<u64> {
+pub fn modexp_u64(
+    base: &[u64],
+    exp: &[u64],
+    modulus: &[u64],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> Vec<u64> {
     // Round up to multiple of 4
     let base_len = (base.len() + 3) & !3;
     let modulus_len = (modulus.len() + 3) & !3;
@@ -171,7 +224,13 @@ pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64]) -> Vec<u64> {
     let modulus_u256 = U256::flat_to_slice(&modulus_padded);
 
     // Call the main modexp function
-    let result_u256 = modexp(base_u256, exp, modulus_u256);
+    let result_u256 = modexp(
+        base_u256,
+        exp,
+        modulus_u256,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Convert result back to u64 array
     U256::slice_to_flat(&result_u256).to_vec()
@@ -186,7 +245,8 @@ pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64]) -> Vec<u64> {
 /// - `exp_ptr` points to an array of `exp_len` u64 elements
 /// - `modulus_ptr` points to an array of `modulus_len` u64 elements
 /// - `result_ptr` points to an array of at least `modulus_len` u64 elements
-#[no_mangle]
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_modexp_u64_c")]
 pub unsafe extern "C" fn modexp_u64_c(
     base_ptr: *const u64,
     base_len: usize,
@@ -195,6 +255,7 @@ pub unsafe extern "C" fn modexp_u64_c(
     modulus_ptr: *const u64,
     modulus_len: usize,
     result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> usize {
     let base = std::slice::from_raw_parts(base_ptr, base_len);
     let exp = std::slice::from_raw_parts(exp_ptr, exp_len);
@@ -215,7 +276,13 @@ pub unsafe extern "C" fn modexp_u64_c(
     let modulus_u256 = U256::flat_to_slice(&modulus_padded);
 
     // Call the main modexp function
-    let result_u256 = modexp(base_u256, exp, modulus_u256);
+    let result_u256 = modexp(
+        base_u256,
+        exp,
+        modulus_u256,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     let result_slice = U256::slice_to_flat(&result_u256);
     let result_len = result_slice.len();
 

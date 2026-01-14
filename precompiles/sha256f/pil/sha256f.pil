@@ -201,18 +201,21 @@ airtemplate Sha256f(const int N = 2**22, const int operation_bus_id = OPERATION_
     clock_eq(step_addr, ADDR_STATE, ADDR_IND_0) === 0;
     clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
 
+    // Swap w bytes for memory consistency
+    const expr w_spacked = swap_bytes_and_pack(w);
+
     expr mem_value[2];
-    mem_value[0] = CLK[0] * a_packed'2 + CLK[1] * 'a_packed + CLK[2] * e_packed + CLK[3] * 3'e_packed +
-                   CLK[4] * w_packed' + CLK[5] * w_packed'2 + CLK[6] * w_packed'3 + CLK[7] * w_packed'4 +
-                   CLK[8] * w_packed'5 + CLK[9] * w_packed'6 + CLK[10] * w_packed'7 + CLK[11] * w_packed'8 +
-                   CLK[12] * a_packed'58 + CLK[13] * a_packed'55 + CLK[14] * e_packed'56 + CLK[15] * e_packed'53 +
+    mem_value[0] = CLK[0] * a_packed'3 + CLK[1] * a_packed + CLK[2] * e_packed' + CLK[3] * 2'e_packed +
+                   CLK[4] * w_spacked + CLK[5] * w_spacked' + CLK[6] * w_spacked'2 + CLK[7] * w_spacked'3 +
+                   CLK[8] * w_spacked'4 + CLK[9] * w_spacked'5 + CLK[10] * w_spacked'6 + CLK[11] * w_spacked'7 +
+                   CLK[12] * a_packed'59 + CLK[13] * a_packed'56 + CLK[14] * e_packed'57 + CLK[15] * e_packed'54 +
                    clock_map(step_addr, ADDR_IND_0, 16) + clock_map(step_addr, ADDR_IND_1, 17);
 
-    mem_value[1] = CLK[0] * a_packed'3 + CLK[1] * a_packed + CLK[2] * e_packed' + CLK[3] * 2'e_packed +
-                   CLK[4] * w_packed + CLK[5] * w_packed' + CLK[6] * w_packed'2 + CLK[7] * w_packed'3 +
-                   CLK[8] * w_packed'4 + CLK[9] * w_packed'5 + CLK[10] * w_packed'6 + CLK[11] * w_packed'7 +
-                   CLK[12] * a_packed'59 + CLK[13] * a_packed'56 + CLK[14] * e_packed'57 + CLK[15] * e_packed'54;
-                   // high bits of ADDR_IND_0 and ADDR_IND_ are 0
+    mem_value[1] = CLK[0] * a_packed'2 + CLK[1] * 'a_packed + CLK[2] * e_packed + CLK[3] * 3'e_packed +
+                   CLK[4] * w_spacked' + CLK[5] * w_spacked'2 + CLK[6] * w_spacked'3 + CLK[7] * w_spacked'4 +
+                   CLK[8] * w_spacked'5 + CLK[9] * w_spacked'6 + CLK[10] * w_spacked'7 + CLK[11] * w_spacked'8 +
+                   CLK[12] * a_packed'58 + CLK[13] * a_packed'55 + CLK[14] * e_packed'56 + CLK[15] * e_packed'53;
+                   // addresses are 32-bit values
 
     const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,  end: 3,  delta: 8) +
                           clock_map(step_addr, ADDR_INPUT, start: 4,  end: 11, delta: 8) +
@@ -255,6 +258,19 @@ airtemplate Sha256f(const int N = 2**22, const int operation_bus_id = OPERATION_
             packed += a[j] * 2**j;
         }
         return packed;
+    }
+
+    function swap_bytes_and_pack(const expr a[]): expr {
+        const int len = length(a);
+        expr result = 0;
+        for (int i = 0; i < len; i++) {
+            int byte_idx = i / 8;
+            int bit_in_byte = i % 8;
+            int swapped_byte = 3 - byte_idx;
+            int swapped_idx = swapped_byte * 8 + bit_in_byte;
+            result += a[swapped_idx] * 2**i;
+        }
+        return result;
     }
 
     // Given an old w, computes the new w for the next round

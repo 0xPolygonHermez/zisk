@@ -20,19 +20,21 @@
 //! maintaining clarity and modularity in the computation process.
 
 use asm_runner::{
-    write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory,
-    MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, SharedMemoryWriter, Task, TaskFactory,
+    shmem_input_name, write_input, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, HintsFile,
+    HintsShmem, MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, SharedMemoryWriter, Task,
+    TaskFactory,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
+use precompiles_hints::HintsProcessor;
+use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::prelude::*;
-use rom_setup::gen_elf_hash;
 use sm_rom::{RomInstance, RomSM};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use tracing::debug;
 use witness::WitnessComponent;
-use zisk_common::io::{ZiskIO, ZiskStdin};
+use zisk_common::io::{StreamSource, ZiskIO, ZiskStdin, ZiskStream};
 
 use crate::DummyCounter;
 use data_bus::DataBusTrait;
@@ -43,8 +45,8 @@ use zisk_common::{
 };
 use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{
-    RomRomTrace, ZiskPublicValues, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS,
-    ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
+    ZiskPublicValues, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
+    ZISK_AIRGROUP_ID,
 };
 
 use std::thread::JoinHandle;
@@ -65,6 +67,8 @@ use ziskemu::{EmuOptions, ZiskEmulator};
 
 use crate::StaticSMBundle;
 
+use anyhow::Result;
+
 type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
 type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
 pub type NestedDeviceMetricsList = HashMap<usize, DeviceMetricsList>;
@@ -75,10 +79,18 @@ enum MinimalTraceExecutionMode {
     AsmWithCounter,
 }
 
+pub type StreamHintsShmem = ZiskStream<HintsProcessor<HintsShmem>>;
+pub type StreamHintsFile = ZiskStream<HintsProcessor<HintsFile>>;
+
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
 pub struct ZiskExecutor<F: PrimeField64> {
+    /// Standard input for the ZisK program.
     stdin: Mutex<ZiskStdin>,
+
+    /// Pipeline for handling precompile hints.
+    hints_stream: Mutex<StreamHintsShmem>,
+    // hints_stream: Mutex<StreamHintsFile>,
 
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
@@ -186,8 +198,21 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             (None, None)
         };
 
+        // Create hints pipeline with null hints stream initially.
+        let hints_shmem = HintsShmem::new(base_port, local_rank, unlock_mapped_memory)
+            .expect("Failed to create HintsShmem");
+        // let hints_shmem = HintsFile::new("test_modexp_results.bin".to_string())
+        //     .expect("Failed to create HintsFile");
+
+        let hints_processor = HintsProcessor::builder(hints_shmem)
+            .build()
+            .expect("Failed to create PrecompileHintsProcessor");
+
+        let hints_stream = Mutex::new(ZiskStream::new(hints_processor));
+
         Self {
             stdin: Mutex::new(ZiskStdin::null()),
+            hints_stream,
             rom_path,
             asm_runner_path: asm_path,
             asm_rom_path,
@@ -219,6 +244,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         *guard = stdin;
     }
 
+    pub fn set_hints_stream(&self, stream: StreamSource) -> Result<()> {
+        self.hints_stream.lock().unwrap().set_hints_stream(stream)
+    }
+
     #[allow(clippy::type_complexity)]
     pub fn get_execution_result(&self) -> (ZiskExecutionResult, ExecutorStats) {
         (self.execution_result.lock().unwrap().clone(), self.stats.get_inner())
@@ -246,7 +275,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             panic!("Expected EmuTrace, got something else");
         };
 
-        self.execution_result.lock().unwrap().executed_steps = steps;
+        self.execution_result.lock().unwrap().steps = steps;
 
         min_traces
     }
@@ -295,15 +324,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 AsmServices::default_port(service, self.local_rank)
             };
 
-            let shmem_input_name =
-                AsmSharedMemory::<AsmMTHeader>::shmem_input_name(port, *service, self.local_rank);
+            // Write inputs to shared memory
+            let shmem_input_name = shmem_input_name(port, *service, self.local_rank);
 
             let mut input_writer = self.shmem_input_writer[idx].lock().unwrap();
             if input_writer.is_none() {
-                tracing::info!(
+                debug!(
                     "Initializing SharedMemoryWriter for service {:?} at '{}'",
-                    service,
-                    shmem_input_name
+                    service, shmem_input_name
                 );
                 *input_writer = Some(
                     SharedMemoryWriter::new(
@@ -382,7 +410,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             panic!("Expected AsmEmuTrace, got something else");
         };
 
-        self.execution_result.lock().unwrap().executed_steps = steps;
+        self.execution_result.lock().unwrap().steps = steps;
 
         // If the world rank is 0, wait for the ROM Histogram thread to finish and set the handler
         if has_rom_sm {
@@ -1185,6 +1213,11 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Set the start time of the current execution
         self.stats.set_start_time(Instant::now());
 
+        // Process and write precompile atomically
+        if let Ok(mut hints_stream) = self.hints_stream.lock() {
+            let _ = hints_stream.start_stream();
+        }
+
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 
@@ -1596,30 +1629,6 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                 secn_instance.debug(&pctx, &sctx);
             }
         }
-        Ok(())
-    }
-
-    fn gen_custom_commits_fixed(
-        &self,
-        pctx: Arc<ProofCtx<F>>,
-        sctx: Arc<SetupCtx<F>>,
-        check: bool,
-    ) -> ProofmanResult<()> {
-        let file_name = pctx.get_custom_commits_fixed_buffer("rom", false)?;
-
-        let setup = sctx.get_setup(RomRomTrace::<F>::AIRGROUP_ID, RomRomTrace::<F>::AIR_ID)?;
-        let blowup_factor =
-            1 << (setup.stark_info.stark_struct.n_bits_ext - setup.stark_info.stark_struct.n_bits);
-        let arity = setup.stark_info.stark_struct.merkle_tree_arity;
-
-        gen_elf_hash(&self.rom_path, file_name.as_path(), blowup_factor, arity, check).map_err(
-            |e| {
-                ProofmanError::ProofmanError(format!(
-                    "Failed to generate custom commits fixed: {}",
-                    e
-                ))
-            },
-        )?;
         Ok(())
     }
 }

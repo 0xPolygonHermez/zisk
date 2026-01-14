@@ -221,10 +221,10 @@ pub fn elf2romfile(
     generation_method: AsmGenerationMethod,
     log_output: bool,
     comments: bool,
+    hints: bool,
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf_file)?;
-    ZiskRom2Asm::save_to_asm_file(&rom, asm_file, generation_method, log_output, comments);
-
+    ZiskRom2Asm::save_to_asm_file(&rom, asm_file, generation_method, log_output, comments, hints);
     Ok(())
 }
 

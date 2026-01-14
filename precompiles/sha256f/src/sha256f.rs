@@ -99,19 +99,22 @@ impl<F: PrimeField64> Sha256fSM<F> {
         let mut prev_state = [0u32; 8];
         for i in 0..CLOCKS_LOAD_STATE {
             let word = state[i];
-            let word_high = (word >> 32) as u32;
-            let word_low = (word & 0xFFFF_FFFF) as u32;
+
+            // First word is the low significant 32 bits of word
+            // Second word is the high significant 32 bits of word
+            let word_first = (word & 0xFFFF_FFFF) as u32;
+            let word_second = (word >> 32) as u32;
 
             // Store the state as u32 for further processing
-            prev_state[2 * i] = word_high;
-            prev_state[2 * i + 1] = word_low;
+            prev_state[2 * i] = word_first;
+            prev_state[2 * i + 1] = word_second;
 
             let mut row = if i == 1 || i == 3 { offset + 1 } else { offset + 3 };
 
             // Locate the state bits in the trace
             let is_a = i < 2;
             for j in 0..32 {
-                let bit = ((word_high >> j) & 1) != 0;
+                let bit = ((word_first >> j) & 1) != 0;
                 if is_a {
                     trace[row].set_a(j, bit);
                 } else {
@@ -120,7 +123,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
             }
             row -= 1;
             for j in 0..32 {
-                let bit = ((word_low >> j) & 1) != 0;
+                let bit = ((word_second >> j) & 1) != 0;
                 if is_a {
                     trace[row].set_a(j, bit);
                 } else {
@@ -133,10 +136,13 @@ impl<F: PrimeField64> Sha256fSM<F> {
         // Compute the load input stage
         let mut w = [0u32; 16];
         for i in 0..CLOCKS_LOAD_INPUT {
-            let word = input[i / 2];
+            // Input is received as little-endian u64 words, so we need to swap bytes
+            let word = input[i / 2].swap_bytes();
+            let word_low = (word & 0xFFFF_FFFF) as u32;
+            let word_high = (word >> 32) as u32;
 
             // Store the input as u32 for further processing
-            w[i] = if i % 2 == 0 { (word >> 32) as u32 } else { (word & 0xFFFF_FFFF) as u32 };
+            w[i] = if i % 2 == 0 { word_high } else { word_low };
 
             // Compute the a and e values for the current input
             let [old_a, old_b, old_c, old_d, old_e, old_f, old_g, old_h] = prev_state;
@@ -232,32 +238,36 @@ impl<F: PrimeField64> Sha256fSM<F> {
 
         for i in 0..CLOCKS_WRITE_STATE {
             let prev = state[i];
-            let prev_high = prev >> 32;
-            let prev_low = prev & 0xFFFF_FFFF;
 
-            let curr_high = (prev_state[2 * i]) as u64;
-            let curr_low = (prev_state[2 * i + 1]) as u64;
+            // First word is the low significant 32 bits of word
+            // Second word is the high significant 32 bits of word
+            let prev_first = prev & 0xFFFF_FFFF;
+            let prev_second = prev >> 32;
 
-            let new_high = curr_high + prev_high;
-            let new_low = curr_low + prev_low;
-            let (new_high_carry, new_high) =
-                ((new_high >> 32) as u8, (new_high & 0xFFFF_FFFF) as u32);
-            let (new_low_carry, new_low) = ((new_low >> 32) as u8, (new_low & 0xFFFF_FFFF) as u32);
+            let curr_first = (prev_state[2 * i]) as u64;
+            let curr_second = (prev_state[2 * i + 1]) as u64;
+
+            let new_first = curr_first + prev_first;
+            let new_second = curr_second + prev_second;
+            let (new_first_carry, new_first) =
+                ((new_first >> 32) as u8, (new_first & 0xFFFF_FFFF) as u32);
+            let (new_second_carry, new_second) =
+                ((new_second >> 32) as u8, (new_second & 0xFFFF_FFFF) as u32);
 
             let mut row = if i == 1 || i == 3 { offset + 1 } else { offset + 3 };
 
             // Locate the state bits in the trace
             let is_a = i < 2;
             if is_a {
-                trace[row].set_new_a_carry_bits(new_high_carry);
-                a_range_checks[new_high_carry as usize] += 1;
+                trace[row].set_new_a_carry_bits(new_first_carry);
+                a_range_checks[new_first_carry as usize] += 1;
             } else {
-                trace[row].set_new_e_carry_bits(new_high_carry);
-                e_range_checks[new_high_carry as usize] += 1;
+                trace[row].set_new_e_carry_bits(new_first_carry);
+                e_range_checks[new_first_carry as usize] += 1;
             }
 
             for j in 0..32 {
-                let bit = ((new_high >> j) & 1) != 0;
+                let bit = ((new_first >> j) & 1) != 0;
                 if is_a {
                     trace[row].set_a(j, bit);
                 } else {
@@ -267,15 +277,15 @@ impl<F: PrimeField64> Sha256fSM<F> {
             row -= 1;
 
             if is_a {
-                trace[row].set_new_a_carry_bits(new_low_carry);
-                a_range_checks[new_low_carry as usize] += 1;
+                trace[row].set_new_a_carry_bits(new_second_carry);
+                a_range_checks[new_second_carry as usize] += 1;
             } else {
-                trace[row].set_new_e_carry_bits(new_low_carry);
-                e_range_checks[new_low_carry as usize] += 1;
+                trace[row].set_new_e_carry_bits(new_second_carry);
+                e_range_checks[new_second_carry as usize] += 1;
             }
 
             for j in 0..32 {
-                let bit = ((new_low >> j) & 1) != 0;
+                let bit = ((new_second >> j) & 1) != 0;
                 if is_a {
                     trace[row].set_a(j, bit);
                 } else {
@@ -300,7 +310,6 @@ impl<F: PrimeField64> Sha256fSM<F> {
             let a = (t1 as u64) + (t2 as u64);
             let e = (old_d as u64) + (t1 as u64);
             (a, e)
-            // (s0 as u64, s1 as u64)
         }
 
         fn compute_w(old_w2: u32, old_w7: u32, old_w15: u32, old_w16: u32) -> u64 {

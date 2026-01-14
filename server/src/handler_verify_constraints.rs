@@ -68,7 +68,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                 tracing::info!(
                     "      time: {} seconds, steps: {}",
                     elapsed.as_secs_f32(),
-                    result.executed_steps
+                    result.steps
                 );
 
                 is_busy.store(false, std::sync::atomic::Ordering::SeqCst);

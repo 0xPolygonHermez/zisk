@@ -1,14 +1,16 @@
 use anyhow::Result;
 use clap::Parser;
+use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
+use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::io::ZiskStdin;
+use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{ExecutorStats, Stats};
 use zisk_pil::*;
 use zisk_sdk::ProverClient;
 
-use crate::ux::print_banner;
+use crate::ux::{print_banner, print_banner_field};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -40,8 +42,12 @@ pub struct ZiskStats {
     pub emulator: bool,
 
     /// Input path
-    #[clap(short = 'i', long)]
-    pub input: Option<PathBuf>,
+    #[clap(short = 'i', long, alias = "input")]
+    pub inputs: Option<String>,
+
+    /// Precompiles Hints path
+    #[clap(long)]
+    pub hints: Option<String>,
 
     /// Setup folder path
     #[clap(short = 'k', long)]
@@ -89,13 +95,36 @@ pub struct ZiskStats {
 
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
+        // Check if the deprecated alias was used
+        if std::env::args().any(|arg| arg == "--input") {
+            eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
+        }
+
         print_banner();
 
-        let stdin = self.create_stdin()?;
+        if let Some(inputs) = &self.inputs {
+            print_banner_field("Input", inputs);
+        }
 
-        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+        if let Some(hints) = &self.hints {
+            print_banner_field("Prec. Hints", hints);
+        }
+
+        let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
+
+        let hints_stream = StreamSource::from_uri(self.hints.as_deref())?;
+
+        let emulator = if cfg!(target_os = "macos") {
+            if !self.emulator {
+                warn!("Emulator mode is forced on macOS due to lack of ASM support.");
+            }
+            true
+        } else {
+            self.emulator
+        };
+
         let (world_rank, n_processes, stats) =
-            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin)? };
+            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, Some(hints_stream))? };
 
         if world_rank % 2 == 1 {
             std::thread::sleep(std::time::Duration::from_millis(2000));
@@ -115,18 +144,6 @@ impl ZiskStats {
         Ok(())
     }
 
-    fn create_stdin(&mut self) -> Result<ZiskStdin> {
-        let stdin = if let Some(input) = &self.input {
-            if !input.exists() {
-                return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
-            }
-            ZiskStdin::from_file(input)?
-        } else {
-            ZiskStdin::null()
-        };
-        Ok(stdin)
-    }
-
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStats>)> {
         let prover = ProverClient::builder()
             .emu()
@@ -139,10 +156,14 @@ impl ZiskStats {
             .print_command_info()
             .build()?;
 
-        prover.stats(stdin, self.debug.clone(), self.mpi_node.map(|n| n as u32))
+        prover.stats(stdin, None, self.debug.clone(), self.mpi_node.map(|n| n as u32))
     }
 
-    pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    pub fn run_asm(
+        &mut self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
         let prover = ProverClient::builder()
             .asm()
             .witness()
@@ -158,7 +179,7 @@ impl ZiskStats {
             .build()?;
 
         let mpi_node = self.mpi_node.map(|n| n as u32);
-        prover.stats(stdin, self.debug.clone(), mpi_node)
+        prover.stats(stdin, hints_stream, self.debug.clone(), mpi_node)
     }
 
     /// Prints stats individually and grouped, with aligned columns.

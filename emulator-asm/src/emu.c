@@ -347,12 +347,22 @@ void precompile_cache_cleanup(void)
     precompile_cache_loading = false;
 }
 
+// #define ASM_PRECOMPILE_CACHE_DEBUG
+#ifdef ASM_PRECOMPILE_CACHE_DEBUG
+uint64_t total_precompile_cache_size = 0;
+uint64_t total_precompile_cache_counter = 0;
+#endif
 void precompile_cache_store( uint8_t* data, uint64_t size)
 {
     assert(precompile_file != NULL);
     assert(precompile_cache_storing == true);
     fwrite(data, 1, size, precompile_file);
     fflush(precompile_file);
+#ifdef ASM_PRECOMPILE_CACHE_DEBUG
+    total_precompile_cache_size += size;
+    total_precompile_cache_counter++;
+    printf("precompile_cache_store() Stored %lu bytes at pos=%lu total_precompile_cache_size=%lu total_precompile_cache_counter=%lu\n", size, ftell(precompile_file), total_precompile_cache_size, total_precompile_cache_counter);
+#endif
 }
 
 void precompile_cache_load( uint8_t* data, uint64_t size)
@@ -364,6 +374,11 @@ void precompile_cache_load( uint8_t* data, uint64_t size)
         printf("precompile_cache_load() Error reading file %s read_size=%lu expected size=%lu pos=%lu\n", precompile_cache_filename, read_size, size, ftell(precompile_file));
         exit(-1);
     }
+#ifdef ASM_PRECOMPILE_CACHE_DEBUG
+    total_precompile_cache_size += size;
+    total_precompile_cache_counter++;
+    printf("precompile_cache_load() Loaded %lu bytes at pos=%lu total_precompile_cache_size=%lu total_precompile_cache_counter=%lu\n", size, ftell(precompile_file), total_precompile_cache_size, total_precompile_cache_counter);
+#endif
 }
 
 #endif
@@ -508,7 +523,7 @@ extern int _opcode_sha256(uint64_t * address)
     {
         // Load result from cache
         precompile_cache_load((uint8_t *)address[0], 4*8);
-    }  
+    }
 #endif
 
 #ifdef DEBUG
@@ -880,9 +895,9 @@ extern int _opcode_fcall(struct FcallContext * ctx)
 #endif
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("_opcode_fcall() counter=%lu\n", asm_call_metrics.fcall_counter);
+    if (emu_verbose) printf("_opcode_fcall(%lu) counter=%lu\n", ctx->function_id, asm_call_metrics.fcall_counter);
 #else
-    if (emu_verbose) printf("_opcode_fcall()\n");
+    if (emu_verbose) printf("_opcode_fcall(%lu)\n", ctx->function_id);
 #endif
 #endif
 
@@ -902,13 +917,13 @@ extern int _opcode_fcall(struct FcallContext * ctx)
 
 #ifdef ASM_PRECOMPILE_CACHE
         // Store result in cache
-        precompile_cache_store((uint8_t *)&ctx->result_size, 8*8);
+        precompile_cache_store((uint8_t *)&ctx->result_size, 1*8);
         precompile_cache_store((uint8_t *)&ctx->result, ctx->result_size*8);
     }
     else if (precompile_cache_loading)
     {
         // Load result from cache
-        precompile_cache_load((uint8_t *)&ctx->result_size, 8*8);
+        precompile_cache_load((uint8_t *)&ctx->result_size, 1*8);
         precompile_cache_load((uint8_t *)&ctx->result, ctx->result_size*8);
     }
 #endif
@@ -921,6 +936,7 @@ extern int _opcode_fcall(struct FcallContext * ctx)
     return iresult;
 }
 
+/*
 extern int _opcode_inverse_fp_ec(uint64_t params, uint64_t result)
 {
 #ifdef ASM_CALL_METRICS
@@ -1062,6 +1078,7 @@ extern int _opcode_sqrt_fp_ec_parity(uint64_t params, uint64_t result)
 #endif
     return 0;
 }
+*/
 
 /*********/
 /* BN254 */
@@ -1738,28 +1755,33 @@ extern uint64_t _opcode_add256(uint64_t * address)
         printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
     }
 #endif
+
+    uint64_t cout = 0;
+
 #ifdef ASM_PRECOMPILE_CACHE
     if (precompile_cache_storing)
     {
 #endif
 
-    // cout = [0,1] ok, cout < 0 error
-    int cout = Add256 (a, b, cin, c);
-    if (cout < 0)
-    {
-        printf("_opcode_add256() failed callilng Add256() cout=%d;", cout);
-        exit(-1);
-    }
+        // cout = [0,1] ok, cout < 0 error
+        int icout = Add256 (a, b, cin, c);
+        if (icout < 0)
+        {
+            printf("_opcode_add256() failed callilng Add256() cout=%d;", icout);
+            exit(-1);
+        }
+        cout = (uint64_t)icout;
+
 #ifdef ASM_PRECOMPILE_CACHE
         // Store result in cache
         precompile_cache_store((uint8_t *)c, 4*8);
-        precompile_cache_store((uint8_t *)cout, 8);
+        precompile_cache_store((uint8_t *)&cout, 8);
     }
     else if (precompile_cache_loading)
     {
         // Load result from cache
-        precompile_cache_load((uint8_t *)cout, 8);
         precompile_cache_load((uint8_t *)c, 4*8);
+        precompile_cache_load((uint8_t *)&cout, 8);
     }
 #endif
 
@@ -1767,7 +1789,7 @@ extern uint64_t _opcode_add256(uint64_t * address)
     if (emu_verbose) printf("opcode_add256() called Add256()\n");
     if (emu_verbose)
     {
-        printf("cout = %u\n", cout);
+        printf("cout = %lu\n", cout);
         printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
     }
 #endif

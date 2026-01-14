@@ -5,11 +5,14 @@ use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::atomic::{fence, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use tracing::{error, info};
 
-use crate::{AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
+use crate::{
+    sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmRunError, AsmService,
+    AsmServices, AsmSharedMemory, SEM_CHUNK_DONE_WAIT_DURATION,
+};
 
 use anyhow::{Context, Result};
 
@@ -30,7 +33,7 @@ pub enum MinimalTraces {
 }
 
 pub struct PreloadedMT {
-    pub output_shmem: AsmSharedMemory<AsmMTHeader>,
+    pub output_shmem: AsmSharedMemory,
 }
 
 impl PreloadedMT {
@@ -45,11 +48,10 @@ impl PreloadedMT {
             AsmServices::default_port(&AsmService::MT, local_rank)
         };
 
-        let output_name =
-            AsmSharedMemory::<AsmMTHeader>::shmem_output_name(port, AsmService::MT, local_rank);
+        let output_name = shmem_output_name(port, AsmService::MT, local_rank);
 
         let output_shared_memory =
-            AsmSharedMemory::<AsmMTHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
+            AsmSharedMemory::open_and_map::<AsmMTHeader>(&output_name, unlock_mapped_memory)?;
 
         Ok(Self { output_shmem: output_shared_memory })
     }
@@ -89,8 +91,7 @@ impl AsmRunnerMT {
             AsmServices::default_port(&AsmService::MT, local_rank)
         };
 
-        let sem_chunk_done_name =
-            AsmSharedMemory::<AsmMTHeader>::shmem_chunk_done_name(port, AsmService::MT, local_rank);
+        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::MT, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -116,7 +117,7 @@ impl AsmRunnerMT {
         let mut chunk_id = ChunkId(0);
 
         // Get the pointer to the data in the shared memory.
-        let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMTChunk;
+        let mut data_ptr = preloaded.output_shmem.data_ptr::<AsmMTHeader>() as *const AsmMTChunk;
 
         let mut emu_traces = Vec::new();
         let mut handles = Vec::new();
@@ -132,7 +133,7 @@ impl AsmRunnerMT {
         };
 
         let exit_code = loop {
-            match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
+            match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     #[cfg(feature = "stats")]
                     {
@@ -153,7 +154,7 @@ impl AsmRunnerMT {
                     if data_ptr >= threshold
                         && preloaded
                             .output_shmem
-                            .check_size_changed(&mut data_ptr)
+                            .check_size_changed::<AsmMTChunk, AsmMTHeader>(&mut data_ptr)
                             .context("Failed to check and remap shared memory for MO trace")?
                     {
                         threshold = unsafe {
@@ -187,7 +188,7 @@ impl AsmRunnerMT {
                         break 1;
                     }
 
-                    break preloaded.output_shmem.map_header().exit_code;
+                    break preloaded.output_shmem.map_header::<AsmMTHeader>().exit_code;
                 }
             }
         };

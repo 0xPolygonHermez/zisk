@@ -34,10 +34,20 @@ pub struct SyscallArith256ModParams<'a> {
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
 #[allow(unused_variables)]
-#[no_mangle]
-pub extern "C" fn syscall_arith256_mod(params: &mut SyscallArith256ModParams) {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_syscall_arith256_mod")]
+pub extern "C" fn syscall_arith256_mod(
+    params: &mut SyscallArith256ModParams,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     ziskos_syscall!(0x802, params);
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    unreachable!()
+    {
+        precompiles_helpers::arith256_mod(params.a, params.b, params.c, params.module, params.d);
+        #[cfg(feature = "hints")]
+        {
+            hints.extend_from_slice(params.d);
+        }
+    }
 }

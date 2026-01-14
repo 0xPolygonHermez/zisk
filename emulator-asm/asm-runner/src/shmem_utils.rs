@@ -16,30 +16,29 @@ use zisk_common::io::{ZiskIO, ZiskStdin};
 use anyhow::anyhow;
 use anyhow::Result;
 
-use crate::{AsmInputC2, AsmService, AsmServices, SharedMemoryWriter};
+use crate::{AsmInputC2, SharedMemoryWriter};
 
 pub enum AsmSharedMemoryMode {
     ReadOnly,
     ReadWrite,
 }
 
-pub struct AsmSharedMemory<H: AsmShmemHeader> {
+pub struct AsmSharedMemory {
     _fd: i32,
     mapped_ptr: *mut c_void,
     mapped_size: usize,
     shmem_name: String,
-    _phantom: std::marker::PhantomData<H>,
 }
 
-unsafe impl<H: AsmShmemHeader> Send for AsmSharedMemory<H> {}
-unsafe impl<H: AsmShmemHeader> Sync for AsmSharedMemory<H> {}
+unsafe impl Send for AsmSharedMemory {}
+unsafe impl Sync for AsmSharedMemory {}
 
 pub trait AsmShmemHeader: Debug {
     fn allocated_size(&self) -> u64;
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
+impl Drop for AsmSharedMemory {
     fn drop(&mut self) {
         self.unmap().unwrap_or_else(|err| {
             tracing::error!("Failed to unmap shared memory '{}': {}", self.shmem_name, err)
@@ -48,8 +47,11 @@ impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
     }
 }
 
-impl<H: AsmShmemHeader> AsmSharedMemory<H> {
-    pub fn open_and_map(name: &str, _unlock_mapped_memory: bool) -> Result<Self> {
+impl AsmSharedMemory {
+    pub fn open_and_map<H: AsmShmemHeader>(
+        name: &str,
+        _unlock_mapped_memory: bool,
+    ) -> Result<Self> {
         unsafe {
             if name.is_empty() {
                 return Err(anyhow::anyhow!("Shared memory name {name} cannot be empty"));
@@ -132,7 +134,6 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
                 mapped_ptr,
                 mapped_size: allocated_size,
                 shmem_name: name.to_string(),
-                _phantom: std::marker::PhantomData::<H>,
             })
         }
     }
@@ -209,8 +210,11 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         }
     }
 
-    pub fn check_size_changed<T>(&mut self, current_read_ptr: &mut *const T) -> Result<bool> {
-        let read_mapped_size = self.map_header().allocated_size();
+    pub fn check_size_changed<T, H: AsmShmemHeader>(
+        &mut self,
+        current_read_ptr: &mut *const T,
+    ) -> Result<bool> {
+        let read_mapped_size = self.map_header::<H>().allocated_size();
 
         if read_mapped_size == self.mapped_size as u64 {
             return Ok(false);
@@ -247,7 +251,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         Ok(())
     }
 
-    pub fn map_header(&self) -> H {
+    pub fn map_header<H: AsmShmemHeader>(&self) -> H {
         if !self.is_mapped() {
             panic!("Shared memory '{}' is not mapped, cannot read header", self.shmem_name);
         }
@@ -267,25 +271,9 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         self.mapped_ptr
     }
 
-    pub fn data_ptr(&self) -> *mut c_void {
+    pub fn data_ptr<H: AsmShmemHeader>(&self) -> *mut c_void {
         // Skip the header size to get the data pointer
         unsafe { self.mapped_ptr.add(size_of::<H>()) }
-    }
-
-    pub fn shmem_input_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-        format!("{}_{}_input", AsmServices::shmem_prefix(port, local_rank), asm_service.as_str())
-    }
-
-    pub fn shmem_output_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-        format!("{}_{}_output", AsmServices::shmem_prefix(port, local_rank), asm_service.as_str())
-    }
-
-    pub fn shmem_chunk_done_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-        format!(
-            "/{}_{}_chunk_done",
-            AsmServices::shmem_prefix(port, local_rank),
-            asm_service.as_str()
-        )
     }
 }
 

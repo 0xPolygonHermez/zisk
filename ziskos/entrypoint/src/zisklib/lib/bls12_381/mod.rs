@@ -19,5 +19,6 @@ pub use fp12::*;
 pub use fp2::*;
 pub use fp6::*;
 pub use fr::*;
+pub use miller_loop::*;
 pub use pairing::*;
 pub use twist::*;

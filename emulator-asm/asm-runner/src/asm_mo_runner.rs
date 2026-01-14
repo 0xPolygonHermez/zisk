@@ -5,9 +5,11 @@ use zisk_common::Plan;
 
 use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
-use std::time::Duration;
 use tracing::error;
 
+use crate::sem_chunk_done_name;
+use crate::shmem_output_name;
+use crate::SEM_CHUNK_DONE_WAIT_DURATION;
 use crate::{AsmMOChunk, AsmMOHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
 use mem_planner_cpp::MemPlanner;
 
@@ -20,7 +22,7 @@ use zisk_common::ExecutorStatsEvent;
 use mem_common::save_plans;
 
 pub struct PreloadedMO {
-    pub output_shmem: AsmSharedMemory<AsmMOHeader>,
+    pub output_shmem: AsmSharedMemory,
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
 }
@@ -37,11 +39,10 @@ impl PreloadedMO {
             AsmServices::default_port(&AsmService::MO, local_rank)
         };
 
-        let output_name =
-            AsmSharedMemory::<AsmMOHeader>::shmem_output_name(port, AsmService::MO, local_rank);
+        let output_name = shmem_output_name(port, AsmService::MO, local_rank);
 
         let output_shared_memory =
-            AsmSharedMemory::<AsmMOHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
+            AsmSharedMemory::open_and_map::<AsmMOHeader>(&output_name, unlock_mapped_memory)?;
 
         Ok(Self {
             output_shmem: output_shared_memory,
@@ -98,8 +99,7 @@ impl AsmRunnerMO {
             AsmServices::default_port(&AsmService::MO, local_rank)
         };
 
-        let sem_chunk_done_name =
-            AsmSharedMemory::<AsmMOHeader>::shmem_chunk_done_name(port, AsmService::MO, local_rank);
+        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::MO, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -128,7 +128,7 @@ impl AsmRunnerMO {
             .unwrap_or_else(|| preloaded.handle_mo.take().unwrap().join().unwrap());
 
         // Get the pointer to the data in the shared memory.
-        let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
+        let mut data_ptr = preloaded.output_shmem.data_ptr::<AsmMOHeader>() as *const AsmMOChunk;
 
         // Initialize C++ memory operations trace
         mem_planner.execute();
@@ -153,7 +153,7 @@ impl AsmRunnerMO {
         };
 
         let exit_code = loop {
-            match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
+            match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
@@ -162,7 +162,7 @@ impl AsmRunnerMO {
                     if data_ptr >= threshold
                         && preloaded
                             .output_shmem
-                            .check_size_changed(&mut data_ptr)
+                            .check_size_changed::<AsmMOChunk, AsmMOHeader>(&mut data_ptr)
                             .context("Failed to check and remap shared memory for MO trace")?
                     {
                         threshold = unsafe {
@@ -206,7 +206,7 @@ impl AsmRunnerMO {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
-                    break preloaded.output_shmem.map_header().exit_code;
+                    break preloaded.output_shmem.map_header::<AsmMOHeader>().exit_code;
                 }
             }
         };
