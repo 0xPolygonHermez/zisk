@@ -87,9 +87,6 @@ pub struct ZiskServer {
     #[clap(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
 
-    #[clap(short = 'f', long, default_value_t = false)]
-    pub final_snark: bool,
-
     #[clap(short = 'r', long, default_value_t = false)]
     pub rma: bool,
 
@@ -220,7 +217,7 @@ impl ZiskServer {
             debug_info,
             self.verify_constraints,
             self.aggregation,
-            self.final_snark,
+            false,
             gpu_params,
             self.unlock_mapped_memory,
             self.shared_tables,

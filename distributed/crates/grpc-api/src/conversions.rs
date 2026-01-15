@@ -373,7 +373,7 @@ impl From<AggParamsDto> for AggParams {
             verify_constraints: dto.verify_constraints,
             aggregation: dto.aggregation,
             rma: dto.rma,
-            final_snark: dto.final_snark,
+            compressed: dto.compressed,
             verify_proofs: dto.verify_proofs,
             save_proofs: dto.save_proofs,
             test_mode: dto.test_mode,

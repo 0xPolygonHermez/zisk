@@ -72,7 +72,7 @@ pub struct ZiskServerParams {
 
     pub verify_constraints: bool,
     pub aggregation: bool,
-    pub final_snark: bool,
+    pub compressed: bool,
 
     pub gpu_params: ParamsGPU,
 
@@ -97,7 +97,7 @@ impl ZiskServerParams {
         debug: DebugInfo,
         verify_constraints: bool,
         aggregation: bool,
-        final_snark: bool,
+        compressed: bool,
         gpu_params: ParamsGPU,
         unlock_mapped_memory: bool,
         shared_tables: bool,
@@ -118,7 +118,7 @@ impl ZiskServerParams {
             server_id: Uuid::new_v4(),
             verify_constraints,
             aggregation,
-            final_snark,
+            compressed,
             gpu_params,
             unlock_mapped_memory,
             shared_tables,
@@ -168,7 +168,7 @@ pub struct ServerConfig {
 
     pub verify_constraints: bool,
     pub aggregation: bool,
-    pub final_snark: bool,
+    pub compressed: bool,
 
     pub gpu_params: ParamsGPU,
 
@@ -191,7 +191,7 @@ impl ServerConfig {
         asm_runner_options: AsmRunnerOptions,
         verify_constraints: bool,
         aggregation: bool,
-        final_snark: bool,
+        compressed: bool,
         gpu_params: ParamsGPU,
         shared_tables: bool,
     ) -> Self {
@@ -211,7 +211,7 @@ impl ServerConfig {
             asm_runner_options,
             verify_constraints,
             aggregation,
-            final_snark,
+            compressed,
             gpu_params,
             shared_tables,
         }
@@ -361,7 +361,6 @@ impl ZiskService {
             params.custom_commits_map.clone(),
             params.verify_constraints,
             params.aggregation,
-            params.final_snark,
             params.gpu_params.clone(),
             params.verbose.into(),
             witness_lib.get_packed_info(),
@@ -409,7 +408,7 @@ impl ZiskService {
             asm_runner_options,
             params.verify_constraints,
             params.aggregation,
-            params.final_snark,
+            params.compressed,
             params.gpu_params.clone(),
             params.shared_tables,
         );

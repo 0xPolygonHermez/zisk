@@ -50,9 +50,9 @@ pub enum ClientCommand {
         #[clap(short = 'r', long, default_value_t = false)]
         rma: bool,
 
-        /// Use final snark
-        #[clap(short = 'f', long, default_value_t = false)]
-        final_snark: bool,
+        /// Use compressed proofs
+        #[clap(short = 'c', long, default_value_t = false)]
+        compressed: bool,
 
         /// Verify proofs
         #[clap(short = 'y', long, default_value_t = false)]
@@ -106,7 +106,7 @@ impl ZiskProveClient {
                 input,
                 aggregation,
                 rma,
-                final_snark,
+                compressed,
                 verify_proofs,
                 minimal_memory,
                 output_dir,
@@ -118,7 +118,7 @@ impl ZiskProveClient {
                     input: input.clone(),
                     aggregation: *aggregation,
                     rma: *rma,
-                    final_snark: *final_snark,
+                    compressed: *compressed,
                     verify_proofs: *verify_proofs,
                     minimal_memory: *minimal_memory,
                     folder: output_dir.clone(),
