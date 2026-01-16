@@ -590,12 +590,19 @@ pub unsafe extern "C" fn miller_loop_bls12_381_c(
     let p_arr: &[u64; 12] = &*(p as *const [u64; 12]);
     let q_arr: &[u64; 24] = &*(q as *const [u64; 24]);
 
+    #[cfg(feature = "hints-debug")]
+    println!(
+        "miller_loop_bls12_381_c called with p = {:?}, q = {:?}",
+        p_arr, q_arr
+    );
+
     let result = miller_loop_bls12_381(
         p_arr,
         q_arr,
         #[cfg(feature = "hints")]
         hints,
     );
+
     let ret_arr: &mut [u64; 72] = &mut *(ret as *mut [u64; 72]);
     *ret_arr = result;
 }

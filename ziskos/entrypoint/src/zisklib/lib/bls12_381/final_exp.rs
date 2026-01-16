@@ -151,6 +151,10 @@ pub unsafe extern "C" fn final_exp_bls12_381_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let f_arr: &[u64; 72] = &*(f as *const [u64; 72]);
+
+    #[cfg(feature = "hints-debug")]
+    println!("final_exp_bls12_381_c called with f = {:?}", f_arr);
+
     let result = final_exp_bls12_381(
         f_arr,
         #[cfg(feature = "hints")]

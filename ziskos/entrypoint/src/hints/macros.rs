@@ -71,8 +71,8 @@ macro_rules! define_hint {
                 #[cfg(feature = "hints-debug")]
                 println!(
                     concat!(
-                        stringify!($hint_fn),
-                        " args: ",
+                        stringify!($variant),
+                        " params: ",
                         $( stringify!($field_name), "={:?}; ", )+
                     ),
                     $( $field_name, )+

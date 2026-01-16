@@ -495,6 +495,9 @@ pub unsafe extern "C" fn decompress_bls12_381_c(
 ) -> u8 {
     let input_arr: &[u8; 48] = &*(input as *const [u8; 48]);
 
+    #[cfg(feature = "hints-debug")]
+    println!("decompress_bls12_381_c called with input = {:?}", input_arr);
+
     match decompress_bls12_381(
         input_arr,
         #[cfg(feature = "hints")]
@@ -523,6 +526,10 @@ pub unsafe extern "C" fn is_on_curve_bls12_381_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     let p_arr: &[u64; 12] = &*(p as *const [u64; 12]);
+
+    #[cfg(feature = "hints-debug")]
+    println!("is_on_curve_bls12_381_c called with p = {:?}", p_arr);
+
     is_on_curve_bls12_381(
         p_arr,
         #[cfg(feature = "hints")]
@@ -540,6 +547,10 @@ pub unsafe extern "C" fn is_on_subgroup_bls12_381_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     let p_arr: &[u64; 12] = &*(p as *const [u64; 12]);
+
+    #[cfg(feature = "hints-debug")]
+    println!("is_on_subgroup_bls12_381_c called with p = {:?}", p_arr);
+
     is_on_subgroup_bls12_381(
         p_arr,
         #[cfg(feature = "hints")]
@@ -560,12 +571,19 @@ pub unsafe extern "C" fn add_bls12_381_c(
     let p1_arr: &[u64; 12] = &*(p1 as *const [u64; 12]);
     let p2_arr: &[u64; 12] = &*(p2 as *const [u64; 12]);
 
+    #[cfg(feature = "hints-debug")]
+    println!(
+        "add_bls12_381_c called with p1 = {:?}, p2 = {:?}",
+        p1_arr, p2_arr
+    );
+
     let result = add_bls12_381(
         p1_arr,
         p2_arr,
         #[cfg(feature = "hints")]
         hints,
     );
+
     if result == IDENTITY_G1 {
         return true;
     }
@@ -612,6 +630,12 @@ pub unsafe extern "C" fn scalar_mul_bls12_381_c(
 ) {
     let p_arr: &[u64; 12] = &*(p as *const [u64; 12]);
     let k_arr: &[u64; 6] = &*(k as *const [u64; 6]);
+
+    #[cfg(feature = "hints-debug")]
+    println!(
+        "scalar_mul_bls12_381_c called with p = {:?}, k = {:?}",
+        p_arr, k_arr
+    );
 
     let result = scalar_mul_bls12_381(
         p_arr,

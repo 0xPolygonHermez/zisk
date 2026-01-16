@@ -6226,6 +6226,8 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
+ "once_cell",
+ "paste",
  "precompiles-helpers",
  "rand 0.8.5",
  "serde",
