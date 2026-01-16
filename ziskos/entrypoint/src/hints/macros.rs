@@ -1,14 +1,17 @@
 macro_rules! define_hint {
     (
         variant $variant:ident {
-            $( $field_name:ident : $type:ty ; $len:literal ),+ $(,)?
+            $( $field_name:ident : [ $type:ty ; $len:literal ] ),+ $(,)?
         }
-        hint(
-            fn $hint_fn:ident,
-            ty = $hint_type_const:ident
-        );
+        hint_id $hint_id:expr
     ) => {
         paste::paste! {
+            pub const [<HINT_ $variant>]: u32 = $hint_id;
+            pub const [<$variant:upper _BYTES>]: usize = 0 $(+ core::mem::size_of::<[$type; $len]>())+;
+            pub const [<$variant:upper _LEN_U64>]: usize = ([<$variant:upper _BYTES>]) / 8;
+            pub const [<HEADER_ $variant:upper>]: u64 =
+                ((([<HINT_ $variant>] as u64) << 32) | [<$variant:upper _LEN_U64>] as u64);
+
             // Assert that length of each field is aligned with u64
             $(
                 const _: () = {
@@ -25,47 +28,19 @@ macro_rules! define_hint {
                 };
             )+
 
-            #[repr(C, align(8))]
-            #[derive(Clone, Debug, Eq, PartialEq)]
-            pub struct $variant {
-                $( pub $field_name: [$type; $len], )+
-            }
-
-            impl $variant {
-                pub fn new($( $field_name: [$type; $len] ),+) -> Self {
-                    Self { $( $field_name ),+ }
+            // Assert that total length of all fields does not exceed MAX_SLICE_U64_LEN
+            const _: () = {
+                if [<$variant:upper _BYTES>] > ($crate::hints::hint::MAX_SLICE_U64_LEN * core::mem::size_of::<u64>()) {
+                    panic!(concat!(
+                        "Hint ",
+                        stringify!($variant),
+                        " total length exceeds MAX_SLICE_U64_LEN"
+                    ));
                 }
-            }
-
-            impl Default for $variant {
-                fn default() -> Self {
-                    Self {
-                        $( $field_name: [0 as $type; $len], )+
-                    }
-                }
-            }
-
-            pub const [<$variant:upper _BYTES>]: usize = core::mem::size_of::<$variant>();
-            pub const [<$variant:upper _LEN_U64>]: u64 = ([<$variant:upper _BYTES>] as u64) / 8;
-            pub const [<HEADER_ $variant:upper>]: [u8; 8] =
-                ((( $hint_type_const as u64) << 32) | [<$variant:upper _LEN_U64>]).to_le_bytes();
-
-            impl $crate::hints::types::HintData for $variant {
-                #[inline(always)]
-                fn header_and_payload(&self) -> ([u8; 8], &[u8]) {
-                    let bytes = unsafe {
-                        core::slice::from_raw_parts(
-                            (self as *const $variant).cast::<u8>(),
-                            [<$variant:upper _BYTES>],
-                        )
-                    };
-
-                    ([<HEADER_ $variant:upper>], bytes)
-                }
-            }
+            };
 
             #[inline(always)]
-            pub fn $hint_fn($( $field_name: &[$type; $len] ),+) {
+            pub fn [<hint_ $variant:lower>]($( $field_name: &[$type; $len] ),+) {
                 $crate::hints::check_main_thread();
 
                 #[cfg(feature = "hints-debug")]
@@ -78,8 +53,37 @@ macro_rules! define_hint {
                     $( $field_name, )+
                 );
 
-                let hint = $crate::hints::hint::Hint::$variant($variant::new($( *$field_name ),+));
-                $crate::hints::HINT_QUEUE.push(hint);
+                let mut hint = $crate::hints::hint::HintSliceU64 {
+                    header: [<HEADER_ $variant:upper>],
+                    data: [0u64; crate::hints::hint::MAX_SLICE_U64_LEN],
+                    len: 0,
+                };
+
+                unsafe {
+                    let mut offset = 0usize;
+                    let dst = hint.data.as_mut_ptr().cast::<u8>();
+
+                    $(
+                        core::ptr::copy_nonoverlapping(
+                            $field_name.as_ptr().cast::<u8>(),
+                            dst.add(offset),
+                            core::mem::size_of::<[$type; $len]>(),
+                        );
+                        offset += core::mem::size_of::<[$type; $len]>();
+                    )+
+
+                    hint.len = [<$variant:upper _LEN_U64>];
+
+                    // Prevent unused variable warning
+                    let _ = offset;
+                }
+
+                $crate::hints::HINT_QUEUE.push($crate::hints::hint::Hint2::HintSliceU64(hint));
+            }
+
+            #[ctor::ctor]
+            fn [<$variant:lower _register_meta>]() {
+                $crate::hints::register_hint([<HINT_ $variant>], stringify!($variant).to_string().to_lowercase() );
             }
         }
     };

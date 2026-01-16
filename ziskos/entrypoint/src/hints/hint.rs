@@ -1,38 +1,3 @@
-use crate::hints::bigint256::AddMod256;
-use crate::hints::bigint256::DivRem256;
-use crate::hints::bigint256::MulMod256;
-use crate::hints::bigint256::OMul256;
-use crate::hints::bigint256::RedMod256;
-use crate::hints::bigint256::WMul256;
-use crate::hints::bigint256::WPow256;
-use crate::hints::bls12_381::AddBls12_381;
-use crate::hints::bls12_381::AddTwistBls12_381;
-use crate::hints::bls12_381::DecompressBls12_381;
-use crate::hints::bls12_381::DecompressTwistBls12_381;
-use crate::hints::bls12_381::FinalExpBls12_381;
-use crate::hints::bls12_381::IsOnCurveBls12_381;
-use crate::hints::bls12_381::IsOnCurveTwistBls12_381;
-use crate::hints::bls12_381::IsOnSubgroupBls12_381;
-use crate::hints::bls12_381::IsOnSubgroupTwistBls12_381;
-use crate::hints::bls12_381::MillerLoopBls12_381;
-use crate::hints::bls12_381::MulFp12Bls12_381;
-use crate::hints::bls12_381::ScalarMulBls12_381;
-use crate::hints::bls12_381::ScalarMulTwistBls12_381;
-use crate::hints::bn254::AddBN254;
-use crate::hints::bn254::IsOnCurveBN254;
-use crate::hints::bn254::IsOnCurveTwistBN254;
-use crate::hints::bn254::IsOnSubgroupTwistBN254;
-use crate::hints::bn254::MulBN254;
-use crate::hints::bn254::PairingBatchBN254;
-use crate::hints::bn254::ToAffineBN254;
-use crate::hints::bn254::ToAffineTwistBN254;
-use crate::hints::modexp::ModExp;
-use crate::hints::secp256k1::ECRecover;
-
-use crate::hints::keccakf::*;
-use crate::hints::sha256f::*;
-use crate::hints::types::HintData;
-
 use std::collections::VecDeque;
 use std::io::{self, Read};
 use std::sync::{
@@ -40,150 +5,105 @@ use std::sync::{
     Condvar, Mutex,
 };
 
-#[derive(Copy, Clone, Debug)]
-pub enum HintKind {
-    KeccakF,
-    Sha2,
-    ECRecover,
-    // ModExp,
-    RedMod256,
-    AddMod256,
-    MulMod256,
-    DivRem256,
-    WPow256,
-    OMul256,
-    WMul256,
-    ModExp,
-    IsOnCurveBN254,
-    ToAffineBN254,
-    AddBN254,
-    MulBN254,
-    ToAffineTwistBN254,
-    IsOnCurveTwistBN254,
-    IsOnSubgroupTwistBN254,
-    PairingBatchBN254,
-    MulFp12Bls12_381,
-    ScalarMulBls12_381,
-    ScalarMulTwistBls12_381,
-    AddBls12_381,
-    AddTwistBls12_381,
-    IsOnCurveBls12_381,
-    IsOnCurveTwistBls12_381,
-    IsOnSubgroupBls12_381,
-    IsOnSubgroupTwistBls12_381,
-    MillerLoopBls12_381,
-    FinalExpBls12_381,
-    DecompressBls12_381,
-    DecompressTwistBls12_381,
+pub const MAX_SLICE_U64_LEN: usize = 192;
+
+#[derive(Clone, Debug)]
+pub struct HintSliceU64 {
+    pub header: u64,
+    pub data: [u64; MAX_SLICE_U64_LEN],
+    pub len: usize,
+}
+
+impl HintSliceU64 {
+    #[inline(always)]
+    fn header_and_payload(&self) -> ([u8; 8], &[u8]) {
+        let bytes = unsafe {
+            core::slice::from_raw_parts(self.data.as_ptr() as *const u8, self.len * 8)
+        };
+        (self.header.to_le_bytes(), bytes)
+    }
+
+    #[inline(always)]
+    fn hint_id(&self) -> u32 {
+        (self.header >> 32) as u32
+    }
 }
 
 #[derive(Clone, Debug)]
-pub enum Hint {
-    KeccakF(KeccakF),
-    SHA2(Sha2),
-    ECRecover(ECRecover),
-    // ModExp(Vec<u8>),
-    RedMod256(RedMod256),
-    AddMod256(AddMod256),
-    MulMod256(MulMod256),
-    DivRem256(DivRem256),
-    WPow256(WPow256),
-    OMul256(OMul256),
-    WMul256(WMul256),
-    ModExp(ModExp),
-    IsOnCurveBN254(IsOnCurveBN254),
-    ToAffineBN254(ToAffineBN254),
-    AddBN254(AddBN254),
-    MulBN254(MulBN254),
-    ToAffineTwistBN254(ToAffineTwistBN254),
-    IsOnCurveTwistBN254(IsOnCurveTwistBN254),
-    IsOnSubgroupTwistBN254(IsOnSubgroupTwistBN254),
-    PairingBatchBN254(PairingBatchBN254),
-    MulFp12Bls12_381(MulFp12Bls12_381),
-    ScalarMulBls12_381(ScalarMulBls12_381),
-    ScalarMulTwistBls12_381(ScalarMulTwistBls12_381),
-    AddBls12_381(AddBls12_381),
-    AddTwistBls12_381(AddTwistBls12_381),
-    IsOnCurveBls12_381(IsOnCurveBls12_381),
-    IsOnCurveTwistBls12_381(IsOnCurveTwistBls12_381),
-    IsOnSubgroupBls12_381(IsOnSubgroupBls12_381),
-    IsOnSubgroupTwistBls12_381(IsOnSubgroupTwistBls12_381),
-    MillerLoopBls12_381(MillerLoopBls12_381),
-    FinalExpBls12_381(FinalExpBls12_381),
-    DecompressBls12_381(DecompressBls12_381),
-    DecompressTwistBls12_381(DecompressTwistBls12_381),
+pub struct HintVecU64 {
+    pub header: u64,
+    pub data: Vec<u64>,
 }
 
-impl Hint {
-    #[inline]
-    #[allow(unused)]
-    pub fn kind(&self) -> HintKind {
+impl HintVecU64 {
+    #[inline(always)]
+    fn header_and_payload(&self) -> ([u8; 8], &[u8]) {
+        (self.header.to_le_bytes(), unsafe {
+            core::slice::from_raw_parts(
+                self.data.as_ptr() as *const u8,
+                self.data.len() * core::mem::size_of::<u64>(),
+            )
+        })
+    }
+
+    #[inline(always)]
+    fn hint_id(&self) -> u32 {
+        (self.header >> 32) as u32
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Hint2 {
+    HintSliceU64(HintSliceU64),
+    HintVecU8(HintVecU64),
+}
+
+impl Hint2 {
+    #[inline(always)]
+    pub fn hint_id(&self) -> u32 {
         match self {
-            Hint::KeccakF(_) => HintKind::KeccakF,
-            Hint::SHA2(_) => HintKind::Sha2,
-            Hint::ECRecover(_) => HintKind::ECRecover,
-            // Hint::ModExp(_) => HintKind::ModExp,
-            Hint::RedMod256(_) => HintKind::RedMod256,
-            Hint::AddMod256(_) => HintKind::AddMod256,
-            Hint::MulMod256(_) => HintKind::MulMod256,
-            Hint::DivRem256(_) => HintKind::DivRem256,
-            Hint::WPow256(_) => HintKind::WPow256,
-            Hint::OMul256(_) => HintKind::OMul256,
-            Hint::WMul256(_) => HintKind::WMul256,
-            Hint::ModExp(_) => HintKind::ModExp,
-            Hint::IsOnCurveBN254(_) => HintKind::IsOnCurveBN254,
-            Hint::ToAffineBN254(_) => HintKind::ToAffineBN254,
-            Hint::AddBN254(_) => HintKind::AddBN254,
-            Hint::MulBN254(_) => HintKind::MulBN254,
-            Hint::ToAffineTwistBN254(_) => HintKind::ToAffineTwistBN254,
-            Hint::IsOnCurveTwistBN254(_) => HintKind::IsOnCurveTwistBN254,
-            Hint::IsOnSubgroupTwistBN254(_) => HintKind::IsOnSubgroupTwistBN254,
-            Hint::PairingBatchBN254(_) => HintKind::PairingBatchBN254,
-            Hint::MulFp12Bls12_381(_) => HintKind::MulFp12Bls12_381,
-            Hint::ScalarMulBls12_381(_) => HintKind::ScalarMulBls12_381,
-            Hint::ScalarMulTwistBls12_381(_) => HintKind::ScalarMulTwistBls12_381,
-            Hint::AddBls12_381(_) => HintKind::AddBls12_381,
-            Hint::AddTwistBls12_381(_) => HintKind::AddTwistBls12_381,
-            Hint::IsOnCurveBls12_381(_) => HintKind::IsOnCurveBls12_381,
-            Hint::IsOnCurveTwistBls12_381(_) => HintKind::IsOnCurveTwistBls12_381,
-            Hint::IsOnSubgroupBls12_381(_) => HintKind::IsOnSubgroupBls12_381,
-            Hint::IsOnSubgroupTwistBls12_381(_) => HintKind::IsOnSubgroupTwistBls12_381,
-            Hint::MillerLoopBls12_381(_) => HintKind::MillerLoopBls12_381,
-            Hint::FinalExpBls12_381(_) => HintKind::FinalExpBls12_381,
-            Hint::DecompressBls12_381(_) => HintKind::DecompressBls12_381,
-            Hint::DecompressTwistBls12_381(_) => HintKind::DecompressTwistBls12_381,
+            Hint2::HintSliceU64(hint) => hint.hint_id(),
+            Hint2::HintVecU8(hint) => hint.hint_id(),
         }
     }
 
-    #[allow(unused)]
+    #[inline(always)]
+    fn header_and_payload(&self) -> ([u8; 8], &[u8]) {
+        match self {
+            Hint2::HintSliceU64(hint) => hint.header_and_payload(),
+            Hint2::HintVecU8(hint) => hint.header_and_payload(),
+        }
+    }
+
+    #[inline(always)]
     pub fn read_from(&self, file: &mut std::fs::File, disable_prefix: bool) -> Result<(), String> {
-        let kind = self.kind();
+        let id = self.hint_id();
         let (expected_header, expected_payload) = self.header_and_payload();
 
         if !disable_prefix {
             let mut header = [0u8; 8];
             if let Err(e) = file.read_exact(&mut header) {
-                return Err(format!("Failed to read {:?} header, error: {}", kind, e));
+                return Err(format!("Failed to read {:?} header, error: {}", id, e));
             }
 
             if header != expected_header {
-                return Err(format!("Unexpected {:?} header: expected {:?}, got {:?}", kind, expected_header, header));
+                return Err(format!("Unexpected {:?} header: expected {:?}, got {:?}", id, expected_header, header));
             }
         }
 
         let mut payload = vec![0u8; expected_payload.len()];
         if let Err(e) = file.read_exact(&mut payload) {
-            return Err(format!("Failed to read {:?} payload, error: {}", kind, e));
+            return Err(format!("Failed to read {:?} payload, error: {}", id, e));
         }
 
         if payload.as_slice() != expected_payload {
-            return Err(format!("{:?} value mismatch", kind));
+            return Err(format!("{:?} value mismatch", id));
         }
 
         Ok(())
     }
 
-    #[inline]
+     #[inline(always)]
     pub fn write_to<W: std::io::Write>(&self, w: &mut W, disable_prefix: bool) -> io::Result<()> {
         debug_assert!(cfg!(target_endian = "little"));
 
@@ -197,49 +117,10 @@ impl Hint {
 
         Ok(())
     }
-
-    #[inline]
-    fn header_and_payload(&self) -> ([u8; 8], &[u8]) {
-        match self {
-            Hint::KeccakF(keccakf) => keccakf.header_and_payload(),
-            Hint::SHA2(sha2) => sha2.header_and_payload(),
-            Hint::ECRecover(ecrecover) => ecrecover.header_and_payload(),
-            Hint::RedMod256(redmod256) => redmod256.header_and_payload(),
-            Hint::AddMod256(addmod256) => addmod256.header_and_payload(),
-            Hint::MulMod256(mulmod256) => mulmod256.header_and_payload(),
-            Hint::DivRem256(divrem256) => divrem256.header_and_payload(),
-            Hint::WPow256(wpow256) => wpow256.header_and_payload(),
-            Hint::OMul256(omul256) => omul256.header_and_payload(),
-            Hint::WMul256(wmul256) => wmul256.header_and_payload(),
-            Hint::ModExp(modexp) => modexp.header_and_payload(),
-            Hint::IsOnCurveBN254(is_on_curve_bn254) => is_on_curve_bn254.header_and_payload(),
-            Hint::ToAffineBN254(to_affine_bn254) => to_affine_bn254.header_and_payload(),
-            Hint::AddBN254(add_bn254) => add_bn254.header_and_payload(),
-            Hint::MulBN254(mul_bn254) => mul_bn254.header_and_payload(),
-            Hint::ToAffineTwistBN254(to_affine_twist_bn254) => to_affine_twist_bn254.header_and_payload(),
-            Hint::IsOnCurveTwistBN254(is_on_curve_twist_bn254) => is_on_curve_twist_bn254.header_and_payload(),
-            Hint::IsOnSubgroupTwistBN254(is_on_subgroup_twist_bn254) => is_on_subgroup_twist_bn254.header_and_payload(),
-            Hint::PairingBatchBN254(pairing_batch_bn254) => pairing_batch_bn254.header_and_payload(),
-            Hint::MulFp12Bls12_381(mul_fp12_bls12_381) => mul_fp12_bls12_381.header_and_payload(),
-            Hint::ScalarMulBls12_381(scalar_mul_bls12_381) => scalar_mul_bls12_381.header_and_payload(),
-            Hint::ScalarMulTwistBls12_381(scalar_mul_twist_bls12_381) => scalar_mul_twist_bls12_381.header_and_payload(),
-            Hint::AddBls12_381(add_bls12_381) => add_bls12_381.header_and_payload(),
-            Hint::AddTwistBls12_381(add_twist_bls12_381) => add_twist_bls12_381.header_and_payload(),
-            Hint::IsOnCurveBls12_381(is_on_curve_bls12_381) => is_on_curve_bls12_381.header_and_payload(),
-            Hint::IsOnCurveTwistBls12_381(is_on_curve_twist_bls12_381) => is_on_curve_twist_bls12_381.header_and_payload(),
-            Hint::IsOnSubgroupBls12_381(is_on_subgroup_bls12_381) => is_on_subgroup_bls12_381.header_and_payload(),
-            Hint::IsOnSubgroupTwistBls12_381(is_on_subgroup_twist_bls12_381) => is_on_subgroup_twist_bls12_381.header_and_payload(),
-            Hint::MillerLoopBls12_381(miller_loop_bls12_381) => miller_loop_bls12_381.header_and_payload(),
-            Hint::FinalExpBls12_381(final_exp_bls12_381) => final_exp_bls12_381.header_and_payload(),
-            Hint::DecompressBls12_381(decompress_bls12_381) => decompress_bls12_381.header_and_payload(),
-            Hint::DecompressTwistBls12_381(decompress_twist_bls12_381) => decompress_twist_bls12_381.header_and_payload(),
-        }
-    }
 }
-
 #[derive(Debug)]
 pub struct HintQueue {
-    states: Mutex<VecDeque<Hint>>,
+    states: Mutex<VecDeque<Hint2>>,
     condvar: Condvar,
     closed: AtomicBool,
     paused: AtomicBool,
@@ -262,13 +143,13 @@ impl HintQueue {
     }
 
     #[inline(always)]
-    pub fn push(&self, hint: Hint) {
+    pub fn push(&self, hint: Hint2) {
         let mut states = self.states.lock().unwrap();
         states.push_back(hint);
         self.condvar.notify_one();
     }
 
-    pub fn pop_batch(&self, out: &mut Vec<Hint>, max_batch: usize) -> bool {
+    pub fn pop_batch(&self, out: &mut Vec<Hint2>, max_batch: usize) -> bool {
         let mut states = self.states.lock().unwrap();
         loop {
             if !states.is_empty() {

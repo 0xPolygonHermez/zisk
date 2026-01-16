@@ -13,6 +13,8 @@ pub use profile::*;
 pub mod zisklib;
 pub mod syscalls;
 pub mod ziskos_definitions;
+
+#[cfg(zisk_hints)]
 pub mod hints;
 
 #[macro_export]

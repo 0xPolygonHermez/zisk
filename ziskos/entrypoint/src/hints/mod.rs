@@ -14,62 +14,51 @@ mod utils;
 
 use crate::hints::{
     hint::HintQueue,
-    types::{HINT_START, HINT_END, HINT_WRITE_BATCH, HintFileWriterHandleCell},
+    types::{HINT_END, HINT_START, HINT_WRITE_BATCH, HintFileWriterHandleCell, HintRegisterInfo},
 };
 
-#[cfg(feature = "hints-metrics")]
-use types::HintTotals;
-
 use once_cell::sync::{Lazy, OnceCell};
-use std::io::{self, BufWriter, Write};
+use std::{collections::HashMap, io::{self, BufWriter, Write}, sync::RwLock};
 use std::path::PathBuf;
 use std::thread::{self, ThreadId};
 
 #[cfg(feature = "hints-reference")]
 use std::io::Read;
 
+static HINTS: Lazy<RwLock<HashMap<u32, HintRegisterInfo>>> = Lazy::new(|| RwLock::new(HashMap::new()));
 static HINT_QUEUE: Lazy<HintQueue> = Lazy::new(HintQueue::new);
 static HINT_FILE_WRITER_HANDLE: Lazy<HintFileWriterHandleCell> = Lazy::new(HintFileWriterHandleCell::new);
 static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
 
-pub use keccakf::hint_keccakf;
-pub use sha256f::hint_sha2;
-pub use secp256k1::hint_ecrecover;
-pub use bigint256::{
-    hint_redmod256,
-    hint_addmod256,
-    hint_mulmod256,
-    hint_divrem256,
-    hint_wpow256,
-    hint_omul256,
-    hint_wmul256
-};
-pub use modexp::hint_modexp;
-pub use bn254::{
-    hint_is_on_curve_bn254,
-    hint_to_affine_bn254,
-    hint_add_bn254,
-    hint_mul_bn254,
-    hint_to_affine_twist_bn254,
-    hint_is_on_curve_twist_bn254,
-    hint_is_on_subgroup_twist_bn254,
-    hint_pairing_batch_bn254,
-};
-pub use bls12_381::{
-    hint_mul_fp12_bls12_381,
-    hint_is_on_curve_bls12_381,
-    hint_is_on_subgroup_bls12_381,
-    hint_add_bls12_381,
-    hint_scalar_mul_bls12_381,
-    hint_is_on_curve_twist_bls12_381,
-    hint_is_on_subgroup_twist_bls12_381,
-    hint_add_twist_bls12_381,
-    hint_scalar_mul_twist_bls12_381,
-    hint_miller_loop_bls12_381,
-    hint_final_exp_bls12_381,
-    hint_decompress_bls12_381,
-    hint_decompress_twist_bls12_381,
-};
+pub use keccakf::*;
+pub use sha256f::*;
+pub use secp256k1::*;
+
+// pub use bigint256::{
+//     hint_redmod256,
+//     hint_addmod256,
+//     hint_mulmod256,
+//     hint_divrem256,
+//     hint_wpow256,
+//     hint_omul256,
+//     hint_wmul256
+// };
+
+// pub use modexp::hint_modexp;
+pub use bn254::*;
+pub use bls12_381::*;
+
+pub(crate) fn register_hint(hint_type: u32, hint_name: String) {
+    HINTS.write().expect("HINTS poisoned").insert(hint_type, HintRegisterInfo { hint_name, count: 0 });
+}
+
+pub(crate) fn inc_hint_count(hint_type: u32) {
+    if let Ok(mut hints) = HINTS.write() {
+        if let Some(info) = hints.get_mut(&hint_type) {
+            info.count += 1;
+        }
+    }
+}
 
 pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
     // Record the main thread id to validate single-threaded calls later
@@ -184,9 +173,6 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
         writer.write_all(&start_bytes)?;
     }
 
-    #[cfg(feature = "hints-metrics")]
-    let mut totals = HintTotals::default();
-
     let mut batch = Vec::with_capacity(HINT_WRITE_BATCH);
     loop {
         batch.clear();
@@ -204,7 +190,7 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
             }
 
             #[cfg(feature = "hints-metrics")]
-            totals.inc(hint.kind());
+            inc_hint_count(hint.hint_id());
 
             hint.write_to(&mut writer, disable_prefix)?;
         }
@@ -220,7 +206,15 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
     writer.flush()?;
 
     #[cfg(feature = "hints-metrics")]
-    totals.print_summary();
+    {
+        let hints = HINTS.read().expect("HINTS poisoned");
+        println!("Precompile hints usage summary:");
+        for (_, info) in hints.iter() {
+            if info.count > 0 {
+                println!("  Hint {}: {}", info.hint_name, info.count);
+            }
+        }
+    }
 
     Ok(())
 }
