@@ -590,7 +590,7 @@ pub unsafe extern "C" fn miller_loop_bls12_381_c(
     let p_arr: &[u64; 12] = &*(p as *const [u64; 12]);
     let q_arr: &[u64; 24] = &*(q as *const [u64; 24]);
 
-    #[cfg(feature = "hints-debug")]
+    #[cfg(zisk_hints_debug)]
     println!(
         "miller_loop_bls12_381_c called with p = {:?}, q = {:?}",
         p_arr, q_arr

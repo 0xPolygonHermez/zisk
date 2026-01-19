@@ -495,7 +495,7 @@ pub unsafe extern "C" fn decompress_bls12_381_c(
 ) -> u8 {
     let input_arr: &[u8; 48] = &*(input as *const [u8; 48]);
 
-    #[cfg(feature = "hints-debug")]
+    #[cfg(zisk_hints_debug)]
     println!("decompress_bls12_381_c called with input = {:?}", input_arr);
 
     match decompress_bls12_381(
@@ -527,7 +527,7 @@ pub unsafe extern "C" fn is_on_curve_bls12_381_c(
 ) -> bool {
     let p_arr: &[u64; 12] = &*(p as *const [u64; 12]);
 
-    #[cfg(feature = "hints-debug")]
+    #[cfg(zisk_hints_debug)]
     println!("is_on_curve_bls12_381_c called with p = {:?}", p_arr);
 
     is_on_curve_bls12_381(
@@ -548,7 +548,7 @@ pub unsafe extern "C" fn is_on_subgroup_bls12_381_c(
 ) -> bool {
     let p_arr: &[u64; 12] = &*(p as *const [u64; 12]);
 
-    #[cfg(feature = "hints-debug")]
+    #[cfg(zisk_hints_debug)]
     println!("is_on_subgroup_bls12_381_c called with p = {:?}", p_arr);
 
     is_on_subgroup_bls12_381(
@@ -571,7 +571,7 @@ pub unsafe extern "C" fn add_bls12_381_c(
     let p1_arr: &[u64; 12] = &*(p1 as *const [u64; 12]);
     let p2_arr: &[u64; 12] = &*(p2 as *const [u64; 12]);
 
-    #[cfg(feature = "hints-debug")]
+    #[cfg(zisk_hints_debug)]
     println!(
         "add_bls12_381_c called with p1 = {:?}, p2 = {:?}",
         p1_arr, p2_arr
@@ -631,7 +631,7 @@ pub unsafe extern "C" fn scalar_mul_bls12_381_c(
     let p_arr: &[u64; 12] = &*(p as *const [u64; 12]);
     let k_arr: &[u64; 6] = &*(k as *const [u64; 6]);
 
-    #[cfg(feature = "hints-debug")]
+    #[cfg(zisk_hints_debug)]
     println!(
         "scalar_mul_bls12_381_c called with p = {:?}, k = {:?}",
         p_arr, k_arr

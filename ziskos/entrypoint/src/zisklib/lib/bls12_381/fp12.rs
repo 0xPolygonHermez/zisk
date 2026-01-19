@@ -561,7 +561,7 @@ pub unsafe extern "C" fn mul_fp12_bls12_381_c(
     let a_arr: &[u64; 72] = &*(a as *const [u64; 72]);
     let b_arr: &[u64; 72] = &*(b as *const [u64; 72]);
 
-    #[cfg(feature = "hints-debug")]
+    #[cfg(zisk_hints_debug)]
     println!(
         "mul_fp12_bls12_381_c called with a = {:?}, b = {:?}",
         a_arr, b_arr

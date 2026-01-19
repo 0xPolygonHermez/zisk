@@ -35,8 +35,4 @@ paste = "1.0"
 ctor = "0.2"
 
 [features]
-default = ["hints-metrics", "hints-reference"]
-hints-metrics = []
-hints-reference = []
-hints-debug = []
 hints = []

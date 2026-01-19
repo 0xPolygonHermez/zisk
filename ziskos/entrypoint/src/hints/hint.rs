@@ -1,9 +1,15 @@
 use std::collections::VecDeque;
-use std::io::{self, Read};
+use std::io::{self};
+
+#[cfg(zisk_hints_reference)]
+use std::io::Read;
+
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Condvar, Mutex,
 };
+
+use crate::hints::HintModExp;
 
 pub const MAX_SLICE_U64_LEN: usize = 192;
 
@@ -23,6 +29,7 @@ impl HintSliceU64 {
         (self.header.to_le_bytes(), bytes)
     }
 
+    #[cfg(zisk_hints_metrics)]
     #[inline(always)]
     fn hint_id(&self) -> u32 {
         (self.header >> 32) as u32
@@ -30,51 +37,30 @@ impl HintSliceU64 {
 }
 
 #[derive(Clone, Debug)]
-pub struct HintVecU64 {
-    pub header: u64,
-    pub data: Vec<u64>,
-}
-
-impl HintVecU64 {
-    #[inline(always)]
-    fn header_and_payload(&self) -> ([u8; 8], &[u8]) {
-        (self.header.to_le_bytes(), unsafe {
-            core::slice::from_raw_parts(
-                self.data.as_ptr() as *const u8,
-                self.data.len() * core::mem::size_of::<u64>(),
-            )
-        })
-    }
-
-    #[inline(always)]
-    fn hint_id(&self) -> u32 {
-        (self.header >> 32) as u32
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum Hint2 {
+pub enum Hint {
     HintSliceU64(HintSliceU64),
-    HintVecU8(HintVecU64),
+    HintModExp(HintModExp),
 }
 
-impl Hint2 {
+impl Hint {
+    #[cfg(zisk_hints_metrics)]
     #[inline(always)]
     pub fn hint_id(&self) -> u32 {
         match self {
-            Hint2::HintSliceU64(hint) => hint.hint_id(),
-            Hint2::HintVecU8(hint) => hint.hint_id(),
+            Hint::HintSliceU64(hint) => hint.hint_id(),
+            Hint::HintModExp(hint) => hint.hint_id(),
         }
     }
 
     #[inline(always)]
     fn header_and_payload(&self) -> ([u8; 8], &[u8]) {
         match self {
-            Hint2::HintSliceU64(hint) => hint.header_and_payload(),
-            Hint2::HintVecU8(hint) => hint.header_and_payload(),
+            Hint::HintSliceU64(hint) => hint.header_and_payload(),
+            Hint::HintModExp(hint) => hint.header_and_payload(),
         }
     }
 
+    #[cfg(zisk_hints_reference)]
     #[inline(always)]
     pub fn read_from(&self, file: &mut std::fs::File, disable_prefix: bool) -> Result<(), String> {
         let id = self.hint_id();
@@ -120,7 +106,7 @@ impl Hint2 {
 }
 #[derive(Debug)]
 pub struct HintQueue {
-    states: Mutex<VecDeque<Hint2>>,
+    states: Mutex<VecDeque<Hint>>,
     condvar: Condvar,
     closed: AtomicBool,
     paused: AtomicBool,
@@ -143,13 +129,13 @@ impl HintQueue {
     }
 
     #[inline(always)]
-    pub fn push(&self, hint: Hint2) {
+    pub fn push(&self, hint: Hint) {
         let mut states = self.states.lock().unwrap();
         states.push_back(hint);
         self.condvar.notify_one();
     }
 
-    pub fn pop_batch(&self, out: &mut Vec<Hint2>, max_batch: usize) -> bool {
+    pub fn pop_batch(&self, out: &mut Vec<Hint>, max_batch: usize) -> bool {
         let mut states = self.states.lock().unwrap();
         loop {
             if !states.is_empty() {

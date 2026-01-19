@@ -28,7 +28,7 @@ define_hint! {
     hint_id 0x02003
 }
 
-// === secp256k1_fn_mul_scalar_c (x, y) ===
+// === secp256k1_fn_mul_c (x, y) ===
 
 define_hint! {
     variant SECP256K1_FN_MUL { x: [u64; 4], y: [u64; 4] }
@@ -62,7 +62,7 @@ define_hint! {
     hint_id 0x02022
 }
 
-// === secp2561k1_ecdsa_verify_c (pk, z, r, s) ===
+// === secp256k1_ecdsa_verify_c (pk, z, r, s) ===
 
 define_hint! {
     variant SECP256K1_ECDSA_VERIFY { pk: [u64; 8], z: [u64; 4], r: [u64; 4], s: [u64; 4] }

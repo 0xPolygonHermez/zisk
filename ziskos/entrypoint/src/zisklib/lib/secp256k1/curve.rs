@@ -901,7 +901,11 @@ pub unsafe extern "C" fn secp256k1_decompress_c(
 ) -> u8 {
     // Convert the x-coordinate from BEu8 to LEu64
     let x_bytes: &[u8; 32] = &*(x_bytes_ptr as *const [u8; 32]);
+
     let x = bytes_be_to_u64_le(x_bytes);
+
+    #[cfg(zisk_hints_debug)]
+    println!("SECP256K1_DECOMPRESS params: x={:x?}; y_is_odd={};", x, y_is_odd);
 
     let (x, y) = match secp256k1_decompress(
         &x,
@@ -936,6 +940,10 @@ pub unsafe extern "C" fn secp256k1_to_affine_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let p: &[u64; 12] = &*(p_ptr as *const [u64; 12]);
+
+    #[cfg(zisk_hints_debug)]
+    println!("SECP256K1_TO_AFFINE params: p={:x?}", p);
+
     let result = secp256k1_to_affine(
         p,
         #[cfg(feature = "hints")]
@@ -970,6 +978,9 @@ pub unsafe extern "C" fn secp256k1_double_scalar_mul_with_g_c(
     let k1: &[u64; 4] = &*(k1_ptr as *const [u64; 4]);
     let k2: &[u64; 4] = &*(k2_ptr as *const [u64; 4]);
     let p: &[u64; 8] = &*(p_ptr as *const [u64; 8]);
+
+    #[cfg(zisk_hints_debug)]
+    println!("SECP256K1_DOUBLE_SCALAR_MUL_WITH_G params: k1={:x?}; k2={:x?}; p={:x?};", k1, k2, p);
 
     match secp256k1_double_scalar_mul_with_g(
         k1,

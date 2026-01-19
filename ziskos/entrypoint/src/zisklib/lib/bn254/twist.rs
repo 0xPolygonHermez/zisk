@@ -432,7 +432,7 @@ pub unsafe extern "C" fn is_on_curve_twist_bn254_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     let p = unsafe { &*(p_ptr as *const [u64; 16]) };
-    #[cfg(feature = "hints-debug")]
+    #[cfg(zisk_hints_debug)]
     println!("is_on_curve_twist_bn254_c called with p = {:?}", p);
 
     is_on_curve_twist_bn254(
@@ -451,7 +451,7 @@ pub unsafe extern "C" fn is_on_subgroup_twist_bn254_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     let p = unsafe { &*(p_ptr as *const [u64; 16]) };
-    #[cfg(feature = "hints-debug")]
+    #[cfg(zisk_hints_debug)]
     println!("is_on_subgroup_twist_bn254_c called with p = {:?}", p);
 
     is_on_subgroup_twist_bn254(
@@ -472,7 +472,7 @@ pub unsafe extern "C" fn to_affine_twist_bn254_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let p = unsafe { &*(p_ptr as *const [u64; 24]) };
-    #[cfg(feature = "hints-debug")]
+    #[cfg(zisk_hints_debug)]
     println!("to_affine_twist_bn254_c called with p = {:?}", p);
 
     let result = to_affine_twist_bn254(

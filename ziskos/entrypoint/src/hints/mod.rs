@@ -14,18 +14,27 @@ mod utils;
 
 use crate::hints::{
     hint::HintQueue,
-    types::{HINT_END, HINT_START, HINT_WRITE_BATCH, HintFileWriterHandleCell, HintRegisterInfo},
+    types::{HINT_END, HINT_START, HINT_WRITE_BATCH, HintFileWriterHandleCell},
 };
 
+#[cfg(zisk_hints_metrics)]
+use crate::hints::types::HintRegisterInfo;
+
 use once_cell::sync::{Lazy, OnceCell};
-use std::{collections::HashMap, io::{self, BufWriter, Write}, sync::RwLock};
+use std::io::{self, BufWriter, Write};
+
+#[cfg(zisk_hints_metrics)]
+use std::{collections::HashMap, sync::RwLock};
+
 use std::path::PathBuf;
 use std::thread::{self, ThreadId};
 
-#[cfg(feature = "hints-reference")]
+#[cfg(zisk_hints_reference)]
 use std::io::Read;
 
+#[cfg(zisk_hints_metrics)]
 static HINTS: Lazy<RwLock<HashMap<u32, HintRegisterInfo>>> = Lazy::new(|| RwLock::new(HashMap::new()));
+
 static HINT_QUEUE: Lazy<HintQueue> = Lazy::new(HintQueue::new);
 static HINT_FILE_WRITER_HANDLE: Lazy<HintFileWriterHandleCell> = Lazy::new(HintFileWriterHandleCell::new);
 static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
@@ -33,25 +42,17 @@ static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
 pub use keccakf::*;
 pub use sha256f::*;
 pub use secp256k1::*;
-
-// pub use bigint256::{
-//     hint_redmod256,
-//     hint_addmod256,
-//     hint_mulmod256,
-//     hint_divrem256,
-//     hint_wpow256,
-//     hint_omul256,
-//     hint_wmul256
-// };
-
-// pub use modexp::hint_modexp;
+pub use bigint256::*;
+pub use modexp::*;
 pub use bn254::*;
 pub use bls12_381::*;
 
+#[cfg(zisk_hints_metrics)]
 pub(crate) fn register_hint(hint_type: u32, hint_name: String) {
     HINTS.write().expect("HINTS poisoned").insert(hint_type, HintRegisterInfo { hint_name, count: 0 });
 }
 
+#[cfg(zisk_hints_metrics)]
 pub(crate) fn inc_hint_count(hint_type: u32) {
     if let Ok(mut hints) = HINTS.write() {
         if let Some(info) = hints.get_mut(&hint_type) {
@@ -153,17 +154,17 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
     let mut writer = BufWriter::with_capacity(1 << 20, file);
     let disable_prefix = std::env::var("HINTS_DISABLE_PREFIX").unwrap_or_default() == "1";
 
-    #[cfg(feature = "hints-reference")]
-    let mut ref_file: Option<std::fs::File> = None;
-    #[cfg(feature = "hints-reference")]
-    let mut ref_idx: usize = 0;
-    #[cfg(feature = "hints-reference")]
-    if let Ok(path) = std::env::var("HINTS_REF_FILE") {
-        println!("Comparing precompile hints against reference file {}", path);
-        let mut f = std::fs::File::open(path)?;
-        let mut start = [0u8; 8];
-        let _ = f.read_exact(&mut start);
-        ref_file = Some(f);
+    #[cfg(zisk_hints_reference)]
+    {
+        let mut ref_file: Option<std::fs::File> = None;
+        let mut ref_idx: usize = 0;
+        if let Ok(path) = std::env::var("HINTS_REF_FILE") {
+            println!("Comparing precompile hints against reference file {}", path);
+            let mut f = std::fs::File::open(path)?;
+            let mut start = [0u8; 8];
+            let _ = f.read_exact(&mut start);
+            ref_file = Some(f);
+        }
     }
 
     // Write HINT_START
@@ -181,7 +182,7 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
         }
 
         for hint in batch.drain(..) {
-            #[cfg(feature = "hints-reference")]
+            #[cfg(zisk_hints_reference)]
             if let Some(file) = ref_file.as_mut() {
                 if let Err(err) = hint.read_from(file, disable_prefix) {
                     panic!("Reference comparison failed at hint #{}: {}", ref_idx, err);
@@ -189,7 +190,7 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
                 ref_idx += 1;
             }
 
-            #[cfg(feature = "hints-metrics")]
+            #[cfg(zisk_hints_metrics)]
             inc_hint_count(hint.hint_id());
 
             hint.write_to(&mut writer, disable_prefix)?;
@@ -205,7 +206,7 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
 
     writer.flush()?;
 
-    #[cfg(feature = "hints-metrics")]
+    #[cfg(zisk_hints_metrics)]
     {
         let hints = HINTS.read().expect("HINTS poisoned");
         println!("Precompile hints usage summary:");

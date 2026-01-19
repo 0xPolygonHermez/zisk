@@ -138,6 +138,9 @@ pub unsafe extern "C" fn secp256k1_fn_reduce_c(
 ) {
     let x: &[u64; 4] = &*(x_ptr as *const [u64; 4]);
 
+    #[cfg(zisk_hints_debug)]
+    println!("SECP256K1_FN_REDUCE params: x={:?};", x);
+
     if lt(x, &N) {
         *out_ptr.add(0) = x[0];
         *out_ptr.add(1) = x[1];
@@ -180,6 +183,9 @@ pub unsafe extern "C" fn secp256k1_fn_add_c(
     let x: &[u64; 4] = &*(x_ptr as *const [u64; 4]);
     let y: &[u64; 4] = &*(y_ptr as *const [u64; 4]);
 
+    #[cfg(zisk_hints_debug)]
+    println!("SECP256K1_FN_ADD params: x={:?}; y={:?};", x, y);
+
     let mut params =
         SyscallArith256ModParams { a: x, b: &[1, 0, 0, 0], c: y, module: &N, d: &mut [0, 0, 0, 0] };
     syscall_arith256_mod(
@@ -205,6 +211,9 @@ pub unsafe extern "C" fn secp256k1_fn_neg_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let x: &[u64; 4] = &*(x_ptr as *const [u64; 4]);
+
+    #[cfg(zisk_hints_debug)]
+    println!("SECP256K1_FN_NEG params: x={:?};", x);
 
     let mut params = SyscallArith256ModParams {
         a: x,
@@ -240,6 +249,9 @@ pub unsafe extern "C" fn secp256k1_fn_sub_c(
     let x: &[u64; 4] = &*(x_ptr as *const [u64; 4]);
     let y: &[u64; 4] = &*(y_ptr as *const [u64; 4]);
 
+    #[cfg(zisk_hints_debug)]
+    println!("SECP256K1_FN_SUB params: x={:?}; y={:?};", x, y);
+
     let mut params =
         SyscallArith256ModParams { a: y, b: &N_MINUS_ONE, c: x, module: &N, d: &mut [0, 0, 0, 0] };
     syscall_arith256_mod(
@@ -269,6 +281,9 @@ pub unsafe extern "C" fn secp256k1_fn_mul_c(
     let x: &[u64; 4] = &*(x_ptr as *const [u64; 4]);
     let y: &[u64; 4] = &*(y_ptr as *const [u64; 4]);
 
+    #[cfg(zisk_hints_debug)]
+    println!("SECP256K1_FN_MUL params: x={:?}; y={:?};", x, y);
+
     let mut params =
         SyscallArith256ModParams { a: x, b: y, c: &[0, 0, 0, 0], module: &N, d: &mut [0, 0, 0, 0] };
     syscall_arith256_mod(
@@ -294,6 +309,9 @@ pub unsafe extern "C" fn secp256k1_fn_inv_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let x: &[u64; 4] = &*(x_ptr as *const [u64; 4]);
+
+    #[cfg(zisk_hints_debug)]
+    println!("SECP256K1_FN_INV params: x={:?};", x);
 
     // Hint the inverse
     let x_inv = fcall_secp256k1_fn_inv(

@@ -41,9 +41,13 @@ macro_rules! define_hint {
 
             #[inline(always)]
             pub fn [<hint_ $variant:lower>]($( $field_name: &[$type; $len] ),+) {
+                if $crate::hints::HINT_QUEUE.is_paused() {
+                    return;
+                }
+
                 $crate::hints::check_main_thread();
 
-                #[cfg(feature = "hints-debug")]
+                #[cfg(zisk_hints_debug)]
                 println!(
                     concat!(
                         stringify!($variant),
@@ -78,9 +82,10 @@ macro_rules! define_hint {
                     let _ = offset;
                 }
 
-                $crate::hints::HINT_QUEUE.push($crate::hints::hint::Hint2::HintSliceU64(hint));
+                $crate::hints::HINT_QUEUE.push($crate::hints::hint::Hint::HintSliceU64(hint));
             }
 
+            #[cfg(zisk_hints_metrics)]
             #[ctor::ctor]
             fn [<$variant:lower _register_meta>]() {
                 $crate::hints::register_hint([<HINT_ $variant>], stringify!($variant).to_string().to_lowercase() );
