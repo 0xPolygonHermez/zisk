@@ -55,8 +55,8 @@ pub struct ZiskProve {
     #[clap(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
 
-    #[clap(short = 'f', long, default_value_t = false)]
-    pub final_snark: bool,
+    #[clap(short = 'c', long, default_value_t = false)]
+    pub compressed: bool,
 
     #[clap(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
@@ -174,7 +174,7 @@ impl ZiskProve {
             .emu()
             .prove()
             .aggregation(self.aggregation)
-            .final_snark(self.final_snark)
+            .compressed(self.compressed)
             .rma(self.rma)
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
@@ -204,7 +204,7 @@ impl ZiskProve {
             .asm()
             .prove()
             .aggregation(self.aggregation)
-            .final_snark(self.final_snark)
+            .compressed(self.compressed)
             .rma(self.rma)
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())

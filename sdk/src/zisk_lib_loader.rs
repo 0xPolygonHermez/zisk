@@ -27,6 +27,7 @@ impl ZiskLibLoader {
         let lib_path = get_witness_computation_lib(Some(&witness_lib));
         let library = unsafe { Library::new(lib_path) }?;
 
+        tracing::info!("Loading witness library from {:?}", witness_lib);
         let witness_lib_constructor: Symbol<ZiskLibInitFn<F>> =
             unsafe { library.get(b"init_library")? };
 

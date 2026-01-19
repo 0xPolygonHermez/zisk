@@ -93,6 +93,7 @@ ziskos = { path = "ziskos/entrypoint" }
 circuit = { path = "tools/circuit" }
 zisk-sdk = { path = "sdk" }
 zisk-build = { path = "ziskbuild" }
+zisk-verifier = { path = "verifier" }
 
 # Distributed crates
 zisk-distributed-common = { path = "distributed/crates/common" }

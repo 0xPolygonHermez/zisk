@@ -89,8 +89,8 @@ pub struct ProverConfig {
     /// Flag to enable aggregation
     pub aggregation: bool,
 
-    /// Flag to enable final SNARK
-    pub final_snark: bool,
+    /// Flag to enable vadcop final compressed proof
+    pub compressed: bool,
 
     /// Preallocate resources
     pub gpu_params: ParamsGPU,
@@ -224,7 +224,7 @@ impl ProverConfig {
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
             verify_constraints: prover_service_config.verify_constraints,
             aggregation: prover_service_config.aggregation,
-            final_snark: prover_service_config.final_snark,
+            compressed: prover_service_config.compressed,
             gpu_params,
             shared_tables: prover_service_config.shared_tables,
             rma: prover_service_config.rma,
@@ -699,7 +699,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         ProofOptions {
             verify_constraints: false,
             aggregation: false,
-            final_snark: false,
+            compressed: false,
             verify_proofs: true,
             save_proofs: true,
             test_mode: false,
@@ -713,7 +713,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         ProofOptions {
             verify_constraints: false,
             aggregation: true,
-            final_snark: false,
+            compressed: true,
             verify_proofs: false,
             save_proofs: false,
             test_mode: false,
@@ -728,7 +728,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             verify_constraints: agg_params.verify_constraints,
             aggregation: agg_params.aggregation,
             rma: agg_params.rma,
-            final_snark: agg_params.final_snark,
+            compressed: agg_params.compressed,
             verify_proofs: agg_params.verify_proofs,
             save_proofs: agg_params.save_proofs,
             test_mode: agg_params.test_mode,

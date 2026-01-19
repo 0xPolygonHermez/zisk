@@ -251,7 +251,7 @@ message AggParams {
   bool verify_constraints = 4;
   bool aggregation = 5;
   bool rma = 6;
-  bool final_snark = 7;
+  bool compressed = 7;
   bool verify_proofs = 8;
   bool save_proofs = 9;
   bool test_mode = 10;

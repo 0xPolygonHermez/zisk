@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    get_asm_paths, get_proving_key, get_proving_key_snark, get_witness_computation_lib,
+    get_asm_paths, get_proving_key, get_witness_computation_lib,
     prover::{Asm, AsmProver, Emu, EmuProver, ZiskProver},
 };
 use colored::Colorize;
@@ -51,7 +51,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     // Common fields for both EMU and ASM
     aggregation: bool,
     rma: bool,
-    final_snark: bool,
+    compressed: bool,
     witness_lib: Option<PathBuf>,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
@@ -143,10 +143,10 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
         self
     }
 
-    /// Enables final SNARK generation.
+    /// Enables final vadcop is compressed proof.
     #[must_use]
-    pub fn final_snark(mut self, enable: bool) -> Self {
-        self.final_snark = enable;
+    pub fn compressed(mut self, enable: bool) -> Self {
+        self.compressed = enable;
         self
     }
 
@@ -328,10 +328,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
     fn build_emu(self) -> Result<ZiskProver<Emu>> {
         let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
-        let proving_key_snark = match self.final_snark {
-            true => Some(get_proving_key_snark(self.proving_key_snark.as_ref())),
-            false => None,
-        };
+        let proving_key_snark = None;
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
 
         let output_dir = if !self.verify_constraints {
@@ -356,7 +353,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
             self.verify_constraints,
             self.aggregation,
             self.rma,
-            self.final_snark,
+            self.compressed,
             witness_lib,
             proving_key,
             proving_key_snark,
@@ -473,10 +470,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
     {
         let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
-        let proving_key_snark = match self.final_snark {
-            true => Some(get_proving_key_snark(self.proving_key_snark.as_ref())),
-            false => None,
-        };
+        let proving_key_snark = None;
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
 
         let output_dir = if !self.verify_constraints {
@@ -503,7 +497,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
             self.verify_constraints,
             self.aggregation,
             self.rma,
-            self.final_snark,
+            self.compressed,
             witness_lib,
             proving_key,
             proving_key_snark,
@@ -570,7 +564,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             aggregation: builder.aggregation,
             witness: builder.witness,
             rma: builder.rma,
-            final_snark: builder.final_snark,
+            compressed: builder.compressed,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
@@ -606,7 +600,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             aggregation: builder.aggregation,
             witness: builder.witness,
             rma: builder.rma,
-            final_snark: builder.final_snark,
+            compressed: builder.compressed,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
@@ -644,7 +638,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             aggregation: builder.aggregation,
             witness: builder.witness,
             rma: builder.rma,
-            final_snark: builder.final_snark,
+            compressed: builder.compressed,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
@@ -680,7 +674,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             aggregation: builder.aggregation,
             witness: builder.witness,
             rma: builder.rma,
-            final_snark: builder.final_snark,
+            compressed: builder.compressed,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,

@@ -31,7 +31,6 @@ colored = { workspace = true }
 fields = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-proofman-verifier = { workspace = true }
 proofman-util = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }
@@ -40,6 +39,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 libloading = { workspace = true }
 zisk-sdk = { workspace = true }
+zisk-verifier = { workspace = true }
 
 zstd = { workspace = true }
 bytemuck = { workspace = true }

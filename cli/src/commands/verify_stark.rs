@@ -1,9 +1,9 @@
-use anyhow::{anyhow, Ok, Result};
+use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use proofman_common::initialize_logger;
-use proofman_verifier::verify;
 use std::fs;
+use zisk_verifier::{verify_zisk_proof, verify_zisk_proof_compressed};
 
 use zisk_build::ZISK_VERSION_MESSAGE;
 
@@ -22,6 +22,9 @@ pub struct ZiskVerify {
 
     #[clap(short = 'k', long)]
     pub vk: Option<String>,
+
+    #[clap(short = 'c', long, default_value_t = false)]
+    pub compressed: bool,
 }
 
 impl ZiskVerify {
@@ -40,11 +43,15 @@ impl ZiskVerify {
 
         let vk = &self.get_verkey();
 
-        let valid = verify(&proof, vk);
+        let result = if self.compressed {
+            verify_zisk_proof_compressed(&proof, vk)
+        } else {
+            verify_zisk_proof(&proof, vk)
+        };
 
         let elapsed = start.elapsed();
 
-        if !valid {
+        if result.is_err() {
             tracing::info!("{}", "\u{2717} Stark proof was not verified".bright_red().bold());
         } else {
             tracing::info!("{}", "\u{2713} Stark proof was verified".bright_green().bold());
@@ -54,11 +61,7 @@ impl ZiskVerify {
         tracing::info!("      time: {} milliseconds", elapsed.as_millis());
         tracing::info!("{}", "----------------------------".bright_green().bold());
 
-        if !valid {
-            Err(anyhow!("Stark proof was not verified"))
-        } else {
-            Ok(())
-        }
+        result
     }
 
     /// Gets the verification key

@@ -1,0 +1,15 @@
+[package]
+name = "zisk-verifier"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+proofman-verifier = { workspace = true, features = ["verify"] }
+anyhow = { workspace = true }
+
+[features]
+default = []
