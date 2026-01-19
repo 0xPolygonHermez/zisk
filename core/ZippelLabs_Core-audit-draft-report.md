@@ -7,7 +7,8 @@
 
 ### Description
 
-The code in `collect_elf_payload_from_bytes` allocates memory for ELF sections based solely on the section header sizes without any upper bound. A malicious or corrupted ELF file can specify extremely large SHT_PROGBITS or SHT_NOBITS section sizes, causing `raw.to_vec()` or `vec![0u8; aligned_size]` to allocate excessive memory. This can lead to out-of-memory conditions or process crashes, enabling a Denial-of-Service attack when parsing untrusted ELF files.
+The code in `collect_elf_payload_from_bytes` allocates memory for ELF sections based solely on the section header sizes without any upper bound. 
+A malicious or corrupted ELF file can specify extremely large SHT_PROGBITS or SHT_NOBITS section sizes, causing `raw.to_vec()` or `vec![0u8; aligned_size]` to allocate excessive memory. This can lead to out-of-memory conditions or process crashes, enabling a Denial-of-Service attack when parsing untrusted ELF files.
 
 ### Recommendation 
 
@@ -59,10 +60,7 @@ _ => panic!(
     riscv_instruction.inst
 ),
 ```
-Security Finding in 
-Finding ID: fb308fa1-707d-4bd8-93aa-82176ca94374
-Severity: LOW
-Matched Rule: 
+
 ## [LOW-1]Missing output argument causes panic on unwrap
 
 **Context**: `core/src/bin/riscv2zisk.rs`
