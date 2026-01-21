@@ -9,7 +9,7 @@ use std::sync::{
     Condvar, Mutex,
 };
 
-use crate::hints::HintModExp;
+use crate::hints::{HintModExp, PairingBatchBn254};
 
 pub const MAX_SLICE_U64_LEN: usize = 192;
 
@@ -40,6 +40,7 @@ impl HintSliceU64 {
 pub enum Hint {
     HintSliceU64(HintSliceU64),
     HintModExp(HintModExp),
+    HintPairingBatchBn254(PairingBatchBn254),
 }
 
 impl Hint {
@@ -49,6 +50,7 @@ impl Hint {
         match self {
             Hint::HintSliceU64(hint) => hint.hint_id(),
             Hint::HintModExp(hint) => hint.hint_id(),
+            Hint::HintPairingBatchBn254(hint) => hint.hint_id(),
         }
     }
 
@@ -57,6 +59,7 @@ impl Hint {
         match self {
             Hint::HintSliceU64(hint) => hint.header_and_payload(),
             Hint::HintModExp(hint) => hint.header_and_payload(),
+            Hint::HintPairingBatchBn254(hint) => hint.header_and_payload(),
         }
     }
 

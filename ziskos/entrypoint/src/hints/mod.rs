@@ -96,8 +96,15 @@ pub fn is_hints_enabled() -> bool {
 }
 
 #[inline(always)]
-pub fn pause_hints() {
+pub fn is_paused() -> bool {
+    HINT_QUEUE.is_paused()
+}
+
+#[inline(always)]
+pub fn pause_hints() -> bool {
+    let already_paused = HINT_QUEUE.is_paused();
     HINT_QUEUE.pause();
+    already_paused
 }
 
 #[inline(always)]

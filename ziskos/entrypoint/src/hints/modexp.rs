@@ -64,6 +64,10 @@ impl HintModExp {
 
 #[inline(always)]
 pub fn hint_modexp(base: Vec<u64>, exp: Vec<u64>, modulus: Vec<u64>) {
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
+
     check_main_thread();
 
     let hint = Hint::HintModExp(HintModExp::new(base, exp, modulus));
