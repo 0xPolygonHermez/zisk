@@ -1,7 +1,7 @@
 use crate::{
     check_paths_exist, create_debug_info, get_custom_commits_map,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult,
+    RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult, ZiskProgramVK,
     ZiskProveResult, ZiskVerifyConstraintsResult,
 };
 use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs};
@@ -117,6 +117,14 @@ impl ProverEngine for EmuProver {
 
     fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
         self.core_prover.backend.verify_constraints(stdin)
+    }
+
+    fn vk(&self) -> Result<ZiskProgramVK> {
+        self.core_prover.backend.vk()
+    }
+
+    fn verify(&self, proof: &ZiskProveResult, vk: &ZiskProgramVK) -> Result<()> {
+        self.core_prover.backend.verify(proof, vk)
     }
 
     fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {

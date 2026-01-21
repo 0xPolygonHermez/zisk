@@ -139,9 +139,8 @@ impl ZiskProve {
                 "{}",
                 "--- PROVE SUMMARY ------------------------".bright_green().bold()
             );
-            if let Some(proof_id) = result.proof.id {
-                tracing::info!("      Proof ID: {}", proof_id);
-            }
+
+            tracing::info!("      Proof ID: {}", result.proof.unwrap().id);
             tracing::info!("    ► Statistics");
             tracing::info!(
                 "      time: {} seconds, steps: {}",

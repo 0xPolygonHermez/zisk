@@ -17,6 +17,7 @@ zisk-common = { workspace = true }
 
 cargo-zisk = { workspace = true }
 proofman = { workspace = true }
+proofman-util = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -2,10 +2,10 @@ use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use proofman_common::initialize_logger;
+use proofman_util::VadcopFinalProof;
 use std::fs;
-use zisk_verifier::{verify_zisk_proof, verify_zisk_proof_compressed};
-
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_verifier::verify_zisk_proof;
 
 use super::get_default_verkey;
 
@@ -39,15 +39,13 @@ impl ZiskVerify {
 
         let start = std::time::Instant::now();
 
-        let proof = fs::read(&self.proof)?;
+        let proof = VadcopFinalProof::load(&self.proof).map_err(|e| {
+            anyhow::anyhow!("Error loading VADCoP final proof from {}: {}", &self.proof, e)
+        })?;
 
         let vk = &self.get_verkey();
 
-        let result = if self.compressed {
-            verify_zisk_proof_compressed(&proof, vk)
-        } else {
-            verify_zisk_proof(&proof, vk)
-        };
+        let result = verify_zisk_proof(&proof, vk);
 
         let elapsed = start.elapsed();
 

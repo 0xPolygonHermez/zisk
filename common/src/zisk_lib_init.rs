@@ -37,6 +37,7 @@ pub struct Stats {
 pub trait ZiskWitnessLibrary<F: PrimeField64> {
     fn set_stdin(&self, stdin: ZiskStdin);
     fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)>;
+    fn get_elf_path(&self) -> PathBuf;
 }
 
 // SUpertrait for ZiskWitnessLibrary and WitnessLibrary

@@ -244,6 +244,10 @@ impl ZiskWitnessLibrary<Goldilocks> for WitnessLib<Goldilocks> {
     fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
         self.executor.as_ref().map(|executor| executor.get_execution_result())
     }
+
+    fn get_elf_path(&self) -> PathBuf {
+        self.elf_path.clone()
+    }
 }
 
 impl ZiskLib<Goldilocks> for WitnessLib<Goldilocks> {}

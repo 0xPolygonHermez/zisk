@@ -24,11 +24,17 @@ pub struct ZiskVerifyConstraintsResult {
     pub stats: ExecutorStats,
 }
 
+pub struct ZiskProgramVK {
+    pub program_vk: Vec<u8>,
+    pub vadcop_proof_vk: Vec<u8>,
+    pub vadcop_proof_compressed_vk: Vec<u8>,
+}
+
 pub struct ZiskProveResult {
     pub execution: ZiskExecutionResult,
     pub duration: Duration,
     pub stats: ExecutorStats,
-    pub proof: Proof,
+    pub proof: Option<Proof>,
 }
 
 pub type ZiskPhaseResult = ProvePhaseResult;
@@ -62,6 +68,10 @@ pub trait ProverEngine {
     ) -> Result<ZiskVerifyConstraintsResult>;
 
     fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult>;
+
+    fn vk(&self) -> Result<ZiskProgramVK>;
+
+    fn verify(&self, proof: &ZiskProveResult, vk: &ZiskProgramVK) -> Result<()>;
 
     fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult>;
 
@@ -147,6 +157,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Verify the constraints with the given standard input.
     pub fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
         self.prover.verify_constraints(stdin)
+    }
+
+    pub fn vk(&self) -> Result<ZiskProgramVK> {
+        self.prover.vk()
     }
 
     /// Generate a proof with the given standard input.

@@ -1,7 +1,7 @@
 use anyhow::Result;
+use proofman_util::VadcopFinalProof;
 use std::io::{Cursor, Write};
 use std::{fs, path::PathBuf};
-use tracing::info;
 use zstd::Encoder;
 
 /// Saves a proof data to disk.
@@ -13,7 +13,7 @@ use zstd::Encoder;
 ///
 /// * `id` - A unique identifier for the proof
 /// * `proof_folder` - The folder where proofs will be saved
-/// * `proof_data` - The proof data as a vector of u64 values
+/// * `proof` - The proof data as an optional VadcopFinalProof
 /// * `with_zip` - Whether to also save a compressed version of the proof
 ///
 /// # Returns
@@ -22,48 +22,16 @@ use zstd::Encoder;
 pub fn save_proof(
     id: &str,
     proof_folder: PathBuf,
-    proof_data: &[u64],
-    with_zip: bool,
+    proof: &VadcopFinalProof,
+    _with_zip: bool,
 ) -> Result<()> {
     // Ensure the proofs directory exists
     fs::create_dir_all(&proof_folder)?;
 
     // Generate unique filename to avoid overwriting existing files
-    let mut raw_path = proof_folder.join(format!("proof_{}.fri", id));
-    let mut zip_path = raw_path.with_extension("fri.compressed");
-    let mut counter = 2;
+    let raw_path = proof_folder.join(format!("proof_{}.fri", id));
 
-    while fs::exists(&raw_path)? || (with_zip && fs::exists(&zip_path)?) {
-        raw_path = proof_folder.join(format!("proof_{}_{}.fri", id, counter));
-        zip_path = raw_path.with_extension("fri.compressed");
-        counter += 1;
-    }
-
-    // Convert Vec<u64> to bytes safely
-    let proof_bytes = bytemuck::cast_slice::<u64, u8>(proof_data);
-
-    // Write raw proof file
-    fs::write(&raw_path, proof_bytes)?;
-
-    // Calculate compression statistics
-    let raw_size = proof_bytes.len();
-
-    info!("[PostJob] Saving proof:");
-    info!("[PostJob] Raw: {} ({} bytes)", raw_path.display(), raw_size);
-
-    if with_zip {
-        // Compress proof data and write to file
-        let zip_size = save_zip_proof(proof_bytes, &zip_path, 1)?;
-
-        let ratio = zip_size as f64 / raw_size as f64;
-
-        info!(
-            "[PostJob] Compressed: {} ({} bytes, ratio: {:.2}x)",
-            zip_path.display(),
-            zip_size,
-            ratio
-        );
-    }
+    proof.save(&raw_path).map_err(|e| anyhow::anyhow!("Failed to save proof: {}", e))?;
 
     Ok(())
 }

@@ -15,6 +15,7 @@ zisk-pil = { workspace = true }
 
 witness = { workspace = true }
 proofman-common = { workspace = true }
+proofman-util = { workspace = true }
 proofman = { workspace = true }
 fields = { workspace = true }
 tracing = { workspace = true}

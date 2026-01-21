@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::{gen_elf_hash, get_rom_blowup_factor_and_arity};
-use fields::{Goldilocks, PrimeField};
+use fields::PrimeField;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -10,7 +10,7 @@ pub fn rom_vkey(
     elf: &Path,
     verkey_file: &Option<PathBuf>,
     proving_key: &Path,
-) -> Result<Vec<Goldilocks>, anyhow::Error> {
+) -> Result<Vec<u8>, anyhow::Error> {
     // Check if the path is a file and not a directory
     if !elf.is_file() {
         tracing::error!("Error: The specified ROM path is not a file: {}", elf.display());
@@ -20,6 +20,8 @@ pub fn rom_vkey(
     let (blowup_factor, merkle_tree_arity) = get_rom_blowup_factor_and_arity(proving_key);
 
     let root = gen_elf_hash(elf, &PathBuf::new(), blowup_factor, merkle_tree_arity, false)?;
+
+    tracing::info!("Root hash: {:?}", root);
 
     let verkey: Vec<u8> =
         root.iter().flat_map(|x| x.as_canonical_biguint().to_bytes_le()).collect();
@@ -32,7 +34,5 @@ pub fn rom_vkey(
         file.flush()?;
     }
 
-    tracing::info!("Root hash: {:?}", root);
-
-    Ok(root)
+    Ok(verkey)
 }

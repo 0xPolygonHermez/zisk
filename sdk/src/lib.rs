@@ -6,6 +6,7 @@ mod zisk_lib_loader;
 
 pub use builder::*;
 pub use client::ProverClient;
+pub use proofman_util::VadcopFinalProof;
 pub use prover::*;
 pub use utils::*;
 pub use zisk_lib_loader::*;
@@ -16,8 +17,8 @@ pub struct RankInfo {
 }
 
 pub struct Proof {
-    pub id: Option<String>,
-    pub proof: Option<Vec<u64>>,
+    pub id: String,
+    pub proof: VadcopFinalProof,
 }
 
 #[macro_export]
