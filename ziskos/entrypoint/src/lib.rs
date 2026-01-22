@@ -14,6 +14,8 @@ pub mod zisklib;
 
 pub mod syscalls;
 
+pub mod io;
+
 pub mod ziskos_definitions;
 
 #[macro_export]
