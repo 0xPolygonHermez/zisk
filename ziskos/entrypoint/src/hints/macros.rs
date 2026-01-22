@@ -23,6 +23,7 @@ macro_rules! define_hint {
         $name:ident => {
             hint_id: $hint_id:expr,
             params: ( $( $arg:ident : $len:literal ),+ $(,)? ),
+            is_result: $is_result:expr,
         }
     ) => {
         paste::paste! {
@@ -34,7 +35,7 @@ macro_rules! define_hint {
 
                 let slice_bytes = $crate::hints::macros::concat_hint_bytes!(0 $(+ $len)+; $( $arg ),+);
 
-                $crate::hints::hint::hint_slice($hint_id, &slice_bytes, true);
+                $crate::hints::hint::hint_slice($hint_id, &slice_bytes, $is_result);
             }
 
             #[cfg(zisk_hints_metrics)]

@@ -1,9 +1,3 @@
-    // use crate::hints::macros::define_hint;
-
-    // define_hint! {
-    //     variant SHA2 { f: [0] }
-    //     hint_id 0x0100
-    // }
 // use crate::hints::{HINT_QUEUE, check_main_thread, hint::hint_slice};
 
 // #[no_mangle]
@@ -61,5 +55,6 @@ crate::hints::macros::define_hint! {
     sha256 => {
         hint_id: 0x0100,
         params: (output: 32),
+        is_result: true,
     }
 }

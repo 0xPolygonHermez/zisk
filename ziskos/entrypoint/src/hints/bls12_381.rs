@@ -1,13 +1,15 @@
 crate::hints::macros::define_hint! {
     bls12_381_g1_add => {
         hint_id: 0x0400,
-        params: (ret: 96),
+        params: (a: 96, b: 96),
+        is_result: false,
     }
 }
 
 crate::hints::macros::define_hint! {
     bls12_381_g2_add => {
         hint_id: 0x0405,
-        params: (ret: 192),
+        params: (a: 192, b: 192),
+        is_result: false,
     }
 }
