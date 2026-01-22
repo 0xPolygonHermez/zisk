@@ -24,6 +24,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 bytemuck = { workspace = true }
 zstd = { workspace = true }
+bincode = { workspace = true }
 
 # Distributed mode (mpi) is only supported on Linux x86_64
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]

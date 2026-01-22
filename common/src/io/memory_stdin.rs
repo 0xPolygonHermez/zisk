@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::io::{Cursor, Read};
 
 use crate::io::ZiskIO;
@@ -40,11 +41,15 @@ impl ZiskIO for ZiskMemoryStdin {
         self.cursor.read_exact(buffer).expect("Failed to read into buffer from memory");
     }
 
-    fn write_serialized(&mut self, _data: &[u8]) {
-        panic!("Write operations are not supported for ZiskMemoryStdin");
+    fn write<T: Serialize>(&mut self, data: &T) {
+        let mut tmp = Vec::new();
+        bincode::serialize_into(&mut tmp, data).expect("Failed to serialize data into memory");
+        self.data.extend_from_slice(&tmp);
+        self.cursor.get_mut().extend_from_slice(&tmp);
     }
 
-    fn write_bytes(&mut self, _data: &[u8]) {
-        panic!("Write operations are not supported for ZiskMemoryStdin");
+    fn write_slice(&mut self, data: &[u8]) {
+        self.data.extend_from_slice(data);
+        self.cursor.get_mut().extend_from_slice(data);
     }
 }

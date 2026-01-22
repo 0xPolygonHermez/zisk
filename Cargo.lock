@@ -431,22 +431,11 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bincode"
-version = "2.0.1"
+version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
 dependencies = [
- "bincode_derive",
  "serde",
- "unty",
-]
-
-[[package]]
-name = "bincode_derive"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf95709a440f45e986983918d0e8a1f30a9b1df04918fc828670606804ac3c09"
-dependencies = [
- "virtue",
 ]
 
 [[package]]
@@ -1040,7 +1029,6 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#e574800c1cffa2cf9ca65d63b6b40e7377e87ed1"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1385,7 +1373,6 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#e574800c1cffa2cf9ca65d63b6b40e7377e87ed1"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2705,7 +2692,6 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#e574800c1cffa2cf9ca65d63b6b40e7377e87ed1"
 dependencies = [
  "colored",
  "fields",
@@ -3101,7 +3087,6 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#e574800c1cffa2cf9ca65d63b6b40e7377e87ed1"
 dependencies = [
  "blake3",
  "borsh",
@@ -3136,7 +3121,6 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#e574800c1cffa2cf9ca65d63b6b40e7377e87ed1"
 dependencies = [
  "borsh",
  "colored",
@@ -3167,7 +3151,6 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#e574800c1cffa2cf9ca65d63b6b40e7377e87ed1"
 dependencies = [
  "fields",
  "itoa",
@@ -3180,7 +3163,6 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#e574800c1cffa2cf9ca65d63b6b40e7377e87ed1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3191,7 +3173,6 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#e574800c1cffa2cf9ca65d63b6b40e7377e87ed1"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3200,7 +3181,6 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#e574800c1cffa2cf9ca65d63b6b40e7377e87ed1"
 dependencies = [
  "colored",
  "fields",
@@ -3211,7 +3191,6 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#e574800c1cffa2cf9ca65d63b6b40e7377e87ed1"
 dependencies = [
  "bytemuck",
  "fields",
@@ -4827,12 +4806,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
-name = "unty"
-version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
-
-[[package]]
 name = "ureq"
 version = "3.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4933,12 +4906,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "virtue"
-version = "0.0.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
 
 [[package]]
 name = "walkdir"
@@ -5437,7 +5404,6 @@ checksum = "d7249219f66ced02969388cf2bb044a09756a083d0fab1e566056b04d9fbcaa5"
 [[package]]
 name = "witness"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#e574800c1cffa2cf9ca65d63b6b40e7377e87ed1"
 dependencies = [
  "colored",
  "fields",
@@ -5603,6 +5569,7 @@ name = "zisk-common"
 version = "0.16.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "bytemuck",
  "fields",
  "libc",
