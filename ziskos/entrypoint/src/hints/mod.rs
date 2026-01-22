@@ -4,6 +4,8 @@ mod hint;
 mod macros;
 mod bls12_381;
 mod bn254;
+mod kzg;
+mod modexp;
 mod secp256k1;
 mod sha256f;
 mod types;
@@ -37,6 +39,8 @@ static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
 
 pub use bls12_381::*;
 pub use bn254::*;
+pub use kzg::*;
+pub use modexp::*;
 pub use secp256k1::*;
 pub use sha256f::*;
 

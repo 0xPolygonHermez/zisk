@@ -1,4 +1,6 @@
-use crate::hints::{HINT_QUEUE, check_main_thread, hint::hint_slice};
+use crate::hints::{HINT_QUEUE, check_main_thread, hint::{Hint, MAX_HINT_DATA_LEN}, macros::register_hint_meta};
+
+const SHA256_HINT_ID: u32 = 0x0100;
 
 #[no_mangle]
 pub unsafe extern "C" fn hint_sha256(f: *const u8, len: usize) {
@@ -8,7 +10,12 @@ pub unsafe extern "C" fn hint_sha256(f: *const u8, len: usize) {
 
     check_main_thread();
 
-    let f_slice = unsafe { core::slice::from_raw_parts(f as *const u8, len) };
+    assert!(
+        len <= MAX_HINT_DATA_LEN,
+        "sha256 hint param length exceeds MAX_HINT_DATA_LEN"
+    );
+
+    let f_slice: &[u8] = unsafe { core::slice::from_raw_parts(f, len) };
 
     // #[cfg(zisk_hints_debug)]
     // {
@@ -42,19 +49,9 @@ pub unsafe extern "C" fn hint_sha256(f: *const u8, len: usize) {
         };
     }
 
-    hint_slice(0x0100, f_slice, false);
+    HINT_QUEUE.push(
+        Hint::new(SHA256_HINT_ID, f_slice, f_slice.len(), false)
+    );
 }
 
-#[cfg(zisk_hints_metrics)]
-#[ctor::ctor]
-fn sha2_register_meta() {
-    crate::hints::register_hint(0x0100, stringify!(sha256).to_string());
-}
-
-// crate::hints::macros::define_hint! {
-//     sha256 => {
-//         hint_id: 0x0100,
-//         params: (output: 32),
-//         is_result: true,
-//     }
-// }
+register_hint_meta!(sha256, SHA256_HINT_ID);

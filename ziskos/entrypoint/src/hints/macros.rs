@@ -1,14 +1,14 @@
 macro_rules! concat_hint_bytes {
-    ($len:expr; $($src:expr),+ $(,)?) => {{
+    ($offset:expr; $len:expr; $($src:expr),+ $(,)?) => {{
         let mut buf = [0u8; $len];
-        let mut offset = 0;
+        let mut offset = $offset;
         $(
-            let part = $src;
-            let part_len = part.len();
+            // let part = $src;
+            let len = $src.len();
             unsafe {
-                core::ptr::copy_nonoverlapping(part.as_ptr(), buf.as_mut_ptr().add(offset), part_len);
+                core::ptr::copy_nonoverlapping($src.as_ptr(), buf.as_mut_ptr().add(offset), len);
             }
-            offset += part_len;
+            offset += len;
         )+
 
         // Avoid unused variable warning
@@ -33,11 +33,20 @@ macro_rules! define_hint {
                     let $arg: &[u8; $len] = &*($arg as *const [u8; $len]);
                 )+
 
-                let slice_bytes = $crate::hints::macros::concat_hint_bytes!(0 $(+ $len)+; $( $arg ),+);
+                let slice_bytes = $crate::hints::macros::concat_hint_bytes!(0; 0 $(+ $len)+; $( $arg ),+);
 
-                $crate::hints::hint::hint_slice($hint_id, &slice_bytes, $is_result);
+                $crate::hints::HINT_QUEUE.push($crate::hints::hint::Hint::new($hint_id, &slice_bytes, slice_bytes.len(), $is_result));
             }
 
+
+            $crate::hints::macros::register_hint_meta!($name, $hint_id);
+        }
+    };
+}
+
+macro_rules! register_hint_meta {
+    ($name:ident, $hint_id:expr) => {
+        paste::paste! {
             #[cfg(zisk_hints_metrics)]
             #[ctor::ctor]
             fn [<$name _register_meta>]() {
@@ -168,3 +177,4 @@ macro_rules! define_hint {
 // pub(crate) use param_to_slice;
 pub(crate) use concat_hint_bytes;
 pub(crate) use define_hint;
+pub(crate) use register_hint_meta;

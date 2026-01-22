@@ -11,6 +11,7 @@ use std::sync::{
 
 pub const MAX_HINT_DATA_LEN: usize = 1536;
 
+// TODO: Add heap hint data field for large hints (>= MAX_HINT_DATA_LEN)
 #[derive(Clone, Debug)]
 pub struct Hint {
     pub header: u64,
@@ -18,7 +19,42 @@ pub struct Hint {
     pub len: usize,
 }
 
+impl Default for Hint {
+    fn default() -> Self {
+        Self {
+            header: 0,
+            data: [0u8; MAX_HINT_DATA_LEN],
+            len: 0,
+        }
+    }
+}
+
 impl Hint {
+    pub fn new(hint_id: u32, data: &[u8], len: usize, is_result: bool) -> Self {
+        let mut hint = Self::default();
+
+        hint.set_header(hint_id, len, is_result);
+        hint.len = len;
+
+        unsafe {
+            let dst = hint.data.as_mut_ptr();
+            core::ptr::copy_nonoverlapping(data.as_ptr(), dst, len);
+        }
+
+        hint
+    }
+
+    #[inline(always)]
+    pub fn set_header(&mut self, hint_id: u32, len: usize, is_result: bool) {
+        let hint_type: u32 = if is_result {
+            0x80000000
+        } else {
+            0x00000000
+        };
+
+        self.header = (((hint_type | hint_id) as u64) << 32) | (len as u64);
+    }
+
     #[inline(always)]
     fn header_and_payload(&self) -> ([u8; 8], &[u8]) {
         let bytes = unsafe {
@@ -153,27 +189,4 @@ impl HintQueue {
     pub fn is_paused(&self) -> bool {
         self.paused.load(Ordering::SeqCst)
     }
-}
-
-#[inline(always)]
-pub fn hint_slice(hint_id: u32, data: &[u8], is_result: bool) {
-    let hint_type: u32 = if is_result {
-        0x80000000
-    } else {
-        0x00000000
-    };
-
-    let len = data.len();
-    let header: u64 = (((hint_type | hint_id) as u64) << 32) | (len as u64);
-    let mut hint = Hint {
-        header,
-        data: [0u8; MAX_HINT_DATA_LEN],
-        len,
-    };
-
-    unsafe {
-        let dst = hint.data.as_mut_ptr();
-        core::ptr::copy_nonoverlapping(data.as_ptr(), dst, len);
-    }
-    crate::hints::HINT_QUEUE.push(hint);
 }
