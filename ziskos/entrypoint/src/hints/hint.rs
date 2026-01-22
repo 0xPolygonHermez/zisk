@@ -53,6 +53,7 @@ impl Hint {
         };
 
         self.header = (((hint_type | hint_id) as u64) << 32) | (len as u64);
+        self.len = len;
     }
 
     #[inline(always)]

@@ -1,7 +1,7 @@
 macro_rules! concat_hint_bytes {
-    ($offset:expr; $len:expr; $($src:expr),+ $(,)?) => {{
+    ($len:expr; $($src:expr),+ $(,)?) => {{
         let mut buf = [0u8; $len];
-        let mut offset = $offset;
+        let mut offset = 0;
         $(
             // let part = $src;
             let len = $src.len();
@@ -33,7 +33,7 @@ macro_rules! define_hint {
                     let $arg: &[u8; $len] = &*($arg as *const [u8; $len]);
                 )+
 
-                let slice_bytes = $crate::hints::macros::concat_hint_bytes!(0; 0 $(+ $len)+; $( $arg ),+);
+                let slice_bytes = $crate::hints::macros::concat_hint_bytes!(0 $(+ $len)+; $( $arg ),+);
 
                 $crate::hints::HINT_QUEUE.push($crate::hints::hint::Hint::new($hint_id, &slice_bytes, slice_bytes.len(), $is_result));
             }

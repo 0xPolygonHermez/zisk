@@ -8,7 +8,7 @@ pub unsafe extern "C" fn hint_secp256k1_ecrecover(sig: *const u8, recid: u8, msg
     let recid_bytes: &[u8; 8] = &((recid as u64).to_le_bytes());
     let msg_bytes: &[u8; 32] = &*(msg as *const [u8; 32]);
 
-    let slice_bytes = concat_hint_bytes!(0; 64 + 8 + 32; sig_bytes, recid_bytes, msg_bytes);
+    let slice_bytes = concat_hint_bytes!(64 + 8 + 32; sig_bytes, recid_bytes, msg_bytes);
 
     HINT_QUEUE.push(
         Hint::new(SECP256K1_ECRECOVER_HINT_ID, &slice_bytes, slice_bytes.len(), false)
