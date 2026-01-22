@@ -116,7 +116,7 @@ impl ZiskExecute {
     pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
         let prover = ProverClient::builder()
             .asm()
-            .verify_constraints()
+            .witness()
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())

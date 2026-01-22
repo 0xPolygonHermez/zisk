@@ -5,10 +5,10 @@ mod emu;
 pub use asm::*;
 use backend::*;
 pub use emu::*;
-use proofman::{AggProofs, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman::{AggProofs, ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkProof};
 use proofman_common::ProofOptions;
+use proofman_util::VadcopFinalProof;
 
-use crate::Proof;
 use anyhow::Result;
 use std::{path::PathBuf, time::Duration};
 use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
@@ -30,11 +30,25 @@ pub struct ZiskProgramVK {
     pub vadcop_proof_compressed_vk: Vec<u8>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum ProofMode {
+    VadcopFinal,
+    VadcopFinalCompressed,
+    Plonk,
+}
+
+pub enum Proof {
+    Null(),
+    VadcopFinal(VadcopFinalProof),
+    Plonk(SnarkProof),
+}
+
 pub struct ZiskProveResult {
     pub execution: ZiskExecutionResult,
     pub duration: Duration,
     pub stats: ExecutorStats,
-    pub proof: Option<Proof>,
+    pub proof_id: Option<String>,
+    pub proof: Proof,
 }
 
 pub type ZiskPhaseResult = ProvePhaseResult;
@@ -73,7 +87,7 @@ pub trait ProverEngine {
 
     fn verify(&self, proof: &ZiskProveResult, vk: &ZiskProgramVK) -> Result<()>;
 
-    fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult>;
+    fn prove(&self, stdin: ZiskStdin, mode: ProofMode) -> Result<ZiskProveResult>;
 
     fn prove_phase(
         &self,
@@ -164,8 +178,14 @@ impl<C: ZiskBackend> ZiskProver<C> {
     }
 
     /// Generate a proof with the given standard input.
-    pub fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
-        self.prover.prove(stdin)
+    /// Returns a `ProveBuilder` that allows setting per-proof options before running.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let result = prover.prove(stdin).compressed().run()?;
+    /// ```
+    pub fn prove(&self, stdin: ZiskStdin) -> ProveBuilder<'_, C> {
+        ProveBuilder::new(&self.prover, stdin)
     }
 
     pub fn prove_phase(
@@ -190,5 +210,42 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Broadcast data to all MPI processes.
     pub fn mpi_broadcast(&self, data: &mut Vec<u8>) {
         self.prover.mpi_broadcast(data);
+    }
+}
+
+/// Builder for configuring and running a proof.
+///
+/// This struct provides a fluent API for setting per-proof options
+/// before executing the proof generation.
+///
+/// # Example
+/// ```ignore
+/// let result = prover.prove(stdin).compressed().run()?;
+/// ```
+pub struct ProveBuilder<'a, C: ZiskBackend> {
+    prover: &'a C::Prover,
+    stdin: ZiskStdin,
+    mode: ProofMode,
+}
+
+impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
+    fn new(prover: &'a C::Prover, stdin: ZiskStdin) -> Self {
+        Self { prover, stdin, mode: ProofMode::VadcopFinal }
+    }
+
+    /// Enable compressed proof generation.
+    pub fn compressed(mut self) -> Self {
+        self.mode = ProofMode::VadcopFinalCompressed;
+        self
+    }
+
+    pub fn plonk(mut self) -> Self {
+        self.mode = ProofMode::Plonk;
+        self
+    }
+
+    /// Execute the proof generation with the configured options.
+    pub fn run(self) -> Result<ZiskProveResult> {
+        self.prover.prove(self.stdin, self.mode)
     }
 }

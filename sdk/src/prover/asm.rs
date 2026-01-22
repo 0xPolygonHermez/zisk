@@ -1,3 +1,4 @@
+use crate::ProofMode;
 use crate::{
     check_paths_exist, create_debug_info, ensure_custom_commits,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
@@ -5,7 +6,7 @@ use crate::{
     ZiskProveResult, ZiskVerifyConstraintsResult,
 };
 use asm_runner::{AsmRunnerOptions, AsmServices};
-use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs};
+use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::DEFAULT_CACHE_PATH;
@@ -32,11 +33,11 @@ impl AsmProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
+        snark_wrapper: bool,
         rma: bool,
-        compressed: bool,
         witness_lib: PathBuf,
         proving_key: PathBuf,
-        proving_key_snark: Option<PathBuf>,
+        proving_key_snark: PathBuf,
         elf: PathBuf,
         verbose: u8,
         shared_tables: bool,
@@ -54,8 +55,8 @@ impl AsmProver {
         let core_prover = AsmCoreProver::new(
             verify_constraints,
             aggregation,
+            snark_wrapper,
             rma,
-            compressed,
             witness_lib,
             proving_key,
             proving_key_snark,
@@ -139,8 +140,8 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.verify(proof, vk)
     }
 
-    fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
-        self.core_prover.backend.prove(stdin)
+    fn prove(&self, stdin: ZiskStdin, mode: ProofMode) -> Result<ZiskProveResult> {
+        self.core_prover.backend.prove(stdin, mode)
     }
 
     fn prove_phase(
@@ -192,11 +193,11 @@ impl AsmCoreProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
+        use_snark_wrapper: bool,
         rma: bool,
-        compressed: bool,
         witness_lib: PathBuf,
         proving_key: PathBuf,
-        _proving_key_snark: Option<PathBuf>,
+        proving_key_snark: PathBuf,
         elf: PathBuf,
         verbose: u8,
         shared_tables: bool,
@@ -276,11 +277,16 @@ impl AsmCoreProver {
 
         proofman.set_barrier();
 
+        let mut snark_wrapper = None;
+        if use_snark_wrapper {
+            check_paths_exist(&proving_key_snark)?;
+            snark_wrapper = Some(SnarkWrapper::new(&proving_key_snark, verbose.into())?);
+        }
+
         let core = ProverBackend {
             verify_constraints,
             aggregation,
             rma,
-            compressed,
             witness_lib,
             proving_key: proving_key.clone(),
             verify_proofs,
@@ -288,6 +294,7 @@ impl AsmCoreProver {
             save_proofs,
             output_dir,
             proofman,
+            snark_wrapper,
             rank_info: RankInfo { world_rank, local_rank },
         };
 

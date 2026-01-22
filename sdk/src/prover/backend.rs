@@ -1,3 +1,4 @@
+use crate::ProofMode;
 use crate::{
     Proof, RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramVK,
     ZiskProveResult, ZiskVerifyConstraintsResult,
@@ -5,7 +6,9 @@ use crate::{
 use anyhow::Result;
 use colored::Colorize;
 use fields::Goldilocks;
-use proofman::{AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
+use proofman::{
+    AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkWrapper,
+};
 use proofman_common::{DebugInfo, ProofOptions};
 use rom_setup::rom_vkey;
 use std::path::PathBuf;
@@ -16,7 +19,6 @@ pub(crate) struct ProverBackend {
     pub verify_constraints: bool,
     pub aggregation: bool,
     pub rma: bool,
-    pub compressed: bool,
     pub witness_lib: Box<dyn ZiskLib<Goldilocks>>,
     pub proving_key: PathBuf,
     pub verify_proofs: bool,
@@ -24,6 +26,8 @@ pub(crate) struct ProverBackend {
     pub save_proofs: bool,
     pub output_dir: Option<PathBuf>,
     pub proofman: ProofMan<Goldilocks>,
+    pub snark_wrapper: Option<SnarkWrapper<Goldilocks>>,
+    #[allow(unused)]
     pub rank_info: RankInfo,
 }
 
@@ -159,7 +163,7 @@ impl ProverBackend {
         Ok(ZiskProgramVK { program_vk, vadcop_proof_vk, vadcop_proof_compressed_vk })
     }
 
-    pub(crate) fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
+    pub(crate) fn prove(&self, stdin: ZiskStdin, mode: ProofMode) -> Result<ZiskProveResult> {
         if self.verify_constraints {
             return Err(anyhow::anyhow!(
                 "Prover initialized with constraint verification enabled. Use `prove` instead."
@@ -170,6 +174,8 @@ impl ProverBackend {
 
         self.witness_lib.set_stdin(stdin);
 
+        let compressed = matches!(mode, ProofMode::VadcopFinalCompressed);
+
         self.proofman.set_barrier();
         let proof = self
             .proofman
@@ -179,7 +185,7 @@ impl ProverBackend {
                     self.verify_constraints,
                     self.aggregation,
                     self.rma,
-                    self.compressed,
+                    compressed,
                     self.verify_proofs,
                     self.minimal_memory,
                     self.save_proofs,
@@ -200,29 +206,14 @@ impl ProverBackend {
             anyhow::anyhow!("Failed to get execution result from emulator prover")
         })?;
 
-        let mut vadcop_proof = None;
+        let output_dir = self.output_dir.as_ref().unwrap();
 
         if let Some(proof_id) = proof_id.clone() {
-            vadcop_proof = Some(Proof { id: proof_id.clone(), proof: proof.unwrap() });
-
-            let output_dir = self.output_dir.as_ref().unwrap();
-
-            if self.rank_info.local_rank == 0 && !output_dir.exists() {
-                std::fs::create_dir_all(output_dir)?;
-            }
-
             let logs =
                 ProofLog::new(execution_result.executed_steps, proof_id, elapsed.as_secs_f64());
             let log_path = output_dir.join("result.json");
             ProofLog::write_json_log(&log_path, &logs)
                 .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
-
-            vadcop_proof
-                .as_ref()
-                .unwrap()
-                .proof
-                .save(&output_dir)
-                .map_err(|e| anyhow::anyhow!("Error saving proof: {}", e))?;
         }
 
         // Store the stats in stats.json
@@ -235,12 +226,37 @@ impl ProverBackend {
 
         self.proofman.set_barrier();
 
-        Ok(ZiskProveResult {
-            execution: execution_result,
-            duration: elapsed,
-            stats,
-            proof: vadcop_proof,
-        })
+        match (mode, proof) {
+            (ProofMode::Plonk, Some(vadcop_proof)) => {
+                let plonk_proof = self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(
+                    &vadcop_proof,
+                    output_dir,
+                    self.save_proofs,
+                )?;
+
+                Ok(ZiskProveResult {
+                    execution: execution_result,
+                    duration: elapsed,
+                    stats,
+                    proof_id,
+                    proof: Proof::Plonk(plonk_proof),
+                })
+            }
+            (_, Some(p)) => Ok(ZiskProveResult {
+                execution: execution_result,
+                duration: elapsed,
+                stats,
+                proof_id,
+                proof: Proof::VadcopFinal(p),
+            }),
+            (_, None) => Ok(ZiskProveResult {
+                execution: execution_result,
+                duration: elapsed,
+                stats,
+                proof_id,
+                proof: Proof::Null(),
+            }),
+        }
     }
 
     pub(crate) fn prove_phase(
@@ -274,15 +290,19 @@ impl ProverBackend {
     }
 
     pub(crate) fn verify(&self, proof: &ZiskProveResult, vk: &ZiskProgramVK) -> Result<()> {
-        if proof.proof.is_none() {
-            return Err(anyhow::anyhow!("No proof found to verify."));
+        match &proof.proof {
+            Proof::Null() => Err(anyhow::anyhow!("No proof found to verify.")),
+            Proof::Plonk(_) => {
+                Err(anyhow::anyhow!("Plonk proofs are not supported for verification."))
+            }
+            Proof::VadcopFinal(proof) => {
+                let vk = if proof.compressed {
+                    &vk.vadcop_proof_compressed_vk
+                } else {
+                    &vk.vadcop_proof_vk
+                };
+                verify_zisk_proof(proof, vk)
+            }
         }
-        let proof = proof.proof.as_ref().unwrap();
-        let vk = if proof.proof.compressed {
-            &vk.vadcop_proof_compressed_vk
-        } else {
-            &vk.vadcop_proof_vk
-        };
-        verify_zisk_proof(&proof.proof, vk)
     }
 }

@@ -4,12 +4,14 @@ use crate::{
     RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult, ZiskProgramVK,
     ZiskProveResult, ZiskVerifyConstraintsResult,
 };
-use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs};
+use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
 use std::path::PathBuf;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ExecutorStats;
 use zisk_distributed_common::LoggingConfig;
+
+use crate::ProofMode;
 
 use anyhow::Result;
 
@@ -28,11 +30,11 @@ impl EmuProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
+        snark_wrapper: bool,
         rma: bool,
-        compressed: bool,
         witness_lib: PathBuf,
         proving_key: PathBuf,
-        proving_key_snark: Option<PathBuf>,
+        proving_key_snark: PathBuf,
         elf: PathBuf,
         verbose: u8,
         shared_tables: bool,
@@ -46,8 +48,8 @@ impl EmuProver {
         let core_prover = EmuCoreProver::new(
             verify_constraints,
             aggregation,
+            snark_wrapper,
             rma,
-            compressed,
             witness_lib,
             proving_key,
             proving_key_snark,
@@ -127,8 +129,8 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.verify(proof, vk)
     }
 
-    fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
-        self.core_prover.backend.prove(stdin)
+    fn prove(&self, stdin: ZiskStdin, mode: ProofMode) -> Result<ZiskProveResult> {
+        self.core_prover.backend.prove(stdin, mode)
     }
 
     fn prove_phase(
@@ -165,11 +167,11 @@ impl EmuCoreProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
+        use_snark_wrapper: bool,
         rma: bool,
-        compressed: bool,
         witness_lib: PathBuf,
         proving_key: PathBuf,
-        _proving_key_snark: Option<PathBuf>,
+        proving_key_snark: PathBuf,
         elf: PathBuf,
         verbose: u8,
         shared_tables: bool,
@@ -214,11 +216,16 @@ impl EmuCoreProver {
 
         proofman.set_barrier();
 
+        let mut snark_wrapper = None;
+        if use_snark_wrapper {
+            check_paths_exist(&proving_key_snark)?;
+            snark_wrapper = Some(SnarkWrapper::new(&proving_key_snark, verbose.into())?);
+        }
+
         let core = ProverBackend {
             verify_constraints,
             aggregation,
             rma,
-            compressed,
             witness_lib,
             proving_key: proving_key.clone(),
             verify_proofs,
@@ -226,6 +233,7 @@ impl EmuCoreProver {
             save_proofs,
             output_dir,
             proofman,
+            snark_wrapper,
             rank_info: RankInfo { world_rank, local_rank },
         };
 

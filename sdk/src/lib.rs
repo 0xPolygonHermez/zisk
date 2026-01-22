@@ -16,11 +16,6 @@ pub struct RankInfo {
     pub local_rank: i32,
 }
 
-pub struct Proof {
-    pub id: String,
-    pub proof: VadcopFinalProof,
-}
-
 #[macro_export]
 macro_rules! include_elf {
     ($arg:tt) => {{

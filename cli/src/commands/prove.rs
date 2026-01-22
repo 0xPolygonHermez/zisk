@@ -8,7 +8,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::ZiskStdin;
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_sdk::{ProverClient, ZiskProveResult};
+use zisk_sdk::{Proof, ProverClient, ZiskProveResult};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -110,16 +110,24 @@ impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
         print_banner();
 
-        let mut gpu_params = ParamsGPU::new(self.preallocate);
+        let mut gpu_params = None;
+        if self.preallocate
+            || self.max_streams.is_some()
+            || self.number_threads_witness.is_some()
+            || self.max_witness_stored.is_some()
+        {
+            let mut gpu_params_new = ParamsGPU::new(self.preallocate);
 
-        if let Some(max_streams) = self.max_streams {
-            gpu_params.with_max_number_streams(max_streams);
-        }
-        if let Some(number_threads_witness) = self.number_threads_witness {
-            gpu_params.with_number_threads_pools_witness(number_threads_witness);
-        }
-        if let Some(max_witness_stored) = self.max_witness_stored {
-            gpu_params.with_max_witness_stored(max_witness_stored);
+            if let Some(max_streams) = self.max_streams {
+                gpu_params.with_max_number_streams(max_streams);
+            }
+            if let Some(number_threads_witness) = self.number_threads_witness {
+                gpu_params.with_number_threads_pools_witness(number_threads_witness);
+            }
+            if let Some(max_witness_stored) = self.max_witness_stored {
+                gpu_params.with_max_witness_stored(max_witness_stored);
+            }
+            gpu_params = Some(gpu_params_new);
         }
 
         let stdin = self.create_stdin()?;
@@ -140,7 +148,17 @@ impl ZiskProve {
                 "--- PROVE SUMMARY ------------------------".bright_green().bold()
             );
 
-            tracing::info!("      Proof ID: {}", result.proof.unwrap().id);
+            if let Proof::VadcopFinal(vadcop_proof) = &result.proof {
+                vadcop_proof.save(&self.output_dir).map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to save VadcopFinalProof to output dir {:?}: {}",
+                        self.output_dir,
+                        e
+                    )
+                })?;
+            }
+
+            tracing::info!("      Proof ID: {}", result.proof_id.unwrap());
             tracing::info!("    ► Statistics");
             tracing::info!(
                 "      time: {} seconds, steps: {}",
@@ -167,13 +185,9 @@ impl ZiskProve {
     pub fn run_emu(
         &mut self,
         stdin: ZiskStdin,
-        gpu_params: ParamsGPU,
+        gpu_params: Option<ParamsGPU>,
     ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClient::builder()
-            .emu()
-            .prove()
-            .aggregation(self.aggregation)
-            .compressed(self.compressed)
             .rma(self.rma)
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
@@ -188,7 +202,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let result = prover.prove(stdin)?;
+        let result = prover.prove(stdin).run()?;
         let world_rank = prover.world_rank();
 
         Ok((result, world_rank))
@@ -197,13 +211,10 @@ impl ZiskProve {
     pub fn run_asm(
         &mut self,
         stdin: ZiskStdin,
-        gpu_params: ParamsGPU,
+        gpu_params: Option<ParamsGPU>,
     ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClient::builder()
             .asm()
-            .prove()
-            .aggregation(self.aggregation)
-            .compressed(self.compressed)
             .rma(self.rma)
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
@@ -221,7 +232,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let result = prover.prove(stdin)?;
+        let result = prover.prove(stdin).run()?;
         let world_rank = prover.world_rank();
 
         Ok((result, world_rank))

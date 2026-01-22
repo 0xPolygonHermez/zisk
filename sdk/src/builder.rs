@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    get_asm_paths, get_proving_key, get_witness_computation_lib,
+    get_asm_paths, get_proving_key, get_proving_key_snark, get_witness_computation_lib,
     prover::{Asm, AsmProver, Emu, EmuProver, ZiskProver},
 };
 use colored::Colorize;
@@ -50,8 +50,8 @@ pub struct Prove;
 pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     // Common fields for both EMU and ASM
     aggregation: bool,
+    snark_wrapper: bool,
     rma: bool,
-    compressed: bool,
     witness_lib: Option<PathBuf>,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
@@ -73,7 +73,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     output_dir: Option<PathBuf>,
     verify_proofs: bool,
     minimal_memory: bool,
-    gpu_params: Option<ParamsGPU>,
+    gpu_params: ParamsGPU,
 
     // Phantom data to track state
     _backend: std::marker::PhantomData<Backend>,
@@ -83,7 +83,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
 impl ProverClientBuilder<(), ()> {
     #[must_use]
     pub fn new() -> Self {
-        Self { aggregation: true, rma: true, ..Default::default() }
+        Self { aggregation: true, rma: true, snark_wrapper: false, ..Default::default() }
     }
 
     /// Configure for Emulator backend
@@ -96,6 +96,11 @@ impl ProverClientBuilder<(), ()> {
     #[must_use]
     pub fn asm(self) -> ProverClientBuilder<AsmB, ()> {
         self.into()
+    }
+
+    pub fn build(self) -> Result<ZiskProver<Emu>> {
+        let builder: ProverClientBuilder<EmuB, Prove> = self.emu().into();
+        builder.build_emu()
     }
 }
 
@@ -136,17 +141,16 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
         self
     }
 
+    #[must_use]
+    pub fn snark(mut self, enable: bool) -> Self {
+        self.snark_wrapper = enable;
+        self
+    }
+
     /// Set RMA.
     #[must_use]
     pub fn rma(mut self, use_rma: bool) -> Self {
         self.rma = use_rma;
-        self
-    }
-
-    /// Enables final vadcop is compressed proof.
-    #[must_use]
-    pub fn compressed(mut self, enable: bool) -> Self {
-        self.compressed = enable;
         self
     }
 
@@ -250,8 +254,8 @@ impl<Operation> ProverClientBuilder<AsmB, Operation> {
     }
 }
 
-// Prove-specific methods (available for both backends when operation is Prove)
-impl<Backend> ProverClientBuilder<Backend, Prove> {
+// Prove-specific methods (available for any operation state - will use defaults if not in Prove mode)
+impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     #[must_use]
     pub fn save_proofs(mut self, save: bool) -> Self {
         self.save_proofs = save;
@@ -277,8 +281,10 @@ impl<Backend> ProverClientBuilder<Backend, Prove> {
     }
 
     #[must_use]
-    pub fn gpu(mut self, gpu_params: ParamsGPU) -> Self {
-        self.gpu_params = Some(gpu_params);
+    pub fn gpu(mut self, gpu_params: Option<ParamsGPU>) -> Self {
+        if let Some(gpu_params) = gpu_params {
+            self.gpu_params = gpu_params;
+        }
         self
     }
 }
@@ -301,6 +307,13 @@ impl ProverClientBuilder<EmuB, WitnessGeneration> {
     /// ```
     pub fn build(self) -> Result<ZiskProver<Emu>> {
         self.build_emu()
+    }
+}
+
+impl ProverClientBuilder<EmuB, ()> {
+    pub fn build(self) -> Result<ZiskProver<Emu>> {
+        let builder: ProverClientBuilder<EmuB, Prove> = self.into();
+        builder.build_emu()
     }
 }
 
@@ -328,7 +341,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
     fn build_emu(self) -> Result<ZiskProver<Emu>> {
         let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
-        let proving_key_snark = None;
+        let proving_key_snark = get_proving_key_snark(self.proving_key_snark.as_ref());
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
 
         let output_dir = if !self.verify_constraints {
@@ -352,15 +365,15 @@ impl<X> ProverClientBuilder<EmuB, X> {
         let emu = EmuProver::new(
             self.verify_constraints,
             self.aggregation,
+            self.snark_wrapper,
             self.rma,
-            self.compressed,
             witness_lib,
             proving_key,
             proving_key_snark,
             elf,
             self.verbose,
             self.shared_tables,
-            self.gpu_params.filter(|_| !self.verify_constraints).unwrap_or_default(),
+            self.gpu_params,
             self.verify_proofs,
             self.minimal_memory,
             self.save_proofs,
@@ -376,7 +389,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
         verify_constraints: bool,
         witness_lib: &Path,
         proving_key: &Path,
-        proving_key_snark: &Option<PathBuf>,
+        proving_key_snark: &Path,
         elf: &Path,
         output_dir: Option<&PathBuf>,
     ) {
@@ -397,13 +410,11 @@ impl<X> ProverClientBuilder<EmuB, X> {
         );
         println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key.display());
 
-        if let Some(proving_key_snark) = proving_key_snark {
-            println!(
-                "{: >12} {}",
-                "Proving key SNARK".bright_green().bold(),
-                proving_key_snark.display()
-            );
-        }
+        println!(
+            "{: >12} {}",
+            "Proving key SNARK".bright_green().bold(),
+            proving_key_snark.display()
+        );
 
         if let Some(output_dir) = output_dir {
             println!("{: >12} {}", "Output Dir".bright_green().bold(), output_dir.display());
@@ -435,6 +446,17 @@ impl ProverClientBuilder<AsmB, WitnessGeneration> {
         GoldilocksQuinticExtension: ExtensionField<F>,
     {
         self.build_asm()
+    }
+}
+
+impl ProverClientBuilder<AsmB, ()> {
+    pub fn build<F>(self) -> Result<ZiskProver<Asm>>
+    where
+        F: PrimeField64,
+        GoldilocksQuinticExtension: ExtensionField<F>,
+    {
+        let builder: ProverClientBuilder<AsmB, Prove> = self.into();
+        builder.build_asm()
     }
 }
 
@@ -470,7 +492,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
     {
         let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
-        let proving_key_snark = None;
+        let proving_key_snark = get_proving_key_snark(self.proving_key_snark.as_ref());
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
 
         let output_dir = if !self.verify_constraints {
@@ -496,8 +518,8 @@ impl<X> ProverClientBuilder<AsmB, X> {
         let asm = AsmProver::new(
             self.verify_constraints,
             self.aggregation,
+            self.snark_wrapper,
             self.rma,
-            self.compressed,
             witness_lib,
             proving_key,
             proving_key_snark,
@@ -508,7 +530,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
             asm_rh_filename,
             self.base_port,
             self.unlock_mapped_memory,
-            self.gpu_params.filter(|_| !self.verify_constraints).unwrap_or_default(),
+            self.gpu_params,
             self.verify_proofs,
             self.minimal_memory,
             self.save_proofs,
@@ -524,7 +546,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
         verify_constraints: bool,
         witness_lib: &Path,
         proving_key: &Path,
-        proving_key_snark: &Option<PathBuf>,
+        proving_key_snark: &Path,
         elf: &Path,
         output_dir: Option<&PathBuf>,
     ) {
@@ -540,13 +562,11 @@ impl<X> ProverClientBuilder<AsmB, X> {
         println!("{: >12} {}", "Elf".bright_green().bold(), elf.display());
         println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key.display());
 
-        if let Some(proving_key_snark) = proving_key_snark {
-            println!(
-                "{: >12} {}",
-                "Proving key SNARK".bright_green().bold(),
-                proving_key_snark.display()
-            );
-        }
+        println!(
+            "{: >12} {}",
+            "Proving key SNARK".bright_green().bold(),
+            proving_key_snark.display()
+        );
 
         if let Some(output_dir) = output_dir {
             println!("{: >12} {}", "Output Dir".bright_green().bold(), output_dir.display());
@@ -564,7 +584,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             aggregation: builder.aggregation,
             witness: builder.witness,
             rma: builder.rma,
-            compressed: builder.compressed,
+            snark_wrapper: builder.snark_wrapper,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
@@ -585,7 +605,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             output_dir: None,
             verify_proofs: false,
             minimal_memory: false,
-            gpu_params: None,
+            gpu_params: ParamsGPU::default(),
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -598,9 +618,9 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
         Self {
             // Preserve common fields
             aggregation: builder.aggregation,
+            snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,
             rma: builder.rma,
-            compressed: builder.compressed,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
@@ -621,7 +641,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             output_dir: None,
             verify_proofs: false,
             minimal_memory: false,
-            gpu_params: None,
+            gpu_params: ParamsGPU::default(),
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -636,9 +656,9 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
         Self {
             // Preserve common fields
             aggregation: builder.aggregation,
+            snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,
             rma: builder.rma,
-            compressed: builder.compressed,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
@@ -659,7 +679,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             output_dir: None,      // Not needed for constraint verification
             verify_proofs: false,  // Not applicable for constraint verification
             minimal_memory: false, // Not relevant for constraint verification
-            gpu_params: None,      // Not relevant for constraint verification
+            gpu_params: ParamsGPU::default(), // Not relevant for constraint verification
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -672,9 +692,9 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
         Self {
             // Preserve common fields
             aggregation: builder.aggregation,
+            snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,
             rma: builder.rma,
-            compressed: builder.compressed,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
@@ -695,7 +715,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             output_dir: None,      // User should specify this
             verify_proofs: true,   // Default to verifying generated proofs
             minimal_memory: false, // Default to normal memory usage
-            gpu_params: None,      // Default to CPU proving, user can set via .gpu()
+            gpu_params: ParamsGPU::default(), // Default to CPU proving, user can set via .gpu()
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
