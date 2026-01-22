@@ -44,7 +44,7 @@ pub fn commit<T: Serialize>(value: &T) {
 /// Write raw bytes to public outputs.
 /// Bytes are written as 32-bit little-endian values.
 pub fn write(buf: &[u8]) {
-    let chunks = (buf.len() + 3) / 4;
+    let chunks = buf.len().div_ceil(4);
 
     for i in 0..chunks {
         let start = i * 4;
