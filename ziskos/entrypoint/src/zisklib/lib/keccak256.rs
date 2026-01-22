@@ -1,3 +1,5 @@
+#[cfg(zisk_hints)]
+use crate::hints::hint_keccak256;
 use crate::syscalls::syscall_keccak_f;
 
 /// Keccak-256 rate in bytes (1600 - 2*256) / 8 = 136 bytes
@@ -7,7 +9,7 @@ const KECCAK256_RATE: usize = 136;
 ///
 /// This implements the Keccak sponge construction with:
 /// - Rate: 1088 bits (136 bytes)
-/// - Capacity: 512 bits (64 bytes)  
+/// - Capacity: 512 bits (64 bytes)
 /// - Output: 256 bits (32 bytes)
 /// - Padding: Keccak padding (0x01...0x80)
 pub fn keccak256(input: &[u8]) -> [u8; 32] {
@@ -82,5 +84,32 @@ pub unsafe extern "C" fn keccak256_c(input: *const u8, input_len: usize, output:
 /// - `output` must point to a writable buffer of at least 32 bytes
 #[no_mangle]
 pub unsafe extern "C" fn native_keccak256(bytes: *const u8, len: usize, output: *mut u8) {
-    keccak256_c(bytes, len, output);
+    #[cfg(zisk_hints)]
+    crate::hints::hint_keccak256(bytes, len);
+
+    #[cfg(zisk_hints_debug)]
+    {
+        let input_bytes = unsafe { core::slice::from_raw_parts(bytes, len) };
+        crate::hints::hint_log(format!("hint_keccak256 (bytes: {:?}, len: {})", input_bytes, len));
+    }
+
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    {
+        keccak256_c(bytes, len, output);
+    }
+
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    {
+        use tiny_keccak::{Hasher, Keccak};
+
+        let (input_bytes, out) = unsafe {
+            let input_bytes = core::slice::from_raw_parts(bytes, len);
+            let out = core::slice::from_raw_parts_mut(output, 32);
+            (input_bytes, out)
+        };
+
+        let mut hasher = Keccak::v256();
+        hasher.update(input_bytes);
+        hasher.finalize(out);
+    }
 }

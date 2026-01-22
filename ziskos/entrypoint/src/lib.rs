@@ -16,7 +16,7 @@ pub mod syscalls;
 
 pub mod ziskos_definitions;
 
-#[cfg(zisk_hints)]
+#[cfg(any(zisk_hints, zisk_hints_debug))]
 pub mod hints;
 
 #[macro_export]

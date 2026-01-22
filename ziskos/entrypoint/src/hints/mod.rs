@@ -4,6 +4,7 @@ mod hint;
 mod macros;
 mod bls12_381;
 mod bn254;
+mod keccak256;
 mod kzg;
 mod modexp;
 mod secp256k1;
@@ -26,6 +27,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use std::path::PathBuf;
 use std::thread::{self, ThreadId};
+use std::{ffi::CStr, os::raw::c_char};
 
 #[cfg(zisk_hints_reference)]
 use std::io::Read;
@@ -39,6 +41,7 @@ static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
 
 pub use bls12_381::*;
 pub use bn254::*;
+pub use keccak256::*;
 pub use kzg::*;
 pub use modexp::*;
 pub use secp256k1::*;
@@ -85,28 +88,6 @@ pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
     HINT_FILE_WRITER_HANDLE.store(handle);
 
     Ok(())
-}
-
-#[inline(always)]
-pub fn is_hints_enabled() -> bool {
-    HINT_QUEUE.is_open()
-}
-
-#[inline(always)]
-pub fn is_paused() -> bool {
-    HINT_QUEUE.is_paused()
-}
-
-#[inline(always)]
-pub fn pause_hints() -> bool {
-    let already_paused = HINT_QUEUE.is_paused();
-    HINT_QUEUE.pause();
-    already_paused
-}
-
-#[inline(always)]
-pub fn resume_hints() {
-    HINT_QUEUE.resume();
 }
 
 pub fn close_precompile_hints() -> io::Result<()> {
@@ -222,4 +203,47 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+#[inline(always)]
+pub fn hints_enabled() -> bool {
+    !HINT_QUEUE.is_paused() && HINT_QUEUE.is_open()
+}
+
+// Logs hint message; gated by `hints_enabled()` on non-Zisk targets and always-on for Zisk
+#[inline(always)]
+pub fn hint_log<S: AsRef<str>>(msg: S) {
+    // We check if hints are enable only for non-zisk targets, since in zisk targets hints are not used
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    if !hints_enabled() {
+        return;
+    }
+
+    println!("{}", msg.as_ref());
+}
+
+#[no_mangle]
+pub extern "C" fn pause_hints() -> bool {
+    let already_paused = HINT_QUEUE.is_paused();
+    HINT_QUEUE.pause();
+    already_paused
+}
+
+#[no_mangle]
+pub extern "C" fn resume_hints() {
+    HINT_QUEUE.resume();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn hint_log_c(msg: *const c_char) {
+    if msg.is_null() {
+        return;
+    }
+
+    let c_str = unsafe { CStr::from_ptr(msg) };
+
+    match c_str.to_str() {
+        Ok(s) => hint_log(s),
+        Err(_) => return,
+    }
 }
