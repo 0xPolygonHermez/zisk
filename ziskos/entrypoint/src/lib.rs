@@ -16,6 +16,9 @@ pub mod syscalls;
 
 pub mod ziskos_definitions;
 
+#[cfg(zisk_hints)]
+pub mod hints;
+
 #[macro_export]
 macro_rules! entrypoint {
     ($path:path) => {
