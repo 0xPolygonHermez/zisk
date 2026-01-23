@@ -6327,7 +6327,6 @@ dependencies = [
  "bincode",
  "cfg-if",
  "ctor",
- "fields",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
