@@ -127,13 +127,13 @@ pub fn bls12_381_pairing_check_hint(data: &[u64]) -> Result<Vec<u64>> {
 
     validate_hint_length(data, expected_len, "HINT_BLS12_381_PAIRING_CHECK")?;
 
-    let bytes = unsafe {
+    let pairs = unsafe {
         std::slice::from_raw_parts(data.as_ptr().add(1) as *const u8, num_pairs * PAIR_SIZE_BYTES)
     };
 
     let mut hints = Vec::new();
     unsafe {
-        zisklib::bls12_381_pairing_check_c(bytes.as_ptr(), num_pairs, &mut hints);
+        zisklib::bls12_381_pairing_check_c(pairs.as_ptr(), num_pairs, &mut hints);
     }
 
     Ok(hints)
