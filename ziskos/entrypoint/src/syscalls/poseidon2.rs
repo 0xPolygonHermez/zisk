@@ -6,8 +6,8 @@ use core::arch::asm;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use crate::ziskos_syscall;
 
-// #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-// use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
 
 /// Executes the Poseidon2 permutation on the given state.
 ///
@@ -31,22 +31,20 @@ pub extern "C" fn syscall_poseidon2(
     ziskos_syscall!(0x812, state);
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
-        // // Get a mutable reference to the state
-        // let state: &mut [u64; 16] = unsafe { &mut *(state) };
+        // Get a mutable reference to the state
+        let state: &mut [u64; 16] = unsafe { &mut *(state) };
 
-        // // Call poseidon2, mapping u64 to Goldilocks elements
-        // let state_gl = state.map(Goldilocks::new);
-        // let new_state_gl = poseidon2_hash::<Goldilocks, Poseidon16, 16>(&state_gl);
-        // for (i, d) in state.iter_mut().enumerate() {
-        //     *d = new_state_gl[i].as_canonical_u64();
-        // }
+        // Call poseidon2, mapping u64 to Goldilocks elements
+        let state_gl = state.map(Goldilocks::new);
+        let new_state_gl = poseidon2_hash::<Goldilocks, Poseidon16, 16>(&state_gl);
+        for (i, d) in state.iter_mut().enumerate() {
+            *d = new_state_gl[i].as_canonical_u64();
+        }
 
-        // #[cfg(feature = "hints")]
-        // {
-        //     // For hints, we store the new state in the hints vector
-        //     hints.extend_from_slice(state);
-        // }
-
-        unreachable!();
+        #[cfg(feature = "hints")]
+        {
+            // For hints, we store the new state in the hints vector
+            hints.extend_from_slice(state);
+        }
     }
 }
