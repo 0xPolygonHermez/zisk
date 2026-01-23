@@ -9,7 +9,7 @@ use std::sync::{
     Condvar, Mutex,
 };
 
-pub const MAX_HINT_DATA_LEN: usize = 1536;
+pub const MAX_HINT_DATA_LEN: usize = 70000;
 
 // TODO: Add heap hint data field for large hints (>= MAX_HINT_DATA_LEN)
 #[derive(Clone, Debug)]
@@ -58,10 +58,10 @@ impl Hint {
 
     #[inline(always)]
     fn header_and_payload(&self) -> ([u8; 8], &[u8]) {
-        let bytes = unsafe {
-            core::slice::from_raw_parts(self.data.as_ptr() as *const u8, self.len)
-        };
-        (self.header.to_le_bytes(), bytes)
+        // Align length data to 8 bytes
+        let len_aligned = (self.len + 7) & !7;
+
+        (self.header.to_le_bytes(), &self.data[..len_aligned])
     }
 
     #[cfg(zisk_hints_metrics)]

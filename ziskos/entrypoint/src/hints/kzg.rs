@@ -12,7 +12,7 @@ pub unsafe extern "C" fn hint_verify_kzg_proof(z: *const u8, y: *const u8, commi
     let slice_bytes = concat_hint_bytes!(32 + 32 + 48 + 48; z_bytes, y_bytes, commitment_bytes, proof_bytes);
 
     HINT_QUEUE.push(
-        Hint::new(KZG_VERIFY_PROOF_HINT_ID, &slice_bytes, slice_bytes.len(), true)
+        Hint::new(KZG_VERIFY_PROOF_HINT_ID, &slice_bytes, slice_bytes.len(), false)
     );
 }
 

@@ -11,7 +11,7 @@ pub unsafe extern "C" fn hint_keccak256(input: *const u8, input_len: usize) {
 
     assert!(
         input_len as usize <= MAX_HINT_DATA_LEN,
-        "keccak256 hint data length exceeds MAX_HINT_DATA_LEN"
+        "{}", format!("keccak256 hint data length {} exceeds MAX_HINT_DATA_LEN", input_len)
     );
 
     let input_slice: &[u8] = unsafe { core::slice::from_raw_parts(input, input_len) };
