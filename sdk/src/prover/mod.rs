@@ -30,6 +30,15 @@ pub struct ZiskProgramVK {
     pub vadcop_proof_compressed_vk: Vec<u8>,
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct ProofOpts {
+    pub verify_proofs: bool,
+    pub rma: bool,
+    pub minimal_memory: bool,
+    pub output_dir_path: Option<PathBuf>,
+    pub save_proofs: bool,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProofMode {
     VadcopFinal,
@@ -72,6 +81,7 @@ pub trait ProverEngine {
         &self,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
+        minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStats>)>;
 
@@ -87,7 +97,14 @@ pub trait ProverEngine {
 
     fn verify(&self, proof: &ZiskProveResult, vk: &ZiskProgramVK) -> Result<()>;
 
-    fn prove(&self, stdin: ZiskStdin, mode: ProofMode) -> Result<ZiskProveResult>;
+    fn prove_debug(&self, stdin: ZiskStdin, proof_options: ProofOpts) -> Result<ZiskProveResult>;
+
+    fn prove(
+        &self,
+        stdin: ZiskStdin,
+        mode: ProofMode,
+        proof_options: ProofOpts,
+    ) -> Result<ZiskProveResult>;
 
     fn prove_phase(
         &self,
@@ -154,9 +171,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
         &self,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
+        minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStats>)> {
-        self.prover.stats(stdin, debug_info, mpi_node)
+        self.prover.stats(stdin, debug_info, minimal_memory, mpi_node)
     }
 
     /// Verify the constraints with the given standard input and debug information.
@@ -226,11 +244,12 @@ pub struct ProveBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
     stdin: ZiskStdin,
     mode: ProofMode,
+    proof_options: ProofOpts,
 }
 
 impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
     fn new(prover: &'a C::Prover, stdin: ZiskStdin) -> Self {
-        Self { prover, stdin, mode: ProofMode::VadcopFinal }
+        Self { prover, stdin, mode: ProofMode::VadcopFinal, proof_options: ProofOpts::default() }
     }
 
     /// Enable compressed proof generation.
@@ -244,8 +263,17 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         self
     }
 
+    pub fn with_proof_options(mut self, options: ProofOpts) -> Self {
+        self.proof_options = options;
+        self
+    }
+
     /// Execute the proof generation with the configured options.
     pub fn run(self) -> Result<ZiskProveResult> {
-        self.prover.prove(self.stdin, self.mode)
+        self.prover.prove(self.stdin, self.mode, self.proof_options)
+    }
+
+    pub fn run_debug(self) -> Result<ZiskProveResult> {
+        self.prover.prove_debug(self.stdin, self.proof_options)
     }
 }

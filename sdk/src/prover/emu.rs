@@ -1,5 +1,5 @@
 use crate::{
-    check_paths_exist, create_debug_info, get_custom_commits_map,
+    check_paths_exist, get_custom_commits_map,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
     RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult, ZiskProgramVK,
     ZiskProveResult, ZiskVerifyConstraintsResult,
@@ -11,7 +11,7 @@ use zisk_common::io::ZiskStdin;
 use zisk_common::ExecutorStats;
 use zisk_distributed_common::LoggingConfig;
 
-use crate::ProofMode;
+use crate::{ProofMode, ProofOpts};
 
 use anyhow::Result;
 
@@ -31,7 +31,6 @@ impl EmuProver {
         verify_constraints: bool,
         aggregation: bool,
         snark_wrapper: bool,
-        rma: bool,
         witness_lib: PathBuf,
         proving_key: PathBuf,
         proving_key_snark: PathBuf,
@@ -39,17 +38,12 @@ impl EmuProver {
         verbose: u8,
         shared_tables: bool,
         gpu_params: ParamsGPU,
-        verify_proofs: bool,
-        minimal_memory: bool,
-        save_proofs: bool,
-        output_dir: Option<PathBuf>,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         let core_prover = EmuCoreProver::new(
             verify_constraints,
             aggregation,
             snark_wrapper,
-            rma,
             witness_lib,
             proving_key,
             proving_key_snark,
@@ -57,10 +51,6 @@ impl EmuProver {
             verbose,
             shared_tables,
             gpu_params,
-            verify_proofs,
-            minimal_memory,
-            save_proofs,
-            output_dir,
             logging_config,
         )?;
 
@@ -98,12 +88,10 @@ impl ProverEngine for EmuProver {
         &self,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
+        minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStats>)> {
-        let debug_info =
-            create_debug_info(debug_info, self.core_prover.backend.proving_key.clone())?;
-
-        self.core_prover.backend.stats(stdin, debug_info, mpi_node)
+        self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
     }
 
     fn verify_constraints_debug(
@@ -111,9 +99,6 @@ impl ProverEngine for EmuProver {
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        let debug_info =
-            create_debug_info(debug_info, self.core_prover.backend.proving_key.clone())?;
-
         self.core_prover.backend.verify_constraints_debug(stdin, debug_info)
     }
 
@@ -129,8 +114,17 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.verify(proof, vk)
     }
 
-    fn prove(&self, stdin: ZiskStdin, mode: ProofMode) -> Result<ZiskProveResult> {
-        self.core_prover.backend.prove(stdin, mode)
+    fn prove_debug(&self, stdin: ZiskStdin, proof_options: ProofOpts) -> Result<ZiskProveResult> {
+        self.core_prover.backend.prove_debug(stdin, proof_options)
+    }
+
+    fn prove(
+        &self,
+        stdin: ZiskStdin,
+        mode: ProofMode,
+        proof_options: ProofOpts,
+    ) -> Result<ZiskProveResult> {
+        self.core_prover.backend.prove(stdin, mode, proof_options)
     }
 
     fn prove_phase(
@@ -168,7 +162,6 @@ impl EmuCoreProver {
         verify_constraints: bool,
         aggregation: bool,
         use_snark_wrapper: bool,
-        rma: bool,
         witness_lib: PathBuf,
         proving_key: PathBuf,
         proving_key_snark: PathBuf,
@@ -176,10 +169,6 @@ impl EmuCoreProver {
         verbose: u8,
         shared_tables: bool,
         gpu_params: ParamsGPU,
-        verify_proofs: bool,
-        minimal_memory: bool,
-        save_proofs: bool,
-        output_dir: Option<PathBuf>,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         let custom_commits_map = get_custom_commits_map(&proving_key, &elf)?;
@@ -222,20 +211,7 @@ impl EmuCoreProver {
             snark_wrapper = Some(SnarkWrapper::new(&proving_key_snark, verbose.into())?);
         }
 
-        let core = ProverBackend {
-            verify_constraints,
-            aggregation,
-            rma,
-            witness_lib,
-            proving_key: proving_key.clone(),
-            verify_proofs,
-            minimal_memory,
-            save_proofs,
-            output_dir,
-            proofman,
-            snark_wrapper,
-            rank_info: RankInfo { world_rank, local_rank },
-        };
+        let core = ProverBackend { witness_lib, proofman, snark_wrapper };
 
         Ok(Self { backend: core, rank_info: RankInfo { world_rank, local_rank } })
     }

@@ -27,9 +27,6 @@ pub struct ZiskProveSnark {
     /// Verbosity (-v, -vv)
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
-
-    #[clap(short = 'j', long, default_value_t = false)]
-    pub save_json: bool,
 }
 
 impl ZiskProveSnark {
@@ -46,8 +43,7 @@ impl ZiskProveSnark {
         let snark_wrapper: SnarkWrapper<Goldilocks> =
             SnarkWrapper::new(&self.proving_key_snark, self.verbose.into())?;
 
-        let snark_proof =
-            snark_wrapper.generate_final_snark_proof(&proof, &self.output_dir, self.save_json)?;
+        let snark_proof = snark_wrapper.generate_final_snark_proof(&proof, &self.output_dir)?;
         println!(
             "{} Final SNARK proof generated. Proof: {:?}, Publics: {:?}",
             "Info:".bright_blue().bold(),

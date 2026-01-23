@@ -11,6 +11,7 @@ mod run;
 mod sdk;
 mod stats;
 mod verify_constraints;
+mod verify_snark;
 mod verify_stark;
 
 pub use build::*;
@@ -26,4 +27,5 @@ pub use run::*;
 pub use sdk::*;
 pub use stats::*;
 pub use verify_constraints::*;
+pub use verify_snark::*;
 pub use verify_stark::*;

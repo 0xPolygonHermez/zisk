@@ -41,8 +41,6 @@ pub struct Prove;
 ///     .asm()
 ///     .prove()
 ///     .elf_path(elf_path)
-///     .save_proofs(true)
-///     .output_dir(output_path)
 ///     .unlock_mapped_memory(true)
 ///     .build();
 /// ```
@@ -51,7 +49,6 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     // Common fields for both EMU and ASM
     aggregation: bool,
     snark_wrapper: bool,
-    rma: bool,
     witness_lib: Option<PathBuf>,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
@@ -69,10 +66,6 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     unlock_mapped_memory: bool,
 
     // Prove-specific fields (only available when Operation = Prove)
-    save_proofs: bool,
-    output_dir: Option<PathBuf>,
-    verify_proofs: bool,
-    minimal_memory: bool,
     gpu_params: ParamsGPU,
 
     // Phantom data to track state
@@ -83,7 +76,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
 impl ProverClientBuilder<(), ()> {
     #[must_use]
     pub fn new() -> Self {
-        Self { aggregation: true, rma: true, snark_wrapper: false, ..Default::default() }
+        Self { aggregation: true, snark_wrapper: false, ..Default::default() }
     }
 
     /// Configure for Emulator backend
@@ -144,13 +137,6 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     #[must_use]
     pub fn snark(mut self, enable: bool) -> Self {
         self.snark_wrapper = enable;
-        self
-    }
-
-    /// Set RMA.
-    #[must_use]
-    pub fn rma(mut self, use_rma: bool) -> Self {
-        self.rma = use_rma;
         self
     }
 
@@ -257,30 +243,6 @@ impl<Operation> ProverClientBuilder<AsmB, Operation> {
 // Prove-specific methods (available for any operation state - will use defaults if not in Prove mode)
 impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     #[must_use]
-    pub fn save_proofs(mut self, save: bool) -> Self {
-        self.save_proofs = save;
-        self
-    }
-
-    #[must_use]
-    pub fn output_dir(mut self, output_dir: PathBuf) -> Self {
-        self.output_dir = Some(output_dir);
-        self
-    }
-
-    #[must_use]
-    pub fn verify_proofs(mut self, verify: bool) -> Self {
-        self.verify_proofs = verify;
-        self
-    }
-
-    #[must_use]
-    pub fn minimal_memory(mut self, minimal: bool) -> Self {
-        self.minimal_memory = minimal;
-        self
-    }
-
-    #[must_use]
     pub fn gpu(mut self, gpu_params: Option<ParamsGPU>) -> Self {
         if let Some(gpu_params) = gpu_params {
             self.gpu_params = gpu_params;
@@ -344,12 +306,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
         let proving_key_snark = get_proving_key_snark(self.proving_key_snark.as_ref());
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
 
-        let output_dir = if !self.verify_constraints {
-            Some(self.output_dir.unwrap_or_else(|| "tmp".into()))
-        } else {
-            None
-        };
-
         if self.print_command_info {
             Self::print_emu_command_info(
                 self.witness,
@@ -358,7 +314,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
                 &proving_key,
                 &proving_key_snark,
                 &elf,
-                output_dir.as_ref(),
             );
         }
 
@@ -366,7 +321,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
             self.verify_constraints,
             self.aggregation,
             self.snark_wrapper,
-            self.rma,
             witness_lib,
             proving_key,
             proving_key_snark,
@@ -374,10 +328,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
             self.verbose,
             self.shared_tables,
             self.gpu_params,
-            self.verify_proofs,
-            self.minimal_memory,
-            self.save_proofs,
-            output_dir.clone(),
             self.logging_config,
         )?;
 
@@ -391,7 +341,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
         proving_key: &Path,
         proving_key_snark: &Path,
         elf: &Path,
-        output_dir: Option<&PathBuf>,
     ) {
         if witness {
             println!("{: >12} StatsConstraints", "Command".bright_green().bold());
@@ -415,10 +364,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
             "Proving key SNARK".bright_green().bold(),
             proving_key_snark.display()
         );
-
-        if let Some(output_dir) = output_dir {
-            println!("{: >12} {}", "Output Dir".bright_green().bold(), output_dir.display());
-        }
 
         println!();
     }
@@ -495,12 +440,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
         let proving_key_snark = get_proving_key_snark(self.proving_key_snark.as_ref());
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
 
-        let output_dir = if !self.verify_constraints {
-            Some(self.output_dir.unwrap_or_else(|| "tmp".into()))
-        } else {
-            None
-        };
-
         let (asm_mt_filename, asm_rh_filename) = get_asm_paths(&elf)?;
 
         if self.print_command_info {
@@ -511,7 +450,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
                 &proving_key,
                 &proving_key_snark,
                 &elf,
-                output_dir.as_ref(),
             );
         }
 
@@ -519,7 +457,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
             self.verify_constraints,
             self.aggregation,
             self.snark_wrapper,
-            self.rma,
             witness_lib,
             proving_key,
             proving_key_snark,
@@ -531,10 +468,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
             self.base_port,
             self.unlock_mapped_memory,
             self.gpu_params,
-            self.verify_proofs,
-            self.minimal_memory,
-            self.save_proofs,
-            output_dir.clone(),
             self.logging_config,
         )?;
 
@@ -548,7 +481,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
         proving_key: &Path,
         proving_key_snark: &Path,
         elf: &Path,
-        output_dir: Option<&PathBuf>,
     ) {
         if witness {
             println!("{: >12} StatsConstraints", "Command".bright_green().bold());
@@ -568,10 +500,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
             proving_key_snark.display()
         );
 
-        if let Some(output_dir) = output_dir {
-            println!("{: >12} {}", "Output Dir".bright_green().bold(), output_dir.display());
-        }
-
         println!();
     }
 }
@@ -583,7 +511,6 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             // Preserve common fields
             aggregation: builder.aggregation,
             witness: builder.witness,
-            rma: builder.rma,
             snark_wrapper: builder.snark_wrapper,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
@@ -594,18 +521,12 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
             logging_config: builder.logging_config,
+            gpu_params: builder.gpu_params,
 
             // Reset ASM-specific fields for EMU backend
             asm_path: None,
             base_port: None,
             unlock_mapped_memory: false,
-
-            // Reset prove-specific fields (will be set when choosing operation)
-            save_proofs: false,
-            output_dir: None,
-            verify_proofs: false,
-            minimal_memory: false,
-            gpu_params: ParamsGPU::default(),
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -620,7 +541,6 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,
-            rma: builder.rma,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
@@ -630,18 +550,12 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
             logging_config: builder.logging_config,
+            gpu_params: builder.gpu_params,
 
             // Preserve ASM-specific fields (user may have set defaults)
             asm_path: builder.asm_path,
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
-
-            // Reset prove-specific fields (will be set when choosing operation)
-            save_proofs: false,
-            output_dir: None,
-            verify_proofs: false,
-            minimal_memory: false,
-            gpu_params: ParamsGPU::default(),
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -658,7 +572,6 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,
-            rma: builder.rma,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
@@ -668,18 +581,12 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
             logging_config: builder.logging_config,
+            gpu_params: builder.gpu_params,
 
             // Preserve backend-specific fields (ASM or EMU)
             asm_path: builder.asm_path,
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
-
-            // Initialize prove-specific fields to defaults for verify_constraints mode
-            save_proofs: false,    // Not relevant for constraint verification
-            output_dir: None,      // Not needed for constraint verification
-            verify_proofs: false,  // Not applicable for constraint verification
-            minimal_memory: false, // Not relevant for constraint verification
-            gpu_params: ParamsGPU::default(), // Not relevant for constraint verification
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -694,11 +601,11 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,
-            rma: builder.rma,
             witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: false,
+            gpu_params: builder.gpu_params,
             elf: builder.elf,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
@@ -709,13 +616,6 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             asm_path: builder.asm_path,
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
-
-            // Initialize prove-specific fields to sensible defaults
-            save_proofs: true,     // Default to saving proofs when proving
-            output_dir: None,      // User should specify this
-            verify_proofs: true,   // Default to verifying generated proofs
-            minimal_memory: false, // Default to normal memory usage
-            gpu_params: ParamsGPU::default(), // Default to CPU proving, user can set via .gpu()
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,

@@ -8,7 +8,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::ZiskStdin;
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_sdk::{Proof, ProverClient, ZiskProveResult};
+use zisk_sdk::{Proof, ProofOpts, ProverClient, ZiskProveResult};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -188,21 +188,24 @@ impl ZiskProve {
         gpu_params: Option<ParamsGPU>,
     ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClient::builder()
-            .rma(self.rma)
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
-            .save_proofs(self.save_proofs)
-            .output_dir(self.output_dir.clone())
-            .verify_proofs(self.verify_proofs)
-            .minimal_memory(self.minimal_memory)
             .gpu(gpu_params)
             .print_command_info()
             .build()?;
 
-        let result = prover.prove(stdin).run()?;
+        let proof_options = ProofOpts {
+            rma: self.rma,
+            minimal_memory: self.minimal_memory,
+            verify_proofs: self.verify_proofs,
+            save_proofs: self.save_proofs,
+            output_dir_path: Some(self.output_dir.clone()),
+        };
+
+        let result = prover.prove(stdin).with_proof_options(proof_options).run()?;
         let world_rank = prover.world_rank();
 
         Ok((result, world_rank))
@@ -215,7 +218,6 @@ impl ZiskProve {
     ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClient::builder()
             .asm()
-            .rma(self.rma)
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
@@ -224,15 +226,19 @@ impl ZiskProve {
             .asm_path_opt(self.asm.clone())
             .base_port_opt(self.port)
             .unlock_mapped_memory(self.unlock_mapped_memory)
-            .save_proofs(self.save_proofs)
-            .output_dir(self.output_dir.clone())
-            .verify_proofs(self.verify_proofs)
-            .minimal_memory(self.minimal_memory)
             .gpu(gpu_params)
             .print_command_info()
             .build()?;
 
-        let result = prover.prove(stdin).run()?;
+        let proof_options = ProofOpts {
+            rma: self.rma,
+            minimal_memory: self.minimal_memory,
+            verify_proofs: self.verify_proofs,
+            save_proofs: self.save_proofs,
+            output_dir_path: Some(self.output_dir.clone()),
+        };
+
+        let result = prover.prove(stdin).with_proof_options(proof_options).run()?;
         let world_rank = prover.world_rank();
 
         Ok((result, world_rank))

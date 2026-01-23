@@ -139,7 +139,12 @@ impl ZiskStats {
             .print_command_info()
             .build()?;
 
-        prover.stats(stdin, self.debug.clone(), self.mpi_node.map(|n| n as u32))
+        prover.stats(
+            stdin,
+            self.debug.clone(),
+            self.minimal_memory,
+            self.mpi_node.map(|n| n as u32),
+        )
     }
 
     pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStats>)> {
@@ -158,7 +163,7 @@ impl ZiskStats {
             .build()?;
 
         let mpi_node = self.mpi_node.map(|n| n as u32);
-        prover.stats(stdin, self.debug.clone(), mpi_node)
+        prover.stats(stdin, self.debug.clone(), self.minimal_memory, mpi_node)
     }
 
     /// Prints stats individually and grouped, with aligned columns.
