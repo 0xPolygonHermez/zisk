@@ -7,6 +7,8 @@ cfg_if! {
             ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param,
             zisklib::{FCALL_BLS12_381_FP_INV_ID, FCALL_BLS12_381_FP_SQRT_ID}
         };
+    } else {
+        use crate::zisklib::fcalls_impl::bls12_381::{bls12_381_fp_inv, bls12_381_fp_sqrt};
     }
 }
 
@@ -24,9 +26,20 @@ cfg_if! {
 /// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
-pub fn fcall_bls12_381_fp_inv(p_value: &[u64; 6]) -> [u64; 6] {
+pub fn fcall_bls12_381_fp_inv(
+    p_value: &[u64; 6],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 6] {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    unreachable!();
+    {
+        let result: [u64; 6] = bls12_381_fp_inv(p_value);
+        #[cfg(feature = "hints")]
+        {
+            hints.push(result.len() as u64);
+            hints.extend_from_slice(&result);
+        }
+        result
+    }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
         ziskos_fcall_param!(p_value, 8);
@@ -56,9 +69,21 @@ pub fn fcall_bls12_381_fp_inv(p_value: &[u64; 6]) -> [u64; 6] {
 /// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
-pub fn fcall_bls12_381_fp_sqrt(p_value: &[u64; 6]) -> [u64; 7] {
+pub fn fcall_bls12_381_fp_sqrt(
+    p_value: &[u64; 6],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 7] {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    unreachable!();
+    {
+        let mut result: [u64; 7] = [0; 7];
+        bls12_381_fp_sqrt(p_value, &mut result);
+        #[cfg(feature = "hints")]
+        {
+            hints.push(result.len() as u64);
+            hints.extend_from_slice(&result);
+        }
+        result
+    }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
         ziskos_fcall_param!(p_value, 8);

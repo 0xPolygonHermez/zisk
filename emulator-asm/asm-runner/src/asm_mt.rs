@@ -109,3 +109,17 @@ impl AsmInputC2 {
         bytes
     }
 }
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct AsmInputC3 {
+    pub input_data_size: u64,
+}
+
+impl AsmInputC3 {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(32);
+        bytes.extend_from_slice(&self.input_data_size.to_le_bytes());
+        bytes
+    }
+}

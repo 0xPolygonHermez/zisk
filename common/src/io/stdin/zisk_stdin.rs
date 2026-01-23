@@ -108,4 +108,31 @@ impl ZiskStdin {
     pub fn from_vec(data: Vec<u8>) -> Self {
         Self { io: ZiskIOVariant::Memory(ZiskMemoryStdin::new(data)) }
     }
+
+    /// Create a ZiskStdin from a URI string
+    /// - None -> null stream
+    /// - "scheme://path" -> parsed based on scheme
+    /// - No scheme -> treated as file path
+    pub fn from_uri<S: Into<String>>(stdin_uri: Option<S>) -> Result<ZiskStdin> {
+        if stdin_uri.is_none() {
+            return Ok(ZiskStdin::null());
+        }
+
+        let uri = stdin_uri.unwrap().into();
+
+        // Check if URI contains "://" separator
+        if let Some(pos) = uri.find("://") {
+            let (scheme, path) = uri.split_at(pos);
+            let path = &path[3..]; // Skip "://"
+
+            match scheme {
+                "file" => ZiskStdin::from_file(path),
+                // Unknown scheme - could error or fallback
+                _ => Err(anyhow::anyhow!("Unknown stream source scheme: {}", scheme)),
+            }
+        } else {
+            // No "://" found - fallback as a file path
+            ZiskStdin::from_file(uri.as_str())
+        }
+    }
 }

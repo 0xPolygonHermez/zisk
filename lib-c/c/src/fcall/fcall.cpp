@@ -307,19 +307,28 @@ int MsbPos256 (
           uint64_t * r  // 2 x 64 bits
 )
 {
-    const uint64_t * x = a;
-    const uint64_t * y = &a[4];
+    const uint64_t n = a[0]; // number of inputs
+    const uint64_t * params = &a[1];
 
-    for (int i=3; i>=0; i--)
+    for (int limb=3; limb>=0; limb--)
     {
-        if ((x[i] != 0) || (y[i] != 0))
+        // Find max value at this limb position across all inputs
+        uint64_t max_word = 0;
+        for (uint64_t i=0; i<n; i++)
         {
-            uint64_t word = x[i] > y[i] ? x[i] : y[i];
-            r[0] = i;
-            r[1] = msb_pos(word);
+            uint64_t word = params[i * 4 + limb];
+            if (word > max_word) {
+                max_word = word;
+            }
+        }
+        if (max_word != 0)
+        {
+            r[0] = limb;
+            r[1] = msb_pos(max_word);
             return 0;
         }
     }
+
     printf("MsbPos256() error: both x and y are zero\n");
     exit(-1);
 }
@@ -927,7 +936,12 @@ int BigIntDivCtx (
         ctx->result[2 + quotient_size + i] = 0;
     }
 
-    return 2 + quotient_size + remainder_size;
+    uint64_t total_size = 2 + quotient_size + remainder_size;
+    assert(total_size < FCALL_RESULT_MAX_SIZE);
+
+    ctx->result_size = total_size;
+
+    return total_size;
 }
 
 /************************/
@@ -1021,6 +1035,8 @@ int BLS12_381Fp2SqrtCtx (
         );
         if (result != 0) return result;
     }
+
+    ctx->result_size = 13;
     
     return 0;
 }

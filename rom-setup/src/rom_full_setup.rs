@@ -13,6 +13,7 @@ pub fn rom_full_setup(
     proving_key: &Path,
     zisk_path: &Path,
     output_dir: &Option<PathBuf>,
+    hints: bool,
     verbose: bool,
 ) -> std::result::Result<(), anyhow::Error> {
     let output_path = if output_dir.is_none() {
@@ -44,8 +45,7 @@ pub fn rom_full_setup(
     #[cfg(not(target_os = "macos"))]
     {
         tracing::info!("Computing assembly setup");
-
-        crate::generate_assembly(elf, &elf_hash, zisk_path, output_path.as_path(), verbose)?;
+        crate::generate_assembly(elf, &elf_hash, zisk_path, output_path.as_path(), hints, verbose)?;
     }
 
     println!();

@@ -16,7 +16,11 @@ use super::{rem_long, LongScratch, U256};
 ///
 /// # Note
 /// Not optimal for `len(a) == 1`, use `square_short` instead
-pub fn square_long(a: &[U256], out: &mut [U256]) -> usize {
+pub fn square_long(
+    a: &[U256],
+    out: &mut [U256],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> usize {
     //                                        a3    a2    a1      a0
     //                                      * a3    a2    a1      a0
     //         ------------------------------------------------------- 0
@@ -51,7 +55,11 @@ pub fn square_long(a: &[U256], out: &mut [U256]) -> usize {
             dl: out[2 * i].as_limbs_mut(),
             dh: &mut [0, 0, 0, 0],
         };
-        syscall_arith256(&mut ai_ai);
+        syscall_arith256(
+            &mut ai_ai,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         out[2 * i + 1] = U256::from_u64s(ai_ai.dh);
     }
@@ -67,19 +75,31 @@ pub fn square_long(a: &[U256], out: &mut [U256]) -> usize {
                 dl: &mut [0, 0, 0, 0],
                 dh: &mut [0, 0, 0, 0],
             };
-            syscall_arith256(&mut ai_aj);
+            syscall_arith256(
+                &mut ai_aj,
+                #[cfg(feature = "hints")]
+                hints,
+            );
 
             // Double the result 2·a[i]·a[j]
 
             // Start by doubling the lower chunk: 2·l₁ = [1/0]·B + l₂
             let mut dbl_low =
                 SyscallAdd256Params { a: ai_aj.dl, b: ai_aj.dl, cin: 0, c: &mut [0, 0, 0, 0] };
-            let dbl_low_carry = syscall_add256(&mut dbl_low);
+            let dbl_low_carry = syscall_add256(
+                &mut dbl_low,
+                #[cfg(feature = "hints")]
+                hints,
+            );
 
             // Next, double the higher chunk: 2·h₁·B = [1/0]·B² + h₂·B
             let mut dbl_high =
                 SyscallAdd256Params { a: ai_aj.dh, b: ai_aj.dh, cin: 0, c: &mut [0, 0, 0, 0] };
-            let dbl_high_carry = syscall_add256(&mut dbl_high);
+            let dbl_high_carry = syscall_add256(
+                &mut dbl_high,
+                #[cfg(feature = "hints")]
+                hints,
+            );
 
             // If there's a carry from doubling the low part, add it to the high part
             if dbl_low_carry != 0 {
@@ -90,7 +110,11 @@ pub fn square_long(a: &[U256], out: &mut [U256]) -> usize {
                     cin: 1,
                     c: dbl_high.c,
                 };
-                let _carry = syscall_add256(&mut add);
+                let _carry = syscall_add256(
+                    &mut add,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
 
                 debug_assert!(_carry == 0, "Unexpected carry in intermediate addition");
             }
@@ -106,7 +130,11 @@ pub fn square_long(a: &[U256], out: &mut [U256]) -> usize {
                 cin: 0,
                 c: &mut [0, 0, 0, 0],
             };
-            let add_low_carry = syscall_add256(&mut add_low);
+            let add_low_carry = syscall_add256(
+                &mut add_low,
+                #[cfg(feature = "hints")]
+                hints,
+            );
             out[i + j] = U256::from_u64s(add_low.c);
 
             if add_low_carry != 0 {
@@ -117,7 +145,11 @@ pub fn square_long(a: &[U256], out: &mut [U256]) -> usize {
                     cin: 1,
                     c: out[i + j + 1].as_limbs_mut(),
                 };
-                let add_carry = syscall_add256(&mut add);
+                let add_carry = syscall_add256(
+                    &mut add,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
 
                 if add_carry != 0 {
                     let a_in = out[i + j + 2];
@@ -127,7 +159,11 @@ pub fn square_long(a: &[U256], out: &mut [U256]) -> usize {
                         cin: 1,
                         c: out[i + j + 2].as_limbs_mut(),
                     };
-                    let _carry = syscall_add256(&mut add2);
+                    let _carry = syscall_add256(
+                        &mut add2,
+                        #[cfg(feature = "hints")]
+                        hints,
+                    );
 
                     debug_assert!(_carry == 0, "Unexpected carry in intermediate addition");
                 }
@@ -140,7 +176,11 @@ pub fn square_long(a: &[U256], out: &mut [U256]) -> usize {
                 cin: 0,
                 c: &mut [0, 0, 0, 0],
             };
-            let add_mid_carry = syscall_add256(&mut add_mid);
+            let add_mid_carry = syscall_add256(
+                &mut add_mid,
+                #[cfg(feature = "hints")]
+                hints,
+            );
             out[i + j + 1] = U256::from_u64s(add_mid.c);
 
             if add_mid_carry != 0 {
@@ -151,7 +191,11 @@ pub fn square_long(a: &[U256], out: &mut [U256]) -> usize {
                     cin: 1,
                     c: out[i + j + 2].as_limbs_mut(),
                 };
-                let _carry = syscall_add256(&mut add);
+                let _carry = syscall_add256(
+                    &mut add,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
 
                 debug_assert!(_carry == 0, "Unexpected carry in intermediate addition");
             }
@@ -165,7 +209,11 @@ pub fn square_long(a: &[U256], out: &mut [U256]) -> usize {
                     cin: 1,
                     c: out[i + j + 2].as_limbs_mut(),
                 };
-                let _carry = syscall_add256(&mut add);
+                let _carry = syscall_add256(
+                    &mut add,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
 
                 debug_assert!(_carry == 0, "Unexpected carry in intermediate addition");
             }
@@ -192,6 +240,7 @@ pub fn square_and_reduce_long(
     a: &[U256],
     modulus: &[U256],
     scratch: &mut LongScratch,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Vec<U256> {
     #[cfg(debug_assertions)]
     {
@@ -200,7 +249,18 @@ pub fn square_and_reduce_long(
         assert!(!modulus[len_m - 1].is_zero(), "Input 'modulus' must not have leading zeros");
     }
 
-    let sq_len = square_long(a, &mut scratch.mul);
+    let sq_len = square_long(
+        a,
+        &mut scratch.mul,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
-    rem_long(&scratch.mul[..sq_len], modulus, &mut scratch.rem)
+    rem_long(
+        &scratch.mul[..sq_len],
+        modulus,
+        &mut scratch.rem,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }

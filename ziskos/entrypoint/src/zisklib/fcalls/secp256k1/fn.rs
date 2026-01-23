@@ -4,6 +4,8 @@ cfg_if! {
     if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
         use core::arch::asm;
         use crate::{ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param, zisklib::FCALL_SECP256K1_FN_INV_ID};
+    } else {
+        use lib_c::secp256k1_fn_inv_c;
     }
 }
 
@@ -23,9 +25,21 @@ cfg_if! {
 /// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
-pub fn fcall_secp256k1_fn_inv(p_value: &[u64; 4]) -> [u64; 4] {
+pub fn fcall_secp256k1_fn_inv(
+    p_value: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 4] {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    unreachable!();
+    {
+        let mut result: [u64; 4] = [0; 4];
+        secp256k1_fn_inv_c(p_value, &mut result);
+        #[cfg(feature = "hints")]
+        {
+            hints.push(result.len() as u64);
+            hints.extend_from_slice(&result);
+        }
+        result
+    }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
         ziskos_fcall_param!(p_value, 4);
@@ -35,9 +49,20 @@ pub fn fcall_secp256k1_fn_inv(p_value: &[u64; 4]) -> [u64; 4] {
 }
 
 #[allow(unused_variables)]
-pub fn fcall_secp256k1_fn_inv_in_place(p_value: &[u64; 4]) {
+pub fn fcall_secp256k1_fn_inv_in_place(
+    p_value: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    unreachable!();
+    {
+        let mut result: [u64; 4] = [0; 4];
+        secp256k1_fn_inv_c(p_value, &mut result);
+        #[cfg(feature = "hints")]
+        {
+            hints.push(result.len() as u64);
+            hints.extend_from_slice(&result);
+        }
+    }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
         ziskos_fcall_param!(p_value, 4);

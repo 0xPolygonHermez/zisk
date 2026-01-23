@@ -1,11 +1,12 @@
-use crate::ux::print_banner;
+use crate::ux::{print_banner, print_banner_field};
 use anyhow::Result;
 
 use colored::Colorize;
 use proofman_common::ParamsGPU;
 use std::path::PathBuf;
+use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::io::ZiskStdin;
+use zisk_common::io::{StreamSource, ZiskStdin};
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
 use zisk_sdk::{ProverClient, ZiskProveResult};
@@ -41,8 +42,12 @@ pub struct ZiskProve {
     pub emulator: bool,
 
     /// Input path
-    #[clap(short = 'i', long)]
-    pub input: Option<PathBuf>,
+    #[clap(short = 'i', long, alias = "input")]
+    pub inputs: Option<String>,
+
+    /// Precompiles Hints path
+    #[clap(long)]
+    pub hints: Option<String>,
 
     /// Setup folder path
     #[clap(short = 'k', long)]
@@ -108,7 +113,20 @@ pub struct ZiskProve {
 
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
+        // Check if the deprecated alias was used
+        if std::env::args().any(|arg| arg == "--input") {
+            eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
+        }
+
         print_banner();
+
+        if let Some(inputs) = &self.inputs {
+            print_banner_field("Input", inputs);
+        }
+
+        if let Some(hints) = &self.hints {
+            print_banner_field("Prec. Hints", hints);
+        }
 
         let mut gpu_params = ParamsGPU::new(self.preallocate);
 
@@ -122,14 +140,27 @@ impl ZiskProve {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let stdin = self.create_stdin()?;
+        let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
 
-        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+        let hints_stream = StreamSource::from_uri(self.hints.as_deref())?;
+
+        if matches!(hints_stream, StreamSource::Quic(_)) {
+            return Err(anyhow::anyhow!("QUIC hints source is not supported for execution."));
+        }
+
+        let emulator = if cfg!(target_os = "macos") {
+            if !self.emulator {
+                warn!("Emulator mode is forced on macOS due to lack of ASM support.");
+            }
+            true
+        } else {
+            self.emulator
+        };
 
         let (result, world_rank) = if emulator {
             self.run_emu(stdin, gpu_params)?
         } else {
-            self.run_asm(stdin, gpu_params)?
+            self.run_asm(stdin, Some(hints_stream), gpu_params)?
         };
 
         if world_rank == 0 {
@@ -143,26 +174,10 @@ impl ZiskProve {
                 tracing::info!("      Proof ID: {}", proof_id);
             }
             tracing::info!("    ► Statistics");
-            tracing::info!(
-                "      time: {} seconds, steps: {}",
-                elapsed,
-                result.execution.executed_steps
-            );
+            tracing::info!("      time: {} seconds, steps: {}", elapsed, result.execution.steps);
         }
 
         Ok(())
-    }
-
-    fn create_stdin(&mut self) -> Result<ZiskStdin> {
-        let stdin = if let Some(input) = &self.input {
-            if !input.exists() {
-                return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
-            }
-            ZiskStdin::from_file(input)?
-        } else {
-            ZiskStdin::null()
-        };
-        Ok(stdin)
     }
 
     pub fn run_emu(
@@ -189,7 +204,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let result = prover.prove(stdin)?;
+        let result = prover.prove(stdin, None)?;
         let world_rank = prover.world_rank();
 
         Ok((result, world_rank))
@@ -198,6 +213,7 @@ impl ZiskProve {
     pub fn run_asm(
         &mut self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
         gpu_params: ParamsGPU,
     ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClient::builder()
@@ -222,7 +238,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let result = prover.prove(stdin)?;
+        let result = prover.prove(stdin, hints_stream)?;
         let world_rank = prover.world_rank();
 
         Ok((result, world_rank))

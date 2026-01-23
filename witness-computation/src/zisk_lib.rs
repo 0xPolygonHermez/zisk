@@ -4,6 +4,7 @@
 //! This module leverages `WitnessLibrary` to orchestrate the setup of state machines,
 //! program conversion, and execution pipelines to generate required witnesses.
 
+use asm_runner::{HintsFile, HintsShmem};
 use executor::{
     EmulatorAsm, EmulatorKind, EmulatorRust, StateMachines, StaticSMBundle, ZiskExecutor,
 };
@@ -15,6 +16,7 @@ use precomp_big_int::Add256Manager;
 use precomp_keccakf::KeccakfManager;
 use precomp_poseidon2::Poseidon2Manager;
 use precomp_sha256f::Sha256fManager;
+use precompiles_hints::HintsProcessor;
 use proofman::register_std;
 use proofman_common::{PackedInfo, ProofmanResult};
 use sm_arith::ArithSM;
@@ -22,8 +24,12 @@ use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use tracing::debug;
 use witness::{WitnessLibrary, WitnessManager};
-use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary};
+use zisk_common::{
+    io::{ZiskStdin, ZiskStream},
+    ExecutorStats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary,
+};
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 #[cfg(feature = "packed")]
 use zisk_pil::PACKED_INFO;
@@ -34,6 +40,8 @@ use zisk_pil::{
     MEM_ALIGN_WRITE_BYTE_AIR_IDS, POSEIDON_2_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
     SHA_256_F_AIR_IDS, ZISK_AIRGROUP_ID,
 };
+
+use anyhow::Result;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
@@ -176,9 +184,9 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         let is_asm_emulator = self.asm_mt_path.is_some();
         let emulator = if is_asm_emulator {
+            debug!("Using ASM emulator");
             EmulatorKind::Asm(EmulatorAsm::new(
                 zisk_rom.clone(),
-                self.asm_mt_path.clone(),
                 world_rank,
                 local_rank,
                 self.base_port,
@@ -187,11 +195,41 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
                 Some(rom_sm.clone()),
             ))
         } else {
+            debug!("Using Rust emulator");
             EmulatorKind::Rust(EmulatorRust::new(zisk_rom.clone(), self.chunk_size))
         };
 
-        let executor =
-            Arc::new(ZiskExecutor::new(zisk_rom, std, sm_bundle, self.chunk_size, emulator));
+        // Create hints pipeline with null hints stream initially.
+        // Debug flag: true = HintsShmem (shared memory), false = HintsFile (file output)
+        const USE_SHARED_MEMORY_HINTS: bool = true;
+
+        let hints_processor = if USE_SHARED_MEMORY_HINTS {
+            let hints_shmem =
+                HintsShmem::new(self.base_port, local_rank, self.unlock_mapped_memory)
+                    .expect("zisk_lib: Failed to create HintsShmem");
+
+            HintsProcessor::builder(hints_shmem)
+                .build()
+                .expect("zisk_lib: Failed to create PrecompileHintsProcessor")
+        } else {
+            let hints_file = HintsFile::new(format!("hints_results_{}.bin", local_rank))
+                .expect("zisk_lib: Failed to create HintsFile");
+
+            HintsProcessor::builder(hints_file)
+                .build()
+                .expect("zisk_lib: Failed to create PrecompileHintsProcessor")
+        };
+
+        let hints_stream = ZiskStream::new(hints_processor);
+
+        let executor = Arc::new(ZiskExecutor::new(
+            zisk_rom,
+            std,
+            sm_bundle,
+            self.chunk_size,
+            emulator,
+            Some(hints_stream),
+        ));
 
         // Step 7: Register the executor as a component in the Witness Manager
         wcm.register_component(executor.clone());
@@ -223,6 +261,14 @@ impl ZiskWitnessLibrary<Goldilocks> for WitnessLib<Goldilocks> {
     fn set_stdin(&self, stdin: ZiskStdin) {
         if let Some(executor) = &self.executor {
             executor.set_stdin(stdin);
+        }
+    }
+
+    fn set_hints_stream(&self, hints_stream: zisk_common::io::StreamSource) -> Result<()> {
+        if let Some(executor) = &self.executor {
+            executor.set_hints_stream_src(hints_stream)
+        } else {
+            Err(anyhow::anyhow!("Executor not initialized"))
         }
     }
 

@@ -3,27 +3,7 @@ use num_bigint::BigUint;
 
 use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
 
-lazy_static! {
-    pub static ref P: BigUint = BigUint::parse_bytes(
-        b"1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
-        16
-    )
-    .unwrap();
-
-    pub static ref P_HALF: BigUint = BigUint::parse_bytes(
-        b"d0088f51cbff34d258dd3db21a5d66bb23ba5c279c2895fb39869507b587b120f55ffff58a9ffffdcff7fffffffd555",
-        16
-    )
-    .unwrap();
-
-    pub static ref P_DIV_4: BigUint = BigUint::parse_bytes(
-        b"680447a8e5ff9a692c6e9ed90d2eb35d91dd2e13ce144afd9cc34a83dac3d8907aaffffac54ffffee7fbfffffffeaab",
-        16
-    )
-    .unwrap();
-
-    pub static ref NQR: BigUint = BigUint::from(2u64); // First non-quadratic residue in Fp
-}
+use super::{NQR_FP, P, P_DIV_4};
 
 /// Computes the square root of a non-zero field element in Fp
 pub fn fcall_bls12_381_fp_sqrt(params: &[u64], results: &mut [u64]) -> i64 {
@@ -36,7 +16,7 @@ pub fn fcall_bls12_381_fp_sqrt(params: &[u64], results: &mut [u64]) -> i64 {
     7
 }
 
-fn bls12_381_fp_sqrt(a: &[u64; 6], results: &mut [u64]) {
+pub fn bls12_381_fp_sqrt(a: &[u64; 6], results: &mut [u64]) {
     let a_big = biguint_from_u64_digits(a);
 
     // Attempt to compute the square root of a
@@ -49,7 +29,7 @@ fn bls12_381_fp_sqrt(a: &[u64; 6], results: &mut [u64]) {
     if !a_is_qr {
         // To check that a is indeed a non-quadratic residue, we check that
         // a * NQR is a quadratic residue for some fixed known non-quadratic residue NQR
-        let a_nqr = (a_big * &*NQR) % &*P;
+        let a_nqr = (a_big * &*NQR_FP) % &*P;
 
         // Compute the square root of a * NQR
         let sqrt_nqr = a_nqr.modpow(&P_DIV_4, &P);
@@ -139,7 +119,7 @@ mod tests {
         let sqrt = &results[1..7].try_into().unwrap();
         assert_eq!(has_sqrt, 0);
         assert_eq!(sqrt, &expected_sqrt);
-        let nqr = n_u64_digits_from_biguint::<6>(&NQR);
+        let nqr = n_u64_digits_from_biguint::<6>(&NQR_FP);
         assert_eq!(bls12_381_fp_mul(sqrt, sqrt), bls12_381_fp_mul(&x, &nqr));
     }
 }

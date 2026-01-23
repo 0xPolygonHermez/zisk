@@ -9,7 +9,10 @@ use fields::Goldilocks;
 use proofman::{AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::{DebugInfo, ProofOptions};
 use std::{fs::File, io::Write, path::PathBuf};
-use zisk_common::{io::ZiskStdin, ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
+use zisk_common::{
+    io::{StreamSource, ZiskStdin},
+    ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib,
+};
 
 pub(crate) struct ProverBackend {
     pub verify_constraints: bool,
@@ -30,9 +33,15 @@ impl ProverBackend {
     pub(crate) fn execute(
         &self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
         output_path: Option<PathBuf>,
     ) -> Result<ZiskExecuteResult> {
         self.witness_lib.set_stdin(stdin);
+        if let Some(stream) = hints_stream {
+            self.witness_lib
+                .set_hints_stream(stream)
+                .map_err(|e| anyhow::anyhow!("Error setting hints stream: {}", e))?;
+        }
 
         let start = std::time::Instant::now();
 
@@ -52,10 +61,16 @@ impl ProverBackend {
     pub(crate) fn stats(
         &self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
         debug_info: DebugInfo,
         _mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStats>)> {
         self.witness_lib.set_stdin(stdin);
+        if let Some(stream) = hints_stream {
+            self.witness_lib
+                .set_hints_stream(stream)
+                .map_err(|e| anyhow::anyhow!("Error setting hints stream: {}", e))?;
+        }
 
         let world_rank = self.proofman.get_world_rank();
         let local_rank = self.proofman.get_local_rank();
@@ -108,6 +123,7 @@ impl ProverBackend {
     pub(crate) fn verify_constraints_debug(
         &self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
         debug_info: DebugInfo,
     ) -> Result<ZiskVerifyConstraintsResult> {
         if !self.verify_constraints {
@@ -117,6 +133,11 @@ impl ProverBackend {
         let start = std::time::Instant::now();
 
         self.witness_lib.set_stdin(stdin);
+        if let Some(stream) = hints_stream {
+            self.witness_lib
+                .set_hints_stream(stream)
+                .map_err(|e| anyhow::anyhow!("Error setting hints stream: {}", e))?;
+        }
 
         self.proofman
             .verify_proof_constraints_from_lib(&debug_info, false)
@@ -141,11 +162,16 @@ impl ProverBackend {
     pub(crate) fn verify_constraints(
         &self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        self.verify_constraints_debug(stdin, DebugInfo::default())
+        self.verify_constraints_debug(stdin, hints_stream, DebugInfo::default())
     }
 
-    pub(crate) fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
+    pub(crate) fn prove(
+        &self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<ZiskProveResult> {
         if self.verify_constraints {
             return Err(anyhow::anyhow!(
                 "Prover initialized with constraint verification enabled. Use `prove` instead."
@@ -155,6 +181,11 @@ impl ProverBackend {
         let start = std::time::Instant::now();
 
         self.witness_lib.set_stdin(stdin);
+        if let Some(stream) = hints_stream {
+            self.witness_lib
+                .set_hints_stream(stream)
+                .map_err(|e| anyhow::anyhow!("Error setting hints stream: {}", e))?;
+        }
 
         self.proofman.set_barrier();
         let proof = self
@@ -195,8 +226,7 @@ impl ProverBackend {
                 std::fs::create_dir_all(output_dir)?;
             }
 
-            let logs =
-                ProofLog::new(execution_result.executed_steps, proof_id, elapsed.as_secs_f64());
+            let logs = ProofLog::new(execution_result.steps, proof_id, elapsed.as_secs_f64());
             let log_path = output_dir.join("result.json");
             ProofLog::write_json_log(&log_path, &logs)
                 .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;

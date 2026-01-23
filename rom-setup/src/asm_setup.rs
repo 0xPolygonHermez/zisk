@@ -11,6 +11,7 @@ pub fn generate_assembly(
     elf_hash: &str,
     zisk_path: &Path,
     output_path: &Path,
+    hints: bool,
     verbose: bool,
 ) -> Result<(), anyhow::Error> {
     // Read the ELF file and check if it is a valid ELF file
@@ -46,7 +47,7 @@ pub fn generate_assembly(
         // Convert the ELF file to Zisk format and generates an assembly file
         let rv2zk = Riscv2zisk::new(elf_file_path.to_str().unwrap().to_string());
         rv2zk
-            .runfile(asm_file.to_str().unwrap().to_string(), *gen_method, false, false)
+            .runfile(asm_file.to_str().unwrap().to_string(), *gen_method, false, false, hints)
             .expect("Error converting elf to assembly");
 
         let emulator_asm_path = zisk_path.join("emulator-asm");

@@ -20,6 +20,13 @@ impl ZiskFileStdin {
     /// Create a new FileStdin from a file path.
     pub fn new<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let path_buf = path.as_ref().to_path_buf();
+        if !path_buf.exists() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Input file not found at {:?}", path_buf.display()),
+            ));
+        }
+
         let file = File::open(&path_buf)?;
         Ok(ZiskFileStdin { path: path_buf, reader: BufReader::new(file) })
     }

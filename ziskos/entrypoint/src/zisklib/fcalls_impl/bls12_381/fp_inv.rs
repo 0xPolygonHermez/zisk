@@ -4,13 +4,7 @@ use num_traits::Zero;
 
 use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
 
-lazy_static! {
-    pub static ref P: BigUint = BigUint::parse_bytes(
-        b"1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
-        16
-    )
-    .unwrap();
-}
+use super::P;
 
 /// Perform the inversion of a non-zero field element in Fp
 pub fn fcall_bls12_381_fp_inv(params: &[u64], results: &mut [u64]) -> i64 {

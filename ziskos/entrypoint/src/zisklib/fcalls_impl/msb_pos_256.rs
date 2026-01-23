@@ -11,7 +11,7 @@ pub fn fcall_msb_pos_256(params: &[u64], results: &mut [u64]) -> i64 {
 // Q: Do we prefer constant time functions?
 // Finds the most significant bit position among n 256-bit integers
 // some of which may be zero, but not all
-fn msb_pos_256(params: &[u64], n: usize) -> (usize, usize) {
+pub fn msb_pos_256(params: &[u64], n: usize) -> (usize, usize) {
     debug_assert!(params.len() >= n * 4, "Not enough data for {} inputs", n);
 
     for limb in (0..4).rev() {

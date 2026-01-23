@@ -16,7 +16,12 @@ use super::{mul_short, rem_long, LongScratch, U256};
 ///
 /// # Note
 /// Not optimal for `len(b) == 1`, use `mul_short` instead
-pub fn mul_long(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
+pub fn mul_long(
+    a: &[U256],
+    b: &[U256],
+    out: &mut [U256],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> usize {
     let len_a = a.len();
     let len_b = b.len();
     #[cfg(debug_assertions)]
@@ -39,7 +44,11 @@ pub fn mul_long(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
         dl: out[0].as_limbs_mut(),
         dh: &mut [0, 0, 0, 0],
     };
-    syscall_arith256(&mut params);
+    syscall_arith256(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Propagate the carry
     out[1] = U256::from_u64s(params.dh);
@@ -55,7 +64,11 @@ pub fn mul_long(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
             dl: out[j].as_limbs_mut(),
             dh: &mut [0, 0, 0, 0],
         };
-        syscall_arith256(&mut params);
+        syscall_arith256(
+            &mut params,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         // Propagate the carry
         out[j + 1] = U256::from_u64s(params.dh);
@@ -74,7 +87,11 @@ pub fn mul_long(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
                 dl: &mut [0, 0, 0, 0],
                 dh: &mut [0, 0, 0, 0],
             };
-            syscall_arith256(&mut params_arith);
+            syscall_arith256(
+                &mut params_arith,
+                #[cfg(feature = "hints")]
+                hints,
+            );
 
             // Set the result
             out[i + j] = U256::from_u64s(params_arith.dl);
@@ -86,7 +103,11 @@ pub fn mul_long(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
                     cin: 1,
                     c: params_arith.dh,
                 };
-                let _carry = syscall_add256(&mut params_add);
+                let _carry = syscall_add256(
+                    &mut params_add,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
 
                 debug_assert!(_carry == 0, "Unexpected carry in intermediate addition");
             }
@@ -99,7 +120,11 @@ pub fn mul_long(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
                 cin: 0,
                 c: out[i + j + 1].as_limbs_mut(),
             };
-            carry_flag = syscall_add256(&mut params_add);
+            carry_flag = syscall_add256(
+                &mut params_add,
+                #[cfg(feature = "hints")]
+                hints,
+            );
         }
 
         // Last chunk isolated
@@ -113,7 +138,11 @@ pub fn mul_long(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
             dl: out[i + len_b - 1].as_limbs_mut(),
             dh: &mut [0, 0, 0, 0],
         };
-        syscall_arith256(&mut params_arith);
+        syscall_arith256(
+            &mut params_arith,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         if carry_flag == 1 {
             let a_in = *params_arith.dh;
@@ -123,7 +152,11 @@ pub fn mul_long(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
                 cin: 1,
                 c: params_arith.dh,
             };
-            let _carry = syscall_add256(&mut params_add);
+            let _carry = syscall_add256(
+                &mut params_add,
+                #[cfg(feature = "hints")]
+                hints,
+            );
 
             debug_assert!(_carry == 0, "Unexpected carry in intermediate addition");
         }
@@ -153,6 +186,7 @@ pub fn mul_and_reduce_long(
     b: &[U256],
     modulus: &[U256],
     scratch: &mut LongScratch,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Vec<U256> {
     #[cfg(debug_assertions)]
     {
@@ -162,10 +196,28 @@ pub fn mul_and_reduce_long(
     }
 
     let mul_len = if b.len() == 1 {
-        mul_short(a, &b[0], &mut scratch.mul)
+        mul_short(
+            a,
+            &b[0],
+            &mut scratch.mul,
+            #[cfg(feature = "hints")]
+            hints,
+        )
     } else {
-        mul_long(a, b, &mut scratch.mul)
+        mul_long(
+            a,
+            b,
+            &mut scratch.mul,
+            #[cfg(feature = "hints")]
+            hints,
+        )
     };
 
-    rem_long(&scratch.mul[..mul_len], modulus, &mut scratch.rem)
+    rem_long(
+        &scratch.mul[..mul_len],
+        modulus,
+        &mut scratch.rem,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }

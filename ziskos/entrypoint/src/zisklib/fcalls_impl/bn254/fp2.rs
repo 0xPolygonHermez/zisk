@@ -6,13 +6,7 @@ use super::fp::{
     bn254_fp_sub,
 };
 
-lazy_static! {
-    static ref P: BigUint = BigUint::parse_bytes(
-        b"30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
-        16
-    )
-    .unwrap();
-}
+use super::P;
 
 /// Perform the inversion of a non-zero field element in Fp2
 pub fn fcall_bn254_fp2_inv(params: &[u64], results: &mut [u64]) -> i64 {

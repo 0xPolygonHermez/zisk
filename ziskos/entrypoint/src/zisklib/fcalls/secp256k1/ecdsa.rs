@@ -42,9 +42,32 @@ pub fn fcall_secp256k1_ecdsa_verify(
     z_value: &[u64; 4],
     r_value: &[u64; 4],
     s_value: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 8] {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    unreachable!();
+    {
+        use crate::zisklib::fcalls_impl;
+
+        // Convert inputs into a single params array
+        let mut params: [u64; 20] = [0u64; 20];
+        params[0..8].copy_from_slice(pk_value);
+        params[8..12].copy_from_slice(z_value);
+        params[12..16].copy_from_slice(r_value);
+        params[16..20].copy_from_slice(s_value);
+
+        // Call the implementation
+        let mut results = [0u64; 8];
+        fcalls_impl::secp256k1::fcall_secp256k1_ecdsa_verify(&params, &mut results);
+
+        // Hint the result
+        #[cfg(feature = "hints")]
+        {
+            hints.push(results.len() as u64);
+            hints.extend_from_slice(&results);
+        }
+
+        results
+    }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
         ziskos_fcall_param!(pk_value, 8);

@@ -7,7 +7,7 @@ use crate::{
 use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
 use std::path::PathBuf;
-use zisk_common::io::ZiskStdin;
+use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::ExecutorStats;
 use zisk_distributed_common::LoggingConfig;
 
@@ -79,48 +79,70 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.witness_lib.set_stdin(stdin);
     }
 
+    fn set_hints_stream(&self, _: StreamSource) -> Result<()> {
+        unreachable!("EMU prover does not support precompile hints");
+    }
+
     fn executed_steps(&self) -> u64 {
         self.core_prover
             .backend
             .witness_lib
             .execution_result()
-            .map(|(exec_result, _)| exec_result.executed_steps)
+            .map(|(exec_result, _)| exec_result.steps)
             .unwrap_or(0)
     }
 
-    fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult> {
-        self.core_prover.backend.execute(stdin, output_path)
+    fn execute(
+        &self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+        output_path: Option<PathBuf>,
+    ) -> Result<ZiskExecuteResult> {
+        if hints_stream.is_some() {
+            return Err(anyhow::anyhow!("EMU prover does not support precompile hints"));
+        }
+        self.core_prover.backend.execute(stdin, None, output_path)
     }
 
     fn stats(
         &self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
         debug_info: Option<Option<String>>,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStats>)> {
         let debug_info =
             create_debug_info(debug_info, self.core_prover.backend.proving_key.clone())?;
 
-        self.core_prover.backend.stats(stdin, debug_info, mpi_node)
+        self.core_prover.backend.stats(stdin, hints_stream, debug_info, mpi_node)
     }
 
     fn verify_constraints_debug(
         &self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
         let debug_info =
             create_debug_info(debug_info, self.core_prover.backend.proving_key.clone())?;
 
-        self.core_prover.backend.verify_constraints_debug(stdin, debug_info)
+        self.core_prover.backend.verify_constraints_debug(stdin, hints_stream, debug_info)
     }
 
-    fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
-        self.core_prover.backend.verify_constraints(stdin)
+    fn verify_constraints(
+        &self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<ZiskVerifyConstraintsResult> {
+        self.core_prover.backend.verify_constraints(stdin, hints_stream)
     }
 
-    fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
-        self.core_prover.backend.prove(stdin)
+    fn prove(
+        &self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<ZiskProveResult> {
+        self.core_prover.backend.prove(stdin, hints_stream)
     }
 
     fn prove_phase(

@@ -15,6 +15,9 @@ pub const NQR: [u64; 4] = [3, 0, 0, 0];
 pub const N: [u64; 4] =
     [0xBFD25E8CD0364141, 0xBAAEDCE6AF48A03B, 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFF];
 pub const N_MINUS_ONE: [u64; 4] = [N[0] - 1, N[1], N[2], N[3]];
+pub const N_HALF: [u64; 4] =
+    [0xDFE92F46681B20A0, 0x5D576E7357A4501D, 0xFFFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF];
+pub const N_HALF_PLUS_ONE: [u64; 4] = [N_HALF[0] + 1, N_HALF[1], N_HALF[2], N_HALF[3]];
 
 /// Secp256k1 group identity point
 pub const IDENTITY_X: [u64; 4] = [0; 4];

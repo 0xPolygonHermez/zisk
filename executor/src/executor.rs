@@ -27,7 +27,7 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use sm_rom::RomInstance;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use witness::WitnessComponent;
-use zisk_common::io::ZiskStdin;
+use zisk_common::io::{StreamSource, ZiskStdin, ZiskStream};
 
 use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
@@ -57,6 +57,8 @@ use ziskemu::ZiskEmulator;
 
 use crate::{Emulator, EmulatorKind, StaticSMBundle};
 
+use anyhow::Result;
+
 pub type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
 
 #[allow(dead_code)]
@@ -64,6 +66,9 @@ enum MinimalTraceExecutionMode {
     Emulator,
     AsmWithCounter,
 }
+
+/// The maximum number of steps to execute in the emulator or assembly runner.
+pub const MAX_NUM_STEPS: u64 = 1 << 32;
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
@@ -76,6 +81,9 @@ pub struct ZiskExecutor<F: PrimeField64> {
 
     /// Chunk size for processing.
     chunk_size: u64,
+
+    /// Pipeline for handling precompile hints.
+    hints_stream: Mutex<Option<ZiskStream>>,
 
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     zisk_rom: Arc<ZiskRom>,
@@ -111,13 +119,11 @@ pub struct ZiskExecutor<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
-    /// The maximum number of steps to execute in the emulator or assembly runner.
-    pub const MAX_NUM_STEPS: u64 = 1 << 32;
-
     /// Creates a new instance of the `ZiskExecutor`.
     ///
     /// # Arguments
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
+    /// * `hints_stream` - Optional hints stream for processing precompile hints.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         zisk_rom: Arc<ZiskRom>,
@@ -125,11 +131,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         sm_bundle: StaticSMBundle<F>,
         chunk_size: u64,
         emulator: EmulatorKind,
+        hints_stream: Option<ZiskStream>,
     ) -> Self {
         Self {
             stdin: Mutex::new(ZiskStdin::null()),
             emulator,
             chunk_size,
+            hints_stream: Mutex::new(hints_stream),
             zisk_rom,
             min_traces: Arc::new(RwLock::new(MinimalTraces::None)),
             secn_planning: RwLock::new(Vec::new()),
@@ -146,6 +154,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     pub fn set_stdin(&self, stdin: ZiskStdin) {
         let mut guard = self.stdin.lock().unwrap();
         *guard = stdin;
+    }
+
+    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
+        if let Some(hints_stream) = self.hints_stream.lock().unwrap().as_mut() {
+            hints_stream.set_hints_stream_src(stream)
+        } else {
+            Err(anyhow::anyhow!("No hints stream configured"))
+        }
     }
 
     #[allow(clippy::type_complexity)]
@@ -733,6 +749,13 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Set the start time of the current execution
         self.stats.set_start_time(Instant::now());
 
+        // Process and write precompile atomically
+        if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
+            if let Some(hints_stream) = hints_stream_guard.as_mut() {
+                let _ = hints_stream.start_stream();
+            }
+        }
+
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 
@@ -941,6 +964,8 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         #[cfg(feature = "stats")]
         self.stats.add_stat(0, parent_stats_id, "CALCULATE_WITNESS", 0, ExecutorStatsEvent::Begin);
 
+        let is_asm_emulator = self.emulator.is_asm_emulator();
+
         let pool = create_pool(n_cores);
         pool.install(|| -> ProofmanResult<()> {
             for &global_id in global_ids {
@@ -966,7 +991,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                         InstanceType::Instance => {
                             if !self.collectors_by_instance.read().unwrap().contains_key(&global_id)
                             {
-                                if air_id == ROM_AIR_IDS[0] && self.emulator.is_asm_emulator() {
+                                if air_id == ROM_AIR_IDS[0] && is_asm_emulator {
                                     let stats = Stats {
                                         airgroup_id,
                                         air_id,
@@ -1049,6 +1074,8 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         }
         let secn_instances_guard = self.secn_instances.read().unwrap();
 
+        let is_asm_emulator = self.emulator.is_asm_emulator();
+
         let mut secn_instances = HashMap::new();
         for &global_id in global_ids {
             let (airgroup_id, air_id) =
@@ -1056,7 +1083,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             if MAIN_AIR_IDS.contains(&air_id) {
                 pctx.set_witness_ready(global_id, false);
             } else if air_id == ROM_AIR_IDS[0] {
-                if self.emulator.is_asm_emulator() {
+                if is_asm_emulator {
                     pctx.set_witness_ready(global_id, false);
                 } else {
                     let secn_instance = &secn_instances_guard[&global_id];

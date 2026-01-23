@@ -7,4 +7,4 @@ pub mod conversions;
 pub use distributed_api_proto::zisk_distributed_api_server;
 pub use distributed_api_proto::*;
 
-pub const MAX_MESSAGE_SIZE: usize = 32 * 1024 * 1024; // 32 MB
+pub const MAX_MESSAGE_SIZE: usize = 128 * 1024 * 1024; // 128 MB

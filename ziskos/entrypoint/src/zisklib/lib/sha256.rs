@@ -7,14 +7,22 @@ const SHA256_INIT: [u32; 8] = [
 
 /// Compress a single 64-byte block into the state
 #[inline]
-fn compress_block(state: &mut [u32; 8], block: &[u8; 64]) {
+fn compress_block(
+    state: &mut [u32; 8],
+    block: &[u8; 64],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
     let state_64: &mut [u64; 4] = unsafe { &mut *(state.as_mut_ptr() as *mut [u64; 4]) };
     let input_u64: &[u64; 8] = unsafe { &*(block.as_ptr() as *const [u64; 8]) };
     let mut sha256_params = SyscallSha256Params { state: state_64, input: input_u64 };
-    syscall_sha256_f(&mut sha256_params);
+    syscall_sha256_f(
+        &mut sha256_params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 }
 
-pub fn sha256(input: &[u8]) -> [u8; 32] {
+pub fn sha256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u8; 32] {
     let mut state = SHA256_INIT;
     let input_len = input.len();
 
@@ -22,7 +30,12 @@ pub fn sha256(input: &[u8]) -> [u8; 32] {
     let mut offset = 0;
     while offset + 64 <= input_len {
         let block: &[u8; 64] = input[offset..offset + 64].try_into().unwrap();
-        compress_block(&mut state, block);
+        compress_block(
+            &mut state,
+            block,
+            #[cfg(feature = "hints")]
+            hints,
+        );
         offset += 64;
     }
 
@@ -42,16 +55,31 @@ pub fn sha256(input: &[u8]) -> [u8; 32] {
 
     if remaining + 9 > 64 {
         // Need two blocks: process first block, then second with length
-        compress_block(&mut state, &final_block);
+        compress_block(
+            &mut state,
+            &final_block,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         // Second block: all zeros except length at the end
         final_block = [0u8; 64];
         final_block[56..64].copy_from_slice(&bit_len.to_be_bytes());
-        compress_block(&mut state, &final_block);
+        compress_block(
+            &mut state,
+            &final_block,
+            #[cfg(feature = "hints")]
+            hints,
+        );
     } else {
         // Single block: append length at the end
         final_block[56..64].copy_from_slice(&bit_len.to_be_bytes());
-        compress_block(&mut state, &final_block);
+        compress_block(
+            &mut state,
+            &final_block,
+            #[cfg(feature = "hints")]
+            hints,
+        );
     }
 
     // Convert state to big-endian bytes
@@ -68,10 +96,20 @@ pub fn sha256(input: &[u8]) -> [u8; 32] {
 /// # Safety
 /// - `input` must point to at least `input_len` bytes
 /// - `output` must point to a writable buffer of at least 32 bytes
-#[no_mangle]
-pub unsafe extern "C" fn sha256_c(input: *const u8, input_len: usize, output: *mut u8) {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_sha256_c")]
+pub unsafe extern "C" fn sha256_c(
+    input: *const u8,
+    input_len: usize,
+    output: *mut u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
     let input_slice = core::slice::from_raw_parts(input, input_len);
-    let hash = sha256(input_slice);
+    let hash = sha256(
+        input_slice,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     let output_slice = core::slice::from_raw_parts_mut(output, 32);
     output_slice.copy_from_slice(&hash);
 }

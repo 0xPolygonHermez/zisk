@@ -11,12 +11,8 @@ pub fn fcall_bn254_twist_add_line_coeffs(params: &[u64], results: &mut [u64]) ->
     let x2: &[u64; 8] = &params[16..24].try_into().unwrap();
     let y2: &[u64; 8] = &params[24..32].try_into().unwrap();
 
-    // Compute 𝜆 = (y2 - y1)/(x2 - x1)
-    let mut lambda = bn254_fp2_inv(&bn254_fp2_sub(x2, x1));
-    lambda = bn254_fp2_mul(&lambda, &bn254_fp2_sub(y2, y1));
-
-    // Compute 𝜇 = y - 𝜆x
-    let mu = bn254_fp2_sub(y1, &bn254_fp2_mul(&lambda, x1));
+    // Call the addition line coefficients function
+    let (lambda, mu) = bn254_twist_add_line_coeffs(x1, y1, x2, y2);
 
     // Store the result
     results[0..8].copy_from_slice(&lambda);
@@ -25,12 +21,39 @@ pub fn fcall_bn254_twist_add_line_coeffs(params: &[u64], results: &mut [u64]) ->
     16
 }
 
+pub fn bn254_twist_add_line_coeffs(
+    x1: &[u64; 8],
+    y1: &[u64; 8],
+    x2: &[u64; 8],
+    y2: &[u64; 8],
+) -> ([u64; 8], [u64; 8]) {
+    // Compute 𝜆 = (y2 - y1)/(x2 - x1)
+    let mut lambda = bn254_fp2_inv(&bn254_fp2_sub(x2, x1));
+    lambda = bn254_fp2_mul(&lambda, &bn254_fp2_sub(y2, y1));
+
+    // Compute 𝜇 = y - 𝜆x
+    let mu = bn254_fp2_sub(y1, &bn254_fp2_mul(&lambda, x1));
+
+    (lambda, mu)
+}
+
 /// Computes the coefficients (𝜆,𝜇) of the tangent line at the point (x,y)
 pub fn fcall_bn254_twist_dbl_line_coeffs(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let x: &[u64; 8] = &params[0..8].try_into().unwrap();
     let y: &[u64; 8] = &params[8..16].try_into().unwrap();
 
+    // Call the doubling line coefficients function
+    let (lambda, mu) = bn254_twist_dbl_line_coeffs(x, y);
+
+    // Store the result
+    results[0..8].copy_from_slice(&lambda);
+    results[8..16].copy_from_slice(&mu);
+
+    16
+}
+
+pub fn bn254_twist_dbl_line_coeffs(x: &[u64; 8], y: &[u64; 8]) -> ([u64; 8], [u64; 8]) {
     // Compute 𝜆 = 3x²/2y
     let mut lambda = bn254_fp2_inv(&bn254_fp2_dbl(y));
     let x_sq = bn254_fp2_square(x);
@@ -39,11 +62,7 @@ pub fn fcall_bn254_twist_dbl_line_coeffs(params: &[u64], results: &mut [u64]) ->
     // Compute 𝜇 = y - 𝜆x
     let mu = bn254_fp2_sub(y, &bn254_fp2_mul(&lambda, x));
 
-    // Store the result
-    results[0..8].copy_from_slice(&lambda);
-    results[8..16].copy_from_slice(&mu);
-
-    16
+    (lambda, mu)
 }
 
 #[cfg(test)]

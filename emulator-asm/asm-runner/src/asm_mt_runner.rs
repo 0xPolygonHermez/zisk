@@ -5,11 +5,14 @@ use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::atomic::{fence, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use tracing::{error, info};
 
-use crate::{AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
+use crate::{
+    AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory,
+    SEM_CHUNK_DONE_WAIT_DURATION,
+};
 
 use anyhow::{Context, Result};
 
@@ -132,7 +135,7 @@ impl AsmRunnerMT {
         };
 
         let exit_code = loop {
-            match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
+            match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     #[cfg(feature = "stats")]
                     {

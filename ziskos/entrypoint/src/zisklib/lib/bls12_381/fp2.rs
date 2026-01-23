@@ -33,86 +33,151 @@ fn from_syscall_complex(complex: &SyscallComplex384) -> [u64; 12] {
 
 /// Addition in Fp2
 #[inline]
-pub fn add_fp2_bls12_381(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
+pub fn add_fp2_bls12_381(
+    a: &[u64; 12],
+    b: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
     let mut params = SyscallBls12_381ComplexAddParams { f1: &mut f1, f2: &f2 };
-    syscall_bls12_381_complex_add(&mut params);
+    syscall_bls12_381_complex_add(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     from_syscall_complex(&f1)
 }
 
 /// Doubling in Fp2
 #[inline]
-pub fn dbl_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
+pub fn dbl_fp2_bls12_381(
+    a: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(a);
     let mut params = SyscallBls12_381ComplexAddParams { f1: &mut f1, f2: &f2 };
-    syscall_bls12_381_complex_add(&mut params);
+    syscall_bls12_381_complex_add(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     from_syscall_complex(&f1)
 }
 
 /// Negation in Fp2
 #[inline]
-pub fn neg_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
+pub fn neg_fp2_bls12_381(
+    a: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex_x(&P_MINUS_ONE);
     let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     from_syscall_complex(&f1)
 }
 
 /// Subtraction in Fp2
 #[inline]
-pub fn sub_fp2_bls12_381(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
+pub fn sub_fp2_bls12_381(
+    a: &[u64; 12],
+    b: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
     let mut params = SyscallBls12_381ComplexSubParams { f1: &mut f1, f2: &f2 };
-    syscall_bls12_381_complex_sub(&mut params);
+    syscall_bls12_381_complex_sub(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     from_syscall_complex(&f1)
 }
 
 /// Multiplication in Fp2
 #[inline]
-pub fn mul_fp2_bls12_381(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
+pub fn mul_fp2_bls12_381(
+    a: &[u64; 12],
+    b: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(b);
     let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     from_syscall_complex(&f1)
 }
 
 /// Scalar multiplication in Fp2
 #[inline]
-pub fn scalar_mul_fp2_bls12_381(a: &[u64; 12], b: &[u64; 6]) -> [u64; 12] {
+pub fn scalar_mul_fp2_bls12_381(
+    a: &[u64; 12],
+    b: &[u64; 6],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
     let mut f1 =
         SyscallComplex384 { x: a[0..6].try_into().unwrap(), y: a[6..12].try_into().unwrap() };
     let f2 = SyscallComplex384 { x: b[0..6].try_into().unwrap(), y: [0, 0, 0, 0, 0, 0] };
 
     let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     from_syscall_complex(&f1)
 }
 
 /// Squaring in Fp2
 #[inline]
-pub fn square_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
+pub fn square_fp2_bls12_381(
+    a: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
     let mut f1 = to_syscall_complex(a);
     let f2 = to_syscall_complex(a);
     let mut params = SyscallBls12_381ComplexMulParams { f1: &mut f1, f2: &f2 };
-    syscall_bls12_381_complex_mul(&mut params);
+    syscall_bls12_381_complex_mul(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     from_syscall_complex(&f1)
 }
 
 /// Square root in Fp2
 #[inline]
-pub fn sqrt_fp2_bls12_381(x: &[u64; 12]) -> ([u64; 12], bool) {
+pub fn sqrt_fp2_bls12_381(
+    x: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> ([u64; 12], bool) {
     // Hint the sqrt
-    let hint = fcall_bls12_381_fp2_sqrt(x);
+    let hint = fcall_bls12_381_fp2_sqrt(
+        x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     let is_qr = hint[0] == 1;
     let sqrt = hint[1..13].try_into().unwrap();
 
     // Compute sqrt * sqrt
-    let mul = mul_fp2_bls12_381(&sqrt, &sqrt);
+    let mul = mul_fp2_bls12_381(
+        &sqrt,
+        &sqrt,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     if is_qr {
         // Check that sqrt * sqrt == x
@@ -120,7 +185,12 @@ pub fn sqrt_fp2_bls12_381(x: &[u64; 12]) -> ([u64; 12], bool) {
         (sqrt, true)
     } else {
         // Check that sqrt * sqrt == x * NQR
-        let nqr = mul_fp2_bls12_381(x, &NQR_FP2);
+        let nqr = mul_fp2_bls12_381(
+            x,
+            &NQR_FP2,
+            #[cfg(feature = "hints")]
+            hints,
+        );
         assert!(eq(&mul, &nqr));
         (sqrt, false)
     }
@@ -128,7 +198,10 @@ pub fn sqrt_fp2_bls12_381(x: &[u64; 12]) -> ([u64; 12], bool) {
 
 /// Inversion in Fp2: returns a⁻¹
 #[inline]
-pub fn inv_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
+pub fn inv_fp2_bls12_381(
+    a: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
     // if a == 0, return 0
     if eq(a, &[0; 12]) {
         return *a;
@@ -138,9 +211,18 @@ pub fn inv_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
 
     // Remember that an element b ∈ Fp2 is the inverse of a ∈ Fp2 if and only if a·b = 1 in Fp2
     // We will therefore hint the inverse b and check the product with a is 1
-    let inv = fcall_bls12_381_fp2_inv(a);
+    let inv = fcall_bls12_381_fp2_inv(
+        a,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
-    let product = mul_fp2_bls12_381(a, &inv);
+    let product = mul_fp2_bls12_381(
+        a,
+        &inv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     assert_eq!(&product[0..6], &[1, 0, 0, 0, 0, 0]);
     assert_eq!(&product[6..12], &[0, 0, 0, 0, 0, 0]);
 
@@ -149,11 +231,18 @@ pub fn inv_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
 
 /// Conjugation in Fp2
 #[inline]
-pub fn conjugate_fp2_bls12_381(a: &[u64; 12]) -> [u64; 12] {
+pub fn conjugate_fp2_bls12_381(
+    a: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
     let mut f1 = SyscallComplex384 { x: a[0..6].try_into().unwrap(), y: [0, 0, 0, 0, 0, 0] };
     let f2 = SyscallComplex384 { x: [0, 0, 0, 0, 0, 0], y: a[6..12].try_into().unwrap() };
 
     let mut params = SyscallBls12_381ComplexSubParams { f1: &mut f1, f2: &f2 };
-    syscall_bls12_381_complex_sub(&mut params);
+    syscall_bls12_381_complex_sub(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     from_syscall_complex(&f1)
 }

@@ -5,9 +5,9 @@ use zisk_common::Plan;
 
 use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
-use std::time::Duration;
 use tracing::error;
 
+use crate::SEM_CHUNK_DONE_WAIT_DURATION;
 use crate::{AsmMOChunk, AsmMOHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
 use mem_planner_cpp::MemPlanner;
 
@@ -153,7 +153,7 @@ impl AsmRunnerMO {
         };
 
         let exit_code = loop {
-            match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
+            match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);

@@ -1,12 +1,13 @@
 use anyhow::Result;
 use clap::Parser;
+use colored::Colorize;
 use std::path::PathBuf;
-use tracing::info;
+use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{ProverClient, ZiskExecuteResult};
 
-use crate::ux::print_banner;
-use zisk_common::io::ZiskStdin;
+use crate::ux::{print_banner, print_banner_field};
+use zisk_common::io::{StreamSource, ZiskStdin};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -38,8 +39,12 @@ pub struct ZiskExecute {
     pub emulator: bool,
 
     /// Input path
-    #[clap(short = 'i', long)]
-    pub input: Option<PathBuf>,
+    #[clap(short = 'i', long, alias = "input")]
+    pub inputs: Option<String>,
+
+    /// Precompiles Hints path
+    #[clap(long)]
+    pub hints: Option<String>,
 
     /// Setup folder path
     #[clap(short = 'k', long)]
@@ -71,31 +76,44 @@ pub struct ZiskExecute {
 
 impl ZiskExecute {
     pub fn run(&mut self) -> Result<()> {
+        // Check if the deprecated alias was used
+        if std::env::args().any(|arg| arg == "--input") {
+            eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
+        }
+
         print_banner();
 
-        let stdin = self.create_stdin()?;
+        if let Some(inputs) = &self.inputs {
+            print_banner_field("Input", inputs);
+        }
 
-        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
-        let result = if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin)? };
+        if let Some(hints) = &self.hints {
+            print_banner_field("Prec. Hints", hints);
+        }
 
-        info!(
-            "Execution completed in {:.2?}, executed steps: {}",
-            result.duration, result.execution.executed_steps
-        );
+        let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
+
+        let hints_stream = StreamSource::from_uri(self.hints.as_deref())?;
+
+        if matches!(hints_stream, StreamSource::Quic(_)) {
+            return Err(anyhow::anyhow!("QUIC hints source is not supported for execution."));
+        }
+
+        let emulator = if cfg!(target_os = "macos") {
+            if !self.emulator {
+                warn!("Emulator mode is forced on macOS due to lack of ASM support.");
+            }
+            true
+        } else {
+            self.emulator
+        };
+
+        let result =
+            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, Some(hints_stream))? };
+
+        info!("Execution completed in {:.2?}, steps: {}", result.duration, result.execution.steps);
 
         Ok(())
-    }
-
-    fn create_stdin(&mut self) -> Result<ZiskStdin> {
-        let stdin = if let Some(input) = &self.input {
-            if !input.exists() {
-                return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
-            }
-            ZiskStdin::from_file(input)?
-        } else {
-            ZiskStdin::null()
-        };
-        Ok(stdin)
     }
 
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
@@ -110,10 +128,14 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        prover.execute(stdin)
+        prover.execute(stdin, None)
     }
 
-    pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
+    pub fn run_asm(
+        &mut self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<ZiskExecuteResult> {
         let prover = ProverClient::builder()
             .asm()
             .verify_constraints()
@@ -128,6 +150,6 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        prover.execute(stdin)
+        prover.execute(stdin, hints_stream)
     }
 }

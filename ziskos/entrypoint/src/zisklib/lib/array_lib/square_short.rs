@@ -9,7 +9,10 @@ use super::{rem_short, ShortScratch, U256};
 ///
 /// # Returns
 /// A tuple of (result array, number of limbs used)
-pub fn square_short(a: &U256) -> ([U256; 2], usize) {
+pub fn square_short(
+    a: &U256,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> ([U256; 2], usize) {
     #[cfg(debug_assertions)]
     {
         assert!(!a.is_zero(), "Input 'a' must not have leading zeros");
@@ -26,7 +29,11 @@ pub fn square_short(a: &U256) -> ([U256; 2], usize) {
         dl: out[0].as_limbs_mut(),
         dh: &mut dh,
     };
-    syscall_arith256(&mut sq_params);
+    syscall_arith256(
+        &mut sq_params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     let len = if dh == [0u64; 4] {
         1
@@ -45,13 +52,28 @@ pub fn square_short(a: &U256) -> ([U256; 2], usize) {
 ///
 /// # Returns
 /// The remainder: a² mod modulus
-pub fn square_and_reduce_short(a: &U256, modulus: &U256, scratch: &mut ShortScratch) -> U256 {
+pub fn square_and_reduce_short(
+    a: &U256,
+    modulus: &U256,
+    scratch: &mut ShortScratch,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> U256 {
     #[cfg(debug_assertions)]
     {
         assert!(!modulus.is_zero(), "Input 'modulus' must not be zero");
     }
 
-    let (sq, len) = square_short(a);
+    let (sq, len) = square_short(
+        a,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
-    rem_short(&sq[..len], modulus, scratch)
+    rem_short(
+        &sq[..len],
+        modulus,
+        scratch,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }

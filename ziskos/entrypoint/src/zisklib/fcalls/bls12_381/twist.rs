@@ -7,6 +7,8 @@ cfg_if! {
             ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param,
             zisklib::{FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID, FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID},
         };
+    } else {
+        use crate::zisklib::fcalls_impl::bls12_381::{bls12_381_twist_add_line_coeffs, bls12_381_twist_dbl_line_coeffs};
     }
 }
 
@@ -22,9 +24,25 @@ cfg_if! {
 pub fn fcall_bls12_381_twist_add_line_coeffs(
     p1_value: &[u64; 24],
     p2_value: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> ([u64; 12], [u64; 12]) {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    unreachable!();
+    {
+        let x1: [u64; 12] = p1_value[0..12].try_into().unwrap();
+        let y1: [u64; 12] = p1_value[12..24].try_into().unwrap();
+        let x2: [u64; 12] = p2_value[0..12].try_into().unwrap();
+        let y2: [u64; 12] = p2_value[12..24].try_into().unwrap();
+        let (lambda, mu): ([u64; 12], [u64; 12]) =
+            bls12_381_twist_add_line_coeffs(&x1, &y1, &x2, &y2);
+        #[cfg(feature = "hints")]
+        {
+            hints.push(24);
+            hints.extend_from_slice(&lambda);
+            hints.extend_from_slice(&mu);
+        }
+
+        (lambda, mu)
+    }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
         ziskos_fcall_param!(p1_value, 24);
@@ -72,9 +90,23 @@ pub fn fcall_bls12_381_twist_add_line_coeffs(
 /// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
-pub fn fcall_bls12_381_twist_dbl_line_coeffs(p_value: &[u64; 24]) -> ([u64; 12], [u64; 12]) {
+pub fn fcall_bls12_381_twist_dbl_line_coeffs(
+    p_value: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> ([u64; 12], [u64; 12]) {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    unreachable!();
+    {
+        let x: [u64; 12] = p_value[0..12].try_into().unwrap();
+        let y: [u64; 12] = p_value[12..24].try_into().unwrap();
+        let (lambda, mu): ([u64; 12], [u64; 12]) = bls12_381_twist_dbl_line_coeffs(&x, &y);
+        #[cfg(feature = "hints")]
+        {
+            hints.push(24);
+            hints.extend_from_slice(&lambda);
+            hints.extend_from_slice(&mu);
+        }
+        (lambda, mu)
+    }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
         ziskos_fcall_param!(p_value, 24);
