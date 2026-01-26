@@ -45,7 +45,13 @@ impl ZiskProveSnark {
 
         let snark_proof =
             snark_wrapper.generate_final_snark_proof(&proof, &self.output_dir.clone())?;
-        snark_proof.save(&self.output_dir)?;
+        snark_proof.save(&self.output_dir).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to save final SNARK proof to output dir {}: {}",
+                self.output_dir.display(),
+                e
+            )
+        })?;
         println!(
             "{} Final SNARK proof generated. Proof: {:?}, Publics: {:?}",
             "Info:".bright_blue().bold(),

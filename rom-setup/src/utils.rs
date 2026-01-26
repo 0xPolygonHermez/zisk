@@ -88,7 +88,13 @@ pub fn get_elf_bin_file_path_with_hash(
     Ok(default_cache_path.join(rom_cache_file_name))
 }
 
-pub fn get_rom_blowup_factor_and_arity(proving_key_path: &Path) -> (u64, u64) {
+pub struct RomInfo {
+    pub blowup_factor: u64,
+    pub merkle_tree_arity: u64,
+    pub starting_pos_publics_program_vk: u64,
+}
+
+pub fn get_rom_info(proving_key_path: &Path) -> RomInfo {
     let global_info =
         GlobalInfo::new(proving_key_path).expect("Failed to load global info from proving key");
     let (airgroup_id, air_id) = global_info.get_air_id("Zisk", "Rom");
@@ -98,10 +104,11 @@ pub fn get_rom_blowup_factor_and_arity(proving_key_path: &Path) -> (u64, u64) {
         .unwrap_or_else(|_| panic!("Failed to read file {}", &stark_info_path));
     let stark_info = StarkInfo::from_json(&stark_info_json);
 
-    (
-        1 << (stark_info.stark_struct.n_bits_ext - stark_info.stark_struct.n_bits),
-        stark_info.stark_struct.merkle_tree_arity,
-    )
+    RomInfo {
+        blowup_factor: 1 << (stark_info.stark_struct.n_bits_ext - stark_info.stark_struct.n_bits),
+        merkle_tree_arity: stark_info.stark_struct.merkle_tree_arity,
+        starting_pos_publics_program_vk: global_info.get_public_starting_pos("rom_root") as u64,
+    }
 }
 
 pub fn ensure_dir_exists(path: &PathBuf) {

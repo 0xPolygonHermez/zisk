@@ -211,7 +211,13 @@ impl EmuCoreProver {
             snark_wrapper = Some(SnarkWrapper::new(&proving_key_snark, verbose.into())?);
         }
 
-        let core = ProverBackend { witness_lib, proofman, snark_wrapper };
+        let core = ProverBackend {
+            witness_lib,
+            proofman,
+            snark_wrapper,
+            proving_key_path: proving_key,
+            proving_key_snark_path: Some(proving_key_snark),
+        };
 
         Ok(Self { backend: core, rank_info: RankInfo { world_rank, local_rank } })
     }

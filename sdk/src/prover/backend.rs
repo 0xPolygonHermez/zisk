@@ -8,10 +8,11 @@ use anyhow::Result;
 use colored::Colorize;
 use fields::Goldilocks;
 use proofman::{
-    AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkWrapper,
+    get_vadcop_final_proof_vkey, verify_snark_proof, AggProofs, ProofInfo, ProofMan, ProvePhase,
+    ProvePhaseInputs, ProvePhaseResult, SnarkWrapper,
 };
 use proofman_common::ProofOptions;
-use rom_setup::rom_vkey;
+use rom_setup::{rom_vkey, verify_program_vk_publics};
 use std::path::PathBuf;
 use zisk_common::{io::ZiskStdin, ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
 use zisk_verifier::verify_zisk_proof;
@@ -20,6 +21,8 @@ pub(crate) struct ProverBackend {
     pub proofman: ProofMan<Goldilocks>,
     pub snark_wrapper: Option<SnarkWrapper<Goldilocks>>,
     pub witness_lib: Box<dyn ZiskLib<Goldilocks>>,
+    pub proving_key_path: PathBuf,
+    pub proving_key_snark_path: Option<PathBuf>,
 }
 
 impl ProverBackend {
@@ -52,7 +55,7 @@ impl ProverBackend {
         minimal_memory: bool,
         _mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStats>)> {
-        let debug_info = create_debug_info(debug_info, self.proofman.get_proving_key_path())?;
+        let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
         self.witness_lib.set_stdin(stdin);
 
@@ -111,7 +114,7 @@ impl ProverBackend {
     ) -> Result<ZiskVerifyConstraintsResult> {
         let start = std::time::Instant::now();
 
-        let debug_info = create_debug_info(debug_info, self.proofman.get_proving_key_path())?;
+        let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
         self.witness_lib.set_stdin(stdin);
 
@@ -144,13 +147,10 @@ impl ProverBackend {
 
     pub(crate) fn vk(&self) -> Result<ZiskProgramVK> {
         let elf_path = self.witness_lib.get_elf_path();
-        let proving_key_path = self.proofman.get_proving_key_path();
-        let program_vk = rom_vkey(&elf_path, &None, &proving_key_path)?;
+        let proving_key_path = self.proving_key_path.clone();
+        let (vk, publics_pos) = rom_vkey(&elf_path, &None, &proving_key_path)?;
 
-        let (vadcop_proof_vk, vadcop_proof_compressed_vk) =
-            self.proofman.get_aggregated_vadcop_proof_vkey();
-
-        Ok(ZiskProgramVK { program_vk, vadcop_proof_vk, vadcop_proof_compressed_vk })
+        Ok(ZiskProgramVK { vk, starting_pos_publics_program_vk: publics_pos })
     }
 
     pub(crate) fn prove_debug(
@@ -336,19 +336,42 @@ impl ProverBackend {
         self.proofman.mpi_broadcast(data);
     }
 
-    pub(crate) fn verify(&self, proof: &ZiskProveResult, vk: &ZiskProgramVK) -> Result<()> {
+    pub(crate) fn verify(&self, proof: &ZiskProveResult, program_vk: &ZiskProgramVK) -> Result<()> {
         match &proof.proof {
             Proof::Null() => Err(anyhow::anyhow!("No proof found to verify.")),
-            Proof::Plonk(_) => {
-                Err(anyhow::anyhow!("Plonk proofs are not supported for verification."))
+            Proof::Plonk(proof) => {
+                let public_values = proof.get_public_bytes();
+                verify_program_vk_publics(
+                    &program_vk.vk,
+                    program_vk.starting_pos_publics_program_vk,
+                    public_values,
+                )?;
+
+                if self.proving_key_snark_path.is_none() {
+                    return Err(anyhow::anyhow!(
+                        "Proving key snark path is not set, cannot verify Plonk proof."
+                    ));
+                }
+
+                let verkey_path = PathBuf::from(format!(
+                    "{}/{}/{}.verkey.json",
+                    self.proving_key_snark_path.as_ref().unwrap().display(),
+                    "final",
+                    "final"
+                ));
+                Ok(verify_snark_proof(proof, &verkey_path)?)
             }
             Proof::VadcopFinal(proof) => {
-                let vk = if proof.compressed {
-                    &vk.vadcop_proof_compressed_vk
-                } else {
-                    &vk.vadcop_proof_vk
-                };
-                verify_zisk_proof(proof, vk)
+                let public_values = proof.get_public_bytes();
+
+                verify_program_vk_publics(
+                    &program_vk.vk,
+                    program_vk.starting_pos_publics_program_vk,
+                    &public_values,
+                )?;
+
+                let vk = get_vadcop_final_proof_vkey(&self.proving_key_path, proof.compressed)?;
+                verify_zisk_proof(proof, &vk)
             }
         }
     }

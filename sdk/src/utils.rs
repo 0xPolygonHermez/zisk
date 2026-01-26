@@ -6,8 +6,7 @@ use anyhow::Result;
 
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ProofmanResult};
 use rom_setup::{
-    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor_and_arity,
-    DEFAULT_CACHE_PATH,
+    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_info, DEFAULT_CACHE_PATH,
 };
 
 /// Gets the user's home directory as specified by the HOME environment variable.
@@ -118,16 +117,25 @@ pub fn ensure_custom_commits(proving_key: &Path, elf: &Path) -> Result<PathBuf> 
 
     // Get the blowup factor as the custom commits filename is formed using it
     // {ELF_HASH}_{PILOUT_HASH}_{ROM_NUM_ROWS}_{BLOWUP_FACTOR}.bin
-    let (blowup_factor, merkle_tree_arity) = get_rom_blowup_factor_and_arity(proving_key);
+    let rom_info = get_rom_info(proving_key);
 
     // Compute the path for the custom commits file
-    let rom_bin_path =
-        get_elf_bin_file_path(elf, &default_cache_path, blowup_factor, merkle_tree_arity)?;
-
+    let rom_bin_path = get_elf_bin_file_path(
+        elf,
+        &default_cache_path,
+        rom_info.blowup_factor,
+        rom_info.merkle_tree_arity,
+    )?;
     // Check if the custom commits file exists, if not generate it
     if !rom_bin_path.exists() {
-        let _ = gen_elf_hash(elf, rom_bin_path.as_path(), blowup_factor, merkle_tree_arity, false)
-            .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
+        let _ = gen_elf_hash(
+            elf,
+            rom_bin_path.as_path(),
+            rom_info.blowup_factor,
+            rom_info.merkle_tree_arity,
+            false,
+        )
+        .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
     }
 
     Ok(rom_bin_path)

@@ -25,9 +25,8 @@ pub struct ZiskVerifyConstraintsResult {
 }
 
 pub struct ZiskProgramVK {
-    pub program_vk: Vec<u8>,
-    pub vadcop_proof_vk: Vec<u8>,
-    pub vadcop_proof_compressed_vk: Vec<u8>,
+    pub vk: Vec<u8>,
+    pub starting_pos_publics_program_vk: u64,
 }
 
 #[derive(Debug, Default, Clone)]
