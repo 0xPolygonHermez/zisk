@@ -47,20 +47,10 @@ pub unsafe extern "C" fn hint_bn254_pairing_check(pairs: *const u8, num_pairs: u
         offset += 8;
     }
 
-    for i in 0..num_pairs {
-        let pair_ptr = pairs.add(i * 64 + 128);
-
-        let g1_bytes: &[u8; 64] = &*(pair_ptr as *const [u8; 64]);
-        let g2_bytes: &[u8; 128] = &*(pair_ptr.add(64) as *const [u8; 128]);
-
-        let pair = concat_hint_bytes!(64 + 128; g1_bytes, g2_bytes);
-
-        unsafe {
-            core::ptr::copy_nonoverlapping(pair.as_ptr(), hint.data.as_mut_ptr().add(offset), 64 + 128);
-        }
-
-        offset += 64 + 128;
+    unsafe {
+        core::ptr::copy_nonoverlapping(pairs, hint.data.as_mut_ptr().add(offset), (64 + 128) * num_pairs);
     }
+    offset += (64 + 128) * num_pairs;
 
     hint.set_header(BN254_PAIRING_CHECK_HINT_ID, offset, false);
     HINT_QUEUE.push(hint);
