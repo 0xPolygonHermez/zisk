@@ -17,7 +17,7 @@ pub fn rom_vkey(
         std::process::exit(1);
     }
 
-    let rom_info = get_rom_info(proving_key);
+    let rom_info = get_rom_info(proving_key)?;
 
     let root = gen_elf_hash(
         elf,

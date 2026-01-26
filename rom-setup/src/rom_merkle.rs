@@ -15,7 +15,7 @@ pub fn rom_merkle_setup(
         std::process::exit(1);
     }
 
-    let rom_info = get_rom_info(proving_key);
+    let rom_info = get_rom_info(proving_key)?;
 
     let elf_bin_path = get_elf_bin_file_path_with_hash(
         elf,

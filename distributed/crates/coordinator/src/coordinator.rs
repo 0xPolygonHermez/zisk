@@ -434,7 +434,9 @@ impl Coordinator {
         // Save proof to disk
         if state == JobState::Completed && !self.config.server.no_save_proofs {
             let folder = self.config.server.proofs_dir.clone();
-            let vadcop_proof = VadcopFinalProof::new(&final_proof.unwrap(), true);
+            let vadcop_proof = VadcopFinalProof::new(&final_proof.unwrap(), true).map_err(|e| {
+                CoordinatorError::Internal(format!("Failed to create VadcopFinalProof: {}", e))
+            })?;
             zisk_common::save_proof(job_id.as_str(), folder, &vadcop_proof, false).map_err(
                 |e| {
                     error!("Failed to save proof for job {}: {}", job_id, e);

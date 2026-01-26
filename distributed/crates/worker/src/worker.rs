@@ -174,7 +174,7 @@ impl ProverConfig {
                 return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
             }
         }
-        let rom_info = get_rom_info(&proving_key);
+        let rom_info = get_rom_info(&proving_key)?;
         let rom_bin_path = get_elf_bin_file_path(
             &prover_service_config.elf.to_path_buf(),
             &default_cache_path,

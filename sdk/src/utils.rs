@@ -117,7 +117,7 @@ pub fn ensure_custom_commits(proving_key: &Path, elf: &Path) -> Result<PathBuf> 
 
     // Get the blowup factor as the custom commits filename is formed using it
     // {ELF_HASH}_{PILOUT_HASH}_{ROM_NUM_ROWS}_{BLOWUP_FACTOR}.bin
-    let rom_info = get_rom_info(proving_key);
+    let rom_info = get_rom_info(proving_key)?;
 
     // Compute the path for the custom commits file
     let rom_bin_path = get_elf_bin_file_path(
