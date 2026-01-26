@@ -158,7 +158,9 @@ impl ZiskProve {
                 })?;
             }
 
-            tracing::info!("      Proof ID: {}", result.proof_id.unwrap());
+            if let Some(proof_id) = &result.proof_id {
+                tracing::info!("      Proof ID: {}", proof_id);
+            }
             tracing::info!("    ► Statistics");
             tracing::info!(
                 "      time: {} seconds, steps: {}",
@@ -188,6 +190,7 @@ impl ZiskProve {
         gpu_params: Option<ParamsGPU>,
     ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClient::builder()
+            .aggregation(self.aggregation)
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
@@ -198,6 +201,7 @@ impl ZiskProve {
             .build()?;
 
         let proof_options = ProofOpts {
+            aggregation: self.aggregation,
             rma: self.rma,
             minimal_memory: self.minimal_memory,
             verify_proofs: self.verify_proofs,
@@ -217,6 +221,7 @@ impl ZiskProve {
         gpu_params: Option<ParamsGPU>,
     ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClient::builder()
+            .aggregation(self.aggregation)
             .asm()
             .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
@@ -231,6 +236,7 @@ impl ZiskProve {
             .build()?;
 
         let proof_options = ProofOpts {
+            aggregation: self.aggregation,
             rma: self.rma,
             minimal_memory: self.minimal_memory,
             verify_proofs: self.verify_proofs,

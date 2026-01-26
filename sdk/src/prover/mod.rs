@@ -29,13 +29,27 @@ pub struct ZiskProgramVK {
     pub starting_pos_publics_program_vk: u64,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct ProofOpts {
+    pub aggregation: bool,
     pub verify_proofs: bool,
     pub rma: bool,
     pub minimal_memory: bool,
     pub output_dir_path: Option<PathBuf>,
     pub save_proofs: bool,
+}
+
+impl Default for ProofOpts {
+    fn default() -> Self {
+        Self {
+            aggregation: true,
+            verify_proofs: false,
+            rma: false,
+            minimal_memory: false,
+            output_dir_path: None,
+            save_proofs: false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

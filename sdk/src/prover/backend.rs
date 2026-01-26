@@ -261,7 +261,7 @@ impl ProverBackend {
                 ProvePhaseInputs::Full(ProofInfo::new(None, 1, vec![0], 0)),
                 ProofOptions::new(
                     false,
-                    false,
+                    proof_options.aggregation,
                     proof_options.rma,
                     compressed,
                     proof_options.verify_proofs,
