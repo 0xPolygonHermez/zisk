@@ -12,7 +12,6 @@ use std::{
     collections::HashMap,
     fmt::{self, Debug, Display},
     ops::Range,
-    path::PathBuf,
 };
 use tracing::error;
 
@@ -441,13 +440,5 @@ pub struct AggregationParams {
     pub agg_proofs: Vec<AggProofData>,
     pub last_proof: bool,
     pub final_proof: bool,
-    pub verify_constraints: bool,
-    pub aggregation: bool,
-    pub rma: bool,
     pub compressed: bool,
-    pub verify_proofs: bool,
-    pub save_proofs: bool,
-    pub test_mode: bool,
-    pub output_dir_path: PathBuf,
-    pub minimal_memory: bool,
 }

@@ -98,10 +98,6 @@ struct Cli {
     #[clap(long, default_value_t = false)]
     pub verify_constraints: bool,
 
-    /// Whether to generate the final vadcop proof compressed
-    #[clap(short = 'c', long, default_value_t = false)]
-    pub compressed: bool,
-
     /// GPU parameters
     #[clap(short = 'z', long, default_value_t = false)]
     pub preallocate: bool,
@@ -150,7 +146,6 @@ async fn main() -> Result<()> {
         debug: cli.debug.clone(),
         verify_constraints: cli.verify_constraints,
         aggregation: true, // we always aggregate
-        compressed: cli.compressed,
         preallocate: cli.preallocate,
         max_streams: cli.max_streams,
         number_threads_witness: cli.number_threads_witness,

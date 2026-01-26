@@ -249,15 +249,7 @@ message AggParams {
   ProofList agg_proofs = 1;
   bool last_proof = 2;
   bool final_proof = 3;
-  bool verify_constraints = 4;
-  bool aggregation = 5;
-  bool rma = 6;
-  bool compressed = 7;
-  bool verify_proofs = 8;
-  bool save_proofs = 9;
-  bool test_mode = 10;
-  string output_dir_path = 11;
-  bool minimal_memory = 12;
+  bool compressed = 4;
 }
 
 message ExecuteTaskResponse {

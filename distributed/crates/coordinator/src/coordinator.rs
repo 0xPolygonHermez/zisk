@@ -1692,15 +1692,7 @@ impl Coordinator {
                 agg_proofs: proofs,
                 last_proof: all_done,
                 final_proof: all_done,
-                verify_constraints: true,
-                aggregation: true,
-                rma: true,
-                compressed: true,
-                verify_proofs: true,
-                save_proofs: false,
-                test_mode: false,
-                output_dir_path: "".to_string(),
-                minimal_memory: false,
+                compressed: self.config.coordinator.compressed_proofs,
             }),
         };
 

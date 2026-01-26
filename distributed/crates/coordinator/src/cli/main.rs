@@ -34,6 +34,9 @@ struct ZiskCoordinatorArgs {
     )]
     no_save_proofs: bool,
 
+    #[arg(short = 'c', long, help = "Generate compressed proofs", default_value_t = false)]
+    compressed_proofs: bool,
+
     /// Webhook URL to notify when a job finishes.
     ///
     /// The placeholder `{$job_id}` can be used in the URL and will be
@@ -119,6 +122,7 @@ async fn main() -> Result<()> {
                 args.port,
                 args.proofs_dir,
                 args.no_save_proofs,
+                args.compressed_proofs,
                 args.webhook_url,
             )
             .await
