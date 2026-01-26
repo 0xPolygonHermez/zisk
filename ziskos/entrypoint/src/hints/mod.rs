@@ -197,7 +197,7 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
         println!("Precompile hints usage summary:");
         for (_, info) in hints.iter() {
             if info.count > 0 {
-                println!("  Hint {}: {}", info.hint_name, info.count);
+                println!("  {}: {}", info.hint_name, info.count);
             }
         }
     }

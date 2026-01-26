@@ -1,4 +1,4 @@
-use crate::hints::{HINT_QUEUE, hint::{Hint, MAX_HINT_DATA_LEN}, macros::{concat_hint_bytes, register_hint_meta}};
+use crate::hints::{HINT_QUEUE, check_main_thread, hint::{Hint, MAX_HINT_DATA_LEN}, macros::{concat_hint_bytes, register_hint_meta}};
 
 const BLS12_381_G1_ADD_HINT_ID: u32 = 0x0400;
 const BLS12_381_G1_MSM_HINT_ID: u32 = 0x0401;
@@ -18,6 +18,12 @@ crate::hints::macros::define_hint! {
 // Hint data layout: [num_pairs: 8 bytes][point_1: 96 bytes][scalar_1: 32 bytes]...[point_n: 96 bytes][scalar_n: 32 bytes]
 #[no_mangle]
 pub unsafe extern "C" fn hint_bls12_381_g1_msm(pairs: *const u8, num_pairs: usize) {
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
+
+    check_main_thread();
+
     let mut hint = Hint::default();
 
     let total_len: u64 = num_pairs as u64 * (96 + 32);
@@ -66,6 +72,12 @@ crate::hints::macros::define_hint! {
 
 #[no_mangle]
 pub unsafe extern "C" fn hint_bls12_381_g2_msm(pairs: *const u8, num_pairs: usize) {
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
+
+    check_main_thread();
+
     let mut hint = Hint::default();
 
     let total_len: u64 = num_pairs as u64 * (192 + 32);
@@ -106,6 +118,12 @@ register_hint_meta!(bls12_381_g2_msm, BLS12_381_G2_MSM_HINT_ID);
 
 #[no_mangle]
 pub unsafe extern "C" fn hint_bls12_381_pairing_check(pairs: *const u8, num_pairs: usize) {
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
+
+    check_main_thread();
+    
     let mut hint = Hint::default();
 
     let total_len: u64 = num_pairs as u64 * (96 + 192);

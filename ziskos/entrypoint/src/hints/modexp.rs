@@ -1,4 +1,4 @@
-use crate::hints::{HINT_QUEUE, hint::{Hint, MAX_HINT_DATA_LEN}, macros::register_hint_meta};
+use crate::hints::{HINT_QUEUE, check_main_thread, hint::{Hint, MAX_HINT_DATA_LEN}, macros::register_hint_meta};
 
 const MODEXP_HINT_ID: u32 = 0x0500;
 
@@ -13,6 +13,12 @@ pub unsafe extern "C" fn hint_modexp_bytes_c(
     modulus_ptr: *const u8,
     modulus_len: usize,
 ) {
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
+
+    check_main_thread();
+    
     let base_bytes: &[u8] = unsafe { core::slice::from_raw_parts(base_ptr, base_len) };
     let exp_bytes: &[u8] = unsafe { core::slice::from_raw_parts(exp_ptr, exp_len) };
     let modulus_bytes: &[u8] = unsafe { core::slice::from_raw_parts(modulus_ptr, modulus_len) };

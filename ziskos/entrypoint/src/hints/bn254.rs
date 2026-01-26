@@ -1,4 +1,4 @@
-use crate::hints::{HINT_QUEUE, hint::{Hint, MAX_HINT_DATA_LEN}, macros::{concat_hint_bytes, register_hint_meta}};
+use crate::hints::{HINT_QUEUE, check_main_thread, hint::{Hint, MAX_HINT_DATA_LEN}, macros::{concat_hint_bytes, register_hint_meta}};
 
 const BN254_G1_ADD_HINT_ID: u32 = 0x0200;
 const BN254_G1_MUL_HINT_ID: u32 = 0x0201;
@@ -25,6 +25,12 @@ crate::hints::macros::define_hint! {
 // Hint data layout: [num_pairs: 8 bytes][g1_point_1: 64 bytes][g2_point_1: 128 bytes]...[g1_point_n: 64 bytes][g2_point_n: 128 bytes]
 #[no_mangle]
 pub unsafe extern "C" fn hint_bn254_pairing_check(pairs: *const u8, num_pairs: usize) {
+    if HINT_QUEUE.is_paused() {
+        return;
+    }
+
+    check_main_thread();
+
     let mut hint = Hint::default();
 
     let total_len: u64 = 8 + (num_pairs as u64 * (64 + 128));
