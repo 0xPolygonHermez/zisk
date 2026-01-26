@@ -201,13 +201,13 @@ impl ProverConfig {
         {
             let mut gpu_params_new = ParamsGPU::new(prover_service_config.preallocate);
             if let Some(max_streams) = prover_service_config.max_streams {
-                gpu_params.with_max_number_streams(max_streams);
+                gpu_params_new.with_max_number_streams(max_streams);
             }
             if let Some(number_threads_witness) = prover_service_config.number_threads_witness {
-                gpu_params.with_number_threads_pools_witness(number_threads_witness);
+                gpu_params_new.with_number_threads_pools_witness(number_threads_witness);
             }
             if let Some(max_witness_stored) = prover_service_config.max_witness_stored {
-                gpu_params.with_max_witness_stored(max_witness_stored);
+                gpu_params_new.with_max_witness_stored(max_witness_stored);
             }
             gpu_params = Some(gpu_params_new);
         }
