@@ -233,7 +233,7 @@ impl EmulatorAsm {
         let shmem_input_name =
             AsmSharedMemory::<AsmMTHeader>::shmem_input_name(port, *service, self.local_rank);
 
-        tracing::info!(
+        tracing::debug!(
             "Initializing SharedMemoryWriter for service {:?} at '{}'",
             service,
             shmem_input_name

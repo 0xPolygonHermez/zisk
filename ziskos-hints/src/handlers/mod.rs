@@ -28,10 +28,7 @@ macro_rules! hint_fields {
 
         hint_fields!(@offsets 0, $($name: $size),+);
 
-        #[allow(dead_code)]
         const EXPECTED_LEN: usize = hint_fields!(@sum $($size),+);
-        #[allow(dead_code)]
-        const EXPECTED_LEN_U64: usize = EXPECTED_LEN.div_ceil(8);
     };
 
     (@offsets $offset:expr, $name:ident: $size:expr) => {
@@ -54,19 +51,18 @@ macro_rules! hint_fields {
 }
 
 /// Read a length-prefixed field from hint data
-#[allow(unused)]
-#[inline]
-fn read_field<'a>(data: &'a [u64], pos: &mut usize) -> anyhow::Result<&'a [u64]> {
-    let len =
-        *data.get(*pos).ok_or("MODEXP hint data too short").map_err(anyhow::Error::msg)? as usize;
-    *pos += 1;
-    let field = data
-        .get(*pos..*pos + len)
-        .ok_or("MODEXP hint data too short")
-        .map_err(anyhow::Error::msg)?;
-    *pos += len;
-    Ok(field)
-}
+// #[inline]
+// fn read_field<'a>(data: &'a [u64], pos: &mut usize) -> anyhow::Result<&'a [u64]> {
+//     let len =
+//         *data.get(*pos).ok_or("MODEXP hint data too short").map_err(anyhow::Error::msg)? as usize;
+//     *pos += 1;
+//     let field = data
+//         .get(*pos..*pos + len)
+//         .ok_or("MODEXP hint data too short")
+//         .map_err(anyhow::Error::msg)?;
+//     *pos += len;
+//     Ok(field)
+// }
 
 #[inline]
 fn read_field_bytes<'a>(data: &'a [u64], pos: &mut usize) -> anyhow::Result<(&'a [u8], usize)> {
@@ -117,31 +113,6 @@ fn validate_hint_length<T>(data: &[T], expected_len: usize, hint_name: &str) -> 
             "Invalid {} hint length: expected {}, got {}",
             hint_name,
             expected_len,
-            data.len(),
-        );
-    }
-    Ok(())
-}
-
-/// Validates that the hint data has at least the minimum required length.
-///
-/// # Arguments
-///
-/// * `data` - The hint data to validate
-/// * `min_len` - The minimum required length
-/// * `hint_name` - The name of the hint type for error messages
-///
-/// # Returns
-///
-/// * `Ok(())` - If the length is sufficient
-/// * `Err(anyhow::Error)` - If the length is too short
-#[inline]
-fn validate_hint_min_length<T>(data: &[T], min_len: usize, hint_name: &str) -> anyhow::Result<()> {
-    if data.len() < min_len {
-        anyhow::bail!(
-            "Invalid {} hint length: expected at least {}, got {}",
-            hint_name,
-            min_len,
             data.len(),
         );
     }

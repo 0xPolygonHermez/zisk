@@ -13,7 +13,7 @@ use crate::{
 use super::{
     constants::{E_B, G1_IDENTITY, P},
     fp::{add_fp_bn254, inv_fp_bn254, is_canonical_fp_bn254, mul_fp_bn254, square_fp_bn254},
-    fr::{is_canonical_fr_bn254, scalar_bytes_be_to_u64_le_bn254},
+    fr::{is_canonical_fr_bn254, reduce_fr_bn254, scalar_bytes_be_to_u64_le_bn254},
 };
 
 /// G1 add result codes
@@ -308,10 +308,6 @@ pub fn mul_complete_bn254(
     k: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Result<[u64; 8], u8> {
-    if !is_canonical_fr_bn254(k) {
-        return Err(G1_MUL_ERR_NOT_IN_FIELD);
-    }
-
     // If point is infinity, result is infinity
     if eq(p, &G1_IDENTITY) {
         return Ok(G1_IDENTITY);
@@ -333,10 +329,21 @@ pub fn mul_complete_bn254(
         return Err(G1_MUL_ERR_NOT_ON_CURVE);
     }
 
+    // Reduce the scalar if not canonical
+    let k = if !is_canonical_fr_bn254(k) {
+        reduce_fr_bn254(
+            k,
+            #[cfg(feature = "hints")]
+            hints,
+        )
+    } else {
+        *k
+    };
+
     // Perform scalar multiplication
     Ok(scalar_mul_bn254(
         p,
-        k,
+        &k,
         #[cfg(feature = "hints")]
         hints,
     ))
