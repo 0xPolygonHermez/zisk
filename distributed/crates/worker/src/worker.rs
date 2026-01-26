@@ -400,12 +400,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         &self,
         job: Arc<Mutex<JobContext>>,
         tx: mpsc::UnboundedSender<ComputationResult>,
-    ) -> JoinHandle<()> {
-        self.partial_contribution_mpi_broadcast(&job).await;
-        self.partial_contribution(job, tx).await
+    ) -> Result<JoinHandle<()>> {
+        self.partial_contribution_mpi_broadcast(&job).await?;
+        Ok(self.partial_contribution(job, tx).await)
     }
 
-    pub async fn partial_contribution_mpi_broadcast(&self, job: &Mutex<JobContext>) {
+    pub async fn partial_contribution_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
         let job = job.lock().await;
         let job_id = job.job_id.clone();
 
@@ -428,7 +428,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         ))
         .unwrap();
 
-        self.prover.mpi_broadcast(&mut serialized);
+        self.prover.mpi_broadcast(&mut serialized)?;
+        Ok(())
     }
 
     pub async fn handle_prove(
@@ -436,16 +437,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         job: Arc<Mutex<JobContext>>,
         challenges: Vec<ContributionsInfo>,
         tx: mpsc::UnboundedSender<ComputationResult>,
-    ) -> JoinHandle<()> {
-        self.prove_mpi_broadcast(&job, challenges.clone()).await;
-        self.prove(job, challenges, tx).await
+    ) -> Result<JoinHandle<()>> {
+        self.prove_mpi_broadcast(&job, challenges.clone()).await?;
+        Ok(self.prove(job, challenges, tx).await)
     }
 
     pub async fn prove_mpi_broadcast(
         &self,
         job: &Mutex<JobContext>,
         challenges: Vec<ContributionsInfo>,
-    ) {
+    ) -> Result<()> {
         let job = job.lock().await;
         let job_id = job.job_id.clone();
 
@@ -456,7 +457,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let mut serialized =
             borsh::to_vec(&(JobPhase::Prove, job_id, phase_inputs, options)).unwrap();
 
-        self.prover.mpi_broadcast(&mut serialized);
+        self.prover.mpi_broadcast(&mut serialized)?;
+        Ok(())
     }
 
     pub async fn handle_aggregate(
@@ -715,7 +717,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub async fn handle_mpi_broadcast_request(&self) -> Result<()> {
         let mut bytes: Vec<u8> = Vec::new();
 
-        self.prover.mpi_broadcast(&mut bytes);
+        self.prover.mpi_broadcast(&mut bytes)?;
 
         // extract byte 0 to decide the option
         let phase = borsh::from_slice(&bytes[0..1]).unwrap();

@@ -92,7 +92,7 @@ pub trait ProverEngine {
 
     fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult>;
 
-    fn vk(&self) -> Result<ZiskProgramVK>;
+    fn vk(&self, elf_path: PathBuf) -> Result<ZiskProgramVK>;
 
     fn verify(&self, proof: &ZiskProveResult, vk: &ZiskProgramVK) -> Result<()>;
 
@@ -120,7 +120,7 @@ pub trait ProverEngine {
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>>;
 
-    fn mpi_broadcast(&self, data: &mut Vec<u8>);
+    fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()>;
 }
 
 pub trait ZiskBackend: Send + Sync {
@@ -190,8 +190,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.verify_constraints(stdin)
     }
 
-    pub fn vk(&self) -> Result<ZiskProgramVK> {
-        self.prover.vk()
+    pub fn vk(&self, elf_path: PathBuf) -> Result<ZiskProgramVK> {
+        self.prover.vk(elf_path)
     }
 
     /// Generate a proof with the given standard input.
@@ -225,8 +225,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
     }
 
     /// Broadcast data to all MPI processes.
-    pub fn mpi_broadcast(&self, data: &mut Vec<u8>) {
-        self.prover.mpi_broadcast(data);
+    pub fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
+        self.prover.mpi_broadcast(data)
     }
 }
 

@@ -68,6 +68,9 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     // Prove-specific fields (only available when Operation = Prove)
     gpu_params: ParamsGPU,
 
+    // Indicates if building a verifier only
+    verifier: bool,
+
     // Phantom data to track state
     _backend: std::marker::PhantomData<Backend>,
     _operation: std::marker::PhantomData<Operation>,
@@ -77,6 +80,10 @@ impl ProverClientBuilder<(), ()> {
     #[must_use]
     pub fn new() -> Self {
         Self { aggregation: true, snark_wrapper: false, ..Default::default() }
+    }
+
+    pub fn new_verifier() -> Self {
+        Self { verifier: true, ..Default::default() }
     }
 
     /// Configure for Emulator backend
@@ -317,19 +324,23 @@ impl<X> ProverClientBuilder<EmuB, X> {
             );
         }
 
-        let emu = EmuProver::new(
-            self.verify_constraints,
-            self.aggregation,
-            self.snark_wrapper,
-            witness_lib,
-            proving_key,
-            proving_key_snark,
-            elf,
-            self.verbose,
-            self.shared_tables,
-            self.gpu_params,
-            self.logging_config,
-        )?;
+        let emu = if self.verifier {
+            EmuProver::new_verifier(proving_key, proving_key_snark)?
+        } else {
+            EmuProver::new(
+                self.verify_constraints,
+                self.aggregation,
+                self.snark_wrapper,
+                witness_lib,
+                proving_key,
+                proving_key_snark,
+                elf,
+                self.verbose,
+                self.shared_tables,
+                self.gpu_params,
+                self.logging_config,
+            )?
+        };
 
         Ok(ZiskProver::<Emu>::new(emu))
     }
@@ -453,23 +464,27 @@ impl<X> ProverClientBuilder<AsmB, X> {
             );
         }
 
-        let asm = AsmProver::new(
-            self.verify_constraints,
-            self.aggregation,
-            self.snark_wrapper,
-            witness_lib,
-            proving_key,
-            proving_key_snark,
-            elf,
-            self.verbose,
-            self.shared_tables,
-            asm_mt_filename,
-            asm_rh_filename,
-            self.base_port,
-            self.unlock_mapped_memory,
-            self.gpu_params,
-            self.logging_config,
-        )?;
+        let asm = if self.verifier {
+            AsmProver::new_verifier(proving_key, proving_key_snark)?
+        } else {
+            AsmProver::new(
+                self.verify_constraints,
+                self.aggregation,
+                self.snark_wrapper,
+                witness_lib,
+                proving_key,
+                proving_key_snark,
+                elf,
+                self.verbose,
+                self.shared_tables,
+                asm_mt_filename,
+                asm_rh_filename,
+                self.base_port,
+                self.unlock_mapped_memory,
+                self.gpu_params,
+                self.logging_config,
+            )?
+        };
 
         Ok(ZiskProver::<Asm>::new(asm))
     }
@@ -509,6 +524,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
     fn from(builder: ProverClientBuilder<(), ()>) -> Self {
         Self {
             // Preserve common fields
+            verifier: builder.verifier,
             aggregation: builder.aggregation,
             witness: builder.witness,
             snark_wrapper: builder.snark_wrapper,
@@ -538,6 +554,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
     fn from(builder: ProverClientBuilder<(), ()>) -> Self {
         Self {
             // Preserve common fields
+            verifier: builder.verifier,
             aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,
@@ -569,6 +586,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
     fn from(builder: ProverClientBuilder<Backend, ()>) -> Self {
         Self {
             // Preserve common fields
+            verifier: builder.verifier,
             aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,
@@ -598,6 +616,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
     fn from(builder: ProverClientBuilder<Backend, ()>) -> Self {
         Self {
             // Preserve common fields
+            verifier: builder.verifier,
             aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,

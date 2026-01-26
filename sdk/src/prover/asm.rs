@@ -67,6 +67,12 @@ impl AsmProver {
 
         Ok(Self { core_prover })
     }
+
+    pub fn new_verifier(proving_key: PathBuf, proving_key_snark: PathBuf) -> Result<Self> {
+        let core_prover = AsmCoreProver::new_verifier(proving_key, proving_key_snark)?;
+
+        Ok(Self { core_prover })
+    }
 }
 
 impl ProverEngine for AsmProver {
@@ -79,13 +85,15 @@ impl ProverEngine for AsmProver {
     }
 
     fn set_stdin(&self, stdin: ZiskStdin) {
-        self.core_prover.backend.witness_lib.set_stdin(stdin);
+        self.core_prover.backend.witness_lib.as_ref().unwrap().set_stdin(stdin);
     }
 
     fn executed_steps(&self) -> u64 {
         self.core_prover
             .backend
             .witness_lib
+            .as_ref()
+            .unwrap()
             .execution_result()
             .map(|(exec_result, _)| exec_result.executed_steps)
             .unwrap_or(0)
@@ -117,8 +125,8 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.verify_constraints(stdin)
     }
 
-    fn vk(&self) -> Result<ZiskProgramVK> {
-        self.core_prover.backend.vk()
+    fn vk(&self, elf_path: PathBuf) -> Result<ZiskProgramVK> {
+        self.core_prover.backend.vk(elf_path)
     }
 
     fn verify(&self, proof: &ZiskProveResult, vk: &ZiskProgramVK) -> Result<()> {
@@ -157,14 +165,14 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
-    fn mpi_broadcast(&self, data: &mut Vec<u8>) {
-        self.core_prover.backend.mpi_broadcast(data);
+    fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
+        self.core_prover.backend.mpi_broadcast(data)
     }
 }
 
 pub struct AsmCoreProver {
     backend: ProverBackend,
-    asm_services: AsmServices,
+    asm_services: Option<AsmServices>,
     rank_info: RankInfo,
 }
 
@@ -172,12 +180,14 @@ impl Drop for AsmCoreProver {
     fn drop(&mut self) {
         // Shut down ASM microservices
         info!(">>> [{}] Stopping ASM microservices.", self.rank_info.world_rank);
-        if let Err(e) = self.asm_services.stop_asm_services() {
-            tracing::error!(
-                ">>> [{}] Failed to stop ASM microservices: {}",
-                self.rank_info.world_rank,
-                e
-            );
+        if let Some(asm_services) = &self.asm_services {
+            if let Err(e) = asm_services.stop_asm_services() {
+                tracing::error!(
+                    ">>> [{}] Failed to stop ASM microservices: {}",
+                    self.rank_info.world_rank,
+                    e
+                );
+            }
         }
     }
 }
@@ -273,13 +283,36 @@ impl AsmCoreProver {
         }
 
         let core = ProverBackend {
-            witness_lib,
-            proofman,
+            witness_lib: Some(witness_lib),
+            proofman: Some(proofman),
             snark_wrapper,
             proving_key_path: proving_key,
             proving_key_snark_path: Some(proving_key_snark),
+            verifier_only: false,
         };
 
-        Ok(Self { backend: core, asm_services, rank_info: RankInfo { world_rank, local_rank } })
+        Ok(Self {
+            backend: core,
+            asm_services: Some(asm_services),
+            rank_info: RankInfo { world_rank, local_rank },
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_verifier(proving_key: PathBuf, proving_key_snark: PathBuf) -> Result<Self> {
+        let core_prover = ProverBackend {
+            witness_lib: None,
+            proofman: None,
+            snark_wrapper: None,
+            proving_key_path: proving_key,
+            proving_key_snark_path: Some(proving_key_snark),
+            verifier_only: true,
+        };
+
+        Ok(Self {
+            backend: core_prover,
+            asm_services: None,
+            rank_info: RankInfo { world_rank: 0, local_rank: 0 },
+        })
     }
 }
