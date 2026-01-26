@@ -1569,7 +1569,7 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
 
         // Check that callback is provided if chunk size is specified
-        if options.chunk_size.is_some() {
+        if let Some(chunk_size) = options.chunk_size {
             // Check callback consistency
             if callback.is_none() {
                 panic!("Emu::run() called with chunk size but no callback");
@@ -1577,7 +1577,7 @@ impl<'a> Emu<'a> {
 
             // Record callback into context
             self.ctx.do_callback = true;
-            self.ctx.callback_steps = options.chunk_size.unwrap();
+            self.ctx.callback_steps = chunk_size;
 
             // Check steps value
             if self.ctx.callback_steps == 0 {

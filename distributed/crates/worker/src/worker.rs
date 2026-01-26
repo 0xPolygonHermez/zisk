@@ -198,16 +198,14 @@ impl ProverConfig {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
         let mut gpu_params = ParamsGPU::new(prover_service_config.preallocate);
-        if prover_service_config.max_streams.is_some() {
-            gpu_params.with_max_number_streams(prover_service_config.max_streams.unwrap());
+        if let Some(max_streams) = prover_service_config.max_streams {
+            gpu_params.with_max_number_streams(max_streams);
         }
-        if prover_service_config.number_threads_witness.is_some() {
-            gpu_params.with_number_threads_pools_witness(
-                prover_service_config.number_threads_witness.unwrap(),
-            );
+        if let Some(number_threads_witness) = prover_service_config.number_threads_witness {
+            gpu_params.with_number_threads_pools_witness(number_threads_witness);
         }
-        if prover_service_config.max_witness_stored.is_some() {
-            gpu_params.with_max_witness_stored(prover_service_config.max_witness_stored.unwrap());
+        if let Some(max_witness_stored) = prover_service_config.max_witness_stored {
+            gpu_params.with_max_witness_stored(max_witness_stored);
         }
 
         Ok(ProverConfig {

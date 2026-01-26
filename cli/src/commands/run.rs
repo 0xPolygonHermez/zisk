@@ -72,12 +72,12 @@ impl ZiskRun {
             if self.metrics {
                 extra_command += " -m ";
             }
-            if self.input.is_some() {
-                let path = Path::new(self.input.as_ref().unwrap());
+            if let Some(input) = &self.input {
+                let path = Path::new(input);
                 if !path.exists() {
                     return Err(anyhow!("Input file does not exist at path: {}", path.display()));
                 }
-                input_command = format!("-i {}", self.input.as_ref().unwrap());
+                input_command = format!("-i {}", input);
             }
             runner_command = format!("ziskemu {input_command} {extra_command} -e");
         } else {

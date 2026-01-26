@@ -112,14 +112,14 @@ impl ZiskProve {
 
         let mut gpu_params = ParamsGPU::new(self.preallocate);
 
-        if self.max_streams.is_some() {
-            gpu_params.with_max_number_streams(self.max_streams.unwrap());
+        if let Some(max_streams) = self.max_streams {
+            gpu_params.with_max_number_streams(max_streams);
         }
-        if self.number_threads_witness.is_some() {
-            gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
+        if let Some(number_threads_witness) = self.number_threads_witness {
+            gpu_params.with_number_threads_pools_witness(number_threads_witness);
         }
-        if self.max_witness_stored.is_some() {
-            gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
+        if let Some(max_witness_stored) = self.max_witness_stored {
+            gpu_params.with_max_witness_stored(max_witness_stored);
         }
 
         let stdin = self.create_stdin()?;
