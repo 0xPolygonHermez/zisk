@@ -24,7 +24,7 @@ use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
-use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary};
+use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 #[cfg(feature = "packed")]
 use zisk_pil::PACKED_INFO;
@@ -49,9 +49,8 @@ pub struct WitnessLib<F: PrimeField64> {
     verbose_mode: proofman_common::VerboseMode,
 }
 
-#[no_mangle]
 #[allow(clippy::too_many_arguments)]
-fn init_library(
+pub fn init_zisk_lib<F: PrimeField64>(
     verbose_mode: proofman_common::VerboseMode,
     elf_path: PathBuf,
     asm_mt_path: Option<PathBuf>,
@@ -59,10 +58,10 @@ fn init_library(
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
     shared_tables: bool,
-) -> Result<Box<dyn ZiskLib<Goldilocks>>, Box<dyn std::error::Error>> {
+) -> WitnessLib<F> {
     let chunk_size = CHUNK_SIZE;
 
-    let result = Box::new(WitnessLib {
+    WitnessLib {
         elf_path,
         asm_mt_path,
         asm_rh_path,
@@ -72,9 +71,7 @@ fn init_library(
         unlock_mapped_memory,
         shared_tables,
         verbose_mode,
-    });
-
-    Ok(result)
+    }
 }
 
 impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
@@ -230,8 +227,8 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
     }
 }
 
-impl ZiskWitnessLibrary<Goldilocks> for WitnessLib<Goldilocks> {
-    fn set_stdin(&self, stdin: ZiskStdin) {
+impl WitnessLib<Goldilocks> {
+    pub fn set_stdin(&self, stdin: ZiskStdin) {
         if let Some(executor) = &self.executor {
             executor.set_stdin(stdin);
         }
@@ -241,9 +238,7 @@ impl ZiskWitnessLibrary<Goldilocks> for WitnessLib<Goldilocks> {
     ///
     /// # Returns
     /// * `u16` - The execution result code.
-    fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
+    pub fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
         self.executor.as_ref().map(|executor| executor.get_execution_result())
     }
 }
-
-impl ZiskLib<Goldilocks> for WitnessLib<Goldilocks> {}

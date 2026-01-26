@@ -145,7 +145,6 @@ impl WorkerServiceConfig {
 #[derive(Debug, Clone)]
 pub struct ProverServiceConfigDto {
     pub elf: PathBuf,
-    pub witness_lib: Option<PathBuf>,
     pub asm: Option<PathBuf>,
     pub emulator: bool,
     pub proving_key: Option<PathBuf>,
@@ -168,7 +167,6 @@ impl Default for ProverServiceConfigDto {
     fn default() -> Self {
         Self {
             elf: PathBuf::new(),
-            witness_lib: None,
             asm: None,
             emulator: false,
             proving_key: None,

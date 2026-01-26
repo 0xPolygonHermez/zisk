@@ -79,12 +79,6 @@ pub fn cli_fail_if_macos() -> anyhow::Result<()> {
     }
 }
 
-/// Gets the witness computation library file location.
-/// Uses the default one if not specified by user.
-pub fn get_witness_computation_lib(witness_lib: Option<&PathBuf>) -> PathBuf {
-    witness_lib.cloned().unwrap_or_else(get_default_witness_computation_lib)
-}
-
 /// Gets the proving key file location.
 /// Uses the default one if not specified by user.
 pub fn get_proving_key(proving_key: Option<&PathBuf>) -> PathBuf {

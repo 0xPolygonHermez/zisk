@@ -18,10 +18,6 @@ use zisk_common::io::ZiskStdin;
         .required(false)
 ))]
 pub struct ZiskExecute {
-    /// Witness computation dynamic library path
-    #[clap(short = 'w', long)]
-    pub witness_lib: Option<PathBuf>,
-
     /// ROM file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
@@ -102,7 +98,6 @@ impl ZiskExecute {
         let prover = ProverClient::builder()
             .emu()
             .witness()
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
             .verbose(self.verbose)
@@ -116,8 +111,7 @@ impl ZiskExecute {
     pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
         let prover = ProverClient::builder()
             .asm()
-            .verify_constraints()
-            .witness_lib_path_opt(self.witness_lib.clone())
+            .witness()
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
             .verbose(self.verbose)

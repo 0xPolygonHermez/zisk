@@ -1,8 +1,5 @@
 use anyhow::Result;
-use cargo_zisk::{
-    commands::{get_proving_key, get_witness_computation_lib},
-    ux::print_banner,
-};
+use cargo_zisk::{commands::get_proving_key, ux::print_banner};
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
@@ -47,10 +44,6 @@ struct Cli {
         help = "Path to configuration file (overrides ZISK_WORKER_CONFIG_PATH environment variable)"
     )]
     config: Option<String>,
-
-    /// Witness computation dynamic library path
-    #[clap(short = 'w', long)]
-    pub witness_lib: Option<PathBuf>,
 
     /// ELF file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
@@ -136,7 +129,6 @@ async fn main() -> Result<()> {
 
     let prover_config_dto = ProverServiceConfigDto {
         elf: cli.elf.clone(),
-        witness_lib: cli.witness_lib.clone(),
         asm: cli.asm.clone(),
         emulator: cli.emulator,
         proving_key: cli.proving_key.clone(),
@@ -197,11 +189,6 @@ fn print_command_info(
             .as_deref()
             .map(|p| format!("(log file: {})", p).bright_black().to_string())
             .unwrap_or_default()
-    );
-    println!(
-        "{: >12} {}",
-        "Witness Lib".bright_green().bold(),
-        get_witness_computation_lib(Some(&prover_config.witness_lib)).display()
     );
 
     println!("{: >12} {}", "Elf".bright_green().bold(), prover_config.elf.display());
