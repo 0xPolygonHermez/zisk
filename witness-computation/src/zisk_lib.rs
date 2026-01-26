@@ -207,7 +207,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         self.executor = Some(executor);
 
         wcm.set_witness_initialized();
-        
+
         Ok(())
     }
 
