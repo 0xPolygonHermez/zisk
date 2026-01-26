@@ -15,8 +15,6 @@
                     //"--bin",
                     //"proofman-cli",
                     "verify-constraints",
-                    "--witness-lib",
-                    "../zisk/target/debug/libzisk_witness.so",
                     "--elf",
                     "../zisk-testvectors/pessimistic-proof/program/pessimistic-proof-program-keccak.elf",
                     "-i",

@@ -365,7 +365,6 @@ The table below lists the available configuration options for the Worker:
 | `logging.level` | - | RUST_LOG | String | debug | Logging level (error, warn, info, debug, trace) |
 | `logging.format` | - | - | String | pretty | Logging format (pretty, json, compact) |
 | `logging.file_path` | - | - | String | - | *Optional*. Log file path (enables file logging) |
-| - | `--witness-lib` | - | String | ~/.zisk/bin/libzisk_witness.so | Path to witness computation dynamic library |
 | - | `--proving-key` | - | String | ~/.zisk/provingKey | Path to setup folder |
 | - | `--elf` | - | String | - | Path to ELF file |
 | - | `--asm` | - | String | ~/.zisk/cache | Path to ASM file (mutually exclusive with `--emulator`) |

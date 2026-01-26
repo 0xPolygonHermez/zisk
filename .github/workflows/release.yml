@@ -117,7 +117,6 @@ jobs:
           cp ./target/${TARGET}/release/riscv2zisk                 zisk-dist/bin/
           cp ./target/${TARGET}/release/zisk-coordinator           zisk-dist/bin/
           cp ./target/${TARGET}/release/zisk-worker                zisk-dist/bin/
-          cp ./target/${TARGET}/release/libzisk_witness.${LIB_EXT} zisk-dist/bin/
           cp ./ziskup/ziskup                                       zisk-dist/bin/
           cp ./target/${TARGET}/release/libziskclib.a              zisk-dist/bin/
 
