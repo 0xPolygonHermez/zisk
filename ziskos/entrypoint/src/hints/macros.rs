@@ -13,6 +13,7 @@ macro_rules! define_hint {
                     return;
                 }
 
+                #[cfg(zisk_hints_single_thread)]
                 crate::hints::check_main_thread();
 
                 let mut total_len = 0;
@@ -51,6 +52,7 @@ macro_rules! define_hint_pairs {
                     return;
                 }
 
+                #[cfg(zisk_hints_single_thread)]
                 crate::hints::check_main_thread();
 
                 crate::hints::HINT_BUFFER.write_hint_header(
@@ -85,6 +87,7 @@ macro_rules! define_hint_ptr {
                     return;
                 }
 
+                #[cfg(zisk_hints_single_thread)]
                 crate::hints::check_main_thread();
 
                 let pad = (8 - ([<$arg _len>] & 7)) & 7;
@@ -120,6 +123,7 @@ macro_rules! define_hint_ptr {
                     return;
                 }
 
+                #[cfg(zisk_hints_single_thread)]
                 crate::hints::check_main_thread();
 
                 let mut total_len = 0;

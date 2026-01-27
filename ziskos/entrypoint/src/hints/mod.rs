@@ -1,5 +1,3 @@
-#![warn(unused_imports)]
-
 mod hint_buffer;
 mod macros;
 mod bls12_381;
@@ -32,10 +30,8 @@ pub use sha256f::*;
 pub const HINT_START: u32 = 0;
 pub const HINT_END: u32 = 1;
 
-
 static HINT_BUFFER: Lazy<Arc<HintBuffer>> = Lazy::new(|| build_hint_buffer());
 static HINT_FILE_WRITER_HANDLE: Lazy<HintFileWriterHandleCell> = Lazy::new(HintFileWriterHandleCell::new);
-static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
 
 pub struct HintFileWriterHandleCell {
     inner: UnsafeCell<Option<JoinHandle<io::Result<()>>>>,
@@ -64,6 +60,7 @@ impl HintFileWriterHandleCell {
 
 pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
     // Record the main thread id to validate single-threaded calls later
+    #[cfg(zisk_hints_single_thread)]
     let _ = MAIN_TID.set(std::thread::current().id());
 
     if let Some(handle) = HINT_FILE_WRITER_HANDLE.take() {
@@ -113,26 +110,6 @@ pub fn close_precompile_hints() -> io::Result<()> {
     }
 }
 
-#[inline(always)]
-pub(crate) fn check_main_thread() {
-    // Panic on calls from a different thread
-    let tid = std::thread::current().id();
-    match MAIN_TID.get() {
-        Some(main) => {
-            if *main != tid {
-                panic!(
-                    "Precompile hint function called from non-main thread, main={:?}, current={:?}",
-                    main, tid
-                );
-            }
-        }
-        None => {
-            // If not initialized yet, record the first caller thread as main
-            let _ = MAIN_TID.set(tid);
-        }
-    }
-}
-
 fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
     debug_assert!(cfg!(target_endian = "little"));
 
@@ -161,17 +138,33 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
     file_writer.flush()?;
 
     #[cfg(zisk_hints_metrics)]
-    {
-        let hints = crate::hints::metrics::HINTS_METRICS.read().expect("HINTS_METRICS poisoned");
-        println!("Precompile hints usage summary:");
-        for (_, info) in hints.iter() {
-            if info.count > 0 {
-                println!("  {}: {}", info.hint_name, info.count);
-            }
-        }
-    }
+    crate::hints::metrics::print_metrics();
 
     Ok(())
+}
+
+#[cfg(zisk_hints_single_thread)]
+static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
+
+#[cfg(zisk_hints_single_thread)]
+#[inline(always)]
+pub(crate) fn check_main_thread() {
+    // Panic on calls from a different thread
+    let tid = std::thread::current().id();
+    match MAIN_TID.get() {
+        Some(main) => {
+            if *main != tid {
+                panic!(
+                    "Precompile hint function called from non-main thread, main={:?}, current={:?}",
+                    main, tid
+                );
+            }
+        }
+        None => {
+            // If not initialized yet, record the first caller thread as main
+            let _ = MAIN_TID.set(tid);
+        }
+    }
 }
 
 #[inline(always)]
@@ -190,6 +183,8 @@ pub fn hint_log<S: AsRef<str>>(msg: S) {
 
     println!("{}", msg.as_ref());
 }
+
+// Extern functions for C interface
 
 #[no_mangle]
 pub extern "C" fn pause_hints() -> bool {
