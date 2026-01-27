@@ -14,13 +14,14 @@ use proofman::{
 use proofman_common::ProofOptions;
 use rom_setup::{rom_vkey, verify_program_vk_publics};
 use std::path::PathBuf;
-use zisk_common::{io::ZiskStdin, ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib};
+use zisk_common::{io::ZiskStdin, ExecutorStats, ProofLog, ZiskExecutionResult};
 use zisk_verifier::verify_zisk_proof;
+use zisk_witness::WitnessLib;
 
 pub(crate) struct ProverBackend {
     pub proofman: Option<ProofMan<Goldilocks>>,
     pub snark_wrapper: Option<SnarkWrapper<Goldilocks>>,
-    pub witness_lib: Option<Box<dyn ZiskLib<Goldilocks>>>,
+    pub witness_lib: Option<WitnessLib<Goldilocks>>,
     pub proving_key_path: PathBuf,
     pub proving_key_snark_path: Option<PathBuf>,
     pub verifier_only: bool,

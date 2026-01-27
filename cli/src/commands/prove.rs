@@ -21,10 +21,6 @@ use zisk_sdk::{Proof, ProofOpts, ProverClient, ZiskProveResult};
         .required(false)
 ))]
 pub struct ZiskProve {
-    /// Witness computation dynamic library path
-    #[clap(short = 'w', long)]
-    pub witness_lib: Option<PathBuf>,
-
     /// ELF file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
@@ -191,7 +187,6 @@ impl ZiskProve {
     ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClient::builder()
             .aggregation(self.aggregation)
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
             .verbose(self.verbose)
@@ -223,7 +218,6 @@ impl ZiskProve {
         let prover = ProverClient::builder()
             .aggregation(self.aggregation)
             .asm()
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
             .verbose(self.verbose)

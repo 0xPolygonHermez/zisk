@@ -75,8 +75,6 @@ RUN mkdir -p bin config/coordinator config/worker /app/proofs /var/log/distribut
 # Copy binaries from builder stage
 COPY --from=builder --chown=zisk:zisk /app/target/release/zisk-coordinator ./bin/
 COPY --from=builder --chown=zisk:zisk /app/target/release/zisk-worker ./bin/
-# Copy the witness library
-COPY --from=builder --chown=zisk:zisk /app/target/release/libzisk_witness.so ./bin/
 
 # Copy configuration files with proper ownership
 COPY --chown=zisk:zisk distributed/crates/coordinator/config/ ./config/coordinator/

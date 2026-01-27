@@ -23,6 +23,7 @@ zstd = { workspace = true }
 bytemuck = { workspace = true }
 zisk-distributed-common = { workspace = true }
 zisk-verifier = { workspace = true }
+zisk-witness = { workspace = true }
 
 [features]
 default = []

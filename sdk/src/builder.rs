@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    get_asm_paths, get_proving_key, get_proving_key_snark, get_witness_computation_lib,
+    get_asm_paths, get_proving_key, get_proving_key_snark,
     prover::{Asm, AsmProver, Emu, EmuProver, ZiskProver},
 };
 use colored::Colorize;
@@ -49,7 +49,6 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     // Common fields for both EMU and ASM
     aggregation: bool,
     snark_wrapper: bool,
-    witness_lib: Option<PathBuf>,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
     elf: Option<PathBuf>,
@@ -144,18 +143,6 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     #[must_use]
     pub fn snark(mut self, enable: bool) -> Self {
         self.snark_wrapper = enable;
-        self
-    }
-
-    #[must_use]
-    pub fn witness_lib_path(mut self, witness_lib: PathBuf) -> Self {
-        self.witness_lib = Some(witness_lib);
-        self
-    }
-
-    #[must_use]
-    pub fn witness_lib_path_opt(mut self, witness_lib: Option<PathBuf>) -> Self {
-        self.witness_lib = witness_lib;
         self
     }
 
@@ -308,7 +295,6 @@ impl ProverClientBuilder<EmuB, Prove> {
 
 impl<X> ProverClientBuilder<EmuB, X> {
     fn build_emu(self) -> Result<ZiskProver<Emu>> {
-        let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
         let proving_key_snark = get_proving_key_snark(self.proving_key_snark.as_ref());
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
@@ -317,7 +303,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
             Self::print_emu_command_info(
                 self.witness,
                 self.verify_constraints,
-                &witness_lib,
                 &proving_key,
                 &proving_key_snark,
                 &elf,
@@ -331,7 +316,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
                 self.verify_constraints,
                 self.aggregation,
                 self.snark_wrapper,
-                witness_lib,
                 proving_key,
                 proving_key_snark,
                 elf,
@@ -348,7 +332,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
     fn print_emu_command_info(
         witness: bool,
         verify_constraints: bool,
-        witness_lib: &Path,
         proving_key: &Path,
         proving_key_snark: &Path,
         elf: &Path,
@@ -361,7 +344,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
             println!("{: >12} Prove", "Command".bright_green().bold());
         }
 
-        println!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib.display());
         println!("{: >12} {}", "Elf".bright_green().bold(), elf.display());
         println!(
             "{: >12} {}",
@@ -446,7 +428,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
         F: PrimeField64,
         GoldilocksQuinticExtension: ExtensionField<F>,
     {
-        let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
         let proving_key_snark = get_proving_key_snark(self.proving_key_snark.as_ref());
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
@@ -457,7 +438,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
             Self::print_asm_command_info(
                 self.witness,
                 self.verify_constraints,
-                &witness_lib,
                 &proving_key,
                 &proving_key_snark,
                 &elf,
@@ -471,7 +451,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
                 self.verify_constraints,
                 self.aggregation,
                 self.snark_wrapper,
-                witness_lib,
                 proving_key,
                 proving_key_snark,
                 elf,
@@ -492,7 +471,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
     fn print_asm_command_info(
         witness: bool,
         verify_constraints: bool,
-        witness_lib: &Path,
         proving_key: &Path,
         proving_key_snark: &Path,
         elf: &Path,
@@ -505,7 +483,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
             println!("{: >12} Prove", "Command".bright_green().bold());
         }
 
-        println!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib.display());
         println!("{: >12} {}", "Elf".bright_green().bold(), elf.display());
         println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key.display());
 
@@ -528,7 +505,6 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             aggregation: builder.aggregation,
             witness: builder.witness,
             snark_wrapper: builder.snark_wrapper,
-            witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
@@ -558,7 +534,6 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,
-            witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
@@ -590,7 +565,6 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,
-            witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
@@ -620,7 +594,6 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
             witness: builder.witness,
-            witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: false,

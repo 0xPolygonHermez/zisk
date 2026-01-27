@@ -162,7 +162,6 @@ main() {
         LIB_EXT="dylib"
     fi
 
-    ensure cp target/${TARGET}/release/libzisk_witness.${LIB_EXT} "${ZISK_BIN_DIR}" || return 1
     ensure cp ziskup/ziskup "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/libziskclib.a "${ZISK_BIN_DIR}" || return 1
 

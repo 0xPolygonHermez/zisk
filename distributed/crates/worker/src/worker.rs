@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
+use cargo_zisk::commands::get_proving_key;
 use proofman::{AggProofs, ContributionsInfo};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_info, DEFAULT_CACHE_PATH,
@@ -48,9 +48,6 @@ pub enum ComputationResult {
 pub struct ProverConfig {
     /// Path to the ELF file
     pub elf: PathBuf,
-
-    /// Path to the witness computation dynamic library
-    pub witness_lib: PathBuf,
 
     /// Path to the ASM file (optional)
     pub asm: Option<PathBuf>,
@@ -214,7 +211,6 @@ impl ProverConfig {
 
         Ok(ProverConfig {
             elf: prover_service_config.elf.clone(),
-            witness_lib: get_witness_computation_lib(prover_service_config.witness_lib.as_ref()),
             asm: prover_service_config.asm.clone(),
             asm_rom,
             custom_commits_map,
@@ -269,7 +265,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .emu()
                 .prove()
                 .aggregation(true)
-                .witness_lib_path(prover_config.witness_lib.clone())
                 .proving_key_path(prover_config.proving_key.clone())
                 .elf_path(prover_config.elf.clone())
                 .verbose(prover_config.verbose)
@@ -300,7 +295,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .asm()
                 .prove()
                 .aggregation(true)
-                .witness_lib_path(prover_config.witness_lib.clone())
                 .proving_key_path(prover_config.proving_key.clone())
                 .elf_path(prover_config.elf.clone())
                 .verbose(prover_config.verbose)
