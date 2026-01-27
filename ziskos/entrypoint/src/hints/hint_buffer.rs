@@ -120,7 +120,7 @@ impl HintBuffer {
 
     #[inline(always)]
     pub fn write_hint_header(&self, hint_id: u32, len: usize, is_result: bool) {
-        let header = ((((if is_result { 0x8000_0000 } else { 0 } | hint_id as u64)) << 32)
+        let header = ((((if is_result { 0x8000_0000u64 } else { 0 }) | hint_id as u64) << 32)
             | (len as u64))
             .to_le_bytes();
 

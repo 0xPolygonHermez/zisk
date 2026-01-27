@@ -12,12 +12,15 @@ mod sha256f;
 mod metrics;
 
 use crate::hints::hint_buffer::{build_hint_buffer,  HintBuffer};
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::Lazy;
 use std::{io::{self, BufWriter, Write}, sync::Arc};
 use std::path::PathBuf;
 use std::thread::{self, JoinHandle, ThreadId};
 use std::{ffi::CStr, os::raw::c_char};
 use std::cell::UnsafeCell;
+
+#[cfg(zisk_hints_single_thread)]
+use once_cell::sync::OnceCell;
 
 pub use bls12_381::*;
 pub use bn254::*;
