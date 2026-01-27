@@ -120,7 +120,7 @@ impl ProverBackend {
         self.witness_lib.set_stdin(stdin);
 
         self.proofman
-            .verify_proof_constraints_from_lib(&debug_info, false)
+            .verify_proof_constraints_from_lib(&debug_info, self.minimal_memory, false)
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
         let elapsed = start.elapsed();
 
