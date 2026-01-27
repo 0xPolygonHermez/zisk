@@ -5,7 +5,7 @@ use crate::zisklib::{eq, fcall_msb_pos_256, lt};
 use super::{
     constants::{
         ETWISTED_B, EXT_U, EXT_U_INV, FROBENIUS_GAMMA13, FROBENIUS_GAMMA14, G2_IDENTITY, P,
-        X_ABS_BIN_BE,
+        PSI2_C1, PSI_C1, PSI_C2, X_ABS_BIN_BE,
     },
     fp2::{
         add_fp2_bls12_381, conjugate_fp2_bls12_381, dbl_fp2_bls12_381, inv_fp2_bls12_381,
@@ -14,8 +14,6 @@ use super::{
     },
     fr::scalar_bytes_be_to_u64_le_bls12_381,
 };
-
-// TODO: Check what happens if scalar or ecc coordinates are bigger than the field size
 
 /// G2 add result codes
 pub const G2_ADD_SUCCESS: u8 = 0;
@@ -237,6 +235,138 @@ pub fn is_on_subgroup_twist_bls12_381(
     );
 
     eq(&lhs, &rhs)
+}
+
+fn psi_twist_bls12_381(p: &[u64; 24], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 24] {
+    let x: [u64; 12] = p[0..12].try_into().unwrap();
+    let y: [u64; 12] = p[12..24].try_into().unwrap();
+
+    let mut frobx = conjugate_fp2_bls12_381(
+        &x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    frobx = mul_fp2_bls12_381(
+        &frobx,
+        &PSI_C1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let mut froby = conjugate_fp2_bls12_381(
+        &y,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    froby = mul_fp2_bls12_381(
+        &froby,
+        &PSI_C2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let mut result = [0u64; 24];
+    result[0..12].copy_from_slice(&frobx);
+    result[12..24].copy_from_slice(&froby);
+    result
+}
+
+fn psi2_twist_bls12_381(
+    p: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 24] {
+    let x: [u64; 12] = p[0..12].try_into().unwrap();
+    let y: [u64; 12] = p[12..24].try_into().unwrap();
+
+    let xa = mul_fp2_bls12_381(
+        &x,
+        &PSI2_C1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let ya = neg_fp2_bls12_381(
+        &y,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let mut result = [0u64; 24];
+    result[0..12].copy_from_slice(&xa);
+    result[12..24].copy_from_slice(&ya);
+    result
+}
+
+/// Efficient cofactor clearing for G2 using endomorphisms
+/// Implements: h_eff * P where h_eff is the effective cofactor
+pub fn clear_cofactor_twist_bls12_381(
+    p: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 24] {
+    let mut t1 = scalar_mul_by_abs_x_twist_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    t1 = neg_twist_bls12_381(
+        &t1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let mut t2 = psi_twist_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let mut t3 = dbl_twist_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    t3 = psi2_twist_bls12_381(
+        &t3,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    t3 = sub_twist_bls12_381(
+        &t3,
+        &t2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    t2 = add_twist_bls12_381(
+        &t1,
+        &t2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    t2 = scalar_mul_by_abs_x_twist_bls12_381(
+        &t2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    t2 = neg_twist_bls12_381(
+        &t2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    t3 = add_twist_bls12_381(
+        &t3,
+        &t2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    t3 = sub_twist_bls12_381(
+        &t3,
+        &t1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    sub_twist_bls12_381(
+        &t3,
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }
 
 /// Addition of two non-zero points
@@ -988,7 +1118,7 @@ pub fn g2_bytes_be_to_u64_le_bls12_381(bytes: &[u8; 192]) -> [u64; 24] {
 }
 
 /// Convert [u64; 24] little-endian G2 point to 192-byte big-endian
-fn g2_u64_le_to_bytes_be_bls12_381(limbs: &[u64; 24], bytes: &mut [u8; 192]) {
+pub fn g2_u64_le_to_bytes_be_bls12_381(limbs: &[u64; 24], bytes: &mut [u8; 192]) {
     // x_r (limbs[0..6]) -> bytes 0-47
     for i in 0..6 {
         let limb = limbs[5 - i];

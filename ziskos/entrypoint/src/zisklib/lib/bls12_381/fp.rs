@@ -7,6 +7,12 @@ use crate::{
 
 use super::constants::{NQR_FP, P, P_MINUS_ONE};
 
+/// Sign function in Fp
+#[inline]
+pub fn sgn0_fp_bls12_381(x: &[u64; 6]) -> u64 {
+    x[0] & 1
+}
+
 /// Addition in Fp
 #[inline]
 pub fn add_fp_bls12_381(
@@ -216,4 +222,15 @@ pub fn inv_fp_bls12_381(x: &[u64; 6], #[cfg(feature = "hints")] hints: &mut Vec<
     assert_eq!(*params.d, [1, 0, 0, 0, 0, 0]);
 
     inv
+}
+
+/// Convert 48-byte big-endian field element to [u64; 6] little-endian
+pub fn bytes_be_to_u64_le_fp_bls12_381(bytes: &[u8; 48]) -> [u64; 6] {
+    let mut result = [0u64; 6];
+    for i in 0..6 {
+        for j in 0..8 {
+            result[5 - i] |= (bytes[i * 8 + j] as u64) << (8 * (7 - j));
+        }
+    }
+    result
 }

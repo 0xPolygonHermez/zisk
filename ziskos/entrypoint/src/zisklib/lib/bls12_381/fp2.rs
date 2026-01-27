@@ -6,7 +6,7 @@ use crate::{
         syscall_bls12_381_complex_sub, SyscallBls12_381ComplexAddParams,
         SyscallBls12_381ComplexMulParams, SyscallBls12_381ComplexSubParams, SyscallComplex384,
     },
-    zisklib::{eq, fcall_bls12_381_fp2_inv, fcall_bls12_381_fp2_sqrt},
+    zisklib::{eq, fcall_bls12_381_fp2_inv, fcall_bls12_381_fp2_sqrt, is_zero},
 };
 
 use super::constants::{NQR_FP2, P_MINUS_ONE};
@@ -29,6 +29,14 @@ fn from_syscall_complex(complex: &SyscallComplex384) -> [u64; 12] {
     result[0..6].copy_from_slice(&complex.x);
     result[6..12].copy_from_slice(&complex.y);
     result
+}
+
+/// Sign function in Fp2
+pub fn sgn0_fp2_bls12_381(x: &[u64; 12]) -> u64 {
+    let sign_0 = x[0] & 1;
+    let zero_0 = is_zero(&x[0..6]) as u64;
+    let sign_1 = x[6] & 1;
+    sign_0 | (zero_0 & sign_1)
 }
 
 /// Addition in Fp2
@@ -245,4 +253,27 @@ pub fn conjugate_fp2_bls12_381(
         hints,
     );
     from_syscall_complex(&f1)
+}
+
+/// Convert 96-byte big-endian Fp2 element to [u64; 12] little-endian
+/// Format: fp2 = (c0, c1) where c0 is real, c1 is imaginary
+/// Bytes: c0 (48 bytes) || c1 (48 bytes)
+pub fn bytes_be_to_u64_le_fp2_bls12_381(bytes: &[u8; 96]) -> [u64; 12] {
+    let mut result = [0u64; 12];
+
+    // c0 (real part, bytes 0-47) -> result[0..6]
+    for i in 0..6 {
+        for j in 0..8 {
+            result[5 - i] |= (bytes[i * 8 + j] as u64) << (8 * (7 - j));
+        }
+    }
+
+    // c1 (imaginary part, bytes 48-95) -> result[6..12]
+    for i in 0..6 {
+        for j in 0..8 {
+            result[11 - i] |= (bytes[48 + i * 8 + j] as u64) << (8 * (7 - j));
+        }
+    }
+
+    result
 }

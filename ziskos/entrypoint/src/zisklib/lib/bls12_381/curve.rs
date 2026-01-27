@@ -791,7 +791,7 @@ pub fn g1_bytes_be_to_u64_le_bls12_381(bytes: &[u8; 96]) -> [u64; 12] {
 }
 
 /// Convert [u64; 12] little-endian G1 point to 96-byte big-endian
-fn g1_u64_le_to_bytes_be_bls12_381(limbs: &[u64; 12], bytes: &mut [u8; 96]) {
+pub fn g1_u64_le_to_bytes_be_bls12_381(limbs: &[u64; 12], bytes: &mut [u8; 96]) {
     // x-coordinate (first 48 bytes)
     for i in 0..6 {
         let limb = limbs[5 - i];
