@@ -9,7 +9,7 @@ macro_rules! define_hint {
         paste::paste! {
             #[no_mangle]
             pub unsafe extern "C" fn [<hint_ $name>]($( $arg: *const u8 ),+) {
-                if $crate::hints::HINT_BUFFER .is_paused() {
+                if !crate::hints::HINT_BUFFER.is_enabled() {
                     return;
                 }
 
@@ -48,7 +48,7 @@ macro_rules! define_hint_pairs {
         paste::paste! {
             #[no_mangle]
             pub unsafe extern "C" fn [<hint_ $name>]( pairs: *const u8, num_pairs: usize) {
-                if $crate::hints::HINT_BUFFER .is_paused() {
+                if !crate::hints::HINT_BUFFER.is_enabled() {
                     return;
                 }
 
@@ -83,7 +83,7 @@ macro_rules! define_hint_ptr {
         paste::paste! {
             #[no_mangle]
             pub unsafe extern "C" fn [<hint_ $name>]([<$arg _ptr>]: *const u8, [<$arg _len>]: usize) {
-                if $crate::hints::HINT_BUFFER .is_paused() {
+                if !crate::hints::HINT_BUFFER.is_enabled() {
                     return;
                 }
 
@@ -119,7 +119,7 @@ macro_rules! define_hint_ptr {
             #[no_mangle]
             pub unsafe extern "C" fn [<hint_ $name>]($( [<$arg _ptr>]: *const u8, [<$arg _len>]: usize ),+
             ) {
-                if $crate::hints::HINT_BUFFER .is_paused() {
+                if !crate::hints::HINT_BUFFER.is_enabled() {
                     return;
                 }
 

@@ -1,5 +1,3 @@
-#[cfg(zisk_hints)]
-use crate::hints::hint_keccak256;
 use crate::syscalls::syscall_keccak_f;
 
 /// Keccak-256 rate in bytes (1600 - 2*256) / 8 = 136 bytes

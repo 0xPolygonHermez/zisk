@@ -170,17 +170,12 @@ pub(crate) fn check_main_thread() {
     }
 }
 
-#[inline(always)]
-pub fn hints_enabled() -> bool {
-    !HINT_BUFFER.is_paused() && !HINT_BUFFER.is_closed()
-}
-
 // Logs hint message; gated by `hints_enabled()` on non-Zisk targets and always-on for Zisk
 #[inline(always)]
 pub fn hint_log<S: AsRef<str>>(msg: S) {
     // We check if hints are enable only for non-zisk targets, since in zisk targets hints are not used
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    if !hints_enabled() {
+    if !HINT_BUFFER.is_enabled() {
         return;
     }
 
