@@ -1,4 +1,4 @@
-use crate::{handlers::validate_hint_length, zisklib};
+use crate::zisklib;
 
 use anyhow::Result;
 
@@ -17,8 +17,6 @@ pub fn sha256_hint(data: &[u64], data_len_bytes: usize) -> Result<Vec<u64>> {
     }
 
     let bytes = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, data_len_bytes) };
-
-    validate_hint_length(bytes, data_len_bytes, "HINT_SHA256")?;
 
     let mut hints = Vec::new();
     zisklib::sha256(bytes, &mut hints);

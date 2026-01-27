@@ -10,7 +10,12 @@ pub fn modexp_hint(data: &[u64]) -> Result<Vec<u64>> {
     let (exp, exp_len) = read_field_bytes(data, &mut pos)?;
     let (modulus, modulus_len) = read_field_bytes(data, &mut pos)?;
 
-    // validate_hint_length(data, pos, "MODEXP")?;
+    // Check that the data length fits the expected length.
+    // Each length prefix is 8 bytes (1 u64), so total prefix size is 3 * 8 = 24 bytes.
+    // The total expected length in bytes is 24 + base_len + exp_len + modulus_len.
+    if (24 + base_len + exp_len + modulus_len).div_ceil(8) > data.len() * 8 {
+        anyhow::bail!("MODEXP hint data too short");
+    }
 
     let mut hints = Vec::new();
     let mut result = vec![0u8; modulus_len];

@@ -178,7 +178,7 @@ pub struct HintsProcessor {
 }
 
 impl HintsProcessor {
-    const DEFAULT_NUM_THREADS: usize = 1;
+    const DEFAULT_NUM_THREADS: usize = 32;
 
     /// Creates a builder for configuring a [`HintsProcessor`].
     ///

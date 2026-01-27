@@ -60,7 +60,6 @@ unsafe impl Sync for HintsShmem {}
 impl HintsShmem {
     const CONTROL_PRECOMPILE_SIZE: u64 = 0x1000; // 4KB
     const MAX_PRECOMPILE_SIZE: u64 = 0x10000000; // 256MB
-                                                 // const MAX_PRECOMPILE_SIZE: u64 = 0x100000; // 1MB
     const BUFFER_CAPACITY_U64: u64 = Self::MAX_PRECOMPILE_SIZE >> 3; // Capacity in u64 elements
 
     /// Create a new HintsShmem with the given shared memory names and unlock option.

@@ -28,6 +28,7 @@ macro_rules! hint_fields {
 
         hint_fields!(@offsets 0, $($name: $size),+);
 
+        #[allow(unused)]
         const EXPECTED_LEN: usize = hint_fields!(@sum $($size),+);
     };
 
@@ -117,4 +118,15 @@ fn validate_hint_length<T>(data: &[T], expected_len: usize, hint_name: &str) -> 
         );
     }
     Ok(())
+}
+
+/// Converts a big-endian u64 array to little-endian u64 array.
+/// Reverses both the array order and the byte order within each u64.
+#[inline]
+fn u64_be_to_u64_le<const N: usize>(input: &[u64; N]) -> [u64; N] {
+    let mut result = [0u64; N];
+    for i in 0..N {
+        result[i] = input[N - 1 - i].swap_bytes();
+    }
+    result
 }

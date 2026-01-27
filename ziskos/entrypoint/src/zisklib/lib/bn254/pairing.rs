@@ -261,6 +261,7 @@ pub unsafe extern "C" fn bn254_pairing_check_c(
     // Parse all pairs
     let mut g1_points: Vec<[u64; 8]> = Vec::with_capacity(num_pairs);
     let mut g2_points: Vec<[u64; 16]> = Vec::with_capacity(num_pairs);
+    
     for i in 0..num_pairs {
         let pair_ptr = pairs.add(i * 192);
 

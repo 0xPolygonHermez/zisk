@@ -31,7 +31,7 @@ pub struct ZiskRomSetup {
     pub output_dir: Option<PathBuf>,
 
     /// Enable precompile hints in assembly generation
-    #[clap(long, default_value_t = true)]
+    #[clap(short = 'h', long, default_value_t = false)]
     pub hints: bool,
 
     #[clap(short = 'v', long, default_value_t = false)]

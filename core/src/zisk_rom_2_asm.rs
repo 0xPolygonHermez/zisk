@@ -520,10 +520,12 @@ impl ZiskRom2Asm {
         ctx.mem_chunk_mask = format!("qword {}[chunk_mask]", ctx.ptr);
         ctx.mem_rsp = format!("qword {}[MEM_RSP]", ctx.ptr);
         ctx.mem_free_input = format!("qword {}[MEM_FREE_INPUT]", ctx.ptr);
-        ctx.mem_precompile_results_address =
-            format!("qword {}[MEM_PRECOMPILE_RESULTS_ADDRESS]", ctx.ptr);
-        ctx.mem_precompile_written_address = format!("qword {}[0x70000000]", ctx.ptr);
-        ctx.mem_precompile_read_address = format!("qword {}[0x70001000]", ctx.ptr);
+        if ctx.precompile_results() {
+            ctx.mem_precompile_results_address =
+                format!("qword {}[MEM_PRECOMPILE_RESULTS_ADDRESS]", ctx.ptr);
+            ctx.mem_precompile_written_address = format!("qword {}[0x70000000]", ctx.ptr);
+            ctx.mem_precompile_read_address = format!("qword {}[0x70001000]", ctx.ptr);
+        }
 
         // Preamble
         *code += ".intel_syntax noprefix\n";
@@ -541,7 +543,9 @@ impl ZiskRom2Asm {
         *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
         *code += ".comm MEM_RSP, 8, 8\n";
         *code += ".comm MEM_FREE_INPUT, 8, 8\n";
-        *code += ".comm MEM_PRECOMPILE_RESULTS_ADDRESS, 8, 8\n";
+        if ctx.precompile_results() {
+            *code += ".comm MEM_PRECOMPILE_RESULTS_ADDRESS, 8, 8\n";
+        }
         if ctx.zip() {
             *code += ".comm MEM_CHUNK_ID, 8, 8\n";
         }
@@ -614,7 +618,9 @@ impl ZiskRom2Asm {
         *code += ".extern print_fcall_ctx\n";
         *code += ".extern print_pc\n";
         *code += ".extern realloc_trace\n";
-        *code += ".extern wait_for_prec_avail\n\n";
+        if ctx.precompile_results() {
+            *code += ".extern wait_for_prec_avail\n\n";
+        }
 
         if ctx.minimal_trace()
             || ctx.main_trace()
@@ -3691,8 +3697,7 @@ impl ZiskRom2Asm {
             }
 
             println!(
-                "ZiskRom2Asm::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst",
-                code.len(),
+                "ZiskRom2Asm::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst, precompile_results={:?}",                code.len(),
                 rom.sorted_pc_list.len(),
                 code.len() as f64 / rom.sorted_pc_list.len() as f64,
                 map_label_lines_counter,
@@ -3700,6 +3705,7 @@ impl ZiskRom2Asm {
                 comment_lines_counter,
                 code_lines_counter,
                 code_lines_counter as f64 / rom.sorted_pc_list.len() as f64,
+                ctx.precompile_results
             );
         }
     }
