@@ -23,6 +23,7 @@ use precomp_poseidon2::Poseidon2Collector;
 use precomp_poseidon2::Poseidon2CounterInputGen;
 use precomp_sha256f::Sha256fCollector;
 use precomp_sha256f::Sha256fCounterInputGen;
+use precompiles_common::MemCollectorProcessor;
 use sm_arith::ArithCounterInputGen;
 use sm_arith::ArithInstanceCollector;
 use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollector};
@@ -184,234 +185,151 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             MEM_BUS_ID => {
                 // Process mem collectors - inverted condition to avoid continue
                 for (_, mem_collector) in &mut self.mem_collector {
-                    mem_collector.process_data(
-                        &bus_id,
-                        data,
-                        data_ext,
-                        &mut self.pending_transfers,
-                        None,
-                    );
+                    mem_collector.process_data(&bus_id, data);
                 }
 
                 // Only process align collectors if needed
                 for (_, mem_align_collector) in &mut self.mem_align_collector {
-                    mem_align_collector.process_data(
-                        &bus_id,
-                        data,
-                        data_ext,
-                        &mut self.pending_transfers,
-                        None,
-                    );
+                    mem_align_collector.process_data(&bus_id, data);
                 }
             }
             OPERATION_BUS_ID => match data[OP_TYPE] {
                 BINARY_TYPE => {
                     for (_, binary_add_collector) in &mut self.binary_add_collector {
-                        binary_add_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        binary_add_collector.process_data(&bus_id, data);
                     }
 
                     for (_, binary_basic_collector) in &mut self.binary_basic_collector {
-                        binary_basic_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        binary_basic_collector.process_data(&bus_id, data);
                     }
                 }
                 BINARY_E_TYPE => {
                     for (_, binary_extension_collector) in &mut self.binary_extension_collector {
-                        binary_extension_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        binary_extension_collector.process_data(&bus_id, data);
                     }
                 }
                 ARITH_TYPE => {
                     for (_, arith_collector) in &mut self.arith_collector {
-                        arith_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        arith_collector.process_data(&bus_id, data);
                     }
 
                     self.arith_inputs_generator.process_data(
                         &bus_id,
                         data,
-                        data_ext,
                         &mut self.pending_transfers,
-                        None,
                     );
                 }
                 KECCAK_TYPE => {
                     for (_, keccakf_collector) in &mut self.keccakf_collector {
-                        keccakf_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        keccakf_collector.process_data(&bus_id, data);
                     }
 
                     self.keccakf_inputs_generator.process_data(
                         &bus_id,
                         data,
-                        data_ext,
-                        &mut self.pending_transfers,
+                        &mut MemCollectorProcessor::new(
+                            &mut self.mem_collector,
+                            &mut self.mem_align_collector,
+                        ),
                         Some(&self.mem_collectors_info),
                     );
                 }
                 SHA256_TYPE => {
                     for (_, sha256f_collector) in &mut self.sha256f_collector {
-                        sha256f_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        sha256f_collector.process_data(&bus_id, data);
                     }
 
                     self.sha256f_inputs_generator.process_data(
                         &bus_id,
                         data,
-                        data_ext,
-                        &mut self.pending_transfers,
+                        &mut MemCollectorProcessor::new(
+                            &mut self.mem_collector,
+                            &mut self.mem_align_collector,
+                        ),
                         Some(&self.mem_collectors_info),
                     );
                 }
                 POSEIDON2_TYPE => {
                     for (_, poseidon2_collector) in &mut self.poseidon2_collector {
-                        poseidon2_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        poseidon2_collector.process_data(&bus_id, data);
                     }
                     self.poseidon2_inputs_generator.process_data(
                         &bus_id,
                         data,
-                        data_ext,
-                        &mut self.pending_transfers,
+                        &mut MemCollectorProcessor::new(
+                            &mut self.mem_collector,
+                            &mut self.mem_align_collector,
+                        ),
                         Some(&self.mem_collectors_info),
                     );
                 }
                 ARITH_EQ_TYPE => {
                     for (_, arith_eq_collector) in &mut self.arith_eq_collector {
-                        arith_eq_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        arith_eq_collector.process_data(&bus_id, data);
                     }
 
                     self.arith_eq_inputs_generator.process_data(
                         &bus_id,
                         data,
-                        data_ext,
-                        &mut self.pending_transfers,
+                        &mut MemCollectorProcessor::new(
+                            &mut self.mem_collector,
+                            &mut self.mem_align_collector,
+                        ),
                         Some(&self.mem_collectors_info),
                     );
                 }
                 ARITH_EQ_384_TYPE => {
                     for (_, arith_eq_384_collector) in &mut self.arith_eq_384_collector {
-                        arith_eq_384_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        arith_eq_384_collector.process_data(&bus_id, data);
                     }
 
                     self.arith_eq_384_inputs_generator.process_data(
                         &bus_id,
                         data,
-                        data_ext,
-                        &mut self.pending_transfers,
+                        &mut MemCollectorProcessor::new(
+                            &mut self.mem_collector,
+                            &mut self.mem_align_collector,
+                        ),
                         Some(&self.mem_collectors_info),
                     );
                 }
                 BIG_INT_OP_TYPE_ID => {
                     for (_, add256_collector) in &mut self.add256_collector {
-                        add256_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        add256_collector.process_data(&bus_id, data);
                     }
 
                     self.add256_inputs_generator.process_data(
                         &bus_id,
                         data,
-                        data_ext,
-                        &mut self.pending_transfers,
+                        &mut MemCollectorProcessor::new(
+                            &mut self.mem_collector,
+                            &mut self.mem_align_collector,
+                        ),
                         Some(&self.mem_collectors_info),
                     );
                 }
                 DMA_OP_TYPE_ID => {
                     for (_, dma_collector) in &mut self.dma_collector {
-                        dma_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        dma_collector.process_data(&bus_id, data, data_ext);
                     }
                     for (_, dma_pre_post_collector) in &mut self.dma_pre_post_collector {
-                        dma_pre_post_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        dma_pre_post_collector.process_data(&bus_id, data, data_ext);
                     }
                     for (_, dma_64_aligned_collector) in &mut self.dma_64_aligned_collector {
-                        dma_64_aligned_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        dma_64_aligned_collector.process_data(&bus_id, data, data_ext);
                     }
                     for (_, dma_unaligned_collector) in &mut self.dma_unaligned_collector {
-                        dma_unaligned_collector.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        dma_unaligned_collector.process_data(&bus_id, data, data_ext);
                     }
 
                     self.dma_inputs_generator.process_data(
                         &bus_id,
                         data,
                         data_ext,
-                        &mut self.pending_transfers,
+                        &mut MemCollectorProcessor::new(
+                            &mut self.mem_collector,
+                            &mut self.mem_align_collector,
+                        ),
                         Some(&self.mem_collectors_info),
                     );
                 }
@@ -419,13 +337,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             },
             ROM_BUS_ID => {
                 for (_, rom_collector) in &mut self.rom_collector {
-                    rom_collector.process_data(
-                        &bus_id,
-                        data,
-                        data_ext,
-                        &mut self.pending_transfers,
-                        None,
-                    );
+                    rom_collector.process_data(&bus_id, data);
                 }
             }
             _ => {}
@@ -458,13 +370,9 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
     fn on_close(&mut self) {}
 
     fn into_devices(
-        mut self,
-        execute_on_close: bool,
+        self,
+        _execute_on_close: bool,
     ) -> Vec<(Option<usize>, Option<Box<dyn BusDevice<PayloadType>>>)> {
-        if execute_on_close {
-            self.on_close();
-        }
-
         let mut result = Vec::new();
 
         // Add all collectors to the result

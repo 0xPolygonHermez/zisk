@@ -2,12 +2,10 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use std::collections::VecDeque;
-
 use crate::{BinaryExtensionFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, MemCollectorInfo, OperationBusData, A, B,
-    OP, OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
+    OPERATION_BUS_ID,
 };
 
 use fields::PrimeField64;
@@ -53,9 +51,7 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
             std,
         }
     }
-}
 
-impl<F: PrimeField64> BusDevice<u64> for BinaryExtensionCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -67,14 +63,7 @@ impl<F: PrimeField64> BusDevice<u64> for BinaryExtensionCollector<F> {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _data_ext: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
         let instance_complete = self.inputs.len() == self.num_operations;
 
@@ -111,15 +100,9 @@ impl<F: PrimeField64> BusDevice<u64> for BinaryExtensionCollector<F> {
 
         self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
+}
 
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
+impl<F: PrimeField64> BusDevice<u64> for BinaryExtensionCollector<F> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

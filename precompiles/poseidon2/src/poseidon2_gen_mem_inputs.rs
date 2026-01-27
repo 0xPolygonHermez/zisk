@@ -1,8 +1,8 @@
 use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
 use precompiles_common::MemBusHelpers;
-use std::collections::VecDeque;
+use precompiles_common::MemProcessor;
 use zisk_common::MemCollectorInfo;
-use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
+use zisk_common::OPERATION_BUS_DATA_SIZE;
 
 #[derive(Debug)]
 pub struct Poseidon2MemInputConfig {
@@ -12,12 +12,12 @@ pub struct Poseidon2MemInputConfig {
     pub chunks_per_param: usize,
 }
 
-pub fn generate_poseidon2_mem_inputs(
+pub fn generate_poseidon2_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+    mem_processors: &mut P,
 ) {
     // Get the basic data from the input
     // op,op_type,a,b,...
@@ -60,7 +60,7 @@ pub fn generate_poseidon2_mem_inputs(
                 step_main,
                 chunk_data,
                 is_write,
-                pending,
+                mem_processors,
             );
         }
     }

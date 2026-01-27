@@ -1,7 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Secp256k1;
-use std::collections::VecDeque;
-use zisk_common::BusId;
+use precompiles_common::MemProcessor;
 use zisk_common::MemCollectorInfo;
 
 pub const SECP256K1_DBL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
@@ -12,12 +11,12 @@ pub const SECP256K1_DBL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfi
     chunks_per_param: 8,
 };
 
-pub fn generate_secp256k1_dbl_mem_inputs(
+pub fn generate_secp256k1_dbl_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+    processor: &mut P,
 ) {
     // op,op_type,a,b,...
     let p1: &[u64; 8] = &data[5..13].try_into().unwrap();
@@ -30,7 +29,7 @@ pub fn generate_secp256k1_dbl_mem_inputs(
         data,
         Some(&p3),
         only_counters,
-        pending,
+        processor,
         &SECP256K1_DBL_MEM_CONFIG,
     );
 }

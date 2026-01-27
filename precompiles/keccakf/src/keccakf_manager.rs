@@ -2,11 +2,8 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use zisk_common::{BusDevice, PayloadType};
 
-use zisk_common::{
-    BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner,
-};
+use zisk_common::{BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner};
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;
 
@@ -44,14 +41,6 @@ impl<F: PrimeField64> KeccakfManager<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager<F> {
-    /// Builds and returns a new counter for monitoring keccakf operations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RegularCounters` configured for keccakf operations.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        Some(Box::new(KeccakfCounterInputGen::new(BusDeviceMode::Counter)))
-    }
-
     /// Builds a planner to plan keccakf-related instances.
     ///
     /// # Returns
@@ -88,9 +77,5 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager<F> {
                 panic!("KeccakfBuilder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)
             }
         }
-    }
-
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(KeccakfCounterInputGen::new(BusDeviceMode::InputGenerator)))
     }
 }

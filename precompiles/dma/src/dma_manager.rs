@@ -3,10 +3,7 @@ use std::sync::Arc;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
-use zisk_common::{
-    BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    PayloadType, Plan, Planner,
-};
+use zisk_common::{BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::{Dma64AlignedTrace, DmaPrePostTrace, DmaTrace, DmaUnalignedTrace, ZiskProofValues};
 
 use crate::{
@@ -52,14 +49,6 @@ impl<F: PrimeField64> DmaManager<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
-    /// Builds and returns a new counter for monitoring Dma operations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RegularCounters` configured for Dma operations.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        Some(Box::new(DmaCounterInputGen::new(BusDeviceMode::Counter)))
-    }
-
     /// Builds a planner to plan Dma-related instances.
     ///
     /// # Returns
@@ -96,10 +85,6 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
                 panic!("DmaBuilder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)
             }
         }
-    }
-
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(DmaCounterInputGen::new(BusDeviceMode::InputGenerator)))
     }
 
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {

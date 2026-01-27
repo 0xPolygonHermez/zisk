@@ -2,11 +2,8 @@
 //! of `BusDevice` and `Metrics`, providing a unified interface for monitoring and managing
 //! bus operations with associated metrics.
 
-use std::{any::Any, collections::VecDeque};
+use super::BusDevice;
 
-use super::{BusDevice, BusId};
-
-use crate::MemCollectorInfo;
 use crate::Metrics;
 
 #[derive(Debug, PartialEq)]
@@ -22,31 +19,6 @@ pub enum BusDeviceMode {
 /// This trait is particularly useful for tracking and analyzing operations on the bus while
 /// maintaining compatibility with `Metrics` functionality.
 pub trait BusDeviceMetrics: BusDevice<u64> + Metrics + std::any::Any {}
-
-impl BusDevice<u64> for Box<dyn BusDeviceMetrics> {
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        data_ext: &[u64],
-        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-        mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
-        (**self).process_data(bus_id, data, data_ext, pending, mem_collector_info)
-    }
-
-    fn bus_id(&self) -> Vec<BusId> {
-        (**self).bus_id()
-    }
-
-    fn as_any(self: Box<Self>) -> Box<dyn Any> {
-        (*self).as_any()
-    }
-
-    fn on_close(&mut self) {
-        (**self).on_close()
-    }
-}
 
 /// Blanket implementation of `BusDeviceMetrics` for any type implementing `BusDevice`,
 /// `Metrics`, and `std::any::Any`.

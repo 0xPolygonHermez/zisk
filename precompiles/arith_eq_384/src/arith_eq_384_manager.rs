@@ -2,11 +2,8 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use zisk_common::{BusDevice, PayloadType};
 
-use zisk_common::{
-    BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner,
-};
+use zisk_common::{BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner};
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithEq384Trace;
 
@@ -44,14 +41,6 @@ impl<F: PrimeField64> ArithEq384Manager<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for ArithEq384Manager<F> {
-    /// Builds and returns a new counter for monitoring arith256 operations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RegularCounters` configured for arith256 operations.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        Some(Box::new(ArithEq384CounterInputGen::new(BusDeviceMode::Counter)))
-    }
-
     /// Builds a planner to plan arith256-related instances.
     ///
     /// # Returns
@@ -91,9 +80,5 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEq384Manager<F> {
                 )
             }
         }
-    }
-
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(ArithEq384CounterInputGen::new(BusDeviceMode::InputGenerator)))
     }
 }

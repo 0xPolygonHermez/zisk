@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use crate::{MemInput, MemPreviousSegment};
 use mem_common::{MemHelpers, MemModuleCheckPoint, MEM_BYTES, MEM_BYTES_BITS};
 use zisk_common::{BusDevice, BusId, MemBusData, MemCollectorInfo, SegmentId, MEM_BUS_ID};
@@ -472,18 +470,9 @@ impl MemModuleCollector {
     pub fn get_mem_collector_info(&self) -> MemCollectorInfo {
         MemCollectorInfo { from_addr: self.filter_min_addr, to_addr: self.filter_max_addr }
     }
-}
 
-impl BusDevice<u64> for MemModuleCollector {
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _data_ext: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let addr = MemBusData::get_addr(data);
@@ -493,11 +482,9 @@ impl BusDevice<u64> for MemModuleCollector {
         }
         true
     }
+}
 
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![MEM_BUS_ID]
-    }
-
+impl BusDevice<u64> for MemModuleCollector {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

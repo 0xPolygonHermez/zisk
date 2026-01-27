@@ -1,7 +1,7 @@
 use precompiles_common::MemBusHelpers;
-use std::collections::VecDeque;
+use precompiles_common::MemProcessor;
 use zisk_common::MemCollectorInfo;
-use zisk_common::{BusId, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
+use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
 #[derive(Debug)]
 pub struct ArithEqMemInputConfig {
@@ -11,13 +11,13 @@ pub struct ArithEqMemInputConfig {
     pub write_params: usize,
     pub chunks_per_param: usize,
 }
-pub fn generate_mem_inputs(
+pub fn generate_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     write_data: Option<&[u64]>,
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+    mem_processors: &mut P,
     config: &ArithEqMemInputConfig,
 ) {
     let params_count = config.read_params + config.write_params;
@@ -28,7 +28,7 @@ pub fn generate_mem_inputs(
             addr_main + iparam as u32 * 8,
             step_main,
             data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + iparam],
-            pending,
+            mem_processors,
         )
     }
     for iparam in 0..params_count {
@@ -66,7 +66,7 @@ pub fn generate_mem_inputs(
                 step_main,
                 chunk_data,
                 is_write,
-                pending,
+                mem_processors,
             )
         }
     }

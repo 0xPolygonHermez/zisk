@@ -2,8 +2,9 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::ArithEq` instructions.
 
-use std::{collections::VecDeque, ops::Add};
+use std::ops::Add;
 
+use precompiles_common::MemProcessor;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
@@ -100,6 +101,145 @@ impl ArithEqCounterInputGen {
             }
         }
     }
+
+    /// Processes data received on the bus, updating counters and generating inputs when applicable.
+    ///
+    /// # Arguments
+    /// * `bus_id` - The ID of the bus sending the data.
+    /// * `data` - The data received from the bus.
+    /// * `mem_processors` – A collection of memory processors used to send derived inputs.
+    ///
+    /// # Returns
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
+    pub fn process_data<P: MemProcessor>(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        mem_processors: &mut P,
+        mem_collector_info: Option<&[MemCollectorInfo]>,
+    ) -> bool {
+        debug_assert!(*bus_id == OPERATION_BUS_ID);
+
+        const ARITH_EQ: u64 = ZiskOperationType::ArithEq as u64;
+
+        if data[OP_TYPE] != ARITH_EQ {
+            return true;
+        }
+
+        if let Some(mem_collectors_info) = mem_collector_info {
+            if self.skip_data(data, mem_collectors_info) {
+                return true;
+            }
+        }
+
+        let op = data[OP] as u8;
+        let step_main = data[STEP];
+        let addr_main = data[B] as u32;
+
+        let only_counters = match self.mode {
+            BusDeviceMode::Counter => {
+                self.measure(data);
+                true
+            }
+            BusDeviceMode::CounterAsm => {
+                self.measure(data);
+                return true;
+            }
+            BusDeviceMode::InputGenerator => false,
+        };
+
+        match op {
+            ARITH256_OP => {
+                generate_arith256_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                    mem_processors,
+                );
+            }
+            ARITH256_MOD_OP => {
+                generate_arith256_mod_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                    mem_processors,
+                );
+            }
+            SECP256K1_ADD_OP => {
+                generate_secp256k1_add_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                    mem_processors,
+                );
+            }
+            SECP256K1_DBL_OP => {
+                generate_secp256k1_dbl_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                    mem_processors,
+                );
+            }
+            BN254_CURVE_ADD_OP => {
+                generate_bn254_curve_add_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                    mem_processors,
+                );
+            }
+            BN254_CURVE_DBL_OP => {
+                generate_bn254_curve_dbl_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                    mem_processors,
+                );
+            }
+            BN254_COMPLEX_ADD_OP => {
+                generate_bn254_complex_add_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                    mem_processors,
+                );
+            }
+            BN254_COMPLEX_SUB_OP => {
+                generate_bn254_complex_sub_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                    mem_processors,
+                );
+            }
+            BN254_COMPLEX_MUL_OP => {
+                generate_bn254_complex_mul_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                    mem_processors,
+                );
+            }
+
+            _ => {
+                panic!("ArithEqCounterInputGen: Unsupported data length {}", data.len(),);
+            }
+        }
+
+        true
+    }
 }
 
 impl Metrics for ArithEqCounterInputGen {
@@ -142,148 +282,6 @@ impl Add for ArithEqCounterInputGen {
 }
 
 impl BusDevice<u64> for ArithEqCounterInputGen {
-    /// Processes data received on the bus, updating counters and generating inputs when applicable.
-    ///
-    /// # Arguments
-    /// * `bus_id` - The ID of the bus sending the data.
-    /// * `data` - The data received from the bus.
-    /// * `pending` – A queue of pending bus operations used to send derived inputs.
-    ///
-    /// # Returns
-    /// A boolean indicating whether the program should continue execution or terminate.
-    /// Returns `true` to continue execution, `false` to stop.
-    #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _data_ext: &[u64],
-        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-        mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
-        debug_assert!(*bus_id == OPERATION_BUS_ID);
-
-        const ARITH_EQ: u64 = ZiskOperationType::ArithEq as u64;
-
-        if data[OP_TYPE] != ARITH_EQ {
-            return true;
-        }
-
-        if let Some(mem_collectors_info) = mem_collector_info {
-            if self.skip_data(data, mem_collectors_info) {
-                return true;
-            }
-        }
-
-        let op = data[OP] as u8;
-        let step_main = data[STEP];
-        let addr_main = data[B] as u32;
-
-        let only_counters = match self.mode {
-            BusDeviceMode::Counter => {
-                self.measure(data);
-                true
-            }
-            BusDeviceMode::CounterAsm => {
-                self.measure(data);
-                return true;
-            }
-            BusDeviceMode::InputGenerator => false,
-        };
-
-        match op {
-            ARITH256_OP => {
-                generate_arith256_mem_inputs(addr_main, step_main, data, only_counters, pending);
-            }
-            ARITH256_MOD_OP => {
-                generate_arith256_mod_mem_inputs(
-                    addr_main,
-                    step_main,
-                    data,
-                    only_counters,
-                    pending,
-                );
-            }
-            SECP256K1_ADD_OP => {
-                generate_secp256k1_add_mem_inputs(
-                    addr_main,
-                    step_main,
-                    data,
-                    only_counters,
-                    pending,
-                );
-            }
-            SECP256K1_DBL_OP => {
-                generate_secp256k1_dbl_mem_inputs(
-                    addr_main,
-                    step_main,
-                    data,
-                    only_counters,
-                    pending,
-                );
-            }
-            BN254_CURVE_ADD_OP => {
-                generate_bn254_curve_add_mem_inputs(
-                    addr_main,
-                    step_main,
-                    data,
-                    only_counters,
-                    pending,
-                );
-            }
-            BN254_CURVE_DBL_OP => {
-                generate_bn254_curve_dbl_mem_inputs(
-                    addr_main,
-                    step_main,
-                    data,
-                    only_counters,
-                    pending,
-                );
-            }
-            BN254_COMPLEX_ADD_OP => {
-                generate_bn254_complex_add_mem_inputs(
-                    addr_main,
-                    step_main,
-                    data,
-                    only_counters,
-                    pending,
-                );
-            }
-            BN254_COMPLEX_SUB_OP => {
-                generate_bn254_complex_sub_mem_inputs(
-                    addr_main,
-                    step_main,
-                    data,
-                    only_counters,
-                    pending,
-                );
-            }
-            BN254_COMPLEX_MUL_OP => {
-                generate_bn254_complex_mul_mem_inputs(
-                    addr_main,
-                    step_main,
-                    data,
-                    only_counters,
-                    pending,
-                );
-            }
-
-            _ => {
-                panic!("ArithEqCounterInputGen: Unsupported data length {}", data.len(),);
-            }
-        }
-
-        true
-    }
-
-    /// Returns the bus IDs associated with this counter.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

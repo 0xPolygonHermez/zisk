@@ -2,11 +2,8 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use zisk_common::{BusDevice, PayloadType};
 
-use zisk_common::{
-    BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner,
-};
+use zisk_common::{BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner};
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithEqTrace;
 
@@ -44,14 +41,6 @@ impl<F: PrimeField64> ArithEqManager<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
-    /// Builds and returns a new counter for monitoring arith256 operations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RegularCounters` configured for arith256 operations.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        Some(Box::new(ArithEqCounterInputGen::new(BusDeviceMode::Counter)))
-    }
-
     /// Builds a planner to plan arith256-related instances.
     ///
     /// # Returns
@@ -88,9 +77,5 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
                 panic!("ArithEqBuilder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)
             }
         }
-    }
-
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(ArithEqCounterInputGen::new(BusDeviceMode::InputGenerator)))
     }
 }

@@ -1,7 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Arith256Mod;
-use std::collections::VecDeque;
-use zisk_common::BusId;
+use precompiles_common::MemProcessor;
 use zisk_common::MemCollectorInfo;
 
 pub const ARITH_256_MOD_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
@@ -11,12 +10,12 @@ pub const ARITH_256_MOD_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfi
     write_params: 1,
     chunks_per_param: 4,
 };
-pub fn generate_arith256_mod_mem_inputs(
+pub fn generate_arith256_mod_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+    mem_processors: &mut P,
 ) {
     // op,op_type,a,b,addr[5],...
     let a: &[u64; 4] = &data[10..14].try_into().unwrap();
@@ -32,7 +31,7 @@ pub fn generate_arith256_mod_mem_inputs(
         data,
         Some(&d),
         only_counters,
-        pending,
+        mem_processors,
         &ARITH_256_MOD_MEM_CONFIG,
     );
 }

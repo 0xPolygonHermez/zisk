@@ -1,10 +1,10 @@
-use std::collections::VecDeque;
+use precompiles_common::MemProcessor;
 use tiny_keccak::keccakf;
 
 use precompiles_common::MemBusHelpers;
 
 use zisk_common::MemCollectorInfo;
-use zisk_common::{BusId, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
+use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
 #[derive(Debug)]
 pub struct KeccakfMemInputConfig {
@@ -14,12 +14,12 @@ pub struct KeccakfMemInputConfig {
     pub chunks_per_param: usize,
 }
 
-pub fn generate_keccakf_mem_inputs(
+pub fn generate_keccakf_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+    mem_processors: &mut P,
 ) {
     // Get the basic data from the input
     // op,op_type,a,b,...
@@ -59,7 +59,7 @@ pub fn generate_keccakf_mem_inputs(
                 step_main,
                 chunk_data,
                 is_write,
-                pending,
+                mem_processors,
             );
         }
     }

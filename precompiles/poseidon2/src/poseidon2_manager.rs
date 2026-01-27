@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use fields::PrimeField64;
-use zisk_common::{
-    BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    InstanceInfo, PayloadType, Planner,
-};
+use zisk_common::{BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner};
 use zisk_core::ZiskOperationType;
 use zisk_pil::Poseidon2Trace;
 
@@ -42,14 +39,6 @@ impl<F: PrimeField64> Poseidon2Manager<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for Poseidon2Manager<F> {
-    /// Builds and returns a new counter for monitoring poseidon2 operations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RegularCounters` configured for poseidon2 operations.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        Some(Box::new(Poseidon2CounterInputGen::new(BusDeviceMode::Counter)))
-    }
-
     /// Builds a planner to plan poseidon2-related instances.
     ///
     /// # Returns
@@ -89,9 +78,5 @@ impl<F: PrimeField64> ComponentBuilder<F> for Poseidon2Manager<F> {
                 )
             }
         }
-    }
-
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(Poseidon2CounterInputGen::new(BusDeviceMode::InputGenerator)))
     }
 }
