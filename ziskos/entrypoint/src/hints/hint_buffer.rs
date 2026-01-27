@@ -120,7 +120,8 @@ impl HintBuffer {
 
     #[inline(always)]
     pub fn is_enabled(&self) -> bool {
-        !self.is_paused() && !self.is_closed()
+        let g = self.inner.lock().unwrap();
+        !g.paused && !g.closed
     }
 
     #[inline(always)]
