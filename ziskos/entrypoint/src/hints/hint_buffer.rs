@@ -89,6 +89,7 @@ impl HintBuffer {
         g.tail = 0;
         g.len = 0;
         g.closed = false;
+        g.paused = false;
 
         self.not_empty.notify_all();
     }

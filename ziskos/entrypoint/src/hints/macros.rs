@@ -18,7 +18,7 @@ macro_rules! define_hint {
 
                 let mut total_len = 0;
                 $(
-                    total_len += [<$len>];
+                    total_len += $len;
                 )+
 
                 crate::hints::HINT_BUFFER.write_hint_header(
