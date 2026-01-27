@@ -202,6 +202,12 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
         self.print_command_info = true;
         self
     }
+
+    #[must_use]
+    pub fn minimal_memory(mut self, minimal: bool) -> Self {
+        self.minimal_memory = minimal;
+        self
+    }
 }
 
 // ASM-specific methods
@@ -254,12 +260,6 @@ impl<Backend> ProverClientBuilder<Backend, Prove> {
     #[must_use]
     pub fn verify_proofs(mut self, verify: bool) -> Self {
         self.verify_proofs = verify;
-        self
-    }
-
-    #[must_use]
-    pub fn minimal_memory(mut self, minimal: bool) -> Self {
-        self.minimal_memory = minimal;
         self
     }
 

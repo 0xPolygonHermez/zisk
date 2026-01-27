@@ -68,6 +68,9 @@ pub struct ZiskVerifyConstraints {
 
     #[clap(short = 'j', long, default_value_t = false)]
     pub shared_tables: bool,
+
+    #[clap(short = 'm', long, default_value_t = false)]
+    pub minimal_memory: bool,
 }
 
 impl ZiskVerifyConstraints {
@@ -114,6 +117,7 @@ impl ZiskVerifyConstraints {
             .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
+            .minimal_memory(self.minimal_memory)
             .print_command_info()
             .build()?;
 
@@ -131,6 +135,7 @@ impl ZiskVerifyConstraints {
             .asm_path_opt(self.asm.clone())
             .base_port_opt(self.port)
             .unlock_mapped_memory(self.unlock_mapped_memory)
+            .minimal_memory(self.minimal_memory)
             .print_command_info()
             .build()?;
 
