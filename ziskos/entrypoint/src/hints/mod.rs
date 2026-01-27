@@ -1,6 +1,6 @@
 #![warn(unused_imports)]
 
-mod hint;
+mod hint_buffer;
 mod macros;
 mod bls12_381;
 mod bn254;
@@ -9,35 +9,17 @@ mod kzg;
 mod modexp;
 mod secp256k1;
 mod sha256f;
-mod types;
-
-use crate::hints::{
-    hint::HintQueue,
-    types::{HINT_END, HINT_START, HINT_WRITE_BATCH, HintFileWriterHandleCell},
-};
 
 #[cfg(zisk_hints_metrics)]
-use crate::hints::types::HintRegisterInfo;
+mod metrics;
 
+use crate::hints::hint_buffer::{build_hint_buffer,  HintBuffer};
 use once_cell::sync::{Lazy, OnceCell};
-use std::io::{self, BufWriter, Write};
-
-#[cfg(zisk_hints_metrics)]
-use std::{collections::HashMap, sync::RwLock};
-
+use std::{io::{self, BufWriter, Write}, sync::Arc};
 use std::path::PathBuf;
-use std::thread::{self, ThreadId};
+use std::thread::{self, JoinHandle, ThreadId};
 use std::{ffi::CStr, os::raw::c_char};
-
-#[cfg(zisk_hints_reference)]
-use std::io::Read;
-
-#[cfg(zisk_hints_metrics)]
-static HINTS: Lazy<RwLock<HashMap<u32, HintRegisterInfo>>> = Lazy::new(|| RwLock::new(HashMap::new()));
-
-static HINT_QUEUE: Lazy<HintQueue> = Lazy::new(HintQueue::new);
-static HINT_FILE_WRITER_HANDLE: Lazy<HintFileWriterHandleCell> = Lazy::new(HintFileWriterHandleCell::new);
-static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
+use std::cell::UnsafeCell;
 
 pub use bls12_381::*;
 pub use bn254::*;
@@ -47,16 +29,35 @@ pub use modexp::*;
 pub use secp256k1::*;
 pub use sha256f::*;
 
-#[cfg(zisk_hints_metrics)]
-pub(crate) fn register_hint(hint_type: u32, hint_name: String) {
-    HINTS.write().expect("HINTS poisoned").insert(hint_type, HintRegisterInfo { hint_name, count: 0 });
+pub const HINT_START: u32 = 0;
+pub const HINT_END: u32 = 1;
+
+
+static HINT_BUFFER: Lazy<Arc<HintBuffer>> = Lazy::new(|| build_hint_buffer());
+static HINT_FILE_WRITER_HANDLE: Lazy<HintFileWriterHandleCell> = Lazy::new(HintFileWriterHandleCell::new);
+static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
+
+pub struct HintFileWriterHandleCell {
+    inner: UnsafeCell<Option<JoinHandle<io::Result<()>>>>,
 }
 
-#[cfg(zisk_hints_metrics)]
-pub(crate) fn inc_hint_count(hint_type: u32) {
-    if let Ok(mut hints) = HINTS.write() {
-        if let Some(info) = hints.get_mut(&hint_type) {
-            info.count += 1;
+unsafe impl Sync for HintFileWriterHandleCell {}
+
+impl HintFileWriterHandleCell {
+    pub const fn new() -> Self {
+        Self {
+            inner: UnsafeCell::new(None),
+        }
+    }
+
+    pub fn take(&self) -> Option<JoinHandle<io::Result<()>>> {
+        unsafe { (*self.inner.get()).take() }
+    }
+
+    pub fn store(&self, handle: JoinHandle<io::Result<()>>) {
+        // Safety: caller guarantees single-threaded access when mutating the handle.
+        unsafe {
+            *self.inner.get() = Some(handle);
         }
     }
 }
@@ -66,7 +67,7 @@ pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
     let _ = MAIN_TID.set(std::thread::current().id());
 
     if let Some(handle) = HINT_FILE_WRITER_HANDLE.take() {
-        HINT_QUEUE.close();
+        HINT_BUFFER.close();
         match handle.join() {
             Ok(result) => {
                 if let Err(err) = result {
@@ -82,7 +83,7 @@ pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
         }
     }
 
-    HINT_QUEUE.reset();
+    HINT_BUFFER.reset();
 
     let handle = thread::spawn(move || write_precompile_hints(hints_file_path));
     HINT_FILE_WRITER_HANDLE.store(handle);
@@ -91,7 +92,7 @@ pub fn init_precompile_hints(hints_file_path: PathBuf) -> io::Result<()> {
 }
 
 pub fn close_precompile_hints() -> io::Result<()> {
-    HINT_QUEUE.close();
+    HINT_BUFFER.close();
 
     let handle = HINT_FILE_WRITER_HANDLE.take();
     if let Some(handle) = handle {
@@ -113,7 +114,7 @@ pub fn close_precompile_hints() -> io::Result<()> {
 }
 
 #[inline(always)]
-fn check_main_thread() {
+pub(crate) fn check_main_thread() {
     // Panic on calls from a different thread
     let tid = std::thread::current().id();
     match MAIN_TID.get() {
@@ -136,64 +137,32 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
     debug_assert!(cfg!(target_endian = "little"));
 
     let file = std::fs::File::create(path)?;
-    let mut writer = BufWriter::with_capacity(1 << 20, file);
+    let mut file_writer = BufWriter::with_capacity(1 << 20, file);
     let disable_prefix = std::env::var("HINTS_DISABLE_PREFIX").unwrap_or_default() == "1";
-
-    #[cfg(zisk_hints_reference)]
-    {
-        let mut ref_file: Option<std::fs::File> = None;
-        let mut ref_idx: usize = 0;
-        if let Ok(path) = std::env::var("HINTS_REF_FILE") {
-            println!("Comparing precompile hints against reference file {}", path);
-            let mut f = std::fs::File::open(path)?;
-            let mut start = [0u8; 8];
-            let _ = f.read_exact(&mut start);
-            ref_file = Some(f);
-        }
-    }
 
     // Write HINT_START
     if !disable_prefix {
         let start_header: u64 = ((HINT_START as u64) << 32) | 0u64;
         let start_bytes = start_header.to_le_bytes();
-        writer.write_all(&start_bytes)?;
+        file_writer.write_all(&start_bytes)?;
     }
 
-    let mut batch = Vec::with_capacity(HINT_WRITE_BATCH);
-    loop {
-        batch.clear();
-        if !HINT_QUEUE.pop_batch(&mut batch, HINT_WRITE_BATCH) {
-            break;
-        }
-
-        for hint in batch.drain(..) {
-            #[cfg(zisk_hints_reference)]
-            if let Some(file) = ref_file.as_mut() {
-                if let Err(err) = hint.read_from(file, disable_prefix) {
-                    panic!("Reference comparison failed at hint #{}: {}", ref_idx, err);
-                }
-                ref_idx += 1;
-            }
-
-            #[cfg(zisk_hints_metrics)]
-            inc_hint_count(hint.hint_id());
-
-            hint.write_to(&mut writer, disable_prefix)?;
-        }
-    }
+    // Write hints from the buffer
+    HINT_BUFFER.drain_to_writer(&mut file_writer)?;
+    file_writer.flush()?;
 
     // Write HINT_END
     if !disable_prefix {
         let end_header: u64 = ((HINT_END as u64) << 32) | 0u64;
         let end_bytes = end_header.to_le_bytes();
-        writer.write_all(&end_bytes)?;
+        file_writer.write_all(&end_bytes)?;
     }
 
-    writer.flush()?;
+    file_writer.flush()?;
 
     #[cfg(zisk_hints_metrics)]
     {
-        let hints = HINTS.read().expect("HINTS poisoned");
+        let hints = crate::hints::metrics::HINTS_METRICS.read().expect("HINTS_METRICS poisoned");
         println!("Precompile hints usage summary:");
         for (_, info) in hints.iter() {
             if info.count > 0 {
@@ -207,7 +176,7 @@ fn write_precompile_hints(path: PathBuf) -> io::Result<()> {
 
 #[inline(always)]
 pub fn hints_enabled() -> bool {
-    !HINT_QUEUE.is_paused() && HINT_QUEUE.is_open()
+    !HINT_BUFFER.is_paused() && !HINT_BUFFER.is_closed()
 }
 
 // Logs hint message; gated by `hints_enabled()` on non-Zisk targets and always-on for Zisk
@@ -224,14 +193,14 @@ pub fn hint_log<S: AsRef<str>>(msg: S) {
 
 #[no_mangle]
 pub extern "C" fn pause_hints() -> bool {
-    let already_paused = HINT_QUEUE.is_paused();
-    HINT_QUEUE.pause();
+    let already_paused = HINT_BUFFER.is_paused();
+    HINT_BUFFER.pause();
     already_paused
 }
 
 #[no_mangle]
 pub extern "C" fn resume_hints() {
-    HINT_QUEUE.resume();
+    HINT_BUFFER.resume();
 }
 
 #[no_mangle]
