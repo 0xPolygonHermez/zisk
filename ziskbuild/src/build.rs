@@ -90,7 +90,7 @@ pub fn execute_build_program(
     execute_command(cmd)?;
 
     // Generate assembly for all ELF files (only if not already generated)
-    let zisk_path_buf = args.zisk_path.as_ref().map(|s| PathBuf::from(s));
+    let zisk_path_buf = args.zisk_path.as_ref().map(PathBuf::from);
     let output_path = get_output_path(&None)?;
     for (_, elf_path) in target_elf_paths.iter() {
         let elf_path_std = elf_path.as_std_path();

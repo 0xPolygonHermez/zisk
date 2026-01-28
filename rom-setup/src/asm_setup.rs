@@ -43,14 +43,13 @@ pub fn gen_assembly(
 
         tracing::info!("Computing assembly setup");
         let zisk_path = get_zisk_path(_zisk_path.as_ref());
-        generate_assembly(_elf, &elf_hash, &zisk_path, output_path.as_path(), _verbose)?;
+        _generate_assembly(_elf, &elf_hash, &zisk_path, output_path.as_path(), _verbose)?;
         tracing::info!("Assembly setup generated at {}", output_path.display());
     }
     Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
-fn generate_assembly(
+fn _generate_assembly(
     elf: &Path,
     elf_hash: &str,
     zisk_path: &Path,
