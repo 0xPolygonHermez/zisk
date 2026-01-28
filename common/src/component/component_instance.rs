@@ -130,7 +130,7 @@ macro_rules! table_instance {
                 Self { table_sm, ictx, bus_id }
             }
 
-            pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
+            pub fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> bool {
                 true
             }
         }

@@ -55,7 +55,6 @@ impl RegularCounters {
     /// # Arguments
     /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
-    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
