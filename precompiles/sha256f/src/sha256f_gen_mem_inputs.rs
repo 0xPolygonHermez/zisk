@@ -1,7 +1,7 @@
 use precompiles_common::MemBusHelpers;
-use std::collections::VecDeque;
-use zisk_common::MemCollectorInfo;
-use zisk_common::{BusId, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
+use precompiles_common::MemProcessor;
+
+use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 use zisk_core::sha256f;
 
 #[derive(Debug)]
@@ -13,12 +13,12 @@ pub struct Sha256MemInputConfig {
     pub chunks_per_param: usize,
 }
 
-pub fn generate_sha256f_mem_inputs(
+pub fn generate_sha256f_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+    mem_processors: &mut P,
 ) {
     // Get the basic data from the input
     // op,op_type,a,b,addr[2],...
@@ -37,7 +37,7 @@ pub fn generate_sha256f_mem_inputs(
             addr_main + iparam as u32 * 8,
             step_main,
             data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + iparam],
-            pending,
+            mem_processors,
         );
     }
 
@@ -75,16 +75,16 @@ pub fn generate_sha256f_mem_inputs(
                 step_main,
                 chunk_data,
                 is_write,
-                pending,
+                mem_processors,
             );
         }
     }
 }
 
-pub fn skip_sha256f_mem_inputs(
+pub fn skip_sha256f_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     data: &[u64],
-    mem_collectors_info: &[MemCollectorInfo],
+    mem_processors: &mut P,
 ) -> bool {
     let indirect_params = 2;
     let read_params = 2;
@@ -93,10 +93,8 @@ pub fn skip_sha256f_mem_inputs(
 
     for iparam in 0..indirect_params {
         let addr = addr_main + iparam as u32 * 8;
-        for mem_collector in mem_collectors_info {
-            if !mem_collector.skip_addr(addr) {
-                return false;
-            }
+        if !mem_processors.skip_addr(addr) {
+            return false;
         }
     }
 
@@ -107,10 +105,8 @@ pub fn skip_sha256f_mem_inputs(
 
         for ichunk in 0..chunks {
             let addr = param_addr + ichunk as u32 * 8;
-            for mem_collector in mem_collectors_info {
-                if !mem_collector.skip_addr(addr) {
-                    return false;
-                }
+            if !mem_processors.skip_addr(addr) {
+                return false;
             }
         }
     }

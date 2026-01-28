@@ -1,11 +1,9 @@
 //! The `DmaCollector` module defines an collector to calculate all inputs of an instance
 //! for the Dma State Machine.
 
-use std::{any::Any, collections::VecDeque};
+use std::any::Any;
 
-use zisk_common::{
-    BusDevice, BusId, CollectCounter, ExtOperationData, MemCollectorInfo, OPERATION_BUS_ID, OP_TYPE,
-};
+use zisk_common::{BusDevice, BusId, CollectCounter, ExtOperationData, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
 
 use crate::DmaInput;
@@ -39,9 +37,7 @@ impl DmaCollector {
             collect_counter,
         }
     }
-}
 
-impl BusDevice<u64> for DmaCollector {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -54,14 +50,7 @@ impl BusDevice<u64> for DmaCollector {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        data_ext: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64], data_ext: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
@@ -88,15 +77,9 @@ impl BusDevice<u64> for DmaCollector {
 
         self.inputs.len() < self.num_operations as usize
     }
+}
 
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
+impl BusDevice<u64> for DmaCollector {
     fn as_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }

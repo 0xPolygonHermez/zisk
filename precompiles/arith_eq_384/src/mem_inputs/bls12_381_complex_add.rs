@@ -1,5 +1,4 @@
-use std::collections::VecDeque;
-use zisk_common::{BusId, MemCollectorInfo};
+use precompiles_common::MemProcessor;
 
 use super::ArithEq384MemInputConfig;
 use crate::{executors::Bls12_381Complex, ARITH_EQ_384_U64S_DOUBLE};
@@ -12,12 +11,12 @@ pub const BLS12_381_COMPLEX_ADD_MEM_CONFIG: ArithEq384MemInputConfig = ArithEq38
     chunks_per_param: ARITH_EQ_384_U64S_DOUBLE,
 };
 
-pub fn generate_bls12_381_complex_add_mem_inputs(
+pub fn generate_bls12_381_complex_add_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+    mem_processors: &mut P,
 ) {
     let mut pos_offset: usize = 7; // op,op_type,a,b,addr[2],...
     let f1: &[u64; ARITH_EQ_384_U64S_DOUBLE] =
@@ -34,15 +33,15 @@ pub fn generate_bls12_381_complex_add_mem_inputs(
         data,
         Some(&f3),
         only_counters,
-        pending,
+        mem_processors,
         &BLS12_381_COMPLEX_ADD_MEM_CONFIG,
     );
 }
 
-pub fn skip_bls12_381_complex_add_mem_inputs(
+pub fn skip_bls12_381_complex_add_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     data: &[u64],
-    mem_collectors_info: &[MemCollectorInfo],
+    mem_processors: &mut P,
 ) -> bool {
-    super::skip_mem_inputs(addr_main, data, &BLS12_381_COMPLEX_ADD_MEM_CONFIG, mem_collectors_info)
+    super::skip_mem_inputs(addr_main, data, &BLS12_381_COMPLEX_ADD_MEM_CONFIG, mem_processors)
 }

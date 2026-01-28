@@ -23,8 +23,7 @@ use fields::PrimeField64;
 use itertools::Itertools;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use zisk_common::{
-    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx,
-    Planner,
+    create_atomic_vec, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner,
 };
 use zisk_core::{
     zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,
@@ -307,14 +306,6 @@ impl RomSM {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
-    /// Builds and returns a new counter for monitoring ROM operations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RomCounter`.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        None
-    }
-
     /// Builds a planner for ROM-related instances.
     ///
     /// # Returns

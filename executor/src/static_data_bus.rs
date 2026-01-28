@@ -14,10 +14,11 @@ use precomp_dma::DmaCounterInputGen;
 use precomp_keccakf::KeccakfCounterInputGen;
 use precomp_poseidon2::Poseidon2CounterInputGen;
 use precomp_sha256f::Sha256fCounterInputGen;
+use precompiles_common::MemCounterProcessor;
 use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
 use sm_main::MainCounter;
-use zisk_common::{BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
+use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
 use zisk_core::{
     ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BIG_INT_OP_TYPE_ID,
     BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, DMA_OP_TYPE_ID, KECCAK_OP_TYPE_ID,
@@ -112,87 +113,54 @@ impl StaticDataBus<PayloadType> {
                 if !self.process_only_operation_bus {
                     if let Some(mem_counter) = self.mem_counter.1.as_mut() {
                         // If we are not processing only operation bus, we process memory bus data.
-                        _continue &= mem_counter.process_data(
-                            &bus_id,
-                            data,
-                            data_ext,
-                            &mut self.pending_transfers,
-                            None,
-                        );
+                        _continue &= mem_counter.process_data(&bus_id, data);
                     }
                 }
                 _continue
             }
             OPERATION_BUS_ID => match data[1] as u32 {
-                PUB_OUT_OP_TYPE_ID => self.main_counter.process_data(
-                    &bus_id,
-                    data,
-                    data_ext,
-                    &mut self.pending_transfers,
-                    None,
-                ),
-                BINARY_OP_TYPE_ID | BINARY_E_OP_TYPE_ID => self.binary_counter.1.process_data(
-                    &bus_id,
-                    data,
-                    data_ext,
-                    &mut self.pending_transfers,
-                    None,
-                ),
-                ARITH_OP_TYPE_ID => self.arith_counter.1.process_data(
-                    &bus_id,
-                    data,
-                    data_ext,
-                    &mut self.pending_transfers,
-                    None,
-                ),
+                PUB_OUT_OP_TYPE_ID => self.main_counter.process_data(&bus_id, data),
+                BINARY_OP_TYPE_ID | BINARY_E_OP_TYPE_ID => {
+                    self.binary_counter.1.process_data(&bus_id, data)
+                }
+                ARITH_OP_TYPE_ID => {
+                    self.arith_counter.1.process_data(&bus_id, data, &mut self.pending_transfers)
+                }
                 KECCAK_OP_TYPE_ID => self.keccakf_counter.1.process_data(
                     &bus_id,
                     data,
-                    data_ext,
-                    &mut self.pending_transfers,
-                    None,
+                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
                 SHA256_OP_TYPE_ID => self.sha256f_counter.1.process_data(
                     &bus_id,
                     data,
-                    data_ext,
-                    &mut self.pending_transfers,
-                    None,
+                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
                 POSEIDON2_OP_TYPE_ID => self.poseidon2_counter.1.process_data(
                     &bus_id,
                     data,
-                    data_ext,
-                    &mut self.pending_transfers,
-                    None,
+                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
                 ARITH_EQ_OP_TYPE_ID => self.arith_eq_counter.1.process_data(
                     &bus_id,
                     data,
-                    data_ext,
-                    &mut self.pending_transfers,
-                    None,
+                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
                 ARITH_EQ_384_OP_TYPE_ID => self.arith_eq_384_counter.1.process_data(
                     &bus_id,
                     data,
-                    data_ext,
-                    &mut self.pending_transfers,
-                    None,
+                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
                 BIG_INT_OP_TYPE_ID => self.add_256_counter.1.process_data(
                     &bus_id,
                     data,
-                    data_ext,
-                    &mut self.pending_transfers,
-                    None,
+                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
                 DMA_OP_TYPE_ID => self.dma_counter.1.process_data(
                     &bus_id,
                     data,
                     data_ext,
-                    &mut self.pending_transfers,
-                    None,
+                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
                 _ => true,
             },
@@ -219,19 +187,9 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
     }
 
     fn on_close(&mut self) {
-        self.main_counter.on_close();
         if let Some(mem_counter) = self.mem_counter.1.as_mut() {
-            mem_counter.on_close();
+            mem_counter.close();
         }
-        self.binary_counter.1.on_close();
-        self.arith_counter.1.on_close();
-        self.keccakf_counter.1.on_close();
-        self.sha256f_counter.1.on_close();
-        self.poseidon2_counter.1.on_close();
-        self.arith_eq_counter.1.on_close();
-        self.arith_eq_384_counter.1.on_close();
-        self.add_256_counter.1.on_close();
-        self.dma_counter.1.on_close();
     }
 
     fn into_devices(

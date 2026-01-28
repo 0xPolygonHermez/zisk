@@ -225,27 +225,46 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     arith_counter = Some((sm.type_id(), arith_sm.build_arith_counter()));
                 }
                 StateMachines::KeccakfManager(keccak_sm) => {
-                    keccakf_counter = Some((sm.type_id(), keccak_sm.build_keccakf_counter()));
+                    keccakf_counter = Some((
+                        sm.type_id(),
+                        keccak_sm.build_keccakf_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::Sha256fManager(sha256_sm) => {
-                    sha256f_counter = Some((sm.type_id(), sha256_sm.build_sha256f_counter()));
+                    sha256f_counter = Some((
+                        sm.type_id(),
+                        sha256_sm.build_sha256f_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::Poseidon2Manager(poseidon2_sm) => {
-                    poseidon2_counter =
-                        Some((sm.type_id(), poseidon2_sm.build_poseidon2_counter()));
+                    poseidon2_counter = Some((
+                        sm.type_id(),
+                        poseidon2_sm.build_poseidon2_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::ArithEqManager(arith_eq_sm) => {
-                    arith_eq_counter = Some((sm.type_id(), arith_eq_sm.build_arith_eq_counter()));
+                    arith_eq_counter = Some((
+                        sm.type_id(),
+                        arith_eq_sm.build_arith_eq_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::ArithEq384Manager(arith_eq_384_sm) => {
-                    arith_eq_384_counter =
-                        Some((sm.type_id(), arith_eq_384_sm.build_arith_eq_384_counter()));
+                    arith_eq_384_counter = Some((
+                        sm.type_id(),
+                        arith_eq_384_sm.build_arith_eq_384_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::Add256Manager(add256_sm) => {
-                    add256_counter = Some((sm.type_id(), add256_sm.build_add256_counter()));
+                    add256_counter = Some((
+                        sm.type_id(),
+                        add256_sm.build_add256_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::DmaManager(dma_sm) => {
-                    dma_counter = Some((sm.type_id(), dma_sm.build_dma_counter()));
+                    dma_counter = Some((
+                        sm.type_id(),
+                        dma_sm.build_dma_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::RomSM(_) => {}
             }

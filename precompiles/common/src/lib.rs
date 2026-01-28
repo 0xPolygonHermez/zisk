@@ -4,8 +4,9 @@ mod goldilocks_constants;
 
 pub use goldilocks_constants::{get_ks, GOLDILOCKS_GEN, GOLDILOCKS_K};
 
-use std::collections::VecDeque;
-use zisk_common::{BusId, MEM_BUS_ID};
+use mem_common::MemCounters;
+use sm_mem::{MemAlignCollector, MemModuleCollector};
+use zisk_common::MEM_BUS_ID;
 use zisk_core::InstContext;
 
 /// Represents a precompile operation code.
@@ -59,110 +60,187 @@ const MEM_STEP_BASE: u64 = 1;
 /// Maximum number of memory operations per main step.
 const MAX_MEM_OPS_BY_MAIN_STEP: u64 = 4;
 
+/// Trait for processing memory operations - allows static dispatch
+pub trait MemProcessor {
+    fn process_mem_data(&mut self, data: &[u64; 7]);
+    fn skip_addr(&mut self, addr: u32) -> bool;
+    fn skip_addr_range(&mut self, addr_from: u32, addr_to: u32) -> bool;
+}
+
+/// Collector-based memory mem_processor
+pub struct MemCollectorProcessor<'a> {
+    pub mem: &'a mut [(usize, MemModuleCollector)],
+    pub align: &'a mut [(usize, MemAlignCollector)],
+}
+
+impl<'a> MemCollectorProcessor<'a> {
+    #[inline(always)]
+    pub fn new(
+        mem: &'a mut [(usize, MemModuleCollector)],
+        align: &'a mut [(usize, MemAlignCollector)],
+    ) -> Self {
+        Self { mem, align }
+    }
+}
+
+impl MemProcessor for MemCollectorProcessor<'_> {
+    #[inline(always)]
+    fn process_mem_data(&mut self, data: &[u64; 7]) {
+        for collector in self.mem.iter_mut() {
+            collector.1.process_data(&MEM_BUS_ID, data);
+        }
+        for collector in self.align.iter_mut() {
+            collector.1.process_data(&MEM_BUS_ID, data);
+        }
+    }
+
+    #[inline(always)]
+    fn skip_addr(&mut self, addr: u32) -> bool {
+        for collector in self.mem.iter_mut() {
+            if !collector.1.skip_addr(addr) {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[inline(always)]
+    fn skip_addr_range(&mut self, addr_from: u32, addr_to: u32) -> bool {
+        for collector in self.mem.iter_mut() {
+            if !collector.1.skip_addr_range(addr_from, addr_to) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// Counter-based memory mem_processor
+pub struct MemCounterProcessor<'a> {
+    pub counters: Option<&'a mut MemCounters>,
+}
+
+impl<'a> MemCounterProcessor<'a> {
+    #[inline(always)]
+    pub fn new(counters: Option<&'a mut MemCounters>) -> Self {
+        Self { counters }
+    }
+}
+
+impl MemProcessor for MemCounterProcessor<'_> {
+    #[inline(always)]
+    fn process_mem_data(&mut self, data: &[u64; 7]) {
+        if let Some(counters) = &mut self.counters {
+            counters.process_data(&MEM_BUS_ID, data);
+        }
+    }
+
+    fn skip_addr(&mut self, _addr: u32) -> bool {
+        false
+    }
+
+    fn skip_addr_range(&mut self, _addr_from: u32, _addr_to: u32) -> bool {
+        false
+    }
+}
+
 impl MemBusHelpers {
     /// Generates an aligned memory load operation.
     /// The address must be 8-byte aligned.
-    pub fn mem_aligned_load(
+    pub fn mem_aligned_load<P: MemProcessor>(
         addr: u32,
         step: u64,
         mem_value: u64,
-        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+        mem_processor: &mut P,
     ) {
-        assert!(addr % 8 == 0);
-        pending.push_back((
-            MEM_BUS_ID,
-            vec![
-                MEMORY_LOAD_OP,
-                addr as u64,
-                MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2,
-                8,
-                mem_value,
-                0,
-                0,
-            ],
-            vec![],
-        ));
+        debug_assert!(addr % 8 == 0);
+        let data: [u64; 7] = [
+            MEMORY_LOAD_OP,
+            addr as u64,
+            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2,
+            8,
+            mem_value,
+            0,
+            0,
+        ];
+        mem_processor.process_mem_data(&data);
     }
+
     /// Generates an aligned memory write operation.
     /// The address must be 8-byte aligned.
-    pub fn mem_aligned_write(
+    pub fn mem_aligned_write<P: MemProcessor>(
         addr: u32,
         step: u64,
         value: u64,
-        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+        mem_processor: &mut P,
     ) {
-        assert!(addr % 8 == 0);
-        pending.push_back((
-            MEM_BUS_ID,
-            vec![
-                MEMORY_STORE_OP,
-                addr as u64,
-                MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 3,
-                8,
-                0,
-                0,
-                value,
-            ],
-            vec![],
-        ));
+        debug_assert!(addr % 8 == 0);
+        let data: [u64; 7] = [
+            MEMORY_STORE_OP,
+            addr as u64,
+            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 3,
+            8,
+            0,
+            0,
+            value,
+        ];
+        mem_processor.process_mem_data(&data);
     }
+
     /// Generates an aligned memory operation (load or write).
     /// The address must be 8-byte aligned.
-    pub fn mem_aligned_op(
+    pub fn mem_aligned_op<P: MemProcessor>(
         addr: u32,
         step: u64,
         value: u64,
         is_write: bool,
-        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+        mem_processor: &mut P,
     ) {
-        pending.push_back((
-            MEM_BUS_ID,
-            vec![
-                if is_write { MEMORY_STORE_OP } else { MEMORY_LOAD_OP },
-                addr as u64,
-                MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + if is_write { 3 } else { 2 },
-                8,
-                if is_write { 0 } else { value },
-                0,
-                if is_write { value } else { 0 },
-            ],
-            vec![],
-        ));
+        let data: [u64; 7] = [
+            if is_write { MEMORY_STORE_OP } else { MEMORY_LOAD_OP },
+            addr as u64,
+            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + if is_write { 3 } else { 2 },
+            8,
+            if is_write { 0 } else { value },
+            0,
+            if is_write { value } else { 0 },
+        ];
+
+        mem_processor.process_mem_data(&data);
     }
+
     /// Generates multiple aligned memory load operations from a slice of values.
     /// The address must be 8-byte aligned.
-    pub fn mem_aligned_load_from_slice(
+    pub fn mem_aligned_load_from_slice<P: MemProcessor>(
         addr: u32,
         step: u64,
         values: &[u64],
-        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+        mem_processor: &mut P,
     ) {
         assert!(addr % 8 == 0);
         let mem_step = MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2;
         for (i, &value) in values.iter().enumerate() {
-            pending.push_back((
-                MEM_BUS_ID,
-                vec![MEMORY_LOAD_OP, (addr as usize + i * 8) as u64, mem_step, 8, value, 0, 0],
-                vec![],
-            ));
+            let data: [u64; 7] =
+                [MEMORY_LOAD_OP, (addr as usize + i * 8) as u64, mem_step, 8, value, 0, 0];
+
+            mem_processor.process_mem_data(&data);
         }
     }
     /// Generates multiple aligned memory write operations from a slice of values.
     /// The address must be 8-byte aligned.
-    pub fn mem_aligned_write_from_slice(
+    pub fn mem_aligned_write_from_slice<P: MemProcessor>(
         addr: u32,
         step: u64,
         values: &[u64],
-        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+        mem_processor: &mut P,
     ) {
         assert!(addr % 8 == 0);
         let mem_step = MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 3;
         for (i, &value) in values.iter().enumerate() {
-            pending.push_back((
-                MEM_BUS_ID,
-                vec![MEMORY_STORE_OP, (addr as usize + i * 8) as u64, mem_step, 8, 0, 0, value],
-                vec![],
-            ));
+            let data: [u64; 7] =
+                [MEMORY_STORE_OP, (addr as usize + i * 8) as u64, mem_step, 8, 0, 0, value];
+
+            mem_processor.process_mem_data(&data);
         }
     }
     /// Generates aligned memory writes from an unaligned read slice using the specified source offset.
@@ -170,12 +248,12 @@ impl MemBusHelpers {
     /// create a full 8-byte write. This function is useful to use the same slice of values to generate
     /// first aligned reads and then aligned writes.
     /// The address must be 8-byte aligned.
-    pub fn mem_aligned_write_from_read_unaligned_slice(
+    pub fn mem_aligned_write_from_read_unaligned_slice<P: MemProcessor>(
         addr: u32,
         step: u64,
         src_offset: u8,
         values: &[u64],
-        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+        mem_processor: &mut P,
     ) {
         assert!(addr % 8 == 0);
         let mem_step = MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 3;
@@ -191,21 +269,13 @@ impl MemBusHelpers {
                 7 => (values[i] >> 56) | (values[i + 1] << 8),
                 _ => panic!("invalid src_offset {src_offset} on DmaUnaligned"),
             };
-            pending.push_back((
-                MEM_BUS_ID,
-                vec![
-                    MEMORY_STORE_OP,
-                    (addr as usize + i * 8) as u64,
-                    mem_step,
-                    8,
-                    0,
-                    0,
-                    write_value,
-                ],
-                vec![],
-            ));
+            let data: [u64; 7] =
+                [MEMORY_STORE_OP, (addr as usize + i * 8) as u64, mem_step, 8, 0, 0, write_value];
+
+            mem_processor.process_mem_data(&data);
         }
     }
+
     /// Returns the memory read step for the given step number.
     pub fn get_mem_read_step(step: u64) -> u64 {
         MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2

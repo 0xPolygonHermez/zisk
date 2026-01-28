@@ -1,8 +1,6 @@
-use std::collections::VecDeque;
-
 use crate::{MemInput, MemPreviousSegment};
 use mem_common::{MemHelpers, MemModuleCheckPoint, MEM_BYTES, MEM_BYTES_BITS};
-use zisk_common::{BusDevice, BusId, MemBusData, MemCollectorInfo, SegmentId, MEM_BUS_ID};
+use zisk_common::{BusDevice, BusId, MemBusData, SegmentId, MEM_BUS_ID};
 
 #[derive(Debug, PartialEq, Eq)]
 enum InputAction {
@@ -469,21 +467,22 @@ impl MemModuleCollector {
         }
     }
 
-    pub fn get_mem_collector_info(&self) -> MemCollectorInfo {
-        MemCollectorInfo { from_addr: self.filter_min_addr, to_addr: self.filter_max_addr }
+    pub fn skip_addr(&self, addr: u32) -> bool {
+        if addr > self.filter_max_addr || addr < self.filter_min_addr {
+            return true;
+        }
+        false
     }
-}
 
-impl BusDevice<u64> for MemModuleCollector {
+    pub fn skip_addr_range(&self, addr_from: u32, addr_to: u32) -> bool {
+        if addr_from > self.filter_max_addr || addr_to < self.filter_min_addr {
+            return true;
+        }
+        false
+    }
+
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _data_ext: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let addr = MemBusData::get_addr(data);
@@ -493,11 +492,9 @@ impl BusDevice<u64> for MemModuleCollector {
         }
         true
     }
+}
 
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![MEM_BUS_ID]
-    }
-
+impl BusDevice<u64> for MemModuleCollector {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

@@ -1,9 +1,9 @@
 #![cfg(test)]
-use std::{collections::VecDeque, sync::Arc};
+use std::sync::Arc;
 
 use crate::{MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator};
 use mem_common::{MemCounters, MEMORY_LOAD_OP, MEMORY_STORE_OP};
-use zisk_common::{BusDevice, ChunkId, Plan, MEM_BUS_ID};
+use zisk_common::{ChunkId, Plan, MEM_BUS_ID};
 
 fn generate_test_plans(
     from_addr: u32,
@@ -44,9 +44,6 @@ fn add_test_aligned_mem_reads(
         counter.process_data(
             &MEM_BUS_ID,
             &[MEMORY_LOAD_OP as u64, addr as u64, step + i * step_delta, 8, value],
-            &[],
-            &mut VecDeque::new(),
-            None,
         );
     }
 }
@@ -73,13 +70,7 @@ fn add_mem_data(
     let mut step = step;
     let op = if is_write { MEMORY_STORE_OP } else { MEMORY_LOAD_OP } as u64;
     for i in 0..count {
-        counter.process_data(
-            &MEM_BUS_ID,
-            &[op, addr, step, width, value],
-            &[],
-            &mut VecDeque::new(),
-            None,
-        );
+        counter.process_data(&MEM_BUS_ID, &[op, addr, step, width, value]);
         if config.step_cycle > 0 {
             if i > 0 && (config.step_cycle % i) == 0 {
                 step += config.step_delta;
@@ -106,23 +97,11 @@ fn add_mem_data(
 // }
 
 fn add_mem_read64(counter: &mut MemCounters, addr: u32, step: u64, value: u64) {
-    counter.process_data(
-        &MEM_BUS_ID,
-        &[MEMORY_LOAD_OP as u64, addr as u64, step, 8, value],
-        &[],
-        &mut VecDeque::new(),
-        None,
-    );
+    counter.process_data(&MEM_BUS_ID, &[MEMORY_LOAD_OP as u64, addr as u64, step, 8, value]);
 }
 
 fn add_mem_write64(counter: &mut MemCounters, addr: u32, step: u64, value: u64) {
-    counter.process_data(
-        &MEM_BUS_ID,
-        &[MEMORY_STORE_OP as u64, addr as u64, step, 8, value],
-        &[],
-        &mut VecDeque::new(),
-        None,
-    );
+    counter.process_data(&MEM_BUS_ID, &[MEMORY_STORE_OP as u64, addr as u64, step, 8, value]);
 }
 
 #[test]
@@ -174,38 +153,5 @@ fn test_counters() {
     assert_eq!(format!("{counter:?}"), "[MEM_0,#:10 => 0x80000000:2 0x80000008:2 0x80000010:2 0x80000018:2 0x80000020:2 0x80000028:2 0x80000030:2 0x80000038:2 0x80000040:2 0x80000048:2][MEM_1,#:10 => 0x90000000:1 0x90000008:1 0x90000010:1 0x90000018:1 0x90000020:1 0x90000028:1 0x90000030:1 0x90000038:1 0x90000040:1 0x90000048:1][MEM_2,#:4 => 0xA0000000:7 0xA0000008:2 0xA0000010:1 0xA0000018:1]");
 }
 
-/*
-#[test]
-fn test_mem() {
-    let mem_sm = MemSM::new();
-    let std_sm =
-
-    let mem_bus_device = <MemSM as sm_common::ComponentBuilder<Goldilocks>>::build_counter(&mem_sm);
-
-    let mut data_bus = DataBus::<u64, BusDeviceMetricsWrapper>::new();
-    data_bus.connect_device(
-        vec![OPERATION_BUS_ID],
-        Box::new(BusDeviceMetricsWrapper::new(arith_bus_device, false)),
-    );
-
-    let data = vec![
-        (OPERATION_BUS_ID, OperationBusData::from_values(Mul as u8, Arith as u64, 1, 2).into()),
-        (OPERATION_BUS_ID, OperationBusData::from_values(Div as u8, Arith as u64, 1, 2).into()),
-        (OPERATION_BUS_ID, OperationBusData::from_values(Add as u8, Binary as u64, 1, 2).into()),
-        (OPERATION_BUS_ID, OperationBusData::from_values(Sub as u8, Binary as u64, 1, 2).into()),
-    ];
-
-    DataBusPlayer::play(&mut data_bus, data);
-
-    let arith_counter = data_bus.devices.remove(0).inner;
-
-    let arith_planner =
-        <ArithSM as sm_common::ComponentBuilder<Goldilocks>>::build_planner(&arith_sm);
-
-    let plan = arith_planner.plan(vec![(0, arith_counter)]);
-
-    println!("Plan: {:?}", plan);
-}
-*/
 #[test]
 fn full() {}

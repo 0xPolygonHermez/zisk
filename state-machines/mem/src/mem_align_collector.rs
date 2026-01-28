@@ -1,10 +1,7 @@
 use crate::MemAlignInput;
 use mem_common::{MemAlignCheckPoint, MemHelpers};
 
-use std::collections::VecDeque;
-use zisk_common::{
-    BusDevice, BusId, ChunkId, CollectCounter, MemBusData, MemCollectorInfo, MEM_BUS_ID,
-};
+use zisk_common::{BusDevice, BusId, ChunkId, CollectCounter, MemBusData, MEM_BUS_ID};
 
 pub struct MemAlignCollector {
     /// Collected inputs
@@ -65,18 +62,9 @@ impl MemAlignCollector {
             + self.read_byte.count()
             + self.write_byte.count()
     }
-}
 
-impl BusDevice<u64> for MemAlignCollector {
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _data_ext: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let bytes = MemBusData::get_bytes(data);
@@ -130,11 +118,9 @@ impl BusDevice<u64> for MemAlignCollector {
         };
         true
     }
+}
 
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![MEM_BUS_ID]
-    }
-
+impl BusDevice<u64> for MemAlignCollector {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

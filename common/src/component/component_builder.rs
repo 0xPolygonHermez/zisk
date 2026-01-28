@@ -4,7 +4,7 @@
 //! This trait provides methods to create counters, planners, input collectors, and optional
 //! input generators, enabling flexible and modular integration of components.
 
-use crate::{BusDevice, BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan, Planner};
+use crate::{Instance, InstanceCtx, Plan, Planner};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 
@@ -15,12 +15,6 @@ use proofman_common::ProofCtx;
 /// * `F` - A type that implements the `PrimeField64` trait, representing the field over which
 ///   operations are performed.
 pub trait ComponentBuilder<F: PrimeField64>: Send + Sync {
-    /// Builds and returns a bus device counter for monitoring metrics.
-    ///
-    /// # Returns
-    /// A boxed implementation of `BusDeviceMetrics`, capable of tracking bus data.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>>;
-
     /// Builds a planner for planning execution instances.
     ///
     /// # Returns
@@ -40,16 +34,4 @@ pub trait ComponentBuilder<F: PrimeField64>: Send + Sync {
     /// # Arguments
     /// * `ictx` - The instance context used to create the instance.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>>;
-
-    /// Optionally creates an input generator for producing inputs to be sent back to the bus.
-    ///
-    /// # Returns
-    /// An `Option` containing a boxed implementation of `BusDevice`, or `None` if the component
-    /// does not support input generation.
-    ///
-    /// # Default Implementation
-    /// Returns `None` by default, indicating no input generator is provided.
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        None
-    }
 }

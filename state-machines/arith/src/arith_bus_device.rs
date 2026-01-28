@@ -9,8 +9,7 @@
 use fields::Goldilocks;
 use std::collections::VecDeque;
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, MemCollectorInfo, Metrics, A, B, OP,
-    OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 
@@ -55,31 +54,7 @@ impl ArithCounterInputGen {
     pub fn frops_count(&self, op_type: ZiskOperationType) -> Option<u64> {
         (op_type == ZiskOperationType::Arith).then_some(self.counter.frops_count)
     }
-}
 
-impl Metrics for ArithCounterInputGen {
-    /// Tracks activity on the connected bus and updates counters for recognized operations.
-    ///
-    /// # Arguments
-    /// * `data` - The data received from the bus.
-    ///
-    /// # Returns
-    /// An empty vector, as this implementation does not produce any derived inputs for the bus.
-    #[inline(always)]
-    fn measure(&mut self, _data: &[u64]) {
-        self.counter.update(1);
-    }
-
-    /// Provides a dynamic reference for downcasting purposes.
-    ///
-    /// # Returns
-    /// A reference to `self` as `dyn std::any::Any`.
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
-impl BusDevice<u64> for ArithCounterInputGen {
     /// Processes data received on the bus, updating counters and generating inputs when applicable.
     ///
     /// # Arguments
@@ -91,13 +66,11 @@ impl BusDevice<u64> for ArithCounterInputGen {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn process_data(
+    pub fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
-        _data_ext: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
@@ -127,15 +100,31 @@ impl BusDevice<u64> for ArithCounterInputGen {
 
         true
     }
+}
 
-    /// Returns the bus IDs associated with this counter.
+impl Metrics for ArithCounterInputGen {
+    /// Tracks activity on the connected bus and updates counters for recognized operations.
+    ///
+    /// # Arguments
+    /// * `data` - The data received from the bus.
     ///
     /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
+    /// An empty vector, as this implementation does not produce any derived inputs for the bus.
+    #[inline(always)]
+    fn measure(&mut self, _data: &[u64]) {
+        self.counter.update(1);
     }
 
+    /// Provides a dynamic reference for downcasting purposes.
+    ///
+    /// # Returns
+    /// A reference to `self` as `dyn std::any::Any`.
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl BusDevice<u64> for ArithCounterInputGen {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

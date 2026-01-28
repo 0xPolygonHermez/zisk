@@ -2,11 +2,11 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::Dma` instructions.
 
-use std::{collections::VecDeque, ops::Add};
-
+use precompiles_common::MemProcessor;
 use precompiles_helpers::DmaInfo;
+use std::ops::Add;
 use zisk_common::{BusDevice, BusDeviceMode, BusId, Metrics, B, OPERATION_BUS_ID, OP_TYPE};
-use zisk_common::{MemCollectorInfo, A, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
+use zisk_common::{A, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_core::ZiskOperationType;
 
 use crate::{generate_dma_mem_inputs, skip_dma_mem_inputs, DMA_64_ALIGNED_OPS_BY_ROW};
@@ -92,6 +92,49 @@ impl DmaCounterInputGen {
         }
         self.dma_ops += 1;
     }
+
+    /// Processes data received on the bus, updating counters and generating inputs when applicable.
+    ///
+    /// # Arguments
+    /// * `bus_id` - The ID of the bus sending the data.
+    /// * `data` - The data received from the bus.
+    /// * `mem_processors` – A queue of mem_processors bus operations used to send derived inputs.
+    ///
+    /// # Returns
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
+    pub fn process_data<P: MemProcessor>(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        data_ext: &[u64],
+        mem_processors: &mut P,
+    ) -> bool {
+        debug_assert!(*bus_id == OPERATION_BUS_ID);
+
+        if data[OP_TYPE] as u32 != ZiskOperationType::Dma as u32 {
+            return true;
+        }
+
+        match self.mode {
+            BusDeviceMode::Counter => {
+                self.measure(data);
+                generate_dma_mem_inputs(data, data_ext, true, mem_processors);
+            }
+            BusDeviceMode::CounterAsm => {
+                self.measure(data);
+            }
+            BusDeviceMode::InputGenerator => {
+                if skip_dma_mem_inputs(data, data_ext, mem_processors) {
+                    return true;
+                }
+                generate_dma_mem_inputs(data, data_ext, false, mem_processors);
+            }
+        }
+
+        true
+    }
 }
 
 impl Metrics for DmaCounterInputGen {
@@ -145,54 +188,6 @@ impl Add for DmaCounterInputGen {
 }
 
 impl BusDevice<u64> for DmaCounterInputGen {
-    /// Processes data received on the bus, updating counters and generating inputs when applicable.
-    ///
-    /// # Arguments
-    /// * `bus_id` - The ID of the bus sending the data.
-    /// * `data` - The data received from the bus.
-    /// * `pending` – A queue of pending bus operations used to send derived inputs.
-    ///
-    /// # Returns
-    /// A boolean indicating whether the program should continue execution or terminate.
-    /// Returns `true` to continue execution, `false` to stop.
-    #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        data_ext: &[u64],
-        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-        mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
-        debug_assert!(*bus_id == OPERATION_BUS_ID);
-
-        if data[OP_TYPE] as u32 != ZiskOperationType::Dma as u32 {
-            return true;
-        }
-
-        if let Some(mem_collectors_info) = mem_collector_info {
-            if skip_dma_mem_inputs(data, data_ext, mem_collectors_info) {
-                return true;
-            }
-        }
-
-        let only_counters = self.mode == BusDeviceMode::Counter;
-        if only_counters {
-            self.measure(data);
-        }
-
-        generate_dma_mem_inputs(data, data_ext, only_counters, pending);
-        true
-    }
-
-    /// Returns the bus IDs associated with this counter.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

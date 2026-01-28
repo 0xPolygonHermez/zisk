@@ -3,9 +3,9 @@
 //! This counter is used as a default implementation when no actual counting or metrics
 //! collection is required.
 
-use std::{any::Any, collections::VecDeque};
+use std::any::Any;
 
-use zisk_common::{BusDevice, BusId, MemCollectorInfo, Metrics};
+use zisk_common::{BusDevice, Metrics};
 
 /// The `DummyCounter` struct serves as a placeholder counter that performs no actions
 /// when connected to the data bus.
@@ -15,6 +15,12 @@ use zisk_common::{BusDevice, BusId, MemCollectorInfo, Metrics};
 #[derive(Default)]
 pub struct DummyCounter {}
 
+impl DummyCounter {
+    #[inline(always)]
+    pub fn process_data(&mut self) -> bool {
+        true
+    }
+}
 impl Metrics for DummyCounter {
     /// Does nothing when tracking activity on the bus.
     ///
@@ -36,26 +42,6 @@ impl Metrics for DummyCounter {
 }
 
 impl BusDevice<u64> for DummyCounter {
-    #[inline(always)]
-    fn process_data(
-        &mut self,
-        _bus_id: &BusId,
-        _data: &[u64],
-        _data_ext: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
-        true
-    }
-
-    /// Returns an empty vector as this counter is not associated with any bus IDs.
-    ///
-    /// # Returns
-    /// An empty vector of bus IDs.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![]
-    }
-
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

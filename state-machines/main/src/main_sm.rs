@@ -9,13 +9,12 @@
 
 use std::sync::Arc;
 
-use crate::MainCounter;
 use fields::PrimeField64;
 use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, ProofmanResult, SetupCtx};
 use rayon::prelude::*;
-use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx, SegmentId};
+use zisk_common::{EmuTrace, InstanceCtx, SegmentId};
 use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::MainAirValues;
 use ziskemu::{Emu, EmuRegTrace};
@@ -372,9 +371,5 @@ impl MainSM {
     /// Debug method for the main state machine.
     pub fn debug<F: PrimeField64>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
         // No debug information to display
-    }
-
-    pub fn build_counter() -> Box<dyn BusDeviceMetrics> {
-        Box::new(MainCounter::new())
     }
 }

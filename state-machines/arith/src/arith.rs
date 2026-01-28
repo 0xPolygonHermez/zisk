@@ -10,10 +10,7 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use zisk_common::{
-    BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    InstanceInfo, PayloadType, Planner,
-};
+use zisk_common::{BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner};
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
 
@@ -50,14 +47,6 @@ impl<F: PrimeField64> ArithSM<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for ArithSM<F> {
-    /// Builds and returns a new counter for monitoring arithmetic operations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `ArithCounter`.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        Some(Box::new(ArithCounterInputGen::new(BusDeviceMode::Counter)))
-    }
-
     /// Builds a planner to plan arithmetic-related instances.
     ///
     /// # Returns
@@ -85,13 +74,5 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithSM<F> {
             }
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }
-    }
-
-    /// Creates and returns an input generator for arithmetic state machine computations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `ArithInputGenerator`.
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(ArithCounterInputGen::new(BusDeviceMode::InputGenerator)))
     }
 }
