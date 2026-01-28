@@ -34,13 +34,11 @@ pub struct Prove;
 /// let prover_emu = ProverClientBuilder::new()
 ///     .emu()
 ///     .verify_constraints()
-///     .elf_path(elf_path.clone())
 ///     .build();
 ///
 /// let prover_asm = ProverClientBuilder::new()
 ///     .asm()
 ///     .prove()
-///     .elf_path(elf_path)
 ///     .unlock_mapped_memory(true)
 ///     .build();
 /// ```
@@ -251,7 +249,6 @@ impl ProverClientBuilder<EmuB, WitnessGeneration> {
     /// let prover = ProverClientBuilder::new()
     ///     .emu()
     ///     .verify_constraints()
-    ///     .elf_path(elf_path)
     ///     .build();
     /// ```
     pub fn build(self) -> Result<ZiskProver<Emu>> {
@@ -278,7 +275,6 @@ impl ProverClientBuilder<EmuB, Prove> {
     /// let prover = ProverClientBuilder::new()
     ///    .emu()
     ///    .prove()
-    ///    .elf_path(elf_path)
     ///    .build();
     /// ```
     pub fn build(self) -> Result<ZiskProver<Emu>> {
@@ -363,7 +359,6 @@ impl ProverClientBuilder<AsmB, WitnessGeneration> {
     /// let prover = ProverClientBuilder::new()
     ///     .asm()
     ///     .verify_constraints()
-    ///     .elf_path(elf_path)
     ///     .build();
     /// ```
     pub fn build<F>(self) -> Result<ZiskProver<Asm>>
@@ -398,7 +393,6 @@ impl ProverClientBuilder<AsmB, Prove> {
     /// let prover = ProverClientBuilder::new()
     ///     .asm()
     ///     .prove()
-    ///     .elf_path(elf_path)
     ///     .build();
     /// ```
     pub fn build<F>(self) -> Result<ZiskProver<Asm>>

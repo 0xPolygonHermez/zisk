@@ -10,9 +10,9 @@ use crate::{get_elf_data_hash, get_output_path, get_zisk_path};
 
 pub fn gen_assembly(
     elf: &Path,
-    zisk_path: &Option<PathBuf>,
+    _zisk_path: &Option<PathBuf>,
     output_dir: &Option<PathBuf>,
-    verbose: bool,
+    _verbose: bool,
 ) -> Result<(), anyhow::Error> {
     let output_path = get_output_path(output_dir)?;
 
@@ -22,8 +22,8 @@ pub fn gen_assembly(
     #[cfg(not(target_os = "macos"))]
     {
         tracing::info!("Computing assembly setup");
-        let zisk_path = get_zisk_path(zisk_path.as_ref());
-        generate_assembly(elf, &elf_hash, &zisk_path, output_path.as_path(), verbose)?;
+        let zisk_path = get_zisk_path(_zisk_path.as_ref());
+        generate_assembly(elf, &elf_hash, &zisk_path, output_path.as_path(), _verbose)?;
         tracing::info!("Assembly setup generated at {}", output_path.display());
     }
     Ok(())
