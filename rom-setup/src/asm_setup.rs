@@ -6,7 +6,7 @@ use std::{
 use anyhow::Result;
 use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
-use crate::{get_elf_data_hash, get_output_path, get_zisk_path};
+use crate::get_elf_data_hash;
 
 /// Check if all assembly binary files exist for a given ELF and output path
 pub fn assembly_files_exist(elf: &Path, output_path: &Path) -> Result<bool> {
@@ -38,11 +38,11 @@ pub fn gen_assembly(
     // Assembly setup is not needed on macOS due to the lack of support for assembly generation.
     #[cfg(not(target_os = "macos"))]
     {
-        let output_path = get_output_path(_output_dir)?;
+        let output_path = crate::get_output_path(_output_dir)?;
         let elf_hash = get_elf_data_hash(_elf)?;
 
         tracing::info!("Computing assembly setup");
-        let zisk_path = get_zisk_path(_zisk_path.as_ref());
+        let zisk_path = crate::get_zisk_path(_zisk_path.as_ref());
         _generate_assembly(_elf, &elf_hash, &zisk_path, output_path.as_path(), _verbose)?;
         tracing::info!("Assembly setup generated at {}", output_path.display());
     }
