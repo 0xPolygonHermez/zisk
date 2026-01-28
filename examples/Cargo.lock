@@ -945,6 +945,7 @@ dependencies = [
  "precomp-keccakf",
  "precomp-poseidon2",
  "precomp-sha256f",
+ "precompiles-common",
  "proofman",
  "proofman-common",
  "proofman-util",
@@ -2087,6 +2088,8 @@ name = "precompiles-common"
 version = "0.16.0"
 dependencies = [
  "fields",
+ "mem-common",
+ "sm-mem",
  "zisk-common",
  "zisk-core",
 ]

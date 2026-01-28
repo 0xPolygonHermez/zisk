@@ -3,7 +3,7 @@ use crate::{
     ZISK_TARGET,
 };
 use cargo_metadata::camino::Utf8PathBuf;
-use rom_setup::gen_assembly;
+use rom_setup::{assembly_files_exist, gen_assembly, get_output_path};
 use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
@@ -65,21 +65,41 @@ pub fn execute_build_program(
     let program_dir: Utf8PathBuf =
         program_dir.try_into().expect("Failed to convert PathBuf to Utf8PathBuf");
 
+    // Check for ZISK_PATH environment variable if not set in args
+    let mut args = args.clone();
+    if args.zisk_path.is_none() {
+        if let Ok(env_path) = std::env::var("ZISK_PATH") {
+            args.zisk_path = Some(env_path);
+        }
+    }
+
     // Get the program metadata.
     let program_metadata_file = program_dir.join("Cargo.toml");
     let mut program_metadata_cmd = cargo_metadata::MetadataCommand::new();
     let program_metadata = program_metadata_cmd.manifest_path(program_metadata_file).exec()?;
 
     // Get the command corresponding to Docker or local build.
-    let cmd = create_command(args, &program_dir, &program_metadata);
+    let cmd = create_command(&args, &program_dir, &program_metadata);
 
-    let target_elf_paths = generate_elf_paths(&program_metadata, Some(args));
+    let target_elf_paths = generate_elf_paths(&program_metadata, Some(&args));
 
     if target_elf_paths.len() > 1 && args.elf_name.is_some() {
         anyhow::bail!("--elf-name is not supported when --output-directory is used and multiple ELFs are built.");
     }
 
     execute_command(cmd)?;
+
+    // Generate assembly for all ELF files (only if not already generated)
+    let zisk_path_buf = args.zisk_path.as_ref().map(|s| PathBuf::from(s));
+    let output_path = get_output_path(&None)?;
+    for (_, elf_path) in target_elf_paths.iter() {
+        let elf_path_std = elf_path.as_std_path();
+
+        // Check if assembly files already exist
+        if !assembly_files_exist(elf_path_std, &output_path)? {
+            gen_assembly(elf_path_std, &zisk_path_buf, &None, true)?;
+        }
+    }
 
     if let Some(output_directory) = &args.output_directory {
         // The path to the output directory, maybe relative or absolute.
@@ -100,8 +120,6 @@ pub fn execute_build_program(
             let output_path = output_directory.join(args.elf_name.as_deref().unwrap_or(elf_name));
 
             std::fs::copy(&elf_path, &output_path)?;
-
-            gen_assembly(elf_path.as_std_path(), &None, &None, true)?;
         }
     }
 

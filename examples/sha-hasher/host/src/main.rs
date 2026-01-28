@@ -15,12 +15,13 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     let client = ProverClient::builder()
+        .asm()
         .proving_key_path(PathBuf::from("/home/roger/zisk/build/provingKey"))
         .build()
         .unwrap();
 
     let elf_path = PathBuf::from(
-        "/home/roger/zisk/examples/target/riscv64ima-zisk-zkvm-elf/release/sha-hasher-guest",
+        "/home/roger/zisk/examples/target/elf/riscv64ima-zisk-zkvm-elf/release/sha-hasher-guest",
     );
 
     let vk = client.setup(elf_path.clone())?;

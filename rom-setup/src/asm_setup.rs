@@ -8,27 +8,48 @@ use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
 use crate::{get_elf_data_hash, get_output_path, get_zisk_path};
 
-pub fn gen_assembly(
-    elf: &Path,
-    _zisk_path: &Option<PathBuf>,
-    output_dir: &Option<PathBuf>,
-    _verbose: bool,
-) -> Result<(), anyhow::Error> {
-    let output_path = get_output_path(output_dir)?;
-
+/// Check if all assembly binary files exist for a given ELF and output path
+pub fn assembly_files_exist(elf: &Path, output_path: &Path) -> Result<bool> {
     let elf_hash = get_elf_data_hash(elf)?;
 
+    let stem = elf.file_stem().unwrap().to_str().unwrap();
+    let new_filename = format!("{stem}-{elf_hash}.tmp");
+    let base_path = output_path.join(new_filename);
+    let file_stem = base_path.file_stem().unwrap().to_str().unwrap();
+
+    let bin_mt_file = format!("{file_stem}-mt.bin");
+    let bin_mt_file = base_path.with_file_name(bin_mt_file);
+
+    let bin_rh_file = format!("{file_stem}-rh.bin");
+    let bin_rh_file = base_path.with_file_name(bin_rh_file);
+
+    let bin_mo_file = format!("{file_stem}-mo.bin");
+    let bin_mo_file = base_path.with_file_name(bin_mo_file);
+
+    Ok(bin_mt_file.exists() && bin_rh_file.exists() && bin_mo_file.exists())
+}
+
+pub fn gen_assembly(
+    _elf: &Path,
+    _zisk_path: &Option<PathBuf>,
+    _output_dir: &Option<PathBuf>,
+    _verbose: bool,
+) -> Result<(), anyhow::Error> {
     // Assembly setup is not needed on macOS due to the lack of support for assembly generation.
     #[cfg(not(target_os = "macos"))]
     {
+        let output_path = get_output_path(_output_dir)?;
+        let elf_hash = get_elf_data_hash(_elf)?;
+
         tracing::info!("Computing assembly setup");
         let zisk_path = get_zisk_path(_zisk_path.as_ref());
-        generate_assembly(elf, &elf_hash, &zisk_path, output_path.as_path(), _verbose)?;
+        generate_assembly(_elf, &elf_hash, &zisk_path, output_path.as_path(), _verbose)?;
         tracing::info!("Assembly setup generated at {}", output_path.display());
     }
     Ok(())
 }
 
+#[cfg(not(target_os = "macos"))]
 fn generate_assembly(
     elf: &Path,
     elf_hash: &str,
