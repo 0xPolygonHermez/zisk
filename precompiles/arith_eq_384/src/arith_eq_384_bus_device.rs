@@ -6,8 +6,7 @@ use std::ops::Add;
 
 use precompiles_common::MemProcessor;
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, MemCollectorInfo, Metrics, B, OP, OPERATION_BUS_ID,
-    OP_TYPE, STEP,
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, B, OP, OPERATION_BUS_ID, OP_TYPE, STEP,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -64,25 +63,25 @@ impl ArithEq384CounterInputGen {
         (op_type == ZiskOperationType::ArithEq384).then_some(self.counter.inst_count)
     }
 
-    fn skip_data(&self, data: &[u64], mem_collectors_info: &[MemCollectorInfo]) -> bool {
+    fn skip_data<P: MemProcessor>(&self, data: &[u64], mem_processors: &mut P) -> bool {
         let addr_main = data[B] as u32;
 
         match data[OP] as u8 {
-            ARITH384_MOD_OP => skip_arith384_mod_mem_inputs(addr_main, data, mem_collectors_info),
+            ARITH384_MOD_OP => skip_arith384_mod_mem_inputs(addr_main, data, mem_processors),
             BLS12_381_CURVE_ADD_OP => {
-                skip_bls12_381_curve_add_mem_inputs(addr_main, data, mem_collectors_info)
+                skip_bls12_381_curve_add_mem_inputs(addr_main, data, mem_processors)
             }
             BLS12_381_CURVE_DBL_OP => {
-                skip_bls12_381_curve_dbl_mem_inputs(addr_main, data, mem_collectors_info)
+                skip_bls12_381_curve_dbl_mem_inputs(addr_main, data, mem_processors)
             }
             BLS12_381_COMPLEX_ADD_OP => {
-                skip_bls12_381_complex_add_mem_inputs(addr_main, data, mem_collectors_info)
+                skip_bls12_381_complex_add_mem_inputs(addr_main, data, mem_processors)
             }
             BLS12_381_COMPLEX_SUB_OP => {
-                skip_bls12_381_complex_sub_mem_inputs(addr_main, data, mem_collectors_info)
+                skip_bls12_381_complex_sub_mem_inputs(addr_main, data, mem_processors)
             }
             BLS12_381_COMPLEX_MUL_OP => {
-                skip_bls12_381_complex_mul_mem_inputs(addr_main, data, mem_collectors_info)
+                skip_bls12_381_complex_mul_mem_inputs(addr_main, data, mem_processors)
             }
             _ => {
                 panic!("ArithEq384CounterInputGen: Unsupported data length {}", data.len());
@@ -106,7 +105,6 @@ impl ArithEq384CounterInputGen {
         bus_id: &BusId,
         data: &[u64],
         mem_processors: &mut P,
-        mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
@@ -114,12 +112,6 @@ impl ArithEq384CounterInputGen {
 
         if data[OP_TYPE] != ARITH_EQ_384 {
             return true;
-        }
-
-        if let Some(mem_collectors_info) = mem_collector_info {
-            if self.skip_data(data, mem_collectors_info) {
-                return true;
-            }
         }
 
         let op = data[OP] as u8;
@@ -135,7 +127,12 @@ impl ArithEq384CounterInputGen {
                 self.measure(data);
                 return true;
             }
-            BusDeviceMode::InputGenerator => false,
+            BusDeviceMode::InputGenerator => {
+                if self.skip_data(data, mem_processors) {
+                    return true;
+                }
+                false
+            }
         };
 
         match op {

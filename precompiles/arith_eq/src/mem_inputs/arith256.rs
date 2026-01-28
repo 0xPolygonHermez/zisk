@@ -1,7 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Arith256;
 use precompiles_common::MemProcessor;
-use zisk_common::MemCollectorInfo;
 
 pub const ARITH_256_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 5,
@@ -42,10 +41,10 @@ pub fn generate_arith256_mem_inputs<P: MemProcessor>(
     );
 }
 
-pub fn skip_arith256_mem_inputs(
+pub fn skip_arith256_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     data: &[u64],
-    mem_collectors_info: &[MemCollectorInfo],
+    mem_processors: &mut P,
 ) -> bool {
-    super::skip_mem_inputs(addr_main, data, &ARITH_256_MEM_CONFIG, mem_collectors_info)
+    super::skip_mem_inputs(addr_main, data, &ARITH_256_MEM_CONFIG, mem_processors)
 }

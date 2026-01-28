@@ -1,6 +1,6 @@
 use precompiles_common::MemBusHelpers;
 use precompiles_common::MemProcessor;
-use zisk_common::MemCollectorInfo;
+
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 use zisk_core::sha256f;
 
@@ -81,10 +81,10 @@ pub fn generate_sha256f_mem_inputs<P: MemProcessor>(
     }
 }
 
-pub fn skip_sha256f_mem_inputs(
+pub fn skip_sha256f_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     data: &[u64],
-    mem_collectors_info: &[MemCollectorInfo],
+    mem_processors: &mut P,
 ) -> bool {
     let indirect_params = 2;
     let read_params = 2;
@@ -93,10 +93,8 @@ pub fn skip_sha256f_mem_inputs(
 
     for iparam in 0..indirect_params {
         let addr = addr_main + iparam as u32 * 8;
-        for mem_collector in mem_collectors_info {
-            if !mem_collector.skip_addr(addr) {
-                return false;
-            }
+        if !mem_processors.skip_addr(addr) {
+            return false;
         }
     }
 
@@ -107,10 +105,8 @@ pub fn skip_sha256f_mem_inputs(
 
         for ichunk in 0..chunks {
             let addr = param_addr + ichunk as u32 * 8;
-            for mem_collector in mem_collectors_info {
-                if !mem_collector.skip_addr(addr) {
-                    return false;
-                }
+            if !mem_processors.skip_addr(addr) {
+                return false;
             }
         }
     }

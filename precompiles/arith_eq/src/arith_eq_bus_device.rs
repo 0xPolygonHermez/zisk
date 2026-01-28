@@ -5,10 +5,10 @@
 use std::ops::Add;
 
 use precompiles_common::MemProcessor;
+use zisk_common::STEP;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
-use zisk_common::{MemCollectorInfo, STEP};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 use crate::mem_inputs::{
@@ -73,28 +73,24 @@ impl ArithEqCounterInputGen {
         (op_type == ZiskOperationType::ArithEq).then_some(self.counter.inst_count)
     }
 
-    fn skip_data(&self, data: &[u64], mem_collectors_info: &[MemCollectorInfo]) -> bool {
+    fn skip_data<P: MemProcessor>(&self, data: &[u64], mem_processors: &mut P) -> bool {
         let addr_main = data[B] as u32;
 
         match data[OP] as u8 {
-            ARITH256_OP => skip_arith256_mem_inputs(addr_main, data, mem_collectors_info),
-            ARITH256_MOD_OP => skip_arith256_mod_mem_inputs(addr_main, data, mem_collectors_info),
-            SECP256K1_ADD_OP => skip_secp256k1_add_mem_inputs(addr_main, data, mem_collectors_info),
-            SECP256K1_DBL_OP => skip_secp256k1_dbl_mem_inputs(addr_main, data, mem_collectors_info),
-            BN254_CURVE_ADD_OP => {
-                skip_bn254_curve_add_mem_inputs(addr_main, data, mem_collectors_info)
-            }
-            BN254_CURVE_DBL_OP => {
-                skip_bn254_curve_dbl_mem_inputs(addr_main, data, mem_collectors_info)
-            }
+            ARITH256_OP => skip_arith256_mem_inputs(addr_main, data, mem_processors),
+            ARITH256_MOD_OP => skip_arith256_mod_mem_inputs(addr_main, data, mem_processors),
+            SECP256K1_ADD_OP => skip_secp256k1_add_mem_inputs(addr_main, data, mem_processors),
+            SECP256K1_DBL_OP => skip_secp256k1_dbl_mem_inputs(addr_main, data, mem_processors),
+            BN254_CURVE_ADD_OP => skip_bn254_curve_add_mem_inputs(addr_main, data, mem_processors),
+            BN254_CURVE_DBL_OP => skip_bn254_curve_dbl_mem_inputs(addr_main, data, mem_processors),
             BN254_COMPLEX_ADD_OP => {
-                skip_bn254_complex_add_mem_inputs(addr_main, data, mem_collectors_info)
+                skip_bn254_complex_add_mem_inputs(addr_main, data, mem_processors)
             }
             BN254_COMPLEX_SUB_OP => {
-                skip_bn254_complex_sub_mem_inputs(addr_main, data, mem_collectors_info)
+                skip_bn254_complex_sub_mem_inputs(addr_main, data, mem_processors)
             }
             BN254_COMPLEX_MUL_OP => {
-                skip_bn254_complex_mul_mem_inputs(addr_main, data, mem_collectors_info)
+                skip_bn254_complex_mul_mem_inputs(addr_main, data, mem_processors)
             }
             _ => {
                 panic!("ArithEqCounterInputGen: Unsupported data length {}", data.len(),);
@@ -118,7 +114,6 @@ impl ArithEqCounterInputGen {
         bus_id: &BusId,
         data: &[u64],
         mem_processors: &mut P,
-        mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
@@ -126,12 +121,6 @@ impl ArithEqCounterInputGen {
 
         if data[OP_TYPE] != ARITH_EQ {
             return true;
-        }
-
-        if let Some(mem_collectors_info) = mem_collector_info {
-            if self.skip_data(data, mem_collectors_info) {
-                return true;
-            }
         }
 
         let op = data[OP] as u8;
@@ -147,7 +136,12 @@ impl ArithEqCounterInputGen {
                 self.measure(data);
                 return true;
             }
-            BusDeviceMode::InputGenerator => false,
+            BusDeviceMode::InputGenerator => {
+                if self.skip_data(data, mem_processors) {
+                    return true;
+                }
+                false
+            }
         };
 
         match op {

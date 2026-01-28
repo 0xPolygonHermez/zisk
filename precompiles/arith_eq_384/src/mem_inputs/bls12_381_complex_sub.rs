@@ -1,5 +1,4 @@
 use precompiles_common::MemProcessor;
-use zisk_common::MemCollectorInfo;
 
 use super::ArithEq384MemInputConfig;
 use crate::{executors::Bls12_381Complex, ARITH_EQ_384_U64S_DOUBLE};
@@ -39,10 +38,10 @@ pub fn generate_bls12_381_complex_sub_mem_inputs<P: MemProcessor>(
     );
 }
 
-pub fn skip_bls12_381_complex_sub_mem_inputs(
+pub fn skip_bls12_381_complex_sub_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     data: &[u64],
-    mem_collectors_info: &[MemCollectorInfo],
+    mem_processors: &mut P,
 ) -> bool {
-    super::skip_mem_inputs(addr_main, data, &BLS12_381_COMPLEX_SUB_MEM_CONFIG, mem_collectors_info)
+    super::skip_mem_inputs(addr_main, data, &BLS12_381_COMPLEX_SUB_MEM_CONFIG, mem_processors)
 }

@@ -5,7 +5,7 @@
 use std::ops::Add;
 
 use precompiles_common::MemProcessor;
-use zisk_common::MemCollectorInfo;
+
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, B, OPERATION_BUS_ID, OP_TYPE, STEP,
 };
@@ -66,18 +66,11 @@ impl Add256CounterInputGen {
         bus_id: &BusId,
         data: &[u64],
         mem_processors: &mut P,
-        mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if data[OP_TYPE] as u32 != ZiskOperationType::BigInt as u32 {
             return true;
-        }
-
-        if let Some(mem_collectors_info) = mem_collector_info {
-            if skip_add256_mem_inputs(data[B] as u32, data, mem_collectors_info) {
-                return true;
-            }
         }
 
         let step_main = data[STEP];
@@ -92,6 +85,9 @@ impl Add256CounterInputGen {
                 self.measure(data);
             }
             BusDeviceMode::InputGenerator => {
+                if skip_add256_mem_inputs(addr_main, data, mem_processors) {
+                    return true;
+                }
                 generate_add256_mem_inputs(addr_main, step_main, data, false, mem_processors);
             }
         }

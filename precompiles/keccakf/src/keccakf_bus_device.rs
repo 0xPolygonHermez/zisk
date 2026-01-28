@@ -5,10 +5,10 @@
 use std::ops::Add;
 
 use precompiles_common::MemProcessor;
+use zisk_common::STEP;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, B, OPERATION_BUS_ID, OP_TYPE,
 };
-use zisk_common::{MemCollectorInfo, STEP};
 use zisk_core::ZiskOperationType;
 
 use crate::{generate_keccakf_mem_inputs, skip_keccakf_mem_inputs};
@@ -66,18 +66,11 @@ impl KeccakfCounterInputGen {
         bus_id: &BusId,
         data: &[u64],
         mem_processors: &mut P,
-        mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Keccak as u32 {
             return true;
-        }
-
-        if let Some(mem_collectors_info) = mem_collector_info {
-            if skip_keccakf_mem_inputs(data[B] as u32, mem_collectors_info) {
-                return true;
-            }
         }
 
         let step_main = data[STEP];
@@ -92,6 +85,9 @@ impl KeccakfCounterInputGen {
                 self.measure(data);
             }
             BusDeviceMode::InputGenerator => {
+                if skip_keccakf_mem_inputs(addr_main, mem_processors) {
+                    return true;
+                }
                 generate_keccakf_mem_inputs(addr_main, step_main, data, false, mem_processors);
             }
         }

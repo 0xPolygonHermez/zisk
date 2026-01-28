@@ -5,7 +5,7 @@
 use std::ops::Add;
 
 use precompiles_common::MemProcessor;
-use zisk_common::MemCollectorInfo;
+
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE,
 };
@@ -66,18 +66,11 @@ impl Poseidon2CounterInputGen {
         bus_id: &BusId,
         data: &[u64],
         mem_processors: &mut P,
-        mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Poseidon2 as u32 {
             return true;
-        }
-
-        if let Some(mem_collectors_info) = mem_collector_info {
-            if skip_poseidon2_mem_inputs(data[B] as u32, mem_collectors_info) {
-                return true;
-            }
         }
 
         let step_main = data[A];
@@ -92,6 +85,9 @@ impl Poseidon2CounterInputGen {
                 self.measure(data);
             }
             BusDeviceMode::InputGenerator => {
+                if skip_poseidon2_mem_inputs(addr_main, mem_processors) {
+                    return true;
+                }
                 generate_poseidon2_mem_inputs(addr_main, step_main, data, false, mem_processors);
             }
         }

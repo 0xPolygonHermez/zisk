@@ -23,15 +23,14 @@ use precomp_poseidon2::Poseidon2Collector;
 use precomp_poseidon2::Poseidon2CounterInputGen;
 use precomp_sha256f::Sha256fCollector;
 use precomp_sha256f::Sha256fCounterInputGen;
-use precompiles_common::MemCollectorProcessor;
+use precompiles_common::{MemCollectorProcessor, MemProcessor};
 use sm_arith::ArithCounterInputGen;
 use sm_arith::ArithInstanceCollector;
 use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollector};
 use sm_mem::{MemAlignCollector, MemModuleCollector};
 use sm_rom::RomCollector;
 use zisk_common::{
-    BusDevice, BusId, MemCollectorInfo, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE,
-    ROM_BUS_ID,
+    BusDevice, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE, ROM_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 
@@ -90,8 +89,6 @@ pub struct StaticDataBusCollect<D, F: PrimeField64> {
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>, Vec<D>)>,
-
-    mem_collectors_info: Vec<MemCollectorInfo>,
 }
 
 const BINARY_TYPE: u64 = ZiskOperationType::Binary as u64;
@@ -135,9 +132,6 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         add256_inputs_generator: Add256CounterInputGen,
         dma_inputs_generator: DmaCounterInputGen,
     ) -> Self {
-        let mem_collectors_info: Vec<MemCollectorInfo> =
-            mem_collector.iter().map(|(_, collector)| collector.get_mem_collector_info()).collect();
-
         Self {
             mem_collector,
             mem_align_collector,
@@ -165,7 +159,6 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             add256_inputs_generator,
             dma_inputs_generator,
             pending_transfers: VecDeque::with_capacity(64),
-            mem_collectors_info,
         }
     }
 
@@ -183,15 +176,8 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
     fn route_data(&mut self, bus_id: BusId, data: &[PayloadType], data_ext: &[PayloadType]) {
         match bus_id {
             MEM_BUS_ID => {
-                // Process mem collectors - inverted condition to avoid continue
-                for (_, mem_collector) in &mut self.mem_collector {
-                    mem_collector.process_data(&bus_id, data);
-                }
-
-                // Only process align collectors if needed
-                for (_, mem_align_collector) in &mut self.mem_align_collector {
-                    mem_align_collector.process_data(&bus_id, data);
-                }
+                MemCollectorProcessor::new(&mut self.mem_collector, &mut self.mem_align_collector)
+                    .process_mem_data(&data.try_into().unwrap());
             }
             OPERATION_BUS_ID => match data[OP_TYPE] {
                 BINARY_TYPE => {
@@ -231,7 +217,6 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                             &mut self.mem_collector,
                             &mut self.mem_align_collector,
                         ),
-                        Some(&self.mem_collectors_info),
                     );
                 }
                 SHA256_TYPE => {
@@ -246,7 +231,6 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                             &mut self.mem_collector,
                             &mut self.mem_align_collector,
                         ),
-                        Some(&self.mem_collectors_info),
                     );
                 }
                 POSEIDON2_TYPE => {
@@ -260,7 +244,6 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                             &mut self.mem_collector,
                             &mut self.mem_align_collector,
                         ),
-                        Some(&self.mem_collectors_info),
                     );
                 }
                 ARITH_EQ_TYPE => {
@@ -275,7 +258,6 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                             &mut self.mem_collector,
                             &mut self.mem_align_collector,
                         ),
-                        Some(&self.mem_collectors_info),
                     );
                 }
                 ARITH_EQ_384_TYPE => {
@@ -290,7 +272,6 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                             &mut self.mem_collector,
                             &mut self.mem_align_collector,
                         ),
-                        Some(&self.mem_collectors_info),
                     );
                 }
                 BIG_INT_OP_TYPE_ID => {
@@ -305,7 +286,6 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                             &mut self.mem_collector,
                             &mut self.mem_align_collector,
                         ),
-                        Some(&self.mem_collectors_info),
                     );
                 }
                 DMA_OP_TYPE_ID => {
@@ -330,7 +310,6 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                             &mut self.mem_collector,
                             &mut self.mem_align_collector,
                         ),
-                        Some(&self.mem_collectors_info),
                     );
                 }
                 _ => {}

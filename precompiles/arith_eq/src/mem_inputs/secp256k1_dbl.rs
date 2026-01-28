@@ -1,7 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Secp256k1;
 use precompiles_common::MemProcessor;
-use zisk_common::MemCollectorInfo;
 
 pub const SECP256K1_DBL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 0,
@@ -34,10 +33,10 @@ pub fn generate_secp256k1_dbl_mem_inputs<P: MemProcessor>(
     );
 }
 
-pub fn skip_secp256k1_dbl_mem_inputs(
+pub fn skip_secp256k1_dbl_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     data: &[u64],
-    mem_collectors_info: &[MemCollectorInfo],
+    mem_processors: &mut P,
 ) -> bool {
-    super::skip_mem_inputs(addr_main, data, &SECP256K1_DBL_MEM_CONFIG, mem_collectors_info)
+    super::skip_mem_inputs(addr_main, data, &SECP256K1_DBL_MEM_CONFIG, mem_processors)
 }

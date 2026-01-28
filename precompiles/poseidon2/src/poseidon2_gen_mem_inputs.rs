@@ -1,7 +1,7 @@
 use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
 use precompiles_common::MemBusHelpers;
 use precompiles_common::MemProcessor;
-use zisk_common::MemCollectorInfo;
+
 use zisk_common::OPERATION_BUS_DATA_SIZE;
 
 #[derive(Debug)]
@@ -66,17 +66,15 @@ pub fn generate_poseidon2_mem_inputs<P: MemProcessor>(
     }
 }
 
-pub fn skip_poseidon2_mem_inputs(addr_main: u32, mem_collectors_info: &[MemCollectorInfo]) -> bool {
+pub fn skip_poseidon2_mem_inputs<P: MemProcessor>(addr_main: u32, mem_processors: &mut P) -> bool {
     let write_params = 1;
     let chunks_per_param = 16;
     for param_index in 0..write_params {
         let param_addr = addr_main + (param_index * 8 * chunks_per_param) as u32;
         for ichunk in 0..chunks_per_param {
             let addr = param_addr + ichunk as u32 * 8;
-            for mem_collector in mem_collectors_info {
-                if !mem_collector.skip_addr(addr) {
-                    return false;
-                }
+            if !mem_processors.skip_addr(addr) {
+                return false;
             }
         }
     }

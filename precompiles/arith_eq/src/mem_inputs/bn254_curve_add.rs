@@ -1,7 +1,7 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Bn254Curve;
 use precompiles_common::MemProcessor;
-use zisk_common::MemCollectorInfo;
+
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
 pub const BN254_CURVE_ADD_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
@@ -40,10 +40,10 @@ pub fn generate_bn254_curve_add_mem_inputs<P: MemProcessor>(
     );
 }
 
-pub fn skip_bn254_curve_add_mem_inputs(
+pub fn skip_bn254_curve_add_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     data: &[u64],
-    mem_collectors_info: &[MemCollectorInfo],
+    mem_processors: &mut P,
 ) -> bool {
-    super::skip_mem_inputs(addr_main, data, &BN254_CURVE_ADD_MEM_CONFIG, mem_collectors_info)
+    super::skip_mem_inputs(addr_main, data, &BN254_CURVE_ADD_MEM_CONFIG, mem_processors)
 }

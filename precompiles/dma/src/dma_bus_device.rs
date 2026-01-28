@@ -6,7 +6,7 @@ use precompiles_common::MemProcessor;
 use precompiles_helpers::DmaInfo;
 use std::ops::Add;
 use zisk_common::{BusDevice, BusDeviceMode, BusId, Metrics, B, OPERATION_BUS_ID, OP_TYPE};
-use zisk_common::{MemCollectorInfo, A, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
+use zisk_common::{A, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_core::ZiskOperationType;
 
 use crate::{generate_dma_mem_inputs, skip_dma_mem_inputs, DMA_64_ALIGNED_OPS_BY_ROW};
@@ -110,18 +110,11 @@ impl DmaCounterInputGen {
         data: &[u64],
         data_ext: &[u64],
         mem_processors: &mut P,
-        mem_collector_info: Option<&[MemCollectorInfo]>,
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Dma as u32 {
             return true;
-        }
-
-        if let Some(mem_collectors_info) = mem_collector_info {
-            if skip_dma_mem_inputs(data, data_ext, mem_collectors_info) {
-                return true;
-            }
         }
 
         match self.mode {
@@ -133,6 +126,9 @@ impl DmaCounterInputGen {
                 self.measure(data);
             }
             BusDeviceMode::InputGenerator => {
+                if skip_dma_mem_inputs(data, data_ext, mem_processors) {
+                    return true;
+                }
                 generate_dma_mem_inputs(data, data_ext, false, mem_processors);
             }
         }
