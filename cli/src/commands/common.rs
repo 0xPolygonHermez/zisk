@@ -24,12 +24,6 @@ pub fn get_home_zisk_path() -> PathBuf {
     PathBuf::from(zisk_path)
 }
 
-/// Gets the default zisk folder location in the home installation directory.
-pub fn get_default_zisk_path() -> PathBuf {
-    let zisk_path = format!("{}/.zisk/zisk", get_home_dir());
-    PathBuf::from(zisk_path)
-}
-
 /// Gets the default stark info JSON file location in the home installation directory.
 pub fn get_default_stark_info() -> String {
     let stark_info = format!(
@@ -72,10 +66,4 @@ pub fn get_proving_key(proving_key: Option<&PathBuf>) -> PathBuf {
 /// Uses the default one if not specified by user.
 pub fn get_proving_key_snark(proving_key_snark: Option<&PathBuf>) -> PathBuf {
     proving_key_snark.cloned().unwrap_or_else(get_default_proving_key_snark)
-}
-
-/// Gets the zisk folder.
-/// Uses the default one if not specified by user.
-pub fn get_zisk_path(zisk_path: Option<&PathBuf>) -> PathBuf {
-    zisk_path.cloned().unwrap_or_else(get_default_zisk_path)
 }

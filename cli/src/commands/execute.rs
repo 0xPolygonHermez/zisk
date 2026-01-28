@@ -99,12 +99,12 @@ impl ZiskExecute {
             .emu()
             .witness()
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .print_command_info()
             .build()?;
 
+        prover.setup(self.elf.clone())?;
         prover.execute(stdin)
     }
 
@@ -113,7 +113,6 @@ impl ZiskExecute {
             .asm()
             .witness()
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
@@ -122,6 +121,7 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
+        prover.setup(self.elf.clone())?;
         prover.execute(stdin)
     }
 }

@@ -6,7 +6,30 @@ use std::{
 use anyhow::Result;
 use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
-pub fn generate_assembly(
+use crate::{get_elf_data_hash, get_output_path, get_zisk_path};
+
+pub fn gen_assembly(
+    elf: &Path,
+    zisk_path: &Option<PathBuf>,
+    output_dir: &Option<PathBuf>,
+    verbose: bool,
+) -> Result<(), anyhow::Error> {
+    let output_path = get_output_path(output_dir)?;
+
+    let elf_hash = get_elf_data_hash(elf)?;
+
+    // Assembly setup is not needed on macOS due to the lack of support for assembly generation.
+    #[cfg(not(target_os = "macos"))]
+    {
+        tracing::info!("Computing assembly setup");
+        let zisk_path = get_zisk_path(zisk_path.as_ref());
+        generate_assembly(elf, &elf_hash, &zisk_path, output_path.as_path(), verbose)?;
+        tracing::info!("Assembly setup generated at {}", output_path.display());
+    }
+    Ok(())
+}
+
+fn generate_assembly(
     elf: &Path,
     elf_hash: &str,
     zisk_path: &Path,

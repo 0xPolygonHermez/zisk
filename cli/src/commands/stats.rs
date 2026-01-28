@@ -128,11 +128,12 @@ impl ZiskStats {
             .emu()
             .witness()
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .print_command_info()
             .build()?;
+
+        prover.setup(self.elf.clone())?;
 
         prover.stats(
             stdin,
@@ -147,7 +148,6 @@ impl ZiskStats {
             .asm()
             .witness()
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
@@ -155,6 +155,8 @@ impl ZiskStats {
             .unlock_mapped_memory(self.unlock_mapped_memory)
             .print_command_info()
             .build()?;
+
+        prover.setup(self.elf.clone())?;
 
         let mpi_node = self.mpi_node.map(|n| n as u32);
         prover.stats(stdin, self.debug.clone(), self.minimal_memory, mpi_node)

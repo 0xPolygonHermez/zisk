@@ -111,11 +111,12 @@ impl ZiskVerifyConstraints {
             .emu()
             .verify_constraints()
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .print_command_info()
             .build()?;
+
+        prover.setup(self.elf.clone())?;
 
         prover.verify_constraints_debug(stdin, self.debug.clone())
     }
@@ -125,7 +126,6 @@ impl ZiskVerifyConstraints {
             .asm()
             .verify_constraints()
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
@@ -133,6 +133,8 @@ impl ZiskVerifyConstraints {
             .unlock_mapped_memory(self.unlock_mapped_memory)
             .print_command_info()
             .build()?;
+
+        prover.setup(self.elf.clone())?;
 
         prover.verify_constraints_debug(stdin, self.debug.clone())
     }

@@ -3,6 +3,7 @@ use crate::{
     ZISK_TARGET,
 };
 use cargo_metadata::camino::Utf8PathBuf;
+use rom_setup::gen_assembly;
 use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
@@ -99,6 +100,8 @@ pub fn execute_build_program(
             let output_path = output_directory.join(args.elf_name.as_deref().unwrap_or(elf_name));
 
             std::fs::copy(&elf_path, &output_path)?;
+
+            gen_assembly(elf_path.as_std_path(), &None, &None, true)?;
         }
     }
 

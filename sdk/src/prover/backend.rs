@@ -11,34 +11,110 @@ use proofman::{
     get_vadcop_final_proof_vkey, verify_snark_proof, AggProofs, ProofInfo, ProofMan, ProvePhase,
     ProvePhaseInputs, ProvePhaseResult, SnarkWrapper,
 };
+use std::collections::HashMap;
+
 use proofman_common::ProofOptions;
 use rom_setup::{rom_vkey, verify_program_vk_publics};
 use std::path::PathBuf;
-use zisk_common::{io::ZiskStdin, ExecutorStats, ProofLog, ZiskExecutionResult};
+use std::sync::OnceLock;
+use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 use zisk_verifier::verify_zisk_proof;
-use zisk_witness::WitnessLib;
+use zisk_witness::{WitnessLib, WitnessLibrary};
 
 pub(crate) struct ProverBackend {
-    pub proofman: Option<ProofMan<Goldilocks>>,
-    pub snark_wrapper: Option<SnarkWrapper<Goldilocks>>,
-    pub witness_lib: Option<WitnessLib<Goldilocks>>,
-    pub proving_key_path: PathBuf,
-    pub proving_key_snark_path: Option<PathBuf>,
-    pub verifier_only: bool,
+    proofman: Option<ProofMan<Goldilocks>>,
+    snark_wrapper: Option<SnarkWrapper<Goldilocks>>,
+    witness_lib: OnceLock<WitnessLib<Goldilocks>>,
+    proving_key_path: PathBuf,
+    proving_key_snark_path: Option<PathBuf>,
 }
 
 impl ProverBackend {
+    pub fn new(
+        proofman: ProofMan<Goldilocks>,
+        snark_wrapper: Option<SnarkWrapper<Goldilocks>>,
+        proving_key_path: PathBuf,
+        proving_key_snark_path: Option<PathBuf>,
+    ) -> Self {
+        Self {
+            proofman: Some(proofman),
+            snark_wrapper,
+            witness_lib: OnceLock::new(),
+            proving_key_path,
+            proving_key_snark_path,
+        }
+    }
+
+    pub fn new_verifier(
+        proving_key_path: PathBuf,
+        proving_key_snark_path: Option<PathBuf>,
+    ) -> Self {
+        Self {
+            proofman: None,
+            snark_wrapper: None,
+            witness_lib: OnceLock::new(),
+            proving_key_path,
+            proving_key_snark_path,
+        }
+    }
+
+    pub fn get_proving_key_path(&self) -> &PathBuf {
+        &self.proving_key_path
+    }
+
+    pub fn register_witness_lib(
+        &self,
+        mut witness_lib: WitnessLib<Goldilocks>,
+        custom_commits_map: HashMap<String, PathBuf>,
+    ) -> Result<()> {
+        let proofman = self.proofman.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
+        })?;
+
+        witness_lib.register_witness(&proofman.get_wcm())?;
+
+        if self.witness_lib.set(witness_lib).is_err() {
+            return Err(anyhow::anyhow!("Witness library has already been registered."));
+        }
+
+        proofman
+            .register_custom_commits(custom_commits_map)
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
+    }
+
+    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
+        let witness_lib = self.witness_lib.get().ok_or_else(|| {
+            anyhow::anyhow!("Witness_lib is not initialized. Please initialize it before use.")
+        })?;
+        witness_lib.set_stdin(stdin);
+        Ok(())
+    }
+
+    pub fn execution_result(&self) -> Result<(ZiskExecutionResult, ExecutorStats)> {
+        let witness_lib = self.witness_lib.get().ok_or_else(|| {
+            anyhow::anyhow!("Witness_lib is not initialized. Please initialize it before use.")
+        })?;
+
+        let (result, stats) = witness_lib.execution_result().ok_or_else(|| {
+            anyhow::anyhow!("Failed to get execution result from emulator prover")
+        })?;
+
+        Ok((result, stats))
+    }
+
     pub(crate) fn execute(
         &self,
         stdin: ZiskStdin,
         output_path: Option<PathBuf>,
     ) -> Result<ZiskExecuteResult> {
-        if self.verifier_only {
-            return Err(anyhow::anyhow!("Cannot execute in verifier-only mode"));
-        }
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot execute in verifier mode"))?;
 
-        let witness_lib = self.witness_lib.as_ref().unwrap();
-        let proofman = self.proofman.as_ref().unwrap();
+        let witness_lib = self.witness_lib.get().ok_or_else(|| {
+            anyhow::anyhow!("witness_lib is not initialized. Please initialize it before use.")
+        })?;
 
         witness_lib.set_stdin(stdin);
 
@@ -64,12 +140,14 @@ impl ProverBackend {
         minimal_memory: bool,
         _mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStats>)> {
-        if self.verifier_only {
-            return Err(anyhow::anyhow!("Cannot compute stats in verifier-only mode"));
-        }
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot compute stats in verifier mode"))?;
 
-        let witness_lib = self.witness_lib.as_ref().unwrap();
-        let proofman = self.proofman.as_ref().unwrap();
+        let witness_lib = self.witness_lib.get().ok_or_else(|| {
+            anyhow::anyhow!("witness_lib is not initialized. Please initialize it before use.")
+        })?;
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
@@ -102,16 +180,7 @@ impl ProverBackend {
         proofman
             .compute_witness_from_lib(
                 &debug_info,
-                ProofOptions::new(
-                    false,
-                    false,
-                    false,
-                    false,
-                    false,
-                    minimal_memory,
-                    false,
-                    PathBuf::new(),
-                ),
+                ProofOptions::new(false, false, false, false, false, minimal_memory, false, None),
             )
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
@@ -128,12 +197,14 @@ impl ProverBackend {
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        if self.verifier_only {
-            return Err(anyhow::anyhow!("Cannot verify constraints in verifier-only mode"));
-        }
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot verify constraints in verifier mode"))?;
 
-        let witness_lib = self.witness_lib.as_ref().unwrap();
-        let proofman = self.proofman.as_ref().unwrap();
+        let witness_lib = self.witness_lib.get().ok_or_else(|| {
+            anyhow::anyhow!("witness_lib is not initialized. Please initialize it before use.")
+        })?;
 
         let start = std::time::Instant::now();
 
@@ -180,12 +251,14 @@ impl ProverBackend {
         stdin: ZiskStdin,
         proof_options: ProofOpts,
     ) -> Result<ZiskProveResult> {
-        if self.verifier_only {
-            return Err(anyhow::anyhow!("Cannot prove in verifier-only mode"));
-        }
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot prove in verifier mode"))?;
 
-        let witness_lib = self.witness_lib.as_ref().unwrap();
-        let proofman = self.proofman.as_ref().unwrap();
+        let witness_lib = self.witness_lib.get().ok_or_else(|| {
+            anyhow::anyhow!("witness_lib is not initialized. Please initialize it before use.")
+        })?;
 
         let start = std::time::Instant::now();
 
@@ -203,10 +276,7 @@ impl ProverBackend {
                     proof_options.verify_proofs,
                     proof_options.minimal_memory,
                     proof_options.save_proofs,
-                    proof_options
-                        .output_dir_path
-                        .clone()
-                        .expect("output_dir must be set, unreachable"),
+                    proof_options.output_dir_path.clone(),
                 ),
                 ProvePhase::Full,
             )
@@ -243,12 +313,14 @@ impl ProverBackend {
         mode: ProofMode,
         proof_options: ProofOpts,
     ) -> Result<ZiskProveResult> {
-        if self.verifier_only {
-            return Err(anyhow::anyhow!("Cannot prove in verifier-only mode"));
-        }
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot prove in verifier mode"))?;
 
-        let witness_lib = self.witness_lib.as_ref().unwrap();
-        let proofman = self.proofman.as_ref().unwrap();
+        let witness_lib = self.witness_lib.get().ok_or_else(|| {
+            anyhow::anyhow!("witness_lib is not initialized. Please initialize it before use.")
+        })?;
 
         let start = std::time::Instant::now();
 
@@ -268,10 +340,7 @@ impl ProverBackend {
                     proof_options.verify_proofs,
                     proof_options.minimal_memory,
                     proof_options.save_proofs,
-                    proof_options
-                        .output_dir_path
-                        .clone()
-                        .expect("output_dir must be set, unreachable"),
+                    proof_options.output_dir_path.clone(),
                 ),
                 ProvePhase::Full,
             )
@@ -288,16 +357,6 @@ impl ProverBackend {
             anyhow::anyhow!("Failed to get execution result from emulator prover")
         })?;
 
-        let output_dir = proof_options.output_dir_path.as_ref().unwrap();
-
-        if let Some(proof_id) = proof_id.clone() {
-            let logs =
-                ProofLog::new(execution_result.executed_steps, proof_id, elapsed.as_secs_f64());
-            let log_path = output_dir.join("result.json");
-            ProofLog::write_json_log(&log_path, &logs)
-                .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
-        }
-
         // Store the stats in stats.json
         #[cfg(feature = "stats")]
         {
@@ -310,11 +369,10 @@ impl ProverBackend {
 
         match (mode, proof) {
             (ProofMode::Plonk, Some(vadcop_proof)) => {
-                let plonk_proof = self
-                    .snark_wrapper
-                    .as_ref()
-                    .unwrap()
-                    .generate_final_snark_proof(&vadcop_proof, output_dir)?;
+                let plonk_proof = self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(
+                    &vadcop_proof,
+                    proof_options.output_dir_path.clone(),
+                )?;
 
                 Ok(ZiskProveResult {
                     execution: execution_result,
@@ -347,13 +405,12 @@ impl ProverBackend {
         options: ProofOptions,
         phase: ProvePhase,
     ) -> Result<ZiskPhaseResult> {
-        if self.verifier_only {
-            return Err(anyhow::anyhow!("Cannot prove phase in verifier-only mode"));
-        }
-
-        self.proofman
+        let proofman = self
+            .proofman
             .as_ref()
-            .unwrap()
+            .ok_or_else(|| anyhow::anyhow!("Cannot prove in verifier mode"))?;
+
+        proofman
             .generate_proof_from_lib(phase_inputs, options, phase.clone())
             .map_err(|e| anyhow::anyhow!("Error generating proof in phase {:?}: {}", phase, e))
     }
@@ -365,14 +422,12 @@ impl ProverBackend {
         final_proof: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        if self.verifier_only {
-            return Err(anyhow::anyhow!("Cannot aggregate proofs in verifier-only mode"));
-        }
-
-        let result = self
+        let proofman = self
             .proofman
             .as_ref()
-            .unwrap()
+            .ok_or_else(|| anyhow::anyhow!("Cannot aggregate proofs in verifier mode"))?;
+
+        let result = proofman
             .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
             .map_err(|e| anyhow::anyhow!("Error aggregating proofs: {}", e))?;
 
@@ -380,11 +435,12 @@ impl ProverBackend {
     }
 
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
-        if self.verifier_only {
-            return Err(anyhow::anyhow!("Cannot broadcast in verifier-only mode"));
-        }
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot broadcast in verifier mode"))?;
 
-        self.proofman.as_ref().unwrap().mpi_broadcast(data);
+        proofman.mpi_broadcast(data);
         Ok(())
     }
 
@@ -419,7 +475,7 @@ impl ProverBackend {
                 verify_program_vk_publics(
                     &program_vk.vk,
                     program_vk.starting_pos_publics_program_vk,
-                    &public_values,
+                    public_values,
                 )?;
 
                 let vk = get_vadcop_final_proof_vkey(&self.proving_key_path, proof.compressed)?;

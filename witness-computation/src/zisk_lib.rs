@@ -210,24 +210,24 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         Ok(())
     }
+}
 
-    fn get_packed_info(&self) -> HashMap<(usize, usize), PackedInfo> {
-        let mut _packed_info = HashMap::new();
-        #[cfg(feature = "packed")]
-        {
-            for packed_info in PACKED_INFO.iter() {
-                _packed_info.insert(
-                    (packed_info.0, packed_info.1),
-                    PackedInfo::new(
-                        packed_info.2.is_packed,
-                        packed_info.2.num_packed_words,
-                        packed_info.2.unpack_info.to_vec(),
-                    ),
-                );
-            }
+pub fn get_packed_info() -> HashMap<(usize, usize), PackedInfo> {
+    let mut _packed_info = HashMap::new();
+    #[cfg(feature = "packed")]
+    {
+        for packed_info in PACKED_INFO.iter() {
+            _packed_info.insert(
+                (packed_info.0, packed_info.1),
+                PackedInfo::new(
+                    packed_info.2.is_packed,
+                    packed_info.2.num_packed_words,
+                    packed_info.2.unpack_info.to_vec(),
+                ),
+            );
         }
-        _packed_info
     }
+    _packed_info
 }
 
 impl WitnessLib<Goldilocks> {

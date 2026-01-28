@@ -44,11 +44,11 @@ impl ZiskProveSnark {
             SnarkWrapper::new(&self.proving_key_snark, self.verbose.into())?;
 
         let snark_proof =
-            snark_wrapper.generate_final_snark_proof(&proof, &self.output_dir.clone())?;
-        snark_proof.save(&self.output_dir).map_err(|e| {
+            snark_wrapper.generate_final_snark_proof(&proof, Some(self.output_dir.clone()))?;
+        snark_proof.save(self.output_dir.join("final_snark_proof.bin")).map_err(|e| {
             anyhow::anyhow!(
                 "Failed to save final SNARK proof to output dir {}: {}",
-                self.output_dir.display(),
+                self.output_dir.join("final_snark_proof.bin").display(),
                 e
             )
         })?;

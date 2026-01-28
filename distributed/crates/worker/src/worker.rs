@@ -1,9 +1,7 @@
 use anyhow::Result;
 use cargo_zisk::commands::get_proving_key;
 use proofman::{AggProofs, ContributionsInfo};
-use rom_setup::{
-    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_info, DEFAULT_CACHE_PATH,
-};
+use rom_setup::{get_elf_data_hash, DEFAULT_CACHE_PATH};
 use std::fs;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
@@ -18,7 +16,6 @@ use proofman::ProvePhaseInputs;
 use proofman_common::ParamsGPU;
 use proofman_common::ProofOptions;
 use proofman_common::{json_to_debug_instances_map, DebugInfo};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::{error, info};
 
@@ -54,9 +51,6 @@ pub struct ProverConfig {
 
     /// Path to the ASM ROM file (optional)
     pub asm_rom: Option<PathBuf>,
-
-    /// Map of custom commits
-    pub custom_commits_map: HashMap<String, PathBuf>,
 
     /// Flag indicating whether to use the prebuilt emulator
     pub emulator: bool,
@@ -171,25 +165,6 @@ impl ProverConfig {
                 return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
             }
         }
-        let rom_info = get_rom_info(&proving_key)?;
-        let rom_bin_path = get_elf_bin_file_path(
-            &prover_service_config.elf.to_path_buf(),
-            &default_cache_path,
-            rom_info.blowup_factor,
-            rom_info.merkle_tree_arity,
-        )?;
-        if !rom_bin_path.exists() {
-            let _ = gen_elf_hash(
-                &prover_service_config.elf.clone(),
-                rom_bin_path.as_path(),
-                rom_info.blowup_factor,
-                rom_info.merkle_tree_arity,
-                false,
-            )
-            .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
-        }
-        let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
-        custom_commits_map.insert("rom".to_string(), rom_bin_path);
         let mut gpu_params = None;
         if prover_service_config.preallocate
             || prover_service_config.max_streams.is_some()
@@ -213,7 +188,6 @@ impl ProverConfig {
             elf: prover_service_config.elf.clone(),
             asm: prover_service_config.asm.clone(),
             asm_rom,
-            custom_commits_map,
             emulator,
             proving_key,
             verbose: prover_service_config.verbose,
@@ -266,13 +240,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .prove()
                 .aggregation(true)
                 .proving_key_path(prover_config.proving_key.clone())
-                .elf_path(prover_config.elf.clone())
                 .verbose(prover_config.verbose)
                 .shared_tables(prover_config.shared_tables)
                 .gpu(prover_config.gpu_params.clone())
                 .print_command_info()
                 .build()?,
         );
+
+        prover.setup(prover_config.elf.clone())?;
 
         Ok(Worker::<Emu> {
             _worker_id: worker_id,
@@ -296,7 +271,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .prove()
                 .aggregation(true)
                 .proving_key_path(prover_config.proving_key.clone())
-                .elf_path(prover_config.elf.clone())
                 .verbose(prover_config.verbose)
                 .shared_tables(prover_config.shared_tables)
                 .asm_path_opt(prover_config.asm.clone())
@@ -306,6 +280,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .print_command_info()
                 .build()?,
         );
+
+        prover.setup(prover_config.elf.clone())?;
 
         Ok(Worker::<Asm> {
             _worker_id: worker_id,
@@ -530,15 +506,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         match input_source {
             InputSourceDto::InputPath(input_path) => {
                 let stdin = ZiskStdin::from_file(input_path)?;
-                prover.set_stdin(stdin);
+                prover.set_stdin(stdin)?;
             }
             InputSourceDto::InputData(input_data) => {
                 let stdin = ZiskStdin::from_vec(input_data);
-                prover.set_stdin(stdin);
+                prover.set_stdin(stdin)?;
             }
             InputSourceDto::InputNull => {
                 let stdin = ZiskStdin::null();
-                prover.set_stdin(stdin);
+                prover.set_stdin(stdin)?;
             }
         }
 
@@ -697,7 +673,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             verify_proofs: false,
             save_proofs: false,
             test_mode: false,
-            output_dir_path: PathBuf::from("."),
+            output_dir_path: None,
             rma: self.prover_config.rma,
             minimal_memory: self.prover_config.minimal_memory,
             compressed,

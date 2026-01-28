@@ -11,6 +11,9 @@ categories.workspace = true
 clap = { workspace = true }
 cargo_metadata = "0.23.0"
 anyhow = { workspace = true }
+tracing = { workspace = true }
+rom-setup = { workspace = true }
+zisk-sdk = { workspace = true }
 
 [build-dependencies]
 vergen = { version = "8", default-features = false, features = [

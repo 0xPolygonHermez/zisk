@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    get_asm_paths, get_proving_key, get_proving_key_snark,
+    get_proving_key, get_proving_key_snark,
     prover::{Asm, AsmProver, Emu, EmuProver, ZiskProver},
 };
 use colored::Colorize;
@@ -28,7 +28,7 @@ pub struct Prove;
 /// ```rust,no_run
 /// use zisk_sdk::ProverClientBuilder;
 ///
-/// let elf_path = std::path::PathBuf::from("path/to/program.elf");
+/// let elf_path = std::path::PathBuf::from("path/to/program");
 /// let output_path = std::path::PathBuf::from("path/to/output");
 ///
 /// let prover_emu = ProverClientBuilder::new()
@@ -51,7 +51,6 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     snark_wrapper: bool,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
-    elf: Option<PathBuf>,
     verify_constraints: bool,
     witness: bool,
     verbose: u8,
@@ -171,12 +170,6 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     }
 
     #[must_use]
-    pub fn elf_path(mut self, elf_path: PathBuf) -> Self {
-        self.elf = Some(elf_path);
-        self
-    }
-
-    #[must_use]
     pub fn verbose(mut self, verbose: u8) -> Self {
         self.verbose = verbose;
         self
@@ -253,7 +246,7 @@ impl ProverClientBuilder<EmuB, WitnessGeneration> {
     /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
     ///
-    /// let elf_path = std::path::PathBuf::from("path/to/program.elf");
+    /// let elf_path = std::path::PathBuf::from("path/to/program");
     ///
     /// let prover = ProverClientBuilder::new()
     ///     .emu()
@@ -280,7 +273,7 @@ impl ProverClientBuilder<EmuB, Prove> {
     /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
     ///
-    /// let elf_path = std::path::PathBuf::from("path/to/program.elf");
+    /// let elf_path = std::path::PathBuf::from("path/to/program");
     ///     
     /// let prover = ProverClientBuilder::new()
     ///    .emu()
@@ -297,7 +290,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
     fn build_emu(self) -> Result<ZiskProver<Emu>> {
         let proving_key = get_proving_key(self.proving_key.as_ref());
         let proving_key_snark = get_proving_key_snark(self.proving_key_snark.as_ref());
-        let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
 
         if self.print_command_info {
             Self::print_emu_command_info(
@@ -305,7 +297,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
                 self.verify_constraints,
                 &proving_key,
                 &proving_key_snark,
-                &elf,
             );
         }
 
@@ -318,7 +309,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
                 self.snark_wrapper,
                 proving_key,
                 proving_key_snark,
-                elf,
                 self.verbose,
                 self.shared_tables,
                 self.gpu_params,
@@ -334,7 +324,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
         verify_constraints: bool,
         proving_key: &Path,
         proving_key_snark: &Path,
-        elf: &Path,
     ) {
         if witness {
             println!("{: >12} StatsConstraints", "Command".bright_green().bold());
@@ -344,7 +333,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
             println!("{: >12} Prove", "Command".bright_green().bold());
         }
 
-        println!("{: >12} {}", "Elf".bright_green().bold(), elf.display());
         println!(
             "{: >12} {}",
             "Emulator".bright_green().bold(),
@@ -370,7 +358,7 @@ impl ProverClientBuilder<AsmB, WitnessGeneration> {
     /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
     ///
-    /// let elf_path = std::path::PathBuf::from("path/to/program.elf");
+    /// let elf_path = std::path::PathBuf::from("path/to/program");
     ///
     /// let prover = ProverClientBuilder::new()
     ///     .asm()
@@ -405,7 +393,7 @@ impl ProverClientBuilder<AsmB, Prove> {
     /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
     ///
-    /// let elf_path = std::path::PathBuf::from("path/to/program.elf");
+    /// let elf_path = std::path::PathBuf::from("path/to/program");
     ///
     /// let prover = ProverClientBuilder::new()
     ///     .asm()
@@ -430,9 +418,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
     {
         let proving_key = get_proving_key(self.proving_key.as_ref());
         let proving_key_snark = get_proving_key_snark(self.proving_key_snark.as_ref());
-        let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
-
-        let (asm_mt_filename, asm_rh_filename) = get_asm_paths(&elf)?;
 
         if self.print_command_info {
             Self::print_asm_command_info(
@@ -440,7 +425,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
                 self.verify_constraints,
                 &proving_key,
                 &proving_key_snark,
-                &elf,
             );
         }
 
@@ -453,11 +437,8 @@ impl<X> ProverClientBuilder<AsmB, X> {
                 self.snark_wrapper,
                 proving_key,
                 proving_key_snark,
-                elf,
                 self.verbose,
                 self.shared_tables,
-                asm_mt_filename,
-                asm_rh_filename,
                 self.base_port,
                 self.unlock_mapped_memory,
                 self.gpu_params,
@@ -473,7 +454,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
         verify_constraints: bool,
         proving_key: &Path,
         proving_key_snark: &Path,
-        elf: &Path,
     ) {
         if witness {
             println!("{: >12} StatsConstraints", "Command".bright_green().bold());
@@ -483,7 +463,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
             println!("{: >12} Prove", "Command".bright_green().bold());
         }
 
-        println!("{: >12} {}", "Elf".bright_green().bold(), elf.display());
         println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key.display());
 
         println!(
@@ -508,7 +487,6 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
-            elf: builder.elf,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
@@ -537,7 +515,6 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
-            elf: builder.elf,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
@@ -568,7 +545,6 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
-            elf: builder.elf,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
@@ -598,7 +574,6 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: false,
             gpu_params: builder.gpu_params,
-            elf: builder.elf,
             verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,

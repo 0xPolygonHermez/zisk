@@ -145,10 +145,10 @@ impl ZiskProve {
             );
 
             if let Proof::VadcopFinal(vadcop_proof) = &result.proof {
-                vadcop_proof.save(&self.output_dir).map_err(|e| {
+                vadcop_proof.save(self.output_dir.join("final_vadcop_proof.bin")).map_err(|e| {
                     anyhow::anyhow!(
                         "Failed to save VadcopFinalProof to output dir {:?}: {}",
-                        self.output_dir,
+                        self.output_dir.join("final_vadcop_proof.bin").display(),
                         e
                     )
                 })?;
@@ -188,12 +188,13 @@ impl ZiskProve {
         let prover = ProverClient::builder()
             .aggregation(self.aggregation)
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .gpu(gpu_params)
             .print_command_info()
             .build()?;
+
+        prover.setup(self.elf.clone())?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -219,7 +220,6 @@ impl ZiskProve {
             .aggregation(self.aggregation)
             .asm()
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
@@ -228,6 +228,8 @@ impl ZiskProve {
             .gpu(gpu_params)
             .print_command_info()
             .build()?;
+
+        prover.setup(self.elf.clone())?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,

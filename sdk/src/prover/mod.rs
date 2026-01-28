@@ -10,7 +10,10 @@ use proofman_common::ProofOptions;
 use proofman_util::VadcopFinalProof;
 
 use anyhow::Result;
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 
 pub struct ZiskExecuteResult {
@@ -52,6 +55,33 @@ impl Default for ProofOpts {
     }
 }
 
+impl ProofOpts {
+    pub fn output_dir(mut self, path: PathBuf) -> Self {
+        self.output_dir_path = Some(path);
+        self
+    }
+
+    pub fn save_proofs(mut self) -> Self {
+        self.save_proofs = true;
+        self
+    }
+
+    pub fn verify_proofs(mut self) -> Self {
+        self.verify_proofs = true;
+        self
+    }
+
+    pub fn minimal_memory(mut self) -> Self {
+        self.minimal_memory = true;
+        self
+    }
+
+    pub fn no_aggregation(mut self) -> Self {
+        self.aggregation = false;
+        self
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProofMode {
     VadcopFinal,
@@ -73,6 +103,20 @@ pub struct ZiskProveResult {
     pub proof: Proof,
 }
 
+impl ZiskProveResult {
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
+        match &self.proof {
+            Proof::Null() => Err(anyhow::anyhow!("No proof to save")),
+            Proof::VadcopFinal(vadcop_proof) => {
+                vadcop_proof.save(path).map_err(|e| anyhow::anyhow!("{}", e))
+            }
+            Proof::Plonk(snark_proof) => {
+                snark_proof.save(path).map_err(|e| anyhow::anyhow!("{}", e))
+            }
+        }
+    }
+}
+
 pub type ZiskPhaseResult = ProvePhaseResult;
 
 pub struct ZiskAggPhaseResult {
@@ -80,11 +124,13 @@ pub struct ZiskAggPhaseResult {
 }
 
 pub trait ProverEngine {
+    fn setup(&self, elf_path: PathBuf) -> Result<ZiskProgramVK>;
+
     fn world_rank(&self) -> i32;
 
     fn local_rank(&self) -> i32;
 
-    fn set_stdin(&self, stdin: ZiskStdin);
+    fn set_stdin(&self, stdin: ZiskStdin) -> Result<()>;
 
     fn executed_steps(&self) -> u64;
 
@@ -151,9 +197,13 @@ impl<C: ZiskBackend> ZiskProver<C> {
         Self { prover }
     }
 
+    pub fn setup(&self, elf_path: PathBuf) -> Result<ZiskProgramVK> {
+        self.prover.setup(elf_path)
+    }
+
     /// Set the standard input for the current proof.
-    pub fn set_stdin(&self, stdin: ZiskStdin) {
-        self.prover.set_stdin(stdin);
+    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
+        self.prover.set_stdin(stdin)
     }
 
     /// Get the world rank of the prover. The world rank is the rank of the prover in the global MPI context.
@@ -206,6 +256,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     pub fn vk(&self, elf_path: PathBuf) -> Result<ZiskProgramVK> {
         self.prover.vk(elf_path)
+    }
+
+    pub fn verify(&self, proof: &ZiskProveResult, vk: &ZiskProgramVK) -> Result<()> {
+        self.prover.verify(proof, vk)
     }
 
     /// Generate a proof with the given standard input.

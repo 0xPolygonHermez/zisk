@@ -4,11 +4,49 @@ use proofman_common::{
     write_custom_commit_trace, GlobalInfo, ProofType, ProofmanResult, StarkInfo,
 };
 use sm_rom::RomSM;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
 
 pub const DEFAULT_CACHE_PATH: &str = ".zisk/cache";
+
+/// Gets the user's home directory as specified by the HOME environment variable.
+pub fn get_home_dir() -> String {
+    env::var("HOME").expect("get_home_dir() failed to get HOME environment variable")
+}
+
+/// Gets the default zisk folder location in the home installation directory.
+pub fn get_default_zisk_path() -> PathBuf {
+    let zisk_path = format!("{}/.zisk/zisk", get_home_dir());
+    PathBuf::from(zisk_path)
+}
+
+/// Gets the zisk folder.
+/// Uses the default one if not specified by user.
+pub fn get_zisk_path(zisk_path: Option<&PathBuf>) -> PathBuf {
+    zisk_path.cloned().unwrap_or_else(get_default_zisk_path)
+}
+
+pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
+    let output_path = if output_dir.is_none() {
+        let cache_path = std::env::var("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join(DEFAULT_CACHE_PATH))
+            .unwrap_or_else(|_| panic!("$HOME environment variable is not set"));
+
+        ensure_dir_exists(&cache_path);
+        cache_path
+    } else {
+        ensure_dir_exists(output_dir.as_ref().unwrap());
+        output_dir.clone().unwrap()
+    };
+
+    let output_path = fs::canonicalize(&output_path)
+        .unwrap_or_else(|_| panic!("Failed to get absolute path for {output_path:?}"));
+
+    Ok(output_path)
+}
 
 pub fn gen_elf_hash(
     rom_path: &Path,
