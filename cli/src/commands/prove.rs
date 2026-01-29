@@ -144,8 +144,8 @@ impl ZiskProve {
                 "--- PROVE SUMMARY ------------------------".bright_green().bold()
             );
 
-            if let Proof::VadcopFinal(vadcop_proof) = &result.proof {
-                vadcop_proof.save(self.output_dir.join("vadcop_final_proof.bin")).map_err(|e| {
+            if result.proof != Proof::Null() {
+                result.save(self.output_dir.join("vadcop_final_proof.bin")).map_err(|e| {
                     anyhow::anyhow!(
                         "Failed to save VadcopFinalProof to output dir {:?}: {}",
                         self.output_dir.join("vadcop_final_proof.bin").display(),

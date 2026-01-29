@@ -24,6 +24,7 @@ bytemuck = { workspace = true }
 zisk-distributed-common = { workspace = true }
 zisk-verifier = { workspace = true }
 zisk-witness = { workspace = true }
+sha2 = { workspace = true }
 
 [features]
 default = []

@@ -10,7 +10,7 @@ use asm_runner::{AsmRunnerOptions, AsmServices};
 use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, VerboseMode};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use rom_setup::{get_rom_info, DEFAULT_CACHE_PATH};
+use rom_setup::DEFAULT_CACHE_PATH;
 use std::sync::OnceLock;
 use std::{collections::HashMap, path::PathBuf};
 use tracing::info;
@@ -96,7 +96,6 @@ impl ProverEngine for AsmProver {
         check_paths_exist(&elf)?;
         let proving_key = self.core_prover.backend.get_proving_key_path();
         let (rom_bin_path, vk) = ensure_custom_commits(proving_key, &elf)?;
-        let rom_info = get_rom_info(proving_key)?;
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path)]);
 
         let default_cache_path = std::env::var("HOME")
@@ -143,10 +142,7 @@ impl ProverEngine for AsmProver {
             .map_err(|_| anyhow::anyhow!("ASM services have already been initialized."))?;
 
         self.core_prover.backend.register_witness_lib(witness_lib, custom_commits_map)?;
-        Ok(ZiskProgramVK {
-            vk,
-            starting_pos_publics_program_vk: rom_info.starting_pos_publics_program_vk,
-        })
+        Ok(ZiskProgramVK { vk })
     }
 
     fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult> {

@@ -184,31 +184,3 @@ pub fn ensure_dir_exists(path: &PathBuf) {
         }
     }
 }
-
-/// Verify that the program VK publics match the proof's public values.
-///
-/// `program_vk` contains 4 publics, each is a u64 (8 bytes), so 32 bytes total.
-/// This function compares `program_vk` with the bytes in `public_values` starting at `starting_pos`.
-pub fn verify_program_vk_publics(
-    program_vk: &[u8],
-    starting_pos: u64,
-    public_values: &[u8],
-) -> Result<(), anyhow::Error> {
-    let end = starting_pos as usize + program_vk.len();
-
-    if public_values.len() < end {
-        return Err(anyhow::anyhow!(
-            "Proof public values too short: expected at least {} bytes, got {}",
-            end,
-            public_values.len()
-        ));
-    }
-
-    let proof_publics = &public_values[starting_pos as usize..end];
-
-    if program_vk != proof_publics {
-        return Err(anyhow::anyhow!("Program VK publics do not match proof public values"));
-    }
-
-    Ok(())
-}

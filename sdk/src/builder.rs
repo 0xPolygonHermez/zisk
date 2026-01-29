@@ -138,8 +138,8 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     }
 
     #[must_use]
-    pub fn snark(mut self, enable: bool) -> Self {
-        self.snark_wrapper = enable;
+    pub fn snark(mut self) -> Self {
+        self.snark_wrapper = true;
         self
     }
 

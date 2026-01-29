@@ -6,7 +6,6 @@ use crate::{
 };
 use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, VerboseMode};
-use rom_setup::get_rom_info;
 use std::path::PathBuf;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ExecutorStats;
@@ -82,7 +81,6 @@ impl ProverEngine for EmuProver {
         let proving_key = self.core_prover.backend.get_proving_key_path();
 
         let (rom_bin_path, vk) = ensure_custom_commits(proving_key, &elf)?;
-        let rom_info = get_rom_info(proving_key)?;
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path)]);
 
         // Build emulator library
@@ -90,10 +88,7 @@ impl ProverEngine for EmuProver {
             ZiskLibLoader::load_emu(elf, self.core_prover.verbose, self.core_prover.shared_tables)?;
 
         self.core_prover.backend.register_witness_lib(witness_lib, custom_commits_map)?;
-        Ok(ZiskProgramVK {
-            vk,
-            starting_pos_publics_program_vk: rom_info.starting_pos_publics_program_vk,
-        })
+        Ok(ZiskProgramVK { vk })
     }
 
     fn executed_steps(&self) -> u64 {

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use zisk_common::io::ZiskIO;
 use zisk_common::io::ZiskStdin;
-use zisk_sdk::{include_elf, ProofOpts, ProverClient};
+use zisk_sdk::{ProofOpts, ProverClient, ZiskProveResult, include_elf};
 
 pub const ELF: &str = include_elf!("sha-hasher-guest");
 
@@ -17,7 +17,6 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     let client = ProverClient::builder()
-        .asm()
         .proving_key_path(PathBuf::from("/home/roger/zisk/build/provingKey"))
         .build()
         .unwrap();
@@ -32,11 +31,14 @@ fn main() -> Result<()> {
         result.execution.executed_steps, result.duration
     );
 
-    let proof_opts = ProofOpts::default().verify_proofs();
-    let proof = client.prove(stdin).with_proof_options(proof_opts).compressed().run()?;
-    client.verify(&proof, &vk).expect("verification failed");
+    let proof_opts = ProofOpts::default().minimal_memory();
+    let proof = client.prove(stdin).with_proof_options(proof_opts).run()?;
+    client.verify(&proof, &vk)?;
 
-    proof.save("sha_hasher_proof.bin")?;
+    proof.save("/tmp/sha_hasher_proof_snark.bin")?;
+
+    let proof_stored = ZiskProveResult::load("/tmp/sha_hasher_proof_snark.bin")?;
+    client.verify(&proof_stored, &vk)?;
 
     println!("successfully generated and verified proof for the program!");
 
