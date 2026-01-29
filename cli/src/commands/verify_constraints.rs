@@ -116,7 +116,7 @@ impl ZiskVerifyConstraints {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone())?;
+        prover.setup(self.elf.clone().to_str().unwrap())?;
 
         prover.verify_constraints_debug(stdin, self.debug.clone())
     }
@@ -134,7 +134,7 @@ impl ZiskVerifyConstraints {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone())?;
+        prover.setup(self.elf.clone().to_str().unwrap())?;
 
         prover.verify_constraints_debug(stdin, self.debug.clone())
     }

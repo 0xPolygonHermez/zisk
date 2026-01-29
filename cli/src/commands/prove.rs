@@ -194,7 +194,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone())?;
+        prover.setup(self.elf.clone().to_str().unwrap())?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -229,7 +229,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone())?;
+        prover.setup(self.elf.clone().to_str().unwrap())?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,

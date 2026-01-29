@@ -104,7 +104,7 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone())?;
+        prover.setup(self.elf.clone().to_str().unwrap())?;
         prover.execute(stdin)
     }
 
@@ -121,7 +121,7 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone())?;
+        prover.setup(self.elf.clone().to_str().unwrap())?;
         prover.execute(stdin)
     }
 }

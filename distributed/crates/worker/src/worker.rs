@@ -247,7 +247,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        prover.setup(prover_config.elf.clone())?;
+        prover.setup(prover_config.elf.clone().to_str().unwrap())?;
 
         Ok(Worker::<Emu> {
             _worker_id: worker_id,
@@ -281,7 +281,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        prover.setup(prover_config.elf.clone())?;
+        prover.setup(prover_config.elf.clone().to_str().unwrap())?;
 
         Ok(Worker::<Asm> {
             _worker_id: worker_id,

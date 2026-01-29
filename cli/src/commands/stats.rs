@@ -133,7 +133,7 @@ impl ZiskStats {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone())?;
+        prover.setup(self.elf.clone().to_str().unwrap())?;
 
         prover.stats(
             stdin,
@@ -156,7 +156,7 @@ impl ZiskStats {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone())?;
+        prover.setup(self.elf.clone().to_str().unwrap())?;
 
         let mpi_node = self.mpi_node.map(|n| n as u32);
         prover.stats(stdin, self.debug.clone(), self.minimal_memory, mpi_node)
