@@ -13,6 +13,7 @@ use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_arith_eq_384::ArithEq384Manager;
 use precomp_big_int::Add256Manager;
+use precomp_dma::DmaManager;
 use precomp_keccakf::KeccakfManager;
 use precomp_poseidon2::Poseidon2Manager;
 use precomp_sha256f::Sha256fManager;
@@ -28,14 +29,15 @@ use tracing::debug;
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_common::{
     io::{ZiskStdin, ZiskStream},
-    ExecutorStats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary,
+    ExecutorStats, ZiskExecutionResult,
 };
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 #[cfg(feature = "packed")]
 use zisk_pil::PACKED_INFO;
 use zisk_pil::{
     ADD_256_AIR_IDS, ARITH_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS,
-    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MEM_AIR_IDS,
+    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, DMA_64_ALIGNED_AIR_IDS, DMA_AIR_IDS,
+    DMA_PRE_POST_AIR_IDS, DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MEM_AIR_IDS,
     MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS,
     MEM_ALIGN_WRITE_BYTE_AIR_IDS, POSEIDON_2_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
     SHA_256_F_AIR_IDS, ZISK_AIRGROUP_ID,
@@ -56,9 +58,8 @@ pub struct WitnessLib<F: PrimeField64> {
     with_hints: bool,
 }
 
-#[no_mangle]
 #[allow(clippy::too_many_arguments)]
-fn init_library(
+pub fn init_zisk_lib<F: PrimeField64>(
     verbose_mode: proofman_common::VerboseMode,
     elf_path: PathBuf,
     asm_mt_path: Option<PathBuf>,
@@ -67,10 +68,10 @@ fn init_library(
     unlock_mapped_memory: bool,
     shared_tables: bool,
     with_hints: bool,
-) -> Result<Box<dyn ZiskLib<Goldilocks>>, Box<dyn std::error::Error>> {
+) -> WitnessLib<F> {
     let chunk_size = CHUNK_SIZE;
 
-    let result = Box::new(WitnessLib {
+    WitnessLib {
         elf_path,
         asm_mt_path,
         asm_rh_path,
@@ -81,9 +82,7 @@ fn init_library(
         shared_tables,
         with_hints,
         verbose_mode,
-    });
-
-    Ok(result)
+    }
 }
 
 impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
@@ -130,6 +129,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let arith_eq_sm = ArithEqManager::new(std.clone());
         let arith_eq_384_sm = ArithEq384Manager::new(std.clone());
         let add256_sm = Add256Manager::new(std.clone());
+        let dma_sm = DmaManager::new(std.clone());
 
         let mem_instances = vec![
             (ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]),
@@ -145,6 +145,13 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]),
             (ZISK_AIRGROUP_ID, BINARY_ADD_AIR_IDS[0]),
             (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]),
+        ];
+
+        let dma_instances = vec![
+            (ZISK_AIRGROUP_ID, DMA_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, DMA_PRE_POST_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, DMA_64_ALIGNED_AIR_IDS[0]),
+            (ZISK_AIRGROUP_ID, DMA_UNALIGNED_AIR_IDS[0]),
         ];
 
         let sm_bundle = StaticSMBundle::new(
@@ -182,6 +189,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
                     vec![(ZISK_AIRGROUP_ID, ADD_256_AIR_IDS[0])],
                     StateMachines::Add256Manager(add256_sm.clone()),
                 ),
+                (dma_instances, StateMachines::DmaManager(dma_sm.clone())),
             ],
         );
 
@@ -244,6 +252,9 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         wcm.register_component(executor.clone());
 
         self.executor = Some(executor);
+
+        wcm.set_witness_initialized();
+
         Ok(())
     }
 
@@ -266,14 +277,14 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
     }
 }
 
-impl ZiskWitnessLibrary<Goldilocks> for WitnessLib<Goldilocks> {
-    fn set_stdin(&self, stdin: ZiskStdin) {
+impl WitnessLib<Goldilocks> {
+    pub fn set_stdin(&self, stdin: ZiskStdin) {
         if let Some(executor) = &self.executor {
             executor.set_stdin(stdin);
         }
     }
 
-    fn set_hints_stream(&self, hints_stream: zisk_common::io::StreamSource) -> Result<()> {
+    pub fn set_hints_stream(&self, hints_stream: zisk_common::io::StreamSource) -> Result<()> {
         if let Some(executor) = &self.executor {
             executor.set_hints_stream_src(hints_stream)
         } else {
@@ -285,9 +296,7 @@ impl ZiskWitnessLibrary<Goldilocks> for WitnessLib<Goldilocks> {
     ///
     /// # Returns
     /// * `u16` - The execution result code.
-    fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
+    pub fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
         self.executor.as_ref().map(|executor| executor.get_execution_result())
     }
 }
-
-impl ZiskLib<Goldilocks> for WitnessLib<Goldilocks> {}

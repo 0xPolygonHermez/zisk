@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use std::fmt;
-use zisk_core::DEFAULT_MAX_STEPS_STR;
+use zisk_core::{DEFAULT_MAX_STEPS, DEFAULT_MAX_STEPS_STR};
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
     env!("CARGO_PKG_VERSION"),
@@ -103,7 +103,7 @@ impl Default for EmuOptions {
             elf: None,
             inputs: None,
             output: None,
-            max_steps: 0xFFFFFFFFFFFFFFFF,
+            max_steps: DEFAULT_MAX_STEPS,
             print_step: None,
             trace: None,
             verbose: false,

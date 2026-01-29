@@ -10,9 +10,9 @@ pub struct KeccakfInput {
 impl KeccakfInput {
     pub fn from(values: &OperationKeccakData<u64>) -> Self {
         Self {
-            step_main: values[2],
+            step_main: values[4],
             addr_main: values[3] as u32,
-            state: values[4..29].try_into().unwrap(),
+            state: values[5..30].try_into().unwrap(),
         }
     }
 }

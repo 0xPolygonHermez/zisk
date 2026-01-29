@@ -14,6 +14,7 @@ use tracing::info;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::ExecutorStats;
 use zisk_distributed_common::LoggingConfig;
+use zisk_witness::WitnessLibrary;
 
 use anyhow::Result;
 
@@ -34,7 +35,6 @@ impl AsmProver {
         aggregation: bool,
         rma: bool,
         compressed: bool,
-        witness_lib: PathBuf,
         proving_key: PathBuf,
         proving_key_snark: Option<PathBuf>,
         elf: PathBuf,
@@ -57,7 +57,6 @@ impl AsmProver {
             aggregation,
             rma,
             compressed,
-            witness_lib,
             proving_key,
             proving_key_snark,
             elf,
@@ -207,7 +206,6 @@ impl AsmCoreProver {
         aggregation: bool,
         rma: bool,
         compressed: bool,
-        witness_lib: PathBuf,
         proving_key: PathBuf,
         _proving_key_snark: Option<PathBuf>,
         elf: PathBuf,
@@ -236,14 +234,12 @@ impl AsmCoreProver {
         let asm_mt_path = default_cache_path.join(asm_mt_filename);
         let asm_rh_path = default_cache_path.join(asm_rh_filename);
 
-        check_paths_exist(&witness_lib)?;
         check_paths_exist(&proving_key)?;
         check_paths_exist(&elf)?;
         check_paths_exist(&asm_mt_path)?;
         check_paths_exist(&asm_rh_path)?;
 
-        let (library, mut witness_lib) = ZiskLibLoader::load_asm(
-            witness_lib,
+        let mut witness_lib = ZiskLibLoader::load_asm(
             elf,
             verbose.into(),
             shared_tables,
@@ -287,7 +283,7 @@ impl AsmCoreProver {
         asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
-        proofman.register_witness(&mut *witness_lib, library)?;
+        witness_lib.register_witness(&proofman.get_wcm())?;
 
         proofman.set_barrier();
 

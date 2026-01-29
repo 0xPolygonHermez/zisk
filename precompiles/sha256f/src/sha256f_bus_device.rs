@@ -2,11 +2,12 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::Sha256f` instructions.
 
-use std::{collections::VecDeque, ops::Add};
+use std::ops::Add;
 
-use zisk_common::MemCollectorInfo;
+use precompiles_common::MemProcessor;
+use zisk_common::STEP;
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, B, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 
@@ -47,6 +48,51 @@ impl Sha256fCounterInputGen {
     /// Returns the count of instructions for the specified operation type.
     pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
         (op_type == ZiskOperationType::Sha256).then_some(self.counter.inst_count)
+    }
+
+    /// Processes data received on the bus, updating counters and generating inputs when applicable.
+    ///
+    /// # Arguments
+    /// * `bus_id` - The ID of the bus sending the data.
+    /// * `data` - The data received from the bus.
+    /// * `mem_processors` – A queue of mem_processors bus operations used to send derived inputs.
+    ///
+    /// # Returns
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
+    pub fn process_data<P: MemProcessor>(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        mem_processors: &mut P,
+    ) -> bool {
+        debug_assert!(*bus_id == OPERATION_BUS_ID);
+
+        if data[OP_TYPE] as u32 != ZiskOperationType::Sha256 as u32 {
+            return true;
+        }
+
+        let step_main = data[STEP];
+        let addr_main = data[B] as u32;
+
+        match self.mode {
+            BusDeviceMode::Counter => {
+                self.measure(data);
+                generate_sha256f_mem_inputs(addr_main, step_main, data, true, mem_processors);
+            }
+            BusDeviceMode::CounterAsm => {
+                self.measure(data);
+            }
+            BusDeviceMode::InputGenerator => {
+                if skip_sha256f_mem_inputs(addr_main, data, mem_processors) {
+                    return true;
+                }
+                generate_sha256f_mem_inputs(addr_main, step_main, data, false, mem_processors);
+            }
+        }
+
+        true
     }
 }
 
@@ -90,57 +136,6 @@ impl Add for Sha256fCounterInputGen {
 }
 
 impl BusDevice<u64> for Sha256fCounterInputGen {
-    /// Processes data received on the bus, updating counters and generating inputs when applicable.
-    ///
-    /// # Arguments
-    /// * `bus_id` - The ID of the bus sending the data.
-    /// * `data` - The data received from the bus.
-    /// * `pending` – A queue of pending bus operations used to send derived inputs.
-    ///
-    /// # Returns
-    /// A boolean indicating whether the program should continue execution or terminate.
-    /// Returns `true` to continue execution, `false` to stop.
-    #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        pending: &mut VecDeque<(BusId, Vec<u64>)>,
-        mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
-        debug_assert!(*bus_id == OPERATION_BUS_ID);
-
-        if data[OP_TYPE] as u32 != ZiskOperationType::Sha256 as u32 {
-            return true;
-        }
-
-        if let Some(mem_collectors_info) = mem_collector_info {
-            if skip_sha256f_mem_inputs(data[B] as u32, data, mem_collectors_info) {
-                return true;
-            }
-        }
-
-        let step_main = data[A];
-        let addr_main = data[B] as u32;
-
-        let only_counters = self.mode == BusDeviceMode::Counter;
-        if only_counters {
-            self.measure(data);
-        }
-
-        generate_sha256f_mem_inputs(addr_main, step_main, data, only_counters, pending);
-
-        true
-    }
-
-    /// Returns the bus IDs associated with this counter.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

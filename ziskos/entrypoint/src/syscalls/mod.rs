@@ -54,6 +54,18 @@ macro_rules! ziskos_syscall {
             );
         }
     }};
+    ($csr_addr:literal, $arg0:expr, $arg1:expr, $arg2: expr) => {{
+        unsafe {
+            asm!(
+                concat!("csrs ", stringify!($csr_addr), ", {0}"),
+                "add x0, {1}, {2}",
+                in(reg) $arg0,  // {0}
+                in(reg) $arg1,  // {1}
+                in(reg) $arg2,  // {2}
+                options(nostack)
+            );
+        }
+    }};
 }
 
 #[macro_export]

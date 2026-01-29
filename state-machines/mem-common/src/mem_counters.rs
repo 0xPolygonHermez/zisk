@@ -2,18 +2,12 @@ use rayon::prelude::*;
 #[cfg(feature = "save_mem_bus_data")]
 use std::{env, io::Write, slice};
 
-use std::{
-    collections::{HashMap, VecDeque},
-    fs::File,
-    io::Read,
-};
+use std::{collections::HashMap, fs::File, io::Read};
 use zisk_common::ChunkId;
 
 use crate::{MemAlignCounters, MemHelpers};
 use std::fmt;
-use zisk_common::{
-    BusDevice, BusId, MemBusData, MemCollectorInfo, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID,
-};
+use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
 
 const ST_BITS_OFFSET: u32 = 30;
 const ST_INI: u8 = 0;
@@ -309,6 +303,21 @@ impl MemCounters {
             self.mem_measure(data);
         }
     }
+
+    #[inline(always)]
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
+        debug_assert!(bus_id == &MEM_BUS_ID);
+
+        #[cfg(feature = "save_mem_bus_data")]
+        {
+            let chunk_id = MemHelpers::mem_step_to_chunk(MemBusData::get_step(data));
+            // self.save_to_compact_file(chunk_id, data);
+            self.save_to_file(chunk_id, data);
+        }
+        self.measure(data);
+
+        true
+    }
 }
 
 impl Metrics for MemCounters {
@@ -323,37 +332,8 @@ impl Metrics for MemCounters {
 }
 
 impl BusDevice<u64> for MemCounters {
-    #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
-        debug_assert!(bus_id == &MEM_BUS_ID);
-
-        #[cfg(feature = "save_mem_bus_data")]
-        {
-            let chunk_id = MemHelpers::mem_step_to_chunk(MemBusData::get_step(data));
-            // self.save_to_compact_file(chunk_id, data);
-            self.save_to_file(chunk_id, data);
-        }
-        self.measure(data);
-
-        true
-    }
-
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![MEM_BUS_ID]
-    }
-
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
-    }
-
-    fn on_close(&mut self) {
-        self.close();
     }
 }

@@ -1,0 +1,13 @@
+
+function get_continuation_id(const int base_cont_id, const int max_cont): int {
+    container proof.continuation.`${AIRTEMPLATE}` alias continuation {
+        int id = base_cont_id;
+    }
+    const int id = continuation.id;
+    assert(id < base_cont_id);
+    continuation.id += continuation.id;
+    return id;
+}
+
+// const int continuation_id = get_new_continuation_id(MEM_CPY_BYTE_CONT_ID, 1);
+

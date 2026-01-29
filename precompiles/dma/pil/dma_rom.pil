@@ -1,0 +1,52 @@
+require "std_lookup.pil"
+
+const int DMA_ROM_TABLE_SIZE = 8 * 8 * P2_9;
+
+airtemplate DmaRom(int N = DMA_ROM_TABLE_SIZE) {
+
+    col fixed DST_OFFSET;
+    col fixed SRC_OFFSET;
+    col fixed L_COUNT;
+    col fixed FLAGS;
+    col fixed PRE_COUNT;
+    col fixed SRC_OFFSET_AFTER_PRE;
+    col fixed L_COUNT64;
+
+    int i = 0;
+    for (int dst_offset = 0; dst_offset < 8; ++dst_offset) {
+        for (int src_offset = 0; src_offset < 8; ++src_offset) {
+            for (int l_count = 0; l_count < P2_9; ++l_count) {
+                DST_OFFSET[i] = dst_offset;
+                SRC_OFFSET[i] = src_offset;
+
+                if (l_count == 0) {
+                    L_COUNT[i] = 0;
+                    FLAGS[i] = 16;
+                    PRE_COUNT[i] = 0;
+                    SRC_OFFSET_AFTER_PRE[i] = src_offset;
+                    L_COUNT64[i] = 0;
+                } else {
+                    const int use_pre = dst_offset > 0;
+                    const int pre_count = use_pre ? (((8 - dst_offset) < l_count) ? (8 - dst_offset) : l_count) : 0;
+                    const int post_count = (l_count - pre_count) % 8;
+                    const int use_post = post_count > 0;
+                    const int memcpy_count = l_count - pre_count - post_count;
+                    const int use_memcpy = memcpy_count > 0;
+                    const int src64_inc_by_pre = (use_pre && (src_offset + pre_count) >= 8) ? 1 : 0;
+                    const int count_lt_256 = l_count < 256 ? 1 : 0;
+            
+                    L_COUNT[i] = l_count;
+                    FLAGS[i] = use_pre + use_memcpy * 2 + use_post * 4 + src64_inc_by_pre * 8 + count_lt_256 * 16;
+                    PRE_COUNT[i] = pre_count;
+                    SRC_OFFSET_AFTER_PRE[i] = (src_offset + pre_count) % 8;
+                    L_COUNT64[i] = (l_count - pre_count) / 8;
+                }
+                i += 1;
+            }
+        }
+    }
+    println(`${i} rows`);
+
+    col witness multiplicity;
+    lookup_proves(DMA_ROM_ID, [DST_OFFSET, SRC_OFFSET, L_COUNT, FLAGS, PRE_COUNT, SRC_OFFSET_AFTER_PRE, L_COUNT64], multiplicity);
+}

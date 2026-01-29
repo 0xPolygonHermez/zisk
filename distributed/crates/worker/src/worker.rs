@@ -1,6 +1,6 @@
 use anyhow::Result;
 use asm_runner::HintsShmem;
-use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
+use cargo_zisk::commands::get_proving_key;
 use precompiles_hints::HintsProcessor;
 use proofman::{AggProofs, ContributionsInfo};
 use rom_setup::{
@@ -57,9 +57,6 @@ pub struct ProverConfig {
     /// Path to the ELF file
     pub elf: PathBuf,
 
-    /// Path to the witness computation dynamic library
-    pub witness_lib: PathBuf,
-
     /// Path to the ASM file (optional)
     pub asm: Option<PathBuf>,
 
@@ -95,9 +92,6 @@ pub struct ProverConfig {
 
     /// Flag to enable aggregation
     pub aggregation: bool,
-
-    /// Flag to enable vadcop final compressed proof
-    pub compressed: bool,
 
     /// Preallocate resources
     pub gpu_params: ParamsGPU,
@@ -205,21 +199,18 @@ impl ProverConfig {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
         let mut gpu_params = ParamsGPU::new(prover_service_config.preallocate);
-        if prover_service_config.max_streams.is_some() {
-            gpu_params.with_max_number_streams(prover_service_config.max_streams.unwrap());
+        if let Some(max_streams) = prover_service_config.max_streams {
+            gpu_params.with_max_number_streams(max_streams);
         }
-        if prover_service_config.number_threads_witness.is_some() {
-            gpu_params.with_number_threads_pools_witness(
-                prover_service_config.number_threads_witness.unwrap(),
-            );
+        if let Some(number_threads_witness) = prover_service_config.number_threads_witness {
+            gpu_params.with_number_threads_pools_witness(number_threads_witness);
         }
-        if prover_service_config.max_witness_stored.is_some() {
-            gpu_params.with_max_witness_stored(prover_service_config.max_witness_stored.unwrap());
+        if let Some(max_witness_stored) = prover_service_config.max_witness_stored {
+            gpu_params.with_max_witness_stored(max_witness_stored);
         }
 
         Ok(ProverConfig {
             elf: prover_service_config.elf.clone(),
-            witness_lib: get_witness_computation_lib(prover_service_config.witness_lib.as_ref()),
             asm: prover_service_config.asm.clone(),
             asm_rom,
             custom_commits_map,
@@ -231,7 +222,6 @@ impl ProverConfig {
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
             verify_constraints: prover_service_config.verify_constraints,
             aggregation: prover_service_config.aggregation,
-            compressed: prover_service_config.compressed,
             gpu_params,
             shared_tables: prover_service_config.shared_tables,
             rma: prover_service_config.rma,
@@ -279,7 +269,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .prove()
                 .aggregation(true)
                 .rma(true)
-                .witness_lib_path(prover_config.witness_lib.clone())
                 .proving_key_path(prover_config.proving_key.clone())
                 .elf_path(prover_config.elf.clone())
                 .verbose(prover_config.verbose)
@@ -312,7 +301,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .prove()
                 .aggregation(true)
                 .rma(true)
-                .witness_lib_path(prover_config.witness_lib.clone())
                 .proving_key_path(prover_config.proving_key.clone())
                 .elf_path(prover_config.elf.clone())
                 .verbose(prover_config.verbose)
@@ -430,7 +418,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         );
         let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
 
-        let options = self.get_proof_options_partial_contribution();
+        let options = self.get_proof_options(false);
 
         let mut serialized = borsh::to_vec(&(
             JobPhase::Contributions,
@@ -464,7 +452,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
 
-        let options = self.get_proof_options_prove();
+        let options = self.get_proof_options(false);
 
         let mut serialized =
             borsh::to_vec(&(JobPhase::Prove, job_id, phase_inputs, options)).unwrap();
@@ -488,7 +476,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
 
-        let options = self.get_proof_options_partial_contribution();
+        let options = self.get_proof_options(false);
 
         tokio::spawn(async move {
             let guard = job.lock().await;
@@ -699,7 +687,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
 
-        let options = self.get_proof_options_prove();
+        let options = self.get_proof_options(false);
 
         tokio::spawn(async move {
             let job = job.lock().await;
@@ -769,6 +757,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
 
+        let options = self.get_proof_options(agg_params.compressed);
+
         tokio::spawn(async move {
             let job = job.lock().await;
             let job_id = job.job_id.clone();
@@ -784,8 +774,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     worker_indexes: vec![v.worker_idx as usize],
                 })
                 .collect();
-
-            let options = Self::get_proof_options_aggregation(&agg_params);
 
             let result = prover.aggregate_proofs(
                 agg_proofs,
@@ -819,45 +807,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
-    fn get_proof_options_partial_contribution(&self) -> ProofOptions {
+    fn get_proof_options(&self, compressed: bool) -> ProofOptions {
         ProofOptions {
-            verify_constraints: false,
-            aggregation: false,
-            compressed: false,
-            verify_proofs: true,
-            save_proofs: true,
+            verify_constraints: self.prover_config.verify_constraints,
+            aggregation: self.prover_config.aggregation,
+            verify_proofs: false,
+            save_proofs: false,
             test_mode: false,
             output_dir_path: PathBuf::from("."),
             rma: self.prover_config.rma,
             minimal_memory: self.prover_config.minimal_memory,
-        }
-    }
-
-    fn get_proof_options_prove(&self) -> ProofOptions {
-        ProofOptions {
-            verify_constraints: false,
-            aggregation: true,
-            compressed: true,
-            verify_proofs: false,
-            save_proofs: false,
-            test_mode: false,
-            output_dir_path: PathBuf::default(),
-            rma: self.prover_config.rma,
-            minimal_memory: self.prover_config.minimal_memory,
-        }
-    }
-
-    fn get_proof_options_aggregation(agg_params: &AggregationParams) -> ProofOptions {
-        ProofOptions {
-            verify_constraints: agg_params.verify_constraints,
-            aggregation: agg_params.aggregation,
-            rma: agg_params.rma,
-            compressed: agg_params.compressed,
-            verify_proofs: agg_params.verify_proofs,
-            save_proofs: agg_params.save_proofs,
-            test_mode: agg_params.test_mode,
-            output_dir_path: agg_params.output_dir_path.clone(),
-            minimal_memory: agg_params.minimal_memory,
+            compressed,
         }
     }
 

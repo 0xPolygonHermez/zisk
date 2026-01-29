@@ -8,7 +8,7 @@ use crate::{
     Mem, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
 };
 
-/// Zisk precompiled
+/// Zisk precompiled emulation mode
 #[derive(Debug, Default, PartialEq, Eq)]
 pub enum EmulationMode {
     #[default]
@@ -42,27 +42,27 @@ pub struct PrecompiledInstContext {
 #[derive(Debug)]
 pub struct FcallInstContext {
     /// Fcall parameters data
-    /// Maximum size is FCALL_PARAMS_MAX_SIZE u64's
+    /// Maximum size is FCALL_PARAMS_MAX_SIZE u64s
     pub parameters: [u64; FCALL_PARAMS_MAX_SIZE],
 
-    /// Indicates how many parameters u64's contain valid data
+    /// Indicates how many parameter u64s contain valid data
     pub parameters_size: u64,
 
     /// Fcall result data
-    /// Maximum size is FCALL_RESULT_MAX_SIZE u64's
+    /// Maximum size is FCALL_RESULT_MAX_SIZE u64s
     pub result: [u64; FCALL_RESULT_MAX_SIZE],
 
-    /// Indicates how many result u64's contain valid data
+    /// Indicates how many result u64s contain valid data
     pub result_size: u64,
 
-    /// Indicates how many result u64's have been read using fcall_get()
+    /// Indicates how many result u64s have been read using fcall_get()
     pub result_got: u64,
 }
 
 impl Default for FcallInstContext {
     /// Default fcall instruction context constructor
     fn default() -> Self {
-        FcallInstContext {
+        Self {
             parameters: [0; FCALL_PARAMS_MAX_SIZE],
             parameters_size: 0,
             result: [0; FCALL_RESULT_MAX_SIZE],
@@ -71,7 +71,6 @@ impl Default for FcallInstContext {
         }
     }
 }
-
 #[derive(Debug)]
 /// ZisK instruction context data container, storing the state of the execution
 pub struct InstContext {
@@ -117,6 +116,10 @@ pub struct InstContext {
 
     /// Fcall data
     pub fcall: FcallInstContext,
+
+    /// DataExt 64 bytes size. With this information it is possible to specify which variable part of the minimal trace
+    /// is associated with the current instruction. Used by DMA precompile.
+    pub data_ext_len: usize,
 }
 
 /// RisK instruction context implementation
@@ -138,6 +141,7 @@ impl InstContext {
             emulation_mode: EmulationMode::default(),
             precompiled: PrecompiledInstContext::default(),
             fcall: FcallInstContext::default(),
+            data_ext_len: 0,
         }
     }
 

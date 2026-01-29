@@ -6,17 +6,6 @@
 #include <vector>
 #include <assert.h>
 
-
-#define FLAGS_1_BYTE_READ 1
-#define FLAGS_2_BYTES_READ 2
-#define FLAGS_4_BYTES_READ 4
-#define FLAGS_8_BYTES_READ 8
-#define FLAGS_1_BYTE_CLEAR_WRITE (MEM_WRITE_FLAG + MEM_WRITE_BYTE_CLEAR_FLAG + 1)
-#define FLAGS_1_BYTE_WRITE (MEM_WRITE_FLAG + 1)
-#define FLAGS_2_BYTES_WRITE (MEM_WRITE_FLAG + 2)
-#define FLAGS_4_BYTES_WRITE (MEM_WRITE_FLAG + 4)
-#define FLAGS_8_BYTES_WRITE (MEM_WRITE_FLAG + 8)
-
 MemAlignCounter::MemAlignCounter(std::shared_ptr<MemContext> context) :context(context) {
     total_counters.chunk_id = 0xFFFFFFFF;
     total_counters.full_5 = 0;
@@ -59,13 +48,13 @@ void MemAlignCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData 
     uint32_t write_byte = 0;
     
     for (uint32_t i = 0; i < chunk_size; i++) {
-        switch (chunk_data[i].flags & 0xFF) {
+        switch (chunk_data[i].flags & 0x3F) {
             // 1 byte read
-            case FLAGS_1_BYTE_READ:
+            case MOPS_READ_1:
                 read_byte += 1;
                 break;        
             // 2 bytes read
-            case FLAGS_2_BYTES_READ:
+            case MOPS_READ_2:
                 if ((chunk_data[i].addr & 0x07) > 6) {
                     full_3 += 1;
                 } else {
@@ -73,7 +62,7 @@ void MemAlignCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData 
                 }
                 break;
             // 4 bytes read
-            case FLAGS_4_BYTES_READ: 
+            case MOPS_READ_4: 
                 if ((chunk_data[i].addr & 0x07) > 4) {
                     full_3 += 1;
                 } else {
@@ -81,23 +70,22 @@ void MemAlignCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData 
                 }
                 break;
             // 8 bytes read
-            case FLAGS_8_BYTES_READ: 
+            case MOPS_READ_8: 
                 if ((chunk_data[i].addr & 0x07) > 0) {
                     full_3 += 1;
                 }
                 // if chunk_data[i].addr & 0x07 == 0 ==> aligned read 
                 break;
             // 1 byte write (clear)
-            case FLAGS_1_BYTE_CLEAR_WRITE:
+            case MOPS_CWRITE_1:
                 write_byte += 1;
                 break;        
-
             // 1 byte write
-            case FLAGS_1_BYTE_WRITE:
+            case MOPS_WRITE_1:
                 full_3 += 1;
                 break;
             // 2 bytes write
-            case FLAGS_2_BYTES_WRITE:
+            case MOPS_WRITE_2:
                 if ((chunk_data[i].addr & 0x07) > 6) {
                     full_5 += 1;
                 } else {
@@ -105,7 +93,7 @@ void MemAlignCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData 
                 }
                 break;
             // 4 bytes write
-            case FLAGS_4_BYTES_WRITE:
+            case MOPS_WRITE_4:
                 if ((chunk_data[i].addr & 0x07) > 4) {
                     full_5 += 1;
                 } else { 
@@ -113,12 +101,48 @@ void MemAlignCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData 
                 }
                 break;
             // 8 bytes write
-            case FLAGS_8_BYTES_WRITE:
+            case MOPS_WRITE_8:
                 if ((chunk_data[i].addr & 0x07) > 0) {
                     full_5 += 1;
                 }
                 // if chunk_data[i].addr & 0x07 == 0 ==> aligned write
                 break;       
+            case MOPS_BLOCK_READ + 0x00:
+            case MOPS_BLOCK_READ + 0x10:
+            case MOPS_BLOCK_READ + 0x20:
+            case MOPS_BLOCK_READ + 0x30:
+                if ((chunk_data[i].addr & 0x07) > 0) {
+                    const uint32_t count = chunk_data[i].flags >> MOPS_BLOCK_COUNT_SBITS;
+                    full_5 += count;
+                }
+                break;
+            case MOPS_BLOCK_WRITE + 0x00:
+            case MOPS_BLOCK_WRITE + 0x10:
+            case MOPS_BLOCK_WRITE + 0x20:
+            case MOPS_BLOCK_WRITE + 0x30:
+                if ((chunk_data[i].addr & 0x07) > 0) {
+                    const uint32_t count = chunk_data[i].flags >> MOPS_BLOCK_COUNT_SBITS;
+                    full_5 += count;
+                }
+                break;
+
+            case MOPS_ALIGNED_READ + 0x00:
+            case MOPS_ALIGNED_READ + 0x10:
+            case MOPS_ALIGNED_READ + 0x20:
+            case MOPS_ALIGNED_READ + 0x30:
+            case MOPS_ALIGNED_WRITE + 0x00:
+            case MOPS_ALIGNED_WRITE + 0x10:
+            case MOPS_ALIGNED_WRITE + 0x20:
+            case MOPS_ALIGNED_WRITE + 0x30:
+            case MOPS_ALIGNED_BLOCK_READ + 0x00:
+            case MOPS_ALIGNED_BLOCK_READ + 0x10:
+            case MOPS_ALIGNED_BLOCK_READ + 0x20:
+            case MOPS_ALIGNED_BLOCK_READ + 0x30:
+            case MOPS_ALIGNED_BLOCK_WRITE + 0x00:
+            case MOPS_ALIGNED_BLOCK_WRITE + 0x10:
+            case MOPS_ALIGNED_BLOCK_WRITE + 0x20:
+            case MOPS_ALIGNED_BLOCK_WRITE + 0x30:
+                break;
             default:
                 printf("MemAlignCounter: Unknown flags: 0x%X\n", chunk_data[i].flags);
                 assert(false && "Unknown flags in MemAlignCounter");

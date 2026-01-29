@@ -272,26 +272,29 @@ impl AsmServices {
             ));
         }
 
-        // read_exact will block until all 40 bytes are available or timeout/error occurs
-        let mut in_buffer = [0u8; 40];
-        let mut total_read = 0;
+        let total_timeout = Duration::from_secs(120);
+        let start = Instant::now();
 
-        if let Err(e) = stream.read_exact(&mut in_buffer) {
-            // Try to read what's available to show partial data
-            let mut partial_buffer = vec![0u8; 1024];
-            if let Ok(n) = stream.read(&mut partial_buffer) {
-                total_read += n;
+        // Read exactly 40 bytes
+        let mut in_buffer = [0u8; 40];
+        loop {
+            if start.elapsed() >= total_timeout {
+                return Err(anyhow::anyhow!("Total timeout exceeded"));
             }
 
-            return Err(anyhow::anyhow!(
-                "Failed to read full response payload (expected 40 bytes, got {} bytes) \
-                 from service {} on {}: {} (error kind: {:?})",
-                total_read,
-                service,
-                addr,
-                e,
-                e.kind(),
-            ));
+            match stream.read_exact(&mut in_buffer) {
+                Ok(_) => break,
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::TimedOut
+                        || e.kind() == std::io::ErrorKind::WouldBlock =>
+                {
+                    tracing::debug!("Read timeout after {:?}, retrying...", start.elapsed());
+                    continue;
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
         }
 
         // Decode bytes into ResponseData
@@ -326,7 +329,7 @@ impl AsmServices {
 
         // Wait for the shutdown signal (up to 30s)
         loop {
-            match sem.timed_wait(Duration::from_secs(30)) {
+            match sem.timed_wait(Duration::from_secs(60)) {
                 Ok(_) => break,
                 Err(named_sem::Error::WaitFailed(e))
                     if e.kind() == std::io::ErrorKind::Interrupted =>

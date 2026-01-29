@@ -15,7 +15,7 @@ use crate::{
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use zisk_common::{BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, Planner};
+use zisk_common::{ComponentBuilder, Instance, InstanceCtx, Planner};
 use zisk_pil::{BinaryAddTrace, BinaryExtensionTrace, BinaryTrace};
 
 /// The `BinarySM` struct represents the Binary State Machine,
@@ -58,15 +58,6 @@ impl<F: PrimeField64> BinarySM<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
-    /// Builds and returns a new counter for monitoring binary operations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RegularCounters` configured for binary and extension binary
-    /// operations.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        Some(Box::new(BinaryCounter::new()))
-    }
-
     /// Builds a planner to plan binary-related instances.
     ///
     /// # Returns

@@ -1,0 +1,266 @@
+
+// TODO: Optimization Dma32AlignedOp
+
+airtemplate DmaUnaligned(int N = 2**21, const int RC = 2, const expr enable = 1) {
+
+    const expr L1 = get_L1();
+    const expr LAST = L1';
+
+    airval segment_id;                 // Id of current segment 
+    airval segment_previous_seq_end;   // Last value of `seq_end` in previous segment.
+    airval segment_previous_src64;     // Last value of `src64` in previous segment.
+    airval segment_previous_dst64;     // Last value of `dst64` in previous segment.
+    airval segment_previous_main_step; // Last value of `main_step` in previous segment.
+    airval segment_previous_offset;    // Last value of `offset` in previous segment.
+    airval segment_previous_count;     // Last value of `count` in previous segment.
+    airval segment_previous_is_mem_eq; // Last value of `is_mem_eq' in previous segment.
+
+
+    airval segment_first_bytes[8];     // bytes of next block
+
+    airval segment_last_seq_end;       // Last value of `seq_end` in current segment.
+    airval segment_last_src64;         // Last value of `src64` in current segment.
+    airval segment_last_dst64;         // Last value of `dst64` in current segment.
+    airval segment_last_main_step;     // Last value of `main_step` in current segment.
+    airval segment_last_offset;        // Last value of `offset` in current segment.
+    airval segment_last_count;         // Last value of `count` in current segment.
+    airval segment_last_is_mem_eq;     // Last value of `is_mem_eq' in previous segment.
+
+    airval segment_next_bytes[8];      // bytes of next block
+
+    airval is_last_segment;            // 1 if this is the last segment, 0 otherwise.
+
+    segment_previous_seq_end * (1 - segment_previous_seq_end) === 0;
+    segment_last_seq_end * (1 - segment_last_seq_end) === 0;
+
+    is_last_segment * (1 - is_last_segment) === 0;
+
+    // if it's last segment must be the end of sequence or padding that use end of sequence
+    is_last_segment * (1 - segment_last_seq_end) === 0;
+    
+    col witness bits(MAIN_STEP_BITS) main_step;
+    col witness bits(ADDR_W_BITS) src64;
+    col witness bits(ADDR_W_BITS) dst64;
+    col witness bits(32) count; // number of words 
+
+    col witness bits(1) seq_end;
+    seq_end * (1 - seq_end) === 0;
+
+    col witness bits(1) previous_seq_end;
+    previous_seq_end === L1 * (segment_previous_seq_end - 'seq_end) + 'seq_end;
+
+    col witness bits(1) is_mem_eq;          // Last value of `is_mem_eq' in previous segment.
+    is_mem_eq * (1 - is_mem_eq) === 0;
+
+    LAST * (seq_end - segment_last_seq_end) === 0;
+    LAST * (1 - seq_end) * (src64 - segment_last_src64) === 0;
+    LAST * (1 - seq_end) * (dst64 - segment_last_dst64) === 0;
+    LAST * (1 - seq_end) * (main_step - segment_last_main_step) === 0;
+    LAST * (1 - seq_end) * (count - segment_last_count) === 0;
+    LAST * (1 - seq_end) * (is_mem_eq - segment_last_is_mem_eq) === 0;
+
+    col witness bits(1) offset_7;
+    col witness bits(1) offset_6;
+    col witness bits(1) offset_5;
+    col witness bits(1) offset_4;
+    col witness bits(1) offset_3;
+    col witness bits(1) offset_2;
+
+    // To save one witness column, define offset_1 using other columns, because no offset_0 supported
+    // offset = 0 means aligned memcpy. 
+    // CONSIDERATION: support offset_0 to prove also aligned memcpy.
+    const expr offset_7to2 = offset_7 + offset_6 + offset_5 + offset_4 + offset_3 + offset_2;
+    const expr offset_1 = (1 - offset_7to2);
+
+    offset_7to2 * (offset_7to2 - 1) === 0;
+    const expr offset = offset_1 + offset_2 * 2 + offset_3 * 3 + offset_4 * 4 + offset_5 * 5 +
+                        offset_6 * 6 + offset_7 * 7;
+  
+    offset_7 * (1 - offset_7) === 0;
+    offset_6 * (1 - offset_6) === 0;
+    offset_5 * (1 - offset_5) === 0;
+    offset_4 * (1 - offset_4) === 0;
+    offset_3 * (1 - offset_3) === 0;
+    offset_2 * (1 - offset_2) === 0;
+
+    const expr previous_offset = L1 * (segment_previous_offset - 'offset) + 'offset;
+    LAST * (1 - seq_end) * (offset - segment_last_offset) === 0;
+
+    col witness bits(8) read_bytes[8];
+
+    range_dual_byte(read_bytes[1], read_bytes[0]);
+    range_dual_byte(read_bytes[3], read_bytes[2]);
+    range_dual_byte(read_bytes[5], read_bytes[4]);
+    range_dual_byte(read_bytes[7], read_bytes[6]);
+    
+    const expr read_value[2];
+
+    read_value[0] = read_bytes[0] + P2_8 * read_bytes[1]  + P2_16 * read_bytes[2]  + P2_24 * read_bytes[3];
+    read_value[1] = read_bytes[4] + P2_8 * read_bytes[5]  + P2_16 * read_bytes[6]  + P2_24 * read_bytes[7];
+
+    // byte_0, byte_1, byte_2, byte_3, byte_4, byte_5, byte_6, byte_7, byte_0', byte_1' ...
+
+    const expr next_bytes[8];
+
+    // when an instance last row has seq_end = 1, means that next_bytes don't need to match
+    // with first read_bytes, because it's new dma operation, in this situation set value
+    // of segment_next_bytes to 0.
+
+    col witness bits(1) no_last_no_seq_end;
+    no_last_no_seq_end === (1 - LAST) * (1 - seq_end);
+
+    for (int i = 0; i < 8; ++i) {
+        // if LAST next_bytes are bytes sent to bus, if no LAST but is a seq_end, no sense
+        // use bytes of the next input, in this case next_bytes = 0, otherwise next_bytes are
+        // the next read (src64 + 1) * 8
+        next_bytes[i] = LAST * segment_next_bytes[i] + no_last_no_seq_end * read_bytes[i]';
+
+        // if last row of previous instance aren't the the last row of an input, segment_first_bytes
+        // must match with bytes "received" from bus. Otherwise, zeros was sent to bus and them not
+        // need to match with read_bytes because are bytes of other input.
+        (1 - segment_previous_seq_end) * L1 * (segment_first_bytes[i] - read_bytes[i]) === 0;
+
+        // force segment_next_bytes to zero, when it's finish of input
+        segment_last_seq_end * segment_next_bytes[i] == 0;
+
+        // to force the "received" values from the bus are 0 when the last row of the previous segment
+        // is final of input (seq_end).
+        segment_previous_seq_end * L1 * segment_first_bytes[i] === 0;
+    }
+
+    col witness bits(32) write_value[2];
+    
+    write_value[0] === offset_1 * (read_bytes[1] + P2_8 * read_bytes[2] + P2_16 * read_bytes[3] + P2_24 * read_bytes[4]) +
+                       offset_2 * (read_bytes[2] + P2_8 * read_bytes[3] + P2_16 * read_bytes[4] + P2_24 * read_bytes[5]) +
+                       offset_3 * (read_bytes[3] + P2_8 * read_bytes[4] + P2_16 * read_bytes[5] + P2_24 * read_bytes[6]) +
+                       offset_4 * (read_bytes[4] + P2_8 * read_bytes[5] + P2_16 * read_bytes[6] + P2_24 * read_bytes[7]) +
+                       offset_5 * (read_bytes[5] + P2_8 * read_bytes[6] + P2_16 * read_bytes[7] + P2_24 * next_bytes[0]) +
+                       offset_6 * (read_bytes[6] + P2_8 * read_bytes[7] + P2_16 * next_bytes[0] + P2_24 * next_bytes[1]) +
+                       offset_7 * (read_bytes[7] + P2_8 * next_bytes[0] + P2_16 * next_bytes[1] + P2_24 * next_bytes[2]);
+               
+    write_value[1] === offset_1 * (read_bytes[5] + P2_8 * read_bytes[6] + P2_16 * read_bytes[7] + P2_24 * next_bytes[0]) +
+                       offset_2 * (read_bytes[6] + P2_8 * read_bytes[7] + P2_16 * next_bytes[0] + P2_24 * next_bytes[1]) +
+                       offset_3 * (read_bytes[7] + P2_8 * next_bytes[0] + P2_16 * next_bytes[1] + P2_24 * next_bytes[2]) +
+                       offset_4 * (next_bytes[0] + P2_8 * next_bytes[1] + P2_16 * next_bytes[2] + P2_24 * next_bytes[3]) +
+                       offset_5 * (next_bytes[1] + P2_8 * next_bytes[2] + P2_16 * next_bytes[3] + P2_24 * next_bytes[4]) +
+                       offset_6 * (next_bytes[2] + P2_8 * next_bytes[3] + P2_16 * next_bytes[4] + P2_24 * next_bytes[5]) +
+                       offset_7 * (next_bytes[3] + P2_8 * next_bytes[4] + P2_16 * next_bytes[5] + P2_24 * next_bytes[6]);
+
+    // memory access
+    precompiled_mem_load(
+        sel: 1,
+        main_step: main_step,
+        addr: src64 * 8,
+        value: read_value
+    );
+
+    precompiled_mem_store(
+        sel: (1 - seq_end),
+        main_step: main_step,
+        addr: dst64 * 8,
+        value: write_value
+    );
+
+    // At begining of sequence    
+    // DMA BUS [op, dst64, src64, dst_offset, src_offset, bytes, main_step]
+    permutation_proves(DMA_BUS_ID, [DMA_MEM_CPY, dst64 * 8, src64 * 8, 0, offset, count * 8, main_step], sel: previous_seq_end);
+
+    const expr continue_seq_on_l1 = L1 * (1 - segment_previous_seq_end);
+    const expr continue_seq_on_no_l1 = (1 - L1) * (1 - 'seq_end);
+
+    const expr new_seq_on_l1 = L1 * segment_previous_seq_end;
+    const expr new_seq_on_no_l1 = (1 - L1) * 'seq_end;    
+
+    // TRANSITIONS:
+    //
+    // After first element of sequence
+    //   count = 'count - 1
+    //   src64 = 'src64 + 1
+    //   dst64 = 'dst64 + 1
+
+    continue_seq_on_l1 * (count - (segment_previous_count - 1)) == 0;
+    continue_seq_on_no_l1 * (count - ('count - 1)) === 0;
+
+    continue_seq_on_l1 * (src64 - (segment_previous_src64 + 1)) == 0;
+    continue_seq_on_no_l1 * (src64 - ('src64 + 1)) === 0;
+
+    continue_seq_on_l1 * (dst64 - (segment_previous_dst64 + 1)) == 0;
+    continue_seq_on_no_l1 * (dst64 - ('dst64 + 1)) === 0;    
+
+    // LATCHS:
+    //
+    //   offset = 'offset
+    //   is_mem_eq = 'is_mem_eq
+    //   main_step = 'main_step
+    continue_seq_on_l1 * (offset - segment_previous_offset) == 0;
+    continue_seq_on_no_l1 * (offset - 'offset) === 0;
+
+    continue_seq_on_l1 * (is_mem_eq - segment_previous_is_mem_eq) == 0;
+    continue_seq_on_no_l1 * (is_mem_eq - 'is_mem_eq) === 0;    
+
+    continue_seq_on_l1 * (main_step - segment_previous_main_step) == 0;
+    continue_seq_on_no_l1 * (main_step - 'main_step) === 0;    
+
+    // At end of sequence
+    //    count must be 0 at end of sequence
+    count * seq_end === 0;
+
+    // SECURITY: control count no negative
+    //
+    // if the seq_end it isn't active when count = 0, in each rows continues decreasing 8 units,
+    // means in 2^22 rows * 2^3 = 2^25. It's secure, because if any row lies, at end of instance
+    // this constraint fails.
+
+    airval last_count_chunk[2];
+    range_check(expression: last_count_chunk[0], min: 0, max: 2**16-1);
+    range_check(expression: last_count_chunk[1], min: 0, max: 2**16-1);
+    last_count_chunk[0] + last_count_chunk[1] * P2_16 === segment_last_count;
+
+
+    // PADDING
+    //
+    // cancel operation sent to bus src=0, dst=0, offset=1, count=0, main_step=0
+    // precompiled_mem_load_padding demostrate read addr=0 width=8 main_step=0 value=0
+    // in padding rows seq_end is active, means no precompiled_mem_store 
+
+    airval padding_rows;
+    permutation_assumes(DMA_BUS_ID, [DMA_MEM_CPY, 0, 0, 0, 1, 0, 0], sel: padding_rows);
+    precompiled_mem_load_padding(padding: padding_rows);
+
+    // CONTINUATIONS
+
+    // AIR_ID, segment_id, seq_end, src64, dst64, count, main_step 
+
+    direct_global_update_proves(MEM_CPY_BYTE_CONT_ID, [0,  // initial segment_id
+                                                  0,
+                                                  1,  // initial seq_end
+                                                  0,  // initial src64
+                                                  0,  // initial dst64
+                                                  0,  // initial offset
+                                                  0,  // initial count
+                                                  0,
+                                                  0,0,0,0,0,0,0,0], // next bytes
+                                                  sel: enable);
+
+
+    direct_update_assumes(MEM_CPY_BYTE_CONT_ID, [ segment_id, 
+                                             0,
+                                             segment_previous_seq_end, 
+                                             segment_previous_src64, 
+                                             segment_previous_dst64, 
+                                             segment_previous_offset,
+                                             segment_previous_count, 
+                                             segment_previous_main_step,
+                                             ...segment_first_bytes]);
+
+    direct_update_proves(MEM_CPY_BYTE_CONT_ID, [ segment_id + 1, 
+                                            is_last_segment,
+                                            segment_last_seq_end, 
+                                            segment_last_src64, 
+                                            segment_last_dst64, 
+                                            segment_last_offset,
+                                            segment_last_count,
+                                            segment_last_main_step,
+                                            ...segment_next_bytes], sel: 1 - is_last_segment);
+
+}

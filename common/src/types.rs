@@ -1,4 +1,5 @@
 use std::fmt;
+use std::time::Instant;
 
 /// Type representing a chunk identifier.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -62,4 +63,31 @@ impl fmt::Display for SegmentId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ZiskExecutionResult {
+    pub steps: u64,
+}
+
+impl ZiskExecutionResult {
+    pub fn new(executed_steps: u64) -> Self {
+        Self { steps: executed_steps }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Stats {
+    pub airgroup_id: usize,
+    pub air_id: usize,
+    /// Collect start time
+    pub collect_start_time: Instant,
+    /// Collect duration in microseconds
+    pub collect_duration: u64,
+    /// Witness start time
+    pub witness_start_time: Instant,
+    /// Witness duration in microseconds
+    pub witness_duration: u128,
+    /// Number of chunks
+    pub num_chunks: usize,
 }

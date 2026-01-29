@@ -14,13 +14,21 @@ pub async fn handle(
     port: Option<u16>,
     proofs_dir: Option<PathBuf>,
     no_save_proofs: bool,
+    compressed_proofs: bool,
     webhook_url: Option<String>,
 ) -> Result<()> {
     // Config file is now optional - if not provided, defaults will be used
     let config_file = config_file.or_else(|| std::env::var("ZISK_COORDINATOR_CONFIG_PATH").ok());
 
     // Load configuration
-    let config = Config::load(config_file, port, proofs_dir, no_save_proofs, webhook_url)?;
+    let config = Config::load(
+        config_file,
+        port,
+        proofs_dir,
+        no_save_proofs,
+        compressed_proofs,
+        webhook_url,
+    )?;
 
     // Initialize tracing - keep guard alive for application lifetime
     let _log_guard = zisk_distributed_common::tracing::init(Some(&config.logging), None)?;

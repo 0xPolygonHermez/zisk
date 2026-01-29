@@ -9,17 +9,19 @@ use fields::Goldilocks;
 use proofman::{AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult};
 use proofman_common::{DebugInfo, ProofOptions};
 use std::{fs::File, io::Write, path::PathBuf};
+
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib,
+    ExecutorStats, ProofLog, ZiskExecutionResult,
 };
+use zisk_witness::WitnessLib;
 
 pub(crate) struct ProverBackend {
     pub verify_constraints: bool,
     pub aggregation: bool,
     pub rma: bool,
     pub compressed: bool,
-    pub witness_lib: Box<dyn ZiskLib<Goldilocks>>,
+    pub witness_lib: WitnessLib<Goldilocks>,
     pub proving_key: PathBuf,
     pub verify_proofs: bool,
     pub minimal_memory: bool,

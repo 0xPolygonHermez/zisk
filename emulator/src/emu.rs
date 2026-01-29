@@ -320,7 +320,7 @@ impl<'a> Emu<'a> {
                         8,
                         [self.ctx.inst_ctx.a, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 } else {
                     let (required_address_1, required_address_2) =
                         Mem::required_addresses(address, 8);
@@ -340,7 +340,7 @@ impl<'a> Emu<'a> {
                         8,
                         [raw_data_1, raw_data_2],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 }
                 /*println!(
                     "Emu::source_a_mem_reads_consume() mem_leads_index={} value={:x}",
@@ -728,7 +728,7 @@ impl<'a> Emu<'a> {
                         8,
                         [self.ctx.inst_ctx.b, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 } else {
                     let (required_address_1, required_address_2) =
                         Mem::required_addresses(address, 8);
@@ -745,7 +745,7 @@ impl<'a> Emu<'a> {
                             8,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -762,7 +762,7 @@ impl<'a> Emu<'a> {
                             8,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     }
                 }
                 /*println!(
@@ -797,8 +797,14 @@ impl<'a> Emu<'a> {
                         8,
                         [self.ctx.inst_ctx.b, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 } else {
+                    if instruction.ind_width == 0 || address > 0xFFFF_FFFF {
+                        println!(
+                            "ILLEGAL INSTRUCTION/ADDRESS 0x{:08X} {} S:{} {:?}",
+                            address, instruction.ind_width, self.ctx.inst_ctx.step, instruction
+                        );
+                    }
                     let (required_address_1, required_address_2) =
                         Mem::required_addresses(address, instruction.ind_width);
                     if required_address_1 == required_address_2 {
@@ -817,7 +823,7 @@ impl<'a> Emu<'a> {
                             instruction.ind_width as u8,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -838,7 +844,7 @@ impl<'a> Emu<'a> {
                             8,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     }
                 }
                 /*println!(
@@ -1015,7 +1021,7 @@ impl<'a> Emu<'a> {
             }
             STORE_IND => {
                 // Calculate value
-                let val: i64 = if instruction.store_ra {
+                let val: i64 = if instruction.store_pc {
                     self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
                 } else {
                     self.ctx.inst_ctx.c as i64
@@ -1237,7 +1243,7 @@ impl<'a> Emu<'a> {
                         value,
                         [value, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 }
                 // Otherwise, if not aligned, get old raw data from memory, then write it
                 else {
@@ -1256,7 +1262,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -1273,7 +1279,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     }
                 }
             }
@@ -1300,7 +1306,7 @@ impl<'a> Emu<'a> {
                         value,
                         [value, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 }
                 // Otherwise, if not aligned, get old raw data from memory, then write it
                 else {
@@ -1319,7 +1325,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -1336,7 +1342,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                     }
                 }
             }
@@ -1563,7 +1569,7 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
 
         // Check that callback is provided if chunk size is specified
-        if options.chunk_size.is_some() {
+        if let Some(chunk_size) = options.chunk_size {
             // Check callback consistency
             if callback.is_none() {
                 panic!("Emu::run() called with chunk size but no callback");
@@ -1571,7 +1577,7 @@ impl<'a> Emu<'a> {
 
             // Record callback into context
             self.ctx.do_callback = true;
-            self.ctx.callback_steps = options.chunk_size.unwrap();
+            self.ctx.callback_steps = chunk_size;
 
             // Check steps value
             if self.ctx.callback_steps == 0 {
@@ -1624,6 +1630,10 @@ impl<'a> Emu<'a> {
 
         // While not done
         while !self.ctx.inst_ctx.end {
+            // println!(
+            //     "DEBUG_TRACE {:09} 0x{:08x} {:?}",
+            //     self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc, self.ctx.inst_ctx.regs
+            // );
             if options.verbose {
                 println!(
                     "Emu::run() step={} ctx.pc={}",
@@ -1823,13 +1833,7 @@ impl<'a> Emu<'a> {
         let pc = self.ctx.inst_ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
-        // println!(
-        //     "Emu::step() executing step={} pc={:x} inst={}",
-        //     self.ctx.inst_ctx.step,
-        //     self.ctx.inst_ctx.pc,
-        //     instruction.to_text()
-        // );
-
+        let pc = self.ctx.inst_ctx.pc;
         //println!("PCLOG={}", instruction.to_text());
 
         // Build the 'a' register value  based on the source specified by the current instruction
@@ -1943,6 +1947,14 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn par_step_my_block(&mut self, emu_full_trace_vec: &mut EmuTrace) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+
+        #[cfg(feature = "minimal_trace_index_debug")]
+        println!(
+            "MINIMAL_TRACE par_step_my_block            {} {}",
+            self.ctx.inst_ctx.step,
+            emu_full_trace_vec.mem_reads.len()
+        );
+
         // Build the 'a' register value  based on the source specified by the current instruction
         self.source_a_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
 
@@ -1959,7 +1971,22 @@ impl<'a> Emu<'a> {
         (instruction.func)(&mut self.ctx.inst_ctx);
 
         // If this is a precompiled, copy input data generated by precompile call to mem_reads.
+        // when generate mem traces the input data containts also data_ext.
         if instruction.input_size > 0 {
+            #[cfg(feature = "minimal_trace_index_debug")]
+            {
+                let input_data_bytes = self.ctx.inst_ctx.precompiled.input_data.len() * 8;
+                if input_data_bytes > instruction.input_size as usize {
+                    println!(
+                        "MINIMAL_TRACE  data_ext_len:{} input_data:{} input_size:{} mem_reads[{}..{}]",
+                        input_data_bytes - instruction.input_size as usize,
+                        input_data_bytes,
+                        instruction.input_size,
+                        emu_full_trace_vec.mem_reads.len(),
+                        emu_full_trace_vec.mem_reads.len() + (input_data_bytes >> 3)
+                    );
+                }
+            }
             emu_full_trace_vec.mem_reads.append(&mut self.ctx.inst_ctx.precompiled.input_data);
         }
 
@@ -2025,6 +2052,16 @@ impl<'a> Emu<'a> {
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
+        #[cfg(feature = "minimal_trace_index_debug")]
+        println!(
+            "MINIMAL_TRACE step_emu_trace            {} {}",
+            self.ctx.inst_ctx.step, mem_reads_index
+        );
+        // println!(
+        //     "DEBUG_TRACE {:09} 0x{:08x} {:?}",
+        //     self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc, self.ctx.inst_ctx.regs
+        // );
+
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         // If this is a precompiled, get the required input data from mem_reads
@@ -2041,6 +2078,7 @@ impl<'a> Emu<'a> {
             }
         }
 
+        self.ctx.inst_ctx.data_ext_len = 0;
         (instruction.func)(&mut self.ctx.inst_ctx);
 
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
@@ -2054,7 +2092,22 @@ impl<'a> Emu<'a> {
                 &self.ctx.inst_ctx,
                 &mut self.static_array,
             );
-            data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload);
+            if self.ctx.inst_ctx.data_ext_len > 0 {
+                if mem_reads.len() < *mem_reads_index + self.ctx.inst_ctx.data_ext_len {
+                    println!(
+                        "OUT_OF_DATA_EXT({}) S:{}",
+                        self.ctx.inst_ctx.data_ext_len, self.ctx.inst_ctx.step
+                    );
+                }
+                data_bus.write_to_bus(
+                    OPERATION_BUS_ID,
+                    operation_payload,
+                    &mem_reads[*mem_reads_index..*mem_reads_index + self.ctx.inst_ctx.data_ext_len],
+                );
+                *mem_reads_index += self.ctx.inst_ctx.data_ext_len;
+            } else {
+                data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload, &[]);
+            }
         }
 
         // #[cfg(feature = "sp")]
@@ -2078,6 +2131,12 @@ impl<'a> Emu<'a> {
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
+        #[cfg(feature = "minimal_trace_index_debug")]
+        println!(
+            "MINIMAL_TRACE step_emu_trace_no_mem_ops {} {}",
+            self.ctx.inst_ctx.step, mem_reads_index
+        );
+
         self.source_a_mem_reads_consume_no_mem_ops(instruction, mem_reads, mem_reads_index);
         self.source_b_mem_reads_consume_no_mem_ops(instruction, mem_reads, mem_reads_index);
         // If this is a precompiled, get the required input data from mem_reads
@@ -2094,6 +2153,7 @@ impl<'a> Emu<'a> {
             }
         }
 
+        self.ctx.inst_ctx.data_ext_len = 0;
         (instruction.func)(&mut self.ctx.inst_ctx);
 
         self.store_c_mem_reads_consume_no_mem_ops(instruction, mem_reads, mem_reads_index);
@@ -2107,7 +2167,16 @@ impl<'a> Emu<'a> {
                 &self.ctx.inst_ctx,
                 &mut self.static_array,
             );
-            data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload);
+            if self.ctx.inst_ctx.data_ext_len > 0 {
+                data_bus.write_to_bus(
+                    OPERATION_BUS_ID,
+                    operation_payload,
+                    &mem_reads[*mem_reads_index..*mem_reads_index + self.ctx.inst_ctx.data_ext_len],
+                );
+                *mem_reads_index += self.ctx.inst_ctx.data_ext_len;
+            } else {
+                data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload, &[]);
+            }
         }
 
         // #[cfg(feature = "sp")]
@@ -2201,6 +2270,13 @@ impl<'a> Emu<'a> {
     ) -> bool {
         let mut _continue = true;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+
+        #[cfg(feature = "minimal_trace_index_debug")]
+        println!(
+            "MINIMAL_TRACE step_emu_traces           {} {} 0x{:08x}",
+            self.ctx.inst_ctx.step, mem_reads_index, self.ctx.inst_ctx.pc
+        );
+
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         // If this is a precompiled, get the required input data from mem_reads
@@ -2214,6 +2290,8 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
             }
         }
+
+        self.ctx.inst_ctx.data_ext_len = 0;
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
@@ -2226,14 +2304,24 @@ impl<'a> Emu<'a> {
                 &self.ctx.inst_ctx,
                 &mut self.static_array,
             );
-            _continue = data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload);
+            _continue = if self.ctx.inst_ctx.data_ext_len > 0 {
+                let data_ext_index = *mem_reads_index;
+                *mem_reads_index += self.ctx.inst_ctx.data_ext_len;
+                data_bus.write_to_bus(
+                    OPERATION_BUS_ID,
+                    operation_payload,
+                    &mem_reads[data_ext_index..*mem_reads_index],
+                )
+            } else {
+                data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload, &[])
+            }
         }
 
         // Get rom bus data
         let rom_payload = RomBusData::from_instruction(instruction, &self.ctx.inst_ctx);
 
         // Write rom bus data to rom bus
-        data_bus.write_to_bus(ROM_BUS_ID, &rom_payload);
+        data_bus.write_to_bus(ROM_BUS_ID, &rom_payload, &[]);
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
@@ -2243,6 +2331,18 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step += 1;
 
         _continue
+    }
+
+    #[allow(dead_code)]
+    fn get_slice_from_mem_reads<'b>(
+        &mut self,
+        mem_reads: &'b [u64],
+        mem_reads_index: &mut usize,
+        len: usize,
+    ) -> &'b [u64] {
+        let slice = &mem_reads[*mem_reads_index..*mem_reads_index + len];
+        *mem_reads_index += len;
+        slice
     }
 
     /// Performs one single step of the emulation
@@ -2258,6 +2358,12 @@ impl<'a> Emu<'a> {
             println!("PC=0 CRASH (step:{})", self.ctx.inst_ctx.step);
         }
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+
+        #[cfg(feature = "minimal_trace_index_debug")]
+        println!(
+            "MINIMAL_TRACE step_slice_full_trace     {} {} 0x{:08x}",
+            self.ctx.inst_ctx.step, mem_reads_index, self.ctx.inst_ctx.pc
+        );
 
         reg_trace.clear_reg_step_ranges();
 
@@ -2276,6 +2382,7 @@ impl<'a> Emu<'a> {
             }
         }
 
+        self.ctx.inst_ctx.data_ext_len = 0;
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
 
@@ -2292,6 +2399,7 @@ impl<'a> Emu<'a> {
         let full_trace_step =
             Self::build_full_trace_step(instruction, &self.ctx.inst_ctx, reg_trace);
 
+        *mem_reads_index += self.ctx.inst_ctx.data_ext_len;
         self.ctx.inst_ctx.step += 1;
 
         full_trace_step
@@ -2372,7 +2480,7 @@ impl<'a> Emu<'a> {
         // trace.set_a_src_sp(inst.a_src == SRC_SP),
         // #[cfg(feature = "sp")]
         // trace.set_a_use_sp_imm1(inst.a_use_sp_imm1),
-        trace.set_a_src_step(inst.a_src == SRC_STEP);
+        trace.set_op_with_step(inst.op_with_step);
         trace.set_b_src_imm(inst.b_src == SRC_IMM);
         trace.set_b_src_mem(inst.b_src == SRC_MEM);
         trace.set_b_src_reg(inst.b_src == SRC_REG);
@@ -2396,7 +2504,7 @@ impl<'a> Emu<'a> {
                 inst.op
             },
         );
-        trace.set_store_ra(inst.store_ra);
+        trace.set_store_pc(inst.store_pc);
         trace.set_store_mem(inst.store == STORE_MEM);
         trace.set_store_reg(inst.store == STORE_REG);
         trace.set_store_ind(inst.store == STORE_IND);
@@ -2520,7 +2628,7 @@ impl<'a> Emu<'a> {
 
     #[inline(always)]
     pub fn get_value_to_store(&self, instruction: &ZiskInst) -> u64 {
-        if instruction.store_ra {
+        if instruction.store_pc {
             (self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2) as u64
         } else {
             self.ctx.inst_ctx.c

@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::ExecutorStats;
 use zisk_distributed_common::LoggingConfig;
+use zisk_witness::WitnessLibrary;
 
 use anyhow::Result;
 
@@ -30,7 +31,6 @@ impl EmuProver {
         aggregation: bool,
         rma: bool,
         compressed: bool,
-        witness_lib: PathBuf,
         proving_key: PathBuf,
         proving_key_snark: Option<PathBuf>,
         elf: PathBuf,
@@ -48,7 +48,6 @@ impl EmuProver {
             aggregation,
             rma,
             compressed,
-            witness_lib,
             proving_key,
             proving_key_snark,
             elf,
@@ -181,7 +180,6 @@ impl EmuCoreProver {
         aggregation: bool,
         rma: bool,
         compressed: bool,
-        witness_lib: PathBuf,
         proving_key: PathBuf,
         _proving_key_snark: Option<PathBuf>,
         elf: PathBuf,
@@ -196,13 +194,11 @@ impl EmuCoreProver {
     ) -> Result<Self> {
         let custom_commits_map = get_custom_commits_map(&proving_key, &elf)?;
 
-        check_paths_exist(&witness_lib)?;
         check_paths_exist(&proving_key)?;
         check_paths_exist(&elf)?;
 
         // Build emulator library
-        let (library, mut witness_lib) =
-            ZiskLibLoader::load_emu(witness_lib, elf, verbose.into(), shared_tables)?;
+        let mut witness_lib = ZiskLibLoader::load_emu(elf, verbose.into(), shared_tables)?;
 
         let proofman = ProofMan::new(
             proving_key.clone(),
@@ -224,7 +220,7 @@ impl EmuCoreProver {
             initialize_logger(verbose.into(), Some(world_rank));
         }
 
-        proofman.register_witness(&mut *witness_lib, library)?;
+        witness_lib.register_witness(&proofman.get_wcm())?;
 
         proofman.set_barrier();
 

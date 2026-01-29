@@ -7,12 +7,11 @@
 use crate::{Poseidon2Input, Poseidon2SM};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
-use std::collections::VecDeque;
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, MemCollectorInfo, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::Poseidon2Trace;
@@ -151,9 +150,7 @@ impl Poseidon2Collector {
             collect_skipper,
         }
     }
-}
 
-impl BusDevice<PayloadType> for Poseidon2Collector {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -166,13 +163,7 @@ impl BusDevice<PayloadType> for Poseidon2Collector {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[PayloadType],
-        _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[PayloadType]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
@@ -197,15 +188,9 @@ impl BusDevice<PayloadType> for Poseidon2Collector {
 
         self.inputs.len() < self.num_operations as usize
     }
+}
 
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
+impl BusDevice<PayloadType> for Poseidon2Collector {
     fn as_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }

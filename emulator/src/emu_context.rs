@@ -1,8 +1,7 @@
 use crate::Stats;
 use zisk_common::EmuTrace;
 use zisk_core::{
-    EmulationMode, FcallInstContext, InstContext, Mem, PrecompiledInstContext, INPUT_ADDR,
-    MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
+    InstContext, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, REGS_IN_MAIN_TOTAL_NUMBER,
 };
 
 /// ZisK emulator context data container, storing the state of the emulation
@@ -26,22 +25,7 @@ impl EmuContext {
     /// RisK emulator context constructor
     pub fn new(input: Vec<u8>) -> EmuContext {
         let mut ctx = EmuContext {
-            inst_ctx: InstContext {
-                mem: Mem::default(),
-                a: 0,
-                b: 0,
-                c: 0,
-                flag: false,
-                sp: 0,
-                pc: ROM_ENTRY,
-                step: 0,
-                end: false,
-                error: false,
-                regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
-                emulation_mode: EmulationMode::default(),
-                precompiled: PrecompiledInstContext::default(),
-                fcall: FcallInstContext::default(),
-            },
+            inst_ctx: InstContext::default(),
             tracerv: Vec::new(),
             tracerv_step: 0,
             tracerv_current_regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],

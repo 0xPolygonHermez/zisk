@@ -23,9 +23,12 @@ getrandom = { version = "0.2", features = ["custom"] }
 cfg-if = "1.0"
 tiny-keccak = { version = "2.0.0", features = ["keccak"] }
 serde = { workspace = true, features = ["derive"] }
-bincode = "2.0"
+
+bincode = { workspace = true }
 sha2 = { workspace = true }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0", features = ["verify"] }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0", features = [
+    "verify",
+] }
 
 [target.'cfg(any(zisk_hints, zisk_hints_debug))'.dependencies]
 once_cell = "1.21.3"

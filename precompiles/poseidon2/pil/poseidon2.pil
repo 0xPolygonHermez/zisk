@@ -161,7 +161,7 @@ airtemplate Poseidon2(const int N = 2**17, const int operation_bus_id = OPERATIO
 
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
-    lookup_proves(operation_bus_id, [OP_POSEIDON2, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_STATE), 0, 0, 0, 0], mul: in_use_clk_0);
+    lookup_proves(operation_bus_id, [OP_POSEIDON2, 0, 0, step_addr'(ADDR_STATE), 0, 0, 0, 0, step_addr'(STEP_MAIN)], mul: in_use_clk_0);
 
     function clock_set(const expr mvcol = 1, const int start = 0, int end = -1): const expr {
         expr result = 0;

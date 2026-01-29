@@ -1,6 +1,7 @@
 //! A file-based implementation of ZiskStdin.
 //! This module provides functionality to read input data from a file.
 
+use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -45,13 +46,13 @@ impl ZiskIO for ZiskFileStdin {
         self.reader.read_exact(buffer).expect("Failed to read into buffer");
     }
 
-    fn write_serialized(&mut self, _data: &[u8]) {
+    fn write<T: Serialize>(&mut self, _data: &T) {
         // This is a read-only stdin implementation
         // Writing is not supported for file-based stdin
         panic!("Write operations are not supported for FileStdin");
     }
 
-    fn write_bytes(&mut self, _data: &[u8]) {
+    fn write_slice(&mut self, _data: &[u8]) {
         // This is a read-only stdin implementation
         // Writing is not supported for file-based stdin
         panic!("Write operations are not supported for FileStdin");

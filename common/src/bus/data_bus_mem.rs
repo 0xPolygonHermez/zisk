@@ -50,17 +50,3 @@ impl MemBusData {
         [data[MEM_VALUE_0], data[MEM_VALUE_1]]
     }
 }
-
-pub struct MemCollectorInfo {
-    pub from_addr: u32,
-    pub to_addr: u32,
-}
-
-impl MemCollectorInfo {
-    pub fn skip_addr(&self, addr: u32) -> bool {
-        if addr > self.to_addr || addr < self.from_addr {
-            return true;
-        }
-        false
-    }
-}

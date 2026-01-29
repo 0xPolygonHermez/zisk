@@ -15,14 +15,6 @@ pub fn get_home_dir() -> String {
     env::var("HOME").expect("get_home_dir() failed to get HOME environment variable")
 }
 
-/// Gets the default witness computation library file location in the home installation directory.
-pub fn get_default_witness_computation_lib() -> PathBuf {
-    let extension = if cfg!(target_os = "macos") { "dylib" } else { "so" };
-    let witness_computation_lib =
-        format!("{}/.zisk/bin/libzisk_witness.{}", get_home_dir(), extension);
-    PathBuf::from(witness_computation_lib)
-}
-
 /// Gets the default proving key file location in the home installation directory.
 pub fn get_default_proving_key() -> PathBuf {
     let proving_key = format!("{}/.zisk/provingKey", get_home_dir());
@@ -77,12 +69,6 @@ pub fn cli_fail_if_macos() -> anyhow::Result<()> {
     } else {
         Ok(())
     }
-}
-
-/// Gets the witness computation library file location.
-/// Uses the default one if not specified by user.
-pub fn get_witness_computation_lib(witness_lib: Option<&PathBuf>) -> PathBuf {
-    witness_lib.cloned().unwrap_or_else(get_default_witness_computation_lib)
 }
 
 /// Gets the proving key file location.

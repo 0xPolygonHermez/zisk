@@ -42,11 +42,10 @@ impl RegionsOfInterest {
         self.call_stack_rc += 1;
     }
     pub fn update_call_depth(&mut self, call_stack_depth: usize) {
-        if self.call_stack_depth.is_none() {
-            self.call_stack_depth = Some(call_stack_depth);
+        if let Some(depth) = self.call_stack_depth {
+            self.call_stack_depth = Some(std::cmp::min(depth, call_stack_depth));
         } else {
-            self.call_stack_depth =
-                Some(std::cmp::min(self.call_stack_depth.unwrap(), call_stack_depth));
+            self.call_stack_depth = Some(call_stack_depth);
         }
     }
     pub fn call(&mut self, caller: Option<usize>, call_stack_depth: usize) {

@@ -493,12 +493,12 @@ impl Stats {
         if is_jmp {
             // CALL: set_pc=true, store_ra=true, store_offset=1 (stores PC+4 or PC+2 in ra)
             // self.is_call = instruction.store_ra && instruction.store_offset == 1;
-            self.is_call = instruction.store_ra;
+            self.is_call = instruction.store_pc;
             self.call_return_reg = if self.is_call { instruction.store_offset as u8 } else { 0 };
 
-            // RETURN: set_pc=true, store_ra=false (no stores RA), b_src=SRC_REG, b_offset_imm0=1 (jumps to ra/x1)
+            // RETURN: set_pc=true, store_pc=false (no stores RA), b_src=SRC_REG, b_offset_imm0=1 (jumps to ra/x1)
             // Additionally, verify that the target PC matches the expected return address from the call stack
-            let is_jalr_ra = !instruction.store_ra
+            let is_jalr_ra = !instruction.store_pc
                 && instruction.set_pc
                 && instruction.b_src == SRC_REG
                 && instruction.b_offset_imm0 == 1;
@@ -513,7 +513,7 @@ impl Stats {
                     self.is_return = false;
                 }
             } else if let Some(top) = self.call_stack.last() {
-                self.is_return = !instruction.store_ra
+                self.is_return = !instruction.store_pc
                     && instruction.b_src == SRC_REG
                     && instruction.b_offset_imm0 == top.return_reg as u64;
             } else {
@@ -918,6 +918,11 @@ impl OpStats for Stats {
     fn mem_align_write(&mut self, addr: u64, count: usize) {
         for index in 0..count {
             self.on_memory_write(addr + 8 * index as u64, 8, 0);
+        }
+    }
+    fn add_extras(&mut self, extras: &[(u8, usize)]) {
+        for (opcode, count) in extras {
+            self.costs.ops[*opcode as usize] += *count as u64;
         }
     }
 }

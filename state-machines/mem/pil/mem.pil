@@ -107,7 +107,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     is_first_segment * segment_id === 0;
 
     col witness bits(29) addr;
-    col witness bits(40) step;
+    col witness bits(MEM_STEP_BITS) step;
     col witness bits(1) sel;
     col witness bits(1) addr_changes;
 
@@ -119,7 +119,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
         // Two columns, one for step (timestap) of second operation, and other
         // to enable dual operation in the row.
-        col witness bits(40) air.step_dual;
+        col witness bits(MEM_STEP_BITS) air.step_dual;
         col witness bits(1) air.sel_dual;
 
         sel_dual * (1 - sel_dual) === 0;
@@ -370,17 +370,19 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         }
         const expr delta_step = step - previous_step + (1 - wr);
 
-        col witness bits(18) air.increment[2];
-        increment[0] + 2**18 * increment[1] + 1 === addr_changes * (delta_addr - delta_step) + delta_step;
+        col witness bits(22) air.l_increment;
+        col witness bits(16) air.h_increment;
+        l_increment + 2**22 * h_increment + 1 === addr_changes * (delta_addr - delta_step) + delta_step;
 
         is_first_segment * SEGMENT_L1 * (1 - addr_changes) === 0;
 
-        // addr_change == 1 => [0,2^18-1] => 18 + 18 = 36 bits + 3 => 39 bits => 512 GB
-        // addr_change == 0 => [0,2^18-1] => 18 + 18 = 36 bits => STEP upto 2^34 => 16 GB steps
-        // 36 bits x 2^22 = 2^58 + 2^32 address = 2^59 secure.
+        // addr_change == 1 => 22 + 16 = 38 bits + 3 => 41 bits => 2 TB (limit address 32 bits)
+        // addr_change == 0 => 22 + 16 = 38 bits => 4 slots => 2^36 => 32 GB steps (16K main instances)
+        // 38 bits x 2^22 = 2^60 + 2^32 address = 2^61 secure.
+        // using control in the middle of instance, reduce to 2^60
 
-        range_check(expression: increment[0], min: 0, max: 2**18 - 1);
-        range_check(expression: increment[1], min: 0, max: 2**18 - 1);
+        range_check(expression: l_increment, min: 0, max: 2**22 - 1);
+        range_check(expression: h_increment, min: 0, max: 2**16 - 1);
 
         // to avoid intermediate column
         col witness bits(1) air.read_same_addr;
@@ -477,6 +479,10 @@ function precompiled_mem_load(int id = MEMORY_ID, expr addr, expr main_step, exp
     mem_assumes(id, MEMORY_LOAD_OP, addr, main_step_to_precompiled_mem_step(main_step), 8, value, sel, name);
 }
 
+function precompiled_mem_load_padding(int id = MEMORY_ID, expr padding = 0, int name = PIOP_NAME_DEFAULT) {
+    mem_proves(id, MEMORY_LOAD_OP, 0, main_step_to_precompiled_mem_step(0), [0, 0], padding, name);
+}
+
 function precompiled_mem_store(int id = MEMORY_ID, expr addr, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT ) {
     mem_assumes(id, MEMORY_STORE_OP, addr, main_step_to_precompiled_mem_step(main_step, 1), 8, value, sel, name);
 }
@@ -485,6 +491,12 @@ function precompiled_mem_store(int id = MEMORY_ID, expr addr, expr main_step, ex
 
 function reg_pre_load(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     mem_proves(id, MEMORY_REG_OP, addr, prev_mem_step, value, sel, name: name);
+}
+
+function precompiled_reg_load(int id = MEMORY_ID, expr reg, expr prev_mem_step, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
+    mem_proves(id, MEMORY_REG_OP, reg, prev_mem_step, value, sel, name: name);
+    range_check(expression: main_step_to_precompiled_mem_step(main_step) - prev_mem_step, min: 0, max: MAX_RANGE);    
+    mem_assumes(id, MEMORY_REG_OP, reg, main_step_to_precompiled_mem_step(main_step), 8, value, sel, name: name);
 }
 
 function reg_pre_store(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {

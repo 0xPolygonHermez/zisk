@@ -28,7 +28,7 @@
 #define ROM_ROWS (1 << 21)
 #define INPUT_ROWS (1 << 21)
 #define MEM_ROWS (1 << 22)
-#define MAX_CHUNKS 8192     // 2^13 * 2^18 = 2^31
+#define MAX_CHUNKS (1 << 18)     // 2^36 / 2^18 = 2^18
 
 // THREAD_BITS >= 1
 #define THREAD_BITS 2
@@ -47,7 +47,7 @@
 #define ADDR_SLOT_BITS 5
 #define ADDR_SLOT_SIZE (1 << ADDR_SLOT_BITS)
 #define ADDR_SLOT_MASK (0xFFFFFFFF << ADDR_SLOT_BITS)
-#define ADDR_SLOTS ((1024 * 1024 * 32) / MAX_THREADS)
+#define ADDR_SLOTS ((1024 * 1024 * 64) / MAX_THREADS)
 
 #define ADDR_SLOTS_SIZE (ADDR_SLOT_SIZE * ADDR_SLOTS)
 #define TIME_US_BY_CHUNK 173
@@ -55,7 +55,41 @@
 #define NO_CHUNK_ID 0xFFFFFFFF
 #define EMPTY_PAGE 0xFFFFFFFF
 
-#define MEM_WRITE_FLAG 0x10
-#define MEM_WRITE_BYTE_CLEAR_FLAG 0x20
+
+// SINGLE WRITE FLAGS
+//                bits
+// bytes(4)        0-3   (values 1,2,4,8)
+// write_flag (1)    4
+// clear_flag (1)    8
+
+// ALIGNED WRITE BLOCKS FLAGS
+//                bits
+// bytes(4)        0-3   (14 read block/15 write block)
+// word_count(28) 4-31   2^28 * 2^3 = 2^31 bytes = 2GB MAX_MEMCPY_SIZE
+
+
+#define MOPS_WRITE_FLAG 0x10
+#define MOPS_WRITE_BYTE_CLEAR_FLAG 0x20
+
+#define MOPS_READ_8   0x08
+#define MOPS_READ_4   0x04
+#define MOPS_READ_2   0x02
+#define MOPS_READ_1   0x01
+
+#define MOPS_WRITE_8  0x18
+#define MOPS_WRITE_4  0x14
+#define MOPS_WRITE_2  0x12
+#define MOPS_WRITE_1  0x11
+
+#define MOPS_CWRITE_1 0x31
+
+#define MOPS_BLOCK_READ 0x0A
+#define MOPS_BLOCK_WRITE 0x0B
+#define MOPS_ALIGNED_READ 0x0C
+#define MOPS_ALIGNED_WRITE 0x0D
+#define MOPS_ALIGNED_BLOCK_READ 0x0E
+#define MOPS_ALIGNED_BLOCK_WRITE 0x0F
+
+#define MOPS_BLOCK_COUNT_SBITS      4
 
 #endif

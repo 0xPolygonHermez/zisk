@@ -1,7 +1,8 @@
-require "std_lookup.pil"
-require "std_permutation.pil"
-require "std_direct.pil"
-require "opids.pil"
+require "std_lookup.pil";
+require "std_permutation.pil";
+require "std_direct.pil";
+require "registers.pil"
+require "opids.pil";
 
 const int BOOT_ADDR = 0x1000;
 const int END_PC_ADDR = 0x1004;
@@ -111,7 +112,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     } else {
         col witness bits(32) air.a_imm1;
     }
-    col witness bits(1) a_src_step;
+    col witness bits(1) op_with_step;          // Selector to include step on operation bus
 
     // Source B
 
@@ -139,7 +140,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
 
     // Destination C
 
-    col witness bits(1) store_ra;
+    col witness bits(1) store_pc;
 
     col witness bits(1) store_mem;
     
@@ -256,9 +257,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     //   region. As a result, no memory state machine can validate memory access in this area;
     //   only the main state machine can 'prove' such memory access.
 
-    col witness bits(40) a_reg_prev_mem_step;
-    col witness bits(40) b_reg_prev_mem_step;
-    col witness bits(40) store_reg_prev_mem_step;
+    col witness bits(REG_STEP_BITS) a_reg_prev_mem_step;
+    col witness bits(REG_STEP_BITS) b_reg_prev_mem_step;
+    col witness bits(REG_STEP_BITS) store_reg_prev_mem_step;
     col witness bits(32) store_reg_prev_value[RC];
     col witness bits(1) a_src_reg;
     col witness bits(1) b_src_reg;
@@ -306,8 +307,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
 
     const expr store_value[2];
 
-    store_value[0] = store_ra*(pc + jmp_offset2 - c[0]) + c[0];
-    store_value[1] = (1 - store_ra) * c[1];
+    store_value[0] = store_pc*(pc + jmp_offset2 - c[0]) + c[0];
+    store_value[1] = (1 - store_pc) * c[1];
 
     // Memory function to prove that previous register store_offset access.
 
@@ -330,11 +331,11 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
 
     range_check(expression: a_mem_step - a_reg_prev_mem_step - 1, min: 0, max: MAX_RANGE, sel: a_src_reg);
     range_check(expression: b_mem_step - b_reg_prev_mem_step - 1, min: 0, max: MAX_RANGE, sel: b_src_reg);
-    range_check(expression: store_mem_step - store_reg_prev_mem_step -1 , min: 0, max: MAX_RANGE, sel: store_reg);
+    range_check(expression: store_mem_step - store_reg_prev_mem_step - 1 , min: 0, max: MAX_RANGE, sel: store_reg);
 
     // Sent to bus the external operation
 
-    lookup_assumes(operation_bus_id, [op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op);
+    lookup_assumes(operation_bus_id, [op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag, STEP * op_with_step], sel: is_external_op);
 
     const expr a_src_c;
     const expr b_src_c;
@@ -348,12 +349,12 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     // Optimization to avoid use extra columns when c is source for a or b.
 
     if (stack_enabled) {
-        a_src_c = 1 - a_src_step - a_src_mem - a_src_imm - a_src_sp;
+        a_src_c = 1 - a_src_mem - a_src_imm - a_src_sp;
         b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind - b_src_reg;
         a_imm[1] = a_use_sp_imm1;
         b_imm[1] = b_use_sp_imm1;
     } else {
-        a_src_c = 1 - a_src_step - a_src_mem - a_src_imm - a_src_reg;
+        a_src_c = 1 - a_src_mem - a_src_imm - a_src_reg;
         b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind - b_src_reg;
         a_imm[1] = a_imm1;
         b_imm[1] = b_imm1;
@@ -367,9 +368,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
             // a_src_sp ===> set a = sp (only less significant index, rest must be 0)
             a_src_sp * (a[index] - (index == 0 ? sp: 0 )) === 0;
         }
-
-        // If source is step, value must be same as STEP
-        a_src_step * (a[index] - (index == 0 ? STEP : 0)) === 0;
 
         // If source is c, value must be same as previous_c
         a_src_c * (a[index] - previous_c) === 0;
@@ -456,11 +454,11 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
 
     a_src_imm * (1 - a_src_imm) === 0;
     a_src_mem * (1 - a_src_mem) === 0;
-    a_src_step * (1 - a_src_step) === 0;
+    op_with_step * (1 - op_with_step) === 0;
     b_src_imm * (1 - b_src_imm) === 0;
     b_src_mem * (1 - b_src_mem) === 0;
     is_external_op * (1 - is_external_op) === 0;
-    store_ra * (1 - store_ra) === 0;
+    store_pc * (1 - store_pc) === 0;
     store_mem * (1 - store_mem) === 0;
     store_ind * (1 - store_ind) === 0;
     set_pc * (1 - set_pc) === 0;
@@ -470,8 +468,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     b_src_reg * (1 - b_src_reg) === 0;
     store_reg * (1 - store_reg) === 0;
 
-    const expr rom_flags = 1 + 2 * a_src_imm + 4 * a_src_mem + 8 * a_src_step + 16 * b_src_imm
-                           + 32 * b_src_mem + 64 * is_external_op + 128 * store_ra + 256 * store_mem
+    const expr rom_flags = 1 + 2 * a_src_imm + 4 * a_src_mem + 8 * op_with_step + 16 * b_src_imm
+                           + 32 * b_src_mem + 64 * is_external_op + 128 * store_pc + 256 * store_mem
                            + 512 * store_ind + 1024 * set_pc + 2048 * m32 + 4096 * b_src_ind
                            + 8192 * a_src_reg + 16384 * b_src_reg + 32768 * store_reg;
 
@@ -528,5 +526,5 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
 
 
     // Main Segment constraint
-    range_check(main_segment, min: 0, max: ((2**32)/N) - 1);
+    range_check(main_segment, min: 0, max: ((2**MAIN_STEP_BITS)/N) - 1);
 }

@@ -3,9 +3,8 @@
 //! It is responsible for computing witnesses for ROM-related execution plans,
 
 use std::{
-    collections::VecDeque,
     sync::{
-        atomic::{AtomicBool, AtomicU32},
+        atomic::{AtomicBool, AtomicU64},
         Arc,
     },
     thread::JoinHandle,
@@ -18,7 +17,7 @@ use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::sync::Mutex;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
-    InstanceType, MemCollectorInfo, Metrics, PayloadType, ROM_BUS_ID,
+    InstanceType, Metrics, PayloadType, ROM_BUS_ID,
 };
 use zisk_core::ZiskRom;
 
@@ -35,10 +34,10 @@ pub struct RomInstance {
     ictx: InstanceCtx,
 
     /// Shared biod instruction counter for monitoring ROM operations.
-    bios_inst_count: Mutex<Arc<Vec<AtomicU32>>>,
+    bios_inst_count: Mutex<Arc<Vec<AtomicU64>>>,
 
     /// Shared program instruction counter for monitoring ROM operations.
-    prog_inst_count: Mutex<Arc<Vec<AtomicU32>>>,
+    prog_inst_count: Mutex<Arc<Vec<AtomicU64>>>,
 
     /// Execution statistics counter for ROM instructions.
     counter_stats: Mutex<Option<CounterStats>>,
@@ -64,8 +63,8 @@ impl RomInstance {
     pub fn new(
         zisk_rom: Arc<ZiskRom>,
         ictx: InstanceCtx,
-        bios_inst_count: Arc<Vec<AtomicU32>>,
-        prog_inst_count: Arc<Vec<AtomicU32>>,
+        bios_inst_count: Arc<Vec<AtomicU64>>,
+        prog_inst_count: Arc<Vec<AtomicU64>>,
         handle_rh: Option<JoinHandle<AsmRunnerRH>>,
     ) -> Self {
         Self {
@@ -240,15 +239,13 @@ impl RomCollector {
     /// A new `RomCounter` instance.
     pub fn new(
         computed: bool,
-        bios_inst_count: Arc<Vec<AtomicU32>>,
-        prog_inst_count: Arc<Vec<AtomicU32>>,
+        bios_inst_count: Arc<Vec<AtomicU64>>,
+        prog_inst_count: Arc<Vec<AtomicU64>>,
     ) -> Self {
         let rom_counter = RomCounter::new(bios_inst_count, prog_inst_count);
         Self { already_computed: computed, rom_counter }
     }
-}
 
-impl BusDevice<u64> for RomCollector {
     /// Processes data received on the bus, updating ROM metrics.
     ///
     /// # Arguments
@@ -260,13 +257,7 @@ impl BusDevice<u64> for RomCollector {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == ROM_BUS_ID);
 
         if !self.already_computed {
@@ -275,15 +266,9 @@ impl BusDevice<u64> for RomCollector {
 
         true
     }
+}
 
-    /// Returns the bus IDs associated with this counter.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![ROM_BUS_ID]
-    }
-
+impl BusDevice<u64> for RomCollector {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

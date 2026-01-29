@@ -1,6 +1,6 @@
 use precompiles_common::MemBusHelpers;
-use std::collections::VecDeque;
-use zisk_common::{BusId, MemCollectorInfo, OPERATION_BUS_DATA_SIZE};
+use precompiles_common::MemProcessor;
+use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
 #[derive(Debug)]
 pub struct ArithEq384MemInputConfig {
@@ -10,24 +10,24 @@ pub struct ArithEq384MemInputConfig {
     pub write_params: usize,
     pub chunks_per_param: usize,
 }
-pub fn generate_mem_inputs(
+pub fn generate_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     write_data: Option<&[u64]>,
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    mem_processors: &mut P,
     config: &ArithEq384MemInputConfig,
 ) {
     let params_count = config.read_params + config.write_params;
-    let params_offset = OPERATION_BUS_DATA_SIZE + config.indirect_params;
+    let params_offset = OPERATION_PRECOMPILED_BUS_DATA_SIZE + config.indirect_params;
 
     for iparam in 0..config.indirect_params {
         MemBusHelpers::mem_aligned_load(
             addr_main + iparam as u32 * 8,
             step_main,
-            data[OPERATION_BUS_DATA_SIZE + iparam],
-            pending,
+            data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + iparam],
+            mem_processors,
         )
     }
     for iparam in 0..params_count {
@@ -38,7 +38,7 @@ pub fn generate_mem_inputs(
         };
         let param_addr = if config.indirect_params > 0 {
             // read indirect parameters, means stored the address of parameter
-            data[OPERATION_BUS_DATA_SIZE + param_index] as u32
+            data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_index] as u32
         } else {
             addr_main + (param_index * 8 * config.chunks_per_param) as u32
         };
@@ -65,27 +65,25 @@ pub fn generate_mem_inputs(
                 step_main,
                 chunk_data,
                 is_write,
-                pending,
+                mem_processors,
             )
         }
     }
 }
 
-pub fn skip_mem_inputs(
+pub fn skip_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     data: &[u64],
     config: &ArithEq384MemInputConfig,
-    mem_collectors_info: &[MemCollectorInfo],
+    mem_processors: &mut P,
 ) -> bool {
     let params_count = config.read_params + config.write_params;
 
     // Check indirect loads
     for iparam in 0..config.indirect_params {
         let addr = addr_main + iparam as u32 * 8;
-        for mem_collector in mem_collectors_info {
-            if !mem_collector.skip_addr(addr) {
-                return false;
-            }
+        if !mem_processors.skip_addr(addr) {
+            return false;
         }
     }
 
@@ -96,16 +94,14 @@ pub fn skip_mem_inputs(
             iparam
         };
         let param_addr = if config.indirect_params > 0 {
-            data[OPERATION_BUS_DATA_SIZE + param_index] as u32
+            data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_index] as u32
         } else {
             addr_main + (param_index * 8 * config.chunks_per_param) as u32
         };
         for ichunk in 0..config.chunks_per_param {
             let addr = param_addr + ichunk as u32 * 8;
-            for mem_collector in mem_collectors_info {
-                if !mem_collector.skip_addr(addr) {
-                    return false;
-                }
+            if !mem_processors.skip_addr(addr) {
+                return false;
             }
         }
     }

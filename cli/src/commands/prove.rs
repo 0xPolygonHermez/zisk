@@ -22,10 +22,6 @@ use zisk_sdk::{ProverClient, ZiskProveResult};
         .required(false)
 ))]
 pub struct ZiskProve {
-    /// Witness computation dynamic library path
-    #[clap(short = 'w', long)]
-    pub witness_lib: Option<PathBuf>,
-
     /// ELF file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
@@ -130,14 +126,14 @@ impl ZiskProve {
 
         let mut gpu_params = ParamsGPU::new(self.preallocate);
 
-        if self.max_streams.is_some() {
-            gpu_params.with_max_number_streams(self.max_streams.unwrap());
+        if let Some(max_streams) = self.max_streams {
+            gpu_params.with_max_number_streams(max_streams);
         }
-        if self.number_threads_witness.is_some() {
-            gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
+        if let Some(number_threads_witness) = self.number_threads_witness {
+            gpu_params.with_number_threads_pools_witness(number_threads_witness);
         }
-        if self.max_witness_stored.is_some() {
-            gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
+        if let Some(max_witness_stored) = self.max_witness_stored {
+            gpu_params.with_max_witness_stored(max_witness_stored);
         }
 
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
@@ -196,7 +192,6 @@ impl ZiskProve {
             .aggregation(self.aggregation)
             .compressed(self.compressed)
             .rma(self.rma)
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
             .verbose(self.verbose)
@@ -227,7 +222,6 @@ impl ZiskProve {
             .aggregation(self.aggregation)
             .compressed(self.compressed)
             .rma(self.rma)
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
             .verbose(self.verbose)

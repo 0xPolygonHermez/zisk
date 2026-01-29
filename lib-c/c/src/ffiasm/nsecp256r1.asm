@@ -8875,3 +8875,6 @@ R3      dq      0xac8ebec90b65a624,0x111f28ae0c0555c9,0x2543b9246ba5e93f,0x503a5
 lboMask dq      0xffffffffffffffff
 np      dq      0xccd1c8aaee00bc4f
 
+
+; Mark stack as non-executable
+section .note.GNU-stack noalloc noexec nowrite progbits

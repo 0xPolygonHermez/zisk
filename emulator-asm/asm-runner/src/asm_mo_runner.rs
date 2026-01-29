@@ -263,7 +263,6 @@ impl AsmRunnerMO {
         //         _stats.add_stat(i);
         //     }
         // }
-
         preloaded.handle_mo = Some(std::thread::spawn(move || {
             drop(mem_planner);
             MemPlanner::new()

@@ -286,6 +286,13 @@ impl Coordinator {
             ));
         }
 
+        if request.minimal_compute_capacity > request.compute_capacity {
+            error!("Invalid requested minimal compute capacity");
+            return Err(CoordinatorError::InvalidArgument(
+                "Minimal compute capacity must not exceed compute capacity".to_string(),
+            ));
+        }
+
         // Check if we have enough capacity to compute the proof is already checked
         // in create_job > partition_and_allocate_by_capacity
 
@@ -330,12 +337,14 @@ impl Coordinator {
         self.pre_launch_proof(&request)?;
 
         let required_compute_capacity = ComputeCapacity::from(request.compute_capacity);
+        let minimal_compute_capacity = ComputeCapacity::from(request.minimal_compute_capacity);
 
         // Create and configure a new job
         let mut job = self
             .create_job(
                 request.data_id.clone(),
                 required_compute_capacity,
+                minimal_compute_capacity,
                 request.inputs_mode,
                 request.hints_mode,
                 request.simulated_node,
@@ -531,6 +540,7 @@ impl Coordinator {
         &self,
         data_id: DataId,
         required_compute_capacity: ComputeCapacity,
+        minimal_compute_capacity: ComputeCapacity,
         inputs_mode: InputsModeDto,
         hints_mode: HintsModeDto,
         simulated_node: Option<u32>,
@@ -543,7 +553,11 @@ impl Coordinator {
 
         let (selected_workers, mut partitions) = self
             .workers_pool
-            .partition_and_allocate_by_capacity(required_compute_capacity, execution_mode)
+            .partition_and_allocate_by_capacity(
+                required_compute_capacity,
+                minimal_compute_capacity,
+                execution_mode,
+            )
             .await?;
 
         if let Some(simulated_node) = simulated_node {
@@ -555,6 +569,7 @@ impl Coordinator {
             inputs_mode,
             hints_mode,
             required_compute_capacity,
+            minimal_compute_capacity,
             selected_workers,
             partitions,
             execution_mode,
@@ -1774,15 +1789,7 @@ impl Coordinator {
                 agg_proofs: proofs,
                 last_proof: all_done,
                 final_proof: all_done,
-                verify_constraints: true,
-                aggregation: true,
-                rma: true,
-                compressed: true,
-                verify_proofs: true,
-                save_proofs: false,
-                test_mode: false,
-                output_dir_path: "".to_string(),
-                minimal_memory: false,
+                compressed: self.config.coordinator.compressed_proofs,
             }),
         };
 

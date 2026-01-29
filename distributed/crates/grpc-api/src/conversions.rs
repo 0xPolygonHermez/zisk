@@ -169,6 +169,7 @@ impl From<LaunchProofRequestDto> for LaunchProofRequest {
         LaunchProofRequest {
             data_id: dto.data_id.into(),
             compute_capacity: dto.compute_capacity,
+            minimal_compute_capacity: dto.minimal_compute_capacity,
             inputs_mode: inputs_mode.into(),
             inputs_uri,
             hints_mode: hints_mode.into(),
@@ -187,6 +188,7 @@ impl TryFrom<LaunchProofRequest> for LaunchProofRequestDto {
         Ok(LaunchProofRequestDto {
             data_id: req.data_id.into(),
             compute_capacity: req.compute_capacity,
+            minimal_compute_capacity: req.minimal_compute_capacity,
             inputs_mode: match InputMode::try_from(req.inputs_mode).unwrap_or(InputMode::None) {
                 InputMode::None => InputsModeDto::InputsNone,
                 InputMode::Path => {
@@ -393,15 +395,7 @@ impl From<AggParamsDto> for AggParams {
             agg_proofs: Some(ProofList { proofs: agg_proofs }),
             last_proof: dto.last_proof,
             final_proof: dto.final_proof,
-            verify_constraints: dto.verify_constraints,
-            aggregation: dto.aggregation,
-            rma: dto.rma,
             compressed: dto.compressed,
-            verify_proofs: dto.verify_proofs,
-            save_proofs: dto.save_proofs,
-            test_mode: dto.test_mode,
-            output_dir_path: dto.output_dir_path,
-            minimal_memory: dto.minimal_memory,
         }
     }
 }

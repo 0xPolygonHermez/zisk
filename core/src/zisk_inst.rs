@@ -83,6 +83,7 @@ pub enum ZiskOperationType {
     ArithEq,
     ArithEq384,
     BigInt, // Note: Add new core operations here
+    Dma,    // Note: To add extra params to precompiles calls
     // ZisK Free Input Operations
     FcallParam,
     Fcall,
@@ -103,7 +104,7 @@ pub const ARITH_EQ_384_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq384 as u32;
 pub const BIG_INT_OP_TYPE_ID: u32 = ZiskOperationType::BigInt as u32;
 pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
 pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
-pub const FCALL_GET_OP_TYPE_ID: u32 = ZiskOperationType::FcallGet as u32;
+pub const DMA_OP_TYPE_ID: u32 = ZiskOperationType::Dma as u32;
 
 /// ZisK instruction definition
 ///
@@ -115,11 +116,12 @@ pub const FCALL_GET_OP_TYPE_ID: u32 = ZiskOperationType::FcallGet as u32;
 #[derive(Debug, Clone)]
 pub struct ZiskInst {
     pub paddr: u64,
-    pub store_ra: bool,
+    pub store_pc: bool,
     pub store_use_sp: bool,
     pub store: u64,
     pub store_offset: i64,
     pub set_pc: bool,
+    pub op_with_step: bool,
     // #[cfg(feature = "sp")]
     // pub set_sp: bool,
     pub ind_width: u64,
@@ -152,11 +154,12 @@ impl Default for ZiskInst {
     fn default() -> Self {
         Self {
             paddr: 0,
-            store_ra: false,
+            store_pc: false,
             store_use_sp: false,
             store: 0,
             store_offset: 0,
             set_pc: false,
+            op_with_step: false,
             // #[cfg(feature = "sp")]
             // set_sp: false,
             ind_width: 0,
@@ -222,14 +225,17 @@ impl ZiskInst {
         if self.store_offset != 0 {
             s += &format!(" store_offset=0x{:x}", self.store_offset as u64);
         }
-        if self.store_ra {
-            s += &format!(" store_ra={}", self.store_ra);
+        if self.store_pc {
+            s += &format!(" store_pc={}", self.store_pc);
         }
         if self.store_use_sp {
             s += &format!(" store_use_sp={}", self.store_use_sp);
         }
         if self.set_pc {
             s += &format!(" set_pc={}", self.set_pc);
+        }
+        if self.op_with_step {
+            s += &format!(" op_with_step={}", self.op_with_step);
         }
         if self.jmp_offset1 != 0 {
             s += &format!(" jmp_offset1={}", self.jmp_offset1);
@@ -263,11 +269,11 @@ impl ZiskInst {
         let flags: u64 = 1
             | (((self.a_src == SRC_IMM) as u64) << 1)
             | (((self.a_src == SRC_MEM) as u64) << 2)
-            | (((self.a_src == SRC_STEP) as u64) << 3)
+            | ((self.op_with_step as u64) << 3)
             | (((self.b_src == SRC_IMM) as u64) << 4)
             | (((self.b_src == SRC_MEM) as u64) << 5)
             | ((self.is_external_op as u64) << 6)
-            | ((self.store_ra as u64) << 7)
+            | ((self.store_pc as u64) << 7)
             | (((self.store == STORE_MEM) as u64) << 8)
             | (((self.store == STORE_IND) as u64) << 9)
             | ((self.set_pc as u64) << 10)

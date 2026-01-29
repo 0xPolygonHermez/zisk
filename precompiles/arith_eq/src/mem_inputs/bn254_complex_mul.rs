@@ -1,8 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Bn254Complex;
-use std::collections::VecDeque;
-use zisk_common::BusId;
-use zisk_common::MemCollectorInfo;
+use precompiles_common::MemProcessor;
 
 pub const BN254_COMPLEX_MUL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 2,
@@ -12,16 +10,16 @@ pub const BN254_COMPLEX_MUL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputC
     chunks_per_param: 8,
 };
 
-pub fn generate_bn254_complex_mul_mem_inputs(
+pub fn generate_bn254_complex_mul_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    mem_processors: &mut P,
 ) {
     // op,op_type,a,b,addr[2],...
-    let f1: &[u64; 8] = &data[6..14].try_into().unwrap();
-    let f2: &[u64; 8] = &data[14..22].try_into().unwrap();
+    let f1: &[u64; 8] = &data[7..15].try_into().unwrap();
+    let f2: &[u64; 8] = &data[15..23].try_into().unwrap();
     let mut f3 = [0u64; 8];
 
     Bn254Complex::calculate_mul(f1, f2, &mut f3);
@@ -31,15 +29,15 @@ pub fn generate_bn254_complex_mul_mem_inputs(
         data,
         Some(&f3),
         only_counters,
-        pending,
+        mem_processors,
         &BN254_COMPLEX_MUL_MEM_CONFIG,
     );
 }
 
-pub fn skip_bn254_complex_mul_mem_inputs(
+pub fn skip_bn254_complex_mul_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     data: &[u64],
-    mem_collectors_info: &[MemCollectorInfo],
+    mem_processors: &mut P,
 ) -> bool {
-    super::skip_mem_inputs(addr_main, data, &BN254_COMPLEX_MUL_MEM_CONFIG, mem_collectors_info)
+    super::skip_mem_inputs(addr_main, data, &BN254_COMPLEX_MUL_MEM_CONFIG, mem_processors)
 }
