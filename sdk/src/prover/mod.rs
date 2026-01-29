@@ -124,7 +124,7 @@ pub struct ZiskAggPhaseResult {
 }
 
 pub trait ProverEngine {
-    fn setup(&self, elf_path: PathBuf) -> Result<ZiskProgramVK>;
+    fn setup(&self, elf_path: &str) -> Result<ZiskProgramVK>;
 
     fn world_rank(&self) -> i32;
 
@@ -197,7 +197,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         Self { prover }
     }
 
-    pub fn setup(&self, elf_path: PathBuf) -> Result<ZiskProgramVK> {
+    pub fn setup(&self, elf_path: &str) -> Result<ZiskProgramVK> {
         self.prover.setup(elf_path)
     }
 

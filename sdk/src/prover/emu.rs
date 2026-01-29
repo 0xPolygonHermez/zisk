@@ -76,7 +76,8 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.set_stdin(stdin)
     }
 
-    fn setup(&self, elf: PathBuf) -> Result<ZiskProgramVK> {
+    fn setup(&self, elf: &str) -> Result<ZiskProgramVK> {
+        let elf = PathBuf::from(elf);
         check_paths_exist(&elf)?;
         let proving_key = self.core_prover.backend.get_proving_key_path();
 

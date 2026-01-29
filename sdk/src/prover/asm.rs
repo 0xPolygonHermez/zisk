@@ -91,7 +91,8 @@ impl ProverEngine for AsmProver {
             .unwrap_or(0)
     }
 
-    fn setup(&self, elf: PathBuf) -> Result<ZiskProgramVK> {
+    fn setup(&self, elf: &str) -> Result<ZiskProgramVK> {
+        let elf = PathBuf::from(elf);
         check_paths_exist(&elf)?;
         let proving_key = self.core_prover.backend.get_proving_key_path();
         let (rom_bin_path, vk) = ensure_custom_commits(proving_key, &elf)?;

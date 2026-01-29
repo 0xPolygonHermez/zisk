@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use anyhow::Result;
 use zisk_common::io::ZiskIO;
 use zisk_common::io::ZiskStdin;
-use zisk_sdk::{ProofOpts, ProverClient};
+use zisk_sdk::{include_elf, ProofOpts, ProverClient};
+
+pub const ELF: &str = include_elf!("sha-hasher-guest");
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
@@ -20,11 +22,7 @@ fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    let elf_path = PathBuf::from(
-        "/home/roger/zisk/examples/target/elf/riscv64ima-zisk-zkvm-elf/release/sha-hasher-guest",
-    );
-
-    let vk = client.setup(elf_path.clone())?;
+    let vk = client.setup(ELF)?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     let result = client.execute(stdin.clone())?;
