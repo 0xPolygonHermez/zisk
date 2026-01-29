@@ -279,21 +279,21 @@ impl ZiskProveResult {
             let publics_bytes = snark_proof.public_bytes;
 
             let mut rom_root = [0u64; 4];
-            for i in 0..4 {
+            for (i, item) in rom_root.iter_mut().enumerate() {
                 let start = i * 8;
                 let bytes: [u8; 8] = publics_bytes[start..start + 8]
                     .try_into()
                     .map_err(|_| anyhow::anyhow!("Invalid public bytes length"))?;
-                rom_root[i] = u64::from_be_bytes(bytes);
+                *item = u64::from_be_bytes(bytes);
             }
 
             let mut publics = [0u64; 64];
-            for i in 0..64 {
+            for (i, item) in publics.iter_mut().enumerate() {
                 let start = 32 + i * 4;
                 let bytes: [u8; 4] = publics_bytes[start..start + 4]
                     .try_into()
                     .map_err(|_| anyhow::anyhow!("Invalid public bytes length"))?;
-                publics[i] = u32::from_be_bytes(bytes) as u64;
+                *item = u32::from_be_bytes(bytes) as u64;
             }
 
             let zisk_publics = ZiskPublics { rom_root, publics };

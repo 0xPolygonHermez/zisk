@@ -22,9 +22,6 @@ pub struct ZiskVerify {
 
     #[clap(short = 'k', long)]
     pub vk: Option<String>,
-
-    #[clap(short = 'c', long, default_value_t = false)]
-    pub compressed: bool,
 }
 
 impl ZiskVerify {
