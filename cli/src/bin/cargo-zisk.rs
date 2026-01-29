@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::commands::{
     ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskProve, ZiskProveSnark, ZiskRomSetup,
-    ZiskRomVkey, ZiskRun, ZiskSdk, ZiskStats, ZiskVerify, ZiskVerifyConstraints, ZiskVerifySnark,
+    ZiskRun, ZiskSdk, ZiskStats, ZiskVerify, ZiskVerifyConstraints, ZiskVerifySnark,
 };
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -23,7 +23,6 @@ pub enum Cargo {
     Prove(ZiskProve),
     ProveSnark(ZiskProveSnark),
     RomSetup(ZiskRomSetup),
-    RomVkey(ZiskRomVkey),
     Run(ZiskRun),
     Sdk(ZiskSdk),
     Stats(ZiskStats),
@@ -54,9 +53,6 @@ fn main() -> Result<()> {
         }
         Cargo::RomSetup(cmd) => {
             cmd.run().context("Error executing RomSetup command")?;
-        }
-        Cargo::RomVkey(cmd) => {
-            cmd.run().context("Error executing RomVkey command")?;
         }
         Cargo::Run(cmd) => {
             cmd.run().context("Error executing Run command")?;

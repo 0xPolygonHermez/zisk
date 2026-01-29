@@ -50,7 +50,7 @@ impl ZiskRomSetup {
         tracing::info!("Computing setup for ROM {}", self.elf.display());
 
         tracing::info!("Computing merkle root");
-        rom_merkle_setup(&self.elf, &self.output_dir, &proving_key, false)?;
+        rom_merkle_setup(&self.elf, &self.output_dir, &proving_key)?;
 
         gen_assembly(&self.elf, &self.zisk_path, &self.output_dir, self.verbose)?;
 

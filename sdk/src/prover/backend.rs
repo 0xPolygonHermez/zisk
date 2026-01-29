@@ -1,7 +1,7 @@
 use crate::create_debug_info;
 use crate::{
-    Proof, ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramVK, ZiskProveResult,
-    ZiskVerifyConstraintsResult,
+    ensure_custom_commits, Proof, ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult,
+    ZiskProgramVK, ZiskProveResult, ZiskVerifyConstraintsResult,
 };
 use crate::{ProofMode, ProofOpts};
 use anyhow::Result;
@@ -14,7 +14,7 @@ use proofman::{
 use std::collections::HashMap;
 
 use proofman_common::ProofOptions;
-use rom_setup::{rom_vkey, verify_program_vk_publics};
+use rom_setup::{get_rom_info, verify_program_vk_publics};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
@@ -241,9 +241,13 @@ impl ProverBackend {
 
     pub(crate) fn vk(&self, elf_path: PathBuf) -> Result<ZiskProgramVK> {
         let proving_key_path = self.proving_key_path.clone();
-        let (vk, publics_pos) = rom_vkey(&elf_path, &None, &proving_key_path)?;
+        let (_, vk) = ensure_custom_commits(&proving_key_path, &elf_path)?;
+        let rom_info = get_rom_info(&proving_key_path)?;
 
-        Ok(ZiskProgramVK { vk, starting_pos_publics_program_vk: publics_pos })
+        Ok(ZiskProgramVK {
+            vk,
+            starting_pos_publics_program_vk: rom_info.starting_pos_publics_program_vk,
+        })
     }
 
     pub(crate) fn prove_debug(

@@ -6,6 +6,8 @@ use proofman_common::{
 use sm_rom::RomSM;
 use std::env;
 use std::fs;
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
 
@@ -53,7 +55,6 @@ pub fn gen_elf_hash(
     rom_buffer_path: &Path,
     blowup_factor: u64,
     merkle_tree_arity: u64,
-    check: bool,
 ) -> ProofmanResult<Vec<Goldilocks>> {
     let buffer = vec![
         Goldilocks::ZERO;
@@ -68,8 +69,18 @@ pub fn gen_elf_hash(
         blowup_factor,
         merkle_tree_arity,
         rom_buffer_path,
-        check,
     )
+}
+
+pub fn get_elf_vk(verkey_path: &Path) -> Result<Option<Vec<u8>>> {
+    if !verkey_path.exists() {
+        return Ok(None);
+    }
+
+    let mut file = File::open(verkey_path)?;
+    let mut root_bytes = [0u8; 32];
+    file.read_exact(&mut root_bytes)?;
+    Ok(Some(root_bytes.to_vec()))
 }
 
 pub fn get_elf_data_hash(elf_path: &Path) -> Result<String> {
@@ -79,20 +90,6 @@ pub fn get_elf_data_hash(elf_path: &Path) -> Result<String> {
     let hash = blake3::hash(&elf_data).to_hex().to_string();
 
     Ok(hash)
-}
-
-pub fn get_elf_bin_file_path(
-    elf_path: &Path,
-    default_cache_path: &Path,
-    blowup_factor: u64,
-    arity: u64,
-) -> Result<PathBuf> {
-    let elf_data =
-        fs::read(elf_path).with_context(|| format!("Error reading ELF file: {elf_path:?}"))?;
-
-    let hash = blake3::hash(&elf_data).to_hex().to_string();
-
-    get_elf_bin_file_path_with_hash(elf_path, &hash, default_cache_path, blowup_factor, arity)
 }
 
 pub fn get_elf_bin_file_path_with_hash(
@@ -115,6 +112,37 @@ pub fn get_elf_bin_file_path_with_hash(
     let gpu = if cfg!(feature = "gpu") { "_gpu" } else { "" };
     let rom_cache_file_name = format!(
         "{}_{}_{}_{}_{}{}.bin",
+        hash,
+        pilout_hash,
+        &n.to_string(),
+        &blowup_factor.to_string(),
+        &arity.to_string(),
+        gpu
+    );
+
+    Ok(default_cache_path.join(rom_cache_file_name))
+}
+
+pub fn get_elf_bin_verkey_file_path_with_hash(
+    elf_path: &Path,
+    hash: &str,
+    default_cache_path: &Path,
+    blowup_factor: u64,
+    arity: u64,
+) -> Result<PathBuf> {
+    if !elf_path.is_file() {
+        return Err(anyhow::anyhow!(
+            "Error: The specified ROM path is not a file: {}",
+            elf_path.display()
+        ));
+    }
+    let pilout_hash = PILOUT_HASH;
+
+    let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
+
+    let gpu = if cfg!(feature = "gpu") { "_gpu" } else { "" };
+    let rom_cache_file_name = format!(
+        "{}_{}_{}_{}_{}{}.verkey.bin",
         hash,
         pilout_hash,
         &n.to_string(),
@@ -155,4 +183,32 @@ pub fn ensure_dir_exists(path: &PathBuf) {
             panic!("Failed to create cache directory {path:?}: {e}");
         }
     }
+}
+
+/// Verify that the program VK publics match the proof's public values.
+///
+/// `program_vk` contains 4 publics, each is a u64 (8 bytes), so 32 bytes total.
+/// This function compares `program_vk` with the bytes in `public_values` starting at `starting_pos`.
+pub fn verify_program_vk_publics(
+    program_vk: &[u8],
+    starting_pos: u64,
+    public_values: &[u8],
+) -> Result<(), anyhow::Error> {
+    let end = starting_pos as usize + program_vk.len();
+
+    if public_values.len() < end {
+        return Err(anyhow::anyhow!(
+            "Proof public values too short: expected at least {} bytes, got {}",
+            end,
+            public_values.len()
+        ));
+    }
+
+    let proof_publics = &public_values[starting_pos as usize..end];
+
+    if program_vk != proof_publics {
+        return Err(anyhow::anyhow!("Program VK publics do not match proof public values"));
+    }
+
+    Ok(())
 }
