@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_common::io::ZiskStdin;
+use zisk_common::ElfBinaryOwned;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
 use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProver};
@@ -130,27 +131,22 @@ impl ProverConfig {
         if emulator {
             prover_service_config.asm = None;
         } else if prover_service_config.asm.is_none() {
-            let stem = prover_service_config
-                .elf
-                .file_stem()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "ELF path '{}' does not have a file stem.",
-                        prover_service_config.elf.display()
-                    )
-                })?
-                .to_str()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "ELF file stem for '{}' is not valid UTF-8.",
-                        prover_service_config.elf.display()
-                    )
-                })?;
+            let elf_bin = fs::read(&prover_service_config.elf).map_err(|e| {
+                anyhow::anyhow!(
+                    "Error reading ELF file {}: {}",
+                    prover_service_config.elf.display(),
+                    e
+                )
+            })?;
 
-            let hash = get_elf_data_hash(&prover_service_config.elf)
+            let elf = ElfBinaryOwned::new(
+                elf_bin,
+                prover_service_config.elf.file_stem().unwrap().to_str().unwrap().to_string(),
+            );
+            let hash = get_elf_data_hash(&elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
-            let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
+            let new_filename = format!("{hash}-mt.bin");
+            let asm_rom_filename = format!("{hash}-rh.bin");
             asm_rom = Some(default_cache_path.join(asm_rom_filename));
             prover_service_config.asm = Some(default_cache_path.join(new_filename));
         }
@@ -247,7 +243,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        prover.setup(prover_config.elf.clone().to_str().unwrap())?;
+        let elf_bin = fs::read(&prover_config.elf).map_err(|e| {
+            anyhow::anyhow!("Error reading ELF file {}: {}", prover_config.elf.display(), e)
+        })?;
+        let elf = ElfBinaryOwned::new(
+            elf_bin,
+            prover_config.elf.file_stem().unwrap().to_str().unwrap().to_string(),
+        );
+        prover.setup(&elf)?;
 
         Ok(Worker::<Emu> {
             _worker_id: worker_id,
@@ -281,7 +284,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        prover.setup(prover_config.elf.clone().to_str().unwrap())?;
+        let elf_bin = fs::read(&prover_config.elf).map_err(|e| {
+            anyhow::anyhow!("Error reading ELF file {}: {}", prover_config.elf.display(), e)
+        })?;
+        let elf = ElfBinaryOwned::new(
+            elf_bin,
+            prover_config.elf.file_stem().unwrap().to_str().unwrap().to_string(),
+        );
+        prover.setup(&elf)?;
 
         Ok(Worker::<Asm> {
             _worker_id: worker_id,

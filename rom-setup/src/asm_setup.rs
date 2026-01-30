@@ -6,11 +6,11 @@ use std::{
 use anyhow::Result;
 use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
-use crate::get_elf_data_hash;
+use crate::get_elf_data_hash_from_path;
 
 /// Check if all assembly binary files exist for a given ELF and output path
 pub fn assembly_files_exist(elf: &Path, output_path: &Path) -> Result<bool> {
-    let elf_hash = get_elf_data_hash(elf)?;
+    let elf_hash = get_elf_data_hash_from_path(elf)?;
 
     let stem = elf.file_stem().unwrap().to_str().unwrap();
     let new_filename = format!("{stem}-{elf_hash}.tmp");
@@ -39,7 +39,7 @@ pub fn gen_assembly(
     #[cfg(not(target_os = "macos"))]
     {
         let output_path = crate::get_output_path(_output_dir)?;
-        let elf_hash = get_elf_data_hash(_elf)?;
+        let elf_hash = get_elf_data_hash_from_path(_elf)?;
 
         tracing::info!("Computing assembly setup");
         let zisk_path = crate::get_zisk_path(_zisk_path.as_ref());
@@ -87,7 +87,7 @@ fn _generate_assembly(
     .for_each(|(file, gen_method)| {
         let asm_file = file.with_extension("asm");
         // Convert the ELF file to Zisk format and generates an assembly file
-        let rv2zk = Riscv2zisk::new(elf_file_path.to_str().unwrap().to_string());
+        let rv2zk = Riscv2zisk::new(&file_data);
         rv2zk
             .runfile(asm_file.to_str().unwrap().to_string(), *gen_method, false, false)
             .expect("Error converting elf to assembly");

@@ -18,7 +18,7 @@ pub struct RankInfo {
 
 #[macro_export]
 macro_rules! include_elf {
-    ($name:expr) => {
-        env!(concat!("ZISK_ELF_", $name))
+    ($arg:expr) => {
+        ElfBinary { elf: include_bytes!(env!(concat!("ZISK_ELF_", $arg))), name: $arg }
     };
 }

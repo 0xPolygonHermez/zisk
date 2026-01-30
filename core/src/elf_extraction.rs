@@ -5,7 +5,7 @@ use elf::{
     endian::AnyEndian,
     ElfBytes,
 };
-use std::{error::Error, fs, path::Path};
+use std::error::Error;
 
 use crate::{is_elf_file, RAM_ADDR, RAM_SIZE};
 
@@ -30,15 +30,6 @@ pub struct ElfPayload {
     pub rw: Vec<DataSection>,
     /// `SHF_ALLOC` but not `SHF_WRITE` - read-only data
     pub ro: Vec<DataSection>,
-}
-
-/// Extracts the relevant sections from the ELF file for `ZiskRom`
-pub fn collect_elf_payload(elf_path: &Path) -> Result<ElfPayload, Box<dyn Error>> {
-    // Read the ELF file
-    let file_data =
-        fs::read(elf_path).map_err(|_| format!("Error reading ELF file={}", elf_path.display()))?;
-
-    collect_elf_payload_from_bytes(&file_data)
 }
 
 /// Extracts the relevant sections from ELF file bytes for `ZiskRom`

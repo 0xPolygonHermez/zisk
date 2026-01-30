@@ -277,17 +277,15 @@ impl RomSM {
     /// * `rom_path` - The path to the ELF file.
     /// * `rom_custom_trace` - Reference to the custom ROM trace.
     pub fn compute_custom_trace_rom<F: PrimeField64>(
-        rom_path: PathBuf,
+        elf: &[u8],
         rom_custom_trace: &mut RomRomTrace<F>,
     ) {
-        // Get the ELF file path as a string
-        let elf_filename: String = rom_path.to_str().unwrap().into();
         tracing::info!("Computing custom trace ROM");
 
         // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
 
         // Create an instance of the RISCV -> ZisK program converter
-        let riscv2zisk = Riscv2zisk::new(elf_filename);
+        let riscv2zisk = Riscv2zisk::new(elf);
 
         // Convert program to rom
         let rom = riscv2zisk.run().expect("RomSM::prover() failed converting elf to rom");

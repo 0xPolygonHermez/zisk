@@ -28,7 +28,6 @@ pub struct Prove;
 /// ```rust,no_run
 /// use zisk_sdk::ProverClientBuilder;
 ///
-/// let elf_path = std::path::PathBuf::from("path/to/program");
 /// let output_path = std::path::PathBuf::from("path/to/output");
 ///
 /// let prover_emu = ProverClientBuilder::new()
@@ -244,7 +243,6 @@ impl ProverClientBuilder<EmuB, WitnessGeneration> {
     /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
     ///
-    /// let elf_path = std::path::PathBuf::from("path/to/program");
     ///
     /// let prover = ProverClientBuilder::new()
     ///     .emu()
@@ -270,8 +268,6 @@ impl ProverClientBuilder<EmuB, Prove> {
     /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
     ///
-    /// let elf_path = std::path::PathBuf::from("path/to/program");
-    ///     
     /// let prover = ProverClientBuilder::new()
     ///    .emu()
     ///    .prove()
@@ -354,8 +350,6 @@ impl ProverClientBuilder<AsmB, WitnessGeneration> {
     /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
     ///
-    /// let elf_path = std::path::PathBuf::from("path/to/program");
-    ///
     /// let prover = ProverClientBuilder::new()
     ///     .asm()
     ///     .verify_constraints()
@@ -387,8 +381,6 @@ impl ProverClientBuilder<AsmB, Prove> {
     /// # Example
     /// ```rust,no_run
     /// use zisk_sdk::ProverClientBuilder;
-    ///
-    /// let elf_path = std::path::PathBuf::from("path/to/program");
     ///
     /// let prover = ProverClientBuilder::new()
     ///     .asm()

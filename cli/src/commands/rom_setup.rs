@@ -8,6 +8,8 @@ use fields::Goldilocks;
 use proofman_common::initialize_logger;
 use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
+use std::fs;
+use zisk_common::ElfBinaryOwned;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -15,7 +17,7 @@ use rom_setup::rom_merkle_setup;
 pub struct ZiskRomSetup {
     /// ELF file path
     #[clap(short = 'e', long)]
-    pub elf: PathBuf,
+    pub elf_path: PathBuf,
 
     /// Setup folder path
     #[clap(short = 'k', long)]
@@ -47,12 +49,19 @@ impl ZiskRomSetup {
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
-        tracing::info!("Computing setup for ROM {}", self.elf.display());
+        tracing::info!("Computing setup for ROM {}", self.elf_path.display());
 
         tracing::info!("Computing merkle root");
-        rom_merkle_setup::<Goldilocks>(&self.elf, &self.output_dir, &proving_key)?;
+        let elf_bin = fs::read(&self.elf_path).map_err(|e| {
+            anyhow::anyhow!("Error reading ELF file {}: {}", self.elf_path.display(), e)
+        })?;
+        let elf = ElfBinaryOwned::new(
+            elf_bin,
+            self.elf_path.file_stem().unwrap().to_str().unwrap().to_string(),
+        );
+        rom_merkle_setup::<Goldilocks>(&elf, &self.output_dir, &proving_key)?;
 
-        gen_assembly(&self.elf, &self.zisk_path, &self.output_dir, self.verbose)?;
+        gen_assembly(&self.elf_path, &self.zisk_path, &self.output_dir, self.verbose)?;
 
         println!();
         tracing::info!("{}", "ROM setup successfully completed".bright_green().bold());

@@ -3,9 +3,11 @@ use anyhow::Result;
 
 use clap::Parser;
 use colored::Colorize;
+use std::fs;
 use std::path::PathBuf;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::ZiskStdin;
+use zisk_common::ElfBinaryOwned;
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
 use zisk_sdk::{ProverClient, ZiskVerifyConstraintsResult};
@@ -116,7 +118,13 @@ impl ZiskVerifyConstraints {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone().to_str().unwrap())?;
+        let elf_bin = fs::read(&self.elf)
+            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
+        let elf = ElfBinaryOwned::new(
+            elf_bin,
+            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
+        );
+        prover.setup(&elf)?;
 
         prover.verify_constraints_debug(stdin, self.debug.clone())
     }
@@ -134,7 +142,13 @@ impl ZiskVerifyConstraints {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone().to_str().unwrap())?;
+        let elf_bin = fs::read(&self.elf)
+            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
+        let elf = ElfBinaryOwned::new(
+            elf_bin,
+            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
+        );
+        prover.setup(&elf)?;
 
         prover.verify_constraints_debug(stdin, self.debug.clone())
     }

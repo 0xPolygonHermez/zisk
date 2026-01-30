@@ -1,8 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
+use std::fs;
 use std::path::PathBuf;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::ElfBinaryOwned;
 use zisk_sdk::{ProverClient, ZiskExecuteResult};
 
 use crate::ux::print_banner;
@@ -104,7 +106,13 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone().to_str().unwrap())?;
+        let elf_bin = fs::read(&self.elf)
+            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
+        let elf = ElfBinaryOwned::new(
+            elf_bin,
+            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
+        );
+        prover.setup(&elf)?;
         prover.execute(stdin)
     }
 
@@ -121,7 +129,13 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone().to_str().unwrap())?;
+        let elf_bin = fs::read(&self.elf)
+            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
+        let elf = ElfBinaryOwned::new(
+            elf_bin,
+            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
+        );
+        prover.setup(&elf)?;
         prover.execute(stdin)
     }
 }

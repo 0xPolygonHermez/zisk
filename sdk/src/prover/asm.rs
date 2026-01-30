@@ -15,6 +15,7 @@ use std::sync::OnceLock;
 use std::{collections::HashMap, path::PathBuf};
 use tracing::info;
 use zisk_common::io::ZiskStdin;
+use zisk_common::ElfBinaryLike;
 use zisk_common::ExecutorStats;
 use zisk_distributed_common::LoggingConfig;
 use zisk_witness::get_packed_info;
@@ -91,11 +92,9 @@ impl ProverEngine for AsmProver {
             .unwrap_or(0)
     }
 
-    fn setup(&self, elf: &str) -> Result<ZiskProgramVK> {
-        let elf = PathBuf::from(elf);
-        check_paths_exist(&elf)?;
+    fn setup(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
         let proving_key = self.core_prover.backend.get_proving_key_path();
-        let (rom_bin_path, vk) = ensure_custom_commits(proving_key, &elf)?;
+        let (rom_bin_path, vk) = ensure_custom_commits(proving_key, elf)?;
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path)]);
 
         let default_cache_path = std::env::var("HOME")
@@ -103,7 +102,7 @@ impl ProverEngine for AsmProver {
             .map_err(|e| anyhow::anyhow!("Failed to read HOME environment variable: {e}"))?
             .join(DEFAULT_CACHE_PATH);
 
-        let (asm_mt_filename, asm_rh_filename) = get_asm_paths(&elf)?;
+        let (asm_mt_filename, asm_rh_filename) = get_asm_paths(elf)?;
 
         let asm_mt_path = default_cache_path.join(asm_mt_filename);
         let asm_rh_path = default_cache_path.join(asm_rh_filename);
@@ -127,7 +126,6 @@ impl ProverEngine for AsmProver {
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
         let witness_lib = ZiskLibLoader::load_asm(
-            elf,
             self.core_prover.verbose,
             self.core_prover.shared_tables,
             asm_mt_path.clone(),
@@ -141,7 +139,11 @@ impl ProverEngine for AsmProver {
             .set(asm_services)
             .map_err(|_| anyhow::anyhow!("ASM services have already been initialized."))?;
 
-        self.core_prover.backend.register_witness_lib(witness_lib, custom_commits_map)?;
+        self.core_prover.backend.register_witness_lib(
+            elf.elf(),
+            witness_lib,
+            custom_commits_map,
+        )?;
         Ok(ZiskProgramVK { vk })
     }
 
@@ -171,7 +173,7 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.verify_constraints(stdin)
     }
 
-    fn vk(&self, elf: &str) -> Result<ZiskProgramVK> {
+    fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
         self.core_prover.backend.vk(elf)
     }
 
