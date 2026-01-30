@@ -42,7 +42,6 @@ zisk-sdk = { workspace = true }
 zisk-verifier = { workspace = true }
 
 zstd = { workspace = true }
-bytemuck = { workspace = true }
 clap = { workspace = true }
 dirs = "6"
 rand = "0.9"

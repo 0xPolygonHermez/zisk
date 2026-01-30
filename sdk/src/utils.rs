@@ -1,3 +1,4 @@
+use fields::Goldilocks;
 use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -75,7 +76,7 @@ pub fn get_proving_key_snark(proving_key_snark: Option<&PathBuf>) -> PathBuf {
 }
 
 pub fn ensure_custom_commits(proving_key: &Path, elf: &Path) -> Result<(PathBuf, Vec<u8>)> {
-    rom_merkle_setup(elf, &None, proving_key)
+    rom_merkle_setup::<Goldilocks>(elf, &None, proving_key)
 }
 
 pub fn get_custom_commits_map(proving_key: &Path, elf: &Path) -> Result<HashMap<String, PathBuf>> {

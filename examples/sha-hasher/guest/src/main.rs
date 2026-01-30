@@ -4,11 +4,19 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Output {
+    hash: [u8; 32],
+    iterations: u32,
+    magic_number: u32,
+}
 
 fn main() {
     // Read the input data
-    let n = ziskos::io::read();
+    let n: u32 = ziskos::io::read();
 
     let mut hash = [0u8; 32];
 
@@ -20,5 +28,7 @@ fn main() {
         hash = Into::<[u8; 32]>::into(*digest);
     }
 
-    ziskos::io::commit(&hash);
+    let output = Output { hash, iterations: n, magic_number: 0xDEADBEEF };
+
+    ziskos::io::commit(&output);
 }

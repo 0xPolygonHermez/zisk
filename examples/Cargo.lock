@@ -2415,7 +2415,6 @@ version = "0.16.0"
 dependencies = [
  "anyhow",
  "blake3",
- "bytemuck",
  "colored",
  "fields",
  "proofman-common",
@@ -2631,6 +2630,7 @@ name = "sha-hasher-guest"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "serde",
  "sha2",
  "ziskos",
 ]
@@ -2640,6 +2640,8 @@ name = "sha-hasher-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "serde",
+ "sha2",
  "zisk-build",
  "zisk-common",
  "zisk-sdk",
@@ -4029,7 +4031,6 @@ version = "0.16.0"
 dependencies = [
  "anyhow",
  "bincode",
- "bytemuck",
  "fields",
  "libc",
  "mpi",
@@ -4105,7 +4106,7 @@ version = "0.16.0"
 dependencies = [
  "anyhow",
  "asm-runner",
- "bytemuck",
+ "bincode",
  "colored",
  "fields",
  "libloading",
@@ -4113,6 +4114,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "rom-setup",
+ "serde",
  "sha2",
  "tracing",
  "zisk-common",

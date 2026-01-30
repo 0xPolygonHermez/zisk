@@ -1,8 +1,8 @@
 use crate::create_debug_info;
 use crate::ZiskPublics;
 use crate::{
-    ensure_custom_commits, Proof, ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult,
-    ZiskProgramVK, ZiskProveResult, ZiskVerifyConstraintsResult,
+    ensure_custom_commits, ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramVK,
+    ZiskProof, ZiskProveResult, ZiskVerifyConstraintsResult,
 };
 use crate::{ProofMode, ProofOpts};
 use anyhow::Result;
@@ -14,6 +14,7 @@ use proofman::{
 };
 use proofman_common::ProofOptions;
 use proofman_util::VadcopFinalProof;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -239,7 +240,8 @@ impl ProverBackend {
         self.verify_constraints_debug(stdin, None)
     }
 
-    pub(crate) fn vk(&self, elf_path: PathBuf) -> Result<ZiskProgramVK> {
+    pub(crate) fn vk(&self, elf: &str) -> Result<ZiskProgramVK> {
+        let elf_path = PathBuf::from(elf);
         let proving_key_path = self.proving_key_path.clone();
         let (_, vk) = ensure_custom_commits(&proving_key_path, &elf_path)?;
 
@@ -381,7 +383,7 @@ impl ProverBackend {
                         elapsed,
                         stats,
                         proof_id,
-                        Proof::Plonk(snark_proof.proof_bytes),
+                        ZiskProof::Plonk(snark_proof.proof_bytes),
                         publics,
                     ))
                 } else if snark_proof.protocol_id == SnarkProtocol::Fflonk.protocol_id() {
@@ -391,7 +393,7 @@ impl ProverBackend {
                         elapsed,
                         stats,
                         proof_id,
-                        Proof::Fflonk(snark_proof.proof_bytes),
+                        ZiskProof::Fflonk(snark_proof.proof_bytes),
                         publics,
                     ))
                 } else {
@@ -403,9 +405,9 @@ impl ProverBackend {
             }
             (_, Some(p)) => {
                 let proof = if compressed {
-                    Proof::VadcopFinalCompressed(p.proof)
+                    ZiskProof::VadcopFinalCompressed(p.proof)
                 } else {
-                    Proof::VadcopFinal(p.proof)
+                    ZiskProof::VadcopFinal(p.proof)
                 };
                 Ok(ZiskProveResult::new(
                     execution_result,
@@ -467,22 +469,26 @@ impl ProverBackend {
 
     pub(crate) fn verify(
         &self,
-        result: &ZiskProveResult,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
         program_vk: &ZiskProgramVK,
     ) -> Result<()> {
-        match &result.proof {
-            Proof::Null() => Err(anyhow::anyhow!("No proof found to verify.")),
-            Proof::Plonk(proof) | Proof::Fflonk(proof) => {
-                let protocol_id = if let Proof::Plonk(_) = &result.proof {
+        match &proof {
+            ZiskProof::Null() => Err(anyhow::anyhow!("No proof found to verify.")),
+            ZiskProof::Plonk(proof_bytes) | ZiskProof::Fflonk(proof_bytes) => {
+                let protocol_id = if let ZiskProof::Plonk(_) = &proof {
                     SnarkProtocol::Plonk.protocol_id()
                 } else {
                     SnarkProtocol::Fflonk.protocol_id()
                 };
 
+                let pubs = publics.bytes_solidity(program_vk);
+                let hash = Sha256::digest(&pubs).to_vec();
+
                 let snark_proof = SnarkProof {
-                    proof_bytes: proof.clone(),
-                    public_bytes: result.publics.bytes_solidity(),
-                    public_snark_bytes: result.publics.hash_solidity(),
+                    proof_bytes: proof_bytes.clone(),
+                    public_bytes: pubs,
+                    public_snark_bytes: hash,
                     protocol_id,
                 };
 
@@ -500,11 +506,12 @@ impl ProverBackend {
                 ));
                 Ok(verify_snark_proof(&snark_proof, &verkey_path)?)
             }
-            Proof::VadcopFinal(proof) | Proof::VadcopFinalCompressed(proof) => {
-                let compressed = matches!(&result.proof, Proof::VadcopFinalCompressed(_));
-                let mut publics = program_vk.vk.clone();
-                publics.extend(result.publics.get_publics_bytes());
-                let vadcop_final_proof = VadcopFinalProof::new(proof.clone(), publics, compressed);
+            ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalCompressed(proof_bytes) => {
+                let compressed = matches!(proof, ZiskProof::VadcopFinalCompressed(_));
+                let mut pubs = program_vk.vk.clone();
+                pubs.extend(publics.public_bytes());
+                let vadcop_final_proof =
+                    VadcopFinalProof::new(proof_bytes.clone(), pubs, compressed);
 
                 let vk = get_vadcop_final_proof_vkey(&self.proving_key_path, compressed)?;
                 verify_zisk_proof(&vadcop_final_proof, &vk)

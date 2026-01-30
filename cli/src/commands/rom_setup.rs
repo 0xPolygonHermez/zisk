@@ -2,10 +2,10 @@ use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
 
-use colored::Colorize;
-use proofman_common::initialize_logger;
-
 use crate::{commands::get_proving_key, ux::print_banner};
+use colored::Colorize;
+use fields::Goldilocks;
+use proofman_common::initialize_logger;
 use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
 
@@ -50,7 +50,7 @@ impl ZiskRomSetup {
         tracing::info!("Computing setup for ROM {}", self.elf.display());
 
         tracing::info!("Computing merkle root");
-        rom_merkle_setup(&self.elf, &self.output_dir, &proving_key)?;
+        rom_merkle_setup::<Goldilocks>(&self.elf, &self.output_dir, &proving_key)?;
 
         gen_assembly(&self.elf, &self.zisk_path, &self.output_dir, self.verbose)?;
 

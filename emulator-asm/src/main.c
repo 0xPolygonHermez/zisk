@@ -2905,7 +2905,7 @@ void server_run (void)
     if (output)
     {
         unsigned int * pOutput = (unsigned int *)OUTPUT_ADDR;
-        unsigned int output_size = *pOutput;
+        unsigned int output_size = 64;
 #ifdef DEBUG
         if (verbose) printf("Output size=%d\n", output_size);
 #endif

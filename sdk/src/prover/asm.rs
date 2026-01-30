@@ -3,7 +3,7 @@ use crate::{
     check_paths_exist, ensure_custom_commits,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
     RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult, ZiskProgramVK,
-    ZiskProveResult, ZiskVerifyConstraintsResult,
+    ZiskProof, ZiskProveResult, ZiskPublics, ZiskVerifyConstraintsResult,
 };
 use crate::{ProofMode, ProofOpts};
 use asm_runner::{AsmRunnerOptions, AsmServices};
@@ -171,12 +171,12 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.verify_constraints(stdin)
     }
 
-    fn vk(&self, elf_path: PathBuf) -> Result<ZiskProgramVK> {
-        self.core_prover.backend.vk(elf_path)
+    fn vk(&self, elf: &str) -> Result<ZiskProgramVK> {
+        self.core_prover.backend.vk(elf)
     }
 
-    fn verify(&self, proof: &ZiskProveResult, vk: &ZiskProgramVK) -> Result<()> {
-        self.core_prover.backend.verify(proof, vk)
+    fn verify(&self, proof: &ZiskProof, publics: &ZiskPublics, vk: &ZiskProgramVK) -> Result<()> {
+        self.core_prover.backend.verify(proof, publics, vk)
     }
 
     fn prove_debug(&self, stdin: ZiskStdin, proof_options: ProofOpts) -> Result<ZiskProveResult> {

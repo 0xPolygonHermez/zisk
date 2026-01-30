@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use fields::{Field, Goldilocks};
+use fields::{Goldilocks, PrimeField64};
 use proofman_common::{
     write_custom_commit_trace, GlobalInfo, ProofType, ProofmanResult, StarkInfo,
 };
@@ -50,17 +50,14 @@ pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
     Ok(output_path)
 }
 
-pub fn gen_elf_hash(
+pub fn gen_elf_hash<F: PrimeField64>(
     rom_path: &Path,
     rom_buffer_path: &Path,
     blowup_factor: u64,
     merkle_tree_arity: u64,
-) -> ProofmanResult<Vec<Goldilocks>> {
-    let buffer = vec![
-        Goldilocks::ZERO;
-        RomRomTrace::<Goldilocks>::NUM_ROWS * RomRomTrace::<Goldilocks>::ROW_SIZE
-    ];
-    let mut custom_rom_trace: RomRomTrace<Goldilocks> = RomRomTrace::new_from_vec(buffer)?;
+) -> ProofmanResult<Vec<F>> {
+    let buffer = vec![F::ZERO; RomRomTrace::<F>::NUM_ROWS * RomRomTrace::<F>::ROW_SIZE];
+    let mut custom_rom_trace: RomRomTrace<F> = RomRomTrace::new_from_vec(buffer)?;
 
     RomSM::compute_custom_trace_rom(rom_path.to_path_buf(), &mut custom_rom_trace);
 
@@ -157,7 +154,6 @@ pub fn get_elf_bin_verkey_file_path_with_hash(
 pub struct RomInfo {
     pub blowup_factor: u64,
     pub merkle_tree_arity: u64,
-    pub starting_pos_publics_program_vk: u64,
 }
 
 pub fn get_rom_info(proving_key_path: &Path) -> ProofmanResult<RomInfo> {
@@ -169,11 +165,9 @@ pub fn get_rom_info(proving_key_path: &Path) -> ProofmanResult<RomInfo> {
     let stark_info_json = std::fs::read_to_string(&stark_info_path)
         .unwrap_or_else(|_| panic!("Failed to read file {}", &stark_info_path));
     let stark_info = StarkInfo::from_json(&stark_info_json);
-    let publics_pos = global_info.get_public_starting_pos("rom_root")?;
     Ok(RomInfo {
         blowup_factor: 1 << (stark_info.stark_struct.n_bits_ext - stark_info.stark_struct.n_bits),
         merkle_tree_arity: stark_info.stark_struct.merkle_tree_arity,
-        starting_pos_publics_program_vk: publics_pos as u64,
     })
 }
 

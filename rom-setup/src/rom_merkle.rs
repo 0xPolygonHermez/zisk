@@ -1,4 +1,4 @@
-use fields::PrimeField;
+use fields::PrimeField64;
 use std::path::{Path, PathBuf};
 
 use crate::{
@@ -6,7 +6,7 @@ use crate::{
     get_elf_data_hash, get_elf_vk, get_output_path, get_rom_info,
 };
 
-pub fn rom_merkle_setup(
+pub fn rom_merkle_setup<F: PrimeField64>(
     elf: &Path,
     output_dir: &Option<PathBuf>,
     proving_key: &Path,
@@ -48,7 +48,7 @@ pub fn rom_merkle_setup(
         return Ok((elf_bin_path, verkey));
     }
 
-    let root = gen_elf_hash(
+    let root = gen_elf_hash::<F>(
         elf,
         elf_bin_path.as_path(),
         rom_info.blowup_factor,
@@ -57,8 +57,7 @@ pub fn rom_merkle_setup(
 
     tracing::info!("Root hash: {:?}", root);
 
-    let verkey: Vec<u8> =
-        root.iter().flat_map(|x| x.as_canonical_biguint().to_bytes_le()).collect();
+    let verkey: Vec<u8> = root.iter().flat_map(|x| x.as_canonical_u64().to_le_bytes()).collect();
 
     std::fs::write(&elf_verkey_bin_path, &verkey)?;
 
