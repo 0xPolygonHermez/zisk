@@ -13,7 +13,6 @@ mod metrics;
 
 use crate::hints::hint_buffer::{build_hint_buffer,  HintBuffer};
 use anyhow::Result;
-use zisk_common::io::{StreamWrite, UnixSocketStreamWriter};
 use once_cell::sync::Lazy;
 use std::cell::UnsafeCell;
 use std::path::PathBuf;
@@ -23,6 +22,7 @@ use std::{
     io::{self, BufWriter, Write},
     sync::Arc,
 };
+use zisk_common::io::{StreamWrite, UnixSocketStreamWriter};
 
 #[cfg(zisk_hints_single_thread)]
 use once_cell::sync::OnceCell;
