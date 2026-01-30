@@ -22,10 +22,6 @@ use zisk_sdk::{ProverClient, ZiskProveResult};
         .required(false)
 ))]
 pub struct ZiskProve {
-    /// Witness computation dynamic library path
-    #[clap(short = 'w', long)]
-    pub witness_lib: Option<PathBuf>,
-
     /// ELF file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
@@ -130,23 +126,28 @@ impl ZiskProve {
 
         let mut gpu_params = ParamsGPU::new(self.preallocate);
 
-        if self.max_streams.is_some() {
-            gpu_params.with_max_number_streams(self.max_streams.unwrap());
+        if let Some(max_streams) = self.max_streams {
+            gpu_params.with_max_number_streams(max_streams);
         }
-        if self.number_threads_witness.is_some() {
-            gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
+        if let Some(number_threads_witness) = self.number_threads_witness {
+            gpu_params.with_number_threads_pools_witness(number_threads_witness);
         }
-        if self.max_witness_stored.is_some() {
-            gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
+        if let Some(max_witness_stored) = self.max_witness_stored {
+            gpu_params.with_max_witness_stored(max_witness_stored);
         }
 
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
 
-        let hints_stream = StreamSource::from_uri(self.hints.as_deref())?;
-
-        if matches!(hints_stream, StreamSource::Quic(_)) {
-            return Err(anyhow::anyhow!("QUIC hints source is not supported for execution."));
-        }
+        let hints_stream = match self.hints.as_ref() {
+            Some(uri) => {
+                let stream = StreamSource::from_uri(uri)?;
+                if matches!(stream, StreamSource::Quic(_)) {
+                    anyhow::bail!("QUIC hints source is not supported for execution.");
+                }
+                Some(stream)
+            }
+            None => None,
+        };
 
         let emulator = if cfg!(target_os = "macos") {
             if !self.emulator {
@@ -160,7 +161,7 @@ impl ZiskProve {
         let (result, world_rank) = if emulator {
             self.run_emu(stdin, gpu_params)?
         } else {
-            self.run_asm(stdin, Some(hints_stream), gpu_params)?
+            self.run_asm(stdin, hints_stream, gpu_params)?
         };
 
         if world_rank == 0 {
@@ -191,7 +192,6 @@ impl ZiskProve {
             .aggregation(self.aggregation)
             .compressed(self.compressed)
             .rma(self.rma)
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
             .verbose(self.verbose)
@@ -222,7 +222,6 @@ impl ZiskProve {
             .aggregation(self.aggregation)
             .compressed(self.compressed)
             .rma(self.rma)
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
             .verbose(self.verbose)
@@ -235,6 +234,7 @@ impl ZiskProve {
             .verify_proofs(self.verify_proofs)
             .minimal_memory(self.minimal_memory)
             .gpu(gpu_params)
+            .with_hints(hints_stream.is_some())
             .print_command_info()
             .build()?;
 

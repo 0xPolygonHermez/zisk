@@ -53,6 +53,33 @@ impl CollectSkipper {
         true
     }
 
+    /// Determines how many rows of the current instruction should be skipped. This method is useful
+    /// when an instruction spans multiple rows.
+    ///
+    /// # Returns
+    ///  number of rows to skip if the instruction should be skipped, `0` otherwise.
+    #[inline(always)]
+    pub fn rows_to_skip(&mut self, rows: u64) -> u64 {
+        if !self.skipping {
+            return 0;
+        }
+
+        if self.skip == 0 || self.skipped >= self.skip {
+            self.skipping = false;
+            return 0;
+        }
+
+        if (self.skipped + rows) >= self.skip {
+            let result = self.skip - self.skipped;
+            self.skipped = self.skip;
+            self.skipping = false;
+            return result;
+        }
+
+        self.skipped += rows;
+        rows
+    }
+
     #[inline(always)]
     pub fn should_skip_query(&mut self, apply: bool) -> bool {
         if !self.skipping {
@@ -144,6 +171,65 @@ impl CollectCounter {
         // Phase 3: Skip all remaining elements
         self.final_skip_phase = true;
         true
+    }
+
+    /// Determines whether the current instruction should be skipped.
+    ///
+    /// Behavior:
+    /// 1. Skip first `initial_skip` elements
+    /// 2. Don't skip next `collect_count` elements  
+    /// 3. Skip all remaining elements
+    ///
+    /// Arguments:
+    /// * `rows` - Number of rows in the current instruction
+    ///
+    /// # Returns
+    /// `Some((skip, count))` where:
+    /// - `skip` is the number of rows to skip
+    /// - `count` is the number of rows to collect
+    ///   `None` if all rows should be skipped.
+    #[inline(always)]
+    pub fn should_process(&mut self, rows: u32) -> Option<(u32, u32)> {
+        // Phase 1: Initial skipping
+        let mut skip = 0;
+        let mut rows = rows;
+        if self.initial_skipping {
+            if self.initial_skip == 0 {
+                self.initial_skipping = false;
+            } else if (self.initial_skipped + rows) >= self.initial_skip {
+                skip = self.initial_skip - self.initial_skipped;
+                rows -= skip;
+                self.initial_skipped = self.initial_skip;
+                self.initial_skipping = false;
+                // skip only a part of rows, at this point need
+                // to calculate count of rows not skipped
+                if rows == 0 {
+                    return None;
+                }
+            } else {
+                self.initial_skipped += rows;
+                // skip all rows
+                return None;
+            }
+        }
+
+        if self.final_skip_phase {
+            // Phase 3: Skip all remaining elements
+            None
+        } else if (self.collected + rows) >= self.collect_count {
+            // Phase 2: Collecting (not skipping)
+            let rows_to_collect = self.collect_count - self.collected;
+            self.final_skip_phase = true;
+            self.collected = self.collect_count;
+            if rows_to_collect == 0 {
+                None
+            } else {
+                Some((skip, rows_to_collect))
+            }
+        } else {
+            self.collected += rows;
+            Some((skip, rows))
+        }
     }
 
     /// Reset to initial state with new parameters

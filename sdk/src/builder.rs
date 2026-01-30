@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    get_asm_paths, get_proving_key, get_witness_computation_lib,
+    get_asm_paths, get_proving_key,
     prover::{Asm, AsmProver, Emu, EmuProver, ZiskProver},
 };
 use colored::Colorize;
@@ -52,7 +52,6 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     aggregation: bool,
     rma: bool,
     compressed: bool,
-    witness_lib: Option<PathBuf>,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
     elf: Option<PathBuf>,
@@ -67,6 +66,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     asm_path: Option<PathBuf>,
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
+    with_hints: bool,
 
     // Prove-specific fields (only available when Operation = Prove)
     save_proofs: bool,
@@ -147,18 +147,6 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     #[must_use]
     pub fn compressed(mut self, enable: bool) -> Self {
         self.compressed = enable;
-        self
-    }
-
-    #[must_use]
-    pub fn witness_lib_path(mut self, witness_lib: PathBuf) -> Self {
-        self.witness_lib = Some(witness_lib);
-        self
-    }
-
-    #[must_use]
-    pub fn witness_lib_path_opt(mut self, witness_lib: Option<PathBuf>) -> Self {
-        self.witness_lib = witness_lib;
         self
     }
 
@@ -248,6 +236,12 @@ impl<Operation> ProverClientBuilder<AsmB, Operation> {
         self.unlock_mapped_memory = unlock;
         self
     }
+
+    #[must_use]
+    pub fn with_hints(mut self, with_hints: bool) -> Self {
+        self.with_hints = with_hints;
+        self
+    }
 }
 
 // Prove-specific methods (available for both backends when operation is Prove)
@@ -326,7 +320,6 @@ impl ProverClientBuilder<EmuB, Prove> {
 
 impl<X> ProverClientBuilder<EmuB, X> {
     fn build_emu(self) -> Result<ZiskProver<Emu>> {
-        let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
         let proving_key_snark = None;
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
@@ -341,7 +334,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
             Self::print_emu_command_info(
                 self.witness,
                 self.verify_constraints,
-                &witness_lib,
                 &proving_key,
                 &proving_key_snark,
                 &elf,
@@ -354,7 +346,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
             self.aggregation,
             self.rma,
             self.compressed,
-            witness_lib,
             proving_key,
             proving_key_snark,
             elf,
@@ -374,7 +365,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
     fn print_emu_command_info(
         witness: bool,
         verify_constraints: bool,
-        witness_lib: &Path,
         proving_key: &Path,
         proving_key_snark: &Option<PathBuf>,
         elf: &Path,
@@ -388,7 +378,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
             println!("{: >12} Prove", "Command".bright_green().bold());
         }
 
-        println!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib.display());
         println!("{: >12} {}", "ELF".bright_green().bold(), elf.display());
         println!(
             "{: >12} {}",
@@ -468,7 +457,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
         F: PrimeField64,
         GoldilocksQuinticExtension: ExtensionField<F>,
     {
-        let witness_lib = get_witness_computation_lib(self.witness_lib.as_ref());
         let proving_key = get_proving_key(self.proving_key.as_ref());
         let proving_key_snark = None;
         let elf = self.elf.ok_or_else(|| anyhow::anyhow!("ELF path is required"))?;
@@ -485,7 +473,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
             Self::print_asm_command_info(
                 self.witness,
                 self.verify_constraints,
-                &witness_lib,
                 &proving_key,
                 &proving_key_snark,
                 &elf,
@@ -498,7 +485,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
             self.aggregation,
             self.rma,
             self.compressed,
-            witness_lib,
             proving_key,
             proving_key_snark,
             elf,
@@ -508,6 +494,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
             asm_rh_filename,
             self.base_port,
             self.unlock_mapped_memory,
+            self.with_hints,
             self.gpu_params.filter(|_| !self.verify_constraints).unwrap_or_default(),
             self.verify_proofs,
             self.minimal_memory,
@@ -522,7 +509,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
     fn print_asm_command_info(
         witness: bool,
         verify_constraints: bool,
-        witness_lib: &Path,
         proving_key: &Path,
         proving_key_snark: &Option<PathBuf>,
         elf: &Path,
@@ -536,7 +522,6 @@ impl<X> ProverClientBuilder<AsmB, X> {
             println!("{: >12} Prove", "Command".bright_green().bold());
         }
 
-        println!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib.display());
         println!("{: >12} {}", "ELF".bright_green().bold(), elf.display());
         println!("{: >12} {}", "Proving Key".bright_green().bold(), proving_key.display());
 
@@ -565,7 +550,6 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             witness: builder.witness,
             rma: builder.rma,
             compressed: builder.compressed,
-            witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
@@ -579,6 +563,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             asm_path: None,
             base_port: None,
             unlock_mapped_memory: false,
+            with_hints: false,
 
             // Reset prove-specific fields (will be set when choosing operation)
             save_proofs: false,
@@ -601,7 +586,6 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             witness: builder.witness,
             rma: builder.rma,
             compressed: builder.compressed,
-            witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
@@ -615,6 +599,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             asm_path: builder.asm_path,
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
+            with_hints: builder.with_hints,
 
             // Reset prove-specific fields (will be set when choosing operation)
             save_proofs: false,
@@ -639,7 +624,6 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             witness: builder.witness,
             rma: builder.rma,
             compressed: builder.compressed,
-            witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: builder.verify_constraints,
@@ -653,6 +637,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             asm_path: builder.asm_path,
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
+            with_hints: builder.with_hints,
 
             // Initialize prove-specific fields to defaults for verify_constraints mode
             save_proofs: false,    // Not relevant for constraint verification
@@ -675,7 +660,6 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             witness: builder.witness,
             rma: builder.rma,
             compressed: builder.compressed,
-            witness_lib: builder.witness_lib,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
             verify_constraints: false,
@@ -689,6 +673,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             asm_path: builder.asm_path,
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
+            with_hints: builder.with_hints,
 
             // Initialize prove-specific fields to sensible defaults
             save_proofs: true,     // Default to saving proofs when proving

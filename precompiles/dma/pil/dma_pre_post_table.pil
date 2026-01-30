@@ -1,0 +1,71 @@
+require "std_lookup.pil"
+
+const int DMA_PRE_POST_TABLE_SIZE = 280;
+
+airtemplate DmaPrePostTable(int N = DMA_PRE_POST_TABLE_SIZE) {
+    col fixed FLAGS;
+    col fixed DST_OFFSET;
+    col fixed SRC_OFFSET;
+    col fixed COUNT;
+
+    int index = 0;
+
+    // POST OPERATION objective execute the last incomplete "write":
+    //      dst_offset = 0
+    //      count ∈ [1,7]
+
+    int table_offsets[64];
+
+    for (int src_offset = 0; src_offset < 8; ++src_offset) {
+        table_offsets[src_offset] = index;
+        for (int count = 1; count < 8; ++ count) {
+            SRC_OFFSET[index] = src_offset;
+            DST_OFFSET[index] = 0;
+            COUNT[index] = count;
+                
+            const int selectors = (0xFF << (8 - count)) & 0xFF;
+            assert(selectors != 0);
+            assert(selectors <= 0xFF);
+
+            const int enabled_second_read = (src_offset + count) > 8 ? 1:0;
+            // selr_value = src_offset
+            // dst_offset_gt_src_offset = 0
+            FLAGS[index] = selectors + enabled_second_read * P2_8 + P2_10 * src_offset;
+            index += 1;
+        }
+    }
+
+    // PRE OPERATION objective execute the "first" incomplete "write"
+    //      dst_offset > 0 
+    //      count = 8 - dst_offset
+
+    for (int dst_offset = 1; dst_offset < 8; ++dst_offset) {
+        const int mask = 0xFF >> dst_offset;
+        for (int src_offset = 0; src_offset < 8; ++src_offset) {
+            table_offsets[dst_offset * 8 + src_offset] = index;
+            for (int count = 1; count < (9 - dst_offset); ++ count) {
+                SRC_OFFSET[index] = src_offset;
+                DST_OFFSET[index] = dst_offset;
+                COUNT[index] = count;
+                
+                const int selectors = mask & (0xFF << (8 - (dst_offset + count)));
+                assert(selectors != 0);
+                assert(selectors <= 0xFF);
+
+                const int enabled_second_read = (src_offset + count) > 8 ? 1:0;
+                const int dst_offset_gt_src_offset = dst_offset > src_offset ? 1:0;
+                const int selr_value = dst_offset > src_offset ? dst_offset - src_offset: src_offset - dst_offset;
+                // selr_value = src_offset
+                // dst_offset_gt_src_offset = 0
+                FLAGS[index] = selectors + enabled_second_read * P2_8 + dst_offset_gt_src_offset * P2_9 + selr_value * P2_10;
+                index += 1;
+            }
+        }
+    }
+    println(`TABLE_OFFSETS[${length(table_offsets)}] = [` ,table_offsets, "]");
+    println(`DMA_PRE_POST_TABLE_SIZE=${DMA_PRE_POST_TABLE_SIZE}`);
+    assert_eq(index, DMA_PRE_POST_TABLE_SIZE);
+
+    col witness multiplicity;
+    lookup_proves(DMA_PRE_POST_TABLE_ID, mul: multiplicity, expressions: [FLAGS, DST_OFFSET, SRC_OFFSET, COUNT]);
+}

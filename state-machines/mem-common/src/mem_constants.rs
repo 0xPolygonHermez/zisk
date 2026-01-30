@@ -32,8 +32,3 @@ pub const MAX_MEM_ADDR: u64 = 0xFFFF_FFFF;
 
 pub const SEGMENT_ADDR_MAX_RANGE: usize = (1 << 24) - 1;
 pub const SEGMENT_LARGE_ADDR_C_MAX_RANGE: usize = (1 << 16) - 1;
-
-pub const MEM_INC_C_BITS: usize = 18;
-pub const MEM_INC_C_SIZE: usize = 1 << MEM_INC_C_BITS;
-pub const MEM_INC_C_MAX_RANGE: usize = MEM_INC_C_SIZE - 1;
-pub const MEM_INC_C_MASK: usize = MEM_INC_C_SIZE - 1;

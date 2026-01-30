@@ -1,0 +1,179 @@
+//  src_addr, src_offset
+//  dst_addr, dst_offset, count
+
+airtemplate DmaPrePost(int N = 2**21) {
+
+    col witness bits(MAIN_STEP_BITS) main_step;
+    col witness bits(ADDR_W_BITS) src64;
+    col witness bits(ADDR_W_BITS) dst64;
+    col witness bits(3) dst_offset;
+    col witness bits(3) src_offset;
+    col witness bits(3) count;
+
+    col witness bits(1) selread[7];
+    const expr selr[8];
+    expr _selr_0to6 = 0;
+    expr _selr_value = 0;
+    for (int i = 0; i < 7; ++i) {
+        selread[i] * (1 - selread[i]) === 0;
+        selr[i] = selread[i];
+        _selr_0to6 = _selr_0to6 + selread[i];
+        if (i > 0) {
+            _selr_value = _selr_value + i * selr[i];
+        }
+    }
+    const expr selr_0to6 = _selr_0to6;
+    _selr_value = _selr_value + 7 * selr[7];
+
+    const expr selr_value = _selr_value;
+
+    selr_0to6 * (1 - selr_0to6) === 0;
+    selr[7] = (1 - selr_0to6);
+
+    col witness bits(1) dst_offset_gt_src_offset;
+    dst_offset_gt_src_offset * (1 - dst_offset_gt_src_offset) === 0;
+
+    col witness bits(1) enabled;
+    col witness bits(1) enabled_second_read;
+
+    enabled * (1 - enabled) === 0;
+    enabled_second_read * (1 - enabled_second_read) === 0;
+
+    // to force use table with enable when enabled_second_read is 1. If enable is 1, with table
+    // it's verified the correcte value of enabled_second_read using offset an count
+    enabled_second_read * (1 - enabled) === 0;
+
+    const int V2R = 2 * 3;          // Values To Read (2 x 32 bits = 64 bits x (R,R+8,PRE-W))
+    const int B2R = V2R * 4;        // Bytes To Read (4 bytes = value 32 bits)
+
+    col witness bits(8) bytes[B2R];
+    const expr values[V2R];
+    
+    for (int i = 0; i < B2R; i+=2) {
+        range_dual_byte(bytes[i+1], bytes[i], enabled);
+    }
+    
+    for (int i = 0; i < V2R; ++i) { 
+        values[i] = bytes[i*4] + P2_8 * bytes[i*4+1]  + P2_16 * bytes[i*4+2]  + P2_24 * bytes[i*4+3];
+    }
+    col witness bits(1) selb[8];
+    expr selectors_mask = 0;
+    for (int i = 0; i < 8; ++i) {
+        selb[i] * (1 - selb[i]) === 0;
+        selectors_mask += selb[i] * (1 << (7-i));
+    }
+
+    col witness bits(32) write_value[4];
+
+    // byte_0, byte_1, byte_2, byte_3, byte_4, byte_5, byte_6, byte_7, byte_0', byte_1' ...
+
+    // src_offset           0    1    2    3    4    5    6    7
+    // dst_offset     0     0    1    2    3    4    5    6    7
+    // dst_offset     1    -1        
+    
+
+ 
+    //          	 │ src_offset:	
+    //    selr_value │ 0  1  2  3  4  5  6  7
+    // ──────────────┼───────────────────────	
+    // dst_offset: 0 │ 0  1  2  3  4  5  6  7
+    //         	   1 │ 1  0  1  2  3  4  5  6
+    //         	   2 │ 2  1  0  1  2  3  4  5
+    //         	   3 │ 3  2  1  0  1  2  3  4
+    //         	   4 │ 4  3  2  1  0  1  2  3
+    //         	   5 │ 5  4  3  2  1  0  1  2
+    //         	   6 │ 6  5  4  3  2  1  0  1
+    //         	   7 │ 7  6  5  4  3  2  1  0
+    //
+    // NOTE: selr_value = ABS(src_offset - dst_offset)
+
+    //       ┌────── src_offset - dst_offset
+    //       │   ┌── abs(src_offset - dst_offset)
+    //       │	 │  
+    //       │	 │      0   1   2   3     4   5   6   7  
+    //              ┌─────────────────┬─────────────────┐
+    //      -7   7  │                 │              R0 │
+    //      -6   6  │                 │          R0  R1 │
+    //      -5   5  │                 │      R0  R1  R2 │
+    //      -4   4  │                 │  R0  R1  R2  R3 │
+    //      -3   3  │              R0 │  R1  R2  R3  R4 │
+    //      -2   2  │          R0  R1 │  R2  R3  R4  R5 │
+    //      -1   1  │      R0  R1  R2 │  R3  R4  R5  R6 │
+    //              ├─────────────────┼─────────────────┤
+    //       0   0  │  R0  R1  R2  R3 │  R4  R5  R6  R7 │
+    //       1   1  │  R1  R2  R3  R4 │  R5  R6  R7  R8 │
+    //       2   2  │  R2  R3  R4  R5 │  R6  R7  R8  R9 │
+    //       3   3  │  R3  R4  R5  R6 │  R7  R8  R9 R10 │
+    //       4   4  │  R4  R5  R6  R7 │  R8  R9 R10 R11 │
+    //       5   5  │  R5  R6  R7  R8 │  R9 R10 R11 R12 │
+    //       6   6  │  R6  R7  R8  R9 │ R10 R11 R12 R13 │
+    //       7   7  │  R7  R8  R9 R10 │ R11 R12 R13 R14 │
+    //              └─────────────────┴─────────────────┘
+    
+    // dst_offset <= src_offset
+
+    write_value[0] === selr[0]  * (selb[0] * bytes[0] + selb[1] * P2_8 * bytes[1] + selb[2] * P2_16 * bytes[2] + selb[3] * P2_24 * bytes[3]) +
+                       selr[1]  * (selb[0] * bytes[1] + selb[1] * P2_8 * bytes[2] + selb[2] * P2_16 * bytes[3] + selb[3] * P2_24 * bytes[4]) +
+                       selr[2]  * (selb[0] * bytes[2] + selb[1] * P2_8 * bytes[3] + selb[2] * P2_16 * bytes[4] + selb[3] * P2_24 * bytes[5]) +
+                       selr[3]  * (selb[0] * bytes[3] + selb[1] * P2_8 * bytes[4] + selb[2] * P2_16 * bytes[5] + selb[3] * P2_24 * bytes[6]) +
+                       selr[4]  * (selb[0] * bytes[4] + selb[1] * P2_8 * bytes[5] + selb[2] * P2_16 * bytes[6] + selb[3] * P2_24 * bytes[7]) +
+                       selr[5]  * (selb[0] * bytes[5] + selb[1] * P2_8 * bytes[6] + selb[2] * P2_16 * bytes[7] + selb[3] * P2_24 * bytes[8]) +
+                       selr[6]  * (selb[0] * bytes[6] + selb[1] * P2_8 * bytes[7] + selb[2] * P2_16 * bytes[8] + selb[3] * P2_24 * bytes[9]) +
+                       selr[7]  * (selb[0] * bytes[7] + selb[1] * P2_8 * bytes[8] + selb[2] * P2_16 * bytes[9] + selb[3] * P2_24 * bytes[10]) +
+                       (1 - selb[0]) * bytes[16] + (1 - selb[1]) * P2_8 * bytes[17] + (1 - selb[2]) * P2_16 * bytes[18] + (1 - selb[3]) * P2_24 * bytes[19];
+               
+    write_value[1] === selr[0]  * (selb[4] * bytes[4]  + selb[5] * P2_8 * bytes[5]  + selb[6] * P2_16 * bytes[6]  + selb[7] * P2_24 * bytes[7]) +
+                       selr[1]  * (selb[4] * bytes[5]  + selb[5] * P2_8 * bytes[6]  + selb[6] * P2_16 * bytes[7]  + selb[7] * P2_24 * bytes[8]) +
+                       selr[2]  * (selb[4] * bytes[6]  + selb[5] * P2_8 * bytes[7]  + selb[6] * P2_16 * bytes[8]  + selb[7] * P2_24 * bytes[9]) +
+                       selr[3]  * (selb[4] * bytes[7]  + selb[5] * P2_8 * bytes[8]  + selb[6] * P2_16 * bytes[9]  + selb[7] * P2_24 * bytes[10]) +
+                       selr[4]  * (selb[4] * bytes[8]  + selb[5] * P2_8 * bytes[9]  + selb[6] * P2_16 * bytes[10] + selb[7] * P2_24 * bytes[11]) +
+                       selr[5]  * (selb[4] * bytes[9]  + selb[5] * P2_8 * bytes[10] + selb[6] * P2_16 * bytes[11] + selb[7] * P2_24 * bytes[12]) +
+                       selr[6]  * (selb[4] * bytes[10] + selb[5] * P2_8 * bytes[11] + selb[6] * P2_16 * bytes[12] + selb[7] * P2_24 * bytes[13]) +
+                       selr[7]  * (selb[4] * bytes[11] + selb[5] * P2_8 * bytes[12] + selb[6] * P2_16 * bytes[13] + selb[7] * P2_24 * bytes[14]) +
+                       (1 - selb[4]) * bytes[20] + (1 - selb[5]) * P2_8 * bytes[21] + (1 - selb[6]) * P2_16 * bytes[22] + (1 - selb[7]) * P2_24 * bytes[23];
+
+    // dst_offset > src_offset
+
+    write_value[2] === selr[3] * (                                                                              selb[3] * P2_24 * bytes[0]) +
+                       selr[2] * (                                                 selb[2] * P2_16 * bytes[0] + selb[3] * P2_24 * bytes[1]) +
+                       selr[1] * (                     selb[1] * P2_8 * bytes[0] + selb[2] * P2_16 * bytes[1] + selb[3] * P2_24 * bytes[2]) +
+                       (1 - selb[0]) * bytes[16] + (1 - selb[1]) * P2_8 * bytes[17] + (1 - selb[2]) * P2_16 * bytes[18] + (1 - selb[3]) * P2_24 * bytes[19];
+
+    write_value[3] === selr[7] * (                                                                               + selb[7] * P2_24 * bytes[0]) +
+                       selr[6] * (                                                 + selb[6] * P2_16 * bytes[0]  + selb[7] * P2_24 * bytes[1]) +
+                       selr[5] * (                    + selb[5] * P2_8 * bytes[0]  + selb[6] * P2_16 * bytes[1]  + selb[7] * P2_24 * bytes[2]) +
+                       selr[4] * (selb[4] * bytes[0]  + selb[5] * P2_8 * bytes[1]  + selb[6] * P2_16 * bytes[2]  + selb[7] * P2_24 * bytes[3]) +
+                       selr[3] * (selb[4] * bytes[1]  + selb[5] * P2_8 * bytes[2]  + selb[6] * P2_16 * bytes[3]  + selb[7] * P2_24 * bytes[4]) +
+                       selr[2] * (selb[4] * bytes[2]  + selb[5] * P2_8 * bytes[3]  + selb[6] * P2_16 * bytes[4]  + selb[7] * P2_24 * bytes[5]) +
+                       selr[1] * (selb[4] * bytes[3]  + selb[5] * P2_8 * bytes[4]  + selb[6] * P2_16 * bytes[5]  + selb[7] * P2_24 * bytes[6]) +
+                       (1 - selb[4]) * bytes[20] + (1 - selb[5]) * P2_8 * bytes[21] + (1 - selb[6]) * P2_16 * bytes[22] + (1 - selb[7]) * P2_24 * bytes[23];
+
+
+
+    const expr bus_write_value[2];
+
+    bus_write_value[0] = dst_offset_gt_src_offset * (write_value[2] - write_value[0]) + write_value[0];
+    bus_write_value[1] = dst_offset_gt_src_offset * (write_value[3] - write_value[1]) + write_value[1];
+    
+    // MEMORY ACCESS
+    //
+    // Read first 64 bits
+    // Read next 64 bits (optional, only if enabled_second_read)
+    // Read previous value before write
+    // Write final value
+
+    precompiled_mem_load(sel: enabled, main_step: main_step, addr: src64 * 8, value: [values[0], values[1]]);
+    precompiled_mem_load(sel: enabled_second_read, main_step: main_step, addr: src64 * 8 + 8, value: [values[2], values[3]]);
+    precompiled_mem_load(sel: enabled, main_step: main_step, addr: dst64 * 8, value: [values[4], values[5]]);
+    precompiled_mem_store(sel: enabled, main_step: main_step, addr: dst64 * 8, value: bus_write_value);
+
+    // Send operation to bus
+    permutation_proves(DMA_BUS_ID, [DMA_MEM_PRE_POST, dst64 * 8, src64 * 8, dst_offset, src_offset, count, main_step], sel: enabled);
+
+    // selectors_mask (8 bits)
+    // enabled_second_read (1 bit)
+    // dst_offset_gt_src_offset (1 bit)
+    // selr_value (0-7) (3 bits)
+    const expr flags = selectors_mask + enabled_second_read * P2_8 + dst_offset_gt_src_offset * P2_9 + selr_value * P2_10;
+    lookup_assumes(DMA_PRE_POST_TABLE_ID, [flags, dst_offset, src_offset, count], sel: enabled);
+}

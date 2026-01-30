@@ -35,15 +35,15 @@ impl Arith256Input {
     pub fn from(values: &OperationArith256Data<u64>) -> Self {
         Self {
             addr: values[3] as u32,
-            a_addr: values[4] as u32,
-            b_addr: values[5] as u32,
-            c_addr: values[6] as u32,
-            dl_addr: values[7] as u32,
-            dh_addr: values[8] as u32,
-            step: values[2],
-            a: values[9..13].try_into().unwrap(),
-            b: values[13..17].try_into().unwrap(),
-            c: values[17..21].try_into().unwrap(),
+            a_addr: values[5] as u32,
+            b_addr: values[6] as u32,
+            c_addr: values[7] as u32,
+            dl_addr: values[8] as u32,
+            dh_addr: values[9] as u32,
+            step: values[4],
+            a: values[10..14].try_into().unwrap(),
+            b: values[14..18].try_into().unwrap(),
+            c: values[18..22].try_into().unwrap(),
         }
     }
 }
@@ -67,16 +67,16 @@ impl Arith256ModInput {
     pub fn from(values: &OperationArith256ModData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
-            a_addr: values[4] as u32,
-            b_addr: values[5] as u32,
-            c_addr: values[6] as u32,
-            module_addr: values[7] as u32,
-            d_addr: values[8] as u32,
-            step: values[2],
-            a: values[9..13].try_into().unwrap(),
-            b: values[13..17].try_into().unwrap(),
-            c: values[17..21].try_into().unwrap(),
-            module: values[21..25].try_into().unwrap(),
+            a_addr: values[5] as u32,
+            b_addr: values[6] as u32,
+            c_addr: values[7] as u32,
+            module_addr: values[8] as u32,
+            d_addr: values[9] as u32,
+            step: values[4],
+            a: values[10..14].try_into().unwrap(),
+            b: values[14..18].try_into().unwrap(),
+            c: values[18..22].try_into().unwrap(),
+            module: values[22..26].try_into().unwrap(),
         }
     }
 }
@@ -95,11 +95,11 @@ impl Secp256k1AddInput {
     pub fn from(values: &OperationSecp256k1AddData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
-            p1_addr: values[4] as u32,
-            p2_addr: values[5] as u32,
-            step: values[2],
-            p1: values[6..14].try_into().unwrap(),
-            p2: values[14..22].try_into().unwrap(),
+            p1_addr: values[5] as u32,
+            p2_addr: values[6] as u32,
+            step: values[4],
+            p1: values[7..15].try_into().unwrap(),
+            p2: values[15..23].try_into().unwrap(),
         }
     }
 }
@@ -113,7 +113,7 @@ pub struct Secp256k1DblInput {
 
 impl Secp256k1DblInput {
     pub fn from(values: &OperationSecp256k1DblData<u64>) -> Self {
-        Self { addr: values[3] as u32, step: values[2], p1: values[4..12].try_into().unwrap() }
+        Self { addr: values[3] as u32, step: values[4], p1: values[5..13].try_into().unwrap() }
     }
 }
 
@@ -131,11 +131,11 @@ impl Bn254CurveAddInput {
     pub fn from(values: &OperationBn254CurveAddData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
-            p1_addr: values[4] as u32,
-            p2_addr: values[5] as u32,
-            step: values[2],
-            p1: values[6..14].try_into().unwrap(),
-            p2: values[14..22].try_into().unwrap(),
+            p1_addr: values[5] as u32,
+            p2_addr: values[6] as u32,
+            step: values[4],
+            p1: values[7..15].try_into().unwrap(),
+            p2: values[15..23].try_into().unwrap(),
         }
     }
 }
@@ -149,7 +149,7 @@ pub struct Bn254CurveDblInput {
 
 impl Bn254CurveDblInput {
     pub fn from(values: &OperationBn254CurveDblData<u64>) -> Self {
-        Self { addr: values[3] as u32, step: values[2], p1: values[4..12].try_into().unwrap() }
+        Self { addr: values[3] as u32, step: values[4], p1: values[5..13].try_into().unwrap() }
     }
 }
 
@@ -167,11 +167,11 @@ impl Bn254ComplexAddInput {
     pub fn from(values: &OperationBn254ComplexAddData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
-            f1_addr: values[4] as u32,
-            f2_addr: values[5] as u32,
-            step: values[2],
-            f1: values[6..14].try_into().unwrap(),
-            f2: values[14..22].try_into().unwrap(),
+            f1_addr: values[5] as u32,
+            f2_addr: values[6] as u32,
+            step: values[4],
+            f1: values[7..15].try_into().unwrap(),
+            f2: values[15..23].try_into().unwrap(),
         }
     }
 }
@@ -190,11 +190,11 @@ impl Bn254ComplexSubInput {
     pub fn from(values: &OperationBn254ComplexSubData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
-            f1_addr: values[4] as u32,
-            f2_addr: values[5] as u32,
-            step: values[2],
-            f1: values[6..14].try_into().unwrap(),
-            f2: values[14..22].try_into().unwrap(),
+            f1_addr: values[5] as u32,
+            f2_addr: values[6] as u32,
+            step: values[4],
+            f1: values[7..15].try_into().unwrap(),
+            f2: values[15..23].try_into().unwrap(),
         }
     }
 }
@@ -213,11 +213,11 @@ impl Bn254ComplexMulInput {
     pub fn from(values: &OperationBn254ComplexMulData<u64>) -> Self {
         Self {
             addr: values[3] as u32,
-            f1_addr: values[4] as u32,
-            f2_addr: values[5] as u32,
-            step: values[2],
-            f1: values[6..14].try_into().unwrap(),
-            f2: values[14..22].try_into().unwrap(),
+            f1_addr: values[5] as u32,
+            f2_addr: values[6] as u32,
+            step: values[4],
+            f1: values[7..15].try_into().unwrap(),
+            f2: values[15..23].try_into().unwrap(),
         }
     }
 }

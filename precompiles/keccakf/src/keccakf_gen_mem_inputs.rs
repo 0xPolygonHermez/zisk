@@ -1,10 +1,9 @@
-use std::collections::VecDeque;
+use precompiles_common::MemProcessor;
 use tiny_keccak::keccakf;
 
 use precompiles_common::MemBusHelpers;
 
-use zisk_common::MemCollectorInfo;
-use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
+use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
 #[derive(Debug)]
 pub struct KeccakfMemInputConfig {
@@ -14,16 +13,16 @@ pub struct KeccakfMemInputConfig {
     pub chunks_per_param: usize,
 }
 
-pub fn generate_keccakf_mem_inputs(
+pub fn generate_keccakf_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    mem_processors: &mut P,
 ) {
     // Get the basic data from the input
     // op,op_type,a,b,...
-    let state: &mut [u64; 25] = &mut data[4..29].try_into().unwrap();
+    let state: &mut [u64; 25] = &mut data[5..30].try_into().unwrap();
 
     // Apply the keccakf function
     keccakf(state);
@@ -33,7 +32,7 @@ pub fn generate_keccakf_mem_inputs(
     let write_params = 1;
     let chunks_per_param = 25;
     let params_count = read_params + write_params;
-    let params_offset = OPERATION_BUS_DATA_SIZE;
+    let params_offset = OPERATION_PRECOMPILED_BUS_DATA_SIZE;
     for iparam in 0..params_count {
         let is_write = iparam >= read_params;
         let param_index = if is_write { iparam - read_params } else { iparam };
@@ -59,23 +58,21 @@ pub fn generate_keccakf_mem_inputs(
                 step_main,
                 chunk_data,
                 is_write,
-                pending,
+                mem_processors,
             );
         }
     }
 }
 
-pub fn skip_keccakf_mem_inputs(addr_main: u32, mem_collectors_info: &[MemCollectorInfo]) -> bool {
+pub fn skip_keccakf_mem_inputs<P: MemProcessor>(addr_main: u32, mem_processors: &mut P) -> bool {
     let write_params = 1;
     let chunks_per_param = 25;
     for param_index in 0..write_params {
         let param_addr = addr_main + (param_index * 8 * chunks_per_param) as u32;
         for ichunk in 0..chunks_per_param {
             let addr = param_addr + ichunk as u32 * 8;
-            for mem_collector in mem_collectors_info {
-                if !mem_collector.skip_addr(addr) {
-                    return false;
-                }
+            if !mem_processors.skip_addr(addr) {
+                return false;
             }
         }
     }

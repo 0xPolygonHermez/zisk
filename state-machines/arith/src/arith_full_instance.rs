@@ -8,14 +8,10 @@ use crate::{ArithFrops, ArithFullSM};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, MemCollectorInfo, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID,
-    OP_TYPE,
+    InstanceType, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
@@ -198,9 +194,7 @@ impl<F: PrimeField64> ArithInstanceCollector<F> {
             frops_table_id,
         }
     }
-}
 
-impl<F: PrimeField64> BusDevice<u64> for ArithInstanceCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -212,13 +206,7 @@ impl<F: PrimeField64> BusDevice<u64> for ArithInstanceCollector<F> {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
         let instance_complete = self.inputs.len() == self.num_operations as usize;
 
@@ -254,15 +242,9 @@ impl<F: PrimeField64> BusDevice<u64> for ArithInstanceCollector<F> {
 
         self.inputs.len() < self.num_operations as usize || self.force_execute_to_end
     }
+}
 
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
+impl<F: PrimeField64> BusDevice<u64> for ArithInstanceCollector<F> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

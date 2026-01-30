@@ -37,6 +37,7 @@ pub struct CoordinatorConfig {
     pub phase1_timeout_seconds: u64,
     pub phase2_timeout_seconds: u64,
     pub webhook_url: Option<String>,
+    pub compressed_proofs: bool,
 }
 
 impl Config {
@@ -50,6 +51,7 @@ impl Config {
         port: Option<u16>,
         proofs_dir: Option<PathBuf>,
         no_save_proofs: bool,
+        compressed_proofs: bool,
         webhook_url: Option<String>,
     ) -> Result<Self> {
         // Create proofs directory if it doesn't exist
@@ -75,7 +77,8 @@ impl Config {
             .set_default("coordinator.max_workers_per_job", 10)?
             .set_default("coordinator.max_total_workers", 1000)?
             .set_default("coordinator.phase1_timeout_seconds", 300)?
-            .set_default("coordinator.phase2_timeout_seconds", 600)?;
+            .set_default("coordinator.phase2_timeout_seconds", 600)?
+            .set_default("coordinator.compressed_proofs", compressed_proofs)?;
 
         if let Some(path) = config_file {
             builder = builder.add_source(config::File::with_name(&path));

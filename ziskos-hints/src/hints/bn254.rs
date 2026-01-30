@@ -1,4 +1,4 @@
-use crate::hints::{macros::{define_hint, define_hint_pairs}};
+use crate::hints::macros::{define_hint, define_hint_pairs};
 
 const BN254_G1_ADD_HINT_ID: u32 = 0x0200;
 const BN254_G1_MUL_HINT_ID: u32 = 0x0201;

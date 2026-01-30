@@ -86,6 +86,7 @@ pub enum HintsModeDto {
 pub struct LaunchProofRequestDto {
     pub data_id: DataId,
     pub compute_capacity: u32,
+    pub minimal_compute_capacity: u32,
     pub inputs_mode: InputsModeDto,
     pub hints_mode: HintsModeDto,
     pub simulated_node: Option<u32>,
@@ -213,15 +214,7 @@ pub struct AggParamsDto {
     pub agg_proofs: Vec<ProofDto>,
     pub last_proof: bool,
     pub final_proof: bool,
-    pub verify_constraints: bool,
-    pub aggregation: bool,
-    pub rma: bool,
     pub compressed: bool,
-    pub verify_proofs: bool,
-    pub save_proofs: bool,
-    pub test_mode: bool,
-    pub output_dir_path: String,
-    pub minimal_memory: bool,
 }
 
 pub struct ProofDto {

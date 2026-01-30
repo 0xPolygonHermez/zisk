@@ -21,10 +21,6 @@ use zisk_sdk::{ProverClient, ZiskVerifyConstraintsResult};
         .required(false)
 ))]
 pub struct ZiskVerifyConstraints {
-    /// Witness computation dynamic library path
-    #[clap(short = 'w', long)]
-    pub witness_lib: Option<PathBuf>,
-
     /// ROM file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
@@ -98,11 +94,16 @@ impl ZiskVerifyConstraints {
 
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
 
-        let hints_stream = StreamSource::from_uri(self.hints.as_deref())?;
-
-        if matches!(hints_stream, StreamSource::Quic(_)) {
-            return Err(anyhow::anyhow!("QUIC hints source is not supported for execution."));
-        }
+        let hints_stream = match self.hints.as_ref() {
+            Some(uri) => {
+                let stream = StreamSource::from_uri(uri)?;
+                if matches!(stream, StreamSource::Quic(_)) {
+                    anyhow::bail!("QUIC hints source is not supported for execution.");
+                }
+                Some(stream)
+            }
+            None => None,
+        };
 
         let emulator = if cfg!(target_os = "macos") {
             if !self.emulator {
@@ -114,7 +115,7 @@ impl ZiskVerifyConstraints {
         };
 
         let result =
-            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, Some(hints_stream))? };
+            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
 
         tracing::info!("");
         tracing::info!(
@@ -135,7 +136,6 @@ impl ZiskVerifyConstraints {
         let prover = ProverClient::builder()
             .emu()
             .verify_constraints()
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
             .verbose(self.verbose)
@@ -154,7 +154,6 @@ impl ZiskVerifyConstraints {
         let prover = ProverClient::builder()
             .asm()
             .verify_constraints()
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
             .elf_path(self.elf.clone())
             .verbose(self.verbose)
@@ -162,6 +161,7 @@ impl ZiskVerifyConstraints {
             .asm_path_opt(self.asm.clone())
             .base_port_opt(self.port)
             .unlock_mapped_memory(self.unlock_mapped_memory)
+            .with_hints(hints_stream.is_some())
             .print_command_info()
             .build()?;
 

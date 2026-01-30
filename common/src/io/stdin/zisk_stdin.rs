@@ -1,4 +1,5 @@
 use crate::io::{ZiskFileStdin, ZiskMemoryStdin, ZiskNullStdin};
+use serde::Serialize;
 use std::path::Path;
 
 use anyhow::Result;
@@ -14,10 +15,10 @@ pub trait ZiskIO: Send + Sync {
     fn read_into(&mut self, buffer: &mut [u8]);
 
     /// Write a serialized value to the buffer.
-    fn write_serialized(&mut self, data: &[u8]);
+    fn write<T: Serialize>(&mut self, data: &T);
 
     /// Write a slice of bytes to the buffer.
-    fn write_bytes(&mut self, data: &[u8]);
+    fn write_slice(&mut self, data: &[u8]);
 }
 
 pub enum ZiskIOVariant {
@@ -51,19 +52,19 @@ impl ZiskIO for ZiskIOVariant {
         }
     }
 
-    fn write_serialized(&mut self, data: &[u8]) {
+    fn write<T: Serialize>(&mut self, data: &T) {
         match self {
-            ZiskIOVariant::File(file_stdin) => file_stdin.write_serialized(data),
-            ZiskIOVariant::Null(null_stdin) => null_stdin.write_serialized(data),
-            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.write_serialized(data),
+            ZiskIOVariant::File(file_stdin) => file_stdin.write(data),
+            ZiskIOVariant::Null(null_stdin) => null_stdin.write(data),
+            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.write(data),
         }
     }
 
-    fn write_bytes(&mut self, data: &[u8]) {
+    fn write_slice(&mut self, data: &[u8]) {
         match self {
-            ZiskIOVariant::File(file_stdin) => file_stdin.write_bytes(data),
-            ZiskIOVariant::Null(null_stdin) => null_stdin.write_bytes(data),
-            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.write_bytes(data),
+            ZiskIOVariant::File(file_stdin) => file_stdin.write_slice(data),
+            ZiskIOVariant::Null(null_stdin) => null_stdin.write_slice(data),
+            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.write_slice(data),
         }
     }
 }
@@ -85,16 +86,27 @@ impl ZiskIO for ZiskStdin {
         self.io.read_into(buffer)
     }
 
-    fn write_serialized(&mut self, data: &[u8]) {
-        self.io.write_serialized(data)
+    fn write<T: Serialize>(&mut self, data: &T) {
+        self.io.write(data)
     }
 
-    fn write_bytes(&mut self, data: &[u8]) {
-        self.io.write_bytes(data)
+    fn write_slice(&mut self, data: &[u8]) {
+        self.io.write_slice(data)
+    }
+}
+
+impl Default for ZiskStdin {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl ZiskStdin {
+    /// Create new memory-based stdin
+    pub fn new() -> Self {
+        Self { io: ZiskIOVariant::Memory(ZiskMemoryStdin::new(Vec::new())) }
+    }
+
     /// Create a null stdin (no input)
     pub fn null() -> Self {
         Self { io: ZiskIOVariant::Null(ZiskNullStdin) }

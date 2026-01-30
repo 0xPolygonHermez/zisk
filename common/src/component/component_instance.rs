@@ -129,6 +129,10 @@ macro_rules! table_instance {
             pub fn new(table_sm: Arc<$TableSM>, ictx: InstanceCtx, bus_id: BusId) -> Self {
                 Self { table_sm, ictx, bus_id }
             }
+
+            pub fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> bool {
+                true
+            }
         }
 
         impl<F: PrimeField64> Instance<F> for $InstanceName {
@@ -180,19 +184,6 @@ macro_rules! table_instance {
         }
 
         impl BusDevice<u64> for $InstanceName {
-            fn process_data(
-                &mut self,
-                bus_id: &BusId,
-                data: &[u64],
-                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-                _mem_collector_info: Option<&[MemCollectorInfo]>,
-            ) -> bool {
-                true
-            }
-            fn bus_id(&self) -> Vec<BusId> {
-                vec![self.bus_id]
-            }
-
             /// Provides a dynamic reference for downcasting purposes.
             fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
                 self
@@ -246,6 +237,10 @@ macro_rules! table_instance_array {
             /// * `ictx` - The instance context for the computation.
             pub fn new(table_sm: Arc<$TableSM>, ictx: InstanceCtx, bus_id: BusId) -> Self {
                 Self { table_sm, ictx, bus_id }
+            }
+
+            pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
+                true
             }
         }
 
@@ -307,20 +302,6 @@ macro_rules! table_instance_array {
         }
 
         impl BusDevice<u64> for $InstanceName {
-            fn process_data(
-                &mut self,
-                bus_id: &BusId,
-                data: &[u64],
-                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-                _mem_collector_info: Option<&[MemCollectorInfo]>,
-            ) -> bool {
-                true
-            }
-
-            fn bus_id(&self) -> Vec<BusId> {
-                vec![self.bus_id]
-            }
-
             /// Provides a dynamic reference for downcasting purposes.
             fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
                 self

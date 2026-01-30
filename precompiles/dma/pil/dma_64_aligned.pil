@@ -1,0 +1,237 @@
+airtemplate Dma64Aligned(int N = 2**21, const int RC = 2, const int op_x_row = 4, 
+                         const expr enable = 1, const int src_is_free_input = 0,
+                         const int operation_bus_id = OPERATION_BUS_ID) {
+    assert(RC == 2);
+
+    const expr L1 = get_L1();
+    const expr LAST = L1';
+
+    assert(op_x_row > 1);
+
+    // dst64 aligned, word address 
+    // src64 aligned, word address 
+    // count number of words 
+
+    airval segment_id;                 // Id of current segment
+    airval segment_previous_seq_end;   // Last value of `seq_end` in previous segment.
+    airval segment_previous_dst64;     // Last value of `dst64` in previous segment.
+    airval segment_previous_main_step; // Last value of `main_step` in previous segment.
+    airval segment_previous_count;     // Last value of `count` in previous segment.
+    airval segment_previous_is_mem_eq; // Last value of `is_mem_eq' in previous segment.
+
+    airval segment_last_seq_end;       // Last value of `seq_end` in current segment.
+    airval segment_last_dst64;         // Last value of `dst64` in current segment.
+    airval segment_last_main_step;     // Last value of `main_step` in current segment.
+    airval segment_last_count;         // Last value of `count` in current segment.
+    airval segment_last_is_mem_eq;     // Last value of `is_mem_eq' in current segment.
+
+    airval is_last_segment;            // 1 if this is the last segment, 0 otherwise.
+
+    is_last_segment * (1 - is_last_segment) === 0;
+    segment_previous_seq_end * (1 - segment_previous_seq_end) === 0;
+    segment_last_seq_end * (1 - segment_last_seq_end) === 0;
+
+    segment_previous_is_mem_eq * (1 - segment_previous_is_mem_eq) === 0;
+    segment_last_is_mem_eq * (1 - segment_last_is_mem_eq) === 0;
+    
+    col witness bits(MAIN_STEP_BITS) main_step;
+    col witness bits(ADDR_W_BITS) dst64;
+    col witness bits(32) count;
+
+    col witness bits(1) sel_op[op_x_row];
+    const expr sel =  sel_op[0];
+    col witness bits(1) seq_end;
+    col witness bits(1) is_mem_eq;
+
+    if (src_is_free_input) {
+        const expr air.value[op_x_row][RC];
+        col witness bits(16) value_chunks[op_x_row][RC][2];
+        for (int i = 0; i < op_x_row; i++) {
+            for (int rc = 0; rc < RC; ++rc) {
+                value[i][rc] = value_chunks[i][rc][0] + value_chunks[i][rc][1] * P2_16;
+                range_check(value_chunks[i][rc][0], 0, P2_16 - 1);
+                range_check(value_chunks[i][rc][1], 0, P2_16 - 1);
+            }
+        }
+
+        const int air.segment_previous_src64 = 0;
+        const int air.segment_last_src64 = 0;
+    } else {
+        col witness bits(32) air.value[op_x_row][RC];
+        col witness bits(ADDR_W_BITS) air.src64;
+        airval air.segment_previous_src64;     // Last value of `src64` in previous segment.
+        airval air.segment_last_src64;         // Last value of `src64` in current segment.
+    }
+
+    seq_end * (1 - seq_end) === 0;
+    is_mem_eq * (1 - is_mem_eq) === 0;
+
+    col witness bits(1) previous_seq_end;
+    previous_seq_end === L1 * (segment_previous_seq_end - 'seq_end) + 'seq_end;
+
+    LAST * (seq_end - segment_last_seq_end) === 0;
+    LAST * (1 - seq_end) * (dst64 - segment_last_dst64) === 0;
+    LAST * (1 - seq_end) * (main_step - segment_last_main_step) === 0;
+    LAST * (1 - seq_end) * (count - segment_last_count) === 0;
+    LAST * (1 - seq_end) * (is_mem_eq - segment_last_is_mem_eq) === 0;
+
+    // when segment_last_seq_end = 1, means that the next segment starts with new input, no need to 
+    // compare with previous, to simplify WC of continuations, zeros are sent to bus
+    // these constraints aren't strictly necessary, because these values are used only when seq_end = 0
+
+    segment_last_dst64 * segment_last_seq_end === 0; 
+    segment_last_count * segment_last_seq_end === 0; 
+    segment_last_main_step * segment_last_seq_end === 0;
+    segment_last_is_mem_eq * segment_last_seq_end === 0;
+
+    // when segment_previous_seq_end = 1, means that this segment starts with new input, no need to 
+    // compare with previous, to simplify WC of continuations, zeros are sent to bus
+    // these constraints aren't strictly necessary, because these values are used only when seq_end = 0
+
+    segment_previous_dst64 * segment_previous_seq_end === 0;
+    segment_previous_count * segment_previous_seq_end === 0;
+    segment_previous_main_step * segment_previous_seq_end === 0;
+    segment_previous_is_mem_eq * segment_previous_seq_end === 0;
+
+    if (!src_is_free_input) {
+        LAST * (1 - seq_end) * (src64 - segment_last_src64) === 0;
+        const expr air.previous_src64 = L1 * (segment_previous_src64 - 'src64) + 'src64;
+        segment_previous_src64 * segment_previous_seq_end === 0;
+        segment_last_src64 * segment_last_seq_end === 0; 
+    }
+
+    // Continuations
+
+    // AIR_ID, segment_id, seq_end, src64, dst64, count, main_step 
+
+    direct_global_update_proves(MEM_CPY_CONT_ID, [0, 
+                                                  0, 
+                                                  src_is_free_input,
+                                                  1,  // initial seq_end
+                                                  0,  // initial src64
+                                                  0,  // initial dst64
+                                                  0,  // initial count
+                                                  0,  // initial main_step
+                                                  0], // initial is_mem_eq
+                                                  sel: enable);
+
+
+    direct_update_assumes(MEM_CPY_CONT_ID, [segment_id, 
+                                            0,
+                                            src_is_free_input,
+                                            segment_previous_seq_end, 
+                                            segment_previous_src64, 
+                                            segment_previous_dst64, 
+                                            segment_previous_count, 
+                                            segment_previous_main_step,
+                                            segment_previous_is_mem_eq]);
+
+    direct_update_proves(MEM_CPY_CONT_ID, [segment_id + 1, 
+                                           is_last_segment,
+                                           src_is_free_input,
+                                           segment_last_seq_end, 
+                                           segment_last_src64, 
+                                           segment_last_dst64, 
+                                           segment_last_count, 
+                                           segment_last_main_step,
+                                           segment_last_is_mem_eq]
+                                           , sel: 1 - is_last_segment);
+
+                                           
+
+    expr _ops_in_row = 0;
+    for (int i = 0; i < op_x_row; i++) {
+        sel_op[i] * (1 - sel_op[i]) === 0;
+        _ops_in_row += sel_op[i];
+
+        if (!src_is_free_input) {
+            precompiled_mem_load(
+                sel: sel_op[i],
+                main_step: main_step,
+                addr: src64 * 8 + 8 * i,
+                value: value[i]
+            );
+        }
+
+        precompiled_mem_op(
+            is_write: 1 - is_mem_eq,
+            sel: sel_op[i],
+            main_step: main_step,
+            addr: dst64 * 8 + 8 * i,
+            value: value[i]
+        );
+        if (i > 0) {
+            // current selector only can be 1 if previous is 1
+            sel_op[i] * (1 - sel_op[i - 1]) === 0;
+        }
+    }
+    const expr ops_in_row = _ops_in_row;
+
+    const expr continue_seq_on_l1 = L1 * (1 - segment_previous_seq_end);
+    const expr continue_seq_on_no_l1 = (1 - L1) * (1 - 'seq_end);
+
+    // const expr new_seq_on_l1 = L1 * segment_previous_seq_end;
+    // const expr new_seq_on_no_l1 = (1 - L1) * 'seq_end;
+
+    // TRANSITIONS:
+    //   
+    // If not finish sequence in previous row, means current it's a continuation of previous sequence
+    // count match with previous value plus ops_in_row.
+    continue_seq_on_l1 * (count - (segment_previous_count - op_x_row)) == 0;
+    continue_seq_on_no_l1 * (count - ('count - op_x_row)) === 0;
+
+    // If finish sequence count match with ops_in_row, because final count must be 0.
+    // new_seq_on_l1 * (count - ops_in_row) === 0;
+    // new_seq_on_no_l1 * (count - ops_in_row) === 0;
+    seq_end * (count - ops_in_row) === 0;
+    
+    // If previous row was a seq_end, start with new dst/src addresses, else increment by ops_in_row
+    continue_seq_on_l1 * (dst64 - (segment_previous_dst64 + op_x_row)) === 0;
+    continue_seq_on_no_l1 * (dst64 - ('dst64 + op_x_row)) === 0;
+    
+    // NOTE: transition of src64 is defined only 
+
+    // LATCHS:
+    //
+    //   is_mem_eq = 'is_mem_eq
+    //   main_step = 'main_step
+
+    continue_seq_on_l1 * (is_mem_eq - segment_previous_is_mem_eq) === 0;
+    continue_seq_on_no_l1 * (is_mem_eq - 'is_mem_eq) === 0;
+
+    continue_seq_on_l1 * (main_step - segment_previous_main_step) === 0;
+    continue_seq_on_no_l1 * (main_step - 'main_step) === 0;
+
+    // SECURITY: control count no negative
+    //
+    // if the seq_end it isn't active when count = 0, in each rows continues decreasing 8 x op_x_row 
+    // units, means in 2^22 rows * 2^3 * 2^2 = 2^27. It's secure, because if any row lies, at end of 
+    // instance this constraint fails.
+
+    airval last_count_chunk[2];
+    range_check(expression: last_count_chunk[0], min: 0, max: 2**16-1);
+    range_check(expression: last_count_chunk[1], min: 0, max: 2**16-1);
+    last_count_chunk[0] + last_count_chunk[1] * P2_16 === segment_last_count;
+
+    airval padding_size; 
+
+    if (src_is_free_input) {
+        const int DMA_MEM_INPUT_CPY_OP = 0xD3;
+        const expr dma_op = DMA_MEM_INPUT_CPY_OP;
+        permutation_proves(operation_bus_id, [dma_op, dst64 * 8, 0, count * 8, 0, 0, 0, 0, main_step], sel: previous_seq_end);
+
+        // Used to cancel padding operations
+        direct_update_assumes(operation_bus_id, [dma_op, 0, 0, 0, 0, 0, 0, 0, 0], sel: adding_size);
+    } else {
+        // TRANSITION src64:
+        continue_seq_on_l1 * (src64 - (segment_previous_src64 + op_x_row)) === 0;
+        continue_seq_on_no_l1 * (src64 - ('src64 + op_x_row)) === 0;
+
+        // At beginning of memcpy blocks we send two address 
+        const expr dma_op = is_mem_eq * (DMA_MEM_EQ - DMA_MEM_CPY) + DMA_MEM_CPY;
+        permutation_proves(DMA_BUS_ID, [dma_op, dst64 * 8, src64 * 8, 0, 0, count * 8, main_step], sel: previous_seq_end);
+
+        // Used to cancel padding operations
+        direct_update_assumes(DMA_BUS_ID, [DMA_MEM_CPY, 0, 0, 0, 0, 0, 0], sel: padding_size);
+    }
+}

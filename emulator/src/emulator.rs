@@ -153,9 +153,8 @@ impl ZiskEmulator {
 
         // OUTPUT:
         // Save output to a file if requested
-        if options.output.is_some() {
-            fs::write(options.output.as_ref().unwrap(), &output)
-                .map_err(|e| ZiskEmulatorErr::Unknown(e.to_string()))?
+        if let Some(output_path) = &options.output {
+            fs::write(output_path, &output).map_err(|e| ZiskEmulatorErr::Unknown(e.to_string()))?
         }
 
         // Log output to console if requested

@@ -4,7 +4,7 @@
 
 use std::{
     any::Any,
-    sync::{atomic::AtomicU32, Arc},
+    sync::{atomic::AtomicU64, Arc},
 };
 
 use zisk_common::{CounterStats, Metrics, RomBusData, RomData};
@@ -24,7 +24,7 @@ impl RomCounter {
     ///
     /// # Returns
     /// A new `RomCounter` instance.
-    pub fn new(bios_inst_count: Arc<Vec<AtomicU32>>, prog_inst_count: Arc<Vec<AtomicU32>>) -> Self {
+    pub fn new(bios_inst_count: Arc<Vec<AtomicU64>>, prog_inst_count: Arc<Vec<AtomicU64>>) -> Self {
         let counter_stats = CounterStats::new(bios_inst_count, prog_inst_count);
         Self { counter_stats }
     }

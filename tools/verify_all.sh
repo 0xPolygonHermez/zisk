@@ -224,7 +224,6 @@ if [[ $elf_mode -eq 0 ]]; then
 
         if (cargo run --release --bin cargo-zisk verify-constraints \
         --emulator \
-        --witness-lib target/release/libzisk_witness.so \
         --elf "$elf_file" \
         --proving-key "$proving_key"); then
             record_result "$elf_file" "PASSED" "$counter"
@@ -248,7 +247,6 @@ else
 
         if (cargo run --release --bin cargo-zisk verify-constraints \
         --emulator \
-        --witness-lib target/release/libzisk_witness.so \
         --elf "$elf_file" \
         --proving-key "$proving_key"); then
             record_result "$elf_file" "PASSED"
@@ -262,7 +260,6 @@ else
 
         if (cargo run --release --bin cargo-zisk verify-constraints \
         --emulator \
-        --witness-lib target/release/libzisk_witness.so \
         --elf "$elf_file" \
         --input "$input_path" \
         --proving-key "$proving_key"); then
@@ -295,7 +292,6 @@ else
 
             if (cargo run --release --bin cargo-zisk verify-constraints \
             --emulator \
-            --witness-lib target/release/libzisk_witness.so \
             --elf "$elf_file" \
             --input "$input_file" \
             --proving-key "$proving_key"); then

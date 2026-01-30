@@ -153,8 +153,8 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64, c
     // Otherwise, the result is simply c
     c[0] += cout;
 
-    lookup_proves(operation_bus_id, [b_op + 0x10 * mode32, ...a, ...b, ...c, cout]);
+    lookup_proves(operation_bus_id, [b_op + 0x10 * mode32, ...a, ...b, ...c, cout, 0]);
 
     airval padding_size;
-    direct_update_assumes(operation_bus_id, [OP_ADD, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
+    direct_update_assumes(operation_bus_id, [OP_ADD, 0, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
 }

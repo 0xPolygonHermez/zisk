@@ -68,7 +68,7 @@ enum MinimalTraceExecutionMode {
 }
 
 /// The maximum number of steps to execute in the emulator or assembly runner.
-pub const MAX_NUM_STEPS: u64 = 1 << 32;
+pub const MAX_NUM_STEPS: u64 = 1 << 36;
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
@@ -380,7 +380,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 .remove(&global_id)
                 .expect("Missing collectors for given global_id")
                 .into_iter()
-                .map(Option::unwrap) // All are guaranteed to be Some
+                .enumerate()
+                .map(|(idx, opt)| {
+                    opt.unwrap_or_else(|| {
+                        panic!("Collector at index {} for global_id {} is None", idx, global_id)
+                    })
+                })
                 .collect()
         };
 

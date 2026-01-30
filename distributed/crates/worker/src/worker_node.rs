@@ -719,17 +719,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             agg_proofs,
             last_proof: agg_params.last_proof,
             final_proof: agg_params.final_proof,
-            verify_constraints: agg_params.verify_constraints,
-            aggregation: agg_params.aggregation,
-            rma: agg_params.rma,
             compressed: agg_params.compressed,
-            verify_proofs: agg_params.verify_proofs,
-            save_proofs: agg_params.save_proofs,
-            test_mode: agg_params.test_mode,
-            output_dir_path: PathBuf::from(agg_params.output_dir_path),
-            minimal_memory: agg_params.minimal_memory,
         };
-
         self.worker.set_current_computation(
             self.worker.handle_aggregate(job, agg_params, computation_tx.clone()).await,
         );

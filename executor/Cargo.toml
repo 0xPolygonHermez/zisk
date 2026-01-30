@@ -33,12 +33,14 @@ precompiles-hints = { workspace = true }
 anyhow = { workspace = true }
 crossbeam = "0.8.4"
 
+precompiles-common = { workspace = true }
 precomp-keccakf = { workspace = true }
 precomp-sha256f = { workspace = true }
 precomp-poseidon2 = { workspace = true }
 precomp-arith-eq = { workspace = true }
 precomp-arith-eq-384 = { workspace = true }
 precomp-big-int = { workspace = true }
+precomp-dma = { workspace = true }
 
 sm-arith = { workspace = true }
 sm-binary = { workspace = true }

@@ -7,6 +7,11 @@ use precomp_arith_eq::{ArithEqInstance, ArithEqManager};
 use precomp_arith_eq_384::ArithEq384Instance;
 use precomp_arith_eq_384::ArithEq384Manager;
 use precomp_big_int::{Add256Instance, Add256Manager};
+use precomp_dma::Dma64AlignedInstance;
+use precomp_dma::DmaInstance;
+use precomp_dma::DmaManager;
+use precomp_dma::DmaPrePostInstance;
+use precomp_dma::DmaUnalignedInstance;
 use precomp_keccakf::{KeccakfInstance, KeccakfManager};
 use precomp_poseidon2::{Poseidon2Instance, Poseidon2Manager};
 use precomp_sha256f::{Sha256fInstance, Sha256fManager};
@@ -21,6 +26,10 @@ use sm_rom::{RomInstance, RomSM};
 use std::collections::{BTreeMap, HashMap};
 use zisk_common::{BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan};
 use zisk_pil::ADD_256_AIR_IDS;
+use zisk_pil::DMA_64_ALIGNED_AIR_IDS;
+use zisk_pil::DMA_AIR_IDS;
+use zisk_pil::DMA_PRE_POST_AIR_IDS;
+use zisk_pil::DMA_UNALIGNED_AIR_IDS;
 use zisk_pil::{
     ARITH_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS,
     BINARY_EXTENSION_AIR_IDS, INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
@@ -45,6 +54,7 @@ pub enum StateMachines<F: PrimeField64> {
     ArithEqManager(Arc<ArithEqManager<F>>),
     ArithEq384Manager(Arc<ArithEq384Manager<F>>),
     Add256Manager(Arc<Add256Manager<F>>),
+    DmaManager(Arc<DmaManager<F>>),
 }
 
 impl<F: PrimeField64> StateMachines<F> {
@@ -60,6 +70,7 @@ impl<F: PrimeField64> StateMachines<F> {
             StateMachines::ArithEqManager(_) => 7,
             StateMachines::ArithEq384Manager(_) => 8,
             StateMachines::Add256Manager(_) => 9,
+            StateMachines::DmaManager(_) => 10,
         }
     }
 
@@ -81,6 +92,7 @@ impl<F: PrimeField64> StateMachines<F> {
             StateMachines::ArithEqManager(sm) => (**sm).build_planner(),
             StateMachines::ArithEq384Manager(sm) => (**sm).build_planner(),
             StateMachines::Add256Manager(sm) => (**sm).build_planner(),
+            StateMachines::DmaManager(sm) => (**sm).build_planner(),
         }
     }
 
@@ -98,6 +110,7 @@ impl<F: PrimeField64> StateMachines<F> {
             StateMachines::ArithEqManager(sm) => (**sm).configure_instances(pctx, plans),
             StateMachines::ArithEq384Manager(sm) => (**sm).configure_instances(pctx, plans),
             StateMachines::Add256Manager(sm) => (**sm).configure_instances(pctx, plans),
+            StateMachines::DmaManager(sm) => (**sm).configure_instances(pctx, plans),
         }
     }
 
@@ -113,6 +126,7 @@ impl<F: PrimeField64> StateMachines<F> {
             StateMachines::ArithEqManager(sm) => (**sm).build_instance(ictx),
             StateMachines::ArithEq384Manager(sm) => (**sm).build_instance(ictx),
             StateMachines::Add256Manager(sm) => (**sm).build_instance(ictx),
+            StateMachines::DmaManager(sm) => (**sm).build_instance(ictx),
         }
     }
 }
@@ -193,6 +207,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         let mut arith_eq_counter = None;
         let mut arith_eq_384_counter = None;
         let mut add256_counter = None;
+        let mut dma_counter = None;
 
         for (_, sm) in self.sm.values() {
             match sm {
@@ -210,24 +225,46 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     arith_counter = Some((sm.type_id(), arith_sm.build_arith_counter()));
                 }
                 StateMachines::KeccakfManager(keccak_sm) => {
-                    keccakf_counter = Some((sm.type_id(), keccak_sm.build_keccakf_counter()));
+                    keccakf_counter = Some((
+                        sm.type_id(),
+                        keccak_sm.build_keccakf_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::Sha256fManager(sha256_sm) => {
-                    sha256f_counter = Some((sm.type_id(), sha256_sm.build_sha256f_counter()));
+                    sha256f_counter = Some((
+                        sm.type_id(),
+                        sha256_sm.build_sha256f_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::Poseidon2Manager(poseidon2_sm) => {
-                    poseidon2_counter =
-                        Some((sm.type_id(), poseidon2_sm.build_poseidon2_counter()));
+                    poseidon2_counter = Some((
+                        sm.type_id(),
+                        poseidon2_sm.build_poseidon2_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::ArithEqManager(arith_eq_sm) => {
-                    arith_eq_counter = Some((sm.type_id(), arith_eq_sm.build_arith_eq_counter()));
+                    arith_eq_counter = Some((
+                        sm.type_id(),
+                        arith_eq_sm.build_arith_eq_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::ArithEq384Manager(arith_eq_384_sm) => {
-                    arith_eq_384_counter =
-                        Some((sm.type_id(), arith_eq_384_sm.build_arith_eq_384_counter()));
+                    arith_eq_384_counter = Some((
+                        sm.type_id(),
+                        arith_eq_384_sm.build_arith_eq_384_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::Add256Manager(add256_sm) => {
-                    add256_counter = Some((sm.type_id(), add256_sm.build_add256_counter()));
+                    add256_counter = Some((
+                        sm.type_id(),
+                        add256_sm.build_add256_counter(self.process_only_operation_bus),
+                    ));
+                }
+                StateMachines::DmaManager(dma_sm) => {
+                    dma_counter = Some((
+                        sm.type_id(),
+                        dma_sm.build_dma_counter(self.process_only_operation_bus),
+                    ));
                 }
                 StateMachines::RomSM(_) => {}
             }
@@ -244,6 +281,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             arith_eq_counter.expect("ArithEq counter not found"),
             arith_eq_384_counter.expect("ArithEq384 counter not found"),
             add256_counter.expect("Add256 counter not found"),
+            dma_counter.expect("Dma counter not found"),
             Some(0),
         )
     }
@@ -276,6 +314,10 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                 let mut arith_eq_384_collectors = Vec::new();
                 let mut add256_collectors = Vec::new();
                 let mut rom_collectors = Vec::new();
+                let mut dma_collectors = Vec::new();
+                let mut dma_pre_post_collectors = Vec::new();
+                let mut dma_64_aligned_collectors = Vec::new();
+                let mut dma_unaligned_collectors = Vec::new();
                 for global_idx in global_idxs {
                     let secn_instance = secn_instances.get(global_idx).unwrap();
 
@@ -420,6 +462,40 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                                 add256_instance.build_add256_collector(ChunkId(chunk_id));
                             add256_collectors.push((*global_idx, add256_collector));
                         }
+                        // DMA AIRS
+                        air_id if air_id == DMA_AIR_IDS[0] => {
+                            let dma_instance =
+                                secn_instance.as_any().downcast_ref::<DmaInstance<F>>().unwrap();
+                            let dma_collector = dma_instance.build_dma_collector(ChunkId(chunk_id));
+                            dma_collectors.push((*global_idx, dma_collector));
+                        }
+                        air_id if air_id == DMA_PRE_POST_AIR_IDS[0] => {
+                            let dma_pre_post_instance = secn_instance
+                                .as_any()
+                                .downcast_ref::<DmaPrePostInstance<F>>()
+                                .unwrap();
+                            let dma_pre_post_collector =
+                                dma_pre_post_instance.build_dma_collector(ChunkId(chunk_id));
+                            dma_pre_post_collectors.push((*global_idx, dma_pre_post_collector));
+                        }
+                        air_id if air_id == DMA_64_ALIGNED_AIR_IDS[0] => {
+                            let dma_64_aligned_instance = secn_instance
+                                .as_any()
+                                .downcast_ref::<Dma64AlignedInstance<F>>()
+                                .unwrap();
+                            let dma_64_aligned_collector =
+                                dma_64_aligned_instance.build_dma_collector(ChunkId(chunk_id));
+                            dma_64_aligned_collectors.push((*global_idx, dma_64_aligned_collector));
+                        }
+                        air_id if air_id == DMA_UNALIGNED_AIR_IDS[0] => {
+                            let dma_unaligned_instance = secn_instance
+                                .as_any()
+                                .downcast_ref::<DmaUnalignedInstance<F>>()
+                                .unwrap();
+                            let dma_unaligned_collector =
+                                dma_unaligned_instance.build_dma_collector(ChunkId(chunk_id));
+                            dma_unaligned_collectors.push((*global_idx, dma_unaligned_collector));
+                        }
                         air_id if air_id == ROM_AIR_IDS[0] => {
                             let rom_instance =
                                 secn_instance.as_any().downcast_ref::<RomInstance>().unwrap();
@@ -441,6 +517,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                 let mut poseidon2_inputs_generator = None;
                 let mut arith_inputs_generator = None;
                 let mut add256_inputs_generator = None;
+                let mut dma_inputs_generator = None;
                 for (_, sm) in self.sm.values() {
                     match sm {
                         StateMachines::ArithSM(arith_sm) => {
@@ -470,6 +547,9 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             add256_inputs_generator =
                                 Some(add256_sm.build_add256_input_generator());
                         }
+                        StateMachines::DmaManager(dma_sm) => {
+                            dma_inputs_generator = Some(dma_sm.build_dma_input_generator());
+                        }
                         _ => {}
                     }
                 }
@@ -487,6 +567,10 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     arith_eq_collectors,
                     arith_eq_384_collectors,
                     add256_collectors,
+                    dma_collectors,
+                    dma_pre_post_collectors,
+                    dma_64_aligned_collectors,
+                    dma_unaligned_collectors,
                     rom_collectors,
                     arith_eq_inputs_generator.expect("ArithEq input generator not found"),
                     arith_eq_384_inputs_generator.expect("ArithEq384 input generator not found"),
@@ -495,6 +579,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     poseidon2_inputs_generator.expect("Poseidon2 input generator not found"),
                     arith_inputs_generator.expect("Arith input generator not found"),
                     add256_inputs_generator.expect("Add256 input generator not found"),
+                    dma_inputs_generator.expect("Dma input generator not found"),
                 );
 
                 Some(data_bus)

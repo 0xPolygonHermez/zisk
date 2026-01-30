@@ -22,8 +22,8 @@ airtemplate BinaryAdd(const int N = 2**21, const int operation_bus_id = OPERATIO
         range_check(expression: c_chunks[i * 2 + 1], min: 0, max: 2**16 - 1);
     }
 
-    lookup_proves(operation_bus_id, [OP_ADD, ...a, ...b, ...c, 0]);
+    lookup_proves(operation_bus_id, [OP_ADD, ...a, ...b, ...c, 0, 0]);
 
     airval padding_size;
-    direct_update_assumes(operation_bus_id, [OP_ADD, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
+    direct_update_assumes(operation_bus_id, [OP_ADD, 0, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
 }

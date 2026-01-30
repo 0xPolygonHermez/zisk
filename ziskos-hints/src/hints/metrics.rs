@@ -1,7 +1,8 @@
-use std::{collections::HashMap, sync::RwLock};
 use once_cell::sync::Lazy;
+use std::{collections::HashMap, sync::RwLock};
 
-pub(crate) static HINTS_METRICS: Lazy<RwLock<HashMap<u32, HintRegisterInfo>>> = Lazy::new(|| RwLock::new(HashMap::new()));
+pub(crate) static HINTS_METRICS: Lazy<RwLock<HashMap<u32, HintRegisterInfo>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 
 #[derive(Clone, Debug)]
 pub(crate) struct HintRegisterInfo {
@@ -10,7 +11,10 @@ pub(crate) struct HintRegisterInfo {
 }
 
 pub(crate) fn register_hint(hint_id: u32, hint_name: String) {
-    HINTS_METRICS.write().expect("HINTS_METRICS poisoned").insert(hint_id, HintRegisterInfo { hint_name, count: 0 });
+    HINTS_METRICS
+        .write()
+        .expect("HINTS_METRICS poisoned")
+        .insert(hint_id, HintRegisterInfo { hint_name, count: 0 });
 }
 
 pub(crate) fn inc_hint_count(hint_id: u32) {

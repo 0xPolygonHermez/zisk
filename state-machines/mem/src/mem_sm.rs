@@ -12,21 +12,15 @@ type MemTraceType<F> = MemTracePacked<F>;
 #[cfg(not(feature = "packed"))]
 type MemTraceType<F> = MemTrace<F>;
 #[cfg(feature = "debug_mem")]
-use {
-    num_bigint::ToBigInt,
-    std::{
-        env,
-        fs::File,
-        io::{BufWriter, Write},
-    },
+use std::{
+    env,
+    fs::File,
+    io::{BufWriter, Write},
 };
 
 use crate::{MemInput, MemModule};
 use fields::PrimeField64;
-use mem_common::{
-    MemHelpers, MEM_INC_C_BITS, MEM_INC_C_MASK, MEM_INC_C_MAX_RANGE, MEM_INC_C_SIZE,
-    RAM_W_ADDR_END, RAM_W_ADDR_INIT,
-};
+use mem_common::{MemHelpers, RAM_W_ADDR_END, RAM_W_ADDR_INIT};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use zisk_core::{RAM_ADDR, RAM_SIZE};
@@ -38,10 +32,8 @@ pub struct MemSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
 
-    range_id: usize,
-
+    range_22bits_id: usize,
     dual_range_id: usize,
-
     range_16bits_id: usize,
 }
 #[derive(Debug, Default)]
@@ -54,14 +46,14 @@ pub struct MemPreviousSegment {
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> MemSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_id =
-            std.get_range_id(0, MEM_INC_C_MAX_RANGE as i64, None).expect("Failed to get range ID");
+        let range_22bits_id =
+            std.get_range_id(0, (1 << 22) - 1, None).expect("Failed to get 22 bits range ID");
         let dual_range_id =
             std.get_range_id(0, DUAL_RANGE_MAX as i64, None).expect("Failed to get dual range ID");
         let range_16bits_id =
-            std.get_range_id(0, 0xFFFF, None).expect("Failed to get 16 bits range ID");
+            std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get 16 bits range ID");
 
-        Arc::new(Self { range_id, dual_range_id, range_16bits_id, std: std.clone() })
+        Arc::new(Self { range_22bits_id, dual_range_id, range_16bits_id, std: std.clone() })
     }
 
     pub fn get_to_addr() -> u32 {
@@ -72,17 +64,22 @@ impl<F: PrimeField64> MemSM<F> {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::NUM_ROWS;
+        let num_rows = MemTrace::<F>::NUM_ROWS;
 
         for i in 0..num_rows {
-            let addr = trace[i].addr.as_canonical_biguint().to_bigint().unwrap() * 8;
-            let step = trace[i].step.as_canonical_biguint().to_bigint().unwrap();
-            writeln!(
-                writer,
-                "{:#010X} {} {} {:?}",
-                addr, trace[i].step, trace[i].wr, trace[i].value
-            )
-            .unwrap();
+            let addr = trace[i].addr.as_canonical_u64() * 8;
+            let step = trace[i].step.as_canonical_u64();
+            let op = if trace[i].wr.is_zero() { 'R' } else { 'W' };
+            let values =
+                [trace[i].value[0].as_canonical_u64(), trace[i].value[1].as_canonical_u64()];
+            let value = values[0] | (values[1] << 32);
+            writeln!(writer, "{i:<8} {addr:#010X} {step} {op} {values:?} 0x{value:016X}").unwrap();
+            let dual = !trace[i].sel_dual.is_zero();
+            if dual {
+                let step = trace[i].step_dual.as_canonical_u64();
+                writeln!(writer, "{i:<8} {addr:#010X} {step} R {values:?} 0x{value:016X} DUAL")
+                    .unwrap();
+            }
         }
         println!("[MemDebug] done");
     }
@@ -112,7 +109,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace = MemTraceType::<F>::new_from_vec(trace_buffer)?;
 
-        let mut range_check_data: Vec<u32> = vec![0; MEM_INC_C_SIZE];
+        let mut range_22bits: Vec<u32> = vec![0; 1 << 22];
+        let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
 
         // 2^20 * 2 = 2^21 = 2MB
         let mut dual_partial_range: Vec<u16> = vec![0; DUAL_PARTIAL_RANGE_MAX];
@@ -131,13 +129,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         for index in 0..mem_op_count {
             let mem_op = &mem_ops[index];
             step = mem_op.step;
-            // if step >= 28184622 && step <= 28184624 {
-            //     println!(
-            //         "@@@@@@@@@@ 0x{:08X} {step} 8 OP:{}",
-            //         mem_op.addr * 8,
-            //         if mem_op.is_write { 2 } else { 1 }
-            //     );
-            // }
 
             let addr_changes = last_addr != mem_op.addr;
             if dual_candidate {
@@ -222,10 +213,10 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             } else {
                 trace[i].set_read_same_addr(true);
             }
-            let lsb_increment = increment & MEM_INC_C_MASK;
-            let msb_increment = increment >> MEM_INC_C_BITS;
-            trace[i].set_increment(0, lsb_increment as u32);
-            trace[i].set_increment(1, msb_increment as u32);
+            let l_increment = increment & ((1 << 22) - 1);
+            let h_increment = increment >> 22;
+            trace[i].set_l_increment(l_increment as u32);
+            trace[i].set_h_increment(h_increment as u16);
             trace[i].set_wr(mem_op.is_write);
 
             #[cfg(feature = "debug_mem")]
@@ -234,8 +225,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                     increment, i, addr_changes as u8, mem_op.addr, last_addr, mem_op.step, last_step);
             }
 
-            range_check_data[lsb_increment] += 1;
-            range_check_data[msb_increment] += 1;
+            range_22bits[l_increment] += 1;
+            range_16bits[h_increment] += 1;
 
             last_addr = mem_op.addr;
             last_value = mem_op.value;
@@ -273,8 +264,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             trace[i].set_value(1, high_value);
 
             trace[i].set_addr_changes(false);
-            trace[i].set_increment(0, 0);
-            trace[i].set_increment(1, 0);
+            trace[i].set_h_increment(0);
+            trace[i].set_l_increment(0);
             trace[i].set_read_same_addr(true);
             trace[i].set_sel_dual(false);
             trace[i].set_step_dual(0);
@@ -282,14 +273,13 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         if padding_size > 0 {
             // Store the padding range checks
-            range_check_data[0] += (2 * padding_size) as u32;
+            range_16bits[0] += padding_size as u32;
+            range_22bits[0] += padding_size as u32;
         }
 
         // no add extra +1 because index = value - 1
         // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
         let distance_end = RAM_W_ADDR_END - last_addr;
-
-        self.std.range_checks(self.range_id, range_check_data);
 
         // Add one in range_check_data_max because it's used by intermediate reads, and reads
         // add one to distance to allow same step on read operations.
@@ -318,10 +308,13 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         air_values.distance_end[0] = F::from_u16(distance_end[0]);
         air_values.distance_end[1] = F::from_u16(distance_end[1]);
 
-        self.std.range_check(self.range_16bits_id, distance_base[0] as i64, 1);
-        self.std.range_check(self.range_16bits_id, distance_base[1] as i64, 1);
-        self.std.range_check(self.range_16bits_id, distance_end[0] as i64, 1);
-        self.std.range_check(self.range_16bits_id, distance_end[1] as i64, 1);
+        range_16bits[distance_base[0] as usize] += 1;
+        range_16bits[distance_base[1] as usize] += 1;
+        range_16bits[distance_end[0] as usize] += 1;
+        range_16bits[distance_end[1] as usize] += 1;
+
+        self.std.range_checks(self.range_22bits_id, range_22bits);
+        self.std.range_checks(self.range_16bits_id, range_16bits);
 
         for (value, count) in dual_partial_range.iter().enumerate() {
             if *count == 0 {

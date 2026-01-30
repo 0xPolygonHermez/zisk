@@ -62,9 +62,9 @@ impl<F: PrimeField64> Add256SM<F> {
         trace: &mut Add256TraceRowType<F>,
         multiplicities: &mut [u32],
     ) {
+        debug_assert!(input.cin < 2);
         trace.set_cin(input.cin != 0);
         let mut cout_2 = input.cin as u32;
-
         for i in 0..4 {
             let al = input.a[i] as u32;
             let ah = (input.a[i] >> 32) as u32;
@@ -140,19 +140,19 @@ impl<F: PrimeField64> Add256SM<F> {
         let flat_inputs: Vec<_> = inputs.iter().flatten().collect();
         let trace_rows = trace.buffer.as_mut_slice();
 
-        // Determinar tamaño óptimo de chunks
+        // Calculate optimal chunk size
         let num_threads = rayon::current_num_threads();
         let chunk_size = std::cmp::max(1, flat_inputs.len() / num_threads);
 
-        // Procesar en chunks para compartir arrays locales de multiplicities
+        // Process in chunks to allow per-chunk local multiplicities arrays
         let local_multiplicities_vec: Vec<Vec<u32>> = flat_inputs
             .par_chunks(chunk_size)
             .zip(trace_rows.par_chunks_mut(chunk_size))
             .map(|(input_chunk, trace_chunk)| {
-                // Array local compartido por este chunk
+                // Local array shared by this chunk
                 let mut local_multiplicities = vec![0u32; 1 << 16];
 
-                // Procesar todos los inputs del chunk
+                // Sum all local arrays into a global one
                 for (input, trace_row) in input_chunk.iter().zip(trace_chunk.iter_mut()) {
                     self.process_slice(input, trace_row, &mut local_multiplicities);
                 }
@@ -161,7 +161,7 @@ impl<F: PrimeField64> Add256SM<F> {
             })
             .collect();
 
-        // Sumar todos los arrays locales en uno global
+        // Sum all local arrays into a global one
         let mut global_multiplicities = vec![0u32; 1 << 16];
         for local_multiplicities in local_multiplicities_vec {
             for (i, count) in local_multiplicities.iter().enumerate() {
@@ -169,7 +169,7 @@ impl<F: PrimeField64> Add256SM<F> {
             }
         }
 
-        // Enviar el resultado final al std
+        // Send final result to std
         self.std.range_checks(self.range_id, global_multiplicities);
 
         timer_stop_and_log_trace!(ADD256_TRACE);

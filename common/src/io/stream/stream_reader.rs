@@ -1,6 +1,6 @@
 use crate::io::{MemoryStreamReader, QuicStreamReader, UnixSocketStreamReader};
 
-use super::{FileStreamReader, NullStreamReader};
+use super::FileStreamReader;
 
 use anyhow::Result;
 
@@ -22,18 +22,12 @@ pub trait StreamRead: Send + 'static {
 
 pub enum StreamSource {
     File(FileStreamReader),
-    Null(NullStreamReader),
     UnixSocket(UnixSocketStreamReader),
     Quic(QuicStreamReader),
     Memory(MemoryStreamReader),
 }
 
 impl StreamSource {
-    /// Create a null stdin
-    pub fn null() -> Self {
-        StreamSource::Null(NullStreamReader::new())
-    }
-
     /// Create a file-based stdin
     pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
         Ok(StreamSource::File(FileStreamReader::new(path)?))
@@ -65,12 +59,8 @@ impl StreamSource {
     /// - `file://path/to/file`   → File-based stream
     /// - `unix://path/to/socket` → Unix domain socket stream
     /// - `quic://host:port`      → QUIC network stream (e.g., `quic://127.0.0.1:8080`)
-    pub fn from_uri<S: Into<String>>(hints_uri: Option<S>) -> Result<StreamSource> {
-        if hints_uri.is_none() {
-            return Ok(Self::null());
-        }
-
-        let uri_str = hints_uri.unwrap().into();
+    pub fn from_uri<S: Into<String>>(hints_uri: S) -> Result<StreamSource> {
+        let uri_str = hints_uri.into();
 
         // Check if URI contains "://" separator
         if let Some(pos) = uri_str.find("://") {
@@ -96,7 +86,6 @@ impl StreamRead for StreamSource {
     fn open(&mut self) -> Result<()> {
         match self {
             StreamSource::File(file_stream) => file_stream.open(),
-            StreamSource::Null(null_stream) => null_stream.open(),
             StreamSource::UnixSocket(unix_stream) => unix_stream.open(),
             StreamSource::Quic(quic_stream) => quic_stream.open(),
             StreamSource::Memory(memory_stream) => memory_stream.open(),
@@ -107,7 +96,6 @@ impl StreamRead for StreamSource {
     fn next(&mut self) -> Result<Option<Vec<u8>>> {
         match self {
             StreamSource::File(file_stream) => file_stream.next(),
-            StreamSource::Null(null_stream) => null_stream.next(),
             StreamSource::UnixSocket(unix_stream) => unix_stream.next(),
             StreamSource::Quic(quic_stream) => quic_stream.next(),
             StreamSource::Memory(memory_stream) => memory_stream.next(),
@@ -118,7 +106,6 @@ impl StreamRead for StreamSource {
     fn close(&mut self) -> Result<()> {
         match self {
             StreamSource::File(file_stream) => file_stream.close(),
-            StreamSource::Null(null_stream) => null_stream.close(),
             StreamSource::UnixSocket(unix_stream) => unix_stream.close(),
             StreamSource::Quic(quic_stream) => quic_stream.close(),
             StreamSource::Memory(memory_stream) => memory_stream.close(),
@@ -129,7 +116,6 @@ impl StreamRead for StreamSource {
     fn is_active(&self) -> bool {
         match self {
             StreamSource::File(file_stream) => file_stream.is_active(),
-            StreamSource::Null(null_stream) => null_stream.is_active(),
             StreamSource::UnixSocket(unix_stream) => unix_stream.is_active(),
             StreamSource::Quic(quic_stream) => quic_stream.is_active(),
             StreamSource::Memory(memory_stream) => memory_stream.is_active(),

@@ -26,10 +26,10 @@ In the following steps to verify constraints or generate prove, select one of th
 - input_two_segments.bin: 512 shas
 
 To **verify constraints** use: 
-`(cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey)`
+`(cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey)`
 
 To **generate proof** use: 
-`(cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey)`
+`(cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey)`
 
 ## Steps to compile a verifiable rust program
 

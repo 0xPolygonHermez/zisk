@@ -181,7 +181,7 @@ airtemplate Keccakf(const int N = 2**17, const int operation_bus_id = OPERATION_
     }
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
-    lookup_proves(operation_bus_id, [OP_KECCAKF, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_STATE), 0, 0, 0, 0], mul: in_use_clk_0);
+    lookup_proves(operation_bus_id, [OP_KECCAKF, 0, 0, step_addr'(ADDR_STATE), 0, 0, 0, 0, step_addr'(STEP_MAIN)], mul: in_use_clk_0);
 
     function add(const expr b[]): const expr {
         const int len = length(b);

@@ -1,0 +1,6 @@
+const int MAIN_STEP_BITS = 36;
+const int MAX_STEPS = 1 << MAIN_STEP_BITS;
+const int MEM_STEP_BITS = MAIN_STEP_BITS + 2;
+const int REG_STEP_BITS = MAIN_STEP_BITS + 2;
+const int ADDR_BITS = 32;
+const int ADDR_W_BITS = ADDR_BITS - 3;

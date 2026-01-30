@@ -1,0 +1,205 @@
+const int DMA_MEM_CPY = 1;
+const int DMA_MEM_PRE_POST = 2;
+const int DMA_MEM_EQ = 3;
+
+const int MEM_CPY_BYTE_CONT_ID = 8200;
+const int MEM_CPY_CONT_ID = 8201;
+
+const int DMA_MEM_CPY_COUNT_ADDR = 0xA0000F00;
+
+
+airtemplate Dma(int N = 2**21, const int RC = 2, const int op_x_row = 4, const int selectors = 1,
+                const int operation_bus_id = OPERATION_BUS_ID)  {
+
+    assert(selectors == 0 || selectors == 1);
+    assert(op_x_row > 1);
+
+    // DMA: MEMCPY
+    //
+    // Unlike a CPU memcpy, the DMA memcpy is instantaneous from a temporal point of view all reads 
+    // occur in the same step and all writes in the next step. In the case of reads there are no 
+    // problems in performing the same read several times in the same step because the result is 
+    // always the same in this moment. In the case of writes, this is not the case, because it would 
+    // create an ambiguity to know the written value. Therefore, we must guarantee that each 64-bit 
+    // value is written only once.
+    //
+    // The strategy that DMA follows in the case of memcpy is to divide the operation into 3 phases:
+    //
+    // 1. Pre-copy: initial bytes are copied to achieve at least destination alignment, to avoid
+    //    double writes.
+    //
+    // 2. Fully or partially aligned copy. It's a loop where 64-bit values are copied. There are 
+    //    two variants:
+    //    a) Aligned 64-bit copy: both source and destination addresses are aligned to 8 bytes.
+    //    b) Unaligned 64-bit copy: the source address is not aligned to 8 bytes, but it's read in
+    //       bytes and 64-bit values are reassembled.
+    // 
+    // 3. Post-copy: final bytes that don't complete a 64-bit word are copied.
+    // 
+    // Not all phases are necessary, they depend on the copy parameters.
+    //
+    // Example of fully aligned memcpy operation:
+    //             
+    //                PRE                 MEMCPY                 POST       
+    //           ┌──────────┐ ┌──────────────────────────────┐ ┌──────────┐ 
+    //
+    //               ┌──────┐ ┌────────┬────────┐   ┌────────┐ ┌────┐
+    //    src        │  0   │ │    1   │    2   │...│    n   │ │ n+1│  
+    //               └──────┘ └────────┴────────┘   └────────┘ └────┘
+    //                  ↓          ↓        ↓            ↓        ↓
+    //           ┌───┬──────┐ ┌────────┬────────┐   ┌────────┐ ┌────┬─────┐
+    //    dst    │      0   │ │    1   │    2   │...│    n   │ │ n+1      │
+    //           └───┴──────┘ └────────┴────────┘   └────────┘ └────┴─────┘
+    //           ^dst64       ^dst64+1 ^dst64+2     ^dst64+n   ^dst64+n+1   <-- each dst64 address is 
+    //                                                                          written only once
+    //
+    // 
+    // Example of partially aligned memcpy operation:
+    //              
+    //                PRE                 MEMCPY                            POST       
+    //           ┌──────────┐ ┌────────────────────────────────────────┐ ┌──────────┐ 
+    //               ┌────┐┌─ ┌────────┬────────┐   ┌────────┐┌─┬──────┐ ┌─┬───┐
+    //    src        │  0 ││1 │    1   │    2   │...│    n   ││   n+1  │ │  n+1│  
+    //               └────┘└─ └────────┴────────┘   └────────┘└─┴──────┘ └─┴───┘
+    //                  ↓   ↓      ↓   ↙   ↓    ↙        ↓    ↙              ↙
+    //           ┌───┬──────┐ ┌────────┬────────┐   ┌────────┐           ┌────┬─────┐
+    //    dst    │      0   │ │    1   │    2   │...│    n   │     ↑     │ n+1      │
+    //           └───┴──────┘ └────────┴────────┘   └────────┘     │     └────┴─────┘
+    //           ^dst64       ^dst64+1 ^dst64+2     ^dst64+n       │      ^dst64+n+1   <-- each dst64 address is 
+    //                                                          without                    written only once
+    //                                                           write
+    //
+
+    col witness bits(1) sel;
+    sel * (1 - sel) === 0;
+
+    // read count from register directly
+
+    // assuming max memory of 4GB (32 bits)
+    // count: 24 bits RC + 8 bits T
+    col witness bits(24) h_count;
+
+    // What is count_lt_256 used for?
+    // 
+    // If count were split in the traditional way into h_count|l_count there would be a problem 
+    // because the DMA ROM has to check whether the count is small. 
+    //
+    // But what would happen if the bits of l_count were 0 while h_count was not? 
+    // The DMA ROM could not distinguish whether count is 0 or, for example, 1024 = 4|0
+    //
+    // To avoid this, was defined that in such a case one is subtracted from h_count and 256 is added
+    // to l_count so that the overall count value remains the same and so that for any k up to 511,
+    // if l_count > k ==> count > k.
+    //
+    // To ensure this condition a flag count_lt_256 must be enforced to verify that h_count is actually
+    // 0 when l_count < 256, and the ROM verifies the consistency between count_lt_256 and l_count.
+
+    col witness bits(1) count_lt_256;
+    col witness bits(9) l_count;        // 0..255 + 256 = 9 bits
+    const expr count = h_count * 256 + l_count;
+
+    count_lt_256 * (1 - count_lt_256) === 0;
+
+    // constraint (1)
+    count_lt_256 * h_count === 0;
+
+    // count  count            count  cons             Range        h_count * 256
+    // 31..8  7..0   h_count  lt_256  (1)    l_count  Check   Rom  + l_count
+    // -----  -----  -------  ------  ----   -------  -----  ----  -------------
+    //     0      x        0       1    OK         x     OK    OK       0 | x OK
+    //     0      x        0       0    OK         x     OK  FAIL       0 | x OK <== DETECTED
+    //     1      x        0       0    OK   256 + x     OK    OK       1 | x OK 
+    //     1      x        0       1    OK   256 + x     OK  FAIL       1 | x OK <== DETECTED
+    //     1      x        1       1  FAIL         x     OK    OK       1 | x OK <== DETECTED
+    // y > 1      x    y - 1       0    OK   256 + x     OK             y | x OK 
+    //   MAX      x  MAX - 1       0    OK   256 + x     OK           MAX | x OK
+    //     0      x       -1       0    OK   256 + x   FAIL             0 | x OK <== DETECTED
+    //   MAX      x      MAX       0    OK   256 + x   FAIL         MAX+1 | x FAIL <== DETECTED
+    //     -      -        -       -     -     x < 0     -   FAIL       - | - -  <== DETECTED
+    //     -      -        -       -     -   x >=512     -   FAIL       - | - -  <== DETECTED
+
+    range_check(expression: h_count, min: 0, max: 2**24-1, sel: sel);
+
+    // 32 bit address
+    // 22 bits RC + 5 bits RC + 3 bits T
+    col witness bits(22) h_src64;
+    col witness bits(7) l_src64;
+    col witness bits(3) src_offset;
+    const expr src = h_src64 * 2**10 + l_src64 * 2**3 + src_offset;
+    const expr src64 = h_src64 * 2**10 + l_src64 * 2**3;
+    // src_offset range verified with dma_rom table
+
+
+    // 32 bit address
+    // 22 bits RC +  7 bits RC + 3 bits T
+    col witness bits(22) h_dst64;
+    col witness bits(7) l_dst64;
+    col witness bits(3) dst_offset;
+    const expr dst = h_dst64 * 2**10 + l_dst64 * 2**3 + dst_offset;
+    const expr dst64 = h_dst64 * 2**10 + l_dst64 * 2**3;
+    // dst_offset range verified with dma_rom table
+
+    col witness bits(MAIN_STEP_BITS) main_step;
+
+    range_check(expression: h_src64, min: 0, max: 2**22-1, sel: sel);
+    range_check(expression: h_dst64, min: 0, max: 2**22-1, sel: sel);
+    
+    lookup_assumes(DUAL_RANGE_7_BITS_ID, expressions: [l_src64, l_dst64], sel: sel);
+
+    col witness bits(1) use_pre;            // use memcpy_pre operation
+    col witness bits(1) use_memcpy;         // use memcpy operation
+    col witness bits(1) use_post;           // use memcpy_post operation  
+    col witness bits(1) src64_inc_by_pre;   // src64 increment after apply memcpy_pre operation
+
+    use_pre * (1 - use_pre) === 0;
+    use_memcpy * (1 - use_memcpy) === 0;
+    use_post * (1 - use_post) === 0;
+    src64_inc_by_pre * (1 - src64_inc_by_pre) === 0;
+
+    const expr flags = use_pre + use_memcpy * 2 + use_post * 4 + src64_inc_by_pre * 8 + count_lt_256 * 16;
+
+    col witness bits(3) pre_count;  // number of bytes of memcpy_pre operation
+    col witness bits(9) l_count64;  // number of 64 bits words in l_count after substract pre_count and post_count
+    col witness bits(3) src_offset_after_pre; // src_offset after apply memcpy_pre operation
+    
+    const expr post_count = count - pre_count - h_count * 256 - l_count64 * 8;
+
+    lookup_assumes(DMA_ROM_ID, expressions: [dst_offset, src_offset, l_count, flags, pre_count, src_offset_after_pre, l_count64], sel: sel);
+
+    // if operation not selected then other selectors must be 0.
+    (1 - sel) * use_memcpy === 0;
+    (1 - sel) * use_pre === 0;
+    (1 - sel) * use_post === 0;
+
+    permutation_assumes(DMA_BUS_ID, [DMA_MEM_CPY, 
+                                     (dst64 + use_pre * 8), 
+                                     (src64 + src64_inc_by_pre * 8), 
+                                     0, 
+                                     src_offset_after_pre, 
+                                     h_count * 256 + l_count64 * 8,  // count64 = h_count * (256/8 = 32) + l_count64
+                                     main_step], sel: use_memcpy);
+
+    permutation_assumes(DMA_BUS_ID, [DMA_MEM_PRE_POST, 
+                                     dst64, 
+                                     src64, 
+                                     dst_offset, 
+                                     src_offset, 
+                                     pre_count, 
+                                     main_step], sel: use_pre);
+
+    permutation_assumes(DMA_BUS_ID, [DMA_MEM_PRE_POST, 
+                                     dst64 + use_pre * 8 + l_count64 * 8 + h_count * 256,
+                                     src64 + src64_inc_by_pre * 8 + l_count64 * 8 + h_count * 256,
+                                     0, 
+                                     src_offset_after_pre, 
+                                     post_count, 
+                                     main_step], sel: use_post);
+
+    // TODO: memcmp
+
+    // used to link operation with main
+    lookup_proves(operation_bus_id, [OP_DMA_MEMCPY, dst, 0, src, 0, 0, 0, 0, main_step], mul: sel);
+    
+    // lookup_proves(operation_bus_id, [OP_PARAM, 0, 0, count, 0, 0, 0, 0, main_step-1], mul: sel);
+    precompiled_mem_load(sel: sel, main_step: main_step, addr: DMA_MEM_CPY_COUNT_ADDR, value: [count, 0]);
+}

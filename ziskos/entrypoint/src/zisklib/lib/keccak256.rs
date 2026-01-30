@@ -139,15 +139,24 @@ pub unsafe extern "C" fn native_keccak256(
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
         use tiny_keccak::{Hasher, Keccak};
+        const OUT_LEN: usize = 32;
 
         let (input_bytes, out) = unsafe {
             let input_bytes = core::slice::from_raw_parts(bytes, len);
-            let out = core::slice::from_raw_parts_mut(output, 32);
+            let out = core::slice::from_raw_parts_mut(output, OUT_LEN);
             (input_bytes, out)
         };
 
         let mut hasher = Keccak::v256();
         hasher.update(input_bytes);
         hasher.finalize(out);
+
+        #[cfg(feature = "hints")]
+        {
+            const OUT_LEN_WORDS: usize = OUT_LEN / std::mem::size_of::<u64>();
+            let out_u64: &[u64] =
+                unsafe { core::slice::from_raw_parts(out.as_ptr() as *const u64, OUT_LEN_WORDS) };
+            hints.extend_from_slice(out_u64);
+        }
     }
 }

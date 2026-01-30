@@ -125,10 +125,10 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64, const int 
             op_is_shift * (b[1] - a[1]) + a[1],
             c[0],
             c[1],
-            0
+            0, 0
         ]
     );
 
     airval padding_size;
-    direct_update_assumes(operation_bus_id, [OP_SEXT_B, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
+    direct_update_assumes(operation_bus_id, [OP_SEXT_B, 0, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
 }

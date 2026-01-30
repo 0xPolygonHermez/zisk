@@ -14,6 +14,8 @@ pub mod zisklib;
 
 pub mod syscalls;
 
+pub mod io;
+
 pub mod ziskos_definitions;
 
 #[macro_export]
@@ -286,4 +288,7 @@ mod ziskos {
 
         ptr
     }
+    core::arch::global_asm!(include_str!("dma/memcpy.s"));
+    core::arch::global_asm!(include_str!("dma/memmove.s"));
+    // core::arch::global_asm!(include_str!("dma/memcmp.s"));
 }

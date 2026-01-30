@@ -1,8 +1,5 @@
 use anyhow::Result;
-use cargo_zisk::{
-    commands::{get_proving_key, get_witness_computation_lib},
-    ux::print_banner,
-};
+use cargo_zisk::{commands::get_proving_key, ux::print_banner};
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
@@ -47,10 +44,6 @@ struct Cli {
         help = "Path to configuration file (overrides ZISK_WORKER_CONFIG_PATH environment variable)"
     )]
     config: Option<String>,
-
-    /// Witness computation dynamic library path
-    #[clap(short = 'w', long)]
-    pub witness_lib: Option<PathBuf>,
 
     /// ELF file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
@@ -98,10 +91,6 @@ struct Cli {
     #[clap(long, default_value_t = false)]
     pub verify_constraints: bool,
 
-    /// Whether to generate the final vadcop proof compressed
-    #[clap(short = 'c', long, default_value_t = false)]
-    pub compressed: bool,
-
     /// GPU parameters
     #[clap(short = 'z', long, default_value_t = false)]
     pub preallocate: bool,
@@ -140,7 +129,6 @@ async fn main() -> Result<()> {
 
     let prover_config_dto = ProverServiceConfigDto {
         elf: cli.elf.clone(),
-        witness_lib: cli.witness_lib.clone(),
         asm: cli.asm.clone(),
         emulator: cli.emulator,
         proving_key: cli.proving_key.clone(),
@@ -150,7 +138,6 @@ async fn main() -> Result<()> {
         debug: cli.debug.clone(),
         verify_constraints: cli.verify_constraints,
         aggregation: true, // we always aggregate
-        compressed: cli.compressed,
         preallocate: cli.preallocate,
         max_streams: cli.max_streams,
         number_threads_witness: cli.number_threads_witness,
@@ -203,18 +190,13 @@ fn print_command_info(
             .map(|p| format!("(log file: {})", p).bright_black().to_string())
             .unwrap_or_default()
     );
-    println!(
-        "{: >12} {}",
-        "Witness Lib".bright_green().bold(),
-        get_witness_computation_lib(Some(&prover_config.witness_lib)).display()
-    );
 
-    println!("{: >12} {}", "ELF".bright_green().bold(), prover_config.elf.display());
-    if prover_config.asm.is_some() {
+    println!("{: >12} {}", "Elf".bright_green().bold(), prover_config.elf.display());
+    if let Some(asm) = &prover_config.asm {
         if let Some(asm_port) = prover_config.asm_port.as_ref() {
             println!("{: >12} {}", "Asm port".bright_green().bold(), asm_port);
         }
-        let asm_path = prover_config.asm.as_ref().unwrap().display();
+        let asm_path = asm.display();
         println!("{: >12} {}", "ASM runner".bright_green().bold(), asm_path);
     } else {
         println!(

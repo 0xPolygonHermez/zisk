@@ -1,6 +1,9 @@
 #include "mem_counter.hpp"
+#include <cstdio>
+#include <cassert>
 #include <assert.h>
 #include <string.h>
+#include <ostream>
 
 #define ST_INI 0
 #define ST_READ 1
@@ -9,6 +12,8 @@
 #define ST_INI_TO_WRITE (ST_WRITE << ST_BITS_OFFSET)
 #define ST_READ_TO_WRITE ((ST_WRITE - ST_READ) << ST_BITS_OFFSET)
 #define ST_X_TO_INI_MASK (0xFFFFFFFF >> (32 - ST_BITS_OFFSET))
+
+#define ALIGN_MASK 0xFFFF'FFFF'FFFF'FFF8ULL 
 
 MemCounter::MemCounter(uint32_t id, std::shared_ptr<MemContext> context)
 :id(id), context(context), addr_mask(id * 8) {
@@ -100,32 +105,140 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
         const uint8_t bytes = chunk_data->flags & 0x0F;
         const uint32_t addr = chunk_data->addr;
         switch (bytes) {
-            case 1: // byte
-            case 2: // half word
-            case 4: // word
-            case 8: // double word
+            // byte
+            case 1:
+                if ((addr & ADDR_MASK) != addr_mask) {
+                    continue;
+                }
+                incr_counter(addr & ALIGN_MASK, chunk_id, false, chunk_data->flags & MOPS_WRITE_FLAG);
                 break;
+
+            // half word                
+            case 2:
+                if ((addr & ADDR_MASK) == addr_mask) {
+                    incr_counter(addr & ALIGN_MASK, chunk_id, false, chunk_data->flags & MOPS_WRITE_FLAG);
+                }
+                else if (((addr + 1) & ADDR_MASK) == addr_mask) {
+                    incr_counter((addr & ALIGN_MASK) + 8 , chunk_id, false, chunk_data->flags & MOPS_WRITE_FLAG);
+                }
+                break;
+
+            // word                
+            case 4:
+                if ((addr & ADDR_MASK) == addr_mask) {
+                    incr_counter(addr & ALIGN_MASK, chunk_id, false, chunk_data->flags & MOPS_WRITE_FLAG);
+                }
+                else if (((addr + 3) & ADDR_MASK) == addr_mask) {
+                    incr_counter((addr & ALIGN_MASK) + 8, chunk_id, false, chunk_data->flags & MOPS_WRITE_FLAG);
+                }
+                break;
+
+            // double word 
+            case 8:
+                if ((addr & 0x07) == 0) {
+                    // aligned access
+                    if ((addr & ADDR_MASK) != addr_mask) {
+                        continue;
+                    }
+                    incr_counter(addr, chunk_id, true, chunk_data->flags & MOPS_WRITE_FLAG);
+                } else {
+                    const uint32_t aligned_addr = addr & ALIGN_MASK;
+
+                    if ((aligned_addr & ADDR_MASK) == addr_mask) {
+                        incr_counter(aligned_addr, chunk_id, false, chunk_data->flags & MOPS_WRITE_FLAG);
+                    }
+                    else if (((aligned_addr + 7) & ADDR_MASK) == addr_mask) {
+                        incr_counter(aligned_addr + 8 , chunk_id, false, chunk_data->flags & MOPS_WRITE_FLAG);
+                    }
+                }
+                break;
+                
+            case MOPS_ALIGNED_READ: {
+                assert((addr & 0x07) == 0);
+                if ((addr & ADDR_MASK) == addr_mask) {
+                    incr_counter(addr , chunk_id, true, false);
+                }
+                break;
+            }
+
+            case MOPS_ALIGNED_WRITE: {
+                assert((addr & 0x07) == 0);
+                if ((addr & ADDR_MASK) == addr_mask) {
+                    incr_counter(addr , chunk_id, true, true);
+                }
+                break;
+            }
+
+            case MOPS_BLOCK_READ: 
+            case MOPS_BLOCK_WRITE: {
+                bool write = bytes == MOPS_BLOCK_WRITE;
+                const uint32_t count = chunk_data->flags >> MOPS_BLOCK_COUNT_SBITS;
+                if ((addr & 0x07) == 0) {
+                    uint32_t to_addr = addr + count * 8;
+                    uint32_t c_addr = (addr & ~ADDR_MASK) + addr_mask;
+                    if (c_addr < addr) {
+                        c_addr += (MAX_THREADS * 8);
+                    }
+                    while (c_addr < to_addr) {                
+                        incr_counter(c_addr , chunk_id, true, write);
+                        c_addr += (MAX_THREADS * 8);
+                    }
+                } else {
+                    // increase range, because if width = 8 and not aligned means
+                    // each access is double, addr and addr + 8 
+                    const uint32_t from_addr = (addr & ~0x07);
+                    const uint32_t to_addr = from_addr + (count + 1) * 8;
+                    uint32_t c_addr = (from_addr & ~ADDR_MASK) + addr_mask;
+                    if (c_addr < from_addr) {
+                        c_addr += (MAX_THREADS * 8);
+                    }
+                    while (c_addr < to_addr) {                
+                        incr_counter(c_addr , chunk_id, false, write);
+                        c_addr += (MAX_THREADS * 8);
+                    }
+                }
+                break;
+            }
+
+            case MOPS_ALIGNED_BLOCK_READ:
+            case MOPS_ALIGNED_BLOCK_WRITE: {
+                assert((addr & 0x07) == 0);
+                bool write = bytes == MOPS_ALIGNED_BLOCK_WRITE;
+                uint32_t count = chunk_data->flags >> 4;
+                uint32_t to_addr = addr + count * 8;
+                uint32_t c_addr = (addr & ~ADDR_MASK) + addr_mask;
+                if (c_addr < addr) {
+                    c_addr += (MAX_THREADS * 8);
+                }
+                while (c_addr < to_addr) {
+                    incr_counter(c_addr , chunk_id, true, write);
+                    c_addr += (MAX_THREADS * 8);
+                }
+                break;
+            }
+
+            
             default:
                 std::ostringstream msg;
                 msg << "ERROR: MemCounter execute_chunk: invalid bytes size " << bytes << " at chunk_id " << chunk_id << " addr 0x" << std::hex << addr;
                 throw std::runtime_error(msg.str());
         }
-        if (bytes == 8 && (addr & 0x07) == 0) {
-            // aligned access
-            if ((addr & ADDR_MASK) != addr_mask) {
-                continue;
-            }
-            incr_counter(addr, chunk_id, true, chunk_data->flags & MEM_WRITE_FLAG);
-        } else {
-            const uint32_t aligned_addr = addr & 0xFFFFFFF8;
+        // if (bytes == 8 && (addr & 0x07) == 0) {
+        //     // aligned access
+        //     if ((addr & ADDR_MASK) != addr_mask) {
+        //         continue;
+        //     }
+        //     incr_counter(addr, chunk_id, true, chunk_data->flags & MEM_WRITE_FLAG);
+        // } else {
+        //     const uint32_t aligned_addr = addr & 0xFFFFFFF8;
 
-            if ((aligned_addr & ADDR_MASK) == addr_mask) {
-                incr_counter(aligned_addr, chunk_id, false, chunk_data->flags & MEM_WRITE_FLAG);
-            }
-            else if ((bytes + (addr & 0x07)) > 8 && ((aligned_addr + 8) & ADDR_MASK) == addr_mask) {
-                incr_counter(aligned_addr + 8 , chunk_id, false, chunk_data->flags & MEM_WRITE_FLAG);
-            }
-        }
+        //     if ((aligned_addr & ADDR_MASK) == addr_mask) {
+        //         incr_counter(aligned_addr, chunk_id, false, chunk_data->flags & MEM_WRITE_FLAG);
+        //     }
+        //     else if ((bytes + (addr & 0x07)) > 8 && ((aligned_addr + 8) & ADDR_MASK) == addr_mask) {
+        //         incr_counter(aligned_addr + 8 , chunk_id, false, chunk_data->flags & MEM_WRITE_FLAG);
+        //     }
+        // }
     }
 
 #ifdef MEM_STATS_ACTIVE

@@ -171,7 +171,10 @@ impl<F: PrimeField64> ArithFullSM<F> {
 
     /// Generates binary inputs for operations requiring additional validation (e.g., division).
     #[inline(always)]
-    pub fn generate_inputs(input: &OperationData<u64>, pending: &mut VecDeque<(BusId, Vec<u64>)>) {
+    pub fn generate_inputs(
+        input: &OperationData<u64>,
+        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+    ) {
         let mut aop = ArithOperation::new();
 
         let input_data = ExtOperationData::OperationData(*input);

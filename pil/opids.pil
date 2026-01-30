@@ -11,7 +11,6 @@ const int ROM_BUS_ID = 7890;
 // Memory ids
 const int MEMORY_ID = 10;
 const int MEMORY_ALIGN_ROM_ID = 133;
-const int DUAL_BYTE_TABLE_ID = 88;
 
 // Arith table ids
 const int ARITH_TABLE_ID = 331;
@@ -29,3 +28,13 @@ const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
 // Precompiles
 const int ARITH_EQ_LT_TABLE_ID = 5002;
 const int KECCAKF_TABLE_ID = 126;
+
+
+// DMA
+const int DMA_BUS_ID = 8000;
+const int DMA_ROM_ID = 8001;
+const int DMA_PRE_POST_TABLE_ID = 8002;
+
+// Ranges
+const int DUAL_RANGE_7_BITS_ID = 77;
+const int DUAL_RANGE_BYTE_ID = 88;

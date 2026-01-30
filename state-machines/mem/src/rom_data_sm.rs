@@ -65,7 +65,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     pub fn save_to_file(trace: &RomDataTrace<F>, file_name: &str) {
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = RomDataTrace::NUM_ROWS;
+        let num_rows = RomDataTrace::<F>::NUM_ROWS;
 
         for i in 0..num_rows {
             let addr = trace[i].get_addr() * 8;

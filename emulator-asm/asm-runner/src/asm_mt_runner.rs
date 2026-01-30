@@ -200,15 +200,15 @@ impl AsmRunnerMT {
                 .context("Child process returned error");
         }
 
+        let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
+        let mhz = (total_steps as f64 / start_time.elapsed().as_secs_f64()) / 1_000_000.0;
+        info!("··· Assembly execution speed: {}MHz", mhz.round());
+
         // Collect results
         let mut tasks = Vec::new();
         for handle in handles {
             tasks.push(handle.join().expect("Task panicked"));
         }
-
-        let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
-        let mhz = (total_steps as f64 / start_time.elapsed().as_secs_f64()) / 1_000_000.0;
-        info!("··· Assembly execution speed: {:.2} MHz", mhz);
 
         // Wait for the assembly emulator to complete writing the trace
         let response = handle

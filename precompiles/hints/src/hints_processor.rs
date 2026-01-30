@@ -10,11 +10,13 @@ use std::collections::{HashMap, VecDeque};
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use tracing::debug;
+use std::time::Instant;
+use tracing::{debug, info};
 use zisk_common::io::{StreamProcessor, StreamSink};
 use zisk_common::{BuiltInHint, CtrlHint, HintCode, PrecompileHint};
 use ziskos_hints::handlers::bls381::{
-    bls12_381_g1_add_hint, bls12_381_g1_msm_hint, bls12_381_g2_add_hint, bls12_381_g2_msm_hint,
+    bls12_381_fp2_to_g2_hint, bls12_381_fp_to_g1_hint, bls12_381_g1_add_hint,
+    bls12_381_g1_msm_hint, bls12_381_g2_add_hint, bls12_381_g2_msm_hint,
     bls12_381_pairing_check_hint,
 };
 use ziskos_hints::handlers::bn254::{
@@ -145,6 +147,7 @@ impl HintsProcessorBuilder {
             hints_sink,
             drainer_thread: ManuallyDrop::new(drainer_thread),
             custom_handlers: Arc::new(self.custom_handlers),
+            instant: Mutex::new(None),
         })
     }
 }
@@ -175,6 +178,8 @@ pub struct HintsProcessor {
 
     /// Custom hint handlers registered by the user
     custom_handlers: Arc<HashMap<u32, CustomHintHandler>>,
+
+    instant: Mutex<Option<std::time::Instant>>,
 }
 
 impl HintsProcessor {
@@ -269,7 +274,14 @@ impl HintsProcessor {
                 if ALLOW_UNALIGNED { hint.data_len_bytes } else { hint.data.len() } + HEADER_SIZE;
 
             if let Some(stats) = &self.stats {
-                stats.lock().unwrap().entry(hint.hint_code).and_modify(|c| *c += 1).or_insert(1);
+                if !matches!(hint.hint_code, HintCode::Ctrl(_)) {
+                    stats
+                        .lock()
+                        .unwrap()
+                        .entry(hint.hint_code)
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
+                }
             }
 
             // Check if this is a control code
@@ -291,6 +303,7 @@ impl HintsProcessor {
                     self.reset();
                     // Control hint only; skip processing
                     idx += length;
+                    *self.instant.lock().unwrap() = Some(Instant::now());
                     continue;
                 }
                 HintCode::Ctrl(CtrlHint::End) => {
@@ -308,6 +321,27 @@ impl HintsProcessor {
                             hints.len() - idx
                         ));
                     }
+
+                    let num_hints = self.num_hint.load(Ordering::Relaxed);
+                    let elapsed = self.instant.lock().as_ref().unwrap().unwrap().elapsed();
+                    let rate = num_hints as f64 / elapsed.as_secs_f64();
+
+                    let (value, unit) = if rate >= 1_000_000.0 {
+                        (rate / 1_000_000.0, "MHz")
+                    } else if rate >= 1_000.0 {
+                        (rate / 1_000.0, "kHz")
+                    } else {
+                        (rate, "Hz")
+                    };
+
+                    info!(
+                        "Processed {} hints in {:.0?} ({}{})",
+                        num_hints,
+                        elapsed,
+                        value.round(),
+                        unit
+                    );
+
                     break;
                 }
                 HintCode::Ctrl(CtrlHint::Cancel) => {
@@ -363,12 +397,12 @@ impl HintsProcessor {
 
         if has_ctrl_end {
             if let Some(stats) = &self.stats {
-                debug!("Processed hints stats:");
+                info!("Hints stats:");
                 let stats = stats.lock().unwrap();
                 let mut sorted_stats: Vec<_> = stats.iter().collect();
                 sorted_stats.sort_by_key(|(&hint_code, _)| hint_code.to_u32());
                 for (hint_code, count) in sorted_stats {
-                    debug!("Hint type {}: {}", hint_code, count);
+                    info!("    {}: {}", hint_code, count);
                 }
             }
         }
@@ -619,8 +653,8 @@ impl HintsProcessor {
             BuiltInHint::Bls12_381G2Add => bls12_381_g2_add_hint(&data), // TODO: check
             BuiltInHint::Bls12_381G2Msm => bls12_381_g2_msm_hint(&data), // TODO: check
             BuiltInHint::Bls12_381PairingCheck => bls12_381_pairing_check_hint(&data), // TODO: check
-            BuiltInHint::Bls12_381FpToG1 => unimplemented!(),
-            BuiltInHint::Bls12_381Fp2ToG2 => unimplemented!(),
+            BuiltInHint::Bls12_381FpToG1 => bls12_381_fp_to_g1_hint(&data),
+            BuiltInHint::Bls12_381Fp2ToG2 => bls12_381_fp2_to_g2_hint(&data),
 
             // Modular Exponentiation Hint Codes
             BuiltInHint::ModExp => modexp_hint(&data), // TODO: check

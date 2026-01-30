@@ -119,8 +119,8 @@ impl AsmRunnerOptions {
     /// # Arguments
     /// * `command` - A mutable reference to the `Command` to be modified.
     pub fn apply_to_command(&self, command: &mut Command, asm_service: &AsmService) {
-        let port = if self.base_port.is_some() {
-            AsmServices::port_for(asm_service, self.base_port.unwrap(), self.local_rank)
+        let port = if let Some(base_port) = self.base_port {
+            AsmServices::port_for(asm_service, base_port, self.local_rank)
         } else {
             AsmServices::default_port(asm_service, self.local_rank)
         };

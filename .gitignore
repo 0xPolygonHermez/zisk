@@ -10,6 +10,8 @@
 /tmp
 *.log
 /emulator-asm/build*
+/emulator-asm/src/dma/*.o
+/emulator-asm/src/dma/test_dma
 /emulator-asm/src/emu.asm
 /cache
 /lib-c/c/build

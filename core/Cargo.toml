@@ -27,6 +27,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 fields = { workspace = true }
 sha2 = { workspace = true }
+paste = { workspace = true }
+
 
 indexmap = { version = "2.2.6", features = ["serde"] }
 json = "0.12.4"
@@ -36,4 +38,5 @@ tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 
 [features]
 default = []
+debug_dma = []
 # sp = []

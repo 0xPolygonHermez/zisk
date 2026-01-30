@@ -9,7 +9,7 @@ use fields::PrimeField64;
 use mem_common::MemCounters;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
-use zisk_common::{BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, Plan, Planner};
+use zisk_common::{ComponentBuilder, Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::{
     InputDataTrace, MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace,
     MemAlignWriteByteTrace, MemTrace, RomDataTrace, ZiskProofValues,
@@ -46,10 +46,6 @@ impl<F: PrimeField64> Mem<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        Some(Box::new(MemCounters::new()))
-    }
-
     fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(MemPlanner::new())
     }

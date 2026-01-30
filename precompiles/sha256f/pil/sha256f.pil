@@ -249,7 +249,8 @@ airtemplate Sha256f(const int N = 2**22, const int operation_bus_id = OPERATION_
     );
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
-    lookup_proves(operation_bus_id, [OP_SHA256F, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk_0);
+
+    lookup_proves(operation_bus_id, [OP_SHA256F, 0, 0, step_addr'(ADDR_OP), 0, 0, 0, 0, step_addr'(STEP_MAIN)], mul: in_use_clk_0);
 
     function pack(const expr a[]): expr {
         const int len = length(a);

@@ -135,3 +135,39 @@ pub fn bls12_381_pairing_check_hint(data: &[u64]) -> Result<Vec<u64>> {
 
     Ok(hints)
 }
+
+/// Processes an `HINT_BLS12_381_FP_TO_G1` hint.
+#[inline]
+pub fn bls12_381_fp_to_g1_hint(data: &[u64]) -> Result<Vec<u64>> {
+    hint_fields![FP: 6];
+
+    validate_hint_length(data, EXPECTED_LEN, "HINT_BLS12_381_FP_TO_G1")?;
+
+    let fp: &[u64; FP_SIZE] = data[FP_OFFSET..FP_OFFSET + FP_SIZE].try_into().unwrap();
+
+    let mut hints = Vec::new();
+    let result: &mut [u8; 96] = &mut [0u8; 96];
+    unsafe {
+        zisklib::bls12_381_fp_to_g1_c(result.as_mut_ptr(), fp.as_ptr() as *const u8, &mut hints);
+    }
+
+    Ok(hints)
+}
+
+/// Processes an `HINT_BLS12_381_FP2_TO_G2` hint.
+#[inline]
+pub fn bls12_381_fp2_to_g2_hint(data: &[u64]) -> Result<Vec<u64>> {
+    hint_fields![FP2: 12];
+
+    validate_hint_length(data, EXPECTED_LEN, "HINT_BLS12_381_FP2_TO_G2")?;
+
+    let fp2: &[u64; FP2_SIZE] = data[FP2_OFFSET..FP2_OFFSET + FP2_SIZE].try_into().unwrap();
+
+    let mut hints = Vec::new();
+    let result: &mut [u8; 192] = &mut [0u8; 192];
+    unsafe {
+        zisklib::bls12_381_fp2_to_g2_c(result.as_mut_ptr(), fp2.as_ptr() as *const u8, &mut hints);
+    }
+
+    Ok(hints)
+}
