@@ -2,6 +2,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Condvar, Mutex};
 
 pub const MAX_HINT_BUFFER_LEN: usize = 1 << 20; // 1 MiB
+pub const MAX_HINT_LEN: usize = 128 * 1024; // 128 KiB
 pub const HEADER_LEN: usize = 8;
 
 pub struct HintBuffer {
@@ -14,6 +15,7 @@ struct HintBufferInner {
     head: usize,
     tail: usize,
     len: usize,
+    len_commit: usize,
     closed: bool,
     paused: bool,
 }
@@ -25,6 +27,7 @@ pub fn build_hint_buffer() -> Arc<HintBuffer> {
             head: 0,
             tail: 0,
             len: 0,
+            len_commit: 0,
             closed: false,
             paused: false,
         }),
@@ -33,12 +36,12 @@ pub fn build_hint_buffer() -> Arc<HintBuffer> {
 }
 
 impl HintBufferInner {
-    #[inline]
+    #[inline(always)]
     fn free_space(&self) -> usize {
         MAX_HINT_BUFFER_LEN - self.len
     }
 
-    #[inline]
+    #[inline(always)]
     fn write_bytes(&mut self, src: &[u8]) {
         let mut remaining = src;
         while !remaining.is_empty() {
@@ -53,14 +56,26 @@ impl HintBufferInner {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn read_bytes(&mut self, dst: &mut [u8]) -> usize {
-        let to_read = dst.len().min(self.len);
-        if to_read == 0 {
-            return 0;
-        }
+        let hint_header = u64::from_le_bytes(self.buf[self.head..self.head + HEADER_LEN].try_into().unwrap());
+        let hint_data_len = (hint_header & 0x_FFFF_FFFF) as usize;
+        let pad = (8 - (hint_data_len & 7)) & 7;
+        let hint_len = HEADER_LEN + hint_data_len + pad;
 
-        let mut out = &mut dst[..to_read];
+        assert!(hint_len <= MAX_HINT_LEN,
+            "Hint length too large: max:={} bytes, hint_len={} bytes",
+            MAX_HINT_LEN,
+            hint_len
+        );
+
+        assert!(hint_len <= self.len_commit,
+            "Not enough committed data to read hint: committed={} bytes, hint_len={} bytes",
+            self.len_commit,
+            hint_len
+        );
+
+        let mut out = &mut dst[..hint_len];
         while !out.is_empty() {
             let end_space = MAX_HINT_BUFFER_LEN - self.head;
             let chunk = out.len().min(end_space);
@@ -68,11 +83,17 @@ impl HintBufferInner {
             out[..chunk].copy_from_slice(&self.buf[self.head..self.head + chunk]);
             self.head = (self.head + chunk) % MAX_HINT_BUFFER_LEN;
             self.len -= chunk;
+            self.len_commit -= chunk;
 
             out = &mut out[chunk..];
         }
 
-        to_read
+        hint_len
+    }
+
+    #[inline(always)]
+    fn commit(&mut self) {
+        self.len_commit = self.len;
     }
 }
 
@@ -88,6 +109,7 @@ impl HintBuffer {
         g.head = 0;
         g.tail = 0;
         g.len = 0;
+        g.len_commit = 0;
         g.closed = false;
         g.paused = false;
 
@@ -126,44 +148,42 @@ impl HintBuffer {
 
         let mut g = self.inner.lock().unwrap();
 
-        if HEADER_LEN > g.free_space() {
-            panic!(
-                "Hint buffer overflow: capacity={} used={} free={} trying_to_write={}",
-                MAX_HINT_BUFFER_LEN,
-                g.len,
-                g.free_space(),
-                HEADER_LEN
-            );
-        }
+        assert!(HEADER_LEN <= g.free_space(),
+            "Not enough space to write hint header: free={} bytes, trying_to_write={}",
+            g.free_space(),
+            HEADER_LEN
+        );
 
         #[cfg(zisk_hints_metrics)]
         crate::hints::metrics::inc_hint_count(hint_id);
 
         g.write_bytes(&header);
-        self.not_empty.notify_one();
+        //self.not_empty.notify_one();
     }
 
     #[inline(always)]
     pub fn write_hint_data(&self, data: *const u8, len: usize) {
-        if len > MAX_HINT_BUFFER_LEN {
-            panic!("Hint data too large: {} bytes (max buffer {})", len, MAX_HINT_BUFFER_LEN);
-        }
+        assert!(len <= MAX_HINT_BUFFER_LEN,
+            "Hint data too large: {} bytes (max buffer {})", len, MAX_HINT_BUFFER_LEN);
 
         let mut g = self.inner.lock().unwrap();
 
         let payload: &[u8] = unsafe { std::slice::from_raw_parts(data, len) };
 
-        if payload.len() > g.free_space() {
-            panic!(
-                "Hint buffer overflow: capacity={} used={} free={} trying_to_write={}",
-                MAX_HINT_BUFFER_LEN,
-                g.len,
-                g.free_space(),
-                payload.len()
-            );
-        }
+        assert!(payload.len() <= g.free_space(),
+            "Not enough space to write hint data: free={} bytes, trying_to_write={} bytes",
+            g.free_space(),
+            payload.len()
+        );
 
         g.write_bytes(payload);
+        //self.not_empty.notify_one();
+    }
+
+    #[inline(always)]
+    pub fn commit(&self) {
+        let mut g = self.inner.lock().unwrap();
+        g.commit();
         self.not_empty.notify_one();
     }
 
@@ -173,11 +193,11 @@ impl HintBuffer {
         }
 
         let mut g = self.inner.lock().unwrap();
-        while g.len == 0 && !g.closed {
+        while g.len_commit == 0 && !g.closed {
             g = self.not_empty.wait(g).unwrap();
         }
 
-        if g.len == 0 && g.closed {
+        if g.len_commit == 0 && g.closed {
             return Ok(0);
         }
 
@@ -185,7 +205,7 @@ impl HintBuffer {
     }
 
     pub fn drain_to_writer<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        let mut buffer = vec![0u8; 64 * 1024];
+        let mut buffer = vec![0u8; MAX_HINT_LEN];
 
         loop {
             let n = self.read_blocking(&mut buffer)?;

@@ -1,5 +1,5 @@
 # Wrapper crate around ziskos that compiles with hints feature enabled.
-# 
+#
 # src/core/ is a symlink to ../../ziskos/entrypoint/src/ - same source, different features.
 # src/lib.rs wraps the symlinked source and adds hints-specific modules.
 # Exports C symbols with "hints_" prefix to avoid linker conflicts with ziskos.
@@ -40,6 +40,20 @@ elliptic-curve = "0.13.8"
 k256 = "0.13.4"
 anyhow = { workspace = true }
 
+[target.'cfg(any(zisk_hints, zisk_hints_debug))'.dependencies]
+once_cell = "1.21.3"
+zisk-common = { path = "../common" }
+
+[target.'cfg(zisk_hints_metrics)'.dependencies]
+ctor = "0.2"
+
 [features]
 default = ["hints"]
 hints = []
+
+ [lints.rust]
+ unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(zisk_hints)',
+    'cfg(zisk_hints_metrics)',
+    'cfg(zisk_hints_debug)',
+    'cfg(zisk_hints_single_thread)'] }

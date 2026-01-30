@@ -12,3 +12,6 @@ pub use core::*;
 
 // Add hints-specific modules that only exist in ziskos-hints
 pub mod handlers;
+
+#[cfg(any(zisk_hints, zisk_hints_debug))]
+pub mod hints;

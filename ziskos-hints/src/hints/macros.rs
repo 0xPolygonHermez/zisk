@@ -1,3 +1,4 @@
+// TODO: Check hint data length (including header and padding) < MAX_HINT_DATA_LEN (128KB)
 macro_rules! define_hint {
     (
         $name:ident => {
@@ -30,6 +31,8 @@ macro_rules! define_hint {
                 $(
                     $crate::hints::HINT_BUFFER.write_hint_data($arg, $len);
                 )+
+
+                $crate::hints::HINT_BUFFER.commit();
             }
 
             $crate::hints::macros::register_hint_meta!($name, $hint_id);
@@ -65,6 +68,8 @@ macro_rules! define_hint_pairs {
                 crate::hints::HINT_BUFFER.write_hint_data(num_pairs_bytes.as_ptr(), num_pairs_bytes.len());
 
                 crate::hints::HINT_BUFFER.write_hint_data(pairs, num_pairs * $pair_len);
+
+                $crate::hints::HINT_BUFFER.commit();
             }
 
             $crate::hints::macros::register_hint_meta!($name, $hint_id);
@@ -103,6 +108,8 @@ macro_rules! define_hint_ptr {
                     const ZERO_PAD: [u8; 8] = [0; 8];
                     crate::hints::HINT_BUFFER.write_hint_data(ZERO_PAD.as_ptr(), pad);
                 }
+
+                $crate::hints::HINT_BUFFER.commit();
             }
 
             $crate::hints::macros::register_hint_meta!($name, $hint_id);
@@ -151,6 +158,8 @@ macro_rules! define_hint_ptr {
                     const ZERO_PAD: [u8; 8] = [0; 8];
                     crate::hints::HINT_BUFFER.write_hint_data(ZERO_PAD.as_ptr(), pad);
                 }
+
+                $crate::hints::HINT_BUFFER.commit();
             }
 
             $crate::hints::macros::register_hint_meta!($name, $hint_id);

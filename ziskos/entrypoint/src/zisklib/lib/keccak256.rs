@@ -1,5 +1,15 @@
 use crate::syscalls::syscall_keccak_f;
 
+#[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints))]
+extern "C" {
+    fn hint_keccak256(input_ptr: *const u8, input_len: usize);
+}
+
+#[cfg(zisk_hints_debug)]
+extern "C" {
+    fn hint_log_c(msg: *const c_char);
+}
+
 /// Keccak-256 rate in bytes (1600 - 2*256) / 8 = 136 bytes
 const KECCAK256_RATE: usize = 136;
 
@@ -107,12 +117,12 @@ pub unsafe extern "C" fn native_keccak256(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     #[cfg(zisk_hints)]
-    crate::hints::hint_keccak256(bytes, len);
+    hint_keccak256(bytes, len);
 
     #[cfg(zisk_hints_debug)]
     {
         let input_bytes = unsafe { core::slice::from_raw_parts(bytes, len) };
-        crate::hints::hint_log(format!("hint_keccak256 (bytes: {:?}, len: {})", input_bytes, len));
+        hint_log_c(format!("hint_keccak256 (bytes: {:?}, len: {})", input_bytes, len));
     }
 
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
