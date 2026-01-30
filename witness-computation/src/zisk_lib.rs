@@ -28,7 +28,7 @@ use tracing::debug;
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_common::{
     io::{ZiskStdin, ZiskStream},
-    ExecutorStats, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary,
+    ExecutorStatsHandle, ZiskExecutionResult, ZiskLib, ZiskWitnessLibrary,
 };
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 #[cfg(feature = "packed")]
@@ -285,7 +285,7 @@ impl ZiskWitnessLibrary<Goldilocks> for WitnessLib<Goldilocks> {
     ///
     /// # Returns
     /// * `u16` - The execution result code.
-    fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
+    fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStatsHandle)> {
         self.executor.as_ref().map(|executor| executor.get_execution_result())
     }
 }

@@ -6,7 +6,7 @@ use witness::WitnessLibrary;
 
 use crate::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStats,
+    ExecutorStatsHandle,
 };
 
 use anyhow::Result;
@@ -42,7 +42,7 @@ pub struct Stats {
 pub trait ZiskWitnessLibrary<F: PrimeField64> {
     fn set_stdin(&self, stdin: ZiskStdin);
     fn set_hints_stream(&self, stream: StreamSource) -> Result<()>;
-    fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)>;
+    fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStatsHandle)>;
 }
 
 // SUpertrait for ZiskWitnessLibrary and WitnessLibrary

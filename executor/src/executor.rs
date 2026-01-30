@@ -33,8 +33,8 @@ use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::ChunkId;
 use zisk_common::{
-    BusDevice, BusDeviceMetrics, CheckPoint, ExecutorStats, ExecutorStatsHandle, Instance,
-    InstanceCtx, InstanceType, Plan, Stats, ZiskExecutionResult,
+    BusDevice, BusDeviceMetrics, CheckPoint, ExecutorStatsHandle, Instance, InstanceCtx,
+    InstanceType, Plan, Stats, ZiskExecutionResult,
 };
 use zisk_pil::{
     ZiskPublicValues, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
@@ -165,8 +165,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn get_execution_result(&self) -> (ZiskExecutionResult, ExecutorStats) {
-        (self.execution_result.lock().unwrap().clone(), self.stats.get_inner())
+    pub fn get_execution_result(&self) -> (ZiskExecutionResult, ExecutorStatsHandle) {
+        (self.execution_result.lock().unwrap().clone(), self.stats.clone())
     }
 
     pub fn store_stats(&self) {

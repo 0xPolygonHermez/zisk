@@ -11,7 +11,7 @@ use proofman_common::{DebugInfo, ProofOptions};
 use std::{fs::File, io::Write, path::PathBuf};
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStats, ProofLog, ZiskExecutionResult, ZiskLib,
+    ExecutorStatsHandle, ProofLog, ZiskExecutionResult, ZiskLib,
 };
 
 pub(crate) struct ProverBackend {
@@ -64,7 +64,7 @@ impl ProverBackend {
         hints_stream: Option<StreamSource>,
         debug_info: DebugInfo,
         _mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.witness_lib.set_stdin(stdin);
         if let Some(stream) = hints_stream {
             self.witness_lib
@@ -112,7 +112,7 @@ impl ProverBackend {
             )
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
-        let (_, stats): (ZiskExecutionResult, ExecutorStats) =
+        let (_, stats): (ZiskExecutionResult, ExecutorStatsHandle) =
             self.witness_lib.execution_result().ok_or_else(|| {
                 anyhow::anyhow!("Failed to get execution result from emulator prover")
             })?;
@@ -151,9 +151,10 @@ impl ProverBackend {
         // Store the stats in stats.json
         #[cfg(feature = "stats")]
         {
-            let stats_id = _stats.lock().unwrap().get_id();
-            _stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
-            _stats.lock().unwrap().store_stats();
+            let mut _stats = stats.get_inner().lock().unwrap();
+            let stats_id = _stats.next_id();
+            _stats.add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
+            _stats.store_stats();
         }
 
         Ok(ZiskVerifyConstraintsResult { execution: result, duration: elapsed, stats })
@@ -241,9 +242,10 @@ impl ProverBackend {
         // Store the stats in stats.json
         #[cfg(feature = "stats")]
         {
-            let stats_id = _stats.lock().unwrap().get_id();
-            _stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
-            _stats.lock().unwrap().store_stats();
+            let mut _stats = stats.get_inner().lock().unwrap();
+            let stats_id = _stats.next_id();
+            _stats.add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
+            _stats.store_stats();
         }
 
         self.proofman.set_barrier();
