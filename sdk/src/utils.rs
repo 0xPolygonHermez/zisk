@@ -7,6 +7,7 @@ use anyhow::Result;
 
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ProofmanResult};
 use rom_setup::{get_elf_data_hash, rom_merkle_setup};
+use zisk_common::ElfBinaryLike;
 
 /// Gets the user's home directory as specified by the HOME environment variable.
 pub fn get_home_dir() -> String {
@@ -75,17 +76,23 @@ pub fn get_proving_key_snark(proving_key_snark: Option<&PathBuf>) -> PathBuf {
     proving_key_snark.cloned().unwrap_or_else(get_default_proving_key_snark)
 }
 
-pub fn ensure_custom_commits(proving_key: &Path, elf: &Path) -> Result<(PathBuf, Vec<u8>)> {
+pub fn ensure_custom_commits(
+    proving_key: &Path,
+    elf: &impl ElfBinaryLike,
+) -> Result<(PathBuf, Vec<u8>)> {
     rom_merkle_setup::<Goldilocks>(elf, &None, proving_key)
 }
 
-pub fn get_custom_commits_map(proving_key: &Path, elf: &Path) -> Result<HashMap<String, PathBuf>> {
+pub fn get_custom_commits_map(
+    proving_key: &Path,
+    elf: &impl ElfBinaryLike,
+) -> Result<HashMap<String, PathBuf>> {
     let (rom_bin_path, _) = ensure_custom_commits(proving_key, elf)?;
     Ok(HashMap::from([("rom".to_string(), rom_bin_path)]))
 }
 
-pub fn get_asm_paths(elf: &Path) -> Result<(String, String)> {
-    let stem = elf.file_stem().unwrap().to_str().unwrap();
+pub fn get_asm_paths(elf: &impl ElfBinaryLike) -> Result<(String, String)> {
+    let stem = elf.name();
     let hash =
         get_elf_data_hash(elf).map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
 

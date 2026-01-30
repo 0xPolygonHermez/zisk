@@ -2,9 +2,7 @@
 
 use crate::{
     add_end_and_lib,
-    elf_extraction::{
-        collect_elf_payload, collect_elf_payload_from_bytes, merge_adjacent_ro_sections, ElfPayload,
-    },
+    elf_extraction::{collect_elf_payload_from_bytes, merge_adjacent_ro_sections, ElfPayload},
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
     AsmGenerationMethod, RoData, ZiskInst, ZiskRom, ZiskRom2Asm, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
@@ -12,13 +10,13 @@ use rayon::prelude::*;
 use std::{error::Error, path::Path};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
-pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
+pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Load the embedded float library
     const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../lib-float/c/lib/ziskfloat.elf");
 
     // Extract all relevant sections from the ELF file
     let payloads: Vec<ElfPayload> =
-        vec![collect_elf_payload_from_bytes(FLOAT_LIB_DATA)?, collect_elf_payload(elf_file)?];
+        vec![collect_elf_payload_from_bytes(FLOAT_LIB_DATA)?, collect_elf_payload_from_bytes(elf)?];
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
@@ -216,13 +214,13 @@ fn optimize_instruction_lookup(rom: &mut ZiskRom) -> Result<(), Box<dyn Error>> 
 /// Executes the ELF file data transpilation process into a Zisk ROM, and saves the result into a
 /// file.  The file format can be JSON, PIL-based or binary.
 pub fn elf2romfile(
-    elf_file: &Path,
+    elf: &[u8],
     asm_file: &Path,
     generation_method: AsmGenerationMethod,
     log_output: bool,
     comments: bool,
 ) -> Result<(), Box<dyn Error>> {
-    let rom = elf2rom(elf_file)?;
+    let rom = elf2rom(elf)?;
     ZiskRom2Asm::save_to_asm_file(&rom, asm_file, generation_method, log_output, comments);
 
     Ok(())

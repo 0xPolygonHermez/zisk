@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use fields::PrimeField64;
 use proofman_common::VerboseMode;
-use zisk_witness::{init_zisk_lib, WitnessLib};
+use zisk_witness::WitnessLib;
 
 use anyhow::Result;
 
@@ -12,7 +12,6 @@ pub struct ZiskLibLoader;
 impl ZiskLibLoader {
     #[allow(clippy::too_many_arguments)]
     fn load_library<F: PrimeField64>(
-        elf: PathBuf,
         verbose: VerboseMode,
         shared_tables: bool,
         asm_mt_filename: Option<PathBuf>,
@@ -20,9 +19,8 @@ impl ZiskLibLoader {
         base_port: Option<u16>,
         unlock_mapped_memory: Option<bool>,
     ) -> Result<WitnessLib<F>> {
-        let witness_lib = init_zisk_lib(
+        let witness_lib = WitnessLib::new(
             verbose,
-            elf,
             asm_mt_filename,
             asm_rh_filename,
             base_port,
@@ -34,16 +32,14 @@ impl ZiskLibLoader {
     }
 
     pub fn load_emu<F: PrimeField64>(
-        elf: PathBuf,
         verbose: VerboseMode,
         shared_tables: bool,
     ) -> Result<WitnessLib<F>> {
-        Self::load_library(elf, verbose, shared_tables, None, None, None, None)
+        Self::load_library(verbose, shared_tables, None, None, None, None)
     }
 
     #[allow(clippy::too_many_arguments)]
     pub fn load_asm<F: PrimeField64>(
-        elf: PathBuf,
         verbose: VerboseMode,
         shared_tables: bool,
         asm_mt_filename: PathBuf,
@@ -52,7 +48,6 @@ impl ZiskLibLoader {
         unlock_mapped_memory: bool,
     ) -> Result<WitnessLib<F>> {
         Self::load_library(
-            elf,
             verbose,
             shared_tables,
             Some(asm_mt_filename),

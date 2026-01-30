@@ -9,6 +9,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use zisk_common::ElfBinaryLike;
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
 
 pub const DEFAULT_CACHE_PATH: &str = ".zisk/cache";
@@ -51,7 +52,7 @@ pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
 }
 
 pub fn gen_elf_hash<F: PrimeField64>(
-    rom_path: &Path,
+    elf: &[u8],
     rom_buffer_path: &Path,
     blowup_factor: u64,
     merkle_tree_arity: u64,
@@ -59,7 +60,7 @@ pub fn gen_elf_hash<F: PrimeField64>(
     let buffer = vec![F::ZERO; RomRomTrace::<F>::NUM_ROWS * RomRomTrace::<F>::ROW_SIZE];
     let mut custom_rom_trace: RomRomTrace<F> = RomRomTrace::new_from_vec(buffer)?;
 
-    RomSM::compute_custom_trace_rom(rom_path.to_path_buf(), &mut custom_rom_trace);
+    RomSM::compute_custom_trace_rom(elf, &mut custom_rom_trace);
 
     write_custom_commit_trace(
         &mut custom_rom_trace,
@@ -80,7 +81,7 @@ pub fn get_elf_vk(verkey_path: &Path) -> Result<Option<Vec<u8>>> {
     Ok(Some(root_bytes.to_vec()))
 }
 
-pub fn get_elf_data_hash(elf_path: &Path) -> Result<String> {
+pub fn get_elf_data_hash_from_path(elf_path: &Path) -> Result<String> {
     let elf_data =
         fs::read(elf_path).with_context(|| format!("Error reading ELF file: {elf_path:?}"))?;
 
@@ -89,19 +90,17 @@ pub fn get_elf_data_hash(elf_path: &Path) -> Result<String> {
     Ok(hash)
 }
 
+pub fn get_elf_data_hash(elf: &impl ElfBinaryLike) -> Result<String> {
+    let hash = blake3::hash(elf.elf()).to_hex().to_string();
+    Ok(hash)
+}
+
 pub fn get_elf_bin_file_path_with_hash(
-    elf_path: &Path,
     hash: &str,
     default_cache_path: &Path,
     blowup_factor: u64,
     arity: u64,
 ) -> Result<PathBuf> {
-    if !elf_path.is_file() {
-        return Err(anyhow::anyhow!(
-            "Error: The specified ROM path is not a file: {}",
-            elf_path.display()
-        ));
-    }
     let pilout_hash = PILOUT_HASH;
 
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
@@ -121,18 +120,11 @@ pub fn get_elf_bin_file_path_with_hash(
 }
 
 pub fn get_elf_bin_verkey_file_path_with_hash(
-    elf_path: &Path,
     hash: &str,
     default_cache_path: &Path,
     blowup_factor: u64,
     arity: u64,
 ) -> Result<PathBuf> {
-    if !elf_path.is_file() {
-        return Err(anyhow::anyhow!(
-            "Error: The specified ROM path is not a file: {}",
-            elf_path.display()
-        ));
-    }
     let pilout_hash = PILOUT_HASH;
 
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS;

@@ -18,9 +18,9 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
+use zisk_common::{io::ZiskStdin, ElfBinaryLike, ExecutorStats, ZiskExecutionResult};
 use zisk_verifier::verify_zisk_proof;
-use zisk_witness::{WitnessLib, WitnessLibrary};
+use zisk_witness::WitnessLib;
 
 pub(crate) struct ProverBackend {
     proofman: Option<ProofMan<Goldilocks>>,
@@ -65,6 +65,7 @@ impl ProverBackend {
 
     pub fn register_witness_lib(
         &self,
+        elf: &[u8],
         mut witness_lib: WitnessLib<Goldilocks>,
         custom_commits_map: HashMap<String, PathBuf>,
     ) -> Result<()> {
@@ -72,7 +73,7 @@ impl ProverBackend {
             anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
         })?;
 
-        witness_lib.register_witness(&proofman.get_wcm())?;
+        witness_lib.register_witness(elf, &proofman.get_wcm())?;
 
         if self.witness_lib.set(witness_lib).is_err() {
             return Err(anyhow::anyhow!("Witness library has already been registered."));
@@ -240,10 +241,9 @@ impl ProverBackend {
         self.verify_constraints_debug(stdin, None)
     }
 
-    pub(crate) fn vk(&self, elf: &str) -> Result<ZiskProgramVK> {
-        let elf_path = PathBuf::from(elf);
+    pub(crate) fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
         let proving_key_path = self.proving_key_path.clone();
-        let (_, vk) = ensure_custom_commits(&proving_key_path, &elf_path)?;
+        let (_, vk) = ensure_custom_commits(&proving_key_path, elf)?;
 
         Ok(ZiskProgramVK { vk })
     }

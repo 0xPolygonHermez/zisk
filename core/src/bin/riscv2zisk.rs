@@ -52,8 +52,14 @@ fn main() {
         }
     };
 
+    // Read ELF file bytes
+    let elf = std::fs::read(elf_file).unwrap_or_else(|e| {
+        eprintln!("Error reading ELF file: {e}");
+        process::exit(1);
+    });
+
     // Create an instance of the program converter
-    let rv2zk = Riscv2zisk::new(elf_file);
+    let rv2zk = Riscv2zisk::new(&elf);
 
     // Convert program
     if let Err(e) = rv2zk.runfile(asm_file.unwrap(), generation_method, true, true) {

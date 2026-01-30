@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zisk_common::io::ZiskIO;
 use zisk_common::io::ZiskStdin;
+use zisk_common::ElfBinary;
 use zisk_sdk::{ProofOpts, ProverClient, ZiskProof, ZiskPublics, include_elf};
 
-pub const ELF: &str = include_elf!("sha-hasher-guest");
+pub const ELF: ElfBinary = include_elf!("sha-hasher-guest");
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Output {
@@ -27,14 +28,14 @@ fn main() -> Result<()> {
     // Create a `ProverClient` method.
     let client = ProverClient::builder()
         .asm()
-        .base_port(4444)
+        .base_port(54321)
         .proving_key_path(PathBuf::from("/home/roger/zisk/build/provingKey"))
         .proving_key_snark_path(PathBuf::from("/home/roger/zisk/build/provingKeySnark"))
         .snark()
         .build()
         .unwrap();
 
-    let vkey = client.setup(ELF)?;
+    let vkey = client.setup(&ELF)?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     let result = client.execute(stdin.clone())?;
@@ -66,7 +67,7 @@ fn main() -> Result<()> {
     let output = Output { hash, iterations: n, magic_number: 0xDEADBEEF };
     let publics = ZiskPublics::write(&output)?;
     let proof = ZiskProof::load("/tmp/sha_hasher_proof_snark.bin")?;
-    let vk = client.vk(ELF)?;
+    let vk = client.vk(&ELF)?;
     client.verify(&proof, &publics, &vk)?;
 
     println!("successfully generated and verified proof for the program!");

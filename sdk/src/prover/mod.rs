@@ -16,6 +16,7 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+use zisk_common::ElfBinaryLike;
 use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 
 pub struct ZiskExecuteResult {
@@ -454,7 +455,7 @@ pub struct ZiskAggPhaseResult {
 }
 
 pub trait ProverEngine {
-    fn setup(&self, elf_path: &str) -> Result<ZiskProgramVK>;
+    fn setup(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK>;
 
     fn world_rank(&self) -> i32;
 
@@ -482,7 +483,7 @@ pub trait ProverEngine {
 
     fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult>;
 
-    fn vk(&self, elf: &str) -> Result<ZiskProgramVK>;
+    fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK>;
 
     fn verify(&self, proof: &ZiskProof, publics: &ZiskPublics, vk: &ZiskProgramVK) -> Result<()>;
 
@@ -527,8 +528,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
         Self { prover }
     }
 
-    pub fn setup(&self, elf_path: &str) -> Result<ZiskProgramVK> {
-        self.prover.setup(elf_path)
+    pub fn setup(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
+        self.prover.setup(elf)
     }
 
     /// Set the standard input for the current proof.
@@ -584,7 +585,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.verify_constraints(stdin)
     }
 
-    pub fn vk(&self, elf: &str) -> Result<ZiskProgramVK> {
+    pub fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
         self.prover.vk(elf)
     }
 

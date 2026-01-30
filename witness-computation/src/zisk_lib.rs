@@ -1,13 +1,12 @@
 //! The `WitnessLib` library defines the core witness computation framework,
 //! integrating the ZisK execution environment with state machines and witness components.
 //!
-//! This module leverages `WitnessLibrary` to orchestrate the setup of state machines,
 //! program conversion, and execution pipelines to generate required witnesses.
 
 use executor::{
     EmulatorAsm, EmulatorKind, EmulatorRust, StateMachines, StaticSMBundle, ZiskExecutor,
 };
-use fields::{Goldilocks, PrimeField64};
+use fields::PrimeField64;
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_arith_eq_384::ArithEq384Manager;
@@ -23,7 +22,7 @@ use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
-use witness::{WitnessLibrary, WitnessManager};
+use witness::WitnessManager;
 use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 #[cfg(feature = "packed")]
@@ -38,7 +37,6 @@ use zisk_pil::{
 };
 
 pub struct WitnessLib<F: PrimeField64> {
-    elf_path: PathBuf,
     asm_mt_path: Option<PathBuf>,
     asm_rh_path: Option<PathBuf>,
     executor: Option<Arc<ZiskExecutor<F>>>,
@@ -49,32 +47,45 @@ pub struct WitnessLib<F: PrimeField64> {
     verbose_mode: proofman_common::VerboseMode,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn init_zisk_lib<F: PrimeField64>(
-    verbose_mode: proofman_common::VerboseMode,
-    elf_path: PathBuf,
-    asm_mt_path: Option<PathBuf>,
-    asm_rh_path: Option<PathBuf>,
-    base_port: Option<u16>,
-    unlock_mapped_memory: bool,
-    shared_tables: bool,
-) -> WitnessLib<F> {
-    let chunk_size = CHUNK_SIZE;
-
-    WitnessLib {
-        elf_path,
-        asm_mt_path,
-        asm_rh_path,
-        executor: None,
-        chunk_size,
-        base_port,
-        unlock_mapped_memory,
-        shared_tables,
-        verbose_mode,
+pub fn get_packed_info() -> HashMap<(usize, usize), PackedInfo> {
+    let mut _packed_info = HashMap::new();
+    #[cfg(feature = "packed")]
+    {
+        for packed_info in PACKED_INFO.iter() {
+            _packed_info.insert(
+                (packed_info.0, packed_info.1),
+                PackedInfo::new(
+                    packed_info.2.is_packed,
+                    packed_info.2.num_packed_words,
+                    packed_info.2.unpack_info.to_vec(),
+                ),
+            );
+        }
     }
+    _packed_info
 }
 
-impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
+impl<F: PrimeField64> WitnessLib<F> {
+    pub fn new(
+        verbose_mode: proofman_common::VerboseMode,
+        asm_mt_path: Option<PathBuf>,
+        asm_rh_path: Option<PathBuf>,
+        base_port: Option<u16>,
+        unlock_mapped_memory: bool,
+        shared_tables: bool,
+    ) -> Self {
+        Self {
+            asm_mt_path,
+            asm_rh_path,
+            executor: None,
+            chunk_size: CHUNK_SIZE,
+            base_port,
+            unlock_mapped_memory,
+            shared_tables,
+            verbose_mode,
+        }
+    }
+
     /// Registers the witness components and initializes the execution pipeline.
     ///
     /// # Arguments
@@ -88,7 +99,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
     ///
     /// # Panics
     /// Panics if the `Riscv2zisk` conversion fails or if required paths cannot be resolved.
-    fn register_witness(&mut self, wcm: &WitnessManager<F>) -> ProofmanResult<()> {
+    pub fn register_witness(&mut self, elf: &[u8], wcm: &WitnessManager<F>) -> ProofmanResult<()> {
         assert_eq!(self.asm_mt_path.is_some(), self.asm_rh_path.is_some());
 
         let world_rank = wcm.get_world_rank();
@@ -97,7 +108,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         proofman_common::initialize_logger(self.verbose_mode, Some(world_rank));
 
         // Step 1: Create an instance of the RISCV -> ZisK program converter
-        let rv2zk = Riscv2zisk::new(self.elf_path.display().to_string());
+        let rv2zk = Riscv2zisk::new(elf);
 
         // Step 2: Convert program to ROM
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
@@ -210,27 +221,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         Ok(())
     }
-}
 
-pub fn get_packed_info() -> HashMap<(usize, usize), PackedInfo> {
-    let mut _packed_info = HashMap::new();
-    #[cfg(feature = "packed")]
-    {
-        for packed_info in PACKED_INFO.iter() {
-            _packed_info.insert(
-                (packed_info.0, packed_info.1),
-                PackedInfo::new(
-                    packed_info.2.is_packed,
-                    packed_info.2.num_packed_words,
-                    packed_info.2.unpack_info.to_vec(),
-                ),
-            );
-        }
-    }
-    _packed_info
-}
-
-impl WitnessLib<Goldilocks> {
     pub fn set_stdin(&self, stdin: ZiskStdin) {
         if let Some(executor) = &self.executor {
             executor.set_stdin(stdin);

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::ZiskStdin;
+use zisk_common::ElfBinaryOwned;
 use zisk_common::{ExecutorStats, Stats};
 use zisk_pil::*;
 use zisk_sdk::ProverClient;
@@ -133,7 +134,13 @@ impl ZiskStats {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone().to_str().unwrap())?;
+        let elf_bin = fs::read(&self.elf)
+            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
+        let elf = ElfBinaryOwned::new(
+            elf_bin,
+            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
+        );
+        prover.setup(&elf)?;
 
         prover.stats(
             stdin,
@@ -156,7 +163,13 @@ impl ZiskStats {
             .print_command_info()
             .build()?;
 
-        prover.setup(self.elf.clone().to_str().unwrap())?;
+        let elf_bin = fs::read(&self.elf)
+            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
+        let elf = ElfBinaryOwned::new(
+            elf_bin,
+            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
+        );
+        prover.setup(&elf)?;
 
         let mpi_node = self.mpi_node.map(|n| n as u32);
         prover.stats(stdin, self.debug.clone(), self.minimal_memory, mpi_node)

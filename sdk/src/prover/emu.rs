@@ -4,16 +4,16 @@ use crate::{
     RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult, ZiskProgramVK,
     ZiskProof, ZiskProveResult, ZiskPublics, ZiskVerifyConstraintsResult,
 };
+use crate::{ensure_custom_commits, ProofMode, ProofOpts};
 use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, VerboseMode};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use zisk_common::io::ZiskStdin;
+use zisk_common::ElfBinaryLike;
 use zisk_common::ExecutorStats;
 use zisk_distributed_common::LoggingConfig;
 use zisk_witness::get_packed_info;
-
-use crate::{ensure_custom_commits, ProofMode, ProofOpts};
-use std::collections::HashMap;
 
 use anyhow::Result;
 
@@ -75,19 +75,21 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.set_stdin(stdin)
     }
 
-    fn setup(&self, elf: &str) -> Result<ZiskProgramVK> {
-        let elf = PathBuf::from(elf);
-        check_paths_exist(&elf)?;
+    fn setup(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
         let proving_key = self.core_prover.backend.get_proving_key_path();
 
-        let (rom_bin_path, vk) = ensure_custom_commits(proving_key, &elf)?;
+        let (rom_bin_path, vk) = ensure_custom_commits(proving_key, elf)?;
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path)]);
 
         // Build emulator library
         let witness_lib =
-            ZiskLibLoader::load_emu(elf, self.core_prover.verbose, self.core_prover.shared_tables)?;
+            ZiskLibLoader::load_emu(self.core_prover.verbose, self.core_prover.shared_tables)?;
 
-        self.core_prover.backend.register_witness_lib(witness_lib, custom_commits_map)?;
+        self.core_prover.backend.register_witness_lib(
+            elf.elf(),
+            witness_lib,
+            custom_commits_map,
+        )?;
         Ok(ZiskProgramVK { vk })
     }
 
@@ -125,7 +127,7 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.verify_constraints(stdin)
     }
 
-    fn vk(&self, elf: &str) -> Result<ZiskProgramVK> {
+    fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
         self.core_prover.backend.vk(elf)
     }
 

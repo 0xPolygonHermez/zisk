@@ -1,5 +1,6 @@
 use fields::PrimeField64;
 use std::path::{Path, PathBuf};
+use zisk_common::ElfBinaryLike;
 
 use crate::{
     gen_elf_hash, get_elf_bin_file_path_with_hash, get_elf_bin_verkey_file_path_with_hash,
@@ -7,16 +8,10 @@ use crate::{
 };
 
 pub fn rom_merkle_setup<F: PrimeField64>(
-    elf: &Path,
+    elf: &impl ElfBinaryLike,
     output_dir: &Option<PathBuf>,
     proving_key: &Path,
 ) -> Result<(PathBuf, Vec<u8>), anyhow::Error> {
-    // Check if the path is a file and not a directory
-    if !elf.is_file() {
-        tracing::error!("Error: The specified ROM path is not a file: {}", elf.display());
-        std::process::exit(1);
-    }
-
     let output_path = get_output_path(output_dir)?;
 
     let elf_hash = get_elf_data_hash(elf)?;
@@ -24,7 +19,6 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     let rom_info = get_rom_info(proving_key)?;
 
     let elf_bin_path = get_elf_bin_file_path_with_hash(
-        elf,
         &elf_hash,
         &output_path,
         rom_info.blowup_factor,
@@ -32,7 +26,6 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     )?;
 
     let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(
-        elf,
         &elf_hash,
         &output_path,
         rom_info.blowup_factor,
@@ -49,7 +42,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     }
 
     let root = gen_elf_hash::<F>(
-        elf,
+        elf.elf(),
         elf_bin_path.as_path(),
         rom_info.blowup_factor,
         rom_info.merkle_tree_arity,
