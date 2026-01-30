@@ -24,7 +24,7 @@ use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
-use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
+use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutionResult};
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 #[cfg(feature = "packed")]
 use zisk_pil::PACKED_INFO;
@@ -241,7 +241,7 @@ impl WitnessLib<Goldilocks> {
     ///
     /// # Returns
     /// * `u16` - The execution result code.
-    pub fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
+    pub fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStatsHandle)> {
         self.executor.as_ref().map(|executor| executor.get_execution_result())
     }
 }

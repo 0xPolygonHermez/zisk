@@ -12,7 +12,7 @@ use rom_setup::DEFAULT_CACHE_PATH;
 use std::{collections::HashMap, path::PathBuf};
 use tracing::info;
 use zisk_common::io::ZiskStdin;
-use zisk_common::ExecutorStats;
+use zisk_common::ExecutorStatsHandle;
 use zisk_distributed_common::LoggingConfig;
 use zisk_witness::WitnessLibrary;
 
@@ -108,7 +108,7 @@ impl ProverEngine for AsmProver {
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let debug_info =
             create_debug_info(debug_info, self.core_prover.backend.proving_key.clone())?;
 

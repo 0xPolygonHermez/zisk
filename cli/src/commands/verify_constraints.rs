@@ -6,8 +6,6 @@ use colored::Colorize;
 use std::path::PathBuf;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::ZiskStdin;
-#[cfg(feature = "stats")]
-use zisk_common::ExecutorStatsEvent;
 use zisk_sdk::{ProverClient, ZiskVerifyConstraintsResult};
 
 #[derive(Parser)]

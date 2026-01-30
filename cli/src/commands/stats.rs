@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::ZiskStdin;
-use zisk_common::{ExecutorStats, Stats};
+use zisk_common::{ExecutorStatsHandle, Stats};
 use zisk_pil::*;
 use zisk_sdk::ProverClient;
 
@@ -104,7 +104,7 @@ impl ZiskStats {
         );
 
         if let Some(stats) = &stats {
-            Self::print_stats(&stats.witness_stats);
+            Self::print_stats(&stats.get_inner().lock().unwrap().witness_stats);
             stats.print_stats();
         }
 
@@ -123,7 +123,7 @@ impl ZiskStats {
         Ok(stdin)
     }
 
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let prover = ProverClient::builder()
             .emu()
             .witness()
@@ -137,7 +137,7 @@ impl ZiskStats {
         prover.stats(stdin, self.debug.clone(), self.mpi_node.map(|n| n as u32))
     }
 
-    pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let prover = ProverClient::builder()
             .asm()
             .witness()

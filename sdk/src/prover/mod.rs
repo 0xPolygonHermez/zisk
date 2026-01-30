@@ -11,7 +11,7 @@ use proofman_common::ProofOptions;
 use crate::Proof;
 use anyhow::Result;
 use std::{path::PathBuf, time::Duration};
-use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
+use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutionResult};
 
 pub struct ZiskExecuteResult {
     pub execution: ZiskExecutionResult,
@@ -21,13 +21,13 @@ pub struct ZiskExecuteResult {
 pub struct ZiskVerifyConstraintsResult {
     pub execution: ZiskExecutionResult,
     pub duration: Duration,
-    pub stats: ExecutorStats,
+    pub stats: ExecutorStatsHandle,
 }
 
 pub struct ZiskProveResult {
     pub execution: ZiskExecutionResult,
     pub duration: Duration,
-    pub stats: ExecutorStats,
+    pub stats: ExecutorStatsHandle,
     pub proof: Proof,
 }
 
@@ -53,7 +53,7 @@ pub trait ProverEngine {
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)>;
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)>;
 
     fn verify_constraints_debug(
         &self,
@@ -131,7 +131,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.prover.stats(stdin, debug_info, mpi_node)
     }
 

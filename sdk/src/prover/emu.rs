@@ -8,7 +8,7 @@ use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
 use std::path::PathBuf;
 use zisk_common::io::ZiskStdin;
-use zisk_common::ExecutorStats;
+use zisk_common::ExecutorStatsHandle;
 use zisk_distributed_common::LoggingConfig;
 use zisk_witness::WitnessLibrary;
 
@@ -96,7 +96,7 @@ impl ProverEngine for EmuProver {
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let debug_info =
             create_debug_info(debug_info, self.core_prover.backend.proving_key.clone())?;
 
