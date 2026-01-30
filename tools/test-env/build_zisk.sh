@@ -60,6 +60,7 @@ main() {
         if [[ -n "$ZISK_BRANCH" ]]; then
             if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
                 warn "Skipping cloning ZisK repository as DISABLE_CLONE_REPO is set to 1"
+		ensure cd zisk
             else
                 info "Cloning ZisK repository..."
                 # Remove existing directory if it exists
@@ -77,41 +78,6 @@ main() {
         fi
     fi
 
-    if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
-        info "Update ZisK cargo dependencies to use local pil2-proofman repo..."
-
-        PIL2_PROOFMAN_DIR="${WORKSPACE_DIR}/pil2-proofman"
-
-        replacements="
-            proofman          | { path = \"${PIL2_PROOFMAN_DIR}/proofman\" }
-            proofman-common   | { path = \"${PIL2_PROOFMAN_DIR}/common\" }
-            proofman-macros   | { path = \"${PIL2_PROOFMAN_DIR}/macros\" }
-            proofman-verifier | { path = \"${PIL2_PROOFMAN_DIR}/verifier\" }
-            proofman-util     | { path = \"${PIL2_PROOFMAN_DIR}/util\" }
-            pil-std-lib       | { path = \"${PIL2_PROOFMAN_DIR}/pil2-components/lib/std/rs\" }
-            witness           | { path = \"${PIL2_PROOFMAN_DIR}/witness\" }
-            fields            | { path = \"${PIL2_PROOFMAN_DIR}/fields\" }
-        "
-
-        if [[ "${PLATFORM}" == "linux" ]]; then
-            # GNU sed
-            SED_PARAMS=( -i -E )
-        else
-            # BSD sed (macOS)
-            SED_PARAMS=( -i "" -E )
-        fi
-
-        # Iterate through the list of replacements and update Cargo.toml
-        while IFS='|' read -r crate repl; do
-            [[ -z "$crate" ]] && continue
-
-            pattern="^${crate//[[:space:]]/} = \\{ git = \\\"https://github.com/0xPolygonHermez/pil2-proofman.git\\\", (tag|branch) = \\\".*\\\" *\\}"
-            replacement="${crate//[[:space:]]/} = ${repl}"
-
-            ensure sed "${SED_PARAMS[@]}" "s~${pattern}~${replacement}~" Cargo.toml
-        done <<< "$replacements"
-    fi
-
     step  "Building ZisK tools..."
     ensure cargo clean || return 1
     ensure cargo update || return 1
@@ -119,6 +85,10 @@ main() {
     if [[ "${BUILD_GPU}" == "1" ]]; then
         BUILD_FEATURES="--features gpu"
         warn "Building with GPU support..."
+    fi
+    if [[ "${BUILD_HINTS}" == "1" ]]; then
+        BUILD_FEATURES="${BUILD_FEATURES} --features hints"
+        warn "Building with Hints support..."
     fi
     if ! (cargo build --release --target ${TARGET} ${BUILD_FEATURES}); then
         warn "Build failed. Trying to fix missing stddef.h..."
