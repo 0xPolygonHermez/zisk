@@ -32,4 +32,4 @@ fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch 
 
 [features]
 default = []
-hints = []
+
