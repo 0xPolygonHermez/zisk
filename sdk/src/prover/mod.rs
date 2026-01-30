@@ -496,6 +496,13 @@ pub trait ProverEngine {
         proof_options: ProofOpts,
     ) -> Result<ZiskProveResult>;
 
+    fn prove_snark(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        vk: &ZiskProgramVK,
+    ) -> Result<ZiskProof>;
+
     fn prove_phase(
         &self,
         phase_inputs: ProvePhaseInputs,
@@ -607,6 +614,15 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// ```
     pub fn prove(&self, stdin: ZiskStdin) -> ProveBuilder<'_, C> {
         ProveBuilder::new(&self.prover, stdin)
+    }
+
+    pub fn prove_snark(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        vk: &ZiskProgramVK,
+    ) -> Result<ZiskProof> {
+        self.prover.prove_snark(proof, publics, vk)
     }
 
     pub fn prove_phase(

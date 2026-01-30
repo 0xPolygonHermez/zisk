@@ -194,6 +194,15 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.prove(stdin, mode, proof_options)
     }
 
+    fn prove_snark(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        vk: &ZiskProgramVK,
+    ) -> Result<ZiskProof> {
+        self.core_prover.backend.prove_snark(proof, publics, vk)
+    }
+
     fn prove_phase(
         &self,
         phase_inputs: ProvePhaseInputs,

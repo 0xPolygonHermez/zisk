@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use zisk_common::ElfBinary;
 use zisk_common::io::ZiskIO;
 use zisk_common::io::ZiskStdin;
-use zisk_common::ElfBinary;
 use zisk_sdk::{ProofOpts, ProverClient, ZiskProof, ZiskPublics, include_elf};
 
 pub const ELF: ElfBinary = include_elf!("sha-hasher-guest");
@@ -46,12 +46,15 @@ fn main() -> Result<()> {
     );
 
     let proof_opts = ProofOpts::default().minimal_memory();
-    let result = client.prove(stdin).with_proof_options(proof_opts).plonk().run()?;
-    client.verify(&result.proof, &result.publics, &vkey)?;
+    let vadcop_result = client.prove(stdin).with_proof_options(proof_opts).run()?;
+    client.verify(&vadcop_result.proof, &vadcop_result.publics, &vkey)?;
 
-    result.proof.save("/tmp/sha_hasher_proof_snark.bin")?;
+    let result = client.prove_snark(&vadcop_result.proof, &vadcop_result.publics, &vkey)?;
+    client.verify(&result, &vadcop_result.publics, &vkey)?;
 
-    let output: Output = result.get_publics()?;
+    result.save("/tmp/sha_hasher_proof_snark.bin")?;
+
+    let output: Output = vadcop_result.get_publics()?;
     println!("Deserialized public outputs: {:?}", output);
     println!("Hash: {:02x?}", output.hash);
     println!("Iterations: {}", output.iterations);

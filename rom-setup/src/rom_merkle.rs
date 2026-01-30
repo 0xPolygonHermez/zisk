@@ -33,8 +33,6 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     )?;
 
     if elf_bin_path.exists() && elf_verkey_bin_path.exists() {
-        tracing::info!("ROM binary with merkle tree already exists at {}", elf_bin_path.display());
-
         let verkey = get_elf_vk(elf_verkey_bin_path.as_path())?
             .ok_or_else(|| anyhow::anyhow!("Failed to read existing verkey file"))?;
 

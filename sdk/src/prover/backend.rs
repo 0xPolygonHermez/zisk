@@ -422,6 +422,46 @@ impl ProverBackend {
         }
     }
 
+    pub(crate) fn prove_snark(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        program_vk: &ZiskProgramVK,
+    ) -> Result<ZiskProof> {
+        if self.snark_wrapper.is_none() {
+            return Err(anyhow::anyhow!(
+                "Snark wrapper is not initialized. Cannot generate snark proof."
+            ));
+        }
+
+        let proof_bytes = match proof {
+            ZiskProof::VadcopFinal(bytes) => bytes.clone(),
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Cannot generate SNARK proof. Only VadcopFinal proofs can be converted to SNARK proofs.",
+                ));
+            }
+        };
+
+        let mut pubs = program_vk.vk.clone();
+        pubs.extend(publics.public_bytes());
+        let vadcop_final_proof = VadcopFinalProof::new(proof_bytes, pubs, false);
+
+        let snark_proof = self
+            .snark_wrapper
+            .as_ref()
+            .unwrap()
+            .generate_final_snark_proof(&vadcop_final_proof, None)?;
+
+        if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
+            Ok(ZiskProof::Plonk(snark_proof.proof_bytes))
+        } else if snark_proof.protocol_id == SnarkProtocol::Fflonk.protocol_id() {
+            Ok(ZiskProof::Fflonk(snark_proof.proof_bytes))
+        } else {
+            Err(anyhow::anyhow!("Unsupported snark protocol id: {}", snark_proof.protocol_id))
+        }
+    }
+
     pub(crate) fn prove_phase(
         &self,
         phase_inputs: ProvePhaseInputs,
