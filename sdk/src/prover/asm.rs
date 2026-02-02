@@ -14,9 +14,9 @@ use rom_setup::DEFAULT_CACHE_PATH;
 use std::sync::OnceLock;
 use std::{collections::HashMap, path::PathBuf};
 use tracing::info;
-use zisk_common::io::ZiskStdin;
+use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::ElfBinaryLike;
-use zisk_common::ExecutorStats;
+use zisk_common::ExecutorStatsHandle;
 use zisk_distributed_common::LoggingConfig;
 use zisk_witness::get_packed_info;
 
@@ -84,11 +84,15 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.set_stdin(stdin)
     }
 
+    fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()> {
+        self.core_prover.backend.set_hints_stream(hints_stream)
+    }
+
     fn executed_steps(&self) -> u64 {
         self.core_prover
             .backend
             .execution_result()
-            .map(|(exec_result, _)| exec_result.executed_steps)
+            .map(|(exec_result, _)| exec_result.steps)
             .unwrap_or(0)
     }
 
@@ -132,6 +136,7 @@ impl ProverEngine for AsmProver {
             asm_rh_path,
             self.core_prover.base_port,
             self.core_prover.unlock_mapped_memory,
+            elf.with_hints(),
         )?;
 
         self.core_prover
@@ -157,7 +162,7 @@ impl ProverEngine for AsmProver {
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
     }
 

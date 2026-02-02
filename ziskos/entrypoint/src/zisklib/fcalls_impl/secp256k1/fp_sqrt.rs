@@ -16,7 +16,7 @@ pub fn fcall_secp256k1_fp_sqrt(params: &[u64], results: &mut [u64]) -> i64 {
     5
 }
 
-fn secp256k1_fp_sqrt(a: &[u64; 4], parity: u64, results: &mut [u64]) {
+pub fn secp256k1_fp_sqrt(a: &[u64; 4], parity: u64, results: &mut [u64]) {
     let a_big = biguint_from_u64_digits(a);
 
     // Attempt to compute the square root of a

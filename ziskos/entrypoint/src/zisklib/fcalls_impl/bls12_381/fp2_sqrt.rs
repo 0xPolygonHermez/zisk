@@ -7,45 +7,8 @@ use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, u64_digits_fro
 use super::{
     fp2_inv::{bls12_381_fp2_mul, bls12_381_fp2_square},
     fp_inv::{bls12_381_fp_add, bls12_381_fp_neg},
+    I, NQR_FP2, ONE, P_MINUS_1_DIV_2, P_MINUS_3_DIV_4, P_MINUS_ONE,
 };
-
-const ONE: [u64; 12] = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-const P_MINUS_ONE: [u64; 12] = [
-    0xB9FEFFFFFFFFAAAA,
-    0x1EABFFFEB153FFFF,
-    0x6730D2A0F6B0F624,
-    0x64774B84F38512BF,
-    0x4B1BA7B6434BACD7,
-    0x1A0111EA397FE69A,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-];
-const I: [u64; 12] = [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]; // 0 + 1*u
-const NQR: [u64; 12] = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]; // 1 + 1*u, a known non-quadratic residue in Fp2
-
-lazy_static! {
-    pub static ref P: BigUint = BigUint::parse_bytes(
-        b"1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB",
-        16
-    )
-    .unwrap();
-
-    pub static ref P_MINUS_3_DIV_4: BigUint = BigUint::parse_bytes(
-        b"680447A8E5FF9A692C6E9ED90D2EB35D91DD2E13CE144AFD9CC34A83DAC3D8907AAFFFFAC54FFFFEE7FBFFFFFFFEAAA",
-        16
-    )
-    .unwrap();
-
-    pub static ref P_MINUS_1_DIV_2: BigUint = BigUint::parse_bytes(
-        b"D0088F51CBFF34D258DD3DB21A5D66BB23BA5C279C2895FB39869507B587B120F55FFFF58A9FFFFDCFF7FFFFFFFD555",
-        16
-    )
-    .unwrap();
-}
 
 /// Computes the square root of a non-zero field element in Fp2
 pub fn fcall_bls12_381_fp2_sqrt(params: &[u64], results: &mut [u64]) -> i64 {
@@ -68,7 +31,7 @@ pub fn bls12_381_fp2_sqrt_13(a: &[u64; 12]) -> [u64; 13] {
     if !is_qr {
         // To check that a is indeed a non-quadratic residue, we check that
         // a * NQR is a quadratic residue for some fixed known non-quadratic residue NQR
-        let a_nqr = bls12_381_fp2_mul(a, &NQR);
+        let a_nqr = bls12_381_fp2_mul(a, &NQR_FP2);
 
         // Compute the square root of a * NQR
         let sqrt_nqr = bls12_381_fp2_sqrt(&a_nqr).0;
@@ -254,6 +217,6 @@ mod tests {
         let sqrt = &results[1..13].try_into().unwrap();
         assert_eq!(has_sqrt, 0);
         assert_eq!(sqrt, &expected_sqrt);
-        assert_eq!(bls12_381_fp2_mul(sqrt, sqrt), bls12_381_fp2_mul(&x, &NQR));
+        assert_eq!(bls12_381_fp2_mul(sqrt, sqrt), bls12_381_fp2_mul(&x, &NQR_FP2));
     }
 }

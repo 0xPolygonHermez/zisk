@@ -5,23 +5,19 @@ use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::atomic::{fence, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use tracing::{error, info};
 
-use crate::{AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
+use crate::{
+    AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory,
+    SEM_CHUNK_DONE_WAIT_DURATION,
+};
 
 use anyhow::{Context, Result};
 
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-
-pub trait Task: Send + Sync + 'static {
-    type Output: Send + 'static;
-    fn execute(self) -> Self::Output;
-}
-
-pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, Arc<EmuTrace>) -> T + Send + Sync + 'a>;
 
 pub enum MinimalTraces {
     None,
@@ -66,16 +62,16 @@ impl AsmRunnerMT {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn run_and_count<T: Task>(
+    pub fn run_and_count<F: FnMut(usize, Arc<EmuTrace>)>(
         preloaded: &mut PreloadedMT,
         max_steps: u64,
         chunk_size: u64,
-        task_factory: TaskFactory<T>,
+        mut on_chunk: F,
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
         _stats: ExecutorStatsHandle,
-    ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
+    ) -> Result<Vec<Arc<EmuTrace>>> {
         let __stats = _stats.clone();
 
         #[cfg(feature = "stats")]
@@ -119,7 +115,6 @@ impl AsmRunnerMT {
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMTChunk;
 
         let mut emu_traces = Vec::new();
-        let mut handles = Vec::new();
 
         let __stats = _stats.clone();
 
@@ -132,7 +127,7 @@ impl AsmRunnerMT {
         };
 
         let exit_code = loop {
-            match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
+            match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     #[cfg(feature = "stats")]
                     {
@@ -165,10 +160,8 @@ impl AsmRunnerMT {
                     let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
                     let should_exit = emu_trace.end;
 
-                    let task = task_factory(chunk_id, emu_trace.clone());
+                    on_chunk(chunk_id.0, emu_trace.clone());
                     emu_traces.push(emu_trace);
-
-                    handles.push(std::thread::spawn(move || task.execute()));
 
                     if should_exit {
                         break 0;
@@ -199,13 +192,7 @@ impl AsmRunnerMT {
 
         let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / start_time.elapsed().as_secs_f64()) / 1_000_000.0;
-        info!("··· Assembly execution speed: {:.2} MHz", mhz);
-
-        // Collect results
-        let mut tasks = Vec::new();
-        for handle in handles {
-            tasks.push(handle.join().expect("Task panicked"));
-        }
+        info!("··· Assembly execution speed: {}MHz", mhz.round());
 
         // Wait for the assembly emulator to complete writing the trace
         let response = handle
@@ -217,15 +204,9 @@ impl AsmRunnerMT {
         assert!(response.trace_len > 0);
         assert!(response.trace_len <= response.allocated_len);
 
-        // Unwrap the Arc pointers
-        let emu_traces: Vec<EmuTrace> = emu_traces
-            .into_iter()
-            .map(|arc| Arc::try_unwrap(arc).map_err(|_| AsmRunError::ArcUnwrap))
-            .collect::<std::result::Result<_, _>>()?;
-
         #[cfg(feature = "stats")]
         _stats.add_stat(0, parent_stats_id, "ASM_MT_RUNNER", 0, ExecutorStatsEvent::End);
 
-        Ok((AsmRunnerMT::new(emu_traces), tasks))
+        Ok(emu_traces)
     }
 }

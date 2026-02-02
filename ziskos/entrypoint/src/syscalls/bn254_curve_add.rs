@@ -33,10 +33,25 @@ pub struct SyscallBn254CurveAddParams<'a> {
 ///
 /// The resulting point will have both coordinates in the range of the BN254 base field.
 #[allow(unused_variables)]
-#[no_mangle]
-pub extern "C" fn syscall_bn254_curve_add(params: &mut SyscallBn254CurveAddParams) {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_syscall_bn254_curve_add")]
+pub extern "C" fn syscall_bn254_curve_add(
+    params: &mut SyscallBn254CurveAddParams,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     ziskos_syscall!(0x806, params);
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    unreachable!()
+    {
+        let p1 = [params.p1.x, params.p1.y].concat().try_into().unwrap();
+        let p2 = [params.p2.x, params.p2.y].concat().try_into().unwrap();
+        let mut p3: [u64; 8] = [0; 8];
+        precompiles_helpers::bn254_curve_add(&p1, &p2, &mut p3);
+        params.p1.x.copy_from_slice(&p3[0..4]);
+        params.p1.y.copy_from_slice(&p3[4..8]);
+        #[cfg(feature = "hints")]
+        {
+            hints.extend_from_slice(&p3);
+        }
+    }
 }

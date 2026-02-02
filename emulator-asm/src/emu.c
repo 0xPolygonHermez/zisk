@@ -360,12 +360,22 @@ void precompile_cache_cleanup(void)
     precompile_cache_loading = false;
 }
 
+// #define ASM_PRECOMPILE_CACHE_DEBUG
+#ifdef ASM_PRECOMPILE_CACHE_DEBUG
+uint64_t total_precompile_cache_size = 0;
+uint64_t total_precompile_cache_counter = 0;
+#endif
 void precompile_cache_store( uint8_t* data, uint64_t size)
 {
     assert(precompile_file != NULL);
     assert(precompile_cache_storing == true);
     fwrite(data, 1, size, precompile_file);
     fflush(precompile_file);
+#ifdef ASM_PRECOMPILE_CACHE_DEBUG
+    total_precompile_cache_size += size;
+    total_precompile_cache_counter++;
+    printf("precompile_cache_store() Stored %lu bytes at pos=%lu total_precompile_cache_size=%lu total_precompile_cache_counter=%lu\n", size, ftell(precompile_file), total_precompile_cache_size, total_precompile_cache_counter);
+#endif
 }
 
 void precompile_cache_load( uint8_t* data, uint64_t size)
@@ -377,6 +387,11 @@ void precompile_cache_load( uint8_t* data, uint64_t size)
         printf("precompile_cache_load() Error reading file %s read_size=%lu expected size=%lu pos=%lu\n", precompile_cache_filename, read_size, size, ftell(precompile_file));
         exit(-1);
     }
+#ifdef ASM_PRECOMPILE_CACHE_DEBUG
+    total_precompile_cache_size += size;
+    total_precompile_cache_counter++;
+    printf("precompile_cache_load() Loaded %lu bytes at pos=%lu total_precompile_cache_size=%lu total_precompile_cache_counter=%lu\n", size, ftell(precompile_file), total_precompile_cache_size, total_precompile_cache_counter);
+#endif
 }
 
 #endif
@@ -458,9 +473,9 @@ extern int _opcode_keccak(uint64_t address)
 #endif
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("opcode_keccak() calling KeccakF1600() counter=%lu address=%08lx\n", asm_call_metrics.keccak_counter, address);
+    if (emu_verbose) printf("opcode_keccak() calling keccakf1600_generic() counter=%lu address=%08lx\n", asm_call_metrics.keccak_counter, address);
 #else
-    if (emu_verbose) printf("opcode_keccak() calling KeccakF1600() address=%08lx\n", address);
+    if (emu_verbose) printf("opcode_keccak() calling keccakf1600_generic() address=%08lx\n", address);
 #endif
 #endif
 
@@ -483,7 +498,7 @@ extern int _opcode_keccak(uint64_t address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_keccak() called KeccakF1600()\n");
+    if (emu_verbose) printf("opcode_keccak() called keccakf1600_generic()\n");
 #endif
 #ifdef ASM_CALL_METRICS
     asm_call_metrics.keccak_counter++;
@@ -500,9 +515,9 @@ extern int _opcode_sha256(uint64_t * address)
 #endif
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("opcode_sha256() calling sha256_transform_2() counter=%lu address=%p\n", asm_call_metrics.sha256_counter, address);
+    if (emu_verbose) printf("opcode_sha256() calling zisk_sha256() counter=%lu address=%p\n", asm_call_metrics.sha256_counter, address);
 #else
-    if (emu_verbose) printf("opcode_sha256() calling sha256_transform_2() address=%p\n", address);
+    if (emu_verbose) printf("opcode_sha256() calling zisk_sha256() address=%p\n", address);
 #endif
 #endif
 
@@ -521,11 +536,11 @@ extern int _opcode_sha256(uint64_t * address)
     {
         // Load result from cache
         precompile_cache_load((uint8_t *)address[0], 4*8);
-    }  
+    }
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_sha256() called sha256_transform_2()\n");
+    if (emu_verbose) printf("opcode_sha256() called zisk_sha256()\n");
 #endif
 #ifdef ASM_CALL_METRICS
     asm_call_metrics.sha256_counter++;
@@ -828,7 +843,8 @@ extern int _opcode_secp256k1_add(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p3 = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p3.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p3.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -935,12 +951,21 @@ extern int _opcode_fcall(struct FcallContext * ctx)
 #endif
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("_opcode_fcall() counter=%lu\n", asm_call_metrics.fcall_counter);
+    if (emu_verbose) printf("_opcode_fcall(%lu) counter=%lu\n", ctx->function_id, asm_call_metrics.fcall_counter);
 #else
-    if (emu_verbose) printf("_opcode_fcall()\n");
+    if (emu_verbose) printf("_opcode_fcall(%lu)\n", ctx->function_id);
 #endif
+    if (emu_verbose)
+    {
+        printf("_opcode_fcall() calling Fcall() with params_size=%lu\n", ctx->params_size);
+        printf("params=");
+        for (uint64_t i=0; i<ctx->params_size; i++)
+        {
+            printf("%lx ", ctx->params[i]);
+        }
+        printf("\n");
+    }
 #endif
-
     int iresult;
 
 #ifdef ASM_PRECOMPILE_CACHE
@@ -957,14 +982,27 @@ extern int _opcode_fcall(struct FcallContext * ctx)
 
 #ifdef ASM_PRECOMPILE_CACHE
         // Store result in cache
-        precompile_cache_store((uint8_t *)&ctx->result_size, 8*8);
+        precompile_cache_store((uint8_t *)&ctx->result_size, 1*8);
         precompile_cache_store((uint8_t *)&ctx->result, ctx->result_size*8);
     }
     else if (precompile_cache_loading)
     {
         // Load result from cache
-        precompile_cache_load((uint8_t *)&ctx->result_size, 8*8);
+        precompile_cache_load((uint8_t *)&ctx->result_size, 1*8);
         precompile_cache_load((uint8_t *)&ctx->result, ctx->result_size*8);
+    }
+#endif
+
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("_opcode_fcall() called Fcall() and got result_size=%lu\n", ctx->result_size);
+        printf("results=");
+        for (uint64_t i=0; i<ctx->result_size; i++)
+        {
+            printf("%lx ", ctx->result[i]);
+        }
+        printf("\n");
     }
 #endif
 
@@ -976,6 +1014,7 @@ extern int _opcode_fcall(struct FcallContext * ctx)
     return iresult;
 }
 
+/*
 extern int _opcode_inverse_fp_ec(uint64_t params, uint64_t result)
 {
 #ifdef ASM_CALL_METRICS
@@ -1117,6 +1156,7 @@ extern int _opcode_sqrt_fp_ec_parity(uint64_t params, uint64_t result)
 #endif
     return 0;
 }
+*/
 
 /*********/
 /* BN254 */
@@ -1134,9 +1174,9 @@ extern int _opcode_bn254_curve_add(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bn254_curve_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bn254_curve_add_counter, address, p1, p2);
+        printf("_opcode_bn254_curve_add() calling BN254CurveAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bn254_curve_add_counter, address, p1, p2);
 #else
-        printf("_opcode_bn254_curve_add() calling AddPointEcP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        printf("_opcode_bn254_curve_add() calling BN254CurveAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
         printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
         printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
@@ -1459,9 +1499,9 @@ extern int _opcode_bls12_381_curve_add(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bls12_381_curve_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bl12_381_curve_add_counter, address, p1, p2);
+        printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bl12_381_curve_add_counter, address, p1, p2);
 #else
-        printf("_opcode_bls12_381_curve_add() calling AddPointEcP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
         printf("p1.x = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0], p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
         printf("p1.y = %lu:%lu:%lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6], p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
@@ -1793,28 +1833,33 @@ extern uint64_t _opcode_add256(uint64_t * address)
         printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
     }
 #endif
+
+    uint64_t cout = 0;
+
 #ifdef ASM_PRECOMPILE_CACHE
     if (precompile_cache_storing)
     {
 #endif
 
-    // cout = [0,1] ok, cout < 0 error
-    int cout = Add256 (a, b, cin, c);
-    if (cout < 0)
-    {
-        printf("_opcode_add256() failed callilng Add256() cout=%d;", cout);
-        exit(-1);
-    }
+        // cout = [0,1] ok, cout < 0 error
+        int icout = Add256 (a, b, cin, c);
+        if (icout < 0)
+        {
+            printf("_opcode_add256() failed callilng Add256() cout=%d;", icout);
+            exit(-1);
+        }
+        cout = (uint64_t)icout;
+
 #ifdef ASM_PRECOMPILE_CACHE
         // Store result in cache
         precompile_cache_store((uint8_t *)c, 4*8);
-        precompile_cache_store((uint8_t *)cout, 8);
+        precompile_cache_store((uint8_t *)&cout, 8);
     }
     else if (precompile_cache_loading)
     {
         // Load result from cache
-        precompile_cache_load((uint8_t *)cout, 8);
         precompile_cache_load((uint8_t *)c, 4*8);
+        precompile_cache_load((uint8_t *)&cout, 8);
     }
 #endif
 
@@ -1822,7 +1867,7 @@ extern uint64_t _opcode_add256(uint64_t * address)
     if (emu_verbose) printf("opcode_add256() called Add256()\n");
     if (emu_verbose)
     {
-        printf("cout = %u\n", cout);
+        printf("cout = %lu\n", cout);
         printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
     }
 #endif

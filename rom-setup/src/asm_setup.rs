@@ -33,6 +33,7 @@ pub fn gen_assembly(
     _elf: &Path,
     _zisk_path: &Option<PathBuf>,
     _output_dir: &Option<PathBuf>,
+    _hints: bool,
     _verbose: bool,
 ) -> Result<(), anyhow::Error> {
     // Assembly setup is not needed on macOS due to the lack of support for assembly generation.
@@ -43,7 +44,7 @@ pub fn gen_assembly(
 
         tracing::info!("Computing assembly setup");
         let zisk_path = crate::get_zisk_path(_zisk_path.as_ref());
-        _generate_assembly(_elf, &elf_hash, &zisk_path, output_path.as_path(), _verbose)?;
+        _generate_assembly(_elf, &elf_hash, &zisk_path, output_path.as_path(), _hints, _verbose)?;
         tracing::info!("Assembly setup generated at {}", output_path.display());
     }
     Ok(())
@@ -54,6 +55,7 @@ fn _generate_assembly(
     elf_hash: &str,
     zisk_path: &Path,
     output_path: &Path,
+    hints: bool,
     verbose: bool,
 ) -> Result<(), anyhow::Error> {
     // Read the ELF file and check if it is a valid ELF file
@@ -89,7 +91,7 @@ fn _generate_assembly(
         // Convert the ELF file to Zisk format and generates an assembly file
         let rv2zk = Riscv2zisk::new(&file_data);
         rv2zk
-            .runfile(asm_file.to_str().unwrap().to_string(), *gen_method, false, false)
+            .runfile(asm_file.to_str().unwrap().to_string(), *gen_method, false, false, hints)
             .expect("Error converting elf to assembly");
 
         let emulator_asm_path = zisk_path.join("emulator-asm");

@@ -5,26 +5,51 @@ use crate::{
     zisklib::{eq, fcall_bigint256_div, fcall_msb_pos_256, lt},
 };
 
-pub fn mul256(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], [u64; 4]) {
+pub fn mul256(
+    a: &[u64; 4],
+    b: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> ([u64; 4], [u64; 4]) {
     let mut params =
         SyscallArith256Params { a, b, c: &[0u64; 4], dl: &mut [0u64; 4], dh: &mut [0u64; 4] };
-    syscall_arith256(&mut params);
+    syscall_arith256(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     (*params.dl, *params.dh)
 }
 
-pub fn wmul256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+pub fn wmul256(
+    a: &[u64; 4],
+    b: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 4] {
     let mut params =
         SyscallArith256Params { a, b, c: &[0u64; 4], dl: &mut [0u64; 4], dh: &mut [0u64; 4] };
-    syscall_arith256(&mut params);
+    syscall_arith256(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     *params.dl
 }
 
-pub fn divrem256(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], [u64; 4]) {
+pub fn divrem256(
+    a: &[u64; 4],
+    b: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> ([u64; 4], [u64; 4]) {
     // Check for division by zero
     assert!(!eq(b, &[0u64; 4]), "Division by zero");
 
     // Hint the result of the division
-    let (quotient, remainder) = fcall_bigint256_div(a, b);
+    let (quotient, remainder) = fcall_bigint256_div(
+        a,
+        b,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Check that a = b * quotient + remainder and remainder < b
     assert!(lt(&remainder, b), "Remainder is not less than divisor");
@@ -35,14 +60,23 @@ pub fn divrem256(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], [u64; 4]) {
         dl: &mut [0u64; 4],
         dh: &mut [0u64; 4],
     };
-    syscall_arith256(&mut params);
+    syscall_arith256(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     assert!(eq(params.dl, a), "Dividend does not equal divisor * quotient + remainder");
 
     (quotient, remainder)
 }
 
 /// Raises `x` to (2^power_log) modulo `module` using repeated squaring
-pub fn exp_power_of_two(x: &[u64; 4], module: &[u64; 4], power_log: usize) -> [u64; 4] {
+pub fn exp_power_of_two(
+    x: &[u64; 4],
+    module: &[u64; 4],
+    power_log: usize,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 4] {
     // x^1 = x
     if power_log == 0 {
         return *x;
@@ -58,7 +92,11 @@ pub fn exp_power_of_two(x: &[u64; 4], module: &[u64; 4], power_log: usize) -> [u
             module,
             d: &mut [0u64; 4],
         };
-        syscall_arith256_mod(&mut params);
+        syscall_arith256_mod(
+            &mut params,
+            #[cfg(feature = "hints")]
+            hints,
+        );
         result = *params.d;
     }
 
@@ -66,7 +104,12 @@ pub fn exp_power_of_two(x: &[u64; 4], module: &[u64; 4], power_log: usize) -> [u
 }
 
 /// Raises `x` to (2^power_log) modulo `module` using repeated squaring
-pub fn exp_power_of_two_self(x: &mut [u64; 4], module: &[u64; 4], power_log: usize) {
+pub fn exp_power_of_two_self(
+    x: &mut [u64; 4],
+    module: &[u64; 4],
+    power_log: usize,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
     if power_log == 0 {
         return;
     }
@@ -75,12 +118,20 @@ pub fn exp_power_of_two_self(x: &mut [u64; 4], module: &[u64; 4], power_log: usi
     for _ in 0..power_log {
         let mut params =
             SyscallArith256ModParams { a: x, b: x, c: &zero, module, d: &mut [0u64; 4] };
-        syscall_arith256_mod(&mut params);
+        syscall_arith256_mod(
+            &mut params,
+            #[cfg(feature = "hints")]
+            hints,
+        );
         *x = *params.d;
     }
 }
 
-pub fn wpow256(a: &[u64; 4], exp: &[u64; 4]) -> [u64; 4] {
+pub fn wpow256(
+    a: &[u64; 4],
+    exp: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 4] {
     // 0^0 = 1 by convention
     // 0^n = 0 for n > 0
     if eq(a, &[0u64; 4]) {
@@ -103,7 +154,11 @@ pub fn wpow256(a: &[u64; 4], exp: &[u64; 4]) -> [u64; 4] {
             let mut dh = [0u64; 4];
             let mut params =
                 SyscallArith256Params { a, b: a, c: &[0u64; 4], dl: &mut dl, dh: &mut dh };
-            syscall_arith256(&mut params);
+            syscall_arith256(
+                &mut params,
+                #[cfg(feature = "hints")]
+                hints,
+            );
             return dl;
         }
         _ => {}
@@ -112,7 +167,12 @@ pub fn wpow256(a: &[u64; 4], exp: &[u64; 4]) -> [u64; 4] {
     // We can assume exp > 2 from now on
     // Hint the length the binary representations of exp
     // We will verify the output by recomposing exp
-    let (max_limb, max_bit) = fcall_msb_pos_256(exp, &[0, 0, 0, 0]);
+    let (max_limb, max_bit) = fcall_msb_pos_256(
+        exp,
+        &[0, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Perform the loop, based on the binary representation of exp
 
@@ -141,7 +201,11 @@ pub fn wpow256(a: &[u64; 4], exp: &[u64; 4]) -> [u64; 4] {
                 dl: &mut dl,
                 dh: &mut dh,
             };
-            syscall_arith256(&mut params);
+            syscall_arith256(
+                &mut params,
+                #[cfg(feature = "hints")]
+                hints,
+            );
             result = dl;
 
             // Get the next bit b of exp
@@ -154,7 +218,11 @@ pub fn wpow256(a: &[u64; 4], exp: &[u64; 4]) -> [u64; 4] {
                     dl: &mut dl,
                     dh: &mut dh,
                 };
-                syscall_arith256(&mut params);
+                syscall_arith256(
+                    &mut params,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
                 result = dl;
 
                 // Reconstruct exp
@@ -169,16 +237,20 @@ pub fn wpow256(a: &[u64; 4], exp: &[u64; 4]) -> [u64; 4] {
     result
 }
 
-// ========== Pointer-based API ==========
-
 /// Modular reduction of a 256-bit integer
 ///
 /// # Safety
 /// - `a` must point to a valid `[u64; 4]` (32 bytes).
 /// - `m` must point to a valid `[u64; 4]` (32 bytes).
 /// - `result` must point to a valid `[u64; 4]` (32 bytes), used as output.
-#[no_mangle]
-pub unsafe extern "C" fn redmod256_c(a: *const u64, m: *const u64, result: *mut u64) {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_redmod256_c")]
+pub unsafe extern "C" fn redmod256_c(
+    a: *const u64,
+    m: *const u64,
+    result: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
     let mut d = [0u64; 4];
     let mut params = SyscallArith256ModParams {
         a: &*(a as *const [u64; 4]),
@@ -187,7 +259,11 @@ pub unsafe extern "C" fn redmod256_c(a: *const u64, m: *const u64, result: *mut 
         module: &*(m as *const [u64; 4]),
         d: &mut d,
     };
-    syscall_arith256_mod(&mut params);
+    syscall_arith256_mod(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     core::ptr::copy_nonoverlapping(d.as_ptr(), result, 4);
 }
@@ -199,12 +275,14 @@ pub unsafe extern "C" fn redmod256_c(a: *const u64, m: *const u64, result: *mut 
 /// - `b` must point to a valid `[u64; 4]` (32 bytes).
 /// - `m` must point to a valid `[u64; 4]` (32 bytes).
 /// - `result` must point to a valid `[u64; 4]` (32 bytes), used as output.
-#[no_mangle]
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_addmod256_c")]
 pub unsafe extern "C" fn addmod256_c(
     a: *const u64,
     b: *const u64,
     m: *const u64,
     result: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let mut d = [0u64; 4];
     let mut params = SyscallArith256ModParams {
@@ -214,7 +292,11 @@ pub unsafe extern "C" fn addmod256_c(
         module: &*(m as *const [u64; 4]),
         d: &mut d,
     };
-    syscall_arith256_mod(&mut params);
+    syscall_arith256_mod(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     core::ptr::copy_nonoverlapping(d.as_ptr(), result, 4);
 }
@@ -226,12 +308,14 @@ pub unsafe extern "C" fn addmod256_c(
 /// - `b` must point to a valid `[u64; 4]` (32 bytes).
 /// - `m` must point to a valid `[u64; 4]` (32 bytes).
 /// - `result` must point to a valid `[u64; 4]` (32 bytes), used as output.
-#[no_mangle]
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_mulmod256_c")]
 pub unsafe extern "C" fn mulmod256_c(
     a: *const u64,
     b: *const u64,
     m: *const u64,
     result: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
     let mut d = [0u64; 4];
     let mut params = SyscallArith256ModParams {
@@ -241,7 +325,11 @@ pub unsafe extern "C" fn mulmod256_c(
         module: &*(m as *const [u64; 4]),
         d: &mut d,
     };
-    syscall_arith256_mod(&mut params);
+    syscall_arith256_mod(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     core::ptr::copy_nonoverlapping(d.as_ptr(), result, 4);
 }
@@ -252,8 +340,14 @@ pub unsafe extern "C" fn mulmod256_c(
 /// - `a` must point to a valid `[u64; 4]` (32 bytes).
 /// - `b` must point to a valid `[u64; 4]` (32 bytes).
 /// - `result` must point to a valid `[u64; 4]` (32 bytes), used as output.
-#[no_mangle]
-pub unsafe extern "C" fn wmul256_c(a: *const u64, b: *const u64, result: *mut u64) {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_wmul256_c")]
+pub unsafe extern "C" fn wmul256_c(
+    a: *const u64,
+    b: *const u64,
+    result: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
     let mut dl = [0u64; 4];
     let mut dh = [0u64; 4];
     let mut params = SyscallArith256Params {
@@ -263,7 +357,11 @@ pub unsafe extern "C" fn wmul256_c(a: *const u64, b: *const u64, result: *mut u6
         dl: &mut dl,
         dh: &mut dh,
     };
-    syscall_arith256(&mut params);
+    syscall_arith256(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     core::ptr::copy_nonoverlapping(dl.as_ptr(), result, 4);
 }
@@ -276,8 +374,14 @@ pub unsafe extern "C" fn wmul256_c(a: *const u64, b: *const u64, result: *mut u6
 /// - `result` must point to a valid `[u64; 4]` (32 bytes), used as output.
 ///
 /// Returns `true` if overflow occurred, `false` otherwise.
-#[no_mangle]
-pub unsafe extern "C" fn omul256_c(a: *const u64, b: *const u64, result: *mut u64) -> bool {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_omul256_c")]
+pub unsafe extern "C" fn omul256_c(
+    a: *const u64,
+    b: *const u64,
+    result: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
     let mut dl = [0u64; 4];
     let mut dh = [0u64; 4];
     let mut params = SyscallArith256Params {
@@ -287,7 +391,11 @@ pub unsafe extern "C" fn omul256_c(a: *const u64, b: *const u64, result: *mut u6
         dl: &mut dl,
         dh: &mut dh,
     };
-    syscall_arith256(&mut params);
+    syscall_arith256(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     core::ptr::copy_nonoverlapping(dl.as_ptr(), result, 4);
 
@@ -305,8 +413,15 @@ pub unsafe extern "C" fn omul256_c(a: *const u64, b: *const u64, result: *mut u6
 ///
 /// # Panics
 /// Panics if `b` is zero.
-#[no_mangle]
-pub unsafe extern "C" fn divrem256_c(a: *const u64, b: *const u64, q: *mut u64, r: *mut u64) {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_divrem256_c")]
+pub unsafe extern "C" fn divrem256_c(
+    a: *const u64,
+    b: *const u64,
+    q: *mut u64,
+    r: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
     let a_ref = &*(a as *const [u64; 4]);
     let b_ref = &*(b as *const [u64; 4]);
 
@@ -314,14 +429,23 @@ pub unsafe extern "C" fn divrem256_c(a: *const u64, b: *const u64, q: *mut u64, 
     assert!(!eq(b_ref, &[0u64; 4]), "Division by zero");
 
     // Hint the result of the division
-    let (quotient, remainder) = fcall_bigint256_div(a_ref, b_ref);
+    let (quotient, remainder) = fcall_bigint256_div(
+        a_ref,
+        b_ref,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Check that a = b * quotient + remainder and remainder < b
     let mut dl = [0u64; 4];
     let mut dh = [0u64; 4];
     let mut params =
         SyscallArith256Params { a: b_ref, b: &quotient, c: &remainder, dl: &mut dl, dh: &mut dh };
-    syscall_arith256(&mut params);
+    syscall_arith256(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     assert!(eq(&dl, a_ref), "Dividend does not equal divisor * quotient + remainder");
     assert!(lt(&remainder, b_ref), "Remainder is not less than divisor");
 
@@ -335,12 +459,22 @@ pub unsafe extern "C" fn divrem256_c(a: *const u64, b: *const u64, q: *mut u64, 
 /// - `a` must point to a valid `[u64; 4]` (32 bytes).
 /// - `exp` must point to a valid `[u64; 4]` (32 bytes).
 /// - `result` must point to a valid `[u64; 4]` (32 bytes), used as output.
-#[no_mangle]
-pub unsafe extern "C" fn wpow256_c(a: *const u64, exp: *const u64, result: *mut u64) {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_wpow256_c")]
+pub unsafe extern "C" fn wpow256_c(
+    a: *const u64,
+    exp: *const u64,
+    result: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
     let a_ref = &*(a as *const [u64; 4]);
     let exp_ref = &*(exp as *const [u64; 4]);
 
-    let res = wpow256(a_ref, exp_ref);
-
+    let res = wpow256(
+        a_ref,
+        exp_ref,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     core::ptr::copy_nonoverlapping(res.as_ptr(), result, 4);
 }

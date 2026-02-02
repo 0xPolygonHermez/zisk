@@ -18,6 +18,7 @@ impl ZiskLibLoader {
         asm_rh_filename: Option<PathBuf>,
         base_port: Option<u16>,
         unlock_mapped_memory: Option<bool>,
+        with_hints: bool,
     ) -> Result<WitnessLib<F>> {
         let witness_lib = WitnessLib::new(
             verbose,
@@ -26,6 +27,7 @@ impl ZiskLibLoader {
             base_port,
             unlock_mapped_memory.unwrap_or(false),
             shared_tables,
+            with_hints,
         );
 
         Ok(witness_lib)
@@ -35,7 +37,7 @@ impl ZiskLibLoader {
         verbose: VerboseMode,
         shared_tables: bool,
     ) -> Result<WitnessLib<F>> {
-        Self::load_library(verbose, shared_tables, None, None, None, None)
+        Self::load_library(verbose, shared_tables, None, None, None, None, false)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -46,6 +48,7 @@ impl ZiskLibLoader {
         asm_rh_filename: PathBuf,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
+        with_hints: bool,
     ) -> Result<WitnessLib<F>> {
         Self::load_library(
             verbose,
@@ -54,6 +57,7 @@ impl ZiskLibLoader {
             Some(asm_rh_filename),
             base_port,
             Some(unlock_mapped_memory),
+            with_hints,
         )
     }
 }

@@ -15,7 +15,7 @@ use std::{
 };
 use tracing::error;
 
-use crate::{InputModeDto, InputSourceDto};
+use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto};
 
 /// Job ID wrapper for type safety
 #[derive(
@@ -242,7 +242,8 @@ pub struct Job {
     pub duration_ms: Option<u64>,
     pub state: JobState,
     pub data_id: DataId,
-    pub input_mode: InputModeDto,
+    pub inputs_mode: InputsModeDto,
+    pub hints_mode: HintsModeDto,
     pub compute_capacity: ComputeCapacity,
     pub minimal_compute_capacity: ComputeCapacity,
     pub workers: Vec<WorkerId>,
@@ -257,9 +258,11 @@ pub struct Job {
 }
 
 impl Job {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         data_id: DataId,
-        input_mode: InputModeDto,
+        inputs_mode: InputsModeDto,
+        hints_mode: HintsModeDto,
         compute_capacity: ComputeCapacity,
         minimal_compute_capacity: ComputeCapacity,
         selected_workers: Vec<WorkerId>,
@@ -272,7 +275,8 @@ impl Job {
             duration_ms: None,
             state: JobState::Created,
             data_id,
-            input_mode,
+            inputs_mode,
+            hints_mode,
             compute_capacity,
             minimal_compute_capacity,
             workers: selected_workers,
@@ -397,6 +401,7 @@ pub struct JobResult {
 pub struct DataCtx {
     pub data_id: DataId,
     pub input_source: InputSourceDto,
+    pub hints_source: HintsSourceDto,
 }
 
 #[repr(u8)]

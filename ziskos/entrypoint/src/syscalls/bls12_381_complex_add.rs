@@ -34,10 +34,25 @@ pub struct SyscallBls12_381ComplexAddParams<'a> {
 ///
 /// The resulting field element will have both coordinates in the range of the BLS12-381 base field.
 #[allow(unused_variables)]
-#[no_mangle]
-pub extern "C" fn syscall_bls12_381_complex_add(params: &mut SyscallBls12_381ComplexAddParams) {
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_syscall_bls12_381_complex_add")]
+pub extern "C" fn syscall_bls12_381_complex_add(
+    params: &mut SyscallBls12_381ComplexAddParams,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     ziskos_syscall!(0x80E, params);
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-    unreachable!()
+    {
+        let f1 = [params.f1.x, params.f1.y].concat().try_into().unwrap();
+        let f2 = [params.f2.x, params.f2.y].concat().try_into().unwrap();
+        let mut f3: [u64; 12] = [0; 12];
+        precompiles_helpers::bls12_381_complex_add(&f1, &f2, &mut f3);
+        params.f1.x.copy_from_slice(&f3[0..6]);
+        params.f1.y.copy_from_slice(&f3[6..12]);
+        #[cfg(feature = "hints")]
+        {
+            hints.extend_from_slice(&f3);
+        }
+    }
 }

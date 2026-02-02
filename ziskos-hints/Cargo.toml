@@ -1,0 +1,45 @@
+# Wrapper crate around ziskos that compiles with hints feature enabled.
+# 
+# src/core/ is a symlink to ../../ziskos/entrypoint/src/ - same source, different features.
+# src/lib.rs wraps the symlinked source and adds hints-specific modules.
+# Exports C symbols with "hints_" prefix to avoid linker conflicts with ziskos.
+# See README.md for details.
+
+[package]
+name = "ziskos-hints"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+lib-c = { workspace = true }
+
+num-bigint = { workspace = true }
+num-integer = { workspace = true }
+num-traits = { workspace = true }
+
+precompiles-helpers = { workspace = true }
+
+lazy_static = "1.5.0"
+static_assertions = "1.1"
+rand = "0.8.5"
+getrandom = { version = "0.2", features = ["custom"] }
+cfg-if = "1.0"
+tiny-keccak = { version = "2.0.0", features = ["keccak"] }
+serde = { workspace = true, features = ["derive"] }
+bincode = { workspace = true }
+paste = "1.0"
+sha2 = { workspace = true }
+fields = { workspace = true }
+
+# zisk-os specific dependencies
+elliptic-curve = "0.13.8"
+k256 = "0.13.4"
+anyhow = { workspace = true }
+
+[features]
+default = ["hints"]
+hints = []

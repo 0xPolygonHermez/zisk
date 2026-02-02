@@ -18,6 +18,9 @@ pub mod io;
 
 pub mod ziskos_definitions;
 
+#[cfg(any(zisk_hints, zisk_hints_debug))]
+pub mod hints;
+
 #[macro_export]
 macro_rules! entrypoint {
     ($path:path) => {
@@ -74,7 +77,7 @@ pub fn read_input_slice() -> Box<[u8]> {
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-fn set_output(id: usize, value: u32) {
+pub(crate) fn set_output(id: usize, value: u32) {
     use std::arch::asm;
     let addr_v: *mut u32;
     let arch_id_zisk: usize;
@@ -98,7 +101,7 @@ fn set_output(id: usize, value: u32) {
 }
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-fn set_output(id: usize, value: u32) {
+pub(crate) fn set_output(id: usize, value: u32) {
     println!("public {id}: {value:#010x}");
 }
 

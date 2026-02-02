@@ -9,6 +9,8 @@ categories = { workspace = true }
 
 [dependencies]
 executor = { workspace = true }
+asm-runner = { workspace = true }
+precompiles-hints = { workspace = true }
 sm-arith = { workspace = true }
 sm-binary = { workspace = true }
 sm-main = { workspace = true }
@@ -37,6 +39,8 @@ witness = { workspace = true }
 fields = { workspace=true }
 pil-std-lib = { workspace = true }
 tracing = { workspace = true }
+
+anyhow = { workspace = true }
 
 env_logger = "0.11"
 rayon = { workspace = true }

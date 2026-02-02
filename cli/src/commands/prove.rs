@@ -1,4 +1,4 @@
-use crate::ux::print_banner;
+use crate::ux::{print_banner, print_banner_field};
 use anyhow::Result;
 
 use colored::Colorize;
@@ -7,8 +7,9 @@ use proofman_common::ParamsGPU;
 use proofman_util::VadcopFinalProof;
 use std::fs;
 use std::path::PathBuf;
+use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::io::ZiskStdin;
+use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::ElfBinaryOwned;
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
@@ -42,8 +43,12 @@ pub struct ZiskProve {
     pub emulator: bool,
 
     /// Input path
-    #[clap(short = 'i', long)]
-    pub input: Option<PathBuf>,
+    #[clap(short = 'i', long, alias = "input")]
+    pub inputs: Option<String>,
+
+    /// Precompiles Hints path
+    #[clap(long)]
+    pub hints: Option<String>,
 
     /// Setup folder path
     #[clap(short = 'k', long)]
@@ -109,6 +114,11 @@ pub struct ZiskProve {
 
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
+        // Check if the deprecated alias was used
+        if std::env::args().any(|arg| arg == "--input") {
+            eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
+        }
+
         print_banner();
 
         let mut gpu_params = None;
@@ -118,27 +128,46 @@ impl ZiskProve {
             || self.max_witness_stored.is_some()
         {
             let mut gpu_params_new = ParamsGPU::new(self.preallocate);
-
-            if let Some(max_streams) = self.max_streams {
-                gpu_params_new.with_max_number_streams(max_streams);
-            }
-            if let Some(number_threads_witness) = self.number_threads_witness {
-                gpu_params_new.with_number_threads_pools_witness(number_threads_witness);
-            }
             if let Some(max_witness_stored) = self.max_witness_stored {
                 gpu_params_new.with_max_witness_stored(max_witness_stored);
             }
             gpu_params = Some(gpu_params_new);
         }
 
-        let stdin = self.create_stdin()?;
+        if let Some(inputs) = &self.inputs {
+            print_banner_field("Input", inputs);
+        }
 
-        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+        if let Some(hints) = &self.hints {
+            print_banner_field("Prec. Hints", hints);
+        }
+
+        let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
+
+        let hints_stream = match self.hints.as_ref() {
+            Some(uri) => {
+                let stream = StreamSource::from_uri(uri)?;
+                if matches!(stream, StreamSource::Quic(_)) {
+                    anyhow::bail!("QUIC hints source is not supported for execution.");
+                }
+                Some(stream)
+            }
+            None => None,
+        };
+
+        let emulator = if cfg!(target_os = "macos") {
+            if !self.emulator {
+                warn!("Emulator mode is forced on macOS due to lack of ASM support.");
+            }
+            true
+        } else {
+            self.emulator
+        };
 
         let (vk, result, world_rank) = if emulator {
             self.run_emu(stdin, gpu_params)?
         } else {
-            self.run_asm(stdin, gpu_params)?
+            self.run_asm(stdin, hints_stream, gpu_params)?
         };
 
         if world_rank == 0 {
@@ -194,26 +223,10 @@ impl ZiskProve {
                 tracing::info!("      Proof ID: {}", proof_id);
             }
             tracing::info!("    ► Statistics");
-            tracing::info!(
-                "      time: {} seconds, steps: {}",
-                elapsed,
-                result.execution.executed_steps
-            );
+            tracing::info!("      time: {} seconds, steps: {}", elapsed, result.execution.steps);
         }
 
         Ok(())
-    }
-
-    fn create_stdin(&mut self) -> Result<ZiskStdin> {
-        let stdin = if let Some(input) = &self.input {
-            if !input.exists() {
-                return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
-            }
-            ZiskStdin::from_file(input)?
-        } else {
-            ZiskStdin::null()
-        };
-        Ok(stdin)
     }
 
     pub fn run_emu(
@@ -235,6 +248,7 @@ impl ZiskProve {
         let elf = ElfBinaryOwned::new(
             elf_bin,
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
+            false,
         );
         let vk = prover.setup(&elf)?;
 
@@ -256,6 +270,7 @@ impl ZiskProve {
     pub fn run_asm(
         &mut self,
         stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
         gpu_params: Option<ParamsGPU>,
     ) -> Result<(ZiskProgramVK, ZiskProveResult, i32)> {
         let prover = ProverClient::builder()
@@ -276,6 +291,7 @@ impl ZiskProve {
         let elf = ElfBinaryOwned::new(
             elf_bin,
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
+            hints_stream.is_some(),
         );
         let vk = prover.setup(&elf)?;
 
@@ -288,6 +304,9 @@ impl ZiskProve {
             output_dir_path: Some(self.output_dir.clone()),
         };
 
+        if let Some(hints_stream) = hints_stream {
+            prover.set_hints_stream(hints_stream)?;
+        }
         let result = prover.prove(stdin).with_proof_options(proof_options).run()?;
         let world_rank = prover.world_rank();
 

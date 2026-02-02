@@ -330,7 +330,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
             "Emulator".bright_green().bold(),
             "Running in emulator mode".bright_yellow()
         );
-        println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key.display());
+        println!("{: >12} {}", "Proving Key".bright_green().bold(), proving_key.display());
 
         println!(
             "{: >12} {}",

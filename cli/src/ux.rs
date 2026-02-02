@@ -49,3 +49,7 @@ pub fn print_banner() {
     //     available_mem
     // );
 }
+
+pub fn print_banner_field(label: &str, value: &str) {
+    println!("{} {}", format!("{: >12}", label).bright_green().bold(), value);
+}

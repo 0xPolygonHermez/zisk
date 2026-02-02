@@ -6,50 +6,165 @@ else
       CFLAGS = -O3 -fPIC
 endif
 
-all:
-	mkdir -p build
-	nasm -felf64 src/ffiasm/fec.asm -o build/fec.o
-	nasm -felf64 src/ffiasm/fnec.asm -o build/fnec.o
-	nasm -felf64 src/ffiasm/fq.asm -o build/fq.o
-	nasm -felf64 src/ffiasm/bls12_381_384.asm -o build/bls12_381_384.o
-	gcc $(CFLAGS) -c src/ffiasm/fec.cpp -o build/fecc.o
-	gcc $(CFLAGS) -c src/ffiasm/fnec.cpp -o build/fnecc.o
-	gcc $(CFLAGS) -c src/ffiasm/fq.cpp -o build/fqc.o
-	gcc $(CFLAGS) -c src/ffiasm/bls12_381_384.cpp -o build/bls12_381_384c.o
-	gcc $(CFLAGS) -c src/ec/ec.cpp -o build/ec.o
-	gcc $(CFLAGS) -c src/bn254/bn254.cpp -o build/bn254.o
-	gcc $(CFLAGS) -c src/bls12_381/bls12_381.cpp -o build/bls12_381.o
-	gcc $(CFLAGS) -c src/fcall/fcall.cpp -o build/fcall.o
-	gcc $(CFLAGS) -c src/arith256/arith256.cpp -o build/arith256.o
-	gcc $(CFLAGS) -c src/arith384/arith384.cpp -o build/arith384.o
-	gcc $(CFLAGS) -c src/bigint/add256.cpp -o build/add256.o
-	gcc $(CFLAGS) -c src/common/globals.cpp -o build/globals.o
-	gcc $(CFLAGS) -c src/poseidon2/goldilocks_base_field.cpp -o build/goldilocks_base_field.o
-	gcc $(CFLAGS) -c src/poseidon2/poseidon2_goldilocks.cpp -o build/poseidon2_goldilocks.o
-	ar rcs\
-		build/libziskc.a\
-		build/fec.o\
-		build/fnec.o\
-		build/fq.o\
-		build/bls12_381_384.o\
-		build/ec.o\
-		build/bn254.o\
-		build/bls12_381.o\
-		build/fecc.o\
-		build/fnecc.o\
-		build/fqc.o\
-		build/bls12_381_384c.o\
-		build/fcall.o\
-		build/arith256.o\
-		build/arith384.o\
-		build/add256.o\
-		build/globals.o\
-		build/goldilocks_base_field.o\
-		build/poseidon2_goldilocks.o
-	gcc $(CFLAGS) src/main.cpp -lc build/libziskc.a -o build/clib -lgmp -lstdc++ -lgmpxx
-	mkdir -p lib
-	cp build/libziskc.a lib/
+# Directories
+BUILD_DIR = build
+LIB_DIR = lib
+SRC_DIR = src
+
+# Output library
+LIB_NAME = libziskc.a
+LIB_FILE = $(LIB_DIR)/$(LIB_NAME)
+
+# Object files
+ASM_OBJS = $(BUILD_DIR)/fec.o \
+           $(BUILD_DIR)/fnec.o \
+           $(BUILD_DIR)/fq.o \
+           $(BUILD_DIR)/fr.o \
+           $(BUILD_DIR)/bls12_381_384.o \
+           $(BUILD_DIR)/bls12_381_asm.o \
+           $(BUILD_DIR)/nsecp256r1.o \
+           $(BUILD_DIR)/psecp256r1.o
+
+CPP_OBJS = $(BUILD_DIR)/fecc.o \
+           $(BUILD_DIR)/fnecc.o \
+           $(BUILD_DIR)/fqc.o \
+           $(BUILD_DIR)/frc.o \
+           $(BUILD_DIR)/bls12_381_384c.o \
+           $(BUILD_DIR)/bls12_381c.o \
+           $(BUILD_DIR)/alt_bn128.o \
+           $(BUILD_DIR)/nsecp256r1c.o \
+           $(BUILD_DIR)/psecp256r1c.o \
+           $(BUILD_DIR)/misc.o \
+           $(BUILD_DIR)/naf.o \
+           $(BUILD_DIR)/splitparstr.o \
+           $(BUILD_DIR)/ec.o \
+           $(BUILD_DIR)/bn254.o \
+           $(BUILD_DIR)/bls12_381.o \
+           $(BUILD_DIR)/fcall.o \
+           $(BUILD_DIR)/arith256.o \
+           $(BUILD_DIR)/arith384.o \
+           $(BUILD_DIR)/add256.o \
+           $(BUILD_DIR)/globals.o \
+           $(BUILD_DIR)/goldilocks_base_field.o \
+           $(BUILD_DIR)/poseidon2_goldilocks.o
+
+ALL_OBJS = $(ASM_OBJS) $(CPP_OBJS)
+
+# Header directories for include path
+INCLUDES = -I$(SRC_DIR)
+
+# Default target
+all: $(LIB_FILE) $(BUILD_DIR)/clib
+
+# Create directories
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+$(LIB_DIR):
+	mkdir -p $(LIB_DIR)
+
+# Library target
+$(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
+	ar rcs $@ $(ALL_OBJS)
+
+# Test binary
+$(BUILD_DIR)/clib: $(SRC_DIR)/main.cpp $(LIB_FILE)
+	gcc $(CFLAGS) $(INCLUDES) $< -lc $(LIB_FILE) -o $@ -lgmp -lstdc++ -lgmpxx
+
+# Assembly rules
+$(BUILD_DIR)/fec.o: $(SRC_DIR)/ffiasm/fec.asm | $(BUILD_DIR)
+	nasm -felf64 $< -o $@
+
+$(BUILD_DIR)/fnec.o: $(SRC_DIR)/ffiasm/fnec.asm | $(BUILD_DIR)
+	nasm -felf64 $< -o $@
+
+$(BUILD_DIR)/fq.o: $(SRC_DIR)/ffiasm/fq.asm | $(BUILD_DIR)
+	nasm -felf64 $< -o $@
+
+$(BUILD_DIR)/fr.o: $(SRC_DIR)/ffiasm/fr.asm | $(BUILD_DIR)
+	nasm -felf64 $< -o $@
+
+$(BUILD_DIR)/bls12_381_384.o: $(SRC_DIR)/ffiasm/bls12_381_384.asm | $(BUILD_DIR)
+	nasm -felf64 $< -o $@
+
+$(BUILD_DIR)/bls12_381_asm.o: $(SRC_DIR)/ffiasm/bls12_381.asm | $(BUILD_DIR)
+	nasm -felf64 $< -o $@
+
+$(BUILD_DIR)/nsecp256r1.o: $(SRC_DIR)/ffiasm/nsecp256r1.asm | $(BUILD_DIR)
+	nasm -felf64 $< -o $@
+
+$(BUILD_DIR)/psecp256r1.o: $(SRC_DIR)/ffiasm/psecp256r1.asm | $(BUILD_DIR)
+	nasm -felf64 $< -o $@
+
+# C++ compilation rules
+$(BUILD_DIR)/fecc.o: $(SRC_DIR)/ffiasm/fec.cpp $(SRC_DIR)/ffiasm/fec.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/fnecc.o: $(SRC_DIR)/ffiasm/fnec.cpp $(SRC_DIR)/ffiasm/fnec.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/fqc.o: $(SRC_DIR)/ffiasm/fq.cpp $(SRC_DIR)/ffiasm/fq.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/frc.o: $(SRC_DIR)/ffiasm/fr.cpp $(SRC_DIR)/ffiasm/fr.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/bls12_381_384c.o: $(SRC_DIR)/ffiasm/bls12_381_384.cpp $(SRC_DIR)/ffiasm/bls12_381_384.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/bls12_381c.o: $(SRC_DIR)/ffiasm/bls12_381.cpp $(SRC_DIR)/ffiasm/bls12_381.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/alt_bn128.o: $(SRC_DIR)/ffiasm/alt_bn128.cpp $(SRC_DIR)/ffiasm/alt_bn128.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/nsecp256r1c.o: $(SRC_DIR)/ffiasm/nsecp256r1.cpp $(SRC_DIR)/ffiasm/nsecp256r1.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/psecp256r1c.o: $(SRC_DIR)/ffiasm/psecp256r1.cpp $(SRC_DIR)/ffiasm/psecp256r1.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/misc.o: $(SRC_DIR)/ffiasm/misc.cpp $(SRC_DIR)/ffiasm/misc.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/naf.o: $(SRC_DIR)/ffiasm/naf.cpp $(SRC_DIR)/ffiasm/naf.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/splitparstr.o: $(SRC_DIR)/ffiasm/splitparstr.cpp $(SRC_DIR)/ffiasm/splitparstr.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/ec.o: $(SRC_DIR)/ec/ec.cpp $(SRC_DIR)/ec/ec.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/bn254.o: $(SRC_DIR)/bn254/bn254.cpp $(SRC_DIR)/bn254/bn254.hpp $(SRC_DIR)/bn254/bn254_fe.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/bls12_381.o: $(SRC_DIR)/bls12_381/bls12_381.cpp $(SRC_DIR)/bls12_381/bls12_381.hpp $(SRC_DIR)/bls12_381/bls12_381_fe.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/fcall.o: $(SRC_DIR)/fcall/fcall.cpp $(SRC_DIR)/fcall/fcall.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/arith256.o: $(SRC_DIR)/arith256/arith256.cpp $(SRC_DIR)/arith256/arith256.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/arith384.o: $(SRC_DIR)/arith384/arith384.cpp $(SRC_DIR)/arith384/arith384.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/add256.o: $(SRC_DIR)/bigint/add256.cpp $(SRC_DIR)/bigint/add256.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/globals.o: $(SRC_DIR)/common/globals.cpp $(SRC_DIR)/common/globals.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/goldilocks_base_field.o: $(SRC_DIR)/poseidon2/goldilocks_base_field.cpp $(SRC_DIR)/poseidon2/goldilocks_base_field.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/poseidon2_goldilocks.o: $(SRC_DIR)/poseidon2/poseidon2_goldilocks.cpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks.hpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks_constants.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -rf build
-	rm -rf lib
+	rm -rf $(BUILD_DIR)
+	rm -rf $(LIB_DIR)
+
+.PHONY: all clean

@@ -4,8 +4,6 @@
 //! These DTOs serve as the canonical data structures for business logic, separate from external
 //! representations like gRPC protobuf types or serialization formats.
 
-use std::{fmt::Display, path::PathBuf};
-
 use crate::{ComputeCapacity, DataId, JobId, JobPhase, JobState, WorkerId, WorkerState};
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
@@ -66,28 +64,31 @@ pub struct SystemStatusDto {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum InputModeDto {
-    InputModeNone = 0,          // No input provided
-    InputModePath(PathBuf) = 1, // Input will be provided as a path
-    InputModeData(PathBuf) = 2, // Input data will be sent directly
+pub enum InputsModeDto {
+    // No inputs are provided
+    InputsNone,
+    /// Inputs are provided as a complete payload referenced by a URI.
+    InputsPath(String),
+    /// Inputs are provided directly as data.
+    InputsData(String),
 }
 
-impl Display for InputModeDto {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InputModeDto::InputModeNone => write!(f, "None"),
-            InputModeDto::InputModePath(path) => write!(f, "Path({})", path.display()),
-            InputModeDto::InputModeData(path) => write!(f, "Data({})", path.display()),
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum HintsModeDto {
+    /// No hints are provided.
+    HintsNone,
+    /// Hints are provided as a complete payload referenced by a URI.
+    HintsPath(String),
+    /// Hints will be streamed from the given URI endpoint.
+    HintsStream(String),
 }
 
 pub struct LaunchProofRequestDto {
     pub data_id: DataId,
     pub compute_capacity: u32,
     pub minimal_compute_capacity: u32,
-    pub input_mode: InputModeDto,
+    pub inputs_mode: InputsModeDto,
+    pub hints_mode: HintsModeDto,
     pub simulated_node: Option<u32>,
 }
 
@@ -115,6 +116,30 @@ pub enum CoordinatorMessageDto {
     WorkerRegisterResponse(WorkerRegisterResponseDto),
     ExecuteTaskRequest(ExecuteTaskRequestDto),
     JobCancelled(JobCancelledDto),
+    StreamData(StreamDataDto),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum StreamMessageKind {
+    /// Marks the beginning of a stream. No payload is expected.
+    Start,
+    /// Contains a chunk of stream data.
+    Data,
+    /// Marks the end of a stream. No payload is expected.
+    End,
+}
+
+#[derive(Debug, Clone)]
+pub struct StreamDataDto {
+    pub job_id: JobId,
+    pub stream_type: StreamMessageKind,
+    pub stream_payload: Option<StreamPayloadDto>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StreamPayloadDto {
+    pub sequence_number: u32,
+    pub payload: Vec<u8>,
 }
 
 pub struct HeartbeatDto {
@@ -153,6 +178,7 @@ pub enum ExecuteTaskRequestTypeDto {
 pub struct ContributionParamsDto {
     pub data_id: DataId,
     pub input_source: InputSourceDto,
+    pub hints_source: HintsSourceDto,
     pub rank_id: u32,
     pub total_workers: u32,
     pub worker_allocation: Vec<u32>,
@@ -164,6 +190,13 @@ pub enum InputSourceDto {
     InputPath(String),
     InputData(Vec<u8>),
     InputNull,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub enum HintsSourceDto {
+    HintsPath(String),
+    HintsStream(String),
+    HintsNull,
 }
 
 pub struct ProveParamsDto {

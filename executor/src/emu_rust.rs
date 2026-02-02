@@ -18,7 +18,7 @@ use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
 use crate::{
-    DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, ZiskExecutor,
+    DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
 };
 
 pub struct EmulatorRust {
@@ -67,7 +67,7 @@ impl EmulatorRust {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        let min_traces = self.run_emulator::<F>(Self::NUM_THREADS, &mut stdin.lock().unwrap());
+        let min_traces = self.run_emulator(Self::NUM_THREADS, &mut stdin.lock().unwrap());
 
         // Store execute steps
         let steps = if let MinimalTraces::EmuTrace(min_traces) = &min_traces {
@@ -85,18 +85,14 @@ impl EmulatorRust {
         (min_traces, main_count, secn_count, None, execution_result)
     }
 
-    fn run_emulator<F: PrimeField64>(
-        &self,
-        num_threads: usize,
-        stdin: &mut ZiskStdin,
-    ) -> MinimalTraces {
+    fn run_emulator(&self, num_threads: usize, stdin: &mut ZiskStdin) -> MinimalTraces {
         // Call emulate with these options
         let input_data = stdin.read();
 
         // Settings for the emulator
         let emu_options = EmuOptions {
             chunk_size: Some(self.chunk_size),
-            max_steps: ZiskExecutor::<F>::MAX_NUM_STEPS,
+            max_steps: MAX_NUM_STEPS,
             ..EmuOptions::default()
         };
 

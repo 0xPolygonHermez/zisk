@@ -29,6 +29,8 @@ tracing = { workspace = true }
 itertools = { workspace = true }
 rayon = { workspace = true }
 pil-std-lib = { workspace = true }
+precompiles-hints = { workspace = true }
+anyhow = { workspace = true }
 crossbeam = "0.8.4"
 
 precompiles-common = { workspace = true }
@@ -44,6 +46,9 @@ sm-arith = { workspace = true }
 sm-binary = { workspace = true }
 sm-mem = { workspace = true }
 sm-frequent-ops = { workspace = true }
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+named-sem = { workspace = true }
 
 [features]
 default = []

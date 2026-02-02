@@ -22,7 +22,7 @@ struct ZiskCoordinatorArgs {
     port: Option<u16>,
 
     /// Directory where to save generated proofs
-    #[arg(long, help = "Directory to save generated proofs", conflicts_with = "no_save_proof")]
+    #[arg(long, help = "Directory to save generated proofs", conflicts_with = "no_save_proofs")]
     proofs_dir: Option<PathBuf>,
 
     /// Disable saving proofs
@@ -70,11 +70,19 @@ enum ZiskCoordinatorCommands {
 
         /// Path to the input file
         #[arg(long, help = "Path to the input file for proof generation")]
-        input: Option<PathBuf>,
+        inputs_uri: Option<String>,
+
+        /// Precompiles Hints path
+        #[arg(long, help = "Path to the precompiles hints file for proof generation")]
+        hints_uri: Option<String>,
 
         /// Whether to send the input data directly
         #[clap(short = 'x', long, default_value_t = false)]
         direct_inputs: bool,
+
+        /// Whether to send the input data directly
+        #[clap(long, default_value_t = false)]
+        stream_hints: bool,
 
         /// Compute capacity needed to generate the proof
         #[arg(long, short, help = "Compute capacity needed to generate the proof")]
@@ -97,8 +105,10 @@ async fn main() -> Result<()> {
         Some(ZiskCoordinatorCommands::Prove {
             coordinator_url,
             data_id,
-            input,
+            inputs_uri,
+            hints_uri,
             direct_inputs,
+            stream_hints,
             compute_capacity,
             minimal_compute_capacity,
             simulated_node,
@@ -107,8 +117,10 @@ async fn main() -> Result<()> {
             handler_prove::handle(
                 coordinator_url,
                 data_id,
-                input,
+                inputs_uri,
+                hints_uri,
                 direct_inputs,
+                stream_hints,
                 compute_capacity,
                 minimal_compute_capacity,
                 simulated_node,

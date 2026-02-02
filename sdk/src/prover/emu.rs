@@ -9,9 +9,9 @@ use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, VerboseMode};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use zisk_common::io::ZiskStdin;
+use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::ElfBinaryLike;
-use zisk_common::ExecutorStats;
+use zisk_common::ExecutorStatsHandle;
 use zisk_distributed_common::LoggingConfig;
 use zisk_witness::get_packed_info;
 
@@ -75,6 +75,10 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.set_stdin(stdin)
     }
 
+    fn set_hints_stream(&self, _: StreamSource) -> Result<()> {
+        unreachable!("EMU prover does not support precompile hints");
+    }
+
     fn setup(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
         let proving_key = self.core_prover.backend.get_proving_key_path();
 
@@ -97,7 +101,7 @@ impl ProverEngine for EmuProver {
         self.core_prover
             .backend
             .execution_result()
-            .map(|(exec_result, _)| exec_result.executed_steps)
+            .map(|(exec_result, _)| exec_result.steps)
             .unwrap_or(0)
     }
 
@@ -111,7 +115,7 @@ impl ProverEngine for EmuProver {
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
     }
 

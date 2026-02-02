@@ -17,7 +17,10 @@ use std::{
     time::Duration,
 };
 use zisk_common::ElfBinaryLike;
-use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
+use zisk_common::{
+    io::{StreamSource, ZiskStdin},
+    ExecutorStatsHandle, ZiskExecutionResult,
+};
 
 pub struct ZiskExecuteResult {
     pub execution: ZiskExecutionResult,
@@ -27,7 +30,7 @@ pub struct ZiskExecuteResult {
 pub struct ZiskVerifyConstraintsResult {
     pub execution: ZiskExecutionResult,
     pub duration: Duration,
-    pub stats: ExecutorStats,
+    pub stats: ExecutorStatsHandle,
 }
 
 pub struct ZiskProgramVK {
@@ -399,7 +402,7 @@ impl ZiskPublics {
 pub struct ZiskProveResult {
     pub execution: ZiskExecutionResult,
     pub duration: Duration,
-    pub stats: ExecutorStats,
+    pub stats: ExecutorStatsHandle,
     pub proof_id: Option<String>,
     pub proof: ZiskProof,
     pub publics: ZiskPublics,
@@ -409,7 +412,7 @@ impl ZiskProveResult {
     pub fn new(
         execution: ZiskExecutionResult,
         duration: Duration,
-        stats: ExecutorStats,
+        stats: ExecutorStatsHandle,
         proof_id: Option<String>,
         proof: ZiskProof,
         publics: ZiskPublics,
@@ -420,7 +423,7 @@ impl ZiskProveResult {
     pub fn new_null(
         execution: ZiskExecutionResult,
         duration: Duration,
-        stats: ExecutorStats,
+        stats: ExecutorStatsHandle,
     ) -> Self {
         Self {
             execution,
@@ -463,6 +466,8 @@ pub trait ProverEngine {
 
     fn set_stdin(&self, stdin: ZiskStdin) -> Result<()>;
 
+    fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()>;
+
     fn executed_steps(&self) -> u64;
 
     fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult>;
@@ -473,7 +478,7 @@ pub trait ProverEngine {
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)>;
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)>;
 
     fn verify_constraints_debug(
         &self,
@@ -544,6 +549,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_stdin(stdin)
     }
 
+    pub fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()> {
+        self.prover.set_hints_stream(hints_stream)
+    }
+
     /// Get the world rank of the prover. The world rank is the rank of the prover in the global MPI context.
     /// If MPI is not used, this will always return 0.
     pub fn world_rank(&self) -> i32 {
@@ -574,7 +583,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.prover.stats(stdin, debug_info, minimal_memory, mpi_node)
     }
 

@@ -5,15 +5,18 @@ use tonic::transport::Channel;
 use tracing::{error, info};
 use zisk_distributed_coordinator::Config;
 use zisk_distributed_grpc_api::{
-    zisk_distributed_api_client::ZiskDistributedApiClient, InputMode, LaunchProofRequest,
+    zisk_distributed_api_client::ZiskDistributedApiClient, HintsMode, InputMode, LaunchProofRequest,
 };
 
 /// Handle the prove subcommand - makes RPC request to coordinator
+#[allow(clippy::too_many_arguments)]
 pub async fn handle(
     coordinator_url: Option<String>,
     data_id: Option<String>,
-    input_path: Option<PathBuf>,
+    inputs_uri: Option<String>,
+    hints_uri: Option<String>,
     direct_inputs: bool,
+    stream_hints: bool,
     compute_capacity: u32,
     minimal_compute_capacity: Option<u32>,
     simulated_node: Option<u32>,
@@ -29,24 +32,22 @@ pub async fn handle(
     let channel = Channel::from_shared(coordinator_url)?.connect().await?;
     let mut client = ZiskDistributedApiClient::new(channel);
 
-    let (input_mode, input_path) = if let Some(ref path) = input_path {
-        if path.as_os_str().is_empty() {
-            return Err(anyhow::anyhow!("Input path cannot be empty"));
-        }
+    let inputs_mode = match inputs_uri {
+        None => InputMode::None,
+        Some(_) if direct_inputs => InputMode::Data,
+        Some(_) => InputMode::Path,
+    };
 
-        let input_path = Some(path.to_string_lossy().to_string());
-
-        let input_mode = if direct_inputs { InputMode::Data } else { InputMode::Path };
-
-        (input_mode, input_path)
-    } else {
-        (InputMode::None, None)
+    let hints_mode = match hints_uri {
+        None => HintsMode::None,
+        Some(_) if stream_hints => HintsMode::Stream,
+        Some(_) => HintsMode::Path,
     };
 
     // ID will be id if present, else input file name or random UUID
     let data_id = if let Some(id) = data_id {
         id
-    } else if let Some(ref path) = input_path {
+    } else if let Some(ref path) = inputs_uri {
         PathBuf::from(path).file_stem().unwrap().to_string_lossy().to_string()
     } else {
         uuid::Uuid::new_v4().to_string()
@@ -66,8 +67,10 @@ pub async fn handle(
         data_id,
         compute_capacity,
         minimal_compute_capacity,
-        input_mode: input_mode.into(),
-        input_path,
+        inputs_mode: inputs_mode.into(),
+        inputs_uri,
+        hints_mode: hints_mode.into(),
+        hints_uri,
         simulated_node,
     };
 

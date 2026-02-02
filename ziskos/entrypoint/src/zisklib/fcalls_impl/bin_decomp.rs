@@ -12,7 +12,7 @@ pub fn fcall_bin_decomp(parameters: &[u64], results: &mut [u64]) -> i64 {
     (1 + len_bits) as i64
 }
 
-fn bin_decomp(x: &[u64], len_x: usize) -> Vec<u8> {
+pub fn bin_decomp(x: &[u64], len_x: usize) -> Vec<u8> {
     let mut decomposition = Vec::new();
     let mut started = false;
 

@@ -1,3 +1,5 @@
+use std::hint;
+
 use crate::{
     syscalls::{
         syscall_secp256k1_add, syscall_secp256k1_dbl, SyscallPoint256, SyscallSecp256k1AddParams,
@@ -19,13 +21,37 @@ const IDENTITY_POINT256: SyscallPoint256 = SyscallPoint256 { x: IDENTITY_X, y: I
 const G_POINT256: SyscallPoint256 = SyscallPoint256 { x: G_X, y: G_Y };
 
 /// Given a x-coordinate `x_bytes` and a parity `y_is_odd`,
-/// this function decompresses a non-infinity point on the secp256k1 curve.
-pub fn secp256k1_decompress(x: &[u64; 4], y_is_odd: bool) -> Result<([u64; 4], [u64; 4]), bool> {
+/// this function decompresses the point on the secp256k1 curve.
+pub fn secp256k1_decompress(
+    x: &[u64; 4],
+    y_is_odd: bool,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> Result<([u64; 4], [u64; 4]), bool> {
     // Calculate the y-coordinate of the point: y = sqrt(x³ + 7)
-    let x_sq = secp256k1_fp_square(x);
-    let x_cb = secp256k1_fp_mul(&x_sq, x);
-    let y_sq = secp256k1_fp_add(&x_cb, &E_B);
-    let (y, has_sqrt) = secp256k1_fp_sqrt(&y_sq, y_is_odd as u64);
+    let x_sq = secp256k1_fp_square(
+        x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let x_cb = secp256k1_fp_mul(
+        &x_sq,
+        x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let y_sq = secp256k1_fp_add(
+        &x_cb,
+        &E_B,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let (y, has_sqrt) = secp256k1_fp_sqrt(
+        &y_sq,
+        y_is_odd as u64,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     if !has_sqrt {
         return Err(false);
     }
@@ -37,36 +63,61 @@ pub fn secp256k1_decompress(x: &[u64; 4], y_is_odd: bool) -> Result<([u64; 4], [
     Ok((*x, y))
 }
 
-/// Converts a non-infinity point `p` on the Secp256k1 curve from jacobian coordinates to affine coordinates
-pub fn secp256k1_to_affine(p: &[u64; 12]) -> [u64; 8] {
-    let z: [u64; 4] = [p[8], p[9], p[10], p[11]];
+/// Checks whether the given point `p` is on the Secp256k1 curve.
+/// It assumes that `p` is not the point at infinity.
+pub fn secp256k1_is_on_curve(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> bool {
+    let x: [u64; 4] = p[0..4].try_into().unwrap();
+    let y: [u64; 4] = p[4..8].try_into().unwrap();
 
-    // Point at infinity cannot be converted to affine
-    debug_assert!(z != ZERO_256, "Cannot convert point at infinity to affine");
-
-    let zinv = secp256k1_fp_inv(&z);
-    let zinv_sq = secp256k1_fp_square(&zinv);
-
-    let x: [u64; 4] = [p[0], p[1], p[2], p[3]];
-    let y: [u64; 4] = [p[4], p[5], p[6], p[7]];
-
-    let x_res = secp256k1_fp_mul(&x, &zinv_sq);
-    let y_res = secp256k1_fp_mul(&secp256k1_fp_mul(&y, &zinv_sq), &zinv);
-
-    [x_res[0], x_res[1], x_res[2], x_res[3], y_res[0], y_res[1], y_res[2], y_res[3]]
+    // p in E iff y² == x³ + 7
+    let lhs = secp256k1_fp_square(
+        &y,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let mut rhs = secp256k1_fp_square(
+        &x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    rhs = secp256k1_fp_mul(
+        &rhs,
+        &x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    rhs = secp256k1_fp_add(
+        &rhs,
+        &E_B,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    eq(&lhs, &rhs)
 }
 
 /// Given points `p1` and `p2`, performs the point addition `p1 + p2` and assigns the result to `p1`.
 /// It assumes that `p1` and `p2` are from the Secp256k1 curve, that `p1,p2 != 𝒪`
 /// Returns true if the result is the point at infinity.
 #[inline]
-fn secp256k1_add_non_infinity_points(p1: &mut SyscallPoint256, p2: &SyscallPoint256) -> bool {
+fn secp256k1_add_non_infinity_points(
+    p1: &mut SyscallPoint256,
+    p2: &SyscallPoint256,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
     if p1.x != p2.x {
         let mut params = SyscallSecp256k1AddParams { p1, p2 };
-        syscall_secp256k1_add(&mut params);
+        syscall_secp256k1_add(
+            &mut params,
+            #[cfg(feature = "hints")]
+            hints,
+        );
         false
     } else if p1.y == p2.y {
-        syscall_secp256k1_dbl(p1);
+        syscall_secp256k1_dbl(
+            p1,
+            #[cfg(feature = "hints")]
+            hints,
+        );
         false
     } else {
         // p1 + (-p1) = 𝒪
@@ -74,25 +125,15 @@ fn secp256k1_add_non_infinity_points(p1: &mut SyscallPoint256, p2: &SyscallPoint
     }
 }
 
-/// Checks whether the given point `p` is on the Secp256k1 curve.
-/// It assumes that `p` is not the point at infinity.
-pub fn secp256k1_is_on_curve(p: &[u64; 8]) -> bool {
-    let x: [u64; 4] = p[0..4].try_into().unwrap();
-    let y: [u64; 4] = p[4..8].try_into().unwrap();
-
-    // p in E iff y² == x³ + 7
-    let lhs = secp256k1_fp_square(&y);
-    let mut rhs = secp256k1_fp_square(&x);
-    rhs = secp256k1_fp_mul(&rhs, &x);
-    rhs = secp256k1_fp_add(&rhs, &E_B);
-    eq(&lhs, &rhs)
-}
-
 /// Given a non-infinity point `p` and a scalar `k`, computes the scalar multiplication `k·p`
 ///
 /// Note: There are no (non-infinity) points of order 2 in Secp256k1.
 ///       All (non-infinity) points are of prime order N.
-pub fn secp256k1_scalar_mul(k: &[u64; 4], p: &[u64; 8]) -> Option<[u64; 8]> {
+pub fn secp256k1_scalar_mul(
+    k: &[u64; 4],
+    p: &[u64; 8],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> Option<[u64; 8]> {
     // Direct cases: k = 0, k = 1, k = 2
     if eq(k, &ZERO_256) {
         return None;
@@ -100,7 +141,11 @@ pub fn secp256k1_scalar_mul(k: &[u64; 4], p: &[u64; 8]) -> Option<[u64; 8]> {
         return Some(*p);
     } else if eq(k, &TWO_256) {
         let mut res = SyscallPoint256 { x: [p[0], p[1], p[2], p[3]], y: [p[4], p[5], p[6], p[7]] };
-        syscall_secp256k1_dbl(&mut res);
+        syscall_secp256k1_dbl(
+            &mut res,
+            #[cfg(feature = "hints")]
+            hints,
+        );
         return Some([
             res.x[0], res.x[1], res.x[2], res.x[3], res.y[0], res.y[1], res.y[2], res.y[3],
         ]);
@@ -110,7 +155,12 @@ pub fn secp256k1_scalar_mul(k: &[u64; 4], p: &[u64; 8]) -> Option<[u64; 8]> {
     // Hint the length the binary representations of k
     // We will verify the output by recomposing k
     // Moreover, we should check that the first received bit is 1
-    let (max_limb, max_bit) = fcall_msb_pos_256(k, &ZERO_256);
+    let (max_limb, max_bit) = fcall_msb_pos_256(
+        k,
+        &ZERO_256,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Perform the loop, based on the binary representation of k
 
@@ -141,13 +191,21 @@ pub fn secp256k1_scalar_mul(k: &[u64; 4], p: &[u64; 8]) -> Option<[u64; 8]> {
     for i in (0..=limb).rev() {
         for j in (0..=bit).rev() {
             // Always double
-            syscall_secp256k1_dbl(&mut res);
+            syscall_secp256k1_dbl(
+                &mut res,
+                #[cfg(feature = "hints")]
+                hints,
+            );
 
             // Get the next bit b of k.
             // If b == 1, we should add P
             if ((k[i] >> j) & 1) == 1 {
                 let mut params = SyscallSecp256k1AddParams { p1: &mut res, p2: &p };
-                syscall_secp256k1_add(&mut params);
+                syscall_secp256k1_add(
+                    &mut params,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
 
                 // Reconstruct k
                 k_rec[i] |= 1 << j;
@@ -169,17 +227,33 @@ pub fn secp256k1_double_scalar_mul_with_g(
     k1: &[u64; 4],
     k2: &[u64; 4],
     p: &[u64; 8],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Option<[u64; 8]> {
     let p = SyscallPoint256 { x: [p[0], p[1], p[2], p[3]], y: [p[4], p[5], p[6], p[7]] };
 
     // Start by precomputing g + p
     let mut gp = G_POINT256;
-    let gp_is_infinity = secp256k1_add_non_infinity_points(&mut gp, &p);
+    let gp_is_infinity = secp256k1_add_non_infinity_points(
+        &mut gp,
+        &p,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // If G + P = 𝒪 => P = -G and therefore the operation is k1·G + (-k2)·G = (k1-k2)·G
     // Fall back to scalar mul
     if gp_is_infinity {
-        return secp256k1_scalar_mul(&secp256k1_fn_sub(k1, k2), &G);
+        return secp256k1_scalar_mul(
+            &secp256k1_fn_sub(
+                k1,
+                k2,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            &G,
+            #[cfg(feature = "hints")]
+            hints,
+        );
     }
 
     if is_one(k1) && is_one(k2) {
@@ -191,7 +265,12 @@ pub fn secp256k1_double_scalar_mul_with_g(
     // Hint the maximum length between the binary representations of k1 and k2
     // We will verify the output by recomposing both k1 and k2
     // Moreover, we should check that the first received bit (of either k1 or k2) is 1
-    let (max_limb, max_bit) = fcall_msb_pos_256(k1, k2);
+    let (max_limb, max_bit) = fcall_msb_pos_256(
+        k1,
+        k2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Perform the loop, based on the binary representation of k1 and k2
 
@@ -266,7 +345,11 @@ pub fn secp256k1_double_scalar_mul_with_g(
                 (0, 0) => {
                     // If res is 𝒪, do nothing; otherwise, double
                     if !res_is_infinity {
-                        syscall_secp256k1_dbl(&mut res);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                     }
                 }
                 (0, 1) => {
@@ -276,8 +359,17 @@ pub fn secp256k1_double_scalar_mul_with_g(
                         res.y = p.y;
                         res_is_infinity = false;
                     } else {
-                        syscall_secp256k1_dbl(&mut res);
-                        res_is_infinity = secp256k1_add_non_infinity_points(&mut res, &p);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
+                        res_is_infinity = secp256k1_add_non_infinity_points(
+                            &mut res,
+                            &p,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                     }
 
                     // Update k2_rec
@@ -290,8 +382,17 @@ pub fn secp256k1_double_scalar_mul_with_g(
                         res.y = G_POINT256.y;
                         res_is_infinity = false;
                     } else {
-                        syscall_secp256k1_dbl(&mut res);
-                        res_is_infinity = secp256k1_add_non_infinity_points(&mut res, &G_POINT256);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
+                        res_is_infinity = secp256k1_add_non_infinity_points(
+                            &mut res,
+                            &G_POINT256,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                     }
 
                     // Update k1_rec
@@ -306,9 +407,18 @@ pub fn secp256k1_double_scalar_mul_with_g(
                             res_is_infinity = false;
                         }
                     } else {
-                        syscall_secp256k1_dbl(&mut res);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                         if !gp_is_infinity {
-                            res_is_infinity = secp256k1_add_non_infinity_points(&mut res, &gp);
+                            res_is_infinity = secp256k1_add_non_infinity_points(
+                                &mut res,
+                                &gp,
+                                #[cfg(feature = "hints")]
+                                hints,
+                            );
                         }
                     }
 
@@ -341,22 +451,43 @@ pub fn secp256k1_triple_scalar_mul_with_g(
     t: &[u64; 4],
     p: &[u64; 8],
     q: &[u64; 8],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Option<[u64; 8]> {
     let p = SyscallPoint256 { x: [p[0], p[1], p[2], p[3]], y: [p[4], p[5], p[6], p[7]] };
     let q = SyscallPoint256 { x: [q[0], q[1], q[2], q[3]], y: [q[4], q[5], q[6], q[7]] };
 
     // Precompute g + p, g + q, p + q, g + p + q
     let mut gp = G_POINT256;
-    let gp_is_infinity = secp256k1_add_non_infinity_points(&mut gp, &p);
+    let gp_is_infinity = secp256k1_add_non_infinity_points(
+        &mut gp,
+        &p,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     let mut gq = G_POINT256;
-    let gq_is_infinity = secp256k1_add_non_infinity_points(&mut gq, &q);
+    let gq_is_infinity = secp256k1_add_non_infinity_points(
+        &mut gq,
+        &q,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     let mut pq = SyscallPoint256 { x: p.x, y: p.y };
-    let pq_is_infinity = secp256k1_add_non_infinity_points(&mut pq, &q);
+    let pq_is_infinity = secp256k1_add_non_infinity_points(
+        &mut pq,
+        &q,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     let mut gpq = SyscallPoint256 { x: gp.x, y: gp.y };
-    let gpq_is_infinity = secp256k1_add_non_infinity_points(&mut gpq, &q);
+    let gpq_is_infinity = secp256k1_add_non_infinity_points(
+        &mut gpq,
+        &q,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     if is_one(r) && is_one(s) && is_one(t) {
         // Return g + p + q
@@ -371,7 +502,13 @@ pub fn secp256k1_triple_scalar_mul_with_g(
     // From here on, at least one of r,s,t is greater than 1
 
     // Hint the maximum length between the binary representations of r,s and t
-    let (max_limb, max_bit) = fcall_msb_pos_256_3(r, s, t);
+    let (max_limb, max_bit) = fcall_msb_pos_256_3(
+        r,
+        s,
+        t,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Perform the loop, based on the binary representation of r,s and t
 
@@ -495,7 +632,11 @@ pub fn secp256k1_triple_scalar_mul_with_g(
                 (0, 0, 0) => {
                     // If res is 𝒪, do nothing; otherwise, double
                     if !res_is_infinity {
-                        syscall_secp256k1_dbl(&mut res);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                     }
                 }
                 (0, 0, 1) => {
@@ -505,8 +646,17 @@ pub fn secp256k1_triple_scalar_mul_with_g(
                         res.y = q.y;
                         res_is_infinity = false;
                     } else {
-                        syscall_secp256k1_dbl(&mut res);
-                        res_is_infinity = secp256k1_add_non_infinity_points(&mut res, &q);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
+                        res_is_infinity = secp256k1_add_non_infinity_points(
+                            &mut res,
+                            &q,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                     }
 
                     // Update t_rec
@@ -519,8 +669,17 @@ pub fn secp256k1_triple_scalar_mul_with_g(
                         res.y = p.y;
                         res_is_infinity = false;
                     } else {
-                        syscall_secp256k1_dbl(&mut res);
-                        res_is_infinity = secp256k1_add_non_infinity_points(&mut res, &p);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
+                        res_is_infinity = secp256k1_add_non_infinity_points(
+                            &mut res,
+                            &p,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                     }
 
                     // Update s_rec
@@ -535,9 +694,18 @@ pub fn secp256k1_triple_scalar_mul_with_g(
                             res_is_infinity = false;
                         }
                     } else {
-                        syscall_secp256k1_dbl(&mut res);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                         if !pq_is_infinity {
-                            res_is_infinity = secp256k1_add_non_infinity_points(&mut res, &pq);
+                            res_is_infinity = secp256k1_add_non_infinity_points(
+                                &mut res,
+                                &pq,
+                                #[cfg(feature = "hints")]
+                                hints,
+                            );
                         }
                     }
 
@@ -552,8 +720,17 @@ pub fn secp256k1_triple_scalar_mul_with_g(
                         res.y = G_POINT256.y;
                         res_is_infinity = false;
                     } else {
-                        syscall_secp256k1_dbl(&mut res);
-                        res_is_infinity = secp256k1_add_non_infinity_points(&mut res, &G_POINT256);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
+                        res_is_infinity = secp256k1_add_non_infinity_points(
+                            &mut res,
+                            &G_POINT256,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                     }
 
                     // Update r_rec
@@ -568,9 +745,18 @@ pub fn secp256k1_triple_scalar_mul_with_g(
                             res_is_infinity = false;
                         }
                     } else {
-                        syscall_secp256k1_dbl(&mut res);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                         if !gq_is_infinity {
-                            res_is_infinity = secp256k1_add_non_infinity_points(&mut res, &gq);
+                            res_is_infinity = secp256k1_add_non_infinity_points(
+                                &mut res,
+                                &gq,
+                                #[cfg(feature = "hints")]
+                                hints,
+                            );
                         }
                     }
 
@@ -587,9 +773,18 @@ pub fn secp256k1_triple_scalar_mul_with_g(
                             res_is_infinity = false;
                         }
                     } else {
-                        syscall_secp256k1_dbl(&mut res);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                         if !gp_is_infinity {
-                            res_is_infinity = secp256k1_add_non_infinity_points(&mut res, &gp);
+                            res_is_infinity = secp256k1_add_non_infinity_points(
+                                &mut res,
+                                &gp,
+                                #[cfg(feature = "hints")]
+                                hints,
+                            );
                         }
                     }
 
@@ -606,9 +801,18 @@ pub fn secp256k1_triple_scalar_mul_with_g(
                             res_is_infinity = false;
                         }
                     } else {
-                        syscall_secp256k1_dbl(&mut res);
+                        syscall_secp256k1_dbl(
+                            &mut res,
+                            #[cfg(feature = "hints")]
+                            hints,
+                        );
                         if !gpq_is_infinity {
-                            res_is_infinity = secp256k1_add_non_infinity_points(&mut res, &gpq);
+                            res_is_infinity = secp256k1_add_non_infinity_points(
+                                &mut res,
+                                &gpq,
+                                #[cfg(feature = "hints")]
+                                hints,
+                            );
                         }
                     }
 
@@ -633,109 +837,4 @@ pub fn secp256k1_triple_scalar_mul_with_g(
     } else {
         Some([res.x[0], res.x[1], res.x[2], res.x[3], res.y[0], res.y[1], res.y[2], res.y[3]])
     }
-}
-
-// ==================== C FFI Functions ====================
-
-/// # Safety
-/// - `x_bytes_ptr` must point to 32 bytes (big-endian x-coordinate)
-/// - `out_ptr` must point to at least 8 u64s
-///
-/// Returns 1 on success, 0 if no valid point exists
-#[no_mangle]
-pub unsafe extern "C" fn secp256k1_decompress_c(
-    x_bytes_ptr: *const u8,
-    y_is_odd: u8,
-    out_ptr: *mut u64,
-) -> u8 {
-    // Convert the x-coordinate from BEu8 to LEu64
-    let x_bytes: &[u8; 32] = &*(x_bytes_ptr as *const [u8; 32]);
-    let x = bytes_be_to_u64_le(x_bytes);
-
-    let (x, y) = match secp256k1_decompress(&x, y_is_odd != 0) {
-        Ok((x, y)) => (x, y),
-        Err(_) => return 0,
-    };
-
-    *out_ptr.add(0) = x[0];
-    *out_ptr.add(1) = x[1];
-    *out_ptr.add(2) = x[2];
-    *out_ptr.add(3) = x[3];
-    *out_ptr.add(4) = y[0];
-    *out_ptr.add(5) = y[1];
-    *out_ptr.add(6) = y[2];
-    *out_ptr.add(7) = y[3];
-
-    1
-}
-
-/// # Safety
-/// - `p_ptr` must point to 12 u64s (jacobian point)
-/// - `out_ptr` must point to at least 8 u64s
-#[no_mangle]
-pub unsafe extern "C" fn secp256k1_to_affine_c(p_ptr: *const u64, out_ptr: *mut u64) {
-    let p: &[u64; 12] = &*(p_ptr as *const [u64; 12]);
-    let result = secp256k1_to_affine(p);
-
-    *out_ptr.add(0) = result[0];
-    *out_ptr.add(1) = result[1];
-    *out_ptr.add(2) = result[2];
-    *out_ptr.add(3) = result[3];
-    *out_ptr.add(4) = result[4];
-    *out_ptr.add(5) = result[5];
-    *out_ptr.add(6) = result[6];
-    *out_ptr.add(7) = result[7];
-}
-
-/// # Safety
-/// - `k1_ptr`, `k2_ptr` must point to 4 u64s each
-/// - `p_ptr` must point to 8 u64s
-/// - `out_ptr` must point to at least 8 u64s
-///
-/// Returns true if result is point at infinity
-#[no_mangle]
-pub unsafe extern "C" fn secp256k1_double_scalar_mul_with_g_c(
-    k1_ptr: *const u64,
-    k2_ptr: *const u64,
-    p_ptr: *const u64,
-    out_ptr: *mut u64,
-) -> bool {
-    let k1: &[u64; 4] = &*(k1_ptr as *const [u64; 4]);
-    let k2: &[u64; 4] = &*(k2_ptr as *const [u64; 4]);
-    let p: &[u64; 8] = &*(p_ptr as *const [u64; 8]);
-
-    match secp256k1_double_scalar_mul_with_g(k1, k2, p) {
-        None => true,
-        Some(res) => {
-            *out_ptr.add(0) = res[0];
-            *out_ptr.add(1) = res[1];
-            *out_ptr.add(2) = res[2];
-            *out_ptr.add(3) = res[3];
-            *out_ptr.add(4) = res[4];
-            *out_ptr.add(5) = res[5];
-            *out_ptr.add(6) = res[6];
-            *out_ptr.add(7) = res[7];
-            false
-        }
-    }
-}
-
-// Helper to convert 32 big-endian bytes to [u64; 4] little-endian limbs
-#[inline]
-fn bytes_be_to_u64_le(bytes: &[u8; 32]) -> [u64; 4] {
-    let mut result = [0u64; 4];
-    for (i, r) in result.iter_mut().enumerate() {
-        let offset = 24 - i * 8;
-        *r = u64::from_be_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-            bytes[offset + 4],
-            bytes[offset + 5],
-            bytes[offset + 6],
-            bytes[offset + 7],
-        ]);
-    }
-    result
 }

@@ -18,7 +18,10 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use zisk_common::{io::ZiskStdin, ElfBinaryLike, ExecutorStats, ZiskExecutionResult};
+use zisk_common::{
+    io::{StreamSource, ZiskStdin},
+    ElfBinaryLike, ExecutorStatsHandle, ZiskExecutionResult,
+};
 use zisk_verifier::verify_zisk_proof;
 use zisk_witness::WitnessLib;
 
@@ -92,7 +95,14 @@ impl ProverBackend {
         Ok(())
     }
 
-    pub fn execution_result(&self) -> Result<(ZiskExecutionResult, ExecutorStats)> {
+    pub fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()> {
+        let witness_lib = self.witness_lib.get().ok_or_else(|| {
+            anyhow::anyhow!("Witness_lib is not initialized. Please initialize it before use.")
+        })?;
+        witness_lib.set_hints_stream(hints_stream)
+    }
+
+    pub fn execution_result(&self) -> Result<(ZiskExecutionResult, ExecutorStatsHandle)> {
         let witness_lib = self.witness_lib.get().ok_or_else(|| {
             anyhow::anyhow!("Witness_lib is not initialized. Please initialize it before use.")
         })?;
@@ -141,7 +151,7 @@ impl ProverBackend {
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         _mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let proofman = self
             .proofman
             .as_ref()
@@ -186,7 +196,7 @@ impl ProverBackend {
             )
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
-        let (_, stats): (ZiskExecutionResult, ExecutorStats) =
+        let (_, stats): (ZiskExecutionResult, ExecutorStatsHandle) =
             witness_lib.execution_result().ok_or_else(|| {
                 anyhow::anyhow!("Failed to get execution result from emulator prover")
             })?;
@@ -226,9 +236,15 @@ impl ProverBackend {
         // Store the stats in stats.json
         #[cfg(feature = "stats")]
         {
-            let stats_id = _stats.lock().unwrap().get_id();
-            _stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
-            _stats.lock().unwrap().store_stats();
+            let stats_id = stats.get_inner().lock().unwrap().next_id();
+            stats.get_inner().lock().unwrap().add_stat(
+                0,
+                stats_id,
+                "END",
+                0,
+                ExecutorStatsEvent::Mark,
+            );
+            stats.get_inner().lock().unwrap().store_stats();
         }
 
         Ok(ZiskVerifyConstraintsResult { execution: result, duration: elapsed, stats })
@@ -362,9 +378,15 @@ impl ProverBackend {
         // Store the stats in stats.json
         #[cfg(feature = "stats")]
         {
-            let stats_id = _stats.lock().unwrap().get_id();
-            _stats.lock().unwrap().add_stat(0, stats_id, "END", 0, ExecutorStatsEvent::Mark);
-            _stats.lock().unwrap().store_stats();
+            let stats_id = stats.get_inner().lock().unwrap().next_id();
+            stats.get_inner().lock().unwrap().add_stat(
+                0,
+                stats_id,
+                "END",
+                0,
+                ExecutorStatsEvent::Mark,
+            );
+            stats.get_inner().lock().unwrap().store_stats();
         }
 
         proofman.set_barrier();

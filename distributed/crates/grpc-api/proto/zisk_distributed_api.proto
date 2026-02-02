@@ -56,16 +56,25 @@ message LaunchProofRequest {
   string data_id = 1;
   uint32 compute_capacity = 2;
   uint32 minimal_compute_capacity = 3;
-  InputMode input_mode = 4;
-  optional string input_path = 5;
-  optional uint32 simulated_node = 6; // If set, indicates this is a simulated worker
+  InputMode inputs_mode = 4;
+  optional string inputs_uri = 5;
+  HintsMode hints_mode = 6;
+  optional string hints_uri = 7;
+  optional uint32 simulated_node = 8; // If set, indicates this is a simulated worker
 }
 
 enum InputMode {
   INPUT_MODE_NONE = 0;  // No input provided
-  INPUT_MODE_PATH = 1;  // Input will be provided as a path
+  INPUT_MODE_PATH = 1;   // Input will be provided as a PATH
   INPUT_MODE_DATA = 2;  // Input data will be sent directly
 }
+
+enum HintsMode {
+  HINTS_MODE_NONE = 0;  // No hints provided
+  HINTS_MODE_PATH = 1;   // Hints will be provided as a PATH
+  HINTS_MODE_STREAM = 2;  // Hints will be sent as a stream
+}
+
 
 // ============================================================================
 // Admin Commands Response Messages
@@ -167,6 +176,7 @@ message CoordinatorMessage {
     WorkerRegisterResponse register_response = 3;
     ExecuteTaskRequest execute_task = 4;  
     JobCancelled job_cancelled = 5;
+    StreamData stream_data = 6;
   }
 }
 
@@ -235,10 +245,12 @@ message ContributionParams {
     string input_path = 2;
     bytes input_data = 3;
   }
-  uint32 rank_id = 4;
-  uint32 total_workers = 5;
-  repeated uint32 worker_allocation = 6;
-  uint32 job_compute_units = 7;
+  optional string hints_path = 4;
+  bool hints_stream = 5; // Indicates whether hints will be streamed
+  uint32 rank_id = 6;
+  uint32 total_workers = 7;
+  repeated uint32 worker_allocation = 8;
+  uint32 job_compute_units = 9;
 }
 
 message ProveParams {
@@ -250,6 +262,25 @@ message AggParams {
   bool last_proof = 2;
   bool final_proof = 3;
   bool compressed = 4;
+}
+
+// Stream type enumeration
+enum StreamType {
+  STREAM_TYPE_START = 0;
+  STREAM_TYPE_DATA = 1;
+  STREAM_TYPE_END = 2;
+}
+
+// Streaming messages for data transfer
+message StreamData {
+  string job_id = 1;
+  StreamType stream_type = 2;
+  optional StreamPayload payload = 3;
+}
+
+message StreamPayload {
+  uint32 sequence_number = 3;
+  bytes payload = 4;
 }
 
 message ExecuteTaskResponse {

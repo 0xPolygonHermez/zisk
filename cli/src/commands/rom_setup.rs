@@ -31,6 +31,10 @@ pub struct ZiskRomSetup {
     #[clap(short = 'o', long)]
     pub output_dir: Option<PathBuf>,
 
+    /// Enable precompile hints in assembly generation
+    #[clap(short = 'n', long, default_value_t = false)]
+    pub hints: bool,
+
     #[clap(short = 'v', long, default_value_t = false)]
     pub verbose: bool,
 }
@@ -58,10 +62,11 @@ impl ZiskRomSetup {
         let elf = ElfBinaryOwned::new(
             elf_bin,
             self.elf_path.file_stem().unwrap().to_str().unwrap().to_string(),
+            self.hints,
         );
         rom_merkle_setup::<Goldilocks>(&elf, &self.output_dir, &proving_key)?;
 
-        gen_assembly(&self.elf_path, &self.zisk_path, &self.output_dir, self.verbose)?;
+        gen_assembly(&self.elf_path, &self.zisk_path, &self.output_dir, self.verbose, self.hints)?;
 
         println!();
         tracing::info!("{}", "ROM setup successfully completed".bright_green().bold());

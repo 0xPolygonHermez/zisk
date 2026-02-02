@@ -22,7 +22,7 @@ pub fn fcall_secp256k1_ecdsa_verify(params: &[u64], results: &mut [u64]) -> i64 
     8
 }
 
-fn secp256k1_ecdsa_verify(pk: &[u64; 8], z: &[u64; 4], r: &[u64; 4], s: &[u64; 4]) -> [u64; 8] {
+pub fn secp256k1_ecdsa_verify(pk: &[u64; 8], z: &[u64; 4], r: &[u64; 4], s: &[u64; 4]) -> [u64; 8] {
     // Given the public key pk and the signature (r, s) over the message hash z:
     // 1. Computes s_inv = s⁻¹ mod n
     // 2. Computes u1 = z·s_inv mod n

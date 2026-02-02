@@ -237,8 +237,8 @@ impl ExecutorStatsHandle {
         self.inner.lock().unwrap().print_stats();
     }
 
-    pub fn get_inner(&self) -> ExecutorStats {
-        self.inner.lock().unwrap().clone()
+    pub fn get_inner(&self) -> Arc<Mutex<ExecutorStats>> {
+        self.inner.clone()
     }
 
     pub fn insert_witness_stats(&self, airgroup_id: usize, stats: Stats) {

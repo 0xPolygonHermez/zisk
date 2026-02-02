@@ -166,10 +166,19 @@ impl AsmServices {
         // Prepare command
         let command_path = trimmed_path.to_string() + &format!("-{asm_service}.bin");
 
-        let mut command = Command::new("nice");
-        command.arg("-n");
-        command.arg("-5");
-        command.arg(command_path);
+        let mut command = Command::new(command_path);
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            use std::os::unix::process::CommandExt;
+
+            unsafe {
+                command.pre_exec(|| {
+                    // Ignore failure silently (matches nice behavior)
+                    libc::setpriority(libc::PRIO_PROCESS, 0, -5);
+                    Ok(())
+                });
+            }
+        }
 
         options.apply_to_command(&mut command, asm_service);
 
@@ -254,7 +263,14 @@ impl AsmServices {
             .context("Failed to set read timeout")?;
 
         // Send request payload
-        stream.write_all(&out_buffer).context("Failed to write request payload")?;
+        if let Err(e) = stream.write_all(&out_buffer) {
+            return Err(anyhow::anyhow!(
+                "Failed to write request payload to service {} on {}: {}",
+                service,
+                addr,
+                e
+            ));
+        }
 
         let total_timeout = Duration::from_secs(120);
         let start = Instant::now();

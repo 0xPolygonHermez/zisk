@@ -3,6 +3,7 @@
 //!
 //! program conversion, and execution pipelines to generate required witnesses.
 
+use asm_runner::{HintsFile, HintsShmem};
 use executor::{
     EmulatorAsm, EmulatorKind, EmulatorRust, StateMachines, StaticSMBundle, ZiskExecutor,
 };
@@ -15,6 +16,7 @@ use precomp_dma::DmaManager;
 use precomp_keccakf::KeccakfManager;
 use precomp_poseidon2::Poseidon2Manager;
 use precomp_sha256f::Sha256fManager;
+use precompiles_hints::HintsProcessor;
 use proofman::register_std;
 use proofman_common::{PackedInfo, ProofmanResult};
 use sm_arith::ArithSM;
@@ -22,8 +24,12 @@ use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use tracing::debug;
 use witness::WitnessManager;
-use zisk_common::{io::ZiskStdin, ExecutorStats, ZiskExecutionResult};
+use zisk_common::{
+    io::{ZiskStdin, ZiskStream},
+    ExecutorStatsHandle, ZiskExecutionResult,
+};
 use zisk_core::{Riscv2zisk, CHUNK_SIZE};
 #[cfg(feature = "packed")]
 use zisk_pil::PACKED_INFO;
@@ -36,6 +42,8 @@ use zisk_pil::{
     SHA_256_F_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
+use anyhow::Result;
+
 pub struct WitnessLib<F: PrimeField64> {
     asm_mt_path: Option<PathBuf>,
     asm_rh_path: Option<PathBuf>,
@@ -45,6 +53,7 @@ pub struct WitnessLib<F: PrimeField64> {
     unlock_mapped_memory: bool,
     shared_tables: bool,
     verbose_mode: proofman_common::VerboseMode,
+    with_hints: bool,
 }
 
 pub fn get_packed_info() -> HashMap<(usize, usize), PackedInfo> {
@@ -73,6 +82,7 @@ impl<F: PrimeField64> WitnessLib<F> {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
         shared_tables: bool,
+        with_hints: bool,
     ) -> Self {
         Self {
             asm_mt_path,
@@ -83,6 +93,7 @@ impl<F: PrimeField64> WitnessLib<F> {
             unlock_mapped_memory,
             shared_tables,
             verbose_mode,
+            with_hints,
         }
     }
 
@@ -195,9 +206,9 @@ impl<F: PrimeField64> WitnessLib<F> {
 
         let is_asm_emulator = self.asm_mt_path.is_some();
         let emulator = if is_asm_emulator {
+            debug!("Using ASM emulator");
             EmulatorKind::Asm(EmulatorAsm::new(
                 zisk_rom.clone(),
-                self.asm_mt_path.clone(),
                 world_rank,
                 local_rank,
                 self.base_port,
@@ -206,11 +217,47 @@ impl<F: PrimeField64> WitnessLib<F> {
                 Some(rom_sm.clone()),
             ))
         } else {
+            debug!("Using Rust emulator");
             EmulatorKind::Rust(EmulatorRust::new(zisk_rom.clone(), self.chunk_size))
         };
 
-        let executor =
-            Arc::new(ZiskExecutor::new(zisk_rom, std, sm_bundle, self.chunk_size, emulator));
+        // Create hints pipeline with null hints stream initially.
+        // Debug flag: true = HintsShmem (shared memory), false = HintsFile (file output)
+        let hints_stream = if self.with_hints {
+            const USE_SHARED_MEMORY_HINTS: bool = true;
+
+            let hints_processor = if USE_SHARED_MEMORY_HINTS {
+                let hints_shmem =
+                    HintsShmem::new(self.base_port, local_rank, self.unlock_mapped_memory)
+                        .expect("zisk_lib: Failed to create HintsShmem");
+
+                HintsProcessor::builder(hints_shmem)
+                    .enable_stats(self.verbose_mode != proofman_common::VerboseMode::Info)
+                    .build()
+                    .expect("zisk_lib: Failed to create PrecompileHintsProcessor")
+            } else {
+                let hints_file = HintsFile::new(format!("hints_results_{}.bin", local_rank))
+                    .expect("zisk_lib: Failed to create HintsFile");
+
+                HintsProcessor::builder(hints_file)
+                    .enable_stats(self.verbose_mode != proofman_common::VerboseMode::Info)
+                    .build()
+                    .expect("zisk_lib: Failed to create PrecompileHintsProcessor")
+            };
+
+            Some(ZiskStream::new(hints_processor))
+        } else {
+            None
+        };
+
+        let executor = Arc::new(ZiskExecutor::new(
+            zisk_rom,
+            std,
+            sm_bundle,
+            self.chunk_size,
+            emulator,
+            hints_stream,
+        ));
 
         // Step 7: Register the executor as a component in the Witness Manager
         wcm.register_component(executor.clone());
@@ -228,11 +275,24 @@ impl<F: PrimeField64> WitnessLib<F> {
         }
     }
 
+    pub fn set_hints_stream(&self, hints_stream: zisk_common::io::StreamSource) -> Result<()> {
+        if !self.with_hints {
+            return Err(anyhow::anyhow!(
+                "Hints stream cannot be set when WitnessLib is initialized without hints"
+            ));
+        }
+        if let Some(executor) = &self.executor {
+            executor.set_hints_stream_src(hints_stream)
+        } else {
+            Err(anyhow::anyhow!("Executor not initialized"))
+        }
+    }
+
     /// Returns the execution result of the witness computation.
     ///
     /// # Returns
     /// * `u16` - The execution result code.
-    pub fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStats)> {
+    pub fn execution_result(&self) -> Option<(ZiskExecutionResult, ExecutorStatsHandle)> {
         self.executor.as_ref().map(|executor| executor.get_execution_result())
     }
 }

@@ -1868,6 +1868,11 @@ impl<'a> Emu<'a> {
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
 
+        // println!(
+        //     "s={} pc={:x} c={:x}",
+        //     self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc, self.ctx.inst_ctx.c
+        // );
+
         // Set PC, based on current PC, current flag and current instruction
         self.set_pc(instruction);
 

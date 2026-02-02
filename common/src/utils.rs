@@ -75,3 +75,59 @@ pub fn init_tracing(log_path: &str) {
         .with(file_layer)
         .init();
 }
+
+/// Reinterprets a `Vec<T>` as a `Vec<U>` by transmuting the underlying memory.
+///
+/// This function converts between vector types by reinterpreting the raw memory,
+/// adjusting length and capacity based on the size ratio between types.
+/// It performs internal unsafe operations but validates all safety requirements
+/// before the conversion.
+///
+/// # Arguments
+/// * `v` - The source vector to reinterpret.
+///
+/// # Returns
+/// * `Ok(Vec<U>)` - A new vector that owns the same memory as the input vector
+/// * `Err` - If validation fails (size incompatibility or alignment issues)
+///
+/// # Type Parameters
+/// * `T` - Source element type
+/// * `U` - Destination element type
+pub fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> anyhow::Result<Vec<U>> {
+    let size_t = std::mem::size_of::<T>();
+    let size_u = std::mem::size_of::<U>();
+
+    // Total bytes in Vec<T>
+    let total_bytes = v.len() * size_t;
+
+    // Compute remainder to see if we need padding
+    let rem = total_bytes % size_u;
+
+    // If remainder exists, pad with zeroed T elements
+    if rem != 0 {
+        // Number of extra bytes needed
+        let pad_bytes = size_u - rem;
+
+        // Number of T elements to pad (round up)
+        let pad_t = pad_bytes.div_ceil(size_t);
+
+        v.extend(std::iter::repeat(T::default()).take(pad_t));
+    }
+
+    // Check that the pointer is properly aligned for U
+    if v.as_ptr() as usize % std::mem::align_of::<U>() != 0 {
+        return Err(anyhow::anyhow!(
+            "Vec<{}> is not properly aligned for Vec<{}> (requires {}-byte alignment)",
+            std::any::type_name::<T>(),
+            std::any::type_name::<U>(),
+            std::mem::align_of::<U>()
+        ));
+    }
+
+    let len = (v.len() * size_t) / size_u;
+    let cap = (v.capacity() * size_t) / size_u;
+    let ptr = v.as_ptr() as *mut U;
+
+    std::mem::forget(v);
+    Ok(unsafe { Vec::from_raw_parts(ptr, len, cap) })
+}

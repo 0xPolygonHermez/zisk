@@ -26,7 +26,7 @@ pub fn fcall_big_int_div(params: &[u64], results: &mut [u64]) -> i64 {
     (2 + len_q + len_r) as i64
 }
 
-fn big_int_div_into(a: &[u64], b: &[u64], q: &mut Vec<u64>, r: &mut Vec<u64>) {
+pub fn big_int_div_into(a: &[u64], b: &[u64], q: &mut Vec<u64>, r: &mut Vec<u64>) {
     let a_big = biguint_from_u64_digits(a);
     let b_big = biguint_from_u64_digits(b);
 

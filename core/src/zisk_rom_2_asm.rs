@@ -92,6 +92,11 @@ const F_MOPS_ALIGNED_WRITE: u64 = 0x0000_000D_0000_0000;
 // const F_MOPS_ALIGNED_BLOCK_WRITE: u64 = 0x0000_000F_0000_0000;
 const F_MOPS_BLOCK_LENGTH_SHIFT: u64 = 36;
 
+// const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x100000; // 1MB
+const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x10000000; // 256MB
+const PRECOMPILE_BUFFER_SIZE_IN_U64: u64 = PRECOMPILE_BUFFER_SIZE_IN_BYTES / 8;
+const PRECOMPILE_BUFFER_SIZE_U64_MASK: u64 = PRECOMPILE_BUFFER_SIZE_IN_U64 - 1;
+
 #[derive(Default, Debug, Clone)]
 pub struct ZiskAsmRegister {
     is_constant: bool,   // register is a constant value known at compilation time
@@ -137,10 +142,13 @@ pub struct ZiskAsmContext {
     mem_chunk_address: String,
     mem_chunk_start_step: String,
     fcall_ctx: String,
-    mem_chunk_id: String,   // 0, 1, 2, 3, 4...
-    mem_chunk_mask: String, // Module 8 of the chunks we want to activate, e.g. 0x03
-    mem_rsp: String,        // Backup of rsp register value from caller
+    mem_chunk_id: String,                   // 0, 1, 2, 3, 4...
+    mem_chunk_mask: String,                 // Module 8 of the chunks we want to activate, e.g. 0x03
+    mem_rsp: String,                        // Backup of rsp register value from caller
     mem_free_input: String, // Free input address (0x90000000) used in free call operations
+    mem_precompile_results_address: String, // Address where precompile results are read from
+    mem_precompile_written_address: String, // Address where precompile written counter is stored
+    mem_precompile_read_address: String, // Address where precompile read counter is stored
 
     comments: bool, // true if we want to generate comments in the assembly source code
     boc: String,    // begin of comment: '/*', ';', '#', etc.
@@ -148,7 +156,9 @@ pub struct ZiskAsmContext {
 
     ptr: String, // "ptr ", ""
 
-                 //assert_rsp_counter: u64,
+    //assert_rsp_counter: u64,
+    precompile_results: bool, // Set to true is we are consuming precompile results
+    wait_for_prec_counter: u64, // Counter of wait_for_prec_avail calls, reset at every instruction
 }
 
 impl ZiskAsmContext {
@@ -233,6 +243,70 @@ impl ZiskAsmContext {
                 | ZiskOp::Bls12_381ComplexMul
                 | ZiskOp::Add256
         )
+    }
+
+    pub fn precompile_results(&self) -> bool {
+        self.precompile_results
+    }
+    pub fn precompile_results_keccak(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_sha256(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_arith256(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_arith256mod(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_secp256k1add(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_secp256k1dbl(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_fcall(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_bn254curveadd(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_bn254curvedbl(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_bn254complexadd(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_bn254complexsub(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_bn254complexmul(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_arith384mod(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_bls12_381curveadd(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_bls12_381curvedbl(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_bls12_381complexadd(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_bls12_381complexsub(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_bls12_381complexmul(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_add256(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn call_wait_for_prec_avail(&self) -> bool {
+        self.precompile_results()
     }
 }
 
@@ -401,11 +475,11 @@ impl ZiskRom2Asm {
         generation_method: AsmGenerationMethod,
         log_output: bool,
         comments: bool,
+        precompile_results: bool,
     ) {
         // Get a string with the ASM data
         let mut s = String::new();
-        Self::save_to_asm(rom, &mut s, generation_method, log_output, comments);
-
+        Self::save_to_asm(rom, &mut s, generation_method, log_output, comments, precompile_results);
         // Save to file
         let path = std::path::PathBuf::from(file_name);
         let result = std::fs::write(path, s);
@@ -424,7 +498,12 @@ impl ZiskRom2Asm {
         generation_method: AsmGenerationMethod,
         log_output: bool,
         comments: bool,
+        precompile_results: bool,
     ) {
+        // println!(
+        //     "ZiskRom2Asm::save_to_asm() generation_method={:?}, log_output={}, comments={}, precompile_results={}",
+        //     generation_method, log_output, comments, precompile_results
+        // );
         // Clear output data, just in case
         code.clear();
 
@@ -440,6 +519,7 @@ impl ZiskRom2Asm {
             boc: "/* ".to_string(),
             eoc: " */".to_string(),
             min_program_pc: rom.min_program_pc,
+            precompile_results,
             ..Default::default()
         };
 
@@ -456,6 +536,12 @@ impl ZiskRom2Asm {
         ctx.mem_chunk_mask = format!("qword {}[chunk_mask]", ctx.ptr);
         ctx.mem_rsp = format!("qword {}[MEM_RSP]", ctx.ptr);
         ctx.mem_free_input = format!("qword {}[MEM_FREE_INPUT]", ctx.ptr);
+        if ctx.precompile_results() {
+            ctx.mem_precompile_results_address =
+                format!("qword {}[MEM_PRECOMPILE_RESULTS_ADDRESS]", ctx.ptr);
+            ctx.mem_precompile_written_address = format!("qword {}[0x70000000]", ctx.ptr);
+            ctx.mem_precompile_read_address = format!("qword {}[0x70001000]", ctx.ptr);
+        }
 
         // Preamble
         *code += ".intel_syntax noprefix\n";
@@ -473,6 +559,9 @@ impl ZiskRom2Asm {
         *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
         *code += ".comm MEM_RSP, 8, 8\n";
         *code += ".comm MEM_FREE_INPUT, 8, 8\n";
+        if ctx.precompile_results() {
+            *code += ".comm MEM_PRECOMPILE_RESULTS_ADDRESS, 8, 8\n";
+        }
         if ctx.zip() {
             *code += ".comm MEM_CHUNK_ID, 8, 8\n";
         }
@@ -544,7 +633,10 @@ impl ZiskRom2Asm {
         *code += ".extern chunk_done\n";
         *code += ".extern print_fcall_ctx\n";
         *code += ".extern print_pc\n";
-        *code += ".extern realloc_trace\n\n";
+        *code += ".extern realloc_trace\n";
+        if ctx.precompile_results() {
+            *code += ".extern wait_for_prec_avail\n\n";
+        }
 
         if ctx.minimal_trace()
             || ctx.main_trace()
@@ -558,6 +650,11 @@ impl ZiskRom2Asm {
             *code += ".extern chunk_size\n";
             *code += ".extern trace_address\n\n";
             *code += ".extern trace_address_threshold\n\n";
+            if ctx.precompile_results() {
+                *code += ".extern precompile_result_address\n";
+                *code += ".extern precompile_written_address\n";
+                *code += ".extern precompile_read_address\n\n";
+            }
         }
 
         if ctx.zip() {
@@ -594,16 +691,21 @@ impl ZiskRom2Asm {
         }
 
         // Functions to let C know about ASM generation
+
+        // get_max_bios_pc() returns the maximum bios pc used in the ROM
         *code += ".global get_max_bios_pc\n";
         *code += "get_max_bios_pc:\n";
         *code += &format!("\tmov rax, 0x{:08x}\n", rom.max_bios_pc);
         *code += "\tret\n\n";
 
+        // get_max_program_pc() returns the maximum program pc used in the ROM
         *code += ".global get_max_program_pc\n";
         *code += "get_max_program_pc:\n";
         *code += &format!("\tmov rax, 0x{:08x}\n", rom.max_program_pc);
         *code += "\tret\n\n";
 
+        // get_gen_method() returns the generation method used to generate the assembly
+        // It must match the one used to call the assembly emulator
         *code += ".global get_gen_method\n";
         *code += "get_gen_method:\n";
         if ctx.fast() {
@@ -628,6 +730,17 @@ impl ZiskRom2Asm {
             *code += "\tmov rax, 10\n";
         } else {
             panic!("ZiskRom2Asm::save_to_asm() invalid generation method");
+        }
+        *code += "\tret\n\n";
+
+        // get_gen_method() returns the generation method used to generate the assembly
+        // It must match the one used to call the assembly emulator
+        *code += ".global get_precompile_results\n";
+        *code += "get_precompile_results:\n";
+        if ctx.precompile_results() {
+            *code += "\tmov rax, 1\n";
+        } else {
+            *code += "\tmov rax, 0\n";
         }
         *code += "\tret\n\n";
 
@@ -723,6 +836,25 @@ impl ZiskRom2Asm {
                 ctx.comment_str("chunk_start_step = 0")
             );
         }
+        if ctx.precompile_results() {
+            *code += &format!(
+                "\tmov {}, precompile_results_address {}\n",
+                REG_AUX,
+                ctx.comment_str("aux = precompile_results_address")
+            );
+            *code += &format!(
+                "\tmov {}, {} {}\n",
+                ctx.mem_precompile_results_address,
+                REG_AUX,
+                ctx.comment_str("mem_precompile_results_counter = precompile_results_address")
+            );
+
+            *code += &format!(
+                "\tmov {}, 0 {}\n",
+                ctx.mem_precompile_read_address,
+                ctx.comment_str("precompile_read = 0")
+            );
+        }
 
         *code += &ctx.full_line_comment("fcall_context initialization".to_string());
         *code += &format!(
@@ -795,6 +927,9 @@ impl ZiskRom2Asm {
         // For all program addresses in the vector, create an assembly set of instructions with an
         // instruction label pc_<pc_in_hex>
         for k in 0..rom.sorted_pc_list.len() {
+            // Reset wait for prec counter
+            ctx.wait_for_prec_counter = 0;
+
             // Get pc
             ctx.pc = rom.sorted_pc_list[k];
 
@@ -3369,6 +3504,10 @@ impl ZiskRom2Asm {
 
         *code += "\n";
 
+        *code += "execute_pop_internal_regs_and_end:\n";
+        Self::pop_internal_registers(&mut ctx, code, false);
+        *code += "\n";
+
         *code += "execute_end:\n";
 
         // Update step memory variable with the content of the step register, to make it accessible
@@ -3576,8 +3715,7 @@ impl ZiskRom2Asm {
             }
 
             println!(
-                "ZiskRom2Asm::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst",
-                code.len(),
+                "ZiskRom2Asm::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst, precompile_results={:?}",                code.len(),
                 rom.sorted_pc_list.len(),
                 code.len() as f64 / rom.sorted_pc_list.len() as f64,
                 map_label_lines_counter,
@@ -3585,6 +3723,7 @@ impl ZiskRom2Asm {
                 comment_lines_counter,
                 code_lines_counter,
                 code_lines_counter as f64 / rom.sorted_pc_list.len() as f64,
+                ctx.precompile_results
             );
         }
     }
@@ -5064,12 +5203,17 @@ impl ZiskRom2Asm {
                         Self::mem_op_array(ctx, code, REG_ADDRESS, true, 25);
                     }
 
-                    // Call the keccak function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_keccak\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_keccak() {
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 25);
+                    } else {
+                        // Call the keccak function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_keccak\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -5138,12 +5282,18 @@ impl ZiskRom2Asm {
                         Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[4, 8], 0, 0, 4);
                     }
 
-                    // Call the SHA256 function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_sha256\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_sha256() {
+                        *code += "\tmov rdi, [rdi]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 4);
+                    } else {
+                        // Call the SHA256 function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_sha256\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -5351,12 +5501,21 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the arith256 function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_arith256\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_arith256() {
+                        *code += &format!("\tmov {REG_FLAG}, [rdi+3*8]\n");
+                        Self::precompile_results_array(ctx, code, unusual_code, REG_FLAG, 4);
+                        *code += &format!("\tmov {REG_FLAG}, [rdi+4*8]\n");
+                        Self::precompile_results_array(ctx, code, unusual_code, REG_FLAG, 4);
+                        *code += &format!("\tmov {REG_FLAG}, 0\n"); // Is this needed?
+                    } else {
+                        // Call the arith256 function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_arith256\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Set result
@@ -5403,12 +5562,18 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the arith256_mod function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_arith256_mod\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_arith256mod() {
+                        *code += "\tmov rdi, [rdi + 4*8]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 4);
+                    } else {
+                        // Call the arith256_mod function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_arith256_mod\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -5478,12 +5643,18 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the secp256k1_add function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_secp256k1_add\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_secp256k1add() {
+                        *code += "\tmov rdi, [rdi]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                    } else {
+                        // Call the secp256k1_add function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_secp256k1_add\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -5578,12 +5749,17 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the secp256k1_dbl function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_secp256k1_dbl\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_secp256k1dbl() {
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                    } else {
+                        // Call the secp256k1_dbl function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_secp256k1_dbl\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -5717,12 +5893,17 @@ impl ZiskRom2Asm {
                         ctx.comment_str("rdi = fcall context")
                     );
 
-                    // Call the fcall function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_fcall\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_fcall() {
+                        Self::precompile_results_fcall(ctx, code, unusual_code, "rdi");
+                    } else {
+                        // Call the fcall function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_fcall\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
 
                     // Get free input address
                     *code += &format!(
@@ -5869,12 +6050,18 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the bn254_curve_add function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bn254_curve_add\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_bn254curveadd() {
+                        *code += "\tmov rdi, [rdi]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                    } else {
+                        // Call the bn254_curve_add function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_bn254_curve_add\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -5970,12 +6157,17 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the bn254_curve_dbl function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bn254_curve_dbl\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_bn254curvedbl() {
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                    } else {
+                        // Call the bn254_curve_dbl function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_bn254_curve_dbl\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -6046,12 +6238,18 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the bn254_complex_add function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bn254_complex_add\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_bn254complexadd() {
+                        *code += "\tmov rdi, [rdi]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                    } else {
+                        // Call the bn254_complex_add function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_bn254_complex_add\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -6122,12 +6320,18 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the bn254_complex_sub function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bn254_complex_sub\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_bn254complexsub() {
+                        *code += "\tmov rdi, [rdi]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                    } else {
+                        // Call the bn254_complex_sub function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_bn254_complex_sub\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -6198,12 +6402,18 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the bn254_complex_mul function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bn254_complex_mul\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_bn254complexmul() {
+                        *code += "\tmov rdi, [rdi]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                    } else {
+                        // Call the bn254_complex_mul function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_bn254_complex_mul\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -6282,12 +6492,18 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the arith384_mod function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_arith384_mod\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_arith384mod() {
+                        *code += "\tmov rdi, [rdi + 4*8]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 6);
+                    } else {
+                        // Call the arith384_mod function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_arith384_mod\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -6358,12 +6574,18 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the bls12_381_curve_add function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bls12_381_curve_add\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_bls12_381curveadd() {
+                        *code += "\tmov rdi, [rdi]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
+                    } else {
+                        // Call the bls12_381_curve_add function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_bls12_381_curve_add\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -6459,12 +6681,17 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the bls12_381_curve_dbl function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bls12_381_curve_dbl\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_bls12_381curvedbl() {
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
+                    } else {
+                        // Call the bls12_381_curve_dbl function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_bls12_381_curve_dbl\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -6539,12 +6766,18 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the bls12_381_complex_add function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bls12_381_complex_add\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_bls12_381complexadd() {
+                        *code += "\tmov rdi, [rdi]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
+                    } else {
+                        // Call the bls12_381_complex_add function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_bls12_381_complex_add\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -6619,12 +6852,18 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the bls12_381_complex_sub function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bls12_381_complex_sub\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_bls12_381complexsub() {
+                        *code += "\tmov rdi, [rdi]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
+                    } else {
+                        // Call the bls12_381_complex_sub function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_bls12_381_complex_sub\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -6699,12 +6938,18 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the bls12_381_complex_mul function
-                    Self::push_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_bls12_381_complex_mul\n";
-                    Self::pop_internal_registers(ctx, code, false);
-                    //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_bls12_381complexmul() {
+                        *code += "\tmov rdi, [rdi]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
+                    } else {
+                        // Call the bls12_381_complex_mul function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_bls12_381_complex_mul\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
                 }
 
                 // Consume mem reads
@@ -6797,14 +7042,25 @@ impl ZiskRom2Asm {
 
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Call the add256 function
-                    Self::push_internal_registers_except_c_and_flag(ctx, code, false);
-                    // Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_add256\n";
-                    *code += &format!("\tmov {}, rax {}\n", REG_C, ctx.comment_str("c = rax"));
-                    *code +=
-                        &format!("\tmov {}, rax {}\n", REG_FLAG, ctx.comment_str("flag = rax"));
-                    Self::pop_internal_registers_except_c_and_flag(ctx, code, false);
+                    // Get result from precompile results data
+                    if ctx.precompile_results_add256() {
+                        *code += "\tmov rdi, [rdi+3*8]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 4);
+                        Self::precompile_results_register(ctx, code, unusual_code, REG_C);
+                    } else {
+                        // Call the add256 function
+                        Self::push_internal_registers_except_c_and_flag(ctx, code, false);
+                        // Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_add256\n";
+                        *code += &format!("\tmov {}, rax {}\n", REG_C, ctx.comment_str("c = rax"));
+                        Self::pop_internal_registers_except_c_and_flag(ctx, code, false);
+                    }
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_FLAG,
+                        REG_C,
+                        ctx.comment_str("flag = rax")
+                    );
 
                     // this precompiles store the result in minimal trace
                     if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
@@ -7784,6 +8040,305 @@ impl ZiskRom2Asm {
         *code += &format!("\tmov {REG_FLAG}, {REG_C} {}\n", ctx.comment_str("flag = c"));
     }
 
+    /**********************/
+    /* PRECOMPILE RESULTS */
+    /**********************/
+
+    // Copies size u64 elements from precompile_results_address to the address in reg_address,
+    // and increments precompile_read by size*8
+    fn precompile_results_array(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        unusual_code: &mut String,
+        reg_address: &str,
+        size: u64,
+    ) {
+        // Wait for available precompile results data
+        if ctx.call_wait_for_prec_avail() {
+            Self::wait_for_prec_avail(ctx, code, unusual_code);
+        }
+
+        // Load precompile address and read index
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_ADDRESS,
+            ctx.mem_precompile_results_address,
+            ctx.comment_str("address = precompile_results_address")
+        );
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_AUX,
+            ctx.mem_precompile_read_address,
+            ctx.comment_str("aux = precompile_read")
+        );
+
+        // Loop for all u64-sized elements to read
+        for k in 0..size {
+            // Take the read index module against the precompile buffer size in u64's
+            *code += &format!(
+                "\tand {}, 0x{:x} {}\n",
+                REG_AUX,
+                PRECOMPILE_BUFFER_SIZE_U64_MASK,
+                ctx.comment_str("aux &= buffer mask")
+            );
+
+            // Copy the ui64 element from precompile_results to the destination address
+            *code += &format!(
+                "\tmov {}, [{} + {}*8] {}\n",
+                REG_VALUE,
+                REG_ADDRESS,
+                REG_AUX,
+                ctx.comment(format!("value = precompile_results[{}]", k))
+            );
+            *code += &format!(
+                "\tmov [{} + {}*8], {} {}\n",
+                reg_address,
+                k,
+                REG_VALUE,
+                ctx.comment(format!("addr[{}] = value", k))
+            );
+
+            // Increase the register containing the read index
+            if k != size - 1 {
+                *code += &format!("\tinc {} {}\n", REG_AUX, ctx.comment_str("aux++"));
+            }
+        }
+
+        // Add the read size to precompile_read
+        *code += &format!(
+            "\tadd {}, {} {}\n",
+            ctx.mem_precompile_read_address,
+            size,
+            ctx.comment(format!("read += {}", size))
+        );
+    }
+
+    // Copies 1 u64 element from precompile_results_address to the register reg,
+    // and increments precompile_results_address by 8
+    fn precompile_results_register(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        unusual_code: &mut String,
+        reg: &str,
+    ) {
+        // Wait for available precompile results data
+        if ctx.call_wait_for_prec_avail() {
+            Self::wait_for_prec_avail(ctx, code, unusual_code);
+        }
+
+        // Load precompile address and read index
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_ADDRESS,
+            ctx.mem_precompile_results_address,
+            ctx.comment_str("address = precompile_results_address")
+        );
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_AUX,
+            ctx.mem_precompile_read_address,
+            ctx.comment_str("aux = precompile_read")
+        );
+
+        // Take the read index module against the precompile buffer size in u64's
+        *code += &format!(
+            "\tand {}, 0x{:x} {}\n",
+            REG_AUX,
+            PRECOMPILE_BUFFER_SIZE_U64_MASK,
+            ctx.comment_str("aux &= buffer mask")
+        );
+        *code += &format!(
+            "\tmov {}, [{} + {}*8] {}\n",
+            REG_VALUE,
+            REG_ADDRESS,
+            REG_AUX,
+            ctx.comment_str("value = precompile_results[0]")
+        );
+
+        // Copy the ui64 element from precompile_results to the destination address
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            reg,
+            REG_VALUE,
+            ctx.comment_str("reg = precompile_results[0]")
+        );
+
+        // Increase precompile_read
+        *code += &format!(
+            "\tinc {} {}\n",
+            ctx.mem_precompile_read_address,
+            ctx.comment_str("precompile_read++")
+        );
+    }
+
+    // Copies the fcall result size and result data to the fcall structure
+    // address in reg_address,
+    fn precompile_results_fcall(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        unusual_code: &mut String,
+        reg_address: &str,
+    ) {
+        // Wait for available precompile results data
+        if ctx.call_wait_for_prec_avail() {
+            Self::wait_for_prec_avail(ctx, code, unusual_code);
+        }
+
+        // Load precompile address into REG_AUX
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_AUX,
+            ctx.mem_precompile_results_address,
+            ctx.comment_str("aux = precompile_results_address")
+        );
+
+        // Load the destination fcall address into REG_ADDRESS
+        *code += &format!("\tmov {REG_ADDRESS}, {reg_address}\n");
+
+        // Calculate the address of the first precompile u64 value = address + read % buffer_size
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_ADDRESS,
+            ctx.mem_precompile_read_address,
+            ctx.comment_str("address = precompile_read")
+        );
+        *code += &format!(
+            "\tand {}, 0x{:x} {}\n",
+            REG_ADDRESS,
+            PRECOMPILE_BUFFER_SIZE_U64_MASK,
+            ctx.comment_str("address %= buffer size")
+        );
+
+        // Copy the result size (first u64 value) and store it in register B
+        *code += &format!(
+            "\tmov {}, [{} + {}*8] {}\n",
+            REG_B,
+            REG_AUX,
+            REG_ADDRESS,
+            ctx.comment_str("b = precompile_results[0]")
+        );
+        *code += &format!(
+            "\tmov [{} + {}*8], {} {}\n",
+            reg_address,
+            FCALL_RESULT_SIZE,
+            REG_B,
+            ctx.comment_str("fcall[result_size] = b")
+        );
+        *code += &format!(
+            "\tinc {} {}\n",
+            ctx.mem_precompile_read_address,
+            ctx.comment_str("precompile_read++")
+        );
+
+        // Copy data consuming REG_B u64's starting at REG_A=0, increasing REG_A until REG_A == REG_B
+
+        // Initialize REG_A to 0
+        *code += &format!("\txor {}, {} {}\n", REG_A, REG_A, ctx.comment_str("a = 0"));
+
+        // Loop start
+        *code += &format!("pc_{:x}_fcall_copy_params_loop_start:\n", ctx.pc);
+
+        // End loop when REG_A == REG_B
+        *code += &format!("\tcmp {}, {} {}\n", REG_A, REG_B, ctx.comment_str("a =? b"));
+        *code += &format!("\tje pc_{:x}_fcall_copy_params_loop_end\n", ctx.pc);
+
+        // Calculate the address of the next precompile u64 value = address + read % buffer_size
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_ADDRESS,
+            ctx.mem_precompile_read_address,
+            ctx.comment_str("address = precompile_read")
+        );
+        *code += &format!("\tadd {}, {} {}\n", REG_ADDRESS, REG_A, ctx.comment_str("address += a"));
+        *code += &format!(
+            "\tand {}, 0x{:x} {}\n",
+            REG_ADDRESS,
+            PRECOMPILE_BUFFER_SIZE_U64_MASK,
+            ctx.comment_str("address %= buffer size")
+        );
+
+        // Copy value from precompile_results to fcall[result_data + REG_A]
+        *code += &format!(
+            "\tmov {}, [{} + {}*8] {}\n",
+            REG_VALUE,
+            REG_AUX,
+            REG_ADDRESS,
+            ctx.comment_str("value = precompile_results[a]")
+        );
+        *code += &format!(
+            "\tmov [{} + {}*8 + {}*8], {} {}\n",
+            reg_address,
+            REG_A,
+            FCALL_RESULT,
+            REG_VALUE,
+            ctx.comment_str("addr[] = value")
+        );
+
+        // Increment REG_A
+        *code += &format!("\tinc {} {}\n", REG_A, ctx.comment_str("a++"));
+
+        // Jump to loop start
+        *code += &format!("\tjmp pc_{:x}_fcall_copy_params_loop_start\n", ctx.pc);
+
+        // Loop end
+        *code += &format!("pc_{:x}_fcall_copy_params_loop_end:\n", ctx.pc);
+
+        // Update precompile_read += result_size
+        *code += &format!(
+            "\tadd {}, {} {}\n",
+            ctx.mem_precompile_read_address,
+            REG_A,
+            ctx.comment_str("precompile_read += fcall_result_size")
+        );
+    }
+
+    fn wait_for_prec_avail(ctx: &mut ZiskAsmContext, code: &mut String, unusual_code: &mut String) {
+        *code += &ctx.full_line_comment("Wait for precompile results available".to_string());
+
+        // if precompile_written == precompile_read then call wait_for_prec_avail
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_AUX,
+            ctx.mem_precompile_read_address,
+            ctx.comment_str("aux = precompile_read")
+        );
+        *code += &format!(
+            "\tcmp {}, {} {}\n",
+            REG_AUX,
+            ctx.mem_precompile_written_address,
+            ctx.comment_str("read ?= written")
+        );
+        *code += &format!(
+            "\tjz pc_{:x}_{}_wait_for_prec_avail {}\n",
+            ctx.pc,
+            ctx.wait_for_prec_counter,
+            ctx.comment_str("if there is data, done")
+        );
+        *code +=
+            &format!("pc_{:x}_{}_wait_for_prec_avail_done:\n", ctx.pc, ctx.wait_for_prec_counter);
+
+        // Call wait_for_prec_avail()
+        *unusual_code +=
+            &format!("pc_{:x}_{}_wait_for_prec_avail:\n", ctx.pc, ctx.wait_for_prec_counter);
+        Self::push_internal_registers(ctx, unusual_code, false);
+        *unusual_code += "\tcall _wait_for_prec_avail\n";
+        *unusual_code += "\tcmp rax, 0\n";
+        *unusual_code += "\tjne execute_pop_internal_regs_and_end\n";
+        Self::pop_internal_registers(ctx, unusual_code, false);
+        *unusual_code += &format!(
+            "\tjmp pc_{:x}_{}_wait_for_prec_avail_done\n",
+            ctx.pc, ctx.wait_for_prec_counter
+        );
+
+        // TODO:
+        // else if *precompile_written_address - *precompile_read_address < threshold -> call post_prec_read
+
+        //*code += &format!("pc_{:x}_wait_for_prec_avail_end:\n", ctx.pc,);
+
+        // Increment wait_for_prec_counter
+        ctx.wait_for_prec_counter += 1;
+    }
+
     /*******************/
     /* CHUNK START/END */
     /*******************/
@@ -8303,25 +8858,25 @@ impl ZiskRom2Asm {
         *code += "\tpush rax\n";
         *code += "\tpush rcx\n";
         *code += "\tpush rdx\n";
-        //*code += "\tpush rdi\n";
+        *code += "\tpush rdi\n";
         // *code += "\tpush rsi\n";
         // *code += "\tpush rsp\n";
         *code += "\tpush r8\n";
         *code += "\tpush r9\n";
         *code += "\tpush r10\n";
         *code += "\tpush r11\n";
-        Self::push_xmm_regs(ctx, code, !extra_8);
+        Self::push_xmm_regs(ctx, code, extra_8);
     }
 
     fn pop_internal_registers(ctx: &mut ZiskAsmContext, code: &mut String, extra_8: bool) {
-        Self::pop_xmm_regs(ctx, code, !extra_8);
+        Self::pop_xmm_regs(ctx, code, extra_8);
         *code += "\tpop r11\n";
         *code += "\tpop r10\n";
         *code += "\tpop r9\n";
         *code += "\tpop r8\n";
         // *code += "\tpop rsp\n";
         // *code += "\tpop rsi\n";
-        //*code += "\tpop rdi\n";
+        *code += "\tpop rdi\n";
         *code += "\tpop rdx\n";
         *code += "\tpop rcx\n";
         *code += "\tpop rax\n";

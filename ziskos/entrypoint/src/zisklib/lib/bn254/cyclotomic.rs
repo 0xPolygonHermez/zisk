@@ -47,7 +47,10 @@ pub fn compress_cyclo_bn254(a: &[u64; 48]) -> [u64; 32] {
 /// **NOTE**: If the input is not of the form C(a), where a ∈ GΦ6(p²), then the compression-decompression
 ///           technique is not well defined. This means that D(C(a)) != a.
 #[inline]
-pub fn decompress_cyclo_bn254(a: &[u64; 32]) -> [u64; 48] {
+pub fn decompress_cyclo_bn254(
+    a: &[u64; 32],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 48] {
     let a2: &[u64; 8] = &a[0..8].try_into().unwrap();
     let a3: &[u64; 8] = &a[8..16].try_into().unwrap();
     let a4: &[u64; 8] = &a[16..24].try_into().unwrap();
@@ -55,39 +58,179 @@ pub fn decompress_cyclo_bn254(a: &[u64; 32]) -> [u64; 48] {
 
     let (a0, a1) = if eq(a2, &[0, 0, 0, 0, 0, 0, 0, 0]) {
         // a1 = (2·a4·a5)/a3
-        let a3_inv = inv_fp2_bn254(a3);
-        let mut a1 = mul_fp2_bn254(a4, a5);
-        a1 = dbl_fp2_bn254(&a1);
-        a1 = mul_fp2_bn254(&a1, &a3_inv);
+        let a3_inv = inv_fp2_bn254(
+            a3,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        let mut a1 = mul_fp2_bn254(
+            a4,
+            a5,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a1 = dbl_fp2_bn254(
+            &a1,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a1 = mul_fp2_bn254(
+            &a1,
+            &a3_inv,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         // a0 = (2·a1² - 3·a3·a4)(9+u) + 1
-        let a3a4 = mul_fp2_bn254(a3, a4);
-        let mut a0 = square_fp2_bn254(&a1);
-        a0 = dbl_fp2_bn254(&a0);
-        a0 = sub_fp2_bn254(&a0, &scalar_mul_fp2_bn254(&a3a4, &[3, 0, 0, 0]));
-        a0 = mul_fp2_bn254(&a0, &[9, 0, 0, 0, 1, 0, 0, 0]);
-        a0 = add_fp2_bn254(&a0, &[1, 0, 0, 0, 0, 0, 0, 0]);
+        let a3a4 = mul_fp2_bn254(
+            a3,
+            a4,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        let mut a0 = square_fp2_bn254(
+            &a1,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a0 = dbl_fp2_bn254(
+            &a0,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a0 = sub_fp2_bn254(
+            &a0,
+            &scalar_mul_fp2_bn254(
+                &a3a4,
+                &[3, 0, 0, 0],
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a0 = mul_fp2_bn254(
+            &a0,
+            &[9, 0, 0, 0, 1, 0, 0, 0],
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a0 = add_fp2_bn254(
+            &a0,
+            &[1, 0, 0, 0, 0, 0, 0, 0],
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         (a0, a1)
     } else {
         // a1 = (a5²·(9+u) + 3·a4² - 2·a3)/(4·a2)
-        let a2_inv = inv_fp2_bn254(&scalar_mul_fp2_bn254(a2, &[4, 0, 0, 0]));
-        let a4_sq = square_fp2_bn254(a4);
-        let mut a1 = square_fp2_bn254(a5);
-        a1 = mul_fp2_bn254(&a1, &[9, 0, 0, 0, 1, 0, 0, 0]);
-        a1 = add_fp2_bn254(&a1, &scalar_mul_fp2_bn254(&a4_sq, &[3, 0, 0, 0]));
-        a1 = sub_fp2_bn254(&a1, &dbl_fp2_bn254(a3));
-        a1 = mul_fp2_bn254(&a1, &a2_inv);
+        let a2_inv = inv_fp2_bn254(
+            &scalar_mul_fp2_bn254(
+                a2,
+                &[4, 0, 0, 0],
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        let a4_sq = square_fp2_bn254(
+            a4,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        let mut a1 = square_fp2_bn254(
+            a5,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a1 = mul_fp2_bn254(
+            &a1,
+            &[9, 0, 0, 0, 1, 0, 0, 0],
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a1 = add_fp2_bn254(
+            &a1,
+            &scalar_mul_fp2_bn254(
+                &a4_sq,
+                &[3, 0, 0, 0],
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a1 = sub_fp2_bn254(
+            &a1,
+            &dbl_fp2_bn254(
+                a3,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a1 = mul_fp2_bn254(
+            &a1,
+            &a2_inv,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         // a0 = (2·a1² + a2·a5 - 3·a3·a4)(9+u) + 1
-        let a3a4 = mul_fp2_bn254(a3, a4);
-        let a2a5 = mul_fp2_bn254(a2, a5);
-        let mut a0 = square_fp2_bn254(&a1);
-        a0 = dbl_fp2_bn254(&a0);
-        a0 = add_fp2_bn254(&a0, &a2a5);
-        a0 = sub_fp2_bn254(&a0, &scalar_mul_fp2_bn254(&a3a4, &[3, 0, 0, 0]));
-        a0 = mul_fp2_bn254(&a0, &[9, 0, 0, 0, 1, 0, 0, 0]);
-        a0 = add_fp2_bn254(&a0, &[1, 0, 0, 0, 0, 0, 0, 0]);
+        let a3a4 = mul_fp2_bn254(
+            a3,
+            a4,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        let a2a5 = mul_fp2_bn254(
+            a2,
+            a5,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        let mut a0 = square_fp2_bn254(
+            &a1,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a0 = dbl_fp2_bn254(
+            &a0,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a0 = add_fp2_bn254(
+            &a0,
+            &a2a5,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a0 = sub_fp2_bn254(
+            &a0,
+            &scalar_mul_fp2_bn254(
+                &a3a4,
+                &[3, 0, 0, 0],
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a0 = mul_fp2_bn254(
+            &a0,
+            &[9, 0, 0, 0, 1, 0, 0, 0],
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        a0 = add_fp2_bn254(
+            &a0,
+            &[1, 0, 0, 0, 0, 0, 0, 0],
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         (a0, a1)
     };
@@ -117,46 +260,180 @@ pub fn decompress_cyclo_bn254(a: &[u64; 32]) -> [u64; 48] {
 //     - B45 = a4·a5
 //
 /// **NOTE**: The output is not guaranteed to be in GΦ6(p²), if the input isn't.
-pub fn square_cyclo_bn254(a: &[u64; 32]) -> [u64; 32] {
+pub fn square_cyclo_bn254(
+    a: &[u64; 32],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 32] {
     let a2: &[u64; 8] = &a[0..8].try_into().unwrap();
     let a3: &[u64; 8] = &a[8..16].try_into().unwrap();
     let a4: &[u64; 8] = &a[16..24].try_into().unwrap();
     let a5: &[u64; 8] = &a[24..32].try_into().unwrap();
 
     // B23 = a2·a3, B45 = a4·a5
-    let b23 = mul_fp2_bn254(a2, a3);
-    let b45 = mul_fp2_bn254(a4, a5);
+    let b23 = mul_fp2_bn254(
+        a2,
+        a3,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let b45 = mul_fp2_bn254(
+        a4,
+        a5,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // A23 = (a2 + a3)·(a2 + (9+u)·a3)
-    let a3xi = mul_fp2_bn254(a3, &[9, 0, 0, 0, 1, 0, 0, 0]);
-    let a23 = mul_fp2_bn254(&add_fp2_bn254(a2, a3), &add_fp2_bn254(a2, &a3xi));
+    let a3xi = mul_fp2_bn254(
+        a3,
+        &[9, 0, 0, 0, 1, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let a23 = mul_fp2_bn254(
+        &add_fp2_bn254(
+            a2,
+            a3,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        &add_fp2_bn254(
+            a2,
+            &a3xi,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // A45 = (a4 + a5)·(a4 + (9+u)·a5)
-    let a5xi = mul_fp2_bn254(a5, &[9, 0, 0, 0, 1, 0, 0, 0]);
-    let a45 = mul_fp2_bn254(&add_fp2_bn254(a4, a5), &add_fp2_bn254(a4, &a5xi));
+    let a5xi = mul_fp2_bn254(
+        a5,
+        &[9, 0, 0, 0, 1, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let a45 = mul_fp2_bn254(
+        &add_fp2_bn254(
+            a4,
+            a5,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        &add_fp2_bn254(
+            a4,
+            &a5xi,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // b2 = 2(a2 + 3·(9+u)·B45)
-    let mut b2 = mul_fp2_bn254(&b45, &[9, 0, 0, 0, 1, 0, 0, 0]);
-    b2 = scalar_mul_fp2_bn254(&b2, &[3, 0, 0, 0]);
-    b2 = add_fp2_bn254(a2, &b2);
-    b2 = dbl_fp2_bn254(&b2);
+    let mut b2 = mul_fp2_bn254(
+        &b45,
+        &[9, 0, 0, 0, 1, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    b2 = scalar_mul_fp2_bn254(
+        &b2,
+        &[3, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    b2 = add_fp2_bn254(
+        a2,
+        &b2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    b2 = dbl_fp2_bn254(
+        &b2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // b3 = 3·(A45 - (10+u)·B45) - 2·a3
-    let mut b3 = mul_fp2_bn254(&b45, &[10, 0, 0, 0, 1, 0, 0, 0]);
-    b3 = sub_fp2_bn254(&a45, &b3);
-    b3 = scalar_mul_fp2_bn254(&b3, &[3, 0, 0, 0]);
-    b3 = sub_fp2_bn254(&b3, &dbl_fp2_bn254(a3));
+    let mut b3 = mul_fp2_bn254(
+        &b45,
+        &[10, 0, 0, 0, 1, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    b3 = sub_fp2_bn254(
+        &a45,
+        &b3,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    b3 = scalar_mul_fp2_bn254(
+        &b3,
+        &[3, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    b3 = sub_fp2_bn254(
+        &b3,
+        &dbl_fp2_bn254(
+            a3,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // b4 = 3·(A23 - (10+u)·B23) - 2·a4
-    let mut b4 = mul_fp2_bn254(&b23, &[10, 0, 0, 0, 1, 0, 0, 0]);
-    b4 = sub_fp2_bn254(&a23, &b4);
-    b4 = scalar_mul_fp2_bn254(&b4, &[3, 0, 0, 0]);
-    b4 = sub_fp2_bn254(&b4, &dbl_fp2_bn254(a4));
+    let mut b4 = mul_fp2_bn254(
+        &b23,
+        &[10, 0, 0, 0, 1, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    b4 = sub_fp2_bn254(
+        &a23,
+        &b4,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    b4 = scalar_mul_fp2_bn254(
+        &b4,
+        &[3, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    b4 = sub_fp2_bn254(
+        &b4,
+        &dbl_fp2_bn254(
+            a4,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // b5 = 2·(a5 + 3·B23)
-    let mut b5 = scalar_mul_fp2_bn254(&b23, &[3, 0, 0, 0]);
-    b5 = add_fp2_bn254(a5, &b5);
-    b5 = dbl_fp2_bn254(&b5);
+    let mut b5 = scalar_mul_fp2_bn254(
+        &b23,
+        &[3, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    b5 = add_fp2_bn254(
+        a5,
+        &b5,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    b5 = dbl_fp2_bn254(
+        &b5,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     let mut result = [0; 32];
     result[0..8].copy_from_slice(&b2);
@@ -173,7 +450,10 @@ pub fn square_cyclo_bn254(a: &[u64; 32]) -> [u64; 32] {
 // out: a^x = (a0 + a4·v + a3·v²) + (a2 + a1·v + a5·v²)·w ∈ ∈ GΦ6(p²)
 //
 /// **NOTE**: The output is not guaranteed to be in GΦ6(p²), if the input isn't.
-pub fn exp_by_x_cyclo_bn254(a: &[u64; 48]) -> [u64; 48] {
+pub fn exp_by_x_cyclo_bn254(
+    a: &[u64; 48],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 48] {
     // Binary representation of the exponent x = 4965661367192848881 in big-endian format
     const X_BIN_LE: [u8; 63] = [
         1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0,
@@ -188,12 +468,25 @@ pub fn exp_by_x_cyclo_bn254(a: &[u64; 48]) -> [u64; 48] {
     let mut comp = compress_cyclo_bn254(a);
     for &bit in X_BIN_LE.iter().skip(1) {
         // We always square (in compressed form): C(c²)
-        comp = square_cyclo_bn254(&comp);
+        comp = square_cyclo_bn254(
+            &comp,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         if bit == 1 {
             // decompress and multiply
-            let decomp = decompress_cyclo_bn254(&comp);
-            result = mul_fp12_bn254(&result, &decomp);
+            let decomp = decompress_cyclo_bn254(
+                &comp,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            result = mul_fp12_bn254(
+                &result,
+                &decomp,
+                #[cfg(feature = "hints")]
+                hints,
+            );
         }
     }
 

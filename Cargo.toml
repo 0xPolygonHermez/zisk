@@ -28,9 +28,11 @@ members = [
     "state-machines/rom",
     "witness-computation",
     "ziskos/entrypoint",
+    "ziskos-hints",
     "precompiles/arith_eq",
     "precompiles/arith_eq_384",
     "precompiles/common",
+    "precompiles/hints",
     "precompiles/keccakf",
     "precompiles/sha256f",
     "precompiles/big_int",
@@ -93,9 +95,11 @@ sm-rom = { path = "state-machines/rom" }
 zisk-witness = { path = "witness-computation" }
 ziskclib = { path = "ziskclib" }
 ziskos = { path = "ziskos/entrypoint" }
+ziskos-hints = { path = "ziskos-hints" }
 circuit = { path = "tools/circuit" }
 zisk-sdk = { path = "sdk" }
 zisk-build = { path = "ziskbuild" }
+precompiles-hints = { path = "precompiles/hints" }
 zisk-verifier = { path = "verifier" }
 
 # Distributed crates

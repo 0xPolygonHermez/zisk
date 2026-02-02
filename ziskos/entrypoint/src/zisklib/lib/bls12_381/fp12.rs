@@ -23,26 +23,75 @@ use super::{
 //       - c1 = a1·b1 + a2·b2·v
 //       - c2 = (a1+a2)·(b1+b2) - a1·b1 - a2·b2
 #[inline]
-pub fn mul_fp12_bls12_381(a: &[u64; 72], b: &[u64; 72]) -> [u64; 72] {
+pub fn mul_fp12_bls12_381(
+    a: &[u64; 72],
+    b: &[u64; 72],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 72] {
     let a1 = &a[0..36].try_into().unwrap();
     let a2 = &a[36..72].try_into().unwrap();
     let b1 = &b[0..36].try_into().unwrap();
     let b2 = &b[36..72].try_into().unwrap();
 
     // a1·b1, a2·b2
-    let a1_b1 = mul_fp6_bls12_381(a1, b1);
-    let a2_b2 = mul_fp6_bls12_381(a2, b2);
+    let a1_b1 = mul_fp6_bls12_381(
+        a1,
+        b1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let a2_b2 = mul_fp6_bls12_381(
+        a2,
+        b2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // c1 = a1·b1 + a2·b2·v
-    let mut c1 = sparse_mula_fp6_bls12_381(&a2_b2, &EXT_V);
-    c1 = add_fp6_bls12_381(&c1, &a1_b1);
+    let mut c1 = sparse_mula_fp6_bls12_381(
+        &a2_b2,
+        &EXT_V,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    c1 = add_fp6_bls12_381(
+        &c1,
+        &a1_b1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // c2 = (a1+a2)·(b1+b2) - a1·b1 - a2·b2
-    let a1_plus_a2 = add_fp6_bls12_381(a1, a2);
-    let b1_plus_b2 = add_fp6_bls12_381(b1, b2);
-    let mut c2 = mul_fp6_bls12_381(&a1_plus_a2, &b1_plus_b2);
-    c2 = sub_fp6_bls12_381(&c2, &a1_b1);
-    c2 = sub_fp6_bls12_381(&c2, &a2_b2);
+    let a1_plus_a2 = add_fp6_bls12_381(
+        a1,
+        a2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let b1_plus_b2 = add_fp6_bls12_381(
+        b1,
+        b2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let mut c2 = mul_fp6_bls12_381(
+        &a1_plus_a2,
+        &b1_plus_b2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    c2 = sub_fp6_bls12_381(
+        &c2,
+        &a1_b1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    c2 = sub_fp6_bls12_381(
+        &c2,
+        &a2_b2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     let mut result = [0u64; 72];
     result[0..36].copy_from_slice(&c1);
@@ -57,26 +106,55 @@ pub fn mul_fp12_bls12_381(a: &[u64; 72], b: &[u64; 72]) -> [u64; 72] {
 //       - c1 = a1 + a2·(b23·(1+u) + b22·v²)
 //       - c2 = a2 + a1·(b22·v + b23·v²)
 #[inline]
-pub fn sparse_mul_fp12_bls12_381(a: &[u64; 72], b: &[u64; 24]) -> [u64; 72] {
+pub fn sparse_mul_fp12_bls12_381(
+    a: &[u64; 72],
+    b: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 72] {
     let a1 = &a[0..36].try_into().unwrap();
     let a2 = &a[36..72].try_into().unwrap();
     let b22: &[u64; 12] = &b[0..12].try_into().unwrap();
     let b23 = &b[12..24].try_into().unwrap();
 
     // c1 = a1 + a2·(b23·(1+u) + b22·v²)
-    let b23u = mul_fp2_bls12_381(&EXT_U, b23);
+    let b23u = mul_fp2_bls12_381(
+        &EXT_U,
+        b23,
+        #[cfg(feature = "hints")]
+        hints,
+    );
     let mut sparse_c1 = [0u64; 24];
     sparse_c1[0..12].copy_from_slice(&b23u);
     sparse_c1[12..24].copy_from_slice(b22);
-    let mut c1 = sparse_mulc_fp6_bls12_381(a2, &sparse_c1);
-    c1 = add_fp6_bls12_381(&c1, a1);
+    let mut c1 = sparse_mulc_fp6_bls12_381(
+        a2,
+        &sparse_c1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    c1 = add_fp6_bls12_381(
+        &c1,
+        a1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // c2 = a2 + a1·(b22·v + b23·v²)
     let mut sparse_c2 = [0u64; 24];
     sparse_c2[0..12].copy_from_slice(b22);
     sparse_c2[12..24].copy_from_slice(b23);
-    let mut c2 = sparse_mulb_fp6_bls12_381(a1, &sparse_c2);
-    c2 = add_fp6_bls12_381(&c2, a2);
+    let mut c2 = sparse_mulb_fp6_bls12_381(
+        a1,
+        &sparse_c2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    c2 = add_fp6_bls12_381(
+        &c2,
+        a2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     let mut result = [0u64; 72];
     result[0..36].copy_from_slice(&c1);
@@ -91,24 +169,71 @@ pub fn sparse_mul_fp12_bls12_381(a: &[u64; 72], b: &[u64; 24]) -> [u64; 72] {
 //       - c1 = (a1-a2)·(a1-a2·v) + a1·a2 + a1·a2·v
 //       - c2 = 2·a1·a2
 #[inline]
-pub fn square_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
+pub fn square_fp12_bls12_381(
+    a: &[u64; 72],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 72] {
     let a1 = &a[0..36].try_into().unwrap();
     let a2 = &a[36..72].try_into().unwrap();
 
     // a1·a2, a2·v, a1·a2·v
-    let a1_a2 = mul_fp6_bls12_381(a1, a2);
-    let a2_v = sparse_mula_fp6_bls12_381(a2, &EXT_V);
-    let a1_a2_v = sparse_mula_fp6_bls12_381(&a1_a2, &EXT_V);
+    let a1_a2 = mul_fp6_bls12_381(
+        a1,
+        a2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let a2_v = sparse_mula_fp6_bls12_381(
+        a2,
+        &EXT_V,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let a1_a2_v = sparse_mula_fp6_bls12_381(
+        &a1_a2,
+        &EXT_V,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // c2 = 2·a1·a2
-    let c2 = dbl_fp6_bls12_381(&a1_a2);
+    let c2 = dbl_fp6_bls12_381(
+        &a1_a2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // c1 = (a1-a2)·(a1-a2·v) + a1·a2 + a1·a2·v
-    let a1_minus_a2 = sub_fp6_bls12_381(a1, a2);
-    let a1_minus_a2v = sub_fp6_bls12_381(a1, &a2_v);
-    let mut c1 = mul_fp6_bls12_381(&a1_minus_a2, &a1_minus_a2v);
-    c1 = add_fp6_bls12_381(&c1, &a1_a2);
-    c1 = add_fp6_bls12_381(&c1, &a1_a2_v);
+    let a1_minus_a2 = sub_fp6_bls12_381(
+        a1,
+        a2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let a1_minus_a2v = sub_fp6_bls12_381(
+        a1,
+        &a2_v,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let mut c1 = mul_fp6_bls12_381(
+        &a1_minus_a2,
+        &a1_minus_a2v,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    c1 = add_fp6_bls12_381(
+        &c1,
+        &a1_a2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    c1 = add_fp6_bls12_381(
+        &c1,
+        &a1_a2_v,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     let mut result = [0u64; 72];
     result[0..36].copy_from_slice(&c1);
@@ -123,22 +248,61 @@ pub fn square_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
 //       - c1 = a1·(a1² - a2²·v)⁻¹
 //       - c2 = -a2·(a1² - a2²·v)⁻¹
 #[inline]
-pub fn inv_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
+pub fn inv_fp12_bls12_381(
+    a: &[u64; 72],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 72] {
     let a1 = &a[0..36].try_into().unwrap();
     let a2 = &a[36..72].try_into().unwrap();
 
     // a1², a2², a2²·v
-    let a1_square = square_fp6_bls12_381(a1);
-    let a2_square = square_fp6_bls12_381(a2);
-    let a2_square_v = sparse_mula_fp6_bls12_381(&a2_square, &EXT_V);
+    let a1_square = square_fp6_bls12_381(
+        a1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let a2_square = square_fp6_bls12_381(
+        a2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let a2_square_v = sparse_mula_fp6_bls12_381(
+        &a2_square,
+        &EXT_V,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // (a1² - a2²·v)⁻¹
-    let mut denom = sub_fp6_bls12_381(&a1_square, &a2_square_v);
-    denom = inv_fp6_bls12_381(&denom);
+    let mut denom = sub_fp6_bls12_381(
+        &a1_square,
+        &a2_square_v,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    denom = inv_fp6_bls12_381(
+        &denom,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // c1 = a1·(a1² - a2²·v)⁻¹, c2 = -a2·(a1² - a2²·v)⁻¹
-    let c1 = mul_fp6_bls12_381(a1, &denom);
-    let c2 = neg_fp6_bls12_381(&mul_fp6_bls12_381(a2, &denom));
+    let c1 = mul_fp6_bls12_381(
+        a1,
+        &denom,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let c2 = neg_fp6_bls12_381(
+        &mul_fp6_bls12_381(
+            a2,
+            &denom,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     let mut result = [0u64; 72];
     result[0..36].copy_from_slice(&c1);
@@ -148,10 +312,17 @@ pub fn inv_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
 
 /// Conjugation in Fp12
 #[inline]
-pub fn conjugate_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
+pub fn conjugate_fp12_bls12_381(
+    a: &[u64; 72],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 72] {
     let mut result = [0; 72];
     result[0..36].copy_from_slice(&a[0..36]);
-    result[36..72].copy_from_slice(&neg_fp6_bls12_381(&a[36..72].try_into().unwrap()));
+    result[36..72].copy_from_slice(&neg_fp6_bls12_381(
+        &a[36..72].try_into().unwrap(),
+        #[cfg(feature = "hints")]
+        hints,
+    ));
     result
 }
 
@@ -162,7 +333,10 @@ pub fn conjugate_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
 //       - c1 = a̅11     + a̅12·γ12·v + a̅13·γ14·v²
 //       - c2 = a̅21·γ11 + a̅22·γ13·v + a̅23·γ15·v²
 #[inline]
-pub fn frobenius1_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
+pub fn frobenius1_fp12_bls12_381(
+    a: &[u64; 72],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 72] {
     let a11 = &a[0..12].try_into().unwrap();
     let a12 = &a[12..24].try_into().unwrap();
     let a13 = &a[24..36].try_into().unwrap();
@@ -173,19 +347,68 @@ pub fn frobenius1_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
     let mut result = [0; 72];
 
     // c1 = a̅11 + a̅12·γ12·v + a̅13·γ14·v²
-    result[0..12].copy_from_slice(&conjugate_fp2_bls12_381(a11));
-    let mut tmp = conjugate_fp2_bls12_381(a12);
-    result[12..24].copy_from_slice(&mul_fp2_bls12_381(&tmp, &FROBENIUS_GAMMA12));
-    tmp = conjugate_fp2_bls12_381(a13);
-    result[24..36].copy_from_slice(&scalar_mul_fp2_bls12_381(&tmp, &FROBENIUS_GAMMA14));
+    result[0..12].copy_from_slice(&conjugate_fp2_bls12_381(
+        a11,
+        #[cfg(feature = "hints")]
+        hints,
+    ));
+    let mut tmp = conjugate_fp2_bls12_381(
+        a12,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    result[12..24].copy_from_slice(&mul_fp2_bls12_381(
+        &tmp,
+        &FROBENIUS_GAMMA12,
+        #[cfg(feature = "hints")]
+        hints,
+    ));
+    tmp = conjugate_fp2_bls12_381(
+        a13,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    result[24..36].copy_from_slice(&scalar_mul_fp2_bls12_381(
+        &tmp,
+        &FROBENIUS_GAMMA14,
+        #[cfg(feature = "hints")]
+        hints,
+    ));
 
     // c2 = a̅21·γ11 + a̅22·γ13·v + a̅23·γ15·v²
-    tmp = conjugate_fp2_bls12_381(a21);
-    result[36..48].copy_from_slice(&mul_fp2_bls12_381(&tmp, &FROBENIUS_GAMMA11));
-    tmp = conjugate_fp2_bls12_381(a22);
-    result[48..60].copy_from_slice(&mul_fp2_bls12_381(&tmp, &FROBENIUS_GAMMA13));
-    tmp = conjugate_fp2_bls12_381(a23);
-    result[60..72].copy_from_slice(&mul_fp2_bls12_381(&tmp, &FROBENIUS_GAMMA15));
+    tmp = conjugate_fp2_bls12_381(
+        a21,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    result[36..48].copy_from_slice(&mul_fp2_bls12_381(
+        &tmp,
+        &FROBENIUS_GAMMA11,
+        #[cfg(feature = "hints")]
+        hints,
+    ));
+    tmp = conjugate_fp2_bls12_381(
+        a22,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    result[48..60].copy_from_slice(&mul_fp2_bls12_381(
+        &tmp,
+        &FROBENIUS_GAMMA13,
+        #[cfg(feature = "hints")]
+        hints,
+    ));
+    tmp = conjugate_fp2_bls12_381(
+        a23,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    result[60..72].copy_from_slice(&mul_fp2_bls12_381(
+        &tmp,
+        &FROBENIUS_GAMMA15,
+        #[cfg(feature = "hints")]
+        hints,
+    ));
 
     result
 }
@@ -197,7 +420,10 @@ pub fn frobenius1_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
 //       - c1 = a11     + a12·γ22·v + a13·γ24·v²
 //       - c2 = a21·γ21 + a22·γ23·v + a23·γ25·v²
 #[inline]
-pub fn frobenius2_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
+pub fn frobenius2_fp12_bls12_381(
+    a: &[u64; 72],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 72] {
     let a11: &[u64; 12] = &a[0..12].try_into().unwrap();
     let a12 = &a[12..24].try_into().unwrap();
     let a13 = &a[24..36].try_into().unwrap();
@@ -209,13 +435,38 @@ pub fn frobenius2_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
 
     // c1 = a11 + a12·γ22·v + a13·γ24·v²
     result[0..12].copy_from_slice(a11);
-    result[12..24].copy_from_slice(&scalar_mul_fp2_bls12_381(a12, &FROBENIUS_GAMMA22));
-    result[24..36].copy_from_slice(&scalar_mul_fp2_bls12_381(a13, &FROBENIUS_GAMMA24));
+    result[12..24].copy_from_slice(&scalar_mul_fp2_bls12_381(
+        a12,
+        &FROBENIUS_GAMMA22,
+        #[cfg(feature = "hints")]
+        hints,
+    ));
+    result[24..36].copy_from_slice(&scalar_mul_fp2_bls12_381(
+        a13,
+        &FROBENIUS_GAMMA24,
+        #[cfg(feature = "hints")]
+        hints,
+    ));
 
     // c2 = a21·γ21 + a22·γ23·v + a23·γ25·v²
-    result[36..48].copy_from_slice(&scalar_mul_fp2_bls12_381(a21, &FROBENIUS_GAMMA21));
-    result[48..60].copy_from_slice(&scalar_mul_fp2_bls12_381(a22, &FROBENIUS_GAMMA23));
-    result[60..72].copy_from_slice(&scalar_mul_fp2_bls12_381(a23, &FROBENIUS_GAMMA25));
+    result[36..48].copy_from_slice(&scalar_mul_fp2_bls12_381(
+        a21,
+        &FROBENIUS_GAMMA21,
+        #[cfg(feature = "hints")]
+        hints,
+    ));
+    result[48..60].copy_from_slice(&scalar_mul_fp2_bls12_381(
+        a22,
+        &FROBENIUS_GAMMA23,
+        #[cfg(feature = "hints")]
+        hints,
+    ));
+    result[60..72].copy_from_slice(&scalar_mul_fp2_bls12_381(
+        a23,
+        &FROBENIUS_GAMMA25,
+        #[cfg(feature = "hints")]
+        hints,
+    ));
 
     result
 }
@@ -225,7 +476,11 @@ pub fn frobenius2_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
 // in: e, (a1 + a2·w) ∈ Fp12, where e ∈ [0,p¹²-2] ai ∈ Fp6
 // out: (c1 + c2·w) = (a1 + a2·w)^e ∈ Fp12
 #[inline]
-pub fn exp_fp12_bls12_381(e: u64, a: &[u64; 72]) -> [u64; 72] {
+pub fn exp_fp12_bls12_381(
+    e: u64,
+    a: &[u64; 72],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 72] {
     let one = {
         let mut tmp = [0; 72];
         tmp[0] = 1;
@@ -244,7 +499,12 @@ pub fn exp_fp12_bls12_381(e: u64, a: &[u64; 72]) -> [u64; 72] {
         return *a;
     }
 
-    let (_, max_bit) = fcall_msb_pos_384(&[e, 0, 0, 0, 0, 0], &[0, 0, 0, 0, 0, 0]);
+    let (_, max_bit) = fcall_msb_pos_384(
+        &[e, 0, 0, 0, 0, 0],
+        &[0, 0, 0, 0, 0, 0],
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Perform the loop, based on the binary representation of e
 
@@ -260,12 +520,21 @@ pub fn exp_fp12_bls12_381(e: u64, a: &[u64; 72]) -> [u64; 72] {
     let _max_bit = max_bit as usize;
     for i in (0.._max_bit).rev() {
         // Always square
-        result = square_fp12_bls12_381(&result);
+        result = square_fp12_bls12_381(
+            &result,
+            #[cfg(feature = "hints")]
+            hints,
+        );
 
         // Get the next bit b of e
         // If b == 1, we should multiply it by a, otherwise start the next iteration
         if ((e >> i) & 1) == 1 {
-            result = mul_fp12_bls12_381(&result, a);
+            result = mul_fp12_bls12_381(
+                &result,
+                a,
+                #[cfg(feature = "hints")]
+                hints,
+            );
 
             // Reconstruct e
             e_rec |= 1 << i;
@@ -276,18 +545,4 @@ pub fn exp_fp12_bls12_381(e: u64, a: &[u64; 72]) -> [u64; 72] {
     assert_eq!(e_rec, e);
 
     result
-}
-
-/// # Safety
-/// - `ret` must point to a valid `[u64; 72]` for the output.
-/// - `a` and `b` must point to valid `[u64; 72]` Fp12 elements.
-#[no_mangle]
-pub unsafe extern "C" fn mul_fp12_bls12_381_c(ret: *mut u64, a: *const u64, b: *const u64) {
-    let a_arr: &[u64; 72] = &*(a as *const [u64; 72]);
-    let b_arr: &[u64; 72] = &*(b as *const [u64; 72]);
-
-    let result = mul_fp12_bls12_381(a_arr, b_arr);
-
-    let ret_arr: &mut [u64; 72] = &mut *(ret as *mut [u64; 72]);
-    *ret_arr = result;
 }

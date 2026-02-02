@@ -9,7 +9,8 @@ use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info};
 use zisk_distributed_common::{
-    AggProofData, AggregationParams, DataCtx, InputSourceDto, WorkerState,
+    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, StreamDataDto,
+    WorkerState,
 };
 use zisk_distributed_common::{DataId, JobId};
 use zisk_distributed_grpc_api::contribution_params::InputSource;
@@ -470,6 +471,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     }
                 }
             }
+            coordinator_message::Payload::StreamData(stream_data) => {
+                self.handle_stream_data(stream_data).await?;
+            }
             coordinator_message::Payload::JobCancelled(cancelled) => {
                 info!("Job {} cancelled: {}", cancelled.job_id, cancelled.reason);
 
@@ -516,21 +520,40 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let job_id = JobId::from(request.job_id);
         let input_source = match params.input_source {
-            Some(InputSource::InputPath(ref path)) => {
-                let input_path = self.worker_config.worker.inputs_folder.join(PathBuf::from(path));
+            Some(InputSource::InputPath(ref inputs_uris)) => {
+                // Validate and get the full path
+                let inputs_uri = Self::validate_subdir(
+                    &self.worker_config.worker.inputs_folder,
+                    &PathBuf::from(&inputs_uris),
+                )
+                .await?;
 
-                // Validate that input_path is a subdirectory of inputs_folder
-                Self::validate_subdir(&self.worker_config.worker.inputs_folder, &input_path)?;
-
-                InputSourceDto::InputPath(input_path.display().to_string())
+                InputSourceDto::InputPath(inputs_uri.to_string_lossy().to_string())
             }
             Some(InputSource::InputData(data)) => InputSourceDto::InputData(data),
-            None => {
-                return Err(anyhow!("Input source missing in ContributionParams"));
-            }
+            None => InputSourceDto::InputNull,
         };
 
-        let data_ctx = DataCtx { data_id: DataId::from(params.data_id), input_source };
+        let hints_source = if let Some(hints_path) = &params.hints_path {
+            if params.hints_stream {
+                // Hints will be streamed - use placeholder, will be updated when stream completes
+                HintsSourceDto::HintsStream(hints_path.clone())
+            } else {
+                // Validate and get the full path
+                let hints_uri = Self::validate_subdir(
+                    &self.worker_config.worker.inputs_folder,
+                    &PathBuf::from(hints_path),
+                )
+                .await?;
+
+                HintsSourceDto::HintsPath(hints_uri.to_string_lossy().to_string())
+            }
+        } else {
+            HintsSourceDto::HintsNull
+        };
+
+        let data_ctx =
+            DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
 
         let job = self.worker.new_job(
             job_id,
@@ -549,35 +572,65 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
-    fn validate_subdir(base: &Path, candidate: &Path) -> Result<()> {
-        let base = base.canonicalize().map_err(|e| anyhow!("Inputs folder error: {e}"))?;
+    /// Validates that a subpath is within the base directory and waits for it to exist.
+    ///
+    /// This function joins the base directory with the provided subpath, waits for the
+    /// resulting file/directory to appear (up to 60 seconds), and validates that the
+    /// resolved path is within the base directory to prevent path traversal attacks.
+    ///
+    /// # Security Considerations
+    /// - Joins base and subpath before validation
+    /// - Canonicalizes paths to resolve symlinks and relative components (e.g., `..`)
+    /// - Validates that the resolved path is within the base directory
+    /// - Note: There's a small TOCTOU window between file existence check and canonicalization
+    ///   where a file could theoretically be replaced with a malicious symlink
+    ///
+    /// # Arguments
+    /// * `base_dir` - The base directory that must contain the subpath
+    /// * `subpath` - The relative path within base_dir (can include subdirectories)
+    ///
+    /// # Returns
+    /// * `Ok(PathBuf)` - The validated, canonicalized full path
+    /// * `Err` - If the path doesn't appear within timeout or is outside base directory
+    async fn validate_subdir(base_dir: &Path, subpath: &Path) -> Result<PathBuf> {
+        let base_canonical =
+            base_dir.canonicalize().map_err(|e| anyhow!("Inputs folder error: {e}"))?;
 
-        // Timeout 60 seconds
+        // Join base with subpath to get full path
+        let full_path = base_dir.join(subpath);
+
+        // Wait for file to appear (timeout: 60 seconds)
         let timeout = Duration::from_secs(60);
         let start = std::time::Instant::now();
+        let poll_interval = Duration::from_millis(500); // Poll every 500ms
 
-        while !candidate.exists() {
+        while !full_path.exists() {
             if start.elapsed() > timeout {
                 return Err(anyhow!(
-                    "Input path {:?} did not appear within {:?}",
-                    candidate,
+                    "Input path {:?} (subpath: {:?}) did not appear within {:?}",
+                    full_path,
+                    subpath,
                     timeout
                 ));
             }
-            std::thread::sleep(Duration::from_millis(10));
+            tokio::time::sleep(poll_interval).await;
         }
 
-        info!("Found input file {:?} (elapsed: {:?})", candidate, start.elapsed());
+        info!("Found input path {:?} (elapsed: {:?})", full_path, start.elapsed());
 
-        let candidate = candidate.canonicalize().map_err(|e| anyhow!("Input path error: {e}"))?;
+        // Canonicalize immediately after existence check to minimize TOCTOU window
+        let path_canonical =
+            full_path.canonicalize().map_err(|e| anyhow!("Input path error: {e}"))?;
 
-        if candidate.starts_with(&base) {
-            Ok(())
+        // Validate that the canonical path is within the base directory
+        if path_canonical.starts_with(&base_canonical) {
+            Ok(path_canonical)
         } else {
             Err(anyhow!(
-                "Input path {:?} must be a subdirectory of inputs folder {:?}",
-                candidate,
-                base
+                "Input path {:?} (resolved to {:?}) is outside base directory {:?}",
+                subpath,
+                path_canonical,
+                base_canonical
             ))
         }
     }
@@ -671,6 +724,30 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         self.worker.set_current_computation(
             self.worker.handle_aggregate(job, agg_params, computation_tx.clone()).await,
         );
+
+        Ok(())
+    }
+
+    async fn handle_stream_data(&mut self, stream_data: StreamData) -> Result<()> {
+        if self.worker.current_job().is_none() {
+            return Err(anyhow!("Stream data received without current job context"));
+        }
+
+        let job = self.worker.current_job().clone().unwrap().clone();
+        let current_job_id = job.lock().await.job_id.clone();
+
+        let stream_data_dto: StreamDataDto = stream_data.into();
+        let job_id = stream_data_dto.job_id.clone();
+
+        if current_job_id != job_id {
+            return Err(anyhow!(
+                "Job ID mismatch in StreamData: expected {}, got {}",
+                current_job_id.as_string(),
+                job_id
+            ));
+        }
+
+        self.worker.process_stream_data(stream_data_dto).await?;
 
         Ok(())
     }

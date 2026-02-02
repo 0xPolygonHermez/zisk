@@ -95,9 +95,11 @@ pub fn execute_build_program(
     for (_, elf_path) in target_elf_paths.iter() {
         let elf_path_std = elf_path.as_std_path();
 
+        let hints = true; // TODO
+
         // Check if assembly files already exist
         if !assembly_files_exist(elf_path_std, &output_path)? {
-            gen_assembly(elf_path_std, &zisk_path_buf, &None, true)?;
+            gen_assembly(elf_path_std, &zisk_path_buf, &None, hints, true)?;
         }
     }
 

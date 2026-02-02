@@ -67,12 +67,12 @@ impl fmt::Display for SegmentId {
 
 #[derive(Debug, Default, Clone)]
 pub struct ZiskExecutionResult {
-    pub executed_steps: u64,
+    pub steps: u64,
 }
 
 impl ZiskExecutionResult {
     pub fn new(executed_steps: u64) -> Self {
-        Self { executed_steps }
+        Self { steps: executed_steps }
     }
 }
 
@@ -95,16 +95,18 @@ pub struct Stats {
 pub trait ElfBinaryLike {
     fn elf(&self) -> &[u8];
     fn name(&self) -> &str;
+    fn with_hints(&self) -> bool;
 }
 
 pub struct ElfBinaryOwned {
     pub elf: Vec<u8>,
     pub name: String,
+    pub with_hints: bool,
 }
 
 impl ElfBinaryOwned {
-    pub const fn new(elf: Vec<u8>, name: String) -> Self {
-        Self { elf, name }
+    pub const fn new(elf: Vec<u8>, name: String, with_hints: bool) -> Self {
+        Self { elf, name, with_hints }
     }
 }
 
@@ -115,11 +117,15 @@ impl ElfBinaryLike for ElfBinaryOwned {
     fn name(&self) -> &str {
         &self.name
     }
+    fn with_hints(&self) -> bool {
+        self.with_hints
+    }
 }
 
 pub struct ElfBinary {
     pub elf: &'static [u8],
     pub name: &'static str,
+    pub with_hints: bool,
 }
 
 impl ElfBinaryLike for ElfBinary {
@@ -128,5 +134,8 @@ impl ElfBinaryLike for ElfBinary {
     }
     fn name(&self) -> &str {
         self.name
+    }
+    fn with_hints(&self) -> bool {
+        self.with_hints
     }
 }

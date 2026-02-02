@@ -207,7 +207,7 @@ fn print_command_info(
     }
     println!(
         "{: >12} {}",
-        "Proving key".bright_green().bold(),
+        "Proving Key".bright_green().bold(),
         get_proving_key(Some(&prover_config.proving_key)).display()
     );
 
