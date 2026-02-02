@@ -20,7 +20,7 @@ impl ZiskLibLoader {
         unlock_mapped_memory: Option<bool>,
         with_hints: bool,
     ) -> Result<WitnessLib<F>> {
-        let witness_lib = WitnessLib::new(
+        Ok(WitnessLib::new(
             verbose,
             asm_mt_filename,
             asm_rh_filename,
@@ -28,9 +28,7 @@ impl ZiskLibLoader {
             unlock_mapped_memory.unwrap_or(false),
             shared_tables,
             with_hints,
-        );
-
-        Ok(witness_lib)
+        ))
     }
 
     pub fn load_emu<F: PrimeField64>(

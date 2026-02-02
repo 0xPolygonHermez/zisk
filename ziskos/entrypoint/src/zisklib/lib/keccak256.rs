@@ -116,13 +116,7 @@ pub unsafe extern "C" fn native_keccak256(bytes: *const u8, len: usize, output: 
 
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
-        keccak256_c(
-            bytes,
-            len,
-            output,
-            #[cfg(feature = "hints")]
-            hints,
-        );
+        keccak256_c(bytes, len, output);
     }
 
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]

@@ -83,7 +83,7 @@ main() {
     cached=0
     if [[ "${USE_CACHE_SETUP}" == "1" ]]; then
         # Compute setup hash
-        HASH_SUM=$(sha256sum pil/zisk.pilout tmp/fixed/*.fixed \
+        HASH_SUM=$(sha256sum pil/zisk.pilout tmp/fixed/*.fixed state-machines/starkstructs.json \
         | sort -k2 \
         | sha256sum \
         | awk '{print $1}' \
