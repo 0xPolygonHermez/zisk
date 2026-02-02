@@ -1179,7 +1179,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef#31513dc4ecb2ef2391559262c7674e5a2b6d26a1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
  "num-bigint",
@@ -1566,7 +1566,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef#31513dc4ecb2ef2391559262c7674e5a2b6d26a1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2965,7 +2965,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef#31513dc4ecb2ef2391559262c7674e5a2b6d26a1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "colored",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
@@ -3378,7 +3378,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef#31513dc4ecb2ef2391559262c7674e5a2b6d26a1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "blake3",
  "borsh",
@@ -3413,7 +3413,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef#31513dc4ecb2ef2391559262c7674e5a2b6d26a1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "borsh",
  "colored",
@@ -3444,7 +3444,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef#31513dc4ecb2ef2391559262c7674e5a2b6d26a1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
  "itoa",
@@ -3457,7 +3457,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef#31513dc4ecb2ef2391559262c7674e5a2b6d26a1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3468,7 +3468,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef#31513dc4ecb2ef2391559262c7674e5a2b6d26a1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3477,7 +3477,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef#31513dc4ecb2ef2391559262c7674e5a2b6d26a1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "colored",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
@@ -3488,7 +3488,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef#31513dc4ecb2ef2391559262c7674e5a2b6d26a1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "bytemuck",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
@@ -5882,7 +5882,7 @@ checksum = "d7249219f66ced02969388cf2bb044a09756a083d0fab1e566056b04d9fbcaa5"
 [[package]]
 name = "witness"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef#31513dc4ecb2ef2391559262c7674e5a2b6d26a1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "colored",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
