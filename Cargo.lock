@@ -647,7 +647,7 @@ dependencies = [
  "colored",
  "dirs",
  "executor",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "futures",
  "indicatif",
  "libloading",
@@ -1181,7 +1181,7 @@ name = "curves"
 version = "0.16.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "num-bigint",
  "num-traits",
  "rand 0.9.2",
@@ -1501,7 +1501,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "itertools 0.14.0",
  "mem-common",
  "mem-planner-cpp",
@@ -1561,17 +1561,6 @@ checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
  "rand_core 0.6.4",
  "subtle",
-]
-
-[[package]]
-name = "fields"
-version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
-dependencies = [
- "cfg-if",
- "num-bigint",
- "paste",
- "serde",
 ]
 
 [[package]]
@@ -2516,7 +2505,7 @@ name = "mem-common"
 version = "0.16.0"
 dependencies = [
  "clap",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "num-bigint",
  "num-traits",
  "pil-std-lib",
@@ -2968,7 +2957,7 @@ version = "0.16.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "colored",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3128,7 +3117,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "k256",
  "lazy_static",
  "lib-c",
@@ -3167,7 +3156,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "k256",
  "lazy_static",
  "lib-c",
@@ -3201,7 +3190,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "0.16.0"
 dependencies = [
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3223,7 +3212,7 @@ dependencies = [
 name = "precomp-dma"
 version = "0.16.0"
 dependencies = [
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3247,7 +3236,7 @@ name = "precomp-keccakf"
 version = "0.16.0"
 dependencies = [
  "circuit",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -3268,7 +3257,7 @@ dependencies = [
 name = "precomp-poseidon2"
 version = "0.16.0"
 dependencies = [
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3289,7 +3278,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "0.16.0"
 dependencies = [
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3309,7 +3298,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.16.0"
 dependencies = [
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -3388,7 +3377,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "libloading",
  "mpi",
  "num-bigint",
@@ -3421,7 +3410,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "indexmap",
  "lazy_static",
  "libloading",
@@ -3446,7 +3435,7 @@ name = "proofman-hints"
 version = "0.16.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -3480,7 +3469,7 @@ version = "0.16.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "colored",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "sysinfo 0.35.2",
  "tracing",
 ]
@@ -3491,7 +3480,7 @@ version = "0.16.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "bytemuck",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "rayon",
  "tracing",
 ]
@@ -3881,7 +3870,7 @@ dependencies = [
  "blake3",
  "bytemuck",
  "colored",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -4326,7 +4315,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sm-arith"
 version = "0.16.0"
 dependencies = [
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "num-bigint",
  "pil-std-lib",
  "proofman",
@@ -4347,7 +4336,7 @@ dependencies = [
 name = "sm-binary"
 version = "0.16.0"
 dependencies = [
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "num-bigint",
  "pil-std-lib",
  "proofman",
@@ -4368,7 +4357,7 @@ name = "sm-frequent-ops"
 version = "0.16.0"
 dependencies = [
  "clap",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "num-bigint",
  "pil-std-lib",
  "proofman",
@@ -4388,7 +4377,7 @@ name = "sm-main"
 version = "0.16.0"
 dependencies = [
  "asm-runner",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "mem-common",
  "num-bigint",
  "pil-std-lib",
@@ -4409,7 +4398,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.16.0"
 dependencies = [
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "mem-common",
  "mem-planner-cpp",
  "num-bigint",
@@ -4432,7 +4421,7 @@ name = "sm-rom"
 version = "0.16.0"
 dependencies = [
  "asm-runner",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "itertools 0.14.0",
  "proofman",
  "proofman-common",
@@ -5885,7 +5874,7 @@ version = "0.16.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
 dependencies = [
  "colored",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -6077,7 +6066,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "bytemuck",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "libc",
  "mpi",
  "proofman",
@@ -6102,7 +6091,7 @@ name = "zisk-core"
 version = "0.16.0"
 dependencies = [
  "elf",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "indexmap",
  "json",
  "lib-c",
@@ -6198,7 +6187,7 @@ dependencies = [
  "clap",
  "colored",
  "config",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "libloading",
  "precompiles-hints",
  "proofman",
@@ -6225,7 +6214,7 @@ dependencies = [
 name = "zisk-pil"
 version = "0.16.0"
 dependencies = [
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "proofman",
  "proofman-common",
  "proofman-macros",
@@ -6242,7 +6231,7 @@ dependencies = [
  "asm-runner",
  "bytemuck",
  "colored",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "libloading",
  "proofman",
  "proofman-common",
@@ -6272,7 +6261,7 @@ dependencies = [
  "data-bus",
  "env_logger",
  "executor",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "mem-common",
  "pil-std-lib",
  "precomp-arith-eq",
@@ -6317,7 +6306,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "mem-common",
  "memmap2",
  "num-format",
@@ -6345,7 +6334,7 @@ dependencies = [
  "bincode",
  "cfg-if",
  "ctor",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0)",
+ "fields",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -6370,7 +6359,7 @@ dependencies = [
  "bincode",
  "cfg-if",
  "elliptic-curve",
- "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Frecursivef)",
+ "fields",
  "getrandom 0.2.17",
  "k256",
  "lazy_static",
