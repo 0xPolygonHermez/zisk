@@ -125,7 +125,7 @@ do
     make
 
     # Execute it and save output
-    build/ziskemuasm -s --gen=1 -o --silent > output 2>&1 &
+    build/ziskemuasm -s --gen=1 --output_riscof --silent > output 2>&1 &
 
     # Store the PID of the background process
     # BG_PID=$!
