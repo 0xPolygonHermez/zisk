@@ -14,14 +14,11 @@ mod metrics;
 use crate::hints::hint_buffer::{build_hint_buffer,  HintBuffer};
 use anyhow::Result;
 use once_cell::sync::Lazy;
-use std::cell::UnsafeCell;
+use std::{io::{self, BufWriter, Write}, sync::Arc};
 use std::path::PathBuf;
 use std::thread::{self, JoinHandle, ThreadId};
 use std::{ffi::CStr, os::raw::c_char};
-use std::{
-    io::{self, BufWriter, Write},
-    sync::Arc,
-};
+use std::cell::UnsafeCell;
 use zisk_common::io::{StreamWrite, UnixSocketStreamWriter};
 
 #[cfg(zisk_hints_single_thread)]
@@ -49,7 +46,9 @@ unsafe impl Sync for HintFileWriterHandleCell {}
 
 impl HintFileWriterHandleCell {
     pub const fn new() -> Self {
-        Self { inner: UnsafeCell::new(None) }
+        Self {
+            inner: UnsafeCell::new(None),
+        }
     }
 
     pub fn take(&self) -> Option<JoinHandle<io::Result<()>>> {
@@ -103,7 +102,14 @@ pub fn init_hints_file(hints_file_path: PathBuf) -> io::Result<()> {
 pub fn init_hints_socket(socket_path: PathBuf) -> io::Result<()> {
     init_hints()?;
 
-    let handle = thread::spawn(move || write_hints_to_socket(socket_path));
+    // Create the Unix socket writer (server)
+    let mut socket_writer = UnixSocketWriter::new(&socket_path).map_err(io::Error::other)?;
+
+    // Open the connection (waits for client to connect)
+    socket_writer.open().map_err(io::Error::other)?;
+    println!("Client connected to hints socket! Starting hint data transfer...");
+
+    let handle = thread::spawn(move || write_hints_to_socket(socket_writer));
     HINT_WRITER_HANDLE.store(handle);
 
     Ok(())
@@ -114,10 +120,12 @@ pub fn close_hints() -> io::Result<()> {
     let handle = HINT_WRITER_HANDLE.take();
     if let Some(handle) = handle {
         match handle.join() {
-            Ok(result) => match result {
-                Ok(()) => Ok(()),
-                Err(e) => return Err(e),
-            },
+            Ok(result) => {
+                match result {
+                    Ok(()) => Ok(()),
+                    Err(e) => return Err(e),
+                }
+            }
             Err(e) => Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!("Failed precompile hints writer thread, error: {:?}", e),
@@ -194,14 +202,8 @@ impl Write for UnixSocketWriter {
     }
 }
 
-fn write_hints_to_socket(path: PathBuf) -> io::Result<()> {
+fn write_hints_to_socket(mut socket_writer: UnixSocketWriter) -> io::Result<()> {
     debug_assert!(cfg!(target_endian = "little"));
-
-    // Create the Unix socket writer (server)
-    let mut socket_writer = UnixSocketWriter::new(&path).map_err(io::Error::other)?;
-
-    // Open the connection (waits for client to connect)
-    socket_writer.open().map_err(io::Error::other)?;
 
     write_hints(&mut socket_writer)?;
 

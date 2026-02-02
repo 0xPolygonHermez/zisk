@@ -1,8 +1,9 @@
+use bytes::{Bytes, BytesMut};
 use std::io::{self, Write};
 use std::sync::{Arc, Condvar, Mutex};
 
-pub const MAX_HINT_BUFFER_LEN: usize = 1 << 20; // 1 MiB
-pub const MAX_HINT_LEN: usize = 128 * 1024; // 128 KiB
+pub const DEFAULT_BUFFER_LEN: usize = 1 << 20; // 1 MiB
+pub const MAX_WRITER_LEN: usize = 128 * 1024; // 128KB is the max write size for Unix sockets
 pub const HEADER_LEN: usize = 8;
 
 pub struct HintBuffer {
@@ -11,11 +12,8 @@ pub struct HintBuffer {
 }
 
 struct HintBufferInner {
-    buf: [u8; MAX_HINT_BUFFER_LEN],
-    head: usize,
-    tail: usize,
-    len: usize,
-    len_commit: usize,
+    buf: BytesMut,
+    commit_pos: usize,
     closed: bool,
     paused: bool,
 }
@@ -23,11 +21,8 @@ struct HintBufferInner {
 pub fn build_hint_buffer() -> Arc<HintBuffer> {
     Arc::new(HintBuffer {
         inner: Mutex::new(HintBufferInner {
-            buf: [0u8; MAX_HINT_BUFFER_LEN],
-            head: 0,
-            tail: 0,
-            len: 0,
-            len_commit: 0,
+            buf: BytesMut::with_capacity(DEFAULT_BUFFER_LEN),
+            commit_pos: 0,
             closed: false,
             paused: false,
         }),
@@ -37,63 +32,13 @@ pub fn build_hint_buffer() -> Arc<HintBuffer> {
 
 impl HintBufferInner {
     #[inline(always)]
-    fn free_space(&self) -> usize {
-        MAX_HINT_BUFFER_LEN - self.len
-    }
-
-    #[inline(always)]
     fn write_bytes(&mut self, src: &[u8]) {
-        let mut remaining = src;
-        while !remaining.is_empty() {
-            let end_space = MAX_HINT_BUFFER_LEN - self.tail;
-            let chunk = remaining.len().min(end_space);
-
-            self.buf[self.tail..self.tail + chunk].copy_from_slice(&remaining[..chunk]);
-            self.tail = (self.tail + chunk) % MAX_HINT_BUFFER_LEN;
-            self.len += chunk;
-
-            remaining = &remaining[chunk..];
-        }
-    }
-
-    #[inline(always)]
-    fn read_bytes(&mut self, dst: &mut [u8]) -> usize {
-        let hint_header = u64::from_le_bytes(self.buf[self.head..self.head + HEADER_LEN].try_into().unwrap());
-        let hint_data_len = (hint_header & 0x_FFFF_FFFF) as usize;
-        let pad = (8 - (hint_data_len & 7)) & 7;
-        let hint_len = HEADER_LEN + hint_data_len + pad;
-
-        assert!(hint_len <= MAX_HINT_LEN,
-            "Hint length too large: max:={} bytes, hint_len={} bytes",
-            MAX_HINT_LEN,
-            hint_len
-        );
-
-        assert!(hint_len <= self.len_commit,
-            "Not enough committed data to read hint: committed={} bytes, hint_len={} bytes",
-            self.len_commit,
-            hint_len
-        );
-
-        let mut out = &mut dst[..hint_len];
-        while !out.is_empty() {
-            let end_space = MAX_HINT_BUFFER_LEN - self.head;
-            let chunk = out.len().min(end_space);
-
-            out[..chunk].copy_from_slice(&self.buf[self.head..self.head + chunk]);
-            self.head = (self.head + chunk) % MAX_HINT_BUFFER_LEN;
-            self.len -= chunk;
-            self.len_commit -= chunk;
-
-            out = &mut out[chunk..];
-        }
-
-        hint_len
+        self.buf.extend_from_slice(src);
     }
 
     #[inline(always)]
     fn commit(&mut self) {
-        self.len_commit = self.len;
+        self.commit_pos = self.buf.len();
     }
 }
 
@@ -106,26 +51,21 @@ impl HintBuffer {
 
     pub fn reset(&self) {
         let mut g = self.inner.lock().unwrap();
-        g.head = 0;
-        g.tail = 0;
-        g.len = 0;
-        g.len_commit = 0;
+        g.buf.clear();
+        g.commit_pos = 0;
         g.closed = false;
         g.paused = false;
-
         self.not_empty.notify_all();
     }
 
     #[inline(always)]
     pub fn pause(&self) {
-        let mut g = self.inner.lock().unwrap();
-        g.paused = true;
+        self.inner.lock().unwrap().paused = true;
     }
 
     #[inline(always)]
     pub fn resume(&self) {
-        let mut g = self.inner.lock().unwrap();
-        g.paused = false;
+        self.inner.lock().unwrap().paused = false;
     }
 
     #[inline(always)]
@@ -148,36 +88,17 @@ impl HintBuffer {
 
         let mut g = self.inner.lock().unwrap();
 
-        assert!(HEADER_LEN <= g.free_space(),
-            "Not enough space to write hint header: free={} bytes, trying_to_write={}",
-            g.free_space(),
-            HEADER_LEN
-        );
-
         #[cfg(zisk_hints_metrics)]
         crate::hints::metrics::inc_hint_count(hint_id);
 
         g.write_bytes(&header);
-        //self.not_empty.notify_one();
     }
 
     #[inline(always)]
     pub fn write_hint_data(&self, data: *const u8, len: usize) {
-        assert!(len <= MAX_HINT_BUFFER_LEN,
-            "Hint data too large: {} bytes (max buffer {})", len, MAX_HINT_BUFFER_LEN);
-
-        let mut g = self.inner.lock().unwrap();
-
-        let payload: &[u8] = unsafe { std::slice::from_raw_parts(data, len) };
-
-        assert!(payload.len() <= g.free_space(),
-            "Not enough space to write hint data: free={} bytes, trying_to_write={} bytes",
-            g.free_space(),
-            payload.len()
-        );
-
-        g.write_bytes(payload);
-        //self.not_empty.notify_one();
+        assert!(HEADER_LEN + len <= MAX_WRITER_LEN, "Hint size ({} bytes) exceeds max hint size ({} bytes)", HEADER_LEN + len, MAX_WRITER_LEN);
+        let payload = unsafe { std::slice::from_raw_parts(data, len) };
+        self.inner.lock().unwrap().write_bytes(payload);
     }
 
     #[inline(always)]
@@ -187,35 +108,70 @@ impl HintBuffer {
         self.not_empty.notify_one();
     }
 
-    fn read_blocking(&self, dst: &mut [u8]) -> io::Result<usize> {
-        if dst.is_empty() {
-            return Ok(0);
-        }
-
-        let mut g = self.inner.lock().unwrap();
-        while g.len_commit == 0 && !g.closed {
-            g = self.not_empty.wait(g).unwrap();
-        }
-
-        if g.len_commit == 0 && g.closed {
-            return Ok(0);
-        }
-
-        Ok(g.read_bytes(dst))
-    }
-
     pub fn drain_to_writer<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        let mut buffer = vec![0u8; MAX_HINT_LEN];
-
         loop {
-            let n = self.read_blocking(&mut buffer)?;
-            if n == 0 {
-                break; // closed and empty
+            // Get chunk of hints to write from HintBuffer(under lock)
+            let chunk: Bytes = {
+                let mut g = self.inner.lock().unwrap();
+
+                while g.commit_pos == 0 && !g.closed {
+                    g = self.not_empty.wait(g).unwrap();
+                }
+
+                if g.commit_pos == 0 && g.closed {
+                    return Ok(());
+                }
+
+                let n = g.commit_pos;
+                g.commit_pos = 0;
+                g.buf.split_to(n).freeze()
+            };
+
+
+            // Write hints from chunk without holding the lock
+            let mut chunk_pos = 0usize;
+            let chunk_len = chunk.len();
+            let chunk_base = chunk.as_ptr();
+
+            // Start and end of the write buffer (MAX_WRITER_LEN)
+            let mut buf_start = 0usize;
+            let mut buf_end = 0usize;
+
+            while chunk_pos < chunk_len {
+                let hint_header = unsafe {
+                    let header_bytes = core::slice::from_raw_parts(chunk_base.add(chunk_pos), 8);
+                    u64::from_le_bytes(header_bytes.try_into().unwrap())
+                };
+
+                let hint_data_len = (hint_header & 0xFFFF_FFFF) as usize;
+                let pad = (8 - (hint_data_len & 7)) & 7;
+                let hint_len = HEADER_LEN + hint_data_len + pad;
+
+                // If adding this hint exceeds max write size, flush current write buffer
+                if buf_end - buf_start + hint_len > MAX_WRITER_LEN {
+                    let buf: &[u8] = unsafe {
+                        core::slice::from_raw_parts(chunk_base.add(buf_start), buf_end - buf_start)
+                    };
+                    writer.write_all(buf)?;
+
+                    // Reset write buffer
+                    buf_start = chunk_pos;
+                    buf_end = chunk_pos;
+                }
+
+                // Accumulate current hint into write buffer
+                buf_end += hint_len;
+                // Advance to next hint
+                chunk_pos += hint_len;
             }
 
-            writer.write_all(&buffer[..n])?;
+            // Flush any remaining data in write buffer
+            if buf_end > buf_start {
+                let buf: &[u8] = unsafe {
+                    core::slice::from_raw_parts(chunk_base.add(buf_start), buf_end - buf_start)
+                };
+                writer.write_all(buf)?;
+            }
         }
-
-        Ok(())
     }
 }

@@ -41,6 +41,7 @@ k256 = "0.13.4"
 anyhow = { workspace = true }
 
 [target.'cfg(any(zisk_hints, zisk_hints_debug))'.dependencies]
+bytes = "1.11.0"
 once_cell = "1.21.3"
 zisk-common = { path = "../common" }
 

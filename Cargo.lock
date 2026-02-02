@@ -6355,6 +6355,7 @@ version = "0.16.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "bytes",
  "cfg-if",
  "ctor",
  "elliptic-curve",
