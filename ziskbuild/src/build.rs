@@ -3,7 +3,7 @@ use crate::{
     ZISK_TARGET,
 };
 use cargo_metadata::camino::Utf8PathBuf;
-use rom_setup::{assembly_files_exist, gen_assembly, get_output_path};
+use rom_setup::{assembly_files_exist, gen_assembly, get_assembly_file_paths, get_output_path};
 use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
@@ -24,6 +24,27 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
     // Activate the build command if the dependencies change.
     cargo_rerun_if_changed(&metadata, program_dir);
 
+    // Get the ELF paths and add rerun-if-changed for assembly files (only if ELF exists)
+    let target_elf_paths = generate_elf_paths(&metadata, args.as_ref());
+    if let Ok(output_path) = get_output_path(&None) {
+        for (_, elf_path) in target_elf_paths.iter() {
+            let elf_std_path = elf_path.as_std_path();
+            // Only try to get assembly paths if ELF exists (needed to compute hash)
+            if elf_std_path.exists() {
+                if let Ok(asm_paths) = get_assembly_file_paths(elf_std_path, &output_path) {
+                    for asm_path in &asm_paths {
+                        // This tells cargo to rerun the build script if the assembly file is missing or changed
+                        println!("cargo::rerun-if-changed={}", asm_path.display());
+                    }
+                    // If any assembly file is missing, we need to regenerate
+                    if !asm_paths.iter().all(|p| p.exists()) {
+                        println!("cargo:warning=Assembly files missing, will regenerate");
+                    }
+                }
+            }
+        }
+    }
+
     // Check if RUSTC_WORKSPACE_WRAPPER is set to clippy-driver (i.e. if `cargo clippy` is the
     // current compiler). If so, don't execute `cargo prove build` because it breaks
     // rust-analyzer's `cargo clippy` feature.
@@ -32,8 +53,6 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
         .unwrap_or(false);
     if is_clippy_driver {
         // Still need to set ELF env vars even if build is skipped.
-        let target_elf_paths = generate_elf_paths(&metadata, args.as_ref());
-
         print_elf_paths_cargo_directives(&target_elf_paths);
 
         println!("cargo:warning=Skipping build due to clippy invocation.");

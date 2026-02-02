@@ -8,8 +8,8 @@ use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
 use crate::get_elf_data_hash_from_path;
 
-/// Check if all assembly binary files exist for a given ELF and output path
-pub fn assembly_files_exist(elf: &Path, output_path: &Path) -> Result<bool> {
+/// Get the paths to the assembly binary files for a given ELF and output path
+pub fn get_assembly_file_paths(elf: &Path, output_path: &Path) -> Result<[PathBuf; 3]> {
     let elf_hash = get_elf_data_hash_from_path(elf)?;
 
     let stem = elf.file_stem().unwrap().to_str().unwrap();
@@ -17,16 +17,17 @@ pub fn assembly_files_exist(elf: &Path, output_path: &Path) -> Result<bool> {
     let base_path = output_path.join(new_filename);
     let file_stem = base_path.file_stem().unwrap().to_str().unwrap();
 
-    let bin_mt_file = format!("{file_stem}-mt.bin");
-    let bin_mt_file = base_path.with_file_name(bin_mt_file);
+    let bin_mt_file = base_path.with_file_name(format!("{file_stem}-mt.bin"));
+    let bin_rh_file = base_path.with_file_name(format!("{file_stem}-rh.bin"));
+    let bin_mo_file = base_path.with_file_name(format!("{file_stem}-mo.bin"));
 
-    let bin_rh_file = format!("{file_stem}-rh.bin");
-    let bin_rh_file = base_path.with_file_name(bin_rh_file);
+    Ok([bin_mt_file, bin_rh_file, bin_mo_file])
+}
 
-    let bin_mo_file = format!("{file_stem}-mo.bin");
-    let bin_mo_file = base_path.with_file_name(bin_mo_file);
-
-    Ok(bin_mt_file.exists() && bin_rh_file.exists() && bin_mo_file.exists())
+/// Check if all assembly binary files exist for a given ELF and output path
+pub fn assembly_files_exist(elf: &Path, output_path: &Path) -> Result<bool> {
+    let paths = get_assembly_file_paths(elf, output_path)?;
+    Ok(paths.iter().all(|p| p.exists()))
 }
 
 pub fn gen_assembly(

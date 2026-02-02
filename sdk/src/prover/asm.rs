@@ -116,7 +116,6 @@ impl ProverEngine for AsmProver {
         let asm_services = AsmServices::new(world_rank, local_rank, self.core_prover.base_port);
 
         let asm_runner_options = AsmRunnerOptions::new()
-            .with_verbose(true)
             .with_base_port(self.core_prover.base_port)
             .with_world_rank(world_rank)
             .with_local_rank(local_rank)
