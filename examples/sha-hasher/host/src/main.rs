@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -26,12 +24,7 @@ fn main() -> Result<()> {
     stdin.write(&n);
 
     // Create a `ProverClient` method.
-    let client = ProverClient::builder()
-        .asm()
-        .base_port(54321)
-        .snark()
-        .build()
-        .unwrap();
+    let client = ProverClient::builder().asm().base_port(54321).snark().build().unwrap();
 
     let vkey = client.setup(&ELF)?;
 
