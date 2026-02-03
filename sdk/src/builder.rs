@@ -296,7 +296,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
             EmuProver::new_verifier(proving_key, proving_key_snark)?
         } else {
             EmuProver::new(
-                self.verify_constraints,
+                self.verify_constraints || self.witness,
                 self.aggregation,
                 self.snark_wrapper,
                 proving_key,
@@ -418,7 +418,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
             AsmProver::new_verifier(proving_key, proving_key_snark)?
         } else {
             AsmProver::new(
-                self.verify_constraints,
+                self.verify_constraints || self.witness,
                 self.aggregation,
                 self.snark_wrapper,
                 proving_key,

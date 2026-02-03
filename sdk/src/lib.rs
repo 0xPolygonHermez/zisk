@@ -18,7 +18,13 @@ pub struct RankInfo {
 
 #[macro_export]
 macro_rules! include_elf {
-    ($arg:expr) => {
-        ElfBinary { elf: include_bytes!(env!(concat!("ZISK_ELF_", $arg))), name: $arg }
-    };
+    ($arg:literal) => {{
+        const WITH_HINTS: bool = option_env!(concat!("ZISK_ELF_", $arg, "_WITH_HINTS")).is_some();
+
+        ElfBinary {
+            elf: include_bytes!(env!(concat!("ZISK_ELF_", $arg))),
+            name: $arg,
+            with_hints: WITH_HINTS,
+        }
+    }};
 }

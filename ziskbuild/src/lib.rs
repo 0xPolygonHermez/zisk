@@ -46,6 +46,9 @@ pub struct BuildArgs {
 
     #[clap(short = 'z', long, value_name = "ZISK_PATH")]
     zisk_path: Option<String>,
+
+    #[clap(long, value_name = "HINTS")]
+    pub hints: Option<bool>,
 }
 
 pub fn build_program(path: &str) {

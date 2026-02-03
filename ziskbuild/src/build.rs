@@ -33,8 +33,12 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
     if is_clippy_driver {
         // Still need to set ELF env vars even if build is skipped.
         let target_elf_paths = generate_elf_paths(&metadata, args.as_ref());
-
-        print_elf_paths_cargo_directives(&target_elf_paths);
+        let hints = args
+            .as_ref()
+            .and_then(|a| a.hints)
+            .or_else(|| std::env::var("ZISK_HINTS").ok().and_then(|v| v.parse().ok()))
+            .unwrap_or(false);
+        print_elf_paths_cargo_directives(&target_elf_paths, hints);
 
         println!("cargo:warning=Skipping build due to clippy invocation.");
         return;
@@ -65,11 +69,16 @@ pub fn execute_build_program(
     let program_dir: Utf8PathBuf =
         program_dir.try_into().expect("Failed to convert PathBuf to Utf8PathBuf");
 
-    // Check for ZISK_PATH environment variable if not set in args
+    // Check for ZISK_PATH and ZISK_HINTS environment variables if not set in args
     let mut args = args.clone();
     if args.zisk_path.is_none() {
         if let Ok(env_path) = std::env::var("ZISK_PATH") {
             args.zisk_path = Some(env_path);
+        }
+    }
+    if args.hints.is_none() {
+        if let Ok(env_hints) = std::env::var("ZISK_HINTS") {
+            args.hints = env_hints.parse().ok();
         }
     }
 
@@ -90,16 +99,29 @@ pub fn execute_build_program(
     execute_command(cmd)?;
 
     // Generate assembly for all ELF files (only if not already generated)
+    let hints = args.hints.unwrap_or(false);
+    println!("cargo:rerun-if-env-changed=ZISK_HINTS");
+
     let zisk_path_buf = args.zisk_path.as_ref().map(PathBuf::from);
     let output_path = get_output_path(&None)?;
     for (_, elf_path) in target_elf_paths.iter() {
         let elf_path_std = elf_path.as_std_path();
 
-        let hints = true; // TODO
+        let assembly_exists = assembly_files_exist(elf_path_std, &output_path)?;
+        let hints_marker = output_path.join(format!(
+            "{}.assembly_hints",
+            elf_path_std.file_name().unwrap().to_string_lossy()
+        ));
+        let new_value = if hints { "on" } else { "off" };
 
-        // Check if assembly files already exist
-        if !assembly_files_exist(elf_path_std, &output_path)? {
+        let hints_changed = match std::fs::read_to_string(&hints_marker) {
+            Ok(prev) => prev != new_value,
+            Err(_) => true,
+        };
+
+        if !assembly_exists || hints_changed {
             gen_assembly(elf_path_std, &zisk_path_buf, &None, hints, true)?;
+            std::fs::write(&hints_marker, new_value)?;
         }
     }
 
@@ -125,7 +147,7 @@ pub fn execute_build_program(
         }
     }
 
-    print_elf_paths_cargo_directives(&target_elf_paths);
+    print_elf_paths_cargo_directives(&target_elf_paths, hints);
 
     Ok(target_elf_paths)
 }
@@ -180,8 +202,13 @@ pub fn generate_elf_paths(
 
     vec![(bin_target.name.to_owned(), target_elf_path)]
 }
-fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)]) {
+fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)], hints: bool) {
+    println!("cargo:rerun-if-env-changed=ZISK_HINTS");
+
     for (target_name, elf_path) in target_elf_paths.iter() {
         println!("cargo:rustc-env=ZISK_ELF_{target_name}={elf_path}");
+        if hints {
+            println!("cargo:rustc-env=ZISK_ELF_{target_name}_WITH_HINTS=1");
+        }
     }
 }

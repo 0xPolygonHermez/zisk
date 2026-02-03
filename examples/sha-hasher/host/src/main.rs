@@ -42,7 +42,7 @@ fn main() -> Result<()> {
 
     println!(
         "ZisK has executed program with {} cycles in {:?}",
-        result.execution.executed_steps, result.duration
+        result.execution.steps, result.duration
     );
 
     let proof_opts = ProofOpts::default().minimal_memory();
