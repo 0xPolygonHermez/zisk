@@ -129,8 +129,8 @@ do
 
     # Store the PID of the background process
     # BG_PID=$!
-    echo "Sleeping for 5 seconds to let the emulator server initialize..."
-    sleep 5
+    echo "Sleeping for 8 seconds to let the emulator server initialize..."
+    sleep 8
     build/ziskemuasm -c -i empty_input.bin --gen=1 --shutdown
     echo "Sleeping for 2 seconds to let the emulator server complete..."
     sleep 2
