@@ -278,6 +278,7 @@ void file_lock(void);
 
 // Configuration
 bool output = false;
+bool output_riscof = false;
 bool silent = false;
 bool metrics = false;
 bool trace = false;
@@ -885,6 +886,7 @@ void print_usage (void)
     printf("\t--shutdown\n");
     printf("\t--mt <number_of_mt_requests>\n");
     printf("\t-o output on\n");
+    printf("\t--output_riscof output riscof on\n");
     printf("\t--silent silent on\n");
     printf("\t--shm_prefix <prefix> (default: ZISK)\n");
     printf("\t-m metrics on\n");
@@ -988,6 +990,11 @@ void parse_arguments(int argc, char *argv[])
             if (strcmp(argv[i], "-o") == 0)
             {
                 output = true;
+                continue;
+            }
+            if (strcmp(argv[i], "--output_riscof") == 0)
+            {
+                output_riscof = true;
                 continue;
             }
             if (strcmp(argv[i], "--silent") == 0)
@@ -1798,6 +1805,7 @@ void configure (void)
         printf("\tmap_locked_flag=%d\n", map_locked_flag);
         printf("\toutput=%u\n", output);
         printf("\tprecompile_results_enabled=%u\n", precompile_results_enabled);
+        printf("\toutput_riscof=%u\n", output_riscof);
     }
 }
 
@@ -3968,6 +3976,22 @@ void server_run (void)
 
     // Log output
     if (output)
+    {
+        unsigned int * pOutput = (unsigned int *)OUTPUT_ADDR;
+        unsigned int output_size = 64;
+#ifdef DEBUG
+        if (verbose) printf("Output size=%d\n", output_size);
+#endif
+
+        for (unsigned int i = 0; i < output_size; i++)
+        {
+            printf("%08x\n", *pOutput);
+            pOutput++;
+        }
+    }
+
+    // Log output for riscof tests
+    if (output_riscof)
     {
         unsigned int * pOutput = (unsigned int *)OUTPUT_ADDR;
         unsigned int output_size = *pOutput;
