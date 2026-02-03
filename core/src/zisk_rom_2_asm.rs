@@ -145,7 +145,7 @@ pub struct ZiskAsmContext {
     mem_chunk_id: String,                   // 0, 1, 2, 3, 4...
     mem_chunk_mask: String,                 // Module 8 of the chunks we want to activate, e.g. 0x03
     mem_rsp: String,                        // Backup of rsp register value from caller
-    mem_free_input: String, // Free input address (0x90000000) used in free call operations
+    mem_free_input: String, // Free input address (0x90000000) used in free call operations, but stored in memory to allow sharing the input shared memory
     mem_precompile_results_address: String, // Address where precompile results are read from
     mem_precompile_written_address: String, // Address where precompile written counter is stored
     mem_precompile_read_address: String, // Address where precompile read counter is stored
@@ -1550,28 +1550,34 @@ impl ZiskRom2Asm {
                 SRC_MEM => {
                     *code += &ctx.full_line_comment("b=SRC_MEM".to_string());
 
-                    let b_is_free_input = instruction.b_offset_imm0 == FREE_INPUT_ADDR
-                        && instruction.b_use_sp_imm1 == 0;
+                    let b_is_free_input = (instruction.b_offset_imm0 == FREE_INPUT_ADDR)
+                        && (instruction.b_use_sp_imm1 == 0);
 
                     if !ctx.chunk_player_mem_reads_collect_main() {
-                        // Calculate memory address
-                        *code += &format!(
-                            "\tmov {}, 0x{:x} {}\n",
-                            REG_ADDRESS,
-                            instruction.b_offset_imm0,
-                            ctx.comment_str("address = b_offset_imm0")
-                        );
-                        if instruction.b_use_sp_imm1 != 0 {
-                            *code += &format!(
-                                "\tadd {}, {} {}\n",
-                                REG_ADDRESS,
-                                ctx.mem_sp,
-                                ctx.comment_str("address += sp")
-                            );
-                            ctx.address_is_constant = false;
-                        } else {
+                        if b_is_free_input {
+                            // No need to write REG_ADDRESS, as we will read from mem_free_input
                             ctx.address_is_constant = true;
                             ctx.address_constant_value = instruction.b_offset_imm0;
+                        } else {
+                            // Calculate memory address
+                            *code += &format!(
+                                "\tmov {}, 0x{:x} {}\n",
+                                REG_ADDRESS,
+                                instruction.b_offset_imm0,
+                                ctx.comment_str("address = b_offset_imm0")
+                            );
+                            if instruction.b_use_sp_imm1 != 0 {
+                                *code += &format!(
+                                    "\tadd {}, {} {}\n",
+                                    REG_ADDRESS,
+                                    ctx.mem_sp,
+                                    ctx.comment_str("address += sp")
+                                );
+                                ctx.address_is_constant = false;
+                            } else {
+                                ctx.address_is_constant = true;
+                                ctx.address_constant_value = instruction.b_offset_imm0;
+                            }
                         }
                     }
 
@@ -5905,15 +5911,7 @@ impl ZiskRom2Asm {
                         //Self::assert_rsp_is_aligned(ctx, code);
                     }
 
-                    // Get free input address
-                    *code += &format!(
-                        "\tmov {}, {} {}\n",
-                        REG_ADDRESS,
-                        FREE_INPUT_ADDR,
-                        ctx.comment_str("address = free_input")
-                    );
-
-                    // Copy ctx.result[0] or 0 into free input
+                    // If ctx.result_size == 0 => free_input = 0
                     *code += &format!(
                         "\tmov {}, qword {}[{} + {}*8] {}\n",
                         REG_AUX,
@@ -5924,6 +5922,8 @@ impl ZiskRom2Asm {
                     );
                     *code += &format!("\tcmp {REG_AUX}, 0\n");
                     *code += &format!("\tjz pc_{:x}_fcall_result_zero\n", ctx.pc);
+
+                    // Copy ctx.result[0] to free input address
                     *code += &format!(
                         "\tmov {}, qword {}[{} + {}*8] {}\n",
                         REG_VALUE,
@@ -5939,6 +5939,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("free_input = value")
                     );
                     *code += &format!("\tjmp pc_{:x}_fcall_result_done\n", ctx.pc);
+
                     *code += &format!("pc_{:x}_fcall_result_zero:\n", ctx.pc);
                     *code += &format!(
                         "\tmov {}, 0 {}\n",
