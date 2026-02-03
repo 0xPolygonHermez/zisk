@@ -33,8 +33,8 @@ use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::ChunkId;
 use zisk_common::{
-    BusDevice, BusDeviceMetrics, CheckPoint, ExecutorStats, ExecutorStatsHandle, Instance,
-    InstanceCtx, InstanceType, Plan, Stats, ZiskExecutionResult,
+    BusDevice, BusDeviceMetrics, CheckPoint, ExecutorStatsHandle, Instance, InstanceCtx,
+    InstanceType, Plan, Stats, ZiskExecutionResult,
 };
 use zisk_pil::{
     ZiskPublicValues, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
@@ -60,6 +60,7 @@ use crate::{Emulator, EmulatorKind, StaticSMBundle};
 use anyhow::Result;
 
 pub type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
+type ChunkCollector = (usize, Box<dyn BusDevice<u64>>);
 
 #[allow(dead_code)]
 enum MinimalTraceExecutionMode {
@@ -110,9 +111,7 @@ pub struct ZiskExecutor<F: PrimeField64> {
     sm_bundle: StaticSMBundle<F>,
 
     /// Collectors by instance, storing statistics and collectors for each instance.
-    #[allow(clippy::type_complexity)]
-    collectors_by_instance:
-        Arc<RwLock<HashMap<usize, Vec<Option<(usize, Box<dyn BusDevice<u64>>)>>>>>,
+    collectors_by_instance: Arc<RwLock<HashMap<usize, Vec<Option<ChunkCollector>>>>>,
 
     /// Statistics collected during the execution, including time taken for collection and witness computation.
     stats: ExecutorStatsHandle,
@@ -165,8 +164,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn get_execution_result(&self) -> (ZiskExecutionResult, ExecutorStats) {
-        (self.execution_result.lock().unwrap().clone(), self.stats.get_inner())
+    pub fn get_execution_result(&self) -> (ZiskExecutionResult, ExecutorStatsHandle) {
+        (self.execution_result.lock().unwrap().clone(), self.stats.clone())
     }
 
     pub fn store_stats(&self) {
@@ -480,10 +479,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let ordered_chunks = self.order_chunks(&chunks_to_execute, &global_id_chunks);
         let global_ids: Vec<usize> = secn_instances.keys().copied().collect();
 
-        let collect_start_times: Vec<Arc<AtomicCell<Option<Instant>>>> =
-            global_ids.iter().map(|_| Arc::new(AtomicCell::new(None))).collect();
-
-        let chunks_to_execute_clone = chunks_to_execute.clone();
+        let collect_start_times: Vec<AtomicCell<Option<Instant>>> =
+            global_ids.iter().map(|_| AtomicCell::new(None)).collect();
 
         let global_ids_map: HashMap<usize, usize> =
             global_ids.iter().enumerate().map(|(idx, &id)| (id, idx)).collect();
@@ -493,12 +490,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             .sm_bundle
             .build_data_bus_collectors(&pctx, &secn_instances, &chunks_to_execute)
             .into_iter()
-            .map(|db| Arc::new(Mutex::new(db)))
+            .map(Mutex::new)
             .collect::<Vec<_>>();
 
-        let n_chunks_left: Vec<Arc<AtomicUsize>> = global_ids
+        let n_chunks_left: Vec<AtomicUsize> = global_ids
             .iter()
-            .map(|global_id| Arc::new(AtomicUsize::new(global_id_chunks[global_id].len())))
+            .map(|global_id| AtomicUsize::new(global_id_chunks[global_id].len()))
             .collect();
 
         for global_id in global_ids.iter() {
@@ -521,41 +518,30 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             self.stats.insert_witness_stats(*global_id, stats);
         }
 
-        let next_chunk = Arc::new(AtomicUsize::new(0));
-        let n_threads = rayon::current_num_threads();
+        let next_chunk = AtomicUsize::new(0);
 
-        let mut handles = Vec::with_capacity(n_threads);
-        for _ in 0..n_threads {
-            let next_chunk = Arc::clone(&next_chunk);
-            let min_traces_lock = Arc::clone(&self.min_traces);
-            let data_buses = data_buses.clone();
-            let zisk_rom = self.zisk_rom.clone();
-            let n_chunks_left = n_chunks_left.clone();
-            let global_ids_map = global_ids_map.clone();
-            let global_id_chunks = global_id_chunks.clone();
-            let collectors_by_instance = self.collectors_by_instance.clone();
-            let ordered_chunks_clone = ordered_chunks.clone();
+        rayon::in_place_scope(|scope| {
+            for _ in 0..rayon::current_num_threads() {
+                let next_chunk = &next_chunk;
+                let n_chunks_left = &n_chunks_left;
+                let collectors_by_instance = &self.collectors_by_instance;
+                let collect_start_times = &collect_start_times;
+                let _stats = &self.stats;
+                let min_traces = &min_traces;
+                let data_buses = &data_buses;
+                let zisk_rom = &self.zisk_rom;
+                let global_ids_map = &global_ids_map;
+                let global_id_chunks = &global_id_chunks;
+                let ordered_chunks = &ordered_chunks;
+                let chunks_to_execute = &chunks_to_execute;
+                let pctx = &pctx;
 
-            let pctx_clone = pctx.clone();
-
-            let chunks_to_execute = chunks_to_execute_clone.clone();
-
-            let collect_start_times = collect_start_times.clone();
-
-            let _stats = self.stats.clone();
-            handles.push(std::thread::spawn(move || {
-                let guard = min_traces_lock.read().unwrap();
-                let min_traces = match &*guard {
-                    MinimalTraces::EmuTrace(v) => v,
-                    MinimalTraces::AsmEmuTrace(a) => &a.vec_chunks,
-                    _ => unreachable!(),
-                };
-                loop {
-                    let next_chunk_id = next_chunk.fetch_add(1, Ordering::SeqCst);
-                    if next_chunk_id >= ordered_chunks_clone.len() {
+                scope.spawn(move |_| loop {
+                    let next_chunk_id = next_chunk.fetch_add(1, Ordering::Relaxed);
+                    if next_chunk_id >= ordered_chunks.len() {
                         break;
                     }
-                    let chunk_id = ordered_chunks_clone[next_chunk_id];
+                    let chunk_id = ordered_chunks[next_chunk_id];
 
                     if let Some(mut data_bus) = data_buses[chunk_id].lock().unwrap().take() {
                         for global_id in chunks_to_execute[chunk_id].iter() {
@@ -566,15 +552,20 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                         }
 
                         ZiskEmulator::process_emu_traces::<F, _, _>(
-                            &zisk_rom,
+                            zisk_rom,
                             min_traces,
                             chunk_id,
                             &mut data_bus,
                         );
 
-                        for (global_id, collector) in data_bus.into_devices(false) {
+                        // Collect all device results locally to minimize lock acquisitions
+                        let devices = data_bus.into_devices(false);
+                        let mut entries: Vec<(usize, usize, Option<ChunkCollector>)> = Vec::new();
+                        let mut affected_globals: Vec<(usize, usize)> = Vec::new();
+
+                        for (global_id, collector) in devices {
                             if let Some(global_id) = global_id {
-                                let global_id_idx = global_ids_map
+                                let global_id_idx = *global_ids_map
                                     .get(&global_id)
                                     .expect("Global ID not found in map");
 
@@ -584,47 +575,54 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                                     .position(|&id| id == chunk_id)
                                     .expect("Chunk ID not found in order");
 
-                                collectors_by_instance
-                                    .write()
-                                    .unwrap()
-                                    .get_mut(&global_id)
-                                    .unwrap()[position] = Some((chunk_id, collector.unwrap()));
+                                entries.push((
+                                    global_id,
+                                    position,
+                                    Some((chunk_id, collector.unwrap())),
+                                ));
+                                affected_globals.push((global_id, global_id_idx));
+                            }
+                        }
 
-                                if n_chunks_left[*global_id_idx].fetch_sub(1, Ordering::SeqCst) == 1
-                                {
-                                    pctx_clone.set_witness_ready(global_id, true);
+                        // Single write-lock acquisition to flush all results from this chunk
+                        {
+                            let mut guard = collectors_by_instance.write().unwrap();
+                            for (global_id, position, entry) in entries.iter_mut() {
+                                guard.get_mut(global_id).unwrap()[*position] = entry.take();
+                            }
+                        }
 
-                                    let collect_start_time = collect_start_times[*global_id_idx]
-                                        .load()
-                                        .expect("Collect start time was not set");
-                                    let collect_duration =
-                                        collect_start_time.elapsed().as_millis() as u64;
+                        // Update atomic counters and mark ready instances (no lock needed)
+                        for (global_id, global_id_idx) in affected_globals {
+                            if n_chunks_left[global_id_idx].fetch_sub(1, Ordering::SeqCst) == 1 {
+                                pctx.set_witness_ready(global_id, true);
 
-                                    let (airgroup_id, air_id) = pctx_clone
-                                        .dctx_get_instance_info(global_id)
-                                        .expect("Failed to get instance info");
-                                    let stats = Stats {
-                                        airgroup_id,
-                                        air_id,
-                                        collect_start_time,
-                                        collect_duration,
-                                        witness_start_time: Instant::now(),
-                                        witness_duration: 0,
-                                        num_chunks: global_id_chunks[&global_id].len(),
-                                    };
+                                let collect_start_time = collect_start_times[global_id_idx]
+                                    .load()
+                                    .expect("Collect start time was not set");
+                                let collect_duration =
+                                    collect_start_time.elapsed().as_millis() as u64;
 
-                                    _stats.insert_witness_stats(global_id, stats);
-                                }
+                                let (airgroup_id, air_id) = pctx
+                                    .dctx_get_instance_info(global_id)
+                                    .expect("Failed to get instance info");
+                                let stats = Stats {
+                                    airgroup_id,
+                                    air_id,
+                                    collect_start_time,
+                                    collect_duration,
+                                    witness_start_time: Instant::now(),
+                                    witness_duration: 0,
+                                    num_chunks: global_id_chunks[&global_id].len(),
+                                };
+
+                                _stats.insert_witness_stats(global_id, stats);
                             }
                         }
                     }
-                }
-            }));
-        }
-
-        for handle in handles {
-            handle.join().unwrap();
-        }
+                });
+            }
+        });
     }
 
     /// Computes and generates witness for secondary state machine instance of type `Table`.

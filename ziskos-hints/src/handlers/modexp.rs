@@ -10,11 +10,15 @@ pub fn modexp_hint(data: &[u64]) -> Result<Vec<u64>> {
     let (exp, exp_len) = read_field_bytes(data, &mut pos)?;
     let (modulus, modulus_len) = read_field_bytes(data, &mut pos)?;
 
-    // Check that the data length fits the expected length.
-    // Each length prefix is 8 bytes (1 u64), so total prefix size is 3 * 8 = 24 bytes.
-    // The total expected length in bytes is 24 + base_len + exp_len + modulus_len.
-    if (24 + base_len + exp_len + modulus_len).div_ceil(8) > data.len() * 8 {
-        anyhow::bail!("MODEXP hint data too short");
+    // Verify the data length matches: 3 length prefixes (8 bytes each) + field data,
+    // converted to u64 words (rounded up for alignment).
+    let expected_words = (24 + base_len + exp_len + modulus_len).div_ceil(8);
+    if expected_words != data.len() {
+        anyhow::bail!(
+            "MODEXP hint data length mismatch: expected {} words, got {} words",
+            expected_words,
+            data.len()
+        );
     }
 
     let mut hints = Vec::new();

@@ -13,7 +13,7 @@ use anyhow::Result;
 use std::{path::PathBuf, time::Duration};
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStats, ZiskExecutionResult,
+    ExecutorStatsHandle, ZiskExecutionResult,
 };
 
 pub struct ZiskExecuteResult {
@@ -24,13 +24,13 @@ pub struct ZiskExecuteResult {
 pub struct ZiskVerifyConstraintsResult {
     pub execution: ZiskExecutionResult,
     pub duration: Duration,
-    pub stats: ExecutorStats,
+    pub stats: ExecutorStatsHandle,
 }
 
 pub struct ZiskProveResult {
     pub execution: ZiskExecutionResult,
     pub duration: Duration,
-    pub stats: ExecutorStats,
+    pub stats: ExecutorStatsHandle,
     pub proof: Proof,
 }
 
@@ -64,7 +64,7 @@ pub trait ProverEngine {
         hints_stream: Option<StreamSource>,
         debug_info: Option<Option<String>>,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)>;
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)>;
 
     fn verify_constraints_debug(
         &self,
@@ -161,7 +161,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         hints_stream: Option<StreamSource>,
         debug_info: Option<Option<String>>,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.prover.stats(stdin, hints_stream, debug_info, mpi_node)
     }
 

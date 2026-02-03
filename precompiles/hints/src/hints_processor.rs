@@ -147,6 +147,7 @@ impl HintsProcessorBuilder {
             hints_sink,
             drainer_thread: ManuallyDrop::new(drainer_thread),
             custom_handlers: Arc::new(self.custom_handlers),
+            stream_active: AtomicBool::new(false),
             instant: Mutex::new(None),
         })
     }
@@ -179,6 +180,10 @@ pub struct HintsProcessor {
     /// Custom hint handlers registered by the user
     custom_handlers: Arc<HashMap<u32, CustomHintHandler>>,
 
+    /// Tracks whether a stream is currently active (between CTRL_START and CTRL_END)
+    stream_active: AtomicBool,
+
+    /// Timestamp of when the current stream started (for performance metrics)
     instant: Mutex<Option<std::time::Instant>>,
 }
 
@@ -301,12 +306,21 @@ impl HintsProcessor {
                     }
                     // Reset global sequence and buffer at stream start
                     self.reset();
+                    // Mark stream as active
+                    self.stream_active.store(true, Ordering::Release);
                     // Control hint only; skip processing
                     idx += length;
                     *self.instant.lock().unwrap() = Some(Instant::now());
                     continue;
                 }
                 HintCode::Ctrl(CtrlHint::End) => {
+                    // CTRL_END requires a prior CTRL_START
+                    if !self.stream_active.swap(false, Ordering::AcqRel) {
+                        return Err(anyhow::anyhow!(
+                            "CTRL_END received without a prior CTRL_START"
+                        ));
+                    }
+
                     // Control hint only; wait for completion then set flag
                     self.wait_for_completion()?;
                     has_ctrl_end = true;
@@ -731,7 +745,8 @@ mod tests {
     #[test]
     fn test_single_result_hint_non_blocking() {
         let p = processor();
-        let data = vec![make_header(TEST_PASSTHROUGH_HINT, 2), 0x111, 0x222];
+        // length=16 means 16 bytes = 2 u64s of data
+        let data = vec![make_header(TEST_PASSTHROUGH_HINT, 16), 0x111, 0x222];
 
         // Dispatch should succeed and be non-blocking
         assert!(p.process_hints(&data, false).is_ok());
@@ -747,12 +762,13 @@ mod tests {
     #[test]
     fn test_multiple_hints_ordered_output() {
         let p = processor();
+        // length is in bytes: 8 bytes = 1 u64
         let data = vec![
-            make_header(TEST_PASSTHROUGH_HINT, 1),
+            make_header(TEST_PASSTHROUGH_HINT, 8),
             0x111,
-            make_header(TEST_PASSTHROUGH_HINT, 1),
+            make_header(TEST_PASSTHROUGH_HINT, 8),
             0x222,
-            make_header(TEST_PASSTHROUGH_HINT, 1),
+            make_header(TEST_PASSTHROUGH_HINT, 8),
             0x333,
         ];
         assert!(p.process_hints(&data, false).is_ok());
@@ -767,8 +783,9 @@ mod tests {
     #[test]
     fn test_multiple_calls_global_sequence() {
         let p = processor();
-        let data1 = vec![make_header(TEST_PASSTHROUGH_HINT, 1), 0xAAA];
-        let data2 = vec![make_header(TEST_PASSTHROUGH_HINT, 1), 0xBBB];
+        // length is in bytes: 8 bytes = 1 u64
+        let data1 = vec![make_header(TEST_PASSTHROUGH_HINT, 8), 0xAAA];
+        let data2 = vec![make_header(TEST_PASSTHROUGH_HINT, 8), 0xBBB];
 
         assert!(p.process_hints(&data1, false).is_ok());
         assert!(p.process_hints(&data2, false).is_ok());
@@ -796,7 +813,8 @@ mod tests {
     #[test]
     fn test_unknown_hint_type_returns_error() {
         let p = processor();
-        let data = vec![make_header(999, 1), 0x1234];
+        // length is in bytes: 8 bytes = 1 u64
+        let data = vec![make_header(999, 8), 0x1234];
 
         // Should return error immediately during validation
         let result = p.process_hints(&data, false);
@@ -807,8 +825,8 @@ mod tests {
     #[test]
     fn test_error_stops_wait() {
         let p = processor();
-        // First valid, then invalid type
-        let data = vec![make_header(TEST_PASSTHROUGH_HINT, 1), 0x111, make_header(999, 0)];
+        // First valid (8 bytes = 1 u64), then invalid type with 0 bytes
+        let data = vec![make_header(TEST_PASSTHROUGH_HINT, 8), 0x111, make_header(999, 0)];
 
         // Should error immediately when encountering invalid hint type
         let result = p.process_hints(&data, false);
@@ -830,8 +848,8 @@ mod tests {
         p.reset();
         assert!(!p.state.error_flag.load(Ordering::Acquire));
 
-        // Should be able to process new hints after reset
-        let good = vec![make_header(TEST_PASSTHROUGH_HINT, 1), 0x42];
+        // Should be able to process new hints after reset (8 bytes = 1 u64)
+        let good = vec![make_header(TEST_PASSTHROUGH_HINT, 8), 0x42];
         assert!(p.process_hints(&good, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
@@ -844,8 +862,8 @@ mod tests {
     fn test_stream_start_resets_state() {
         let p = processor();
 
-        // First batch increments sequence
-        let batch1 = vec![make_header(TEST_PASSTHROUGH_HINT, 1), 0x01];
+        // First batch increments sequence (8 bytes = 1 u64)
+        let batch1 = vec![make_header(TEST_PASSTHROUGH_HINT, 8), 0x01];
         p.process_hints(&batch1, false).unwrap();
         p.wait_for_completion().unwrap();
 
@@ -866,8 +884,8 @@ mod tests {
             assert!(queue.buffer.is_empty());
         }
 
-        // Process new batch
-        let batch2 = vec![make_header(TEST_PASSTHROUGH_HINT, 1), 0x02];
+        // Process new batch (8 bytes = 1 u64)
+        let batch2 = vec![make_header(TEST_PASSTHROUGH_HINT, 8), 0x02];
         p.process_hints(&batch2, false).unwrap();
 
         let end = vec![make_ctrl_header(HintCode::Ctrl(CtrlHint::End).to_u32(), 0)];
@@ -882,11 +900,15 @@ mod tests {
     fn test_stream_end_waits_until_completion() {
         let p = processor();
 
-        // Dispatch hints
+        // Send CTRL_START first (required before CTRL_END)
+        let start = vec![make_ctrl_header(HintCode::Ctrl(CtrlHint::Start).to_u32(), 0)];
+        p.process_hints(&start, true).unwrap();
+
+        // Dispatch hints (8 bytes = 1 u64 each)
         let data = vec![
-            make_header(TEST_PASSTHROUGH_HINT, 1),
+            make_header(TEST_PASSTHROUGH_HINT, 8),
             0x10,
-            make_header(TEST_PASSTHROUGH_HINT, 1),
+            make_header(TEST_PASSTHROUGH_HINT, 8),
             0x20,
         ];
         p.process_hints(&data, false).unwrap();
@@ -936,9 +958,9 @@ mod tests {
     fn test_ctrl_start_must_be_first_in_batch() {
         let p = processor();
 
-        // CTRL_START not at position 0 should fail
+        // CTRL_START not at position 0 should fail (8 bytes = 1 u64)
         let data = vec![
-            make_header(TEST_PASSTHROUGH_HINT, 1),
+            make_header(TEST_PASSTHROUGH_HINT, 8),
             0x42,
             make_ctrl_header(HintCode::Ctrl(CtrlHint::Start).to_u32(), 0),
         ];
@@ -952,8 +974,8 @@ mod tests {
     fn test_ctrl_start_only_in_first_batch() {
         let p = processor();
 
-        // First batch is ok
-        let batch1 = vec![make_header(TEST_PASSTHROUGH_HINT, 1), 0x01];
+        // First batch is ok (8 bytes = 1 u64)
+        let batch1 = vec![make_header(TEST_PASSTHROUGH_HINT, 8), 0x01];
         p.process_hints(&batch1, false).unwrap();
 
         // CTRL_START in non-first batch should fail
@@ -967,10 +989,14 @@ mod tests {
     fn test_ctrl_end_must_be_last() {
         let p = processor();
 
-        // CTRL_END not at end should fail
+        // Send CTRL_START first (required before CTRL_END)
+        let start = vec![make_ctrl_header(HintCode::Ctrl(CtrlHint::Start).to_u32(), 0)];
+        p.process_hints(&start, true).unwrap();
+
+        // CTRL_END not at end should fail (8 bytes = 1 u64)
         let data = vec![
             make_ctrl_header(HintCode::Ctrl(CtrlHint::End).to_u32(), 0),
-            make_header(TEST_PASSTHROUGH_HINT, 1),
+            make_header(TEST_PASSTHROUGH_HINT, 8),
             0x42,
         ];
 
@@ -998,12 +1024,12 @@ mod tests {
         let sink = RecordingSink { received: Arc::clone(&received) };
         let p = HintsProcessor::builder(sink).num_threads(2).build().unwrap();
 
-        // Send some data
+        // Send some data (16 bytes = 2 u64s, 8 bytes = 1 u64)
         let data = vec![
-            make_header(TEST_PASSTHROUGH_HINT, 2),
+            make_header(TEST_PASSTHROUGH_HINT, 16),
             0xAAA,
             0xBBB,
-            make_header(TEST_PASSTHROUGH_HINT, 1),
+            make_header(TEST_PASSTHROUGH_HINT, 8),
             0xCCC,
         ];
 
@@ -1040,8 +1066,8 @@ mod tests {
         let sink = FailingSink { should_fail: Arc::clone(&should_fail) };
         let p = HintsProcessor::builder(sink).num_threads(2).build().unwrap();
 
-        // First batch succeeds
-        let data1 = vec![make_header(TEST_PASSTHROUGH_HINT, 1), 0x01];
+        // First batch succeeds (8 bytes = 1 u64)
+        let data1 = vec![make_header(TEST_PASSTHROUGH_HINT, 8), 0x01];
         assert!(p.process_hints(&data1, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 

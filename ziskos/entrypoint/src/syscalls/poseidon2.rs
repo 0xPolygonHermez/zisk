@@ -23,7 +23,7 @@ use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
 #[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_poseidon2")]
-pub extern "C" fn syscall_poseidon2(
+pub unsafe extern "C" fn syscall_poseidon2(
     state: *mut [u64; 16],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {

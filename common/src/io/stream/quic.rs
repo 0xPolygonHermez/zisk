@@ -361,6 +361,7 @@ impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
 
@@ -373,26 +374,35 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_single_message() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_single_message() {
         init_crypto();
         let server_addr: SocketAddr = "127.0.0.1:15001".parse().unwrap();
+
+        // Channel to signal when writer has written data
+        let (tx, rx) = mpsc::channel();
 
         // Spawn writer (server) thread
         let writer_thread = thread::spawn(move || {
             let mut writer = QuicStreamWriter::new(server_addr).unwrap();
             writer.write(b"Hello, QUIC!").unwrap();
+            tx.send(()).unwrap(); // Signal that data is written
 
             // Wait for reader to finish before closing
-            thread::sleep(Duration::from_millis(200));
+            thread::sleep(Duration::from_millis(500));
             writer.close().unwrap();
         });
 
         // Give writer time to start listening
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(Duration::from_millis(100));
 
-        // Reader connects and reads message
+        // Reader connects (this triggers the writer's connection accept)
         let mut reader = QuicStreamReader::new(server_addr).unwrap();
+        reader.open().unwrap(); // Explicitly connect
+
+        // Wait for writer to have written data
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
         let message = reader.next().unwrap().unwrap();
         assert_eq!(message, b"Hello, QUIC!");
         reader.close().unwrap();
@@ -400,10 +410,13 @@ mod tests {
         writer_thread.join().unwrap();
     }
 
-    #[test]
-    fn test_multiple_messages() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_multiple_messages() {
         init_crypto();
         let server_addr: SocketAddr = "127.0.0.1:15002".parse().unwrap();
+
+        // Channel to signal when writer has written data
+        let (tx, rx) = mpsc::channel();
 
         // Spawn writer (server) thread
         let writer_thread = thread::spawn(move || {
@@ -411,15 +424,21 @@ mod tests {
             writer.write(b"First").unwrap();
             writer.write(b"Second message").unwrap();
             writer.write(b"Third message with more data!").unwrap();
+            tx.send(()).unwrap(); // Signal that data is written
 
             thread::sleep(Duration::from_millis(200));
             writer.close().unwrap();
         });
 
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(Duration::from_millis(100));
 
-        // Reader connects and reads messages
+        // Reader connects
         let mut reader = QuicStreamReader::new(server_addr).unwrap();
+        reader.open().unwrap(); // Explicitly connect
+
+        // Wait for writer to have written data
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
         let msg1 = reader.next().unwrap().unwrap();
         assert_eq!(msg1, b"First");
         let msg2 = reader.next().unwrap().unwrap();
@@ -431,25 +450,34 @@ mod tests {
         writer_thread.join().unwrap();
     }
 
-    #[test]
-    fn test_message_boundaries() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_message_boundaries() {
         init_crypto();
         let server_addr: SocketAddr = "127.0.0.1:15003".parse().unwrap();
+
+        // Channel to signal when writer has written data
+        let (tx, rx) = mpsc::channel();
 
         // Spawn writer (server) thread
         let writer_thread = thread::spawn(move || {
             let mut writer = QuicStreamWriter::new(server_addr).unwrap();
             writer.write(b"ABC").unwrap();
             writer.write(b"DEF").unwrap();
+            tx.send(()).unwrap(); // Signal that data is written
 
             thread::sleep(Duration::from_millis(200));
             writer.close().unwrap();
         });
 
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(Duration::from_millis(100));
 
-        // Reader should receive each message as discrete unit
+        // Reader connects
         let mut reader = QuicStreamReader::new(server_addr).unwrap();
+        reader.open().unwrap(); // Explicitly connect
+
+        // Wait for writer to have written data
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
         let msg1 = reader.next().unwrap().unwrap();
         assert_eq!(msg1, b"ABC");
         let msg2 = reader.next().unwrap().unwrap();
@@ -460,8 +488,8 @@ mod tests {
         writer_thread.join().unwrap();
     }
 
-    #[test]
-    fn test_large_message() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_large_message() {
         init_crypto();
         let server_addr: SocketAddr = "127.0.0.1:15004".parse().unwrap();
 
@@ -469,19 +497,28 @@ mod tests {
         let large_data: Vec<u8> = (0..1024 * 1024).map(|i| (i % 256) as u8).collect();
         let large_data_clone = large_data.clone();
 
+        // Channel to signal when writer has written data
+        let (tx, rx) = mpsc::channel();
+
         // Spawn writer (server) thread
         let writer_thread = thread::spawn(move || {
             let mut writer = QuicStreamWriter::new(server_addr).unwrap();
             writer.write(&large_data).unwrap();
+            tx.send(()).unwrap(); // Signal that data is written
 
             thread::sleep(Duration::from_millis(200));
             writer.close().unwrap();
         });
 
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(Duration::from_millis(100));
 
-        // Reader receives large message
+        // Reader connects
         let mut reader = QuicStreamReader::new(server_addr).unwrap();
+        reader.open().unwrap(); // Explicitly connect
+
+        // Wait for writer to have written data
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
         let message = reader.next().unwrap().unwrap();
         assert_eq!(message, large_data_clone);
         reader.close().unwrap();
@@ -489,24 +526,33 @@ mod tests {
         writer_thread.join().unwrap();
     }
 
-    #[test]
-    fn test_connection_close() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_connection_close() {
         init_crypto();
         let server_addr: SocketAddr = "127.0.0.1:15005".parse().unwrap();
+
+        // Channel to signal when writer has written data
+        let (tx, rx) = mpsc::channel();
 
         // Spawn writer (server) thread
         let writer_thread = thread::spawn(move || {
             let mut writer = QuicStreamWriter::new(server_addr).unwrap();
             writer.write(b"Message").unwrap();
+            tx.send(()).unwrap(); // Signal that data is written
 
             thread::sleep(Duration::from_millis(200));
             writer.close().unwrap();
         });
 
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(Duration::from_millis(100));
 
-        // Reader receives message and closes
+        // Reader connects
         let mut reader = QuicStreamReader::new(server_addr).unwrap();
+        reader.open().unwrap(); // Explicitly connect
+
+        // Wait for writer to have written data
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
         let msg1 = reader.next().unwrap().unwrap();
         assert_eq!(msg1, b"Message");
         reader.close().unwrap();
@@ -514,10 +560,13 @@ mod tests {
         writer_thread.join().unwrap();
     }
 
-    #[test]
-    fn test_multiple_concurrent_messages() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_multiple_concurrent_messages() {
         init_crypto();
         let server_addr: SocketAddr = "127.0.0.1:15006".parse().unwrap();
+
+        // Channel to signal when writer has written data
+        let (tx, rx) = mpsc::channel();
 
         // Spawn writer (server) thread
         let writer_thread = thread::spawn(move || {
@@ -525,15 +574,21 @@ mod tests {
             for i in 0..10 {
                 writer.write(format!("Message {}", i).as_bytes()).unwrap();
             }
+            tx.send(()).unwrap(); // Signal that data is written
 
             thread::sleep(Duration::from_millis(200));
             writer.close().unwrap();
         });
 
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(Duration::from_millis(100));
 
-        // Reader receives 10 messages in quick succession
+        // Reader connects
         let mut reader = QuicStreamReader::new(server_addr).unwrap();
+        reader.open().unwrap(); // Explicitly connect
+
+        // Wait for writer to have written data
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
         for i in 0..10 {
             let msg = reader.next().unwrap().unwrap();
             assert_eq!(msg, format!("Message {}", i).as_bytes());
@@ -543,25 +598,34 @@ mod tests {
         writer_thread.join().unwrap();
     }
 
-    #[test]
-    fn test_writer_closes_early() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_writer_closes_early() {
         init_crypto();
         let server_addr: SocketAddr = "127.0.0.1:15007".parse().unwrap();
+
+        // Channel to signal when writer has written data
+        let (tx, rx) = mpsc::channel();
 
         // Spawn writer (server) thread that closes after writing one message
         let writer_thread = thread::spawn(move || {
             let mut writer = QuicStreamWriter::new(server_addr).unwrap();
             writer.write(b"First").unwrap();
+            tx.send(()).unwrap(); // Signal that data is written
 
-            // Writer closes immediately
+            // Writer closes after a short delay
             thread::sleep(Duration::from_millis(100));
             writer.close().unwrap();
         });
 
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(Duration::from_millis(100));
 
-        // Reader receives first message successfully
+        // Reader connects
         let mut reader = QuicStreamReader::new(server_addr).unwrap();
+        reader.open().unwrap(); // Explicitly connect
+
+        // Wait for writer to have written data
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
         let msg1 = reader.next().unwrap().unwrap();
         assert_eq!(msg1, b"First");
 

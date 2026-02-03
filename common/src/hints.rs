@@ -385,7 +385,7 @@ impl PrecompileHint {
         let length = header & 0xFFFFFFFF;
 
         // Calculate how many u64s are needed to hold length
-        let num_u64s = ((length + 7) / 8) as usize;
+        let num_u64s = length.div_ceil(8) as usize;
 
         anyhow::ensure!(
             slice.len() >= idx + 1 + num_u64s,

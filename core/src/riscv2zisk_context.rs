@@ -905,9 +905,38 @@ impl Riscv2ZiskContext<'_> {
     pub fn jalr(&mut self, i: &RiscvInstruction, inst_size: u64) {
         assert!(inst_size == 4 || inst_size == 2);
         let mut rom_address = i.rom_address;
+
+        // Thanks to https://github.com/codygunton for reporting the issue with JALR alignment!
+
+        // JALR target address mask per RISC-V ISA spec Section 2.5.
+        // Must clear only bit 0 (0xfffffffffffffffe) for 2-byte alignment.
+        //
+        // BUG: Using 0xfffffffffffffffc (4-byte alignment) breaks zksync-os at _start.
+        // The startup code (zksync-airbender/riscv_common/src/asm/start64.s) is:
+        //   _start:
+        //       la ra, _abs_start    # auipc + addi (8 bytes)
+        //       jr ra                # c.jr ra (2 bytes, compressed)
+        //   _abs_start:              # offset 10 = 0x8000000a
+        //
+        // The assembler uses compressed `c.jr` (2 bytes), placing _abs_start at
+        // 0x8000000a - valid for C extension but not 4-byte aligned. We could change the start
+        // file but we leave as-is to document the issue.
+        //
+        // With mask 0xfc: 0x8000000a & 0xfc = 0x80000008 (jumps back to `jr ra`!)
+        // With mask 0xfe: 0x8000000a & 0xfe = 0x8000000a (correct target)
+        //
+        // The wrong mask causes an infinite self-loop at the first instruction,
+        // terminating after 16k steps instead of 1.6B.
+        //
+        // Note that this change fixes the misalign2-jalr-01.S test, which is part of the privilege
+        // architecture test suite but which seeems to test requirements of other parts of the
+        // spec.
+
+        const JALR_MASK: u64 = 0xfffffffffffffffe;
+
         if (i.imm % 4) == 0 {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
-            zib.src_a("imm", 0xfffffffffffffffc, false);
+            zib.src_a("imm", JALR_MASK, false);
             zib.src_b("reg", i.rs1 as u64, false);
             zib.op("and").unwrap();
             zib.set_pc();
@@ -930,7 +959,7 @@ impl Riscv2ZiskContext<'_> {
             }
             {
                 let mut zib = ZiskInstBuilder::new(rom_address);
-                zib.src_a("imm", 0xfffffffffffffffc, false);
+                zib.src_a("imm", JALR_MASK, false);
                 zib.src_b("lastc", 0, false);
                 zib.op("and").unwrap();
                 zib.set_pc();

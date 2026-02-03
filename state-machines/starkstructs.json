@@ -5,5 +5,7 @@
     "ArithEq384": { "hasCompressor": true },
     "VirtualTable0": { "lastLevelVerification": 1 },
     "VirtualTable1": { "lastLevelVerification": 1 },
-    "Poseidon2": { "blowupFactor": 2 }
+    "SpecifiedRanges": { "lastLevelVerification": 1 },
+    "Poseidon2": { "blowupFactor": 2 },
+    "Rom": { "powBits": 20 }
 }

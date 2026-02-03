@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow::Result;
 use named_sem::NamedSemaphore;
-use std::sync::Mutex;
+use std::cell::RefCell;
 use tracing::debug;
 use zisk_common::io::StreamSink;
 
@@ -51,7 +51,7 @@ struct ServiceResources {
 /// HintsShmem struct manages the writing of processed precompile hints to shared memory.
 pub struct HintsShmem {
     /// Service resources combining shared memory writers and semaphores
-    resources: Mutex<Vec<ServiceResources>>,
+    resources: RefCell<Vec<ServiceResources>>,
 }
 
 unsafe impl Send for HintsShmem {}
@@ -94,7 +94,7 @@ impl HintsShmem {
             resource.control_writer.write_u64_at(0, 0);
         }
 
-        Ok(Self { resources: Mutex::new(resources) })
+        Ok(Self { resources: RefCell::new(resources) })
     }
 
     /// Initialize the shared memory writers for the pipeline.
@@ -166,7 +166,7 @@ impl StreamSink for HintsShmem {
             Self::BUFFER_CAPACITY_U64
         );
 
-        let mut resources = self.resources.lock().unwrap();
+        let mut resources = self.resources.borrow_mut();
 
         for resource in resources.iter_mut() {
             // Read current write position once (we're the only writer)

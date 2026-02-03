@@ -9,7 +9,7 @@ use crate::{
 };
 use asm_runner::{
     write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory,
-    MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, SharedMemoryWriter, Task, TaskFactory,
+    MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, SharedMemoryWriter,
 };
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
@@ -18,10 +18,7 @@ use rayon::prelude::*;
 use sm_rom::RomSM;
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
-use zisk_common::{
-    io::ZiskStdin, BusDeviceMetrics, ChunkId, EmuTrace, ExecutorStatsHandle, PayloadType,
-    ZiskExecutionResult,
-};
+use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace, ExecutorStatsHandle, ZiskExecutionResult};
 use zisk_core::{ZiskRom, MAX_INPUT_SIZE};
 use ziskemu::ZiskEmulator;
 
@@ -257,89 +254,70 @@ impl EmulatorAsm {
         #[cfg(feature = "stats")]
         stats.add_stat(0, parent_stats_id, "RUN_MT_ASSEMBLY", 0, ExecutorStatsEvent::Begin);
 
-        struct CounterTask<F, DB>
-        where
-            DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
-        {
-            chunk_id: ChunkId,
-            emu_trace: Arc<EmuTrace>,
-            data_bus: DB,
-            zisk_rom: Arc<ZiskRom>,
-            _phantom: std::marker::PhantomData<F>,
-            _stats: ExecutorStatsHandle,
-            _parent_stats_id: u64,
-        }
+        let results_mu: Mutex<Vec<(ChunkId, _)>> = Mutex::new(Vec::new());
 
-        impl<F, DB> Task for CounterTask<F, DB>
-        where
-            F: PrimeField64,
-            DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static,
-        {
-            type Output = (ChunkId, DB);
-
-            fn execute(mut self) -> Self::Output {
-                #[cfg(feature = "stats")]
-                let stats_id = self._stats.next_id();
-                #[cfg(feature = "stats")]
-                self._stats.add_stat(
-                    self._parent_stats_id,
-                    stats_id,
-                    "MT_CHUNK_PLAYER",
-                    0,
-                    ExecutorStatsEvent::Begin,
-                );
-
-                ZiskEmulator::process_emu_trace::<F, _, _>(
-                    &self.zisk_rom,
-                    &self.emu_trace,
-                    &mut self.data_bus,
-                    false,
-                );
-
-                self.data_bus.on_close();
-
-                // Add to executor stats
-                #[cfg(feature = "stats")]
-                self._stats.add_stat(
-                    self._parent_stats_id,
-                    stats_id,
-                    "MT_CHUNK_PLAYER",
-                    0,
-                    ExecutorStatsEvent::End,
-                );
-
-                (self.chunk_id, self.data_bus)
-            }
-        }
-
-        let task_factory: TaskFactory<_> =
-            Box::new(|chunk_id: ChunkId, emu_trace: Arc<EmuTrace>| {
-                let data_bus = sm_bundle.build_data_bus_counters();
-                CounterTask {
-                    chunk_id,
-                    emu_trace,
-                    data_bus,
-                    zisk_rom: self.zisk_rom.clone(),
-                    _phantom: std::marker::PhantomData::<F>,
-                    _stats: stats.clone(),
+        let emu_traces = rayon::in_place_scope(|scope| {
+            let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
+                let chunk_id = ChunkId(idx);
+                let zisk_rom = &self.zisk_rom;
+                let results_ref = &results_mu;
+                scope.spawn(move |_| {
                     #[cfg(feature = "stats")]
-                    _parent_stats_id: parent_stats_id,
-                    #[cfg(not(feature = "stats"))]
-                    _parent_stats_id: 0,
-                }
-            });
+                    let stats_id = stats.next_id();
+                    #[cfg(feature = "stats")]
+                    stats.add_stat(
+                        parent_stats_id,
+                        stats_id,
+                        "MT_CHUNK_PLAYER",
+                        0,
+                        ExecutorStatsEvent::Begin,
+                    );
 
-        let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
-            &mut self.asm_shmem_mt.lock().unwrap(),
-            MAX_NUM_STEPS,
-            self.chunk_size,
-            task_factory,
-            self.world_rank,
-            self.local_rank,
-            self.base_port,
-            stats.clone(),
-        )
-        .expect("Error during ASM execution");
+                    let mut data_bus = sm_bundle.build_data_bus_counters();
+
+                    ZiskEmulator::process_emu_trace::<F, _, _>(
+                        zisk_rom,
+                        &emu_trace,
+                        &mut data_bus,
+                        false,
+                    );
+
+                    data_bus.on_close();
+
+                    #[cfg(feature = "stats")]
+                    stats.add_stat(
+                        parent_stats_id,
+                        stats_id,
+                        "MT_CHUNK_PLAYER",
+                        0,
+                        ExecutorStatsEvent::End,
+                    );
+
+                    results_ref.lock().unwrap().push((chunk_id, data_bus));
+                });
+            };
+
+            AsmRunnerMT::run_and_count(
+                &mut self.asm_shmem_mt.lock().unwrap(),
+                MAX_NUM_STEPS,
+                self.chunk_size,
+                on_chunk,
+                self.world_rank,
+                self.local_rank,
+                self.base_port,
+                stats.clone(),
+            )
+            .expect("Error during ASM execution")
+        });
+
+        // Unwrap the Arc pointers now that all rayon tasks have completed
+        let emu_traces = emu_traces
+            .into_iter()
+            .map(|arc| Arc::try_unwrap(arc).expect("Arc should have single owner after scope"))
+            .collect();
+        let asm_runner_mt = AsmRunnerMT::new(emu_traces);
+
+        let mut data_buses = results_mu.into_inner().unwrap();
 
         data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 

@@ -51,7 +51,6 @@ macro_rules! hint_fields {
     };
 }
 
-/// Read a length-prefixed field from hint data
 // #[inline]
 // fn read_field<'a>(data: &'a [u64], pos: &mut usize) -> anyhow::Result<&'a [u64]> {
 //     let len =
@@ -69,7 +68,7 @@ macro_rules! hint_fields {
 fn read_field_bytes<'a>(data: &'a [u64], pos: &mut usize) -> anyhow::Result<(&'a [u8], usize)> {
     // Treat the entire u64 slice as bytes
     let byte_data: &[u8] = unsafe {
-        std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len() * size_of::<u64>())
+        std::slice::from_raw_parts(data.as_ptr() as *const u8, std::mem::size_of_val(data))
     };
 
     // Make sure we have at least 8 bytes for the length header

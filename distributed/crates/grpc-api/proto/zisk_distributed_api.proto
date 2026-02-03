@@ -63,16 +63,16 @@ message LaunchProofRequest {
   optional uint32 simulated_node = 8; // If set, indicates this is a simulated worker
 }
 
-  enum InputMode {
-    INPUT_MODE_NONE = 0;  // No input provided
-    INPUT_MODE_PATH = 1;   // Input will be provided as a PATH
-    INPUT_MODE_DATA = 2;  // Input data will be sent directly
+enum InputMode {
+  INPUT_MODE_NONE = 0;  // No input provided
+  INPUT_MODE_PATH = 1;   // Input will be provided as a PATH
+  INPUT_MODE_DATA = 2;  // Input data will be sent directly
 }
 
-  enum HintsMode {
-    HINTS_MODE_NONE = 0;  // No hints provided
-    HINTS_MODE_PATH = 1;   // Hints will be provided as a PATH
-    HINTS_MODE_STREAM = 2;  // Hints will be sent as a stream
+enum HintsMode {
+  HINTS_MODE_NONE = 0;  // No hints provided
+  HINTS_MODE_PATH = 1;   // Hints will be provided as a PATH
+  HINTS_MODE_STREAM = 2;  // Hints will be sent as a stream
 }
 
 

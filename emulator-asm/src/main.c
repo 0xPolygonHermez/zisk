@@ -284,6 +284,8 @@ bool trace = false;
 bool trace_trace = false;
 bool verbose = false;
 bool save_to_file = false;
+bool share_input_shm = false; // Shares input shared memories: input, precompile results and control input, using a common name
+bool open_input_shm = false; // Opens existing input shared memories, without creating them.  They must be previously created by another process (assembly emulator or witness computation)
 
 // ROM histogram
 uint64_t histogram_size = 0;
@@ -892,6 +894,8 @@ void print_usage (void)
     printf("\t-a chunk_address\n");
     printf("\t-v verbose on\n");
     printf("\t-u unlock physical memory in mmap\n");
+    printf("\t--share_input_shm share input shared memories\n");
+    printf("\t--open_input_shm open existing input shared memories\n");
 #ifdef ASM_PRECOMPILE_CACHE
     printf("\t--precompile-cache-store store precompile results in cache file\n");
     printf("\t--precompile-cache-load load precompile results from cache file\n");
@@ -1208,6 +1212,16 @@ void parse_arguments(int argc, char *argv[])
                 }
                 continue;
             }
+            if (strcmp(argv[i], "--share_input_shm") == 0)
+            {
+                share_input_shm = true;
+                continue;
+            }
+            if (strcmp(argv[i], "--open_input_shm") == 0)
+            {
+                open_input_shm = true;
+                continue;
+            }
 #ifdef ASM_PRECOMPILE_CACHE
             if (strcmp(argv[i], "--precompile-cache-store") == 0)
             {
@@ -1319,15 +1333,24 @@ void configure (void)
         case Fast:
         {
             strcpy(shmem_control_input_name, shm_prefix);
-            strcat(shmem_control_input_name, "_FT_control_input");
+            if (share_input_shm)
+                strcat(shmem_control_input_name, "_control_input");
+            else
+                strcat(shmem_control_input_name, "_FT_control_input");
             strcpy(shmem_control_output_name, shm_prefix);
             strcat(shmem_control_output_name, "_FT_control_output");
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_FT_input");
+            if (share_input_shm)
+                strcat(shmem_input_name, "_input");
+            else
+                strcat(shmem_input_name, "_FT_input");
             if (precompile_results_enabled)
             {
                 strcpy(shmem_precompile_name, shm_prefix);
-                strcat(shmem_precompile_name, "_FT_precompile");
+                if (share_input_shm)
+                    strcat(shmem_precompile_name, "_precompile");
+                else
+                    strcat(shmem_precompile_name, "_FT_precompile");
                 strcpy(sem_prec_avail_name, shm_prefix);
                 strcat(sem_prec_avail_name, "_FT_prec_avail");
                 strcpy(sem_prec_read_name, shm_prefix);
@@ -1355,15 +1378,24 @@ void configure (void)
         case MinimalTrace:
         {
             strcpy(shmem_control_input_name, shm_prefix);
-            strcat(shmem_control_input_name, "_MT_control_input");
+            if (share_input_shm)
+                strcat(shmem_control_input_name, "_control_input");
+            else
+                strcat(shmem_control_input_name, "_MT_control_input");
             strcpy(shmem_control_output_name, shm_prefix);
             strcat(shmem_control_output_name, "_MT_control_output");
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_MT_input");
+            if (share_input_shm)
+                strcat(shmem_input_name, "_input");
+            else
+                strcat(shmem_input_name, "_MT_input");
             if (precompile_results_enabled)
             {
                 strcpy(shmem_precompile_name, shm_prefix);
-                strcat(shmem_precompile_name, "_MT_precompile");
+                if (share_input_shm)
+                    strcat(shmem_precompile_name, "_precompile");
+                else
+                    strcat(shmem_precompile_name, "_MT_precompile");
                 strcpy(sem_prec_avail_name, shm_prefix);
                 strcat(sem_prec_avail_name, "_MT_prec_avail");
                 strcpy(sem_prec_read_name, shm_prefix);
@@ -1394,15 +1426,24 @@ void configure (void)
         case RomHistogram:
         {
             strcpy(shmem_control_input_name, shm_prefix);
-            strcat(shmem_control_input_name, "_RH_control_input");
+            if (share_input_shm)
+                strcat(shmem_control_input_name, "_control_input");
+            else
+                strcat(shmem_control_input_name, "_RH_control_input");
             strcpy(shmem_control_output_name, shm_prefix);
             strcat(shmem_control_output_name, "_RH_control_output");
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_RH_input");
+            if (share_input_shm)
+                strcat(shmem_input_name, "_input");
+            else
+                strcat(shmem_input_name, "_RH_input");
             if (precompile_results_enabled)
             {
                 strcpy(shmem_precompile_name, shm_prefix);
-                strcat(shmem_precompile_name, "_RH_precompile");
+                if (share_input_shm)
+                    strcat(shmem_precompile_name, "_precompile");
+                else
+                    strcat(shmem_precompile_name, "_RH_precompile");
                 strcpy(sem_prec_avail_name, shm_prefix);
                 strcat(sem_prec_avail_name, "_RH_prec_avail");
                 strcpy(sem_prec_read_name, shm_prefix);
@@ -1433,15 +1474,24 @@ void configure (void)
         case MainTrace:
         {
             strcpy(shmem_control_input_name, shm_prefix);
-            strcat(shmem_control_input_name, "_MA_control_input");
+            if (share_input_shm)
+                strcat(shmem_control_input_name, "_control_input");
+            else
+                strcat(shmem_control_input_name, "_MA_control_input");
             strcpy(shmem_control_output_name, shm_prefix);
             strcat(shmem_control_output_name, "_MA_control_output");
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_MA_input");
+            if (share_input_shm)
+                strcat(shmem_input_name, "_input");
+            else
+                strcat(shmem_input_name, "_MA_input");
             if (precompile_results_enabled)
             {
                 strcpy(shmem_precompile_name, shm_prefix);
-                strcat(shmem_precompile_name, "_MA_precompile");
+                if (share_input_shm)
+                    strcat(shmem_precompile_name, "_precompile");
+                else
+                    strcat(shmem_precompile_name, "_MA_precompile");
                 strcpy(sem_prec_avail_name, shm_prefix);
                 strcat(sem_prec_avail_name, "_MA_prec_avail");
                 strcpy(sem_prec_read_name, shm_prefix);
@@ -1472,11 +1522,17 @@ void configure (void)
         case ChunksOnly:
         {
             strcpy(shmem_control_input_name, shm_prefix);
-            strcat(shmem_control_input_name, "_CH_control_input");
+            if (share_input_shm)
+                strcat(shmem_control_input_name, "_control_input");
+            else
+                strcat(shmem_control_input_name, "_CH_control_input");
             strcpy(shmem_control_output_name, shm_prefix);
             strcat(shmem_control_output_name, "_CH_control_output");
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_CH_input");
+            if (share_input_shm)
+                strcat(shmem_input_name, "_input");
+            else
+                strcat(shmem_input_name, "_CH_input");
             strcpy(shmem_precompile_name, "");
             strcpy(sem_prec_avail_name, "");
             strcpy(sem_prec_read_name, "");
@@ -1508,15 +1564,24 @@ void configure (void)
         case Zip:
         {
             strcpy(shmem_control_input_name, shm_prefix);
-            strcat(shmem_control_input_name, "_ZP_control_input");
+            if (share_input_shm)
+                strcat(shmem_control_input_name, "_control_input");
+            else
+                strcat(shmem_control_input_name, "_ZP_control_input");
             strcpy(shmem_control_output_name, shm_prefix);
             strcat(shmem_control_output_name, "_ZP_control_output");
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_ZP_input");
+            if (share_input_shm)
+                strcat(shmem_input_name, "_input");
+            else
+                strcat(shmem_input_name, "_ZP_input");
             if (precompile_results_enabled)
             {
                 strcpy(shmem_precompile_name, shm_prefix);
-                strcat(shmem_precompile_name, "_ZP_precompile");
+                if (share_input_shm)
+                    strcat(shmem_precompile_name, "_precompile");
+                else
+                    strcat(shmem_precompile_name, "_ZP_precompile");
                 strcpy(sem_prec_avail_name, shm_prefix);
                 strcat(sem_prec_avail_name, "_ZP_prec_avail");
                 strcpy(sem_prec_read_name, shm_prefix);
@@ -1547,15 +1612,24 @@ void configure (void)
         case MemOp:
         {
             strcpy(shmem_control_input_name, shm_prefix);
-            strcat(shmem_control_input_name, "_MO_control_input");
+            if (share_input_shm)
+                strcat(shmem_control_input_name, "_control_input");
+            else
+                strcat(shmem_control_input_name, "_MO_control_input");
             strcpy(shmem_control_output_name, shm_prefix);
             strcat(shmem_control_output_name, "_MO_control_output");
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_MO_input");
+            if (share_input_shm)
+                strcat(shmem_input_name, "_input");
+            else
+                strcat(shmem_input_name, "_MO_input");
             if (precompile_results_enabled)
             {
                 strcpy(shmem_precompile_name, shm_prefix);
-                strcat(shmem_precompile_name, "_MO_precompile");
+                if (share_input_shm)
+                    strcat(shmem_precompile_name, "_precompile");
+                else
+                    strcat(shmem_precompile_name, "_MO_precompile");
                 strcpy(sem_prec_avail_name, shm_prefix);
                 strcat(sem_prec_avail_name, "_MO_prec_avail");
                 strcpy(sem_prec_read_name, shm_prefix);
@@ -1586,7 +1660,10 @@ void configure (void)
         case ChunkPlayerMTCollectMem:
         {
             strcpy(shmem_control_input_name, shm_prefix);
-            strcat(shmem_control_input_name, "_CM_control_input");
+            if (share_input_shm)
+                strcat(shmem_control_input_name, "_control_input");
+            else
+                strcat(shmem_control_input_name, "_CM_control_input");
             strcpy(shmem_control_output_name, shm_prefix);
             strcat(shmem_control_output_name, "_CM_control_output");
             strcpy(shmem_input_name, "");
@@ -1611,15 +1688,24 @@ void configure (void)
         case MemReads:
         {
             strcpy(shmem_control_input_name, shm_prefix);
-            strcat(shmem_control_input_name, "_MT_control_input");
+            if (share_input_shm)
+                strcat(shmem_control_input_name, "_control_input");
+            else
+                strcat(shmem_control_input_name, "_MT_control_input");
             strcpy(shmem_control_output_name, shm_prefix);
             strcat(shmem_control_output_name, "_MT_control_output");
             strcpy(shmem_input_name, shm_prefix);
-            strcat(shmem_input_name, "_MT_input");
+            if (share_input_shm)
+                strcat(shmem_input_name, "_input");
+            else
+                strcat(shmem_input_name, "_MT_input");
             if (precompile_results_enabled)
             {
                 strcpy(shmem_precompile_name, shm_prefix);
-                strcat(shmem_precompile_name, "_MT_precompile");
+                if (share_input_shm)
+                    strcat(shmem_precompile_name, "_precompile");
+                else
+                    strcat(shmem_precompile_name, "_MT_precompile");
                 strcpy(sem_prec_avail_name, shm_prefix);
                 strcat(sem_prec_avail_name, "_MT_prec_avail");
                 strcpy(sem_prec_read_name, shm_prefix);
@@ -1650,7 +1736,10 @@ void configure (void)
         case ChunkPlayerMemReadsCollectMain:
         {
             strcpy(shmem_control_input_name, shm_prefix);
-            strcat(shmem_control_input_name, "_CA_control_input");
+            if (share_input_shm)
+                strcat(shmem_control_input_name, "_control_input");
+            else
+                strcat(shmem_control_input_name, "_CA_control_input");
             strcpy(shmem_control_output_name, shm_prefix);
             strcat(shmem_control_output_name, "_CA_control_output");
             strcpy(shmem_input_name, "");
@@ -3232,39 +3321,42 @@ void server_setup (void)
 
     if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
-        // Make sure the input shared memory is deleted
-        shm_unlink(shmem_input_name);
-
-        // Create the input shared memory
-        shmem_input_fd = shm_open(shmem_input_name, O_RDWR | O_CREAT | O_EXCL, 0666);
-        if (shmem_input_fd < 0)
+        if (!open_input_shm)
         {
-            printf("ERROR: Failed calling input RW shm_open(%s) as read-write errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
+            // Make sure the input shared memory is deleted
+            shm_unlink(shmem_input_name);
 
-        // Size it
-        result = ftruncate(shmem_input_fd, MAX_INPUT_SIZE);
-        if (result != 0)
-        {
-            printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
+            // Create the input shared memory
+            shmem_input_fd = shm_open(shmem_input_name, O_RDWR | O_CREAT | O_EXCL, 0666);
+            if (shmem_input_fd < 0)
+            {
+                printf("ERROR: Failed calling input RW shm_open(%s) as read-write errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
 
-        // Sync
-        fsync(shmem_input_fd);
+            // Size it
+            result = ftruncate(shmem_input_fd, MAX_INPUT_SIZE);
+            if (result != 0)
+            {
+                printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
 
-        // Close the descriptor
-        if (close(shmem_input_fd) != 0)
-        {
-            printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
+            // Sync
+            fsync(shmem_input_fd);
+
+            // Close the descriptor
+            if (close(shmem_input_fd) != 0)
+            {
+                printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
         }
 
         // Open the input shared memory as read-only
@@ -3312,39 +3404,42 @@ void server_setup (void)
         /* PRECOMPILE */
         /**************/
 
-        // Make sure the precompile results shared memory is deleted
-        shm_unlink(shmem_precompile_name);
-
-        // Create the precompile results shared memory
-        shmem_precompile_fd = shm_open(shmem_precompile_name, O_RDWR | O_CREAT, 0666);
-        if (shmem_precompile_fd < 0)
+        if (!open_input_shm)
         {
-            printf("ERROR: Failed calling precompile shm_open(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
+            // Make sure the precompile results shared memory is deleted
+            shm_unlink(shmem_precompile_name);
 
-        // Size it
-        result = ftruncate(shmem_precompile_fd, MAX_PRECOMPILE_SIZE);
-        if (result != 0)
-        {
-            printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
+            // Create the precompile results shared memory
+            shmem_precompile_fd = shm_open(shmem_precompile_name, O_RDWR | O_CREAT, 0666);
+            if (shmem_precompile_fd < 0)
+            {
+                printf("ERROR: Failed calling precompile shm_open(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
 
-        // Sync
-        fsync(shmem_precompile_fd);
+            // Size it
+            result = ftruncate(shmem_precompile_fd, MAX_PRECOMPILE_SIZE);
+            if (result != 0)
+            {
+                printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
 
-        // Close the descriptor
-        if (close(shmem_precompile_fd) != 0)
-        {
-            printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
+            // Sync
+            fsync(shmem_precompile_fd);
+
+            // Close the descriptor
+            if (close(shmem_precompile_fd) != 0)
+            {
+                printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
         }
 
         // Open the precompile shared memory as read-only
@@ -3380,39 +3475,42 @@ void server_setup (void)
         /* CONTROL INPUT */
         /*****************/
 
-        // Make sure the precompile results shared memory is deleted
-        shm_unlink(shmem_control_input_name);
-
-        // Create the control shared memory
-        shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDWR | O_CREAT, 0666);
-        if (shmem_control_input_fd < 0)
+        if (!open_input_shm)
         {
-            printf("ERROR: Failed calling control shm_open(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
+            // Make sure the precompile results shared memory is deleted
+            shm_unlink(shmem_control_input_name);
 
-        // Size it
-        result = ftruncate(shmem_control_input_fd, CONTROL_INPUT_SIZE);
-        if (result != 0)
-        {
-            printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
+            // Create the control shared memory
+            shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDWR | O_CREAT, 0666);
+            if (shmem_control_input_fd < 0)
+            {
+                printf("ERROR: Failed calling control shm_open(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
 
-        // Sync
-        fsync(shmem_control_input_fd);
+            // Size it
+            result = ftruncate(shmem_control_input_fd, CONTROL_INPUT_SIZE);
+            if (result != 0)
+            {
+                printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
 
-        // Close the descriptor
-        if (close(shmem_control_input_fd) != 0)
-        {
-            printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
+            // Sync
+            fsync(shmem_control_input_fd);
+
+            // Close the descriptor
+            if (close(shmem_control_input_fd) != 0)
+            {
+                printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
         }
 
         // Open the control input shared memory as read-only
@@ -4211,13 +4309,21 @@ extern int _print_pc (uint64_t pc, uint64_t c)
     print_pc_counter++;
 }
 
-//uint64_t chunk_done_counter = 0;
+// uint64_t chunk_done_counter = 0;
+// struct timeval chunk_done_tv;
 // struct timeval sync_start, sync_stop;
 // uint64_t sync_duration = 0;
 extern void _chunk_done()
 {
-    //chunk_done_counter++;
-    //printf("chunk_done() counter=%lu\n", chunk_done_counter);
+    // chunk_done_counter++;
+    // if ((chunk_done_counter & 0xFF) == 0)
+    // {
+    //     struct timeval tv;
+    //     gettimeofday(&tv, NULL);
+    //     uint64_t duration = TimeDiff(chunk_done_tv, tv);
+    //     chunk_done_tv = tv;
+    //     printf("chunk_done() counter=%lu sec=%lu usec=%lu duration=%lu\n", chunk_done_counter, tv.tv_sec, tv.tv_usec, duration);
+    // }
     //gettimeofday(&sync_start, NULL);
     __sync_synchronize();
     // gettimeofday(&sync_stop, NULL);

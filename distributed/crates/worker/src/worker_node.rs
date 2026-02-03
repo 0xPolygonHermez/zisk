@@ -534,15 +534,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             None => InputSourceDto::InputNull,
         };
 
-        let hints_source = if params.hints_path.is_some() {
+        let hints_source = if let Some(hints_path) = &params.hints_path {
             if params.hints_stream {
                 // Hints will be streamed - use placeholder, will be updated when stream completes
-                HintsSourceDto::HintsStream(params.hints_path.as_ref().unwrap().clone())
+                HintsSourceDto::HintsStream(hints_path.clone())
             } else {
                 // Validate and get the full path
                 let hints_uri = Self::validate_subdir(
                     &self.worker_config.worker.inputs_folder,
-                    &PathBuf::from(params.hints_path.as_ref().unwrap()),
+                    &PathBuf::from(hints_path),
                 )
                 .await?;
 

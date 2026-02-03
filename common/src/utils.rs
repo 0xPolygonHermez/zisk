@@ -109,7 +109,7 @@ pub fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> anyhow::Result<V
         let pad_bytes = size_u - rem;
 
         // Number of T elements to pad (round up)
-        let pad_t = (pad_bytes + size_t - 1) / size_t;
+        let pad_t = pad_bytes.div_ceil(size_t);
 
         v.extend(std::iter::repeat(T::default()).take(pad_t));
     }
