@@ -29,8 +29,6 @@ fn main() -> Result<()> {
     let client = ProverClient::builder()
         .asm()
         .base_port(54321)
-        .proving_key_path(PathBuf::from("/home/roger/zisk/build/provingKey"))
-        .proving_key_snark_path(PathBuf::from("/home/roger/zisk/build/provingKeySnark"))
         .snark()
         .build()
         .unwrap();
