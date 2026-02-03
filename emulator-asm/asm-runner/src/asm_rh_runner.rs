@@ -25,8 +25,11 @@ impl PreloadedRH {
             AsmServices::default_port(&AsmService::RH, local_rank)
         };
 
-        let output_name =
-            AsmSharedMemory::<AsmRHHeader>::shmem_output_name(port, AsmService::RH, local_rank);
+        let output_name = AsmSharedMemory::<AsmRHHeader>::shmem_output_name(
+            base_port.unwrap(),
+            AsmService::RH,
+            local_rank,
+        );
 
         let output_shared_memory =
             AsmSharedMemory::<AsmRHHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
@@ -77,8 +80,11 @@ impl AsmRunnerRH {
             AsmServices::default_port(&AsmService::RH, local_rank)
         };
 
-        let sem_chunk_done_name =
-            AsmSharedMemory::<AsmRHHeader>::shmem_chunk_done_name(port, AsmService::RH, local_rank);
+        let sem_chunk_done_name = AsmSharedMemory::<AsmRHHeader>::shmem_chunk_done_name(
+            base_port.unwrap(),
+            AsmService::RH,
+            local_rank,
+        );
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;

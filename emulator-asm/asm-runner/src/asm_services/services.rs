@@ -69,7 +69,7 @@ impl AsmServices {
     pub fn start_asm_services(
         &self,
         ziskemuasm_path: &Path,
-        options: AsmRunnerOptions,
+        mut options: AsmRunnerOptions,
     ) -> Result<()> {
         // ! TODO Remove this when we have a proper way to find the path
         let path_str = ziskemuasm_path.to_string_lossy();
@@ -91,14 +91,49 @@ impl AsmServices {
             }
         }
 
-        for service in &Self::SERVICES {
+        let shm_prefix = Self::shmem_prefix(
+            Self::port_for(&AsmService::MO, self.base_port, self.local_rank),
+            self.local_rank,
+        );
+
+        let service = &Self::SERVICES[0];
+        tracing::debug!(
+            ">>> [{}] Starting ASM service: {} on port {}",
+            self.world_rank,
+            service,
+            Self::port_for(service, self.base_port, self.local_rank)
+        );
+
+        // First service has to create the shared memory, the rest can use it
+        // Es a dir, passar ZISK_15200_0 com a prefix a tots els asm services,
+        // passar --shared_input_shmem a tots tres, i passar --open_input_shmem al segon i al tercer.
+        options.share_input_shmem = true;
+        options.open_input_shmem = false;
+        self.start_asm_service(service, trimmed_path, &options, &shm_prefix);
+
+        Self::wait_for_service_ready(
+            service,
+            Self::port_for(service, self.base_port, self.local_rank),
+        );
+        tracing::debug!(
+            ">>> [{}] ASM service {} is ready on port {}",
+            self.world_rank,
+            service,
+            Self::port_for(service, self.base_port, self.local_rank)
+        );
+
+        for service in &Self::SERVICES[1..] {
             tracing::debug!(
                 ">>> [{}] Starting ASM service: {} on port {}",
                 self.world_rank,
                 service,
                 Self::port_for(service, self.base_port, self.local_rank)
             );
-            self.start_asm_service(service, trimmed_path, &options);
+
+            options.share_input_shmem = true;
+            options.open_input_shmem = true;
+
+            self.start_asm_service(service, trimmed_path, &options, &shm_prefix);
         }
 
         for service in &Self::SERVICES {
@@ -162,6 +197,7 @@ impl AsmServices {
         asm_service: &AsmService,
         trimmed_path: &str,
         options: &AsmRunnerOptions,
+        shm_prefix: &str,
     ) {
         // Prepare command
         let command_path = trimmed_path.to_string() + &format!("-{asm_service}.bin");
@@ -180,7 +216,7 @@ impl AsmServices {
             }
         }
 
-        options.apply_to_command(&mut command, asm_service);
+        options.apply_to_command(&mut command, asm_service, shm_prefix);
 
         if let Err(e) = command.spawn() {
             tracing::error!("Child process failed: {:?}", e);
@@ -312,7 +348,7 @@ impl AsmServices {
 
         let sem_name = format!(
             "/{}_{}_shutdown_done",
-            Self::shmem_prefix(port, self.local_rank),
+            Self::shmem_prefix(self.base_port, self.local_rank),
             service.as_str()
         );
 

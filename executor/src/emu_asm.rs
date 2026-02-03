@@ -8,13 +8,12 @@ use crate::{
     DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
 };
 use asm_runner::{
-    write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory,
-    MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, SharedMemoryWriter,
+    write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmService, AsmServices,
+    AsmSharedMemory, MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, SharedMemoryWriter,
 };
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use rayon::prelude::*;
 use sm_rom::RomSM;
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
@@ -54,7 +53,7 @@ pub struct EmulatorAsm {
 
     /// Shared memory writers for each assembly service.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    shmem_input_writer: [Arc<Mutex<Option<SharedMemoryWriter>>>; AsmServices::SERVICES.len()],
+    shmem_input_writer: Arc<Mutex<Option<SharedMemoryWriter>>>,
 }
 
 impl EmulatorAsm {
@@ -90,7 +89,7 @@ impl EmulatorAsm {
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             asm_shmem_rh: Arc::new(Mutex::new(None)),
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            shmem_input_writer: std::array::from_fn(|_| Arc::new(Mutex::new(None))),
+            shmem_input_writer: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -141,12 +140,10 @@ impl EmulatorAsm {
         #[cfg(feature = "stats")]
         stats.add_stat(parent_stats_id, stats_id, "ASM_WRITE_INPUT", 0, ExecutorStatsEvent::Begin);
 
-        AsmServices::SERVICES.par_iter().enumerate().for_each(|(idx, service)| {
-            let mut input_writer = self.shmem_input_writer[idx].lock().unwrap();
-            input_writer.get_or_insert_with(|| self.create_shmem_writer(service));
+        let mut input_writer = self.shmem_input_writer.lock().unwrap();
+        input_writer.get_or_insert_with(|| self.create_shmem_writer(&AsmService::MO));
 
-            write_input(&mut stdin.lock().unwrap(), input_writer.as_ref().unwrap());
-        });
+        write_input(&mut stdin.lock().unwrap(), input_writer.as_ref().unwrap());
 
         #[cfg(feature = "stats")]
         stats.add_stat(parent_stats_id, stats_id, "ASM_WRITE_INPUT", 0, ExecutorStatsEvent::End);
@@ -227,8 +224,11 @@ impl EmulatorAsm {
             AsmServices::default_port(service, self.local_rank)
         };
 
-        let shmem_input_name =
-            AsmSharedMemory::<AsmMTHeader>::shmem_input_name(port, *service, self.local_rank);
+        let shmem_input_name = AsmSharedMemory::<AsmMTHeader>::shmem_input_name2(
+            self.base_port.unwrap(),
+            *service,
+            self.local_rank,
+        );
 
         tracing::debug!(
             "Initializing SharedMemoryWriter for service {:?} at '{}'",

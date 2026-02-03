@@ -13,45 +13,47 @@ use std::cell::RefCell;
 use tracing::debug;
 use zisk_common::io::StreamSink;
 
-/// Names for a service's shared memory and semaphore resources
-struct ServiceResourceNames {
-    control_writer: String,
+/// Names for separate resources (per-service)
+struct SeparateResourceNames {
     control_reader: String,
-    data_name: String,
     sem_available_name: String,
     sem_read_name: String,
 }
 
-impl ServiceResourceNames {
+impl SeparateResourceNames {
     fn new(service: &AsmService, port: u16, local_rank: i32) -> Self {
         Self {
-            control_writer: shmem_control_writer_name(port, *service, local_rank),
             control_reader: shmem_control_reader_name(port, *service, local_rank),
-            data_name: shmem_precompile_name(port, *service, local_rank),
             sem_available_name: sem_available_name(port, *service, local_rank),
             sem_read_name: sem_read_name(port, *service, local_rank),
         }
     }
 }
 
-/// Represents a service's shared memory and synchronization resources
-struct ServiceResources {
-    /// Control shared memory writer
-    control_writer: SharedMemoryWriter,
-    /// Control shared memory reader
+/// Separate resources, one per asm service
+struct SeparateResources {
+    /// Control shared memory reader (consumer's read position)
     control_reader: SharedMemoryReader,
-    /// Data shared memory writer
-    data_writer: SharedMemoryWriter,
-    /// Semaphore to signal data availability
+    /// Semaphore to signal data availability to this consumer
     sem_available: NamedSemaphore,
-    /// Semaphore to wait for data consumption
+    /// Semaphore to wait for this consumer's data consumption
     sem_read: NamedSemaphore,
+}
+
+/// Unified resources shared across all asm services
+struct UnifiedResources {
+    /// Control shared memory writer (single write_pos)
+    control_writer: SharedMemoryWriter,
+    /// Data shared memory writer (single data buffer)
+    data_writer: SharedMemoryWriter,
 }
 
 /// HintsShmem struct manages the writing of processed precompile hints to shared memory.
 pub struct HintsShmem {
-    /// Service resources combining shared memory writers and semaphores
-    resources: RefCell<Vec<ServiceResources>>,
+    /// Unified resources (single data buffer and control writer)
+    unified: RefCell<UnifiedResources>,
+    /// Separate resources (control_reader and semaphores for each service)
+    separate: RefCell<Vec<SeparateResources>>,
 }
 
 unsafe impl Send for HintsShmem {}
@@ -76,7 +78,21 @@ impl HintsShmem {
         local_rank: i32,
         unlock_mapped_memory: bool,
     ) -> Result<Self> {
-        let resources_names = AsmServices::SERVICES
+        // Use the first service's port for shared resources naming
+        let first_service = &AsmServices::SERVICES[0];
+        let shared_port = if let Some(base_port) = base_port {
+            AsmServices::port_for(first_service, base_port, local_rank)
+        } else {
+            AsmServices::default_port(first_service, local_rank)
+        };
+
+        // Create unified resources (single data buffer and control writer)
+        let unified =
+            Self::create_unified_resources(shared_port, local_rank, unlock_mapped_memory)?;
+        unified.control_writer.write_u64_at(0, 0);
+
+        // Create separate resources
+        let separate_names: Vec<SeparateResourceNames> = AsmServices::SERVICES
             .iter()
             .map(|service| {
                 let port = if let Some(base_port) = base_port {
@@ -84,45 +100,51 @@ impl HintsShmem {
                 } else {
                     AsmServices::default_port(service, local_rank)
                 };
-                ServiceResourceNames::new(service, port, local_rank)
+                SeparateResourceNames::new(service, base_port.unwrap(), local_rank)
             })
             .collect();
 
-        let mut resources = Self::create_resources(resources_names, unlock_mapped_memory)?;
+        let separate = Self::create_separate_resources(separate_names)?;
 
-        for resource in resources.iter_mut() {
-            resource.control_writer.write_u64_at(0, 0);
-        }
-
-        Ok(Self { resources: RefCell::new(resources) })
+        Ok(Self { unified: RefCell::new(unified), separate: RefCell::new(separate) })
     }
 
-    /// Initialize the shared memory writers for the pipeline.
-    ///
-    /// This method creates SharedMemoryWriter instances for each shared memory name.
-    /// If writers are already initialized it logs a warning and does nothing.
-    fn create_resources(
-        resources_names: Vec<ServiceResourceNames>,
+    /// Create the unified resources (single data buffer and control writer).
+    fn create_unified_resources(
+        port: u16,
+        local_rank: i32,
         unlock_mapped_memory: bool,
-    ) -> Result<Vec<ServiceResources>> {
-        debug!("Initializing resources for precompile hints");
-        resources_names
+    ) -> Result<UnifiedResources> {
+        debug!("Initializing unified resources for precompile hints");
+        let control_name = shmem_control_writer_name(port, local_rank);
+        let data_name = shmem_precompile_name(port, local_rank);
+
+        Ok(UnifiedResources {
+            control_writer: SharedMemoryWriter::new(
+                &control_name,
+                Self::CONTROL_PRECOMPILE_SIZE as usize,
+                unlock_mapped_memory,
+            )?,
+            data_writer: SharedMemoryWriter::new(
+                &data_name,
+                Self::MAX_PRECOMPILE_SIZE as usize,
+                unlock_mapped_memory,
+            )?,
+        })
+    }
+
+    /// Create separate resources (control_reader and semaphores for each service).
+    fn create_separate_resources(
+        separate_names: Vec<SeparateResourceNames>,
+    ) -> Result<Vec<SeparateResources>> {
+        debug!("Initializing separate resources for precompile hints");
+        separate_names
             .iter()
-            .map(|names: &ServiceResourceNames| -> Result<ServiceResources> {
-                Ok(ServiceResources {
-                    control_writer: SharedMemoryWriter::new(
-                        &names.control_writer,
-                        Self::CONTROL_PRECOMPILE_SIZE as usize,
-                        unlock_mapped_memory,
-                    )?,
+            .map(|names: &SeparateResourceNames| -> Result<SeparateResources> {
+                Ok(SeparateResources {
                     control_reader: SharedMemoryReader::new(
                         &names.control_reader,
                         Self::CONTROL_PRECOMPILE_SIZE as usize,
-                    )?,
-                    data_writer: SharedMemoryWriter::new(
-                        &names.data_name,
-                        Self::MAX_PRECOMPILE_SIZE as usize,
-                        unlock_mapped_memory,
                     )?,
                     sem_available: NamedSemaphore::create(&names.sem_available_name, 0).map_err(
                         |e| {
@@ -147,55 +169,77 @@ impl HintsShmem {
 }
 
 impl StreamSink for HintsShmem {
-    /// Writes processed precompile hints to all shared memory writers.
+    /// Writes processed precompile hints to the shared memory.
+    ///
+    /// Data is written ONCE to the shared buffer, then all consumers are notified.
+    /// Flow control waits for the slowest consumer.
     ///
     /// # Arguments
     /// * `processed` - A vector of processed precompile hints as u64 values.
     ///
     /// # Returns
-    /// * `Ok(())` - If hints were successfully written to all shared memories
-    /// * `Err` - If writing to any shared memory fails
+    /// * `Ok(())` - If hints were successfully written to shared memory
+    /// * `Err` - If writing to shared memory fails
     #[inline]
     fn submit(&self, processed: Vec<u64>) -> anyhow::Result<()> {
         let data_size = processed.len() as u64;
 
-        debug_assert!(
-            data_size <= Self::BUFFER_CAPACITY_U64,
-            "Processed data size ({} u64 elements) exceeds maximum precompile shared memory capacity ({} u64 elements)",
-            data_size,
-            Self::BUFFER_CAPACITY_U64
-        );
+        // Early return for empty data
+        if data_size == 0 {
+            return Ok(());
+        }
 
-        let mut resources = self.resources.borrow_mut();
+        // Validate data size fits in buffer
+        if data_size > Self::BUFFER_CAPACITY_U64 {
+            return Err(anyhow::anyhow!(
+                "Processed data size ({} u64 elements) exceeds buffer capacity ({} u64 elements)",
+                data_size,
+                Self::BUFFER_CAPACITY_U64
+            ));
+        }
 
-        for resource in resources.iter_mut() {
-            // Read current write position once (we're the only writer)
-            let write_pos = resource.control_writer.read_u64_at(0);
+        let mut unified = self.unified.borrow_mut();
+        let mut separate = self.separate.borrow_mut();
 
-            loop {
-                // Read current read position (updated by reader)
-                let read_pos = resource.control_reader.read_u64_at(0);
+        // Read current write position once
+        let write_pos = unified.control_writer.read_u64_at(0);
 
-                // Calculate occupied space in ring buffer (positions are absolute values in u64 elements)
-                let occupied_space = write_pos - read_pos;
-                let available_space = Self::BUFFER_CAPACITY_U64 - occupied_space;
+        // Flow control: wait until all consumers have advanced enough
+        // We need to wait for the slowest consumer (minimum read position)
+        loop {
+            // Find the slowest consumer (minimum read position) and its index
+            let (slowest_idx, min_read_pos) = separate
+                .iter()
+                .enumerate()
+                .map(|(i, res)| (i, res.control_reader.read_u64_at(0)))
+                .min_by_key(|(_, pos)| *pos)
+                .unwrap();
 
-                // Flow control based on buffer occupancy
-                if available_space >= data_size {
-                    break;
-                }
+            // Calculate occupied space based on slowest consumer (saturating to avoid underflow)
+            let occupied_space = write_pos.saturating_sub(min_read_pos);
+            let available_space = Self::BUFFER_CAPACITY_U64.saturating_sub(occupied_space);
 
-                // Not enough space - wait for consumption
-                resource.sem_read.wait()?;
+            // Flow control based on buffer occupancy
+            if available_space >= data_size {
+                break;
             }
 
-            // Write data to shared memory with automatic wraparound
-            resource.data_writer.write_ring_buffer(&processed);
+            // Not enough space - wait for the SLOWEST consumer to signal progress
+            // Retry on interrupt (EINTR)
+            if separate[slowest_idx].sem_read.wait().is_err() {
+                continue;
+            }
+        }
 
-            // Update write position in control memory (absolute position, always increases)
-            resource.control_writer.write_u64_at(0, write_pos + data_size);
+        // Write data ONCE to the unified shared memory buffer
+        unified.data_writer.write_ring_buffer(&processed);
 
-            resource.sem_available.post()?;
+        // Update write position ONCE in control memory
+        unified.control_writer.write_u64_at(0, write_pos + data_size);
+
+        // Notify ALL consumers that new data is available
+        for res in separate.iter_mut() {
+            res.sem_available.post()?;
         }
 
         Ok(())

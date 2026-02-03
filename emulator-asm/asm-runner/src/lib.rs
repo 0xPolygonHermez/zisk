@@ -71,8 +71,16 @@ fn build_name(
     )
 }
 
+fn build_name2(prefix: &str, port: u16, local_rank: i32, suffix: &str) -> String {
+    format!("{}{}_{}", prefix, AsmServices::shmem_prefix(port, local_rank), suffix)
+}
+
 fn build_shmem_name(port: u16, asm_service: AsmService, local_rank: i32, suffix: &str) -> String {
     build_name("", port, asm_service, local_rank, suffix)
+}
+
+fn build_shmem_name2(port: u16, local_rank: i32, suffix: &str) -> String {
+    build_name2("", port, local_rank, suffix)
 }
 
 fn build_sem_name(port: u16, asm_service: AsmService, local_rank: i32, suffix: &str) -> String {
@@ -84,8 +92,8 @@ pub fn shmem_input_name(port: u16, asm_service: AsmService, local_rank: i32) -> 
 }
 
 /// Shared memory name for precompile hints data
-pub fn shmem_precompile_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_shmem_name(port, asm_service, local_rank, "precompile")
+pub fn shmem_precompile_name(port: u16, local_rank: i32) -> String {
+    build_shmem_name2(port, local_rank, "precompile")
 }
 
 /// Shared memory name for precompile hints data
@@ -99,8 +107,8 @@ pub fn sem_read_name(port: u16, asm_service: AsmService, local_rank: i32) -> Str
 }
 
 /// Shared memory name for precompile hints data control
-pub fn shmem_control_writer_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_shmem_name(port, asm_service, local_rank, "control_input")
+pub fn shmem_control_writer_name(port: u16, local_rank: i32) -> String {
+    build_shmem_name2(port, local_rank, "control_input")
 }
 
 pub fn shmem_control_reader_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
