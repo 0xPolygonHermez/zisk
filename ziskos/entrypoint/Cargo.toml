@@ -30,5 +30,23 @@ fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch 
     "verify",
 ] }
 
+[target.'cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), any(zisk_hints, zisk_hints_debug)))'.dependencies]
+bytes = { version = "1.11.0", optional = true }
+once_cell = { version = "1.21.3", optional = true }
+paste = { version = "1.0", optional = true }
+zisk-common = { path = "../../common", optional = true }
+anyhow = { workspace = true, optional = true }
+
+[target.'cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints_metrics))'.dependencies]
+ctor = { version = "0.2", optional = true }
+
 [features]
-default = []
+default = ["user-hints"]
+user-hints = ["dep:zisk-common", "dep:bytes", "dep:paste", "dep:once_cell", "dep:ctor", "dep:anyhow"]
+
+ [lints.rust]
+ unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(zisk_hints)',
+    'cfg(zisk_hints_metrics)',
+    'cfg(zisk_hints_debug)',
+    'cfg(zisk_hints_single_thread)'] }

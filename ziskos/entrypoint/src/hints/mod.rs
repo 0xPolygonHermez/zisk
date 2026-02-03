@@ -6,6 +6,7 @@ mod kzg;
 mod macros;
 mod modexp;
 mod secp256k1;
+mod secp256r1;
 mod sha256f;
 
 #[cfg(zisk_hints_metrics)]
@@ -16,7 +17,7 @@ use anyhow::Result;
 use once_cell::sync::Lazy;
 use std::{io::{self, BufWriter, Write}, sync::Arc};
 use std::path::PathBuf;
-use std::thread::{self, JoinHandle, ThreadId};
+use std::thread::{self, JoinHandle};
 use std::{ffi::CStr, os::raw::c_char};
 use std::cell::UnsafeCell;
 use zisk_common::io::{StreamWrite, UnixSocketStreamWriter};

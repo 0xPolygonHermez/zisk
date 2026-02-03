@@ -40,14 +40,6 @@ elliptic-curve = "0.13.8"
 k256 = "0.13.4"
 anyhow = { workspace = true }
 
-[target.'cfg(any(zisk_hints, zisk_hints_debug))'.dependencies]
-bytes = "1.11.0"
-once_cell = "1.21.3"
-zisk-common = { path = "../common" }
-
-[target.'cfg(zisk_hints_metrics)'.dependencies]
-ctor = "0.2"
-
 [features]
 default = ["hints"]
 hints = []

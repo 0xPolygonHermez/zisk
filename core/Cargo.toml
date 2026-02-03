@@ -18,10 +18,9 @@ path = "src/bin/riscv2zisk.rs"
 [dependencies]
 precompiles-helpers = { workspace = true }
 lib-c = { workspace = true }
-ziskos = { workspace = true }
 riscv = { workspace = true }
 zisk-pil = { workspace = true }
-
+ziskos-hints = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

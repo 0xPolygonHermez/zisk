@@ -1,13 +1,34 @@
 use crate::syscalls::syscall_keccak_f;
 
+#[cfg(zisk_hints_debug)]
+use std::os::raw::c_char;
+
 #[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints))]
 extern "C" {
     fn hint_keccak256(input_ptr: *const u8, input_len: usize);
 }
 
-#[cfg(zisk_hints_debug)]
+#[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints_debug))]
 extern "C" {
     fn hint_log_c(msg: *const c_char);
+}
+
+#[cfg(zisk_hints_debug)]
+pub fn hint_log<S: AsRef<str>>(msg: S) {
+    // On native we call external C function to log hints, since it controls if hints are paused or not
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    {
+        use std::ffi::CString;
+
+        if let Ok(c) = CString::new(msg.as_ref()) {
+            unsafe { hint_log_c(c.as_ptr()) };
+        }
+    }
+    // On zkvm/zisk, we can just print directly
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    {
+        println!("{}", msg.as_ref());
+    }
 }
 
 /// Keccak-256 rate in bytes (1600 - 2*256) / 8 = 136 bytes
@@ -121,7 +142,7 @@ pub unsafe extern "C" fn native_keccak256(bytes: *const u8, len: usize, output: 
     #[cfg(zisk_hints_debug)]
     {
         let input_bytes = unsafe { core::slice::from_raw_parts(bytes, len) };
-        hint_log_c(format!("hint_keccak256 (bytes: {:?}, len: {})", input_bytes, len));
+        hint_log(format!("hint_keccak256 (bytes: {:?}, len: {})", input_bytes, len));
     }
 
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]

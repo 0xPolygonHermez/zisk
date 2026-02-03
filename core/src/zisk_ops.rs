@@ -10,7 +10,7 @@
 #![allow(unused)]
 
 use precompiles_helpers::DmaInfo;
-use ziskos::zisklib::fcall_proxy;
+use ziskos_hints::zisklib::fcall_proxy;
 
 use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
 use paste::paste;
