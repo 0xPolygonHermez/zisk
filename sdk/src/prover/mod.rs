@@ -287,20 +287,13 @@ impl ZiskPublics {
             ));
         }
 
-        // Chunk into 8-byte (u64) values
-        let chunks = serialized.len().div_ceil(8);
         let mut data = [0u8; ZISK_PUBLICS * 4];
-
-        for i in 0..chunks {
-            let start = i * 8;
-            let end = (start + 8).min(serialized.len());
-            let mut bytes = [0u8; 8];
-            bytes[..end - start].copy_from_slice(&serialized[start..end]);
-            let val = u64::from_le_bytes(bytes);
-
-            // Store the u64 value as little-endian bytes
-            let out_start = i * 8;
-            data[out_start..out_start + 8].copy_from_slice(&val.to_le_bytes());
+        // Chunk into 8-byte (u64) values
+        for (i, chunk) in serialized.chunks(4).enumerate() {
+            // copy chunk into 32-bit slot, padding with zeros if chunk < 4 bytes
+            let mut buf = [0u8; 4];
+            buf[..chunk.len()].copy_from_slice(chunk);
+            data[i * 4..(i + 1) * 4].copy_from_slice(&buf);
         }
 
         Ok(Self { data: data.to_vec(), ptr: Cell::new(0) })
