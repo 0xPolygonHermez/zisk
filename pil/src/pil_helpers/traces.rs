@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "28c8185c73aa9a58d122501d67edea0d8dd62d1893c974f4155b3944a7c84bbd";
+pub const PILOUT_HASH: &str = "714c5bc49f0ec815cfed6956d9919523e8fef7142ba6edf74c433e7dedf273b7";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -375,7 +375,7 @@ trace_row!(ArithEqFixedRow<F> {
 pub type ArithEqFixed<F> = GenericTrace<ArithEqFixedRow<F>, 1048576, 0, 18>;
 
 trace_row!(ArithEqTraceRow<F> {
- x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 9], sel_op_clk0:[bit; 9], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, carry:[[u64; 2]; 3], step_addr:ubit(40),
+ x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 11], sel_op_clk0:[bit; 11], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 pub type ArithEqTrace<F> = GenericTrace<ArithEqTraceRow<F>, 1048576, 0, 18>;
 
@@ -719,7 +719,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 18, PackedInfoConst {
         is_packed: true,
         num_packed_words: 11,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 40],
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 19, PackedInfoConst {
         is_packed: true,

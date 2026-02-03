@@ -8,8 +8,10 @@
         - 0x21-0x29
       - Arithmetic Operations:
         - 0xB0-0xBF
+      - DMA Operations:
+        - 0xDA-0xDF
       - Precompiles:
-        - 0xE1-0xE7
+        - 0xE1-0xE9
         - 0xF0-0xF5
         - 0xF9-0xFE
       - Misc:
@@ -95,6 +97,8 @@ const int OP_COMPLEX_ADD_BLS12_381 = 0xE5;
 const int OP_COMPLEX_SUB_BLS12_381 = 0xE6;
 const int OP_COMPLEX_MUL_BLS12_381 = 0xE7;
 
+const int OP_EC_ADD_SECP256R1 = 0xE8;
+const int OP_EC_DBL_SECP256R1 = 0xE9;
 
 const int OP_ADD256 = 0xF0;
 const int OP_KECCAKF = 0xF1;

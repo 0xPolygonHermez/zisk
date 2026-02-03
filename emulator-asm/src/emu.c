@@ -10,6 +10,7 @@
 #include "emu.hpp"
 #include "../../lib-c/c/src/bigint/add256.hpp"
 #include "../../lib-c/c/src/ec/ec.hpp"
+#include "../../lib-c/c/src/secp256r1/secp256r1.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
 #include "../../lib-c/c/src/arith256/arith256.hpp"
 #include "../../lib-c/c/src/arith384/arith384.hpp"
@@ -48,6 +49,10 @@ void reset_asm_call_metrics (void)
     asm_call_metrics.secp256k1_add_duration = 0;
     asm_call_metrics.secp256k1_dbl_counter = 0;
     asm_call_metrics.secp256k1_dbl_duration = 0;
+    asm_call_metrics.secp256r1_add_counter = 0;
+    asm_call_metrics.secp256r1_add_duration = 0;
+    asm_call_metrics.secp256r1_dbl_counter = 0;
+    asm_call_metrics.secp256r1_dbl_duration = 0;
     asm_call_metrics.fcall_counter = 0;
     asm_call_metrics.fcall_duration = 0;
     asm_call_metrics.inverse_fp_ec_counter = 0;
@@ -153,6 +158,26 @@ void print_asm_call_metrics (uint64_t total_duration)
     printf("secp256k1_dbl: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.secp256k1_dbl_counter,
         asm_call_metrics.secp256k1_dbl_duration,
+        duration,
+        percentage);
+
+    // Print secp256r1_add metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.secp256r1_add_duration * 1000) / total_duration;
+    duration = asm_call_metrics.secp256r1_add_counter == 0 ? 0 : (asm_call_metrics.secp256r1_add_duration * 1000) / asm_call_metrics.secp256r1_add_counter;
+    asm_call_total_duration += asm_call_metrics.secp256r1_add_duration;
+    printf("secp256r1_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.secp256r1_add_counter,
+        asm_call_metrics.secp256r1_add_duration,
+        duration,
+        percentage);
+
+    // Print secp256r1_dbl metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.secp256r1_dbl_duration * 1000) / total_duration;
+    duration = asm_call_metrics.secp256r1_dbl_counter == 0 ? 0 : (asm_call_metrics.secp256r1_dbl_duration * 1000) / asm_call_metrics.secp256r1_dbl_counter;
+    asm_call_total_duration += asm_call_metrics.secp256r1_dbl_duration;
+    printf("secp256r1_dbl: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.secp256r1_dbl_counter,
+        asm_call_metrics.secp256r1_dbl_duration,
         duration,
         percentage);
 
@@ -915,6 +940,135 @@ extern int _opcode_secp256k1_dbl(uint64_t * address)
     asm_call_metrics.secp256k1_dbl_counter++;
     gettimeofday(&asm_call_stop, NULL);
     asm_call_metrics.secp256k1_dbl_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_secp256r1_add(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        printf("opcode_secp256r1_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.secp256r1_add_counter, address, p1, p2);
+#else
+        printf("opcode_secp256r1_add() calling AddPointEcP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+#endif
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+        printf("p2.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0], p2[3], p2[2], p2[1], p2[0]);
+        printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
+    }
+#endif
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        // Call point addition function
+        int result = secp256r1_add_point_ecp (
+            0,
+            p1, // p1 = [x1, y1] = 8x64bits
+            p2, // p2 = [x2, y2] = 8x64bits
+            p1 // p3 = [x3, y3] = 8x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_secp256r1_add() failed callilng AddPointEcP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("p3 = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+    }
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.secp256r1_add_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.secp256r1_add_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_secp256r1_dbl(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+
+    uint64_t * p1 = address;
+
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        printf("opcode_secp256r1_dbl() calling AddPointEcP() counter=%lu address=%p\n", asm_call_metrics.secp256r1_dbl_counter, address);
+#else
+        printf("opcode_secp256r1_dbl() calling AddPointEcP() address=%p\n", address);
+#endif
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+    }
+#endif
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        int result = secp256r1_add_point_ecp (
+            1,
+            p1, // p1 = [x1, y1] = 8x64bits
+            NULL, // p2 = [x2, y2] = 8x64bits
+            p1 // p3 = [x3, y3] = 8x64bits
+        );
+        if (result != 0)
+        {
+            printf("_opcode_secp256r1_dbl() failed callilng secp256r1_add_point_ecp() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
+#ifdef DEBUG
+    if (emu_verbose) printf("opcode_secp256r1_dbl() called secp256r1_add_point_ecp()\n");
+    if (emu_verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+    }
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.secp256r1_dbl_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.secp256r1_dbl_duration += TimeDiff(asm_call_start, asm_call_stop);
 #endif
     return 0;
 }

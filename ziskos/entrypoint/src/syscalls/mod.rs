@@ -18,6 +18,8 @@ mod point;
 mod poseidon2;
 mod secp256k1_add;
 mod secp256k1_dbl;
+mod secp256r1_add;
+mod secp256r1_dbl;
 mod sha256f;
 mod syscall;
 
@@ -41,6 +43,8 @@ pub use point::*;
 pub use poseidon2::*;
 pub use secp256k1_add::*;
 pub use secp256k1_dbl::*;
+pub use secp256r1_add::*;
+pub use secp256r1_dbl::*;
 pub use sha256f::*;
 pub use syscall::*;
 

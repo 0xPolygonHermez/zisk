@@ -34,6 +34,7 @@ CPP_OBJS = $(BUILD_DIR)/fecc.o \
            $(BUILD_DIR)/alt_bn128.o \
            $(BUILD_DIR)/nsecp256r1c.o \
            $(BUILD_DIR)/psecp256r1c.o \
+		   $(BUILD_DIR)/secp256r1.o \
            $(BUILD_DIR)/misc.o \
            $(BUILD_DIR)/naf.o \
            $(BUILD_DIR)/splitparstr.o \
@@ -122,6 +123,9 @@ $(BUILD_DIR)/nsecp256r1c.o: $(SRC_DIR)/ffiasm/nsecp256r1.cpp $(SRC_DIR)/ffiasm/n
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/psecp256r1c.o: $(SRC_DIR)/ffiasm/psecp256r1.cpp $(SRC_DIR)/ffiasm/psecp256r1.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/secp256r1.o: $(SRC_DIR)/secp256r1/secp256r1.cpp $(SRC_DIR)/secp256r1/secp256r1.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/misc.o: $(SRC_DIR)/ffiasm/misc.cpp $(SRC_DIR)/ffiasm/misc.hpp | $(BUILD_DIR)
