@@ -20,6 +20,7 @@ pub const FCALL_BIG_INT_DIV_ID: u16 = 17;
 pub const FCALL_BIN_DECOMP_ID: u16 = 18;
 pub const FCALL_BLS12_381_FP2_SQRT_ID: u16 = 19;
 pub const FCALL_SECP256K1_ECDSA_VERIFY_ID: u16 = 20;
+pub const FCALL_SECP256R1_ECDSA_VERIFY_ID: u16 = 21;
 
 mod big_int256_div;
 mod big_int_div;
@@ -29,6 +30,7 @@ mod bn254;
 mod msb_pos_256;
 mod msb_pos_384;
 mod secp256k1;
+mod secp256r1;
 
 pub use big_int256_div::*;
 pub use big_int_div::*;
@@ -38,3 +40,4 @@ pub use bn254::*;
 pub use msb_pos_256::*;
 pub use msb_pos_384::*;
 pub use secp256k1::*;
+pub use secp256r1::*;

@@ -838,3 +838,177 @@ pub fn secp256k1_triple_scalar_mul_with_g(
         Some([res.x[0], res.x[1], res.x[2], res.x[3], res.y[0], res.y[1], res.y[2], res.y[3]])
     }
 }
+
+// ==================== C FFI Functions ====================
+
+/// Converts a non-infinity point `p` on the Secp256k1 curve from jacobian coordinates to affine coordinates
+pub fn secp256k1_to_affine(
+    p: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 8] {
+    let z: [u64; 4] = [p[8], p[9], p[10], p[11]];
+
+    // Point at infinity cannot be converted to affine
+    debug_assert!(z != ZERO_256, "Cannot convert point at infinity to affine");
+
+    let zinv = secp256k1_fp_inv(
+        &z,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let zinv_sq = secp256k1_fp_square(
+        &zinv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let x: [u64; 4] = [p[0], p[1], p[2], p[3]];
+    let y: [u64; 4] = [p[4], p[5], p[6], p[7]];
+
+    let x_res = secp256k1_fp_mul(
+        &x,
+        &zinv_sq,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let y_res = secp256k1_fp_mul(
+        &secp256k1_fp_mul(
+            &y,
+            &zinv_sq,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        &zinv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    [x_res[0], x_res[1], x_res[2], x_res[3], y_res[0], y_res[1], y_res[2], y_res[3]]
+}
+
+/// # Safety
+/// - `x_bytes_ptr` must point to 32 bytes (big-endian x-coordinate)
+/// - `out_ptr` must point to at least 8 u64s
+///
+/// Returns 1 on success, 0 if no valid point exists
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_secp256k1_decompress_c")]
+pub unsafe extern "C" fn secp256k1_decompress_c(
+    x_bytes_ptr: *const u8,
+    y_is_odd: u8,
+    out_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    // Convert the x-coordinate from BEu8 to LEu64
+    let x_bytes: &[u8; 32] = &*(x_bytes_ptr as *const [u8; 32]);
+    let x = bytes_be_to_u64_le(x_bytes);
+
+    let (x, y) = match secp256k1_decompress(
+        &x,
+        y_is_odd != 0,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Ok((x, y)) => (x, y),
+        Err(_) => return 0,
+    };
+
+    *out_ptr.add(0) = x[0];
+    *out_ptr.add(1) = x[1];
+    *out_ptr.add(2) = x[2];
+    *out_ptr.add(3) = x[3];
+    *out_ptr.add(4) = y[0];
+    *out_ptr.add(5) = y[1];
+    *out_ptr.add(6) = y[2];
+    *out_ptr.add(7) = y[3];
+
+    1
+}
+
+/// # Safety
+/// - `p_ptr` must point to 12 u64s (jacobian point)
+/// - `out_ptr` must point to at least 8 u64s
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_secp256k1_to_affine_c")]
+pub unsafe extern "C" fn secp256k1_to_affine_c(
+    p_ptr: *const u64,
+    out_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let p: &[u64; 12] = &*(p_ptr as *const [u64; 12]);
+    let result = secp256k1_to_affine(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    *out_ptr.add(0) = result[0];
+    *out_ptr.add(1) = result[1];
+    *out_ptr.add(2) = result[2];
+    *out_ptr.add(3) = result[3];
+    *out_ptr.add(4) = result[4];
+    *out_ptr.add(5) = result[5];
+    *out_ptr.add(6) = result[6];
+    *out_ptr.add(7) = result[7];
+}
+
+/// # Safety
+/// - `k1_ptr`, `k2_ptr` must point to 4 u64s each
+/// - `p_ptr` must point to 8 u64s
+/// - `out_ptr` must point to at least 8 u64s
+///
+/// Returns true if result is point at infinity
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_secp256k1_double_scalar_mul_with_g_c")]
+pub unsafe extern "C" fn secp256k1_double_scalar_mul_with_g_c(
+    k1_ptr: *const u64,
+    k2_ptr: *const u64,
+    p_ptr: *const u64,
+    out_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
+    let k1: &[u64; 4] = &*(k1_ptr as *const [u64; 4]);
+    let k2: &[u64; 4] = &*(k2_ptr as *const [u64; 4]);
+    let p: &[u64; 8] = &*(p_ptr as *const [u64; 8]);
+
+    match secp256k1_double_scalar_mul_with_g(
+        k1,
+        k2,
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        None => true,
+        Some(res) => {
+            *out_ptr.add(0) = res[0];
+            *out_ptr.add(1) = res[1];
+            *out_ptr.add(2) = res[2];
+            *out_ptr.add(3) = res[3];
+            *out_ptr.add(4) = res[4];
+            *out_ptr.add(5) = res[5];
+            *out_ptr.add(6) = res[6];
+            *out_ptr.add(7) = res[7];
+            false
+        }
+    }
+}
+
+// Helper to convert 32 big-endian bytes to [u64; 4] little-endian limbs
+#[inline]
+fn bytes_be_to_u64_le(bytes: &[u8; 32]) -> [u64; 4] {
+    let mut result = [0u64; 4];
+    for (i, r) in result.iter_mut().enumerate() {
+        let offset = 24 - i * 8;
+        *r = u64::from_be_bytes([
+            bytes[offset],
+            bytes[offset + 1],
+            bytes[offset + 2],
+            bytes[offset + 3],
+            bytes[offset + 4],
+            bytes[offset + 5],
+            bytes[offset + 6],
+            bytes[offset + 7],
+        ]);
+    }
+    result
+}

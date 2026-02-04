@@ -7,6 +7,7 @@ pub mod msb_pos_256;
 pub mod msb_pos_384;
 mod proxy;
 pub mod secp256k1;
+pub mod secp256r1;
 mod utils;
 
 pub use proxy::*;

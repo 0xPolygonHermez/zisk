@@ -72,3 +72,33 @@ pub fn secp256k1_ecdsa_verify(
     )
     .is_none()
 }
+
+// ==================== C FFI Functions ====================
+
+/// # Safety
+/// - `pk_ptr` must point to 8 u64s
+/// - `z_ptr`, `r_ptr`, `s_ptr` must point to 4 u64s each
+///
+/// Returns true if signature is valid
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_secp256k1_ecdsa_verify_c")]
+pub unsafe extern "C" fn secp256k1_ecdsa_verify_c(
+    pk_ptr: *const u64,
+    z_ptr: *const u64,
+    r_ptr: *const u64,
+    s_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
+    let pk: &[u64; 8] = &*(pk_ptr as *const [u64; 8]);
+    let z: &[u64; 4] = &*(z_ptr as *const [u64; 4]);
+    let r: &[u64; 4] = &*(r_ptr as *const [u64; 4]);
+    let s: &[u64; 4] = &*(s_ptr as *const [u64; 4]);
+    secp256k1_ecdsa_verify(
+        pk,
+        z,
+        r,
+        s,
+        #[cfg(feature = "hints")]
+        hints,
+    )
+}

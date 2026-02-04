@@ -440,7 +440,7 @@ define_ops! {
     (DmaPost, "_dma_post", Dma, DMA_PRE_POST_COST, 0xdd, 8, 0, opc_virtual, op_virtual, ops_virtual),
     (DmaCmpByte, "_dma_cmp_byte", Dma, DMA_PRE_POST_COST, 0xde, 8, 0, opc_virtual, op_virtual, ops_virtual),
     // opcodes 0xda-0xdf reserved for dma extra operations (costs)
-    // opcodes 0xe0,0xe1 are available
+    // opcodes 0xe0 is available
     (Arith384Mod, "arith384_mod", ArithEq384, ARITH_EQ_384_COST, 0xe2, 232, 48, opc_arith384_mod, op_arith384_mod, ops_arith384_mod),
     (Bls12_381CurveAdd, "bls12_381_curve_add", ArithEq384, ARITH_EQ_384_COST, 0xe3, 208, 96, opc_bls12_381_curve_add, op_bls12_381_curve_add, ops_bls12_381_curve_add),
     (Bls12_381CurveDbl, "bls12_381_curve_dbl", ArithEq384, ARITH_EQ_384_COST, 0xe4, 96, 96, opc_bls12_381_curve_dbl, op_bls12_381_curve_dbl, ops_bls12_381_curve_dbl),
@@ -453,6 +453,8 @@ define_ops! {
     (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
     (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xf4, 144, 64, opc_secp256k1_add, op_secp256k1_add, ops_secp256k1_add),
     (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, 64, opc_secp256k1_dbl, op_secp256k1_dbl, ops_secp256k1_dbl),
+    (Secp256r1Add, "secp256r1_add", ArithEq, ARITH_EQ_COST, 0xe8, 144, 64, opc_secp256r1_add, op_secp256r1_add, ops_secp256r1_add),
+    (Secp256r1Dbl, "secp256r1_dbl", ArithEq, ARITH_EQ_COST, 0xe9, 64, 64, opc_secp256r1_dbl, op_secp256r1_dbl, ops_secp256r1_dbl),
     (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, 0, opc_fcall_param, op_fcall_param, ops_none),
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, 0, opc_fcall, op_fcall, ops_none),
     (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, 0, opc_fcall_get, op_fcall_get, ops_none),
@@ -1829,6 +1831,79 @@ pub fn op_secp256k1_dbl(_a: u64, _b: u64) -> (u64, bool) {
 
 #[inline(always)]
 pub fn ops_secp256k1_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_direct_data(ctx, stats, 8, 8);
+}
+
+#[inline(always)]
+pub fn opc_secp256r1_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "secp256r1_add");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (p1, p2) = rest.split_at(8);
+
+        let p1: &[u64; 8] = p1.try_into().expect("opc_secp256r1_add: p1.len != 8");
+        let p2: &[u64; 8] = p2.try_into().expect("opc_secp256r1_add: p2.len != 8");
+        let mut p3 = [0u64; 8];
+
+        precompiles_helpers::secp256r1_add(p1, p2, &mut p3);
+
+        // [0:p1,p2]
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Secp256r1Add can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256r1_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256r1_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_secp256r1_add(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
+}
+
+#[inline(always)]
+pub fn opc_secp256r1_dbl(ctx: &mut InstContext) {
+    const WORDS: usize = 8; // one input of 8 64-bit words
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "secp256r1_dbl");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        let p1: &[u64; 8] = &data;
+        let mut p3 = [0u64; 8];
+
+        precompiles_helpers::secp256r1_dbl(p1, &mut p3);
+
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Secp256r1Dbl can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256r1_dbl(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256r1_dbl() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_secp256r1_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 8, 8);
 }
 

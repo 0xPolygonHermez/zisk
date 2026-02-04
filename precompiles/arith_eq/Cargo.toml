@@ -30,6 +30,11 @@ name = "arith_eq_test_secp256k1"
 path = "src/arith_eq_test_secp256k1.rs"
 required-features = ["test_data"]
 
+[[bin]]
+name = "arith_eq_test_secp256r1"
+path = "src/arith_eq_test_secp256r1.rs"
+required-features = ["test_data"]
+
 [dependencies]
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
@@ -53,6 +58,7 @@ rayon = { workspace = true }
 ark-ff = { workspace = true }
 ark-std = { workspace = true }
 ark-secp256k1 = { workspace = true }
+ark-secp256r1 = { workspace = true }
 ark-bn254 = { workspace = true }
 num-bigint = { workspace = true }
 num-traits = { workspace = true }
@@ -75,3 +81,4 @@ diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 no_lib_link = ["proofman-common/no_lib_link"]
 test_data = []
 test_data_secp256k1 = []
+test_data_secp256r1 = []

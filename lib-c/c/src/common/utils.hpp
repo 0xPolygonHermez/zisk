@@ -107,4 +107,36 @@ inline void fe2array (const RawBLS12_381_384::Element &fe, uint64_t * a)
     scalar2array6(s, a);
 }
 
+// Converts an array of 4 u64 LE to a Fq (Secp256r1) element
+inline void array2fe (const uint64_t * a, RawpSecp256r1::Element &fe)
+{
+    mpz_class s;
+    array2scalar(a, s);
+    secp256r1.fromMpz(fe, s.get_mpz_t());
+}
+
+// Converts a Fq (Secp256r1) element to an array of 4 u64 LE
+inline void fe2array (const RawpSecp256r1::Element &fe, uint64_t * a)
+{
+    mpz_class s;
+    secp256r1.toMpz(s.get_mpz_t(), fe);
+    scalar2array(s, a);
+}
+
+// Converts an array of 4 u64 LE to a Fq (nSecp256r1) element
+inline void array2fe (const uint64_t * a, RawnSecp256r1::Element &fe)
+{
+    mpz_class s;
+    array2scalar(a, s);
+    secp256r1n.fromMpz(fe, s.get_mpz_t());
+}
+
+// Converts a Fq (nSecp256r1) element to an array of 4 u64 LE
+inline void fe2array (const RawnSecp256r1::Element &fe, uint64_t * a)
+{
+    mpz_class s;
+    secp256r1n.toMpz(s.get_mpz_t(), fe);
+    scalar2array(s, a);
+}
+
 #endif

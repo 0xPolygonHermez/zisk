@@ -29,7 +29,6 @@ const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
 const int ARITH_EQ_LT_TABLE_ID = 5002;
 const int KECCAKF_TABLE_ID = 126;
 
-
 // DMA
 const int DMA_BUS_ID = 8000;
 const int DMA_ROM_ID = 8001;

@@ -4,6 +4,7 @@
 #include "../bls12_381/bls12_381_fe.hpp"
 #include "../bls12_381/bls12_381.hpp"
 #include "../ec/ec.hpp"
+#include "../secp256r1/secp256r1.hpp"
 #include <stdint.h>
 #include <assert.h>
 
@@ -108,6 +109,11 @@ int Fcall (
         case FCALL_SECP256K1_ECDSA_VERIFY_ID:
         {
             iresult = Secp256k1EcdsaVerifyCtx(ctx);
+            break;
+        }
+        case FCALL_SECP256R1_ECDSA_VERIFY_ID:
+        {
+            iresult = Secp256r1EcdsaVerifyCtx(ctx);
             break;
         }
         default:
@@ -1046,6 +1052,15 @@ int Secp256k1EcdsaVerifyCtx(
 )
 {
     secp256k1_ecdsa_verify( &ctx->params[0], &ctx->params[8], &ctx->params[12], &ctx->params[16], &ctx->result[0]);
+    ctx->result_size = 8;
+    return 0;
+}
+
+int Secp256r1EcdsaVerifyCtx(
+    struct FcallContext * ctx  // fcall context
+)
+{
+    secp256r1_ecdsa_verify( &ctx->params[0], &ctx->params[8], &ctx->params[12], &ctx->params[16], &ctx->result[0]);
     ctx->result_size = 8;
     return 0;
 }

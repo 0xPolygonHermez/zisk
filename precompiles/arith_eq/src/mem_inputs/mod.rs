@@ -8,6 +8,8 @@ mod bn254_curve_dbl;
 mod generate_mem_inputs;
 mod secp256k1_add;
 mod secp256k1_dbl;
+mod secp256r1_add;
+mod secp256r1_dbl;
 
 pub use arith256::*;
 pub use arith256_mod::*;
@@ -19,3 +21,5 @@ pub use bn254_curve_dbl::*;
 pub use generate_mem_inputs::*;
 pub use secp256k1_add::*;
 pub use secp256k1_dbl::*;
+pub use secp256r1_add::*;
+pub use secp256r1_dbl::*;
