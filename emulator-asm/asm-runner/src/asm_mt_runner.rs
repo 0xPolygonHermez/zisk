@@ -97,8 +97,6 @@ impl AsmRunnerMT {
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        let start_time = Instant::now();
-
         let handle = std::thread::spawn(move || {
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
 
@@ -106,21 +104,19 @@ impl AsmRunnerMT {
             let stats_id = __stats.next_id();
             #[cfg(feature = "stats")]
             __stats.add_stat(parent_stats_id, stats_id, "ASM_MT", 0, ExecutorStatsEvent::Begin);
-
+            let start = Instant::now();
             let result = asm_services.send_minimal_trace_request(max_steps, chunk_size);
 
             #[cfg(feature = "stats")]
             __stats.add_stat(parent_stats_id, stats_id, "ASM_MT", 0, ExecutorStatsEvent::End);
 
-            result
+            (result, start.elapsed())
         });
 
         let mut chunk_id = ChunkId(0);
 
         // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMTChunk;
-
-        let mut emu_traces = Vec::new();
 
         let __stats = _stats.clone();
 
@@ -131,6 +127,9 @@ impl AsmRunnerMT {
         let mut threshold = unsafe {
             preloaded.output_shmem.mapped_ptr().add(threshold_bytes) as *const AsmMTChunk
         };
+
+        // Pre-allocate reasonable initial capacity to avoid early reallocations
+        let mut emu_traces: Vec<Arc<EmuTrace>> = Vec::with_capacity(1024);
 
         let exit_code = loop {
             match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
@@ -196,15 +195,14 @@ impl AsmRunnerMT {
                 .context("Child process returned error");
         }
 
-        let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
-        let mhz = (total_steps as f64 / start_time.elapsed().as_secs_f64()) / 1_000_000.0;
-        info!("··· Assembly execution speed: {}MHz", mhz.round());
-
         // Wait for the assembly emulator to complete writing the trace
-        let response = handle
-            .join()
-            .map_err(|_| AsmRunError::JoinPanic)?
-            .map_err(AsmRunError::ServiceError)?;
+        let (handle, elapsed) = handle.join().map_err(|_| AsmRunError::JoinPanic)?;
+
+        let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
+        let mhz = (total_steps as f64 / elapsed.as_secs_f64()) / 1_000_000.0;
+        info!("··· Assembly execution speed: {}MHz ({:?})", mhz.round(), elapsed);
+
+        let response = handle.map_err(AsmRunError::ServiceError)?;
 
         assert_eq!(response.result, 0);
         assert!(response.trace_len > 0);

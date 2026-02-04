@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::mem;
 
 use crate::{
@@ -1585,7 +1586,7 @@ impl<'a> Emu<'a> {
             }
 
             // Reserve enough entries for all the requested steps between callbacks
-            self.ctx.trace.mem_reads.reserve(self.ctx.callback_steps as usize);
+            self.ctx.trace.mem_reads.to_mut().reserve(self.ctx.callback_steps as usize);
 
             // Init pc to the rom entry address
             self.ctx.trace.start_state.pc = ROM_ENTRY;
@@ -1757,7 +1758,7 @@ impl<'a> Emu<'a> {
                         },
                         last_c: 0,
                         steps: 0,
-                        mem_reads: Vec::with_capacity(par_options.num_steps),
+                        mem_reads: Cow::Owned(Vec::with_capacity(par_options.num_steps)),
                         end: false,
                     });
                 }
@@ -1811,7 +1812,7 @@ impl<'a> Emu<'a> {
                     },
                     last_c: 0,
                     steps: 0,
-                    mem_reads: Vec::with_capacity(par_options.num_steps),
+                    mem_reads: Cow::Owned(Vec::with_capacity(par_options.num_steps)),
                     end: false,
                 });
             }
@@ -1923,7 +1924,7 @@ impl<'a> Emu<'a> {
 
                 // Swap the emulator trace to avoid memory copies
                 let mut trace = EmuTrace::default();
-                trace.mem_reads.reserve(self.ctx.callback_steps as usize);
+                trace.mem_reads.to_mut().reserve(self.ctx.callback_steps as usize);
                 mem::swap(&mut self.ctx.trace, &mut trace);
                 (callback)(trace);
 
@@ -1948,18 +1949,21 @@ impl<'a> Emu<'a> {
     pub fn par_step_my_block(&mut self, emu_full_trace_vec: &mut EmuTrace) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
+        // Extract the Vec once for all mem_reads operations
+        let mem_reads = emu_full_trace_vec.mem_reads.to_mut();
+
         #[cfg(feature = "minimal_trace_index_debug")]
         println!(
             "MINIMAL_TRACE par_step_my_block            {} {}",
             self.ctx.inst_ctx.step,
-            emu_full_trace_vec.mem_reads.len()
+            mem_reads.len()
         );
 
         // Build the 'a' register value  based on the source specified by the current instruction
-        self.source_a_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
+        self.source_a_mem_reads_generate(instruction, mem_reads);
 
         // Build the 'b' register value  based on the source specified by the current instruction
-        self.source_b_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
+        self.source_b_mem_reads_generate(instruction, mem_reads);
 
         // If this is a precompiled, get the required input data to copy it to mem_reads
         if instruction.input_size > 0 {
@@ -1982,16 +1986,16 @@ impl<'a> Emu<'a> {
                         input_data_bytes - instruction.input_size as usize,
                         input_data_bytes,
                         instruction.input_size,
-                        emu_full_trace_vec.mem_reads.len(),
-                        emu_full_trace_vec.mem_reads.len() + (input_data_bytes >> 3)
+                        mem_reads.len(),
+                        mem_reads.len() + (input_data_bytes >> 3)
                     );
                 }
             }
-            emu_full_trace_vec.mem_reads.append(&mut self.ctx.inst_ctx.precompiled.input_data);
+            mem_reads.append(&mut self.ctx.inst_ctx.precompiled.input_data);
         }
 
         // Store the 'c' register value based on the storage specified by the current instruction
-        self.store_c_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
+        self.store_c_mem_reads_generate(instruction, mem_reads);
 
         // Set SP, if specified by the current instruction
         // #[cfg(feature = "sp")]
