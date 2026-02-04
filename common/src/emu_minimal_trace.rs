@@ -1,5 +1,6 @@
 //! Emulator trace
 
+use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
 
 use zisk_core::REGS_IN_MAIN_TOTAL_NUMBER;
@@ -37,8 +38,8 @@ pub struct EmuTrace {
     pub last_c: u64,
     /// Number of steps executed
     pub steps: u64,
-    /// Memory reads
-    pub mem_reads: Vec<u64>,
+    /// Memory reads (Cow allows zero-copy from shared memory)
+    pub mem_reads: Cow<'static, [u64]>,
 
     /// If the `end` flag is true, the program executed completely.
     /// This does not mean that the program ended successfully; it could have found an error condition

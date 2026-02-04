@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::Debug;
 use zisk_common::EmuTrace;
 use zisk_common::EmuTraceStart;
@@ -45,11 +46,13 @@ impl AsmMTChunk {
         let chunk = unsafe { std::ptr::read(*mapped_ptr) };
         *mapped_ptr = unsafe { mapped_ptr.add(1) };
 
-        // Convert mem_reads into a Vec<u64> without copying
-        let mem_reads_ptr = *mapped_ptr as *mut u64;
+        // Zero-copy: borrow mem_reads directly from shared memory
+        // SAFETY: Caller must ensure shared memory outlives EmuTrace usage
+        let mem_reads_ptr = *mapped_ptr as *const u64;
         let mem_reads_len = chunk.mem_reads_size as usize;
-        let mem_reads =
-            unsafe { std::slice::from_raw_parts(mem_reads_ptr, mem_reads_len).to_vec() };
+        let mem_reads: Cow<'static, [u64]> = Cow::Borrowed(unsafe {
+            std::mem::transmute(std::slice::from_raw_parts(mem_reads_ptr, mem_reads_len))
+        });
 
         // Advance the pointer after reading memory reads
         *mapped_ptr = unsafe { (*mapped_ptr as *mut u64).add(mem_reads_len) as *const AsmMTChunk };
