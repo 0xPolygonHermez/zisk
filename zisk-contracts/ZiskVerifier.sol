@@ -15,7 +15,11 @@ contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
     error InvalidProof();
 
     function VERSION() external pure returns (string memory) {
-        return "v0.15.0";
+        return "v0.16.0";
+    }
+
+    function getRootCVadcopFinal() external pure returns (uint64[4] memory) {
+        return [uint64(4796816332391656939), uint64(10220622193746603947), uint64(6820919920913324905), uint64(17274827656891795962)];
     }
 
     // Modulus zkSNARK
@@ -26,21 +30,24 @@ contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
     /// @param publicValues The public values.
     function hashPublicValues(
         uint64[4] calldata programVK, 
+        uint64[4] calldata rootCVadcopFinal,
         bytes calldata publicValues
     ) public pure returns (uint256) {
-            return uint256(sha256(abi.encodePacked(bytes8(programVK[0]), bytes8(programVK[1]), bytes8(programVK[2]), bytes8(programVK[3]), publicValues))) % _RFIELD;
+            return uint256(sha256(abi.encodePacked(bytes8(programVK[0]), bytes8(programVK[1]), bytes8(programVK[2]), bytes8(programVK[3]), publicValues, bytes8(rootCVadcopFinal[0]), bytes8(rootCVadcopFinal[1]), bytes8(rootCVadcopFinal[2]), bytes8(rootCVadcopFinal[3])))) % _RFIELD;
     }
 
     /// @notice Verifies a proof with given public values and vkey.
     /// @param programVK The verification key for the RISC-V program.
+    /// @param rootCVadcopFinal The rootC value for the Vadcop final.
     /// @param publicValues The public values encoded as bytes.
     /// @param proofBytes The proof of the program execution the Zisk zkVM encoded as bytes.
     function verifySnarkProof(
         uint64[4] calldata programVK, 
+        uint64[4] calldata rootCVadcopFinal,
         bytes calldata publicValues,
         bytes calldata proofBytes
     ) external view {
-        uint256 publicValuesDigest = hashPublicValues(programVK, publicValues);
+        uint256 publicValuesDigest = hashPublicValues(programVK, rootCVadcopFinal, publicValues);
 
         uint256[24] memory proofDecoded = abi.decode(proofBytes, (uint256[24]));
 

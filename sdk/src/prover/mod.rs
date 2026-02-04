@@ -359,8 +359,8 @@ impl ZiskPublics {
         bytes.to_vec()
     }
 
-    pub fn hash_solidity(&self, program_vk: &ZiskProgramVK) -> Vec<u8> {
-        let bytes = self.bytes_solidity(program_vk);
+    pub fn hash_solidity(&self, program_vk: &ZiskProgramVK, vadcop_verkey: &[u8]) -> Vec<u8> {
+        let bytes = self.bytes_solidity(program_vk, vadcop_verkey);
 
         // SHA-256
         let hash = Sha256::digest(&bytes);
@@ -379,7 +379,7 @@ impl ZiskPublics {
         bytes
     }
 
-    pub fn bytes_solidity(&self, program_vk: &ZiskProgramVK) -> Vec<u8> {
+    pub fn bytes_solidity(&self, program_vk: &ZiskProgramVK, vadcop_verkey: &[u8]) -> Vec<u8> {
         let mut prefix = [0u8; 32];
         for (i, chunk) in program_vk.vk.chunks_exact(8).enumerate() {
             let val = u64::from_le_bytes(chunk.try_into().unwrap());
@@ -388,6 +388,12 @@ impl ZiskPublics {
 
         let mut bytes = prefix.to_vec();
         bytes.extend(self.public_bytes_solidity());
+        let mut suffix = [0u8; 32];
+        for (i, chunk) in vadcop_verkey.chunks_exact(8).enumerate() {
+            let val = u64::from_le_bytes(chunk.try_into().unwrap());
+            suffix[i * 8..(i + 1) * 8].copy_from_slice(&val.to_be_bytes());
+        }
+        bytes.extend(&suffix);
         bytes
     }
 }
@@ -426,10 +432,6 @@ impl ZiskProveResult {
             proof: ZiskProof::Null(),
             publics: ZiskPublics::new_empty(),
         }
-    }
-
-    pub fn hash_solidity(&self, program_vk: &ZiskProgramVK) -> Vec<u8> {
-        self.publics.hash_solidity(program_vk)
     }
 
     /// Deserialize a value from public outputs.

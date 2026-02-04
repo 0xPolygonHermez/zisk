@@ -544,7 +544,9 @@ impl ProverBackend {
                     SnarkProtocol::Fflonk.protocol_id()
                 };
 
-                let pubs = publics.bytes_solidity(program_vk);
+                let verkey = get_vadcop_final_proof_vkey(&self.proving_key_path, false)?;
+
+                let pubs = publics.bytes_solidity(program_vk, &verkey);
                 let hash = Sha256::digest(&pubs).to_vec();
 
                 let snark_proof = SnarkProof {

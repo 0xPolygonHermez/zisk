@@ -11,6 +11,7 @@ interface IZiskVerifier {
     /// @param proofBytes The proof of the program execution the Zisk zkVM encoded as bytes.
     function verifySnarkProof(
         uint64[4] calldata programVK, 
+        uint64[4] calldata rootCVadcopFinal,
         bytes calldata publicValues,
         bytes calldata proofBytes
     ) external view;

@@ -2,7 +2,7 @@ use crate::ux::{print_banner, print_banner_field};
 use anyhow::Result;
 
 use colored::Colorize;
-use proofman::{SnarkProof, SnarkProtocol};
+use proofman::{get_vadcop_final_proof_vkey, SnarkProof, SnarkProtocol};
 use proofman_common::ParamsGPU;
 use proofman_util::VadcopFinalProof;
 use std::fs;
@@ -14,7 +14,7 @@ use zisk_common::ElfBinaryOwned;
 #[cfg(feature = "stats")]
 use zisk_common::ExecutorStatsEvent;
 use zisk_sdk::ZiskProgramVK;
-use zisk_sdk::{ProofOpts, ProverClient, ZiskProof, ZiskProveResult};
+use zisk_sdk::{get_proving_key, ProofOpts, ProverClient, ZiskProof, ZiskProveResult};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -202,10 +202,13 @@ impl ZiskProve {
                         ZiskProof::Fflonk(_) => SnarkProtocol::Fflonk.protocol_id(),
                         _ => unreachable!(),
                     };
+                    let proving_key = get_proving_key(self.proving_key.as_ref());
+                    let vadcop_verkey = get_vadcop_final_proof_vkey(&proving_key, false)?;
+
                     let snark_proof = SnarkProof {
                         proof_bytes: proof.clone(),
-                        public_bytes: result.publics.bytes_solidity(&vk),
-                        public_snark_bytes: result.publics.hash_solidity(&vk),
+                        public_bytes: result.publics.bytes_solidity(&vk, &vadcop_verkey),
+                        public_snark_bytes: result.publics.hash_solidity(&vk, &vadcop_verkey),
                         protocol_id,
                     };
                     snark_proof.save(self.output_dir.join("snark_proof.bin")).map_err(|e| {
