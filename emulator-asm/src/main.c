@@ -536,7 +536,7 @@ void trace_map_next_chunk (void)
     {
         flags |= MAP_FIXED;
     }
-    void * pTrace = mmap(requested_address, trace_size, PROT_READ | PROT_WRITE, flags, trace_chunk_fd[chunk_id], 0);
+    void * pTrace = mmap(requested_address, chunk_size, PROT_READ | PROT_WRITE, flags, trace_chunk_fd[chunk_id], 0);
     if (verbose)
     {
         gettimeofday(&stop_time, NULL);
@@ -556,7 +556,7 @@ void trace_map_next_chunk (void)
         fflush(stderr);
         exit(-1);
     }
-    if (verbose) printf("trace_map_next_chunk() mapped %lu B to %s and returned address %p in %lu us\n", trace_size, shmem_chunk_name, pTrace, duration);
+    if (verbose) printf("trace_map_next_chunk() mapped %lu B to %s and returned address %p in %lu us\n", chunk_size, shmem_chunk_name, pTrace, duration);
 
     // Update total mapped size
     trace_total_mapped_size += chunk_size;
