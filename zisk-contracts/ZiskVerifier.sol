@@ -19,7 +19,7 @@ contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
     }
 
     function getRootCVadcopFinal() external pure returns (uint64[4] memory) {
-        return [uint64(4796816332391656939), uint64(10220622193746603947), uint64(6820919920913324905), uint64(17274827656891795962)];
+        return [uint64(17315851345413577629), uint64(6088251014406292380), uint64(9617272497734844709), uint64(18293967017889666983)];
     }
 
     // Modulus zkSNARK
