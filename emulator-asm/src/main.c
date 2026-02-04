@@ -46,8 +46,15 @@ uint64_t get_precompile_results(void);
 #define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)
 
 #define TRACE_ADDR         (uint64_t)0xc0000000
-#define INITIAL_TRACE_SIZE (uint64_t)0x180000000 // 6GB
-#define DELTA_TRACE_SIZE   (uint64_t)0x080000000 // 2GB
+#define TRACE_INITIAL_SIZE (uint64_t)0x180000000 // 6GB
+#define TRACE_DELTA_SIZE   (uint64_t)0x080000000 // 2GB
+#define TRACE_MAX_SIZE     (uint64_t)0x1000000000 // 64GB
+#define TRACE_NUMBER_OF_CHUNKS (((TRACE_MAX_SIZE - TRACE_INITIAL_SIZE) / TRACE_DELTA_SIZE) + 1)
+
+uint64_t initial_trace_size = TRACE_INITIAL_SIZE;
+uint64_t trace_address = TRACE_ADDR;
+uint64_t trace_size = TRACE_INITIAL_SIZE;
+uint64_t trace_used_size = 0;
 
 #define CONTROL_INPUT_ADDR (uint64_t)0x70000000
 #define CONTROL_INPUT_SIZE (uint64_t)0x1000 // 4kB
@@ -188,7 +195,7 @@ uint64_t max_steps = (1ULL << 32);
 
 // Chunk player globals
 uint64_t chunk_player_address = 0;
-uint64_t chunk_player_mt_size = INITIAL_TRACE_SIZE; // TODO
+uint64_t chunk_player_mt_size = TRACE_INITIAL_SIZE; // TODO
 
 void set_max_steps (uint64_t new_max_steps)
 {
@@ -202,11 +209,6 @@ void set_max_steps (uint64_t new_max_steps)
     max_steps = new_max_steps;
 }
 
-uint64_t initial_trace_size = INITIAL_TRACE_SIZE;
-uint64_t trace_address = TRACE_ADDR;
-uint64_t trace_size = INITIAL_TRACE_SIZE;
-uint64_t trace_used_size = 0;
-
 // Worst case: every chunk instruction is a keccak operation, with an input data of 256 bytes
 
 #define MAX_MTRACE_REGS_ACCESS_SIZE ((2 + 2 + 3) * 8)
@@ -215,7 +217,7 @@ uint64_t trace_used_size = 0;
 #define MAX_BYTES_MTRACE_STEP (MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE)
 #define MAX_CHUNK_TRACE_SIZE ((INITIAL_CHUNK_SIZE * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO)
 
-uint64_t trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
+uint64_t trace_address_threshold = TRACE_ADDR + TRACE_INITIAL_SIZE - MAX_CHUNK_TRACE_SIZE;
 uint64_t print_pc_counter = 0;
 
 int map_locked_flag = MAP_LOCKED;
@@ -364,6 +366,219 @@ char shmem_control_output_name[128];
 int shmem_control_output_fd = -1;
 uint64_t * shmem_control_output_address = NULL;
 volatile uint64_t * precompile_read_address = NULL;
+
+/********************/
+/* TRACE ALLOCATION */
+/********************/
+
+void trace_virtual_alloc (void)
+{
+    void * addr = mmap((void *)TRACE_ADDR, TRACE_MAX_SIZE, PROT_NONE, MAP_NORESERVE | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (addr != (void *)TRACE_ADDR)
+    {
+        printf("ERROR: trace_virtual_alloc() failed to reserve trace memory at address 0x%lx\n", TRACE_ADDR);
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+}
+
+uint64_t next_chunk_id = 0; // Next trace chunk id to be mapped, starting from 0
+int trace_chunk_fd[TRACE_NUMBER_OF_CHUNKS]; // File descriptors for each chunk
+uint64_t trace_total_mapped_size = 0; // Total mapped trace size
+
+void * trace_get_chunk_address (uint64_t chunk_id)
+{
+    if (chunk_id == 0)
+    {
+        return (void *)TRACE_ADDR;
+    }
+    else
+    {
+        return (void *)(TRACE_ADDR + TRACE_INITIAL_SIZE + ((chunk_id - 1) * TRACE_DELTA_SIZE));
+    }
+}
+
+uint64_t trace_get_chunk_size (uint64_t chunk_id)
+{
+    if (chunk_id == 0)
+    {
+        return TRACE_INITIAL_SIZE;
+    }
+    else
+    {
+        return TRACE_DELTA_SIZE;
+    }
+}
+
+void trace_generate_shmem_chunk_name(char * shmem_chunk_name, size_t shmem_chunk_name_size, uint64_t chunk_id)
+{
+    int result = snprintf(shmem_chunk_name, shmem_chunk_name_size, "%s_%lu", shmem_output_name, chunk_id);
+    if (result < 0 || result >= (int)shmem_chunk_name_size)
+    {
+        printf("ERROR: trace_generate_shmem_chunk_name() failed to create chunk shared memory name\n");
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+}
+
+void trace_cleanup (void)
+{
+    // Unmap all mapped chunks
+    for (uint64_t chunk_id = 0; chunk_id < next_chunk_id; chunk_id++)
+    {
+        uint64_t chunk_size = trace_get_chunk_size(chunk_id);
+        void * chunk_address = trace_get_chunk_address(chunk_id);
+        int result = munmap(chunk_address, chunk_size);
+        if (result != 0)
+        {
+            printf("ERROR: trace_cleanup() failed calling munmap() chunk id=%lu size=%lu B address=0x%lx errno=%d=%s\n", chunk_id, chunk_size, (uint64_t)chunk_address, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Close the chunk shared memory file descriptor
+        close(trace_chunk_fd[chunk_id]);
+        trace_chunk_fd[chunk_id] = -1;
+
+        // Build the chunk shared memory name
+        char shmem_chunk_name[128];
+        trace_generate_shmem_chunk_name(shmem_chunk_name, sizeof(shmem_chunk_name), chunk_id);
+
+        // Make sure the chunk shared memory is deleted
+        shm_unlink(shmem_chunk_name);
+    }
+
+    // Reset next chunk id
+    next_chunk_id = 0;
+}
+
+void trace_preventive_cleanup (void)
+{
+    // Unmap all mapped chunks
+    for (uint64_t chunk_id = 0; chunk_id < TRACE_NUMBER_OF_CHUNKS; chunk_id++)
+    {
+        // Build the chunk shared memory name
+        char shmem_chunk_name[128];
+        trace_generate_shmem_chunk_name(shmem_chunk_name, sizeof(shmem_chunk_name), chunk_id);
+
+        // Make sure the chunk shared memory is deleted
+        int result = shm_unlink(shmem_chunk_name);
+        if (result != 0)
+        {
+            break;
+        }
+        if (verbose) printf("trace_preventive_cleanup() unlinked chunk shared memory %s\n", shmem_chunk_name);
+    }
+}
+
+void trace_map_next_chunk (void)
+{
+    // Get the next chunk id, size and address
+    uint64_t chunk_id = next_chunk_id;
+    if (chunk_id >= TRACE_NUMBER_OF_CHUNKS)
+    {
+        printf("ERROR: trace_map_next_chunk() exceeded maximum number of chunks %lu\n", TRACE_NUMBER_OF_CHUNKS);
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    uint64_t chunk_size = trace_get_chunk_size(chunk_id);
+    void * chunk_address = trace_get_chunk_address(chunk_id);
+
+    if (verbose) printf("trace_map_next_chunk() mapping chunk id=%lu size=%lu B address=0x%lx\n", chunk_id, chunk_size, (uint64_t)chunk_address);
+
+    // Build the chunk shared memory name
+    char shmem_chunk_name[128];
+    trace_generate_shmem_chunk_name(shmem_chunk_name, sizeof(shmem_chunk_name), chunk_id);
+
+    // Make sure the chunk shared memory is deleted
+    shm_unlink(shmem_chunk_name);
+
+    // Create the output shared memory
+    trace_chunk_fd[chunk_id] = shm_open(shmem_chunk_name, O_RDWR | O_CREAT | O_EXCL, 0666);
+    if (trace_chunk_fd[chunk_id] < 0)
+    {
+        printf("ERROR: trace_map_next_chunk() failed calling trace shm_open(%s) errno=%d=%s\n", shmem_chunk_name, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+
+    // Size it
+    int result = ftruncate(trace_chunk_fd[chunk_id], chunk_size);
+    if (result != 0)
+    {
+        printf("ERROR: trace_map_next_chunk() failed calling ftruncate(%s) errno=%d=%s\n", shmem_chunk_name, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+
+    // Sync
+    fsync(trace_chunk_fd[chunk_id]);
+
+    // Map it to the trace address
+    if (verbose) gettimeofday(&start_time, NULL);
+    void * requested_address;
+    if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
+    {
+        requested_address = 0;
+    }
+    else
+    {
+        requested_address = (void *)chunk_address;
+    }
+    int flags = MAP_SHARED | map_locked_flag;
+    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
+    {
+        flags |= MAP_FIXED;
+    }
+    void * pTrace = mmap(requested_address, trace_size, PROT_READ | PROT_WRITE, flags, trace_chunk_fd[chunk_id], 0);
+    if (verbose)
+    {
+        gettimeofday(&stop_time, NULL);
+        duration = TimeDiff(start_time, stop_time);
+    }
+    if (pTrace == MAP_FAILED)
+    {
+        printf("ERROR: trace_map_next_chunk() failed calling mmap(pTrace) name=%s errno=%d=%s\n", shmem_chunk_name, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain) && ((uint64_t)pTrace != (uint64_t)requested_address))
+    {
+        printf("ERROR: trace_map_next_chunk() called mmap(trace) but returned address = %p != 0x%lx\n", pTrace, (uint64_t)requested_address);
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    if (verbose) printf("trace_map_next_chunk() mapped %lu B to %s and returned address %p in %lu us\n", trace_size, shmem_chunk_name, pTrace, duration);
+
+    // Update total mapped size
+    trace_total_mapped_size += chunk_size;
+
+    // Increment next chunk id
+    next_chunk_id++;
+}
+
+void trace_map_initialize (void)
+{
+    // Perform preventive cleanup of any leftover shared memory chunks
+    trace_preventive_cleanup();
+
+    // Reserve the full virtual trace address space
+    trace_virtual_alloc();
+
+    // Map the first chunk, i.e. chunk 0
+    trace_map_next_chunk();
+
+    trace_address = TRACE_ADDR;
+    pOutputTrace = (uint64_t *)TRACE_ADDR;
+}
 
 int main(int argc, char *argv[])
 {
@@ -3710,72 +3925,7 @@ void server_setup (void)
         (gen_method == MemReads) ||
         (gen_method == ChunkPlayerMemReadsCollectMain))
     {
-        // Make sure the output shared memory is deleted
-        shm_unlink(shmem_output_name);
-
-        // Create the output shared memory
-        shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT | O_EXCL, 0666);
-        if (shmem_output_fd < 0)
-        {
-            printf("ERROR: Failed calling trace shm_open(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Size it
-        result = ftruncate(shmem_output_fd, trace_size);
-        if (result != 0)
-        {
-            printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Sync
-        fsync(shmem_output_fd);
-
-        // Map it to the trace address
-        if (verbose) gettimeofday(&start_time, NULL);
-        void * requested_address;
-        if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
-        {
-            requested_address = 0;
-        }
-        else
-        {
-            requested_address = (void *)TRACE_ADDR;
-        }
-        int flags = MAP_SHARED | map_locked_flag;
-        if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
-        {
-            flags |= MAP_FIXED;
-        }
-        void * pTrace = mmap(requested_address, trace_size, PROT_READ | PROT_WRITE, flags, shmem_output_fd, 0);
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-        }
-        if (pTrace == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(pTrace) name=%s errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain) && ((uint64_t)pTrace != TRACE_ADDR))
-        {
-            printf("ERROR: Called mmap(trace) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (verbose) printf("mmap(trace) mapped %lu B and returned address %p in %lu us\n", trace_size, pTrace, duration);
-
-        trace_address = (uint64_t)pTrace;
-        pOutputTrace = pTrace;
+        trace_map_initialize();
     }
 
     /***********************/
@@ -3949,7 +4099,7 @@ void server_run (void)
         uint64_t step_duration_ns = steps == 0 ? 0 : (duration * 1000) / steps;
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
-        printf("Duration = %lu us, realloc counter = %lu, wait counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, error=%lu, max steps=%lu, chunk size=%lu\n",
+        printf("Duration = %lu us, realloc counter = %lu, wait counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%% of %lu), end=%lu, error=%lu, max steps=%lu, chunk size=%lu\n",
             duration,
             realloc_counter,
             wait_counter,
@@ -3960,6 +4110,7 @@ void server_run (void)
             MEM_TRACE_ADDRESS,
             final_trace_size,
             final_trace_size_percentage,
+            trace_size,
             end,
             error,
             max_steps,
@@ -4180,16 +4331,7 @@ void server_cleanup (void)
     }
 
     // Cleanup trace
-    result = munmap((void *)TRACE_ADDR, trace_size);
-    if (result == -1)
-    {
-        printf("ERROR: Failed calling munmap(trace) for size=%lu errno=%d=%s\n", trace_size, errno, strerror(errno));
-    }
-    result = shm_unlink(shmem_output_name);
-    if (result == -1)
-    {
-        printf("ERROR: Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
-    }
+    trace_cleanup();
 
     // Cleanup chunk done semaphore
     if (call_chunk_done)
@@ -4370,34 +4512,10 @@ extern void _realloc_trace (void)
 {
     realloc_counter++;
 
-    // Calculate new trace size
-    uint64_t new_trace_size = trace_size + DELTA_TRACE_SIZE;
-
-    // Extend the underlying file to the new size
-    int result = ftruncate(shmem_output_fd, new_trace_size);
-    if (result != 0)
-    {
-        printf("ERROR: realloc_trace() failed calling ftruncate(%s) of new size=%lu errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    // Sync
-    fsync(shmem_output_fd);
-
-    // Remap the memory
-    void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
-    if ((uint64_t)new_address != trace_address)
-    {
-        printf("ERROR: realloc_trace() failed calling mremap() from size=%lu to %lu got new_address=%p errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+    trace_map_next_chunk();
 
     // Update trace global variables
-    set_trace_size(new_trace_size);
+    set_trace_size(trace_total_mapped_size);
 
 #ifdef DEBUG
     if (verbose) printf("realloc_trace() realloc counter=%lu trace_address=0x%lx trace_size=%lu=%lx max_address=0x%lx trace_address_threshold=0x%lx chunk_size=%lu\n", realloc_counter, trace_address, trace_size, trace_size, trace_address + trace_size, trace_address_threshold, chunk_size);
