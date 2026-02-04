@@ -3,13 +3,7 @@ use crate::syscalls::syscall_keccak_f;
 /// Keccak-256 rate in bytes (1600 - 2*256) / 8 = 136 bytes
 const KECCAK256_RATE: usize = 136;
 
-/// Computes the Keccak-256 hash of the input data.
-///
-/// This implements the Keccak sponge construction with:
-/// - Rate: 1088 bits (136 bytes)
-/// - Capacity: 512 bits (64 bytes)
-/// - Output: 256 bits (32 bytes)
-/// - Padding: Keccak padding (0x01...0x80)
+/// Keccak-256 hash function. For reference: https://keccak.team/keccak_specs_summary.html
 pub fn keccak256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u8; 32] {
     let mut state = [0u64; 25];
     let input_len = input.len();

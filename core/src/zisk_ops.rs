@@ -1500,15 +1500,20 @@ fn internal_precompiled_load_data(
 ) {
     let address = ctx.b;
     if address & 0x7 != 0 {
-        panic!("precompiled_check_address() found address not aligned to 8 bytes");
+        panic!(
+            "[{title}] precompiled_check_address() found address 0x{address:08X} not aligned \
+               to 8 bytes at PC:0x{:08X} STEP:{}",
+            ctx.pc, ctx.step
+        );
     }
     if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
         // Check input data has the expected length
         let expected_len = params_count + load_indirections * load_chunks + load_rem + result;
         if ctx.precompiled.input_data.len() != expected_len {
             panic!(
-                "[{title}] ctx.precompiled.input_data.len={} != {expected_len} [{params_count}+{load_indirections}*{load_chunks}+{load_rem}+{result}]",
-                ctx.precompiled.input_data.len(),
+                "[{title}] ctx.precompiled.input_data.len={} != {expected_len} \
+                [{params_count}+{load_indirections}*{load_chunks}+{load_rem}+{result}] at PC:0x{:08X} STEP:{}",                
+                ctx.precompiled.input_data.len(), ctx.pc, ctx.step,
             );
         }
         // Read data from the precompiled context
@@ -1523,8 +1528,12 @@ fn internal_precompiled_load_data(
     // Write the indirections to data
     for (i, data) in data.iter_mut().enumerate().take(params_count) {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
-        if address & 0x7 != 0 {
-            panic!("precompiled_check_address() found address[{i}] not aligned to 8 bytes");
+        if indirection & 0x7 != 0 {
+            panic!(
+                "[{title}] precompiled_check_address() found address_{i} [0x{address:08X}]=0x{indirection:08X} \
+                not aligned to 8 bytes at PC:0x{:08X} STEP:{}",
+                ctx.pc, ctx.step
+            );
         }
         *data = indirection;
     }

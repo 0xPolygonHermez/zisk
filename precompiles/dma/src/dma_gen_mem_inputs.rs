@@ -22,6 +22,12 @@ pub fn generate_dma_mem_inputs<P: MemProcessor>(
     let src_offset = src & 0x07;
     let aligned = dst_offset == src_offset;
 
+    let post_count = DmaInfo::get_post_count(encoded) as u64;
+    let loop_count = DmaInfo::get_loop_count(encoded);
+
+    let loop_dst64 = (dst as u32 + pre_count as u32) & !0x07;
+    let post_dst64 = dst as u32 + pre_count as u32 + loop_count as u32 * 8;
+
     // NOTE: for dual memories it's very important to keep the order of loads and stores because
     // stores happend after loads.
 
@@ -32,7 +38,7 @@ pub fn generate_dma_mem_inputs<P: MemProcessor>(
         mem_processors,
     );
 
-    if pre_count > 0 {
+    let pre_write_value = if pre_count > 0 {
         let pre_data_offset = DmaInfo::get_pre_data_offset(encoded);
         let read_value = data_ext[pre_data_offset];
 
@@ -49,7 +55,7 @@ pub fn generate_dma_mem_inputs<P: MemProcessor>(
 
         MemBusHelpers::mem_aligned_load(dst64, main_step, pre_value, mem_processors);
 
-        let write_value = if DmaInfo::is_double_read_pre(encoded) {
+        if DmaInfo::is_double_read_pre(encoded) {
             let second_read_value = data_ext[pre_data_offset + 1];
             #[cfg(feature = "debug_dma")]
             println!(
@@ -77,19 +83,13 @@ pub fn generate_dma_mem_inputs<P: MemProcessor>(
                 pre_value,
                 &[read_value],
             )
-        };
-        #[cfg(feature = "debug_dma")]
-        println!("DMA: mem_aligned_write@pre 0x{dst64:08X} S:{main_step} V:{write_value} (0x{write_value:016X})");
+        }
+    } else {
+        0
+    };
 
-        MemBusHelpers::mem_aligned_write(dst64, main_step, write_value, mem_processors);
-    }
-
-    // this is part of words loop
-    let post_count = DmaInfo::get_post_count(encoded) as u64;
-    let loop_count = DmaInfo::get_loop_count(encoded);
-    if loop_count > 0 {
+    let loop_values = if loop_count > 0 {
         let loop_src = src as u32 + pre_count as u32;
-        let dst64 = (dst as u32 + pre_count as u32) & !0x07;
         let src64 = loop_src & !0x07;
         let loop_data_offset = DmaInfo::get_loop_data_offset(encoded);
         let loop_data_count = DmaInfo::get_loop_count(encoded);
@@ -104,30 +104,16 @@ pub fn generate_dma_mem_inputs<P: MemProcessor>(
         println!("DMA: mem_aligned_load_from_slice 0x{src64:08X} S:{main_step} V:{values:?}");
 
         MemBusHelpers::mem_aligned_load_from_slice(src64, main_step, values, mem_processors);
+        values
+    } else {
+        &[]
+    };
 
-        let src_offset = (src_offset + pre_count) & 0x07;
-        if aligned {
-            #[cfg(feature = "debug_dma")]
-            println!("DMA: mem_aligned_write_from_slice 0x{dst64:08X} S:{main_step} V:{values:?}");
-            MemBusHelpers::mem_aligned_write_from_slice(dst64, main_step, values, mem_processors);
-        } else {
-            #[cfg(feature = "debug_dma")]
-            println!("DMA: mem_aligned_write_from_read_unaligned_slice 0x{dst64:08X} S:{main_step} V:{values:?}");
-            MemBusHelpers::mem_aligned_write_from_read_unaligned_slice(
-                dst64,
-                main_step,
-                src_offset as u8,
-                values,
-                mem_processors,
-            );
-        }
-    }
-    if post_count > 0 {
+    let post_write_value = if post_count > 0 {
         let src_offset = src & 0x07;
 
         let post_data_offset = DmaInfo::get_post_data_offset(encoded);
         let src64 = (src as u32 + pre_count as u32 + loop_count as u32 * 8) & !0x07;
-        let dst64 = dst as u32 + pre_count as u32 + loop_count as u32 * 8;
         let read_value = data_ext[post_data_offset];
 
         #[cfg(feature = "debug_dma")]
@@ -141,9 +127,9 @@ pub fn generate_dma_mem_inputs<P: MemProcessor>(
         #[cfg(feature = "debug_dma")]
         println!("DMA: mem_aligned_load@post-p 0x{dst64:08X} S:{main_step} V:{pre_value} (0x{pre_value:016X})");
 
-        MemBusHelpers::mem_aligned_load(dst64, main_step, pre_value, mem_processors);
+        MemBusHelpers::mem_aligned_load(post_dst64, main_step, pre_value, mem_processors);
 
-        let write_value = if DmaInfo::is_double_read_post(encoded) {
+        if DmaInfo::is_double_read_post(encoded) {
             let second_read_value = data_ext[post_data_offset + 1];
             #[cfg(feature = "debug_dma")]
             println!(
@@ -171,11 +157,48 @@ pub fn generate_dma_mem_inputs<P: MemProcessor>(
                 pre_value,
                 &[read_value],
             )
-        };
+        }
+    } else {
+        0
+    };
 
+    // IMPORTANT:
+    // Separate reads and writes, because writes happend after the reads on t+1. It's important because dual memories
+    // asume that inputs arrives ordered by time to decide if compact (dual) or not.
+
+    if pre_count > 0 {
+        #[cfg(feature = "debug_dma")]
+        println!("DMA: mem_aligned_write@pre 0x{dst64:08X} S:{main_step} V:{write_value} (0x{write_value:016X})");
+
+        MemBusHelpers::mem_aligned_write(dst64, main_step, pre_write_value, mem_processors);
+    }
+    if loop_count > 0 {
+        let src_offset = (src_offset + pre_count) & 0x07;
+        if aligned {
+            #[cfg(feature = "debug_dma")]
+            println!("DMA: mem_aligned_write_from_slice 0x{dst64:08X} S:{main_step} V:{values:?}");
+            MemBusHelpers::mem_aligned_write_from_slice(
+                loop_dst64,
+                main_step,
+                loop_values,
+                mem_processors,
+            );
+        } else {
+            #[cfg(feature = "debug_dma")]
+            println!("DMA: mem_aligned_write_from_read_unaligned_slice 0x{dst64:08X} S:{main_step} V:{values:?}");
+            MemBusHelpers::mem_aligned_write_from_read_unaligned_slice(
+                loop_dst64,
+                main_step,
+                src_offset as u8,
+                loop_values,
+                mem_processors,
+            );
+        }
+    }
+    if post_count > 0 {
         #[cfg(feature = "debug_dma")]
         println!("DMA: mem_aligned_write@post 0x{dst64:08X} S:{main_step} V:{write_value} (0x{write_value:016X})");
-        MemBusHelpers::mem_aligned_write(dst64, main_step, write_value, mem_processors);
+        MemBusHelpers::mem_aligned_write(post_dst64, main_step, post_write_value, mem_processors);
     }
 }
 

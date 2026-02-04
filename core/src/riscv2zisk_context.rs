@@ -33,9 +33,9 @@ const CSR_PRECOMPILED: [&str; 21] = [
     "bls12_381_complex_sub",
     "bls12_381_complex_mul",
     "add256",
+    "poseidon2",
     "dma_memcpy",
     "dma_memcmp",
-    "poseidon2",
 ];
 const CSR_PRECOMPILED_ADDR_START: u32 = 0x800;
 const CSR_PRECOMPILED_ADDR_END: u32 = CSR_PRECOMPILED_ADDR_START + CSR_PRECOMPILED.len() as u32;
@@ -1202,7 +1202,7 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
             zib.src_b("reg", i.rs1 as u64, false);
             zib.j(4, 4);
-            if (CSR_PRECOMPILED_ADDR_START..=CSR_PRECOMPILED_ADDR_END).contains(&i.csr) {
+            if (CSR_PRECOMPILED_ADDR_START..CSR_PRECOMPILED_ADDR_END).contains(&i.csr) {
                 match i.csr {
                     0x813 | 0x814 => {
                         self.output_precompile = Some(i.csr);

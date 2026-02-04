@@ -220,7 +220,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             trace[i].set_wr(mem_op.is_write);
 
             #[cfg(feature = "debug_mem")]
-            if (lsb_increment >= MEM_INC_C_SIZE) || (msb_increment > MEM_INC_C_SIZE) {
+            if (l_increment >= (1 << 22)) || (h_increment >= (1 << 16)) {
                 panic!("MemSM: increment's out of range: {} i:{} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",
                     increment, i, addr_changes as u8, mem_op.addr, last_addr, mem_op.step, last_step);
             }

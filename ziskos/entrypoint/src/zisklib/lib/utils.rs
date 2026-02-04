@@ -1,3 +1,9 @@
+/// Check if a pointer is 8-byte aligned.
+#[inline(always)]
+pub fn is_aligned_8(ptr: *const u8) -> bool {
+    (ptr as usize) & 0x7 == 0
+}
+
 /// Given two n-bit number `x` and `y`, compares them and returns true if `x > y`; otherwise, false.
 pub fn gt(x: &[u64], y: &[u64]) -> bool {
     debug_assert_eq!(x.len(), y.len(), "x and y must have the same length");
