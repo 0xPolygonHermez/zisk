@@ -1,6 +1,8 @@
 use serde::Serialize;
 use std::io::{Cursor, Read};
 use std::sync::Mutex;
+use std::path::PathBuf;
+use anyhow::Result;
 
 use crate::io::ZiskIO;
 
@@ -56,5 +58,10 @@ impl ZiskIO for ZiskMemoryStdin {
         let mut cursor = self.cursor.lock().unwrap();
         self.data.lock().unwrap().extend_from_slice(data);
         cursor.get_mut().extend_from_slice(data);
+    }
+
+    fn save(&self, path: &PathBuf) -> Result<()> {
+        std::fs::write(path, self.data.lock().unwrap().as_slice())?;
+        Ok(())
     }
 }
