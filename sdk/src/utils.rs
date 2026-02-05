@@ -93,6 +93,7 @@ pub fn get_custom_commits_map<F: PrimeField64>(
 
 pub fn get_asm_paths(elf: &impl ElfBinaryLike) -> Result<(String, String)> {
     let stem = elf.name();
+    let stem = if elf.with_hints() { format!("{stem}-hints") } else { stem.to_string() };
     let hash =
         get_elf_data_hash(elf).map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
 

@@ -107,7 +107,7 @@ pub fn execute_build_program(
     for (_, elf_path) in target_elf_paths.iter() {
         let elf_path_std = elf_path.as_std_path();
 
-        let assembly_exists = assembly_files_exist(elf_path_std, &output_path)?;
+        let assembly_exists = assembly_files_exist(elf_path_std, &output_path, hints)?;
         let hints_marker = output_path.join(format!(
             "{}.assembly_hints",
             elf_path_std.file_name().unwrap().to_string_lossy()

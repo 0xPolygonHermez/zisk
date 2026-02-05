@@ -9,10 +9,11 @@ use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 use crate::get_elf_data_hash_from_path;
 
 /// Check if all assembly binary files exist for a given ELF and output path
-pub fn assembly_files_exist(elf: &Path, output_path: &Path) -> Result<bool> {
+pub fn assembly_files_exist(elf: &Path, output_path: &Path, hints: bool) -> Result<bool> {
     let elf_hash = get_elf_data_hash_from_path(elf)?;
 
     let stem = elf.file_stem().unwrap().to_str().unwrap();
+    let stem = if hints { format!("{stem}-hints") } else { stem.to_string() };
     let new_filename = format!("{stem}-{elf_hash}.tmp");
     let base_path = output_path.join(new_filename);
     let file_stem = base_path.file_stem().unwrap().to_str().unwrap();
@@ -67,6 +68,7 @@ fn _generate_assembly(
     }
 
     let stem = elf.file_stem().unwrap().to_str().unwrap();
+    let stem = if hints { format!("{stem}-hints") } else { stem.to_string() };
     let new_filename = format!("{stem}-{elf_hash}.tmp");
     let base_path = output_path.join(new_filename);
     let file_stem = base_path.file_stem().unwrap().to_str().unwrap();
