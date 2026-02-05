@@ -18,6 +18,7 @@ mod asm_rh_runner_stub;
 mod asm_runner;
 mod asm_services;
 mod shmem_utils;
+mod shmem_writer;
 
 pub use asm_mo::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -37,3 +38,4 @@ pub use asm_rh_runner_stub::*;
 pub use asm_runner::*;
 pub use asm_services::*;
 pub use shmem_utils::*;
+pub use shmem_writer::*;

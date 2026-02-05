@@ -1,6 +1,6 @@
-use crate::{ZISK_TARGET, ZISK_VERSION_MESSAGE};
 use anyhow::{anyhow, Context, Result};
 use std::process::{Command, Stdio};
+use zisk_build::{ZISK_TARGET, ZISK_VERSION_MESSAGE};
 
 // Structure representing the 'build' subcommand of cargo.
 #[derive(clap::Args)]

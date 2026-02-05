@@ -5,7 +5,7 @@ use proofman_common::initialize_logger;
 use proofman_verifier::verify;
 use std::fs;
 
-use crate::ZISK_VERSION_MESSAGE;
+use zisk_build::ZISK_VERSION_MESSAGE;
 
 use super::get_default_verkey;
 

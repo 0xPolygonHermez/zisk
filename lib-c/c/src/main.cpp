@@ -1230,6 +1230,39 @@ void BN254TwistDblLineCoeffs_test()
     }
 }
 
+void Div256_benchmark(uint64_t *data) {
+
+    try {
+        const uint64_t TEST_SIZE_INPUT_U64 = 2 * 4;
+        const uint64_t TEST_SIZE_OUTPUT_U64 = 2 * 4;
+        const uint64_t TEST_SIZE_U64 = TEST_SIZE_INPUT_U64 + TEST_SIZE_OUTPUT_U64;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_INPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j] = (uint64_t)rand();
+            }
+            for (uint64_t j = 0; j < TEST_SIZE_OUTPUT_U64; j++) {
+                data[i * TEST_SIZE_U64 + j + TEST_SIZE_INPUT_U64] = 0;
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            BigInt256Div(test_data, test_data + 8);
+        }
+
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("Div256", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("Div256                      |Exception: %s\n", e.what());
+    }
+}
+
 int main(int argc, char *argv[])
 {
     if (argc > 1)
@@ -1278,6 +1311,8 @@ int main(int argc, char *argv[])
     BN254ComplexInv_test();
     BN254TwistAddLineCoeffs_test();
     BN254TwistDblLineCoeffs_test();
+    
+    Div256_benchmark(data);
 
     free(data);
 }

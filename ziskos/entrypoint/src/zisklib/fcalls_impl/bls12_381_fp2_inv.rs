@@ -6,14 +6,6 @@ use super::bls12_381_fp_inv::{
     bls12_381_fp_square, bls12_381_fp_sub,
 };
 
-lazy_static! {
-    pub static ref P: BigUint = BigUint::parse_bytes(
-        b"1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
-        16
-    )
-    .unwrap();
-}
-
 /// Perform the inversion of a non-zero field element in Fp2
 pub fn fcall_bls12_381_fp2_inv(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
@@ -40,7 +32,10 @@ pub fn bls12_381_fp2_inv(a: &[u64; 12]) -> [u64; 12] {
     let inv_real = bls12_381_fp_mul(real, &denominator);
     let inv_imaginary = bls12_381_fp_mul(&bls12_381_fp_neg(imaginary), &denominator);
 
-    [inv_real, inv_imaginary].concat().try_into().unwrap()
+    let mut result = [0u64; 12];
+    result[0..6].copy_from_slice(&inv_real);
+    result[6..12].copy_from_slice(&inv_imaginary);
+    result
 }
 
 pub(crate) fn bls12_381_fp2_dbl(a: &[u64; 12]) -> [u64; 12] {
@@ -50,7 +45,10 @@ pub(crate) fn bls12_381_fp2_dbl(a: &[u64; 12]) -> [u64; 12] {
     let real_part = bls12_381_fp_add(a_real, a_real);
     let imaginary_part = bls12_381_fp_add(a_imaginary, a_imaginary);
 
-    [real_part, imaginary_part].concat().try_into().unwrap()
+    let mut result = [0u64; 12];
+    result[0..6].copy_from_slice(&real_part);
+    result[6..12].copy_from_slice(&imaginary_part);
+    result
 }
 
 pub(crate) fn bls12_381_fp2_sub(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
@@ -62,7 +60,10 @@ pub(crate) fn bls12_381_fp2_sub(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
     let real_part = bls12_381_fp_sub(a_real, b_real);
     let imaginary_part = bls12_381_fp_sub(a_imaginary, b_imaginary);
 
-    [real_part, imaginary_part].concat().try_into().unwrap()
+    let mut result = [0u64; 12];
+    result[0..6].copy_from_slice(&real_part);
+    result[6..12].copy_from_slice(&imaginary_part);
+    result
 }
 
 pub(crate) fn bls12_381_fp2_mul(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
@@ -80,7 +81,10 @@ pub(crate) fn bls12_381_fp2_mul(a: &[u64; 12], b: &[u64; 12]) -> [u64; 12] {
         &bls12_381_fp_mul(a_imaginary, b_real),
     );
 
-    [real_part, imaginary_part].concat().try_into().unwrap()
+    let mut result = [0u64; 12];
+    result[0..6].copy_from_slice(&real_part);
+    result[6..12].copy_from_slice(&imaginary_part);
+    result
 }
 
 pub(crate) fn bls12_381_fp2_square(a: &[u64; 12]) -> [u64; 12] {
@@ -91,7 +95,10 @@ pub(crate) fn bls12_381_fp2_square(a: &[u64; 12]) -> [u64; 12] {
         bls12_381_fp_sub(&bls12_381_fp_square(a_real), &bls12_381_fp_square(a_imaginary));
     let imaginary_part = bls12_381_fp_dbl(&bls12_381_fp_mul(a_real, a_imaginary));
 
-    [real_part, imaginary_part].concat().try_into().unwrap()
+    let mut result = [0u64; 12];
+    result[0..6].copy_from_slice(&real_part);
+    result[6..12].copy_from_slice(&imaginary_part);
+    result
 }
 
 pub(crate) fn bls12_381_fp2_scalar_mul(a: &[u64; 12], b: &[u64; 6]) -> [u64; 12] {
@@ -102,7 +109,10 @@ pub(crate) fn bls12_381_fp2_scalar_mul(a: &[u64; 12], b: &[u64; 6]) -> [u64; 12]
     let real_part = bls12_381_fp_mul(a_real, b);
     let imaginary_part = bls12_381_fp_mul(a_imaginary, b);
 
-    [real_part, imaginary_part].concat().try_into().unwrap()
+    let mut result = [0u64; 12];
+    result[0..6].copy_from_slice(&real_part);
+    result[6..12].copy_from_slice(&imaginary_part);
+    result
 }
 
 #[cfg(test)]

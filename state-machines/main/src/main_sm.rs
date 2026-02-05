@@ -13,7 +13,7 @@ use crate::MainCounter;
 use fields::PrimeField64;
 use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofCtx, ProofmanResult, SetupCtx};
 use rayon::prelude::*;
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx, SegmentId};
 use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
@@ -76,9 +76,9 @@ impl<F: PrimeField64> MainInstance<F> {
         chunk_size: u64,
         main_instance: &MainInstance<F>,
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
+    ) -> ProofmanResult<AirInstance<F>> {
         // Create the main trace buffer
-        let mut main_trace = MainTraceType::new_from_vec(trace_buffer);
+        let mut main_trace = MainTraceType::new_from_vec(trace_buffer)?;
 
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
@@ -105,7 +105,7 @@ impl<F: PrimeField64> MainInstance<F> {
         let filled_rows: usize =
             segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             segment_id,
             filled_rows,
@@ -212,7 +212,7 @@ impl<F: PrimeField64> MainInstance<F> {
 
         // Generate and add the AIR instance
         let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
-        AirInstance::new_from_trace(from_trace)
+        Ok(AirInstance::new_from_trace(from_trace))
     }
 
     /// Fills a partial trace in the main trace buffer based on the minimal trace.
@@ -346,13 +346,19 @@ impl<F: PrimeField64> MainInstance<F> {
         step_range_check: Vec<u32>,
         large_range_checks: &[u32],
     ) {
-        let range_id = self.std.get_range_id(0, MEM_REGS_MAX_DIFF as i64, None);
+        let range_id = self
+            .std
+            .get_range_id(0, MEM_REGS_MAX_DIFF as i64, None)
+            .expect("Failed to get range ID");
         self.std.range_checks(range_id, step_range_check);
 
         for range in large_range_checks {
             self.std.range_check(range_id, *range as i64, 1);
         }
-        let range_id = self.std.get_range_id(0, Self::MAX_SEGMENT_ID as i64, None);
+        let range_id = self
+            .std
+            .get_range_id(0, Self::MAX_SEGMENT_ID as i64, None)
+            .expect("Failed to get range ID");
         self.std.range_check(range_id, segment_id.as_usize() as i64, 1);
     }
 }

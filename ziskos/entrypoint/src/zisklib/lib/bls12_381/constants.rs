@@ -12,6 +12,20 @@ pub const E_B: [u64; 6] = [0x4, 0, 0, 0, 0, 0];
 /// B parameter of the twist E': y² = x³ + 4·(1+u)
 pub const ETWISTED_B: [u64; 12] = [0x4, 0x0, 0x0, 0x0, 0x0, 0x0, 0x4, 0x0, 0x0, 0x0, 0x0, 0x0];
 
+/// Identity element in G1
+pub const IDENTITY_G1: [u64; 12] = {
+    let mut tmp = [0u64; 12];
+    tmp[6] = 1;
+    tmp
+};
+
+/// Identity element in G2
+pub const IDENTITY_G2: [u64; 24] = {
+    let mut tmp = [0u64; 24];
+    tmp[12] = 1;
+    tmp
+};
+
 /// Base field size
 pub const P: [u64; 6] = [
     0xB9FEFFFFFFFFAAAB,

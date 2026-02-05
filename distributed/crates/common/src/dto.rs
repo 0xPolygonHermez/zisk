@@ -4,7 +4,10 @@
 //! These DTOs serve as the canonical data structures for business logic, separate from external
 //! representations like gRPC protobuf types or serialization formats.
 
-use crate::{BlockId, ComputeCapacity, JobId, JobPhase, JobState, WorkerId, WorkerState};
+use std::{fmt::Display, path::PathBuf};
+
+use crate::{ComputeCapacity, DataId, JobId, JobPhase, JobState, WorkerId, WorkerState};
+use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -34,7 +37,7 @@ pub struct JobsListDto {
 
 pub struct JobStatusDto {
     pub job_id: JobId,
-    pub block_id: BlockId,
+    pub data_id: DataId,
     pub state: JobState,
     pub phase: Option<JobPhase>,
     pub assigned_workers: Vec<WorkerId>,
@@ -62,10 +65,28 @@ pub struct SystemStatusDto {
     pub active_jobs: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[repr(i32)]
+pub enum InputModeDto {
+    InputModeNone = 0,          // No input provided
+    InputModePath(PathBuf) = 1, // Input will be provided as a path
+    InputModeData(PathBuf) = 2, // Input data will be sent directly
+}
+
+impl Display for InputModeDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InputModeDto::InputModeNone => write!(f, "None"),
+            InputModeDto::InputModePath(path) => write!(f, "Path({})", path.display()),
+            InputModeDto::InputModeData(path) => write!(f, "Data({})", path.display()),
+        }
+    }
+}
+
 pub struct LaunchProofRequestDto {
-    pub block_id: BlockId,
+    pub data_id: DataId,
     pub compute_capacity: u32,
-    pub input_path: String,
+    pub input_mode: InputModeDto,
     pub simulated_node: Option<u32>,
 }
 
@@ -129,12 +150,19 @@ pub enum ExecuteTaskRequestTypeDto {
 }
 
 pub struct ContributionParamsDto {
-    pub block_id: BlockId,
-    pub input_path: String,
+    pub data_id: DataId,
+    pub input_source: InputSourceDto,
     pub rank_id: u32,
     pub total_workers: u32,
     pub worker_allocation: Vec<u32>,
     pub job_compute_units: ComputeCapacity,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub enum InputSourceDto {
+    InputPath(String),
+    InputData(Vec<u8>),
+    InputNull,
 }
 
 pub struct ProveParamsDto {
@@ -154,6 +182,7 @@ pub struct AggParamsDto {
     pub final_proof: bool,
     pub verify_constraints: bool,
     pub aggregation: bool,
+    pub rma: bool,
     pub final_snark: bool,
     pub verify_proofs: bool,
     pub save_proofs: bool,

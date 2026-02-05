@@ -3,10 +3,10 @@
 use crate::zisklib::lib::utils::gt;
 
 use super::{
-    constants::P_MINUS_ONE,
-    curve::{is_on_curve_bls12_381, is_on_subgroup_bls12_381},
+    constants::{IDENTITY_G1, IDENTITY_G2, P_MINUS_ONE},
+    curve::{is_on_curve_bls12_381, is_on_subgroup_bls12_381, neg_bls12_381},
     final_exp::final_exp_bls12_381,
-    miller_loop::miller_loop_bls12_381,
+    miller_loop::{miller_loop_batch_bls12_381, miller_loop_bls12_381},
     twist::{is_on_curve_twist_bls12_381, is_on_subgroup_twist_bls12_381},
 };
 
@@ -16,184 +16,96 @@ use super::{
 ///  pairingBLS12-381:
 ///          input: P ∈ G1 and Q ∈ G2
 ///          output: e(P,Q) ∈ GT
-///
-/// It also returns an error code:
-/// -  0: No error.
-/// -  1: x-coordinate of p is larger than the curve's base field.
-/// -  2: y-coordinate of p is larger than the curve's base field.
-/// -  3: x-coordinate real of q is larger than the curve's base field.
-/// -  4: x-coordinate imaginary of q is larger than the curve's base field.
-/// -  5: y-coordinate real of q is larger than the curve's base field.
-/// -  6: y-coordinate imaginary of q is larger than the curve's base field.
-/// -  7: p is not on the curve.
-/// -  8: p is not on the subgroup.
-/// -  9: q is not on the curve.
-/// - 10: q is not on the subgroup.
-pub fn pairing_bls12_381(p: &[u64; 12], q: &[u64; 24]) -> ([u64; 72], u8) {
-    // TODO: One can assume that points are valid!!!
-    // Check p and q are valid
-
-    // Verify the coordinates of p
-    let x1: [u64; 6] = p[0..6].try_into().unwrap();
-    if gt(&x1, &P_MINUS_ONE) {
-        #[cfg(debug_assertions)]
-        println!("x1 should be less than P_MINUS_ONE: {:?}, but got {:?}", P_MINUS_ONE, x1);
-
-        return ([0; 72], 1);
-    }
-
-    let y1: [u64; 6] = p[6..12].try_into().unwrap();
-    if gt(&y1, &P_MINUS_ONE) {
-        #[cfg(debug_assertions)]
-        println!("y1 should be less than P_MINUS_ONE: {:?}, but got {:?}", P_MINUS_ONE, y1);
-
-        return ([0; 72], 2);
-    }
-
-    // Verify the coordinates of q
-    let x2_r: [u64; 6] = q[0..6].try_into().unwrap();
-    if gt(&x2_r, &P_MINUS_ONE) {
-        #[cfg(debug_assertions)]
-        println!("x2_r should be less than P_MINUS_ONE: {:?}, but got {:?}", P_MINUS_ONE, x2_r);
-
-        return ([0; 72], 3);
-    }
-
-    let x2_i: [u64; 6] = q[6..12].try_into().unwrap();
-    if gt(&x2_i, &P_MINUS_ONE) {
-        #[cfg(debug_assertions)]
-        println!("x2_i should be less than P_MINUS_ONE: {:?}, but got {:?}", P_MINUS_ONE, x2_i);
-
-        return ([0; 72], 4);
-    }
-
-    let y2_r: [u64; 6] = q[12..18].try_into().unwrap();
-    if gt(&y2_r, &P_MINUS_ONE) {
-        #[cfg(debug_assertions)]
-        println!("y2_r should be less than P_MINUS_ONE: {:?}, but got {:?}", P_MINUS_ONE, y2_r);
-
-        return ([0; 72], 5);
-    }
-
-    let y2_i: [u64; 6] = q[18..24].try_into().unwrap();
-    if gt(&y2_i, &P_MINUS_ONE) {
-        #[cfg(debug_assertions)]
-        println!("y2_i should be less than P_MINUS_ONE: {:?}, but got {:?}", P_MINUS_ONE, y2_i);
-
-        return ([0; 72], 6);
-    }
-
-    // Is p = 𝒪?
-    if *p == [0; 12] {
-        // Is q = 𝒪?
-        if *q == [0; 24] {
-            // Both are 𝒪, then e(𝒪,𝒪) = 1
-            let mut one = [0; 72];
-            one[0] = 1;
-            return (one, 0);
-        } else {
-            // Is q on the curve?
-            if is_on_curve_twist_bls12_381(q) {
-                // Is q on the subgroup G2?
-                if is_on_subgroup_twist_bls12_381(q) {
-                    // q is valid, then e(𝒪,q) = 1
-                    let mut one = [0; 72];
-                    one[0] = 1;
-                    return (one, 0);
-                } else {
-                    #[cfg(debug_assertions)]
-                    println!("q is not in the subgroup");
-
-                    return ([0; 72], 10);
-                }
-            } else {
-                #[cfg(debug_assertions)]
-                println!("q is not on the curve");
-
-                return ([0; 72], 9);
-            }
-        }
-    }
-
-    // Is Q = 𝒪?
-    if *q == [0; 24] {
-        // Is p on the curve?
-        if is_on_curve_bls12_381(p) {
-            // Is p on the subgroup G1?
-            if is_on_subgroup_bls12_381(p) {
-                // p is valid, then e(p,𝒪) = 1
-                let mut one = [0; 72];
-                one[0] = 1;
-                return (one, 0);
-            } else {
-                #[cfg(debug_assertions)]
-                println!("p is not in the subgroup");
-
-                return ([0; 72], 8);
-            }
-        } else {
-            #[cfg(debug_assertions)]
-            println!("p is not on the curve");
-
-            return ([0; 72], 7);
-        }
-    }
-
-    // If neither p nor q are 𝒪, we can check if they belong to the subgroup
-    if !is_on_curve_bls12_381(p) {
-        #[cfg(debug_assertions)]
-        println!("p is not on the curve");
-
-        return ([0; 72], 7);
-    }
-
-    if !is_on_subgroup_bls12_381(p) {
-        #[cfg(debug_assertions)]
-        println!("p is not in the subgroup");
-
-        return ([0; 72], 8);
-    }
-
-    if !is_on_curve_twist_bls12_381(q) {
-        #[cfg(debug_assertions)]
-        println!("q is not on the curve");
-
-        return ([0; 72], 9);
-    }
-
-    if !is_on_subgroup_twist_bls12_381(q) {
-        #[cfg(debug_assertions)]
-        println!("q is not in the subgroup");
-
-        return ([0; 72], 10);
+pub fn pairing_bls12_381(p: &[u64; 12], q: &[u64; 24]) -> [u64; 72] {
+    // e(P, 𝒪) = e(𝒪, Q) = 1;
+    if *p == IDENTITY_G1 || *q == IDENTITY_G2 {
+        let mut one = [0; 72];
+        one[0] = 1;
+        return one;
     }
 
     // Miller loop
     let miller_loop = miller_loop_bls12_381(p, q);
 
     // Final exponentiation
-    let final_exp = final_exp_bls12_381(&miller_loop);
-
-    (final_exp, 0)
+    final_exp_bls12_381(&miller_loop)
 }
 
-/// Checks whether the pairing of two G1 and two G2 points are equivalent, i.e.,
-///     e(P₁, Q₁) == e(P₂, Q₂)
-pub fn pairing_verify_bls12_381(
-    p1: &[u64; 12],
-    q1: &[u64; 24],
-    p2: &[u64; 12],
-    q2: &[u64; 24],
+/// Computes the optimal Ate pairing for a batch of G1 and G2 points over the BN254 curve
+/// and multiplies the results together, i.e.:
+///     e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) ∈ GT
+pub fn pairing_batch_bls12_381(g1_points: &[[u64; 12]], g2_points: &[[u64; 24]]) -> [u64; 72] {
+    // Since each e(Pi, Qi) := FinalExp(MillerLoop(Pi, Qi))
+    // We have:
+    //  e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) = FinalExp(MillerLoop(P₁, Q₁) · MillerLoop(P₂, Q₂) · ... · MillerLoop(Pₙ, Qₙ))
+    // We can compute the Miller loop for each pair, multiplying the results together
+    // and then just do the final exponentiation once at the end.
+
+    let n = g1_points.len();
+    assert_eq!(n, g2_points.len(), "Number of G1 and G2 points must be equal");
+
+    // Miller loop and multiplication
+    let mut g1_points_ml = Vec::with_capacity(n);
+    let mut g2_points_ml = Vec::with_capacity(n);
+    for (p, q) in g1_points.iter().zip(g2_points.iter()) {
+        // If p = 𝒪 or q = 𝒪 => MillerLoop(P, 𝒪) = MillerLoop(𝒪, Q) = 1; we can skip
+        if *p != IDENTITY_G1 && *q != IDENTITY_G2 {
+            g1_points_ml.push(*p);
+            g2_points_ml.push(*q);
+        }
+    }
+
+    if g1_points_ml.is_empty() {
+        // If all pairing computations were skipped, return 1
+        let mut one = [0; 72];
+        one[0] = 1;
+        return one;
+    }
+
+    // Miller loop
+    let miller_loop = miller_loop_batch_bls12_381(&g1_points_ml, &g2_points_ml);
+
+    // Final exponentiation
+    final_exp_bls12_381(&miller_loop)
+}
+
+/// C-compatible wrapper for pairing_verify_bls12_381
+///
+/// # Safety
+/// - All pointers must be valid and properly aligned
+/// - `p1` and `p2` must point to at least 12 u64s each
+/// - `q1` and `q2` must point to at least 24 u64s each
+///
+/// Returns 1 if e(P₁, Q₁) == e(P₂, Q₂), 0 otherwise
+#[no_mangle]
+pub unsafe extern "C" fn pairing_verify_bls12_381_c(
+    p1_ptr: *const u64,
+    q1_ptr: *const u64,
+    p2_ptr: *const u64,
+    q2_ptr: *const u64,
 ) -> bool {
-    let (res, err) = pairing_bls12_381(p1, q1);
-    if err != 0 {
+    let p1: &[u64; 12] = &*(p1_ptr as *const [u64; 12]);
+    let q1: &[u64; 24] = &*(q1_ptr as *const [u64; 24]);
+    let p2: &[u64; 12] = &*(p2_ptr as *const [u64; 12]);
+    let q2: &[u64; 24] = &*(q2_ptr as *const [u64; 24]);
+
+    // Treat P₁,Q₁,P₂,Q₂ == 𝒪 at first, as this is a common case
+    // e(P₁, 𝒪) == e(P₂, Q₂) <--> P₂ == 𝒪 || Q₂ == 𝒪
+    // e(𝒪, Q₁) == e(P₂, Q₂) <--> P₂ == 𝒪 || Q₂ == 𝒪
+    if *p1 == IDENTITY_G1 || *q1 == IDENTITY_G2 {
+        return *p2 == IDENTITY_G1 || *q2 == IDENTITY_G2;
+    } else if *p2 == IDENTITY_G1 || *q2 == IDENTITY_G2 {
         return false;
     }
 
-    let (res2, err2) = pairing_bls12_381(p2, q2);
-    if err2 != 0 {
-        return false;
-    }
+    // Checking e(P1, Q1) == e(P2, Q2) is equivalent to checking e(P1, Q1) * e(-P2, Q2) == 1
+    let p2_neg = neg_bls12_381(p2);
+    let pairing_result = pairing_batch_bls12_381(&[*p1, p2_neg], &[*q1, *q2]);
 
-    res == res2
+    let one = {
+        let mut one = [0; 72];
+        one[0] = 1;
+        one
+    };
+    pairing_result == one
 }

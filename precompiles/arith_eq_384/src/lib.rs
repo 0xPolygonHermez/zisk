@@ -8,6 +8,7 @@ mod arith_eq_384_planner;
 mod equations;
 mod executors;
 mod mem_inputs;
+pub mod test_data;
 
 pub use arith_eq_384::*;
 pub use arith_eq_384_bus_device::*;

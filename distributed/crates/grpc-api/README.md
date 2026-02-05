@@ -102,7 +102,7 @@ grpcurl -plaintext -d '{"job_id": "job_123"}' \
   127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/JobStatus
 
 # Launch a new proof job
-grpcurl -plaintext -d '{"block_id": "block_456", "compute_capacity": 4, "input_path": "/path/to/input"}' \
+grpcurl -plaintext -d '{"data_id": "data_456", "compute_capacity": 4, "input_path": "/path/to/input"}' \
   127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/LaunchProof
 ```
 

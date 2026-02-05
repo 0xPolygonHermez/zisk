@@ -1,6 +1,6 @@
 use crate::{
-    arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams},
-    fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt, lt,
+    syscalls::{syscall_arith256_mod, SyscallArith256ModParams},
+    zisklib::{fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt, lt},
 };
 
 use super::constants::{NQR, P, P_MINUS_ONE};
@@ -121,4 +121,129 @@ pub fn secp256k1_fp_sqrt(x: &[u64; 4], parity: u64) -> ([u64; 4], bool) {
         assert_eq!(*params.d, nqr);
         (sqrt, false)
     }
+}
+
+/// # Safety
+/// - `x_ptr` must point to 4 u64s
+/// - `out_ptr` must point to at least 4 u64s
+#[no_mangle]
+pub unsafe extern "C" fn secp256k1_fp_reduce_c(x_ptr: *const u64, out_ptr: *mut u64) {
+    let x: &[u64; 4] = &*(x_ptr as *const [u64; 4]);
+
+    if lt(x, &P) {
+        *out_ptr.add(0) = x[0];
+        *out_ptr.add(1) = x[1];
+        *out_ptr.add(2) = x[2];
+        *out_ptr.add(3) = x[3];
+        return;
+    }
+
+    let mut params = SyscallArith256ModParams {
+        a: x,
+        b: &[1, 0, 0, 0],
+        c: &[0, 0, 0, 0],
+        module: &P,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
+
+    *out_ptr.add(0) = params.d[0];
+    *out_ptr.add(1) = params.d[1];
+    *out_ptr.add(2) = params.d[2];
+    *out_ptr.add(3) = params.d[3];
+}
+
+/// # Safety
+/// - `x_ptr` must point to 4 u64s
+/// - `y_ptr` must point to 4 u64s
+/// - `out_ptr` must point to at least 4 u64s
+#[no_mangle]
+pub unsafe extern "C" fn secp256k1_fp_add_c(
+    x_ptr: *const u64,
+    y_ptr: *const u64,
+    out_ptr: *mut u64,
+) {
+    let x: &[u64; 4] = &*(x_ptr as *const [u64; 4]);
+    let y: &[u64; 4] = &*(y_ptr as *const [u64; 4]);
+
+    let mut params =
+        SyscallArith256ModParams { a: x, b: &[1, 0, 0, 0], c: y, module: &P, d: &mut [0, 0, 0, 0] };
+    syscall_arith256_mod(&mut params);
+
+    *out_ptr.add(0) = params.d[0];
+    *out_ptr.add(1) = params.d[1];
+    *out_ptr.add(2) = params.d[2];
+    *out_ptr.add(3) = params.d[3];
+}
+
+/// # Safety
+/// - `x_ptr` must point to 4 u64s
+/// - `out_ptr` must point to at least 4 u64s
+#[no_mangle]
+pub unsafe extern "C" fn secp256k1_fp_negate_c(x_ptr: *const u64, out_ptr: *mut u64) {
+    let x: &[u64; 4] = &*(x_ptr as *const [u64; 4]);
+
+    let mut params = SyscallArith256ModParams {
+        a: x,
+        b: &P_MINUS_ONE,
+        c: &[0, 0, 0, 0],
+        module: &P,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
+
+    *out_ptr.add(0) = params.d[0];
+    *out_ptr.add(1) = params.d[1];
+    *out_ptr.add(2) = params.d[2];
+    *out_ptr.add(3) = params.d[3];
+}
+
+/// # Safety
+/// - `x_ptr` must point to 4 u64s
+/// - `y_ptr` must point to 4 u64s
+/// - `out_ptr` must point to at least 4 u64s
+#[no_mangle]
+pub unsafe extern "C" fn secp256k1_fp_mul_c(
+    x_ptr: *const u64,
+    y_ptr: *const u64,
+    out_ptr: *mut u64,
+) {
+    let x: &[u64; 4] = &*(x_ptr as *const [u64; 4]);
+    let y: &[u64; 4] = &*(y_ptr as *const [u64; 4]);
+
+    let mut params =
+        SyscallArith256ModParams { a: x, b: y, c: &[0, 0, 0, 0], module: &P, d: &mut [0, 0, 0, 0] };
+    syscall_arith256_mod(&mut params);
+
+    *out_ptr.add(0) = params.d[0];
+    *out_ptr.add(1) = params.d[1];
+    *out_ptr.add(2) = params.d[2];
+    *out_ptr.add(3) = params.d[3];
+}
+
+/// # Safety
+/// - `x_ptr` must point to 4 u64s
+/// - `scalar` is a single u64 value
+/// - `out_ptr` must point to at least 4 u64s
+#[no_mangle]
+pub unsafe extern "C" fn secp256k1_fp_mul_scalar_c(
+    x_ptr: *const u64,
+    scalar: u64,
+    out_ptr: *mut u64,
+) {
+    let x: &[u64; 4] = &*(x_ptr as *const [u64; 4]);
+
+    let mut params = SyscallArith256ModParams {
+        a: x,
+        b: &[scalar, 0, 0, 0],
+        c: &[0, 0, 0, 0],
+        module: &P,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
+
+    *out_ptr.add(0) = params.d[0];
+    *out_ptr.add(1) = params.d[1];
+    *out_ptr.add(2) = params.d[2];
+    *out_ptr.add(3) = params.d[3];
 }

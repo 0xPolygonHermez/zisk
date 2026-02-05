@@ -77,9 +77,7 @@ main() {
 
     step "Compress verify key..."
     ensure tar -czvf "${VERIFYKEY_FILE}" \
-      provingKey/zisk/vadcop_final/vadcop_final.starkinfo.json \
-      provingKey/zisk/vadcop_final/vadcop_final.verkey.json \
-      provingKey/zisk/vadcop_final/vadcop_final.verifier.bin || return 1
+      provingKey/zisk/vadcop_final/vadcop_final.verkey.bin || return 1
 
     step "Generate checksums..."
     ensure md5sum "${PROVINGKEY_FILE}" > "${PROVINGKEY_FILE}.md5" || return 1

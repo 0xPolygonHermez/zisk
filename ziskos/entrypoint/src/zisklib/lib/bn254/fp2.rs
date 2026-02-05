@@ -1,12 +1,12 @@
 //! Operations in the degree 2 extension Fp2 of the BN254 curve
 
 use crate::{
-    bn254_complex_add::{syscall_bn254_complex_add, SyscallBn254ComplexAddParams},
-    bn254_complex_mul::{syscall_bn254_complex_mul, SyscallBn254ComplexMulParams},
-    bn254_complex_sub::{syscall_bn254_complex_sub, SyscallBn254ComplexSubParams},
-    complex::SyscallComplex256,
-    fcall_bn254_fp2_inv,
-    zisklib::lib::utils::eq,
+    syscalls::{
+        syscall_bn254_complex_add, syscall_bn254_complex_mul, syscall_bn254_complex_sub,
+        SyscallBn254ComplexAddParams, SyscallBn254ComplexMulParams, SyscallBn254ComplexSubParams,
+        SyscallComplex256,
+    },
+    zisklib::{eq, fcall_bn254_fp2_inv},
 };
 
 use super::constants::P_MINUS_ONE;

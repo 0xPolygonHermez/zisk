@@ -8,33 +8,63 @@ use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info};
-use zisk_distributed_common::{AggProofData, AggregationParams, BlockContext, WorkerState};
-use zisk_distributed_common::{BlockId, JobId};
+use zisk_distributed_common::{
+    AggProofData, AggregationParams, DataCtx, InputSourceDto, WorkerState,
+};
+use zisk_distributed_common::{DataId, JobId};
+use zisk_distributed_grpc_api::contribution_params::InputSource;
 use zisk_distributed_grpc_api::execute_task_response::ResultData;
 use zisk_distributed_grpc_api::*;
+use zisk_sdk::{Asm, Emu, ZiskBackend};
 
 use crate::config::WorkerServiceConfig;
 
-pub enum WorkerNode {
-    WorkerGrpc(WorkerNodeGrpc),
-    WorkerMpi(WorkerNodeMpi),
+pub enum WorkerNode<T: ZiskBackend + 'static> {
+    WorkerGrpc(WorkerNodeGrpc<T>),
+    WorkerMpi(WorkerNodeMpi<T>),
 }
 
-impl WorkerNode {
-    pub async fn new(
+impl<T: ZiskBackend + 'static> WorkerNode<T> {
+    pub fn world_rank(&self) -> i32 {
+        match self {
+            WorkerNode::WorkerGrpc(worker) => worker.world_rank(),
+            WorkerNode::WorkerMpi(worker) => worker.world_rank(),
+        }
+    }
+}
+
+impl<T: ZiskBackend + 'static> WorkerNode<T> {
+    pub async fn new_emu(
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
-    ) -> Result<Self> {
-        let worker = Worker::new(
+    ) -> Result<WorkerNode<Emu>> {
+        let worker = Worker::<Emu>::new_emu(
             worker_config.worker.worker_id.clone(),
             worker_config.worker.compute_capacity,
             prover_config,
         )?;
 
         if worker.local_rank() == 0 {
-            Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::new(worker_config, worker).await?))
+            Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Emu>::new(worker_config, worker).await?))
         } else {
-            Ok(WorkerNode::WorkerMpi(WorkerNodeMpi::new(worker).await?))
+            Ok(WorkerNode::WorkerMpi(WorkerNodeMpi::<Emu>::new(worker).await?))
+        }
+    }
+
+    pub async fn new_asm(
+        worker_config: WorkerServiceConfig,
+        prover_config: ProverConfig,
+    ) -> Result<WorkerNode<Asm>> {
+        let worker = Worker::<Asm>::new_asm(
+            worker_config.worker.worker_id.clone(),
+            worker_config.worker.compute_capacity,
+            prover_config,
+        )?;
+
+        if worker.local_rank() == 0 {
+            Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Asm>::new(worker_config, worker).await?))
+        } else {
+            Ok(WorkerNode::WorkerMpi(WorkerNodeMpi::<Asm>::new(worker).await?))
         }
     }
 
@@ -46,13 +76,17 @@ impl WorkerNode {
     }
 }
 
-pub struct WorkerNodeMpi {
-    worker: Worker,
+pub struct WorkerNodeMpi<T: ZiskBackend + 'static> {
+    worker: Worker<T>,
 }
 
-impl WorkerNodeMpi {
-    pub async fn new(worker: Worker) -> Result<Self> {
+impl<T: ZiskBackend + 'static> WorkerNodeMpi<T> {
+    pub async fn new(worker: Worker<T>) -> Result<Self> {
         Ok(Self { worker })
+    }
+
+    pub fn world_rank(&self) -> i32 {
+        self.worker.world_rank()
     }
 
     async fn run(&mut self) -> Result<()> {
@@ -65,14 +99,18 @@ impl WorkerNodeMpi {
     }
 }
 
-pub struct WorkerNodeGrpc {
+pub struct WorkerNodeGrpc<T: ZiskBackend + 'static> {
     worker_config: WorkerServiceConfig,
-    worker: Worker,
+    worker: Worker<T>,
 }
 
-impl WorkerNodeGrpc {
-    pub async fn new(worker_config: WorkerServiceConfig, worker: Worker) -> Result<Self> {
+impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
+    pub async fn new(worker_config: WorkerServiceConfig, worker: Worker<T>) -> Result<Self> {
         Ok(Self { worker_config, worker })
+    }
+
+    pub fn world_rank(&self) -> i32 {
+        self.worker.world_rank()
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -112,7 +150,9 @@ impl WorkerNodeGrpc {
 
         let channel =
             Channel::from_shared(self.worker_config.coordinator.url.clone())?.connect().await?;
-        let mut client = zisk_distributed_api_client::ZiskDistributedApiClient::new(channel);
+        let mut client = zisk_distributed_api_client::ZiskDistributedApiClient::new(channel)
+            .max_decoding_message_size(MAX_MESSAGE_SIZE)
+            .max_encoding_message_size(MAX_MESSAGE_SIZE);
 
         // Create bidirectional stream
         let (message_sender, message_receiver) = mpsc::unbounded_channel();
@@ -342,7 +382,7 @@ impl WorkerNodeGrpc {
                         executed_steps,
                     }))
                 } else {
-                    None
+                    Some(ResultData::FinalProof(FinalProof { values: vec![], executed_steps }))
                 }
             }
             Err(e) => {
@@ -350,7 +390,7 @@ impl WorkerNodeGrpc {
                     return Err(anyhow!("Aggregation returned Err but reported success"));
                 }
                 error_message = e.to_string();
-                None
+                Some(ResultData::FinalProof(FinalProof { values: vec![], executed_steps }))
             }
         };
 
@@ -475,17 +515,26 @@ impl WorkerNodeGrpc {
         };
 
         let job_id = JobId::from(request.job_id);
-        let input_path =
-            self.worker_config.worker.inputs_folder.join(PathBuf::from(params.input_path));
+        let input_source = match params.input_source {
+            Some(InputSource::InputPath(ref path)) => {
+                let input_path = self.worker_config.worker.inputs_folder.join(PathBuf::from(path));
 
-        // Validate that input_path is a subdirectory of inputs_folder
-        Self::validate_subdir(&self.worker_config.worker.inputs_folder, &input_path)?;
+                // Validate that input_path is a subdirectory of inputs_folder
+                Self::validate_subdir(&self.worker_config.worker.inputs_folder, &input_path)?;
 
-        let block = BlockContext { block_id: BlockId::from(params.block_id), input_path };
+                InputSourceDto::InputPath(input_path.display().to_string())
+            }
+            Some(InputSource::InputData(data)) => InputSourceDto::InputData(data),
+            None => {
+                return Err(anyhow!("Input source missing in ContributionParams"));
+            }
+        };
+
+        let data_ctx = DataCtx { data_id: DataId::from(params.data_id), input_source };
 
         let job = self.worker.new_job(
             job_id,
-            block,
+            data_ctx,
             params.rank_id,
             params.total_workers,
             params.worker_allocation,
@@ -518,7 +567,8 @@ impl WorkerNodeGrpc {
             std::thread::sleep(Duration::from_millis(10));
         }
 
-        // Una vez que existe, canonicaliza y valida
+        info!("Found input file {:?} (elapsed: {:?})", candidate, start.elapsed());
+
         let candidate = candidate.canonicalize().map_err(|e| anyhow!("Input path error: {e}"))?;
 
         if candidate.starts_with(&base) {
@@ -599,7 +649,7 @@ impl WorkerNodeGrpc {
 
         // Extract the Aggregate params
         let Some(execute_task_request::Params::AggParams(agg_params)) = request.params else {
-            return Err(anyhow!("Expected ContributionParams params for Aggregate task"));
+            return Err(anyhow!("Expected AggParams params for Aggregate task"));
         };
 
         let agg_proofs = agg_params.agg_proofs.unwrap().proofs;
@@ -618,6 +668,7 @@ impl WorkerNodeGrpc {
             final_proof: agg_params.final_proof,
             verify_constraints: agg_params.verify_constraints,
             aggregation: agg_params.aggregation,
+            rma: agg_params.rma,
             final_snark: agg_params.final_snark,
             verify_proofs: agg_params.verify_proofs,
             save_proofs: agg_params.save_proofs,

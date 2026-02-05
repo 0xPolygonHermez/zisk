@@ -1,0 +1,31 @@
+// Operation id
+const int OPERATION_BUS_ID = 5000;
+
+// Continuation ids
+const int MAIN_CONTINUATION_ID = 1000;
+const int MEMORY_CONTINUATION_ID = 11;
+
+// ROM id
+const int ROM_BUS_ID = 7890;
+
+// Memory ids
+const int MEMORY_ID = 10;
+const int MEMORY_ALIGN_ROM_ID = 133;
+const int DUAL_BYTE_TABLE_ID = 88;
+
+// Arith table ids
+const int ARITH_TABLE_ID = 331;
+const int ARITH_RANGE_TABLE_ID = 330;
+
+// Binary table ids
+const int BINARY_TABLE_ID = 125;
+const int BINARY_EXTENSION_TABLE_ID = 124;
+
+// Frequent ops table ids
+const int ARITH_FROPS_TABLE_ID = 5010;
+const int BINARY_FROPS_TABLE_ID = 5011;
+const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
+
+// Precompiles
+const int ARITH_EQ_LT_TABLE_ID = 5002;
+const int KECCAKF_TABLE_ID = 126;

@@ -5,19 +5,21 @@
 
 use zisk_core::{P2_11, P2_19, P2_8};
 
+use crate::binary_constants::*;
+
 /// Represents operations supported by the Binary Extension Table.
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u8)]
 pub enum BinaryExtensionTableOp {
-    Sll = 0x31,
-    Srl = 0x32,
-    Sra = 0x33,
-    SllW = 0x34,
-    SrlW = 0x35,
-    SraW = 0x36,
-    SignExtendB = 0x37,
-    SignExtendH = 0x38,
-    SignExtendW = 0x39,
+    Sll = SLL_OP,
+    Srl = SRL_OP,
+    Sra = SRA_OP,
+    SllW = SLLW_OP,
+    SrlW = SRLW_OP,
+    SraW = SRAW_OP,
+    SextB = SEXT_B_OP,
+    SextH = SEXT_H_OP,
+    SextW = SEXT_W_OP,
 }
 
 /// The `BinaryExtensionTableSM` struct encapsulates the Binary Extension Table's logic.
@@ -71,9 +73,9 @@ impl BinaryExtensionTableSM {
             BinaryExtensionTableOp::SllW => 3 * P2_19,
             BinaryExtensionTableOp::SrlW => 4 * P2_19,
             BinaryExtensionTableOp::SraW => 5 * P2_19,
-            BinaryExtensionTableOp::SignExtendB => 6 * P2_19,
-            BinaryExtensionTableOp::SignExtendH => 6 * P2_19 + P2_11,
-            BinaryExtensionTableOp::SignExtendW => 6 * P2_19 + 2 * P2_11,
+            BinaryExtensionTableOp::SextB => 6 * P2_19,
+            BinaryExtensionTableOp::SextH => 6 * P2_19 + P2_11,
+            BinaryExtensionTableOp::SextW => 6 * P2_19 + 2 * P2_11,
         }
     }
 }

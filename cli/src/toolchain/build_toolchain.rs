@@ -1,7 +1,8 @@
-use crate::{get_target, CommandExecutor, RUSTUP_TOOLCHAIN_NAME};
+use crate::{get_target, CommandExecutor};
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::{path::PathBuf, process::Command};
+use zisk_build::RUSTUP_TOOLCHAIN_NAME;
 
 #[derive(Parser)]
 #[command(name = "build-toolchain", about = "Build the cargo-zisk toolchain.")]

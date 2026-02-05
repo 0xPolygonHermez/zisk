@@ -3,14 +3,14 @@
 use crate::zisklib::lib::utils::eq;
 
 use super::{
-    constants::{ETWISTED_B, E_B, FROBENIUS_GAMMA12, FROBENIUS_GAMMA13},
+    constants::{ETWISTED_B, E_B, FROBENIUS_GAMMA12, FROBENIUS_GAMMA13, IDENTITY_G2},
     fp2::{
         add_fp2_bn254, conjugate_fp2_bn254, dbl_fp2_bn254, inv_fp2_bn254, mul_fp2_bn254,
         neg_fp2_bn254, scalar_mul_fp2_bn254, square_fp2_bn254, sub_fp2_bn254,
     },
 };
 
-/// Check if a point `p` is on the BN254 twist
+/// Check if a non-zero point `p` is on the BN254 twist
 pub fn is_on_curve_twist_bn254(p: &[u64; 16]) -> bool {
     // q in E' iff y² == x³ + 3 / (9 + u)
     let x: [u64; 8] = p[0..8].try_into().unwrap();
@@ -22,7 +22,7 @@ pub fn is_on_curve_twist_bn254(p: &[u64; 16]) -> bool {
     eq(&x_cubed_plus_b, &y_sq)
 }
 
-/// Check if a point `p` is on the BN254 twist subgroup
+/// Check if a non-zero point `p` is on the BN254 twist subgroup
 pub fn is_on_subgroup_twist_bn254(p: &[u64; 16]) -> bool {
     // p in subgroup iff:
     //      (x+1)·Q + 𝜓(x·Q) + 𝜓²(x·Q) == 𝜓³((2x)·Q)
@@ -43,37 +43,32 @@ pub fn is_on_subgroup_twist_bn254(p: &[u64; 16]) -> bool {
 }
 
 /// Converts a point `p` on the BN254 curve from Jacobian coordinates to affine coordinates
-pub fn to_affine_twist_bn254(p: &[u64; 24]) -> Option<[u64; 16]> {
+pub fn to_affine_twist_bn254(p: &[u64; 24]) -> [u64; 16] {
     let z: [u64; 8] = p[16..24].try_into().unwrap();
 
-    // Check if p is the point at infinity
     if z == [0u64; 8] {
-        // Point at infinity cannot be converted to affine
-        return None;
-    }
-
-    // Check if p is already in affine coordinates
-    if z == [1u64, 0, 0, 0, 0, 0, 0, 0] {
-        return Some([
+        return IDENTITY_G2;
+    } else if z == [1u64, 0, 0, 0, 0, 0, 0, 0] {
+        return [
             p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13],
             p[14], p[15],
-        ]);
+        ];
     }
-
-    let zinv = inv_fp2_bn254(&z);
-    let zinv_sq = square_fp2_bn254(&zinv);
 
     let x: [u64; 8] = p[0..8].try_into().unwrap();
     let y: [u64; 8] = p[8..16].try_into().unwrap();
+
+    let zinv = inv_fp2_bn254(&z);
+    let zinv_sq = square_fp2_bn254(&zinv);
 
     let x_res = mul_fp2_bn254(&x, &zinv_sq);
     let mut y_res = mul_fp2_bn254(&y, &zinv_sq);
     y_res = mul_fp2_bn254(&y_res, &zinv);
 
-    Some([
+    [
         x_res[0], x_res[1], x_res[2], x_res[3], x_res[4], x_res[5], x_res[6], x_res[7], y_res[0],
         y_res[1], y_res[2], y_res[3], y_res[4], y_res[5], y_res[6], y_res[7],
-    ])
+    ]
 }
 
 /// Addition of two non-zero points
@@ -88,27 +83,10 @@ pub fn add_twist_bn254(p1: &[u64; 16], p2: &[u64; 16]) -> [u64; 16] {
         // Is y1 == y2?
         if eq(&y1, &y2) {
             // Compute the doubling
-            let mut lambda = dbl_fp2_bn254(&y1);
-            lambda = inv_fp2_bn254(&lambda);
-            lambda = scalar_mul_fp2_bn254(&lambda, &E_B);
-            lambda = mul_fp2_bn254(&lambda, &x1);
-            lambda = mul_fp2_bn254(&lambda, &x1);
-
-            let mut x3 = square_fp2_bn254(&lambda);
-            x3 = sub_fp2_bn254(&x3, &x1);
-            x3 = sub_fp2_bn254(&x3, &x2);
-
-            let mut y3 = sub_fp2_bn254(&x1, &x3);
-            y3 = mul_fp2_bn254(&lambda, &y3);
-            y3 = sub_fp2_bn254(&y3, &y1);
-
-            return [
-                x3[0], x3[1], x3[2], x3[3], x3[4], x3[5], x3[6], x3[7], y3[0], y3[1], y3[2], y3[3],
-                y3[4], y3[5], y3[6], y3[7],
-            ];
+            return dbl_twist_bn254(p1);
         } else {
             // Points are the inverse of each other, return the point at infinity
-            return [0u64; 16];
+            return IDENTITY_G2;
         }
     }
 
@@ -207,4 +185,46 @@ pub fn utf_endomorphism_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
         qx[0], qx[1], qx[2], qx[3], qx[4], qx[5], qx[6], qx[7], qy[0], qy[1], qy[2], qy[3], qy[4],
         qy[5], qy[6], qy[7],
     ]
+}
+
+/// # Safety
+/// `p_ptr` must point to a valid `[u64; 16]` (128 bytes, affine G2 twist point).
+#[no_mangle]
+pub unsafe extern "C" fn is_on_curve_twist_bn254_c(p_ptr: *const u64) -> bool {
+    let p = unsafe { &*(p_ptr as *const [u64; 16]) };
+    is_on_curve_twist_bn254(p)
+}
+
+/// # Safety
+/// `p_ptr` must point to a valid `[u64; 16]` (128 bytes, affine G2 twist point).
+#[no_mangle]
+pub unsafe extern "C" fn is_on_subgroup_twist_bn254_c(p_ptr: *const u64) -> bool {
+    let p = unsafe { &*(p_ptr as *const [u64; 16]) };
+    is_on_subgroup_twist_bn254(p)
+}
+
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 24]` (192 bytes, Jacobian G2 twist point).
+/// - `out_ptr` must point to a valid `[u64; 16]` (128 bytes) writable buffer.
+#[no_mangle]
+pub unsafe extern "C" fn to_affine_twist_bn254_c(p_ptr: *const u64, out_ptr: *mut u64) {
+    let p = unsafe { &*(p_ptr as *const [u64; 24]) };
+    let result = to_affine_twist_bn254(p);
+
+    *out_ptr.add(0) = result[0];
+    *out_ptr.add(1) = result[1];
+    *out_ptr.add(2) = result[2];
+    *out_ptr.add(3) = result[3];
+    *out_ptr.add(4) = result[4];
+    *out_ptr.add(5) = result[5];
+    *out_ptr.add(6) = result[6];
+    *out_ptr.add(7) = result[7];
+    *out_ptr.add(8) = result[8];
+    *out_ptr.add(9) = result[9];
+    *out_ptr.add(10) = result[10];
+    *out_ptr.add(11) = result[11];
+    *out_ptr.add(12) = result[12];
+    *out_ptr.add(13) = result[13];
+    *out_ptr.add(14) = result[14];
+    *out_ptr.add(15) = result[15];
 }

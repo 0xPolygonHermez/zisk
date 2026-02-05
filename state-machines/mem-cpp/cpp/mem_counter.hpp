@@ -218,10 +218,13 @@ uint32_t MemCounter::offset_to_addr(uint32_t offset, uint32_t thread_index) {
 
 uint32_t MemCounter::addr_to_offset(uint32_t addr, uint32_t chunk_id) {
     switch((uint8_t)((addr >> 24) & 0xFC)) {
+        // ROM: 128 MB 
         case (ROM_ADDR_MASK + 0x00): return ((addr - (ROM_ADDR + 0x00000000)) >> (ADDR_LOW_BITS));
         case (ROM_ADDR_MASK + 0x04): return ((addr - (ROM_ADDR + 0x04000000)) >> (ADDR_LOW_BITS)) + ADDR_PAGE_SIZE;
+        // INPUT: 128 MB 
         case (INPUT_ADDR_MASK + 0x00): return ((addr - (INPUT_ADDR + 0x00000000)) >> (ADDR_LOW_BITS)) + 2 * ADDR_PAGE_SIZE;
         case (INPUT_ADDR_MASK + 0x04): return ((addr - (INPUT_ADDR + 0x04000000)) >> (ADDR_LOW_BITS)) + 3 * ADDR_PAGE_SIZE;
+        // RAM: 512 MB 
         case (RAM_ADDR_MASK + 0x00): return ((addr - (RAM_ADDR + 0x00000000)) >> (ADDR_LOW_BITS)) + 4 * ADDR_PAGE_SIZE;
         case (RAM_ADDR_MASK + 0x04): return ((addr - (RAM_ADDR + 0x04000000)) >> (ADDR_LOW_BITS)) + 5 * ADDR_PAGE_SIZE;
         case (RAM_ADDR_MASK + 0x08): return ((addr - (RAM_ADDR + 0x08000000)) >> (ADDR_LOW_BITS)) + 6 * ADDR_PAGE_SIZE;
@@ -230,14 +233,6 @@ uint32_t MemCounter::addr_to_offset(uint32_t addr, uint32_t chunk_id) {
         case (RAM_ADDR_MASK + 0x14): return ((addr - (RAM_ADDR + 0x14000000)) >> (ADDR_LOW_BITS)) + 9 * ADDR_PAGE_SIZE;
         case (RAM_ADDR_MASK + 0x18): return ((addr - (RAM_ADDR + 0x18000000)) >> (ADDR_LOW_BITS)) + 10 * ADDR_PAGE_SIZE;
         case (RAM_ADDR_MASK + 0x1C): return ((addr - (RAM_ADDR + 0x1C000000)) >> (ADDR_LOW_BITS)) + 11 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x20): return ((addr - (RAM_ADDR + 0x20000000)) >> (ADDR_LOW_BITS)) + 12 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x24): return ((addr - (RAM_ADDR + 0x24000000)) >> (ADDR_LOW_BITS)) + 13 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x28): return ((addr - (RAM_ADDR + 0x28000000)) >> (ADDR_LOW_BITS)) + 14 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x2C): return ((addr - (RAM_ADDR + 0x2C000000)) >> (ADDR_LOW_BITS)) + 15 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x30): return ((addr - (RAM_ADDR + 0x30000000)) >> (ADDR_LOW_BITS)) + 16 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x34): return ((addr - (RAM_ADDR + 0x34000000)) >> (ADDR_LOW_BITS)) + 17 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x38): return ((addr - (RAM_ADDR + 0x38000000)) >> (ADDR_LOW_BITS)) + 18 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x3C): return ((addr - (RAM_ADDR + 0x3C000000)) >> (ADDR_LOW_BITS)) + 19 * ADDR_PAGE_SIZE;
     }
     std::ostringstream msg;
     msg << "ERROR: addr_to_offset: 0x" << std::hex << addr << " (" << std::dec << chunk_id << ")";
@@ -246,10 +241,13 @@ uint32_t MemCounter::addr_to_offset(uint32_t addr, uint32_t chunk_id) {
 
 uint32_t MemCounter::addr_to_page(uint32_t addr, uint32_t chunk_id) {
     switch((uint8_t)((addr >> 24) & 0xFC)) {
+        // ROM: 128 MB 
         case (ROM_ADDR_MASK + 0x00): return 0;
         case (ROM_ADDR_MASK + 0x04): return 1;
+        // INPUT: 128 MB 
         case (INPUT_ADDR_MASK + 0x00): return 2;
         case (INPUT_ADDR_MASK + 0x04): return 3;
+        // RAM: 512 MB 
         case (RAM_ADDR_MASK + 0x00): return 4;
         case (RAM_ADDR_MASK + 0x04): return 5;
         case (RAM_ADDR_MASK + 0x08): return 6;
@@ -258,14 +256,6 @@ uint32_t MemCounter::addr_to_page(uint32_t addr, uint32_t chunk_id) {
         case (RAM_ADDR_MASK + 0x14): return 9;
         case (RAM_ADDR_MASK + 0x18): return 10;
         case (RAM_ADDR_MASK + 0x1C): return 11;
-        case (RAM_ADDR_MASK + 0x20): return 12;
-        case (RAM_ADDR_MASK + 0x24): return 13;
-        case (RAM_ADDR_MASK + 0x28): return 14;
-        case (RAM_ADDR_MASK + 0x2C): return 15;
-        case (RAM_ADDR_MASK + 0x30): return 16;
-        case (RAM_ADDR_MASK + 0x34): return 17;
-        case (RAM_ADDR_MASK + 0x38): return 18;
-        case (RAM_ADDR_MASK + 0x3C): return 19;
     }
     std::ostringstream msg;
     msg << "ERROR: addr_to_page: 0x" << std::hex << addr << " (" << std::dec << chunk_id << ")";
@@ -274,10 +264,13 @@ uint32_t MemCounter::addr_to_page(uint32_t addr, uint32_t chunk_id) {
 
 uint32_t MemCounter::page_to_addr(uint8_t page) {
     switch(page) {
+        // ROM: 128 MB
         case 0: return (ROM_ADDR + 0x00000000);
         case 1: return (ROM_ADDR + 0x04000000);
+        // INPUT: 128 MB
         case 2: return (INPUT_ADDR + 0x00000000);
         case 3: return (INPUT_ADDR + 0x04000000);
+        // RAM: 512 MB 
         case 4: return (RAM_ADDR + 0x00000000);
         case 5: return (RAM_ADDR + 0x04000000);
         case 6: return (RAM_ADDR + 0x08000000);
@@ -286,18 +279,10 @@ uint32_t MemCounter::page_to_addr(uint8_t page) {
         case 9: return (RAM_ADDR + 0x14000000);
         case 10: return (RAM_ADDR + 0x18000000);
         case 11: return (RAM_ADDR + 0x1C000000);
-        case 12: return (RAM_ADDR + 0x20000000);
-        case 13: return (RAM_ADDR + 0x24000000);
-        case 14: return (RAM_ADDR + 0x28000000);
-        case 15: return (RAM_ADDR + 0x2C000000);
-        case 16: return (RAM_ADDR + 0x30000000);
-        case 17: return (RAM_ADDR + 0x34000000);
-        case 18: return (RAM_ADDR + 0x38000000);
-        case 19: return (RAM_ADDR + 0x3C000000);
         case 0xFF: return 0xFFFFFFFF;
     }
     std::ostringstream msg;
-    msg << "ERROR: MemCounter page_to_address page:" << page;
+    msg << "ERROR: MemCounter page_to_address page: " << (int)page;
     throw std::runtime_error(msg.str());
 }
 

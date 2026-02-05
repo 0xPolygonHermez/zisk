@@ -1542,11 +1542,22 @@ impl<'a> Emu<'a> {
                     );
                 }
                 println!("Loaded {} function symbols", count);
+                count = 0;
+                for (id, tag) in elf.profile_tags() {
+                    count += 1;
+                    self.ctx.stats.add_profile_tag(*id, tag);
+                }
+                println!("Loaded {} profile tags", count);
                 self.ctx.stats.set_top_rois(options.top_roi);
                 self.ctx.stats.set_roi_callers(options.roi_callers);
                 self.ctx.stats.set_top_roi_detail(options.top_roi_detail);
+                self.ctx.stats.set_main_name(options.main_name.clone());
             }
         }
+        if options.coverage && !options.stats {
+            panic!("Coverage feature needs at least stats option");
+        }
+        self.ctx.stats.set_coverage(options.coverage);
 
         self.ctx.stats.set_legacy_stats(options.legacy_stats);
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
@@ -1687,7 +1698,7 @@ impl<'a> Emu<'a> {
         // Print stats report
         if self.ctx.do_stats {
             self.ctx.stats.update_costs();
-            let report = self.ctx.stats.report();
+            let report = self.ctx.stats.report(self.rom);
             println!("{report}");
             if let Some(store_op_output_file) = &options.store_op_output {
                 self.ctx.stats.flush_op_data_to_file(store_op_output_file).unwrap();
@@ -1842,11 +1853,7 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.a,
                 self.ctx.inst_ctx.b,
                 pc,
-                &[
-                    self.ctx.inst_ctx.regs[10], // a0
-                    self.ctx.inst_ctx.regs[11], // a1
-                    self.ctx.inst_ctx.regs[12], // a2
-                ],
+                &self.ctx.inst_ctx.regs,
             );
         }
 

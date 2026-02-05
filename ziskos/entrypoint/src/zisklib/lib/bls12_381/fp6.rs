@@ -90,7 +90,11 @@ pub fn mul_fp6_bls12_381(a: &[u64; 36], b: &[u64; 36]) -> [u64; 36] {
     c3 = add_fp2_bls12_381(&c3, &mul_fp2_bls12_381(a2, b2));
     c3 = add_fp2_bls12_381(&c3, &mul_fp2_bls12_381(a3, b1));
 
-    [c1, c2, c3].concat().try_into().unwrap()
+    let mut result = [0u64; 36];
+    result[0..12].copy_from_slice(&c1);
+    result[12..24].copy_from_slice(&c2);
+    result[24..36].copy_from_slice(&c3);
+    result
 }
 /// Multiplication of a = a1 + a2·v + a3·v² and b = b2·v in Fp6
 //
@@ -115,7 +119,11 @@ pub fn sparse_mula_fp6_bls12_381(a: &[u64; 36], b2: &[u64; 12]) -> [u64; 36] {
     // c3 = a2·b2
     let c3 = mul_fp2_bls12_381(a2, b2);
 
-    [c1, c2, c3].concat().try_into().unwrap()
+    let mut result = [0u64; 36];
+    result[0..12].copy_from_slice(&c1);
+    result[12..24].copy_from_slice(&c2);
+    result[24..36].copy_from_slice(&c3);
+    result
 }
 
 /// Multiplication of a = a1 + a2·v + a3·v² and b = b2·v + b3·v² in Fp6
@@ -147,7 +155,11 @@ pub fn sparse_mulb_fp6_bls12_381(a: &[u64; 36], b: &[u64; 24]) -> [u64; 36] {
     let mut c3 = mul_fp2_bls12_381(a1, b3);
     c3 = add_fp2_bls12_381(&c3, &mul_fp2_bls12_381(a2, b2));
 
-    [c1, c2, c3].concat().try_into().unwrap()
+    let mut result = [0u64; 36];
+    result[0..12].copy_from_slice(&c1);
+    result[12..24].copy_from_slice(&c2);
+    result[24..36].copy_from_slice(&c3);
+    result
 }
 
 /// Multiplication of a = a1 + a2·v + a3·v² and b = b1 + b3·v² in Fp6
@@ -179,7 +191,11 @@ pub fn sparse_mulc_fp6_bls12_381(a: &[u64; 36], b: &[u64; 24]) -> [u64; 36] {
     let mut c3 = mul_fp2_bls12_381(a1, b3);
     c3 = add_fp2_bls12_381(&c3, &mul_fp2_bls12_381(a3, b1));
 
-    [c1, c2, c3].concat().try_into().unwrap()
+    let mut result = [0u64; 36];
+    result[0..12].copy_from_slice(&c1);
+    result[12..24].copy_from_slice(&c2);
+    result[24..36].copy_from_slice(&c3);
+    result
 }
 
 /// Squaring in Fp6
@@ -210,7 +226,11 @@ pub fn square_fp6_bls12_381(a: &[u64; 36]) -> [u64; 36] {
     let mut c3 = square_fp2_bls12_381(a2);
     c3 = add_fp2_bls12_381(&c3, &dbl_fp2_bls12_381(&mul_fp2_bls12_381(a1, a3)));
 
-    [c1, c2, c3].concat().try_into().unwrap()
+    let mut result = [0u64; 36];
+    result[0..12].copy_from_slice(&c1);
+    result[12..24].copy_from_slice(&c2);
+    result[24..36].copy_from_slice(&c3);
+    result
 }
 
 /// Inversion in Fp6
@@ -263,5 +283,9 @@ pub fn inv_fp6_bls12_381(a: &[u64; 36]) -> [u64; 36] {
     let c2 = mul_fp2_bls12_381(&c2mid, &last_inv);
     let c3 = mul_fp2_bls12_381(&c3mid, &last_inv);
 
-    [c1, c2, c3].concat().try_into().unwrap()
+    let mut result = [0u64; 36];
+    result[0..12].copy_from_slice(&c1);
+    result[12..24].copy_from_slice(&c2);
+    result[24..36].copy_from_slice(&c3);
+    result
 }

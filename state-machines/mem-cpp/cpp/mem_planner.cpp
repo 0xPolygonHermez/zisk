@@ -100,7 +100,7 @@ void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, 
     uint32_t first_segment_addr = MemCounter::offset_to_addr(offset, thread_index);
     uint32_t last_segment_addr = first_segment_addr;
     #endif
-    for (;page < to_page; ++page, thread_index = 0, get_offset_limits(workers, page, offset, max_offset)) {
+    for (;page <= to_page; ++page, thread_index = 0, get_offset_limits(workers, page, offset, max_offset)) {
         for (;offset <= max_offset; ++offset, thread_index = 0) {
             addr = MemCounter::offset_to_addr(offset, thread_index);
             #ifdef MEM_PLANNER_STATS
@@ -158,7 +158,7 @@ void MemPlanner::generate_locators(const std::vector<MemCounter *> &workers, Mem
     uint32_t count;
     uint32_t offset, max_offset;
     bool inserted_first_locator = false;
-    for (uint32_t page = from_page; page < to_page; ++page) {
+    for (uint32_t page = from_page; page <= to_page; ++page) {
         get_offset_limits(workers, page, offset, max_offset);
         for (;offset <= max_offset; ++offset) {
             for (uint32_t thread_index = 0; thread_index < MAX_THREADS; ++thread_index) {

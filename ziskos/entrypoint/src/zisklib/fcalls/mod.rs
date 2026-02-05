@@ -15,7 +15,13 @@ pub const FCALL_BLS12_381_FP2_INV_ID: u16 = 12;
 pub const FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID: u16 = 13;
 pub const FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID: u16 = 14;
 pub const FCALL_MSB_POS_384_ID: u16 = 15;
+pub const FCALL_BIG_INT256_DIV_ID: u16 = 16;
+pub const FCALL_BIG_INT_DIV_ID: u16 = 17;
+pub const FCALL_BIN_DECOMP_ID: u16 = 18;
 
+mod big_int256_div;
+mod big_int_div;
+mod bin_decomp;
 mod bls12_381_fp2_inv;
 mod bls12_381_fp_inv;
 mod bls12_381_fp_sqrt;
@@ -29,6 +35,9 @@ mod secp256k1_fn_inv;
 mod secp256k1_fp_inv;
 mod secp256k1_fp_sqrt;
 
+pub use big_int256_div::*;
+pub use big_int_div::*;
+pub use bin_decomp::*;
 pub use bls12_381_fp2_inv::*;
 pub use bls12_381_fp_inv::*;
 pub use bls12_381_fp_sqrt::*;

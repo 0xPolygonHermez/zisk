@@ -1,6 +1,6 @@
 //! Finite field Fr operations for BLS12-381
 
-use crate::arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams};
+use crate::syscalls::{syscall_arith256_mod, SyscallArith256ModParams};
 
 use super::constants::{R, R_MINUS_ONE};
 
@@ -77,82 +77,115 @@ pub fn square_fr_bls12_381(x: &[u64; 4]) -> [u64; 4] {
 // ========== Pointer-based API ==========
 
 /// # Safety
-///
-/// Addition in Fr
-#[inline]
-pub unsafe fn add_fr_bls12_381_ptr(a: *mut u64, b: *const u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 4);
-    let b_in = core::slice::from_raw_parts(b, 4);
+/// - `a` must point to a valid `[u64; 4]` (32 bytes), used as both input and output.
+/// - `b` must point to a valid `[u64; 4]` (32 bytes).
+#[no_mangle]
+pub unsafe extern "C" fn add_fr_bls12_381_c(a: *mut u64, b: *const u64) {
+    let a_ref = &*(a as *const [u64; 4]);
+    let b_ref = &*(b as *const [u64; 4]);
 
-    let result = add_fr_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+    let mut params = SyscallArith256ModParams {
+        a: a_ref,
+        b: &[1, 0, 0, 0],
+        c: b_ref,
+        module: &R,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 4);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 4);
 }
 
 /// # Safety
-///
-/// Doubling in Fr
-#[inline]
-pub unsafe fn dbl_fr_bls12_381_ptr(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 4);
+/// - `a` must point to a valid `[u64; 4]` (32 bytes), used as both input and output.
+#[no_mangle]
+pub unsafe extern "C" fn dbl_fr_bls12_381_c(a: *mut u64) {
+    let a_ref = &*(a as *const [u64; 4]);
 
-    let result = dbl_fr_bls12_381(a_in.try_into().unwrap());
+    let mut params = SyscallArith256ModParams {
+        a: a_ref,
+        b: &[2, 0, 0, 0],
+        c: &[0, 0, 0, 0],
+        module: &R,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 4);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 4);
 }
 
 /// # Safety
-///
-/// Subtraction in Fr
-#[inline]
-pub unsafe fn sub_fr_bls12_381_ptr(a: *mut u64, b: *const u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 4);
-    let b_in = core::slice::from_raw_parts(b, 4);
+/// - `a` must point to a valid `[u64; 4]` (32 bytes), used as both input and output.
+/// - `b` must point to a valid `[u64; 4]` (32 bytes).
+#[no_mangle]
+pub unsafe extern "C" fn sub_fr_bls12_381_c(a: *mut u64, b: *const u64) {
+    let a_ref = &*(a as *const [u64; 4]);
+    let b_ref = &*(b as *const [u64; 4]);
 
-    let result = sub_fr_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+    let mut params = SyscallArith256ModParams {
+        a: b_ref,
+        b: &R_MINUS_ONE,
+        c: a_ref,
+        module: &R,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 4);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 4);
 }
 
 /// # Safety
-///
-/// Negation in Fr
-#[inline]
-pub unsafe fn neg_fr_bls12_381_ptr(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 4);
+/// - `a` must point to a valid `[u64; 4]` (32 bytes), used as both input and output.
+#[no_mangle]
+pub unsafe extern "C" fn neg_fr_bls12_381_c(a: *mut u64) {
+    let a_ref = &*(a as *const [u64; 4]);
 
-    let result = neg_fr_bls12_381(a_in.try_into().unwrap());
+    let mut params = SyscallArith256ModParams {
+        a: a_ref,
+        b: &R_MINUS_ONE,
+        c: &[0, 0, 0, 0],
+        module: &R,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 4);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 4);
 }
 
 /// # Safety
-///
-/// Multiplication in Fr
-#[inline]
-pub unsafe fn mul_fr_bls12_381_ptr(a: *mut u64, b: *const u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 4);
-    let b_in = core::slice::from_raw_parts(b, 4);
+/// - `a` must point to a valid `[u64; 4]` (32 bytes), used as both input and output.
+/// - `b` must point to a valid `[u64; 4]` (32 bytes).
+#[no_mangle]
+pub unsafe extern "C" fn mul_fr_bls12_381_c(a: *mut u64, b: *const u64) {
+    let a_ref = &*(a as *const [u64; 4]);
+    let b_ref = &*(b as *const [u64; 4]);
 
-    let result = mul_fr_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+    let mut params = SyscallArith256ModParams {
+        a: a_ref,
+        b: b_ref,
+        c: &[0, 0, 0, 0],
+        module: &R,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 4);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 4);
 }
 
 /// # Safety
-///
-/// Squaring in Fr
-#[inline]
-pub unsafe fn square_fr_bls12_381_ptr(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 4);
+/// - `a` must point to a valid `[u64; 4]` (32 bytes), used as both input and output.
+#[no_mangle]
+pub unsafe extern "C" fn square_fr_bls12_381_c(a: *mut u64) {
+    let a_ref = &*(a as *const [u64; 4]);
 
-    let result = square_fr_bls12_381(a_in.try_into().unwrap());
+    let mut params = SyscallArith256ModParams {
+        a: a_ref,
+        b: a_ref,
+        c: &[0, 0, 0, 0],
+        module: &R,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 4);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 4);
 }

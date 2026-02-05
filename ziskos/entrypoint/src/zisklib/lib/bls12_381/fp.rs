@@ -1,9 +1,8 @@
 //! Finite field Fp operations for BLS12-381
 
 use crate::{
-    arith384_mod::{syscall_arith384_mod, SyscallArith384ModParams},
-    fcall_bls12_381_fp_inv, fcall_bls12_381_fp_sqrt,
-    zisklib::lib::utils::eq,
+    syscalls::{syscall_arith384_mod, SyscallArith384ModParams},
+    zisklib::{eq, fcall_bls12_381_fp_inv, fcall_bls12_381_fp_sqrt},
 };
 
 use super::constants::{NQR, P, P_MINUS_ONE};
@@ -159,109 +158,135 @@ pub fn inv_fp_bls12_381(x: &[u64; 6]) -> [u64; 6] {
 // ========== Pointer-based API ==========
 
 /// # Safety
-///
-/// Addition in Fp
-#[inline]
-pub unsafe fn add_fp_bls12_381_ptr(a: *mut u64, b: *const u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 6);
-    let b_in = core::slice::from_raw_parts(b, 6);
+/// - `a` must point to a valid `[u64; 6]` (48 bytes).
+/// - `b` must point to a valid `[u64; 6]` (48 bytes).
+#[no_mangle]
+pub unsafe extern "C" fn add_fp_bls12_381_c(a: *mut u64, b: *const u64) {
+    let a_ref = &*(a as *const [u64; 6]);
+    let b_ref = &*(b as *const [u64; 6]);
 
-    let result = add_fp_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+    let mut params = SyscallArith384ModParams {
+        a: a_ref,
+        b: &[1, 0, 0, 0, 0, 0],
+        c: b_ref,
+        module: &P,
+        d: &mut [0, 0, 0, 0, 0, 0],
+    };
+    syscall_arith384_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 6);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 6);
 }
 
 /// # Safety
-///
-/// Doubling in Fp
-#[inline]
-pub unsafe fn dbl_fp_bls12_381_ptr(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 6);
+/// - `a` must point to a valid `[u64; 6]` (48 bytes), used as both input and output.
+#[no_mangle]
+pub unsafe extern "C" fn dbl_fp_bls12_381_c(a: *mut u64) {
+    let a_ref = &*(a as *const [u64; 6]);
 
-    let result = dbl_fp_bls12_381(a_in.try_into().unwrap());
+    let mut params = SyscallArith384ModParams {
+        a: a_ref,
+        b: &[2, 0, 0, 0, 0, 0],
+        c: &[0, 0, 0, 0, 0, 0],
+        module: &P,
+        d: &mut [0, 0, 0, 0, 0, 0],
+    };
+    syscall_arith384_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 6);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 6);
 }
 
 /// # Safety
-///
-/// Subtraction in Fp
-#[inline]
-pub unsafe fn sub_fp_bls12_381_ptr(a: *mut u64, b: *const u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 6);
-    let b_in = core::slice::from_raw_parts(b, 6);
+/// - `a` must point to a valid `[u64; 6]` (48 bytes), used as both input and output.
+/// - `b` must point to a valid `[u64; 6]` (48 bytes).
+#[no_mangle]
+pub unsafe extern "C" fn sub_fp_bls12_381_c(a: *mut u64, b: *const u64) {
+    let a_ref = &*(a as *const [u64; 6]);
+    let b_ref = &*(b as *const [u64; 6]);
 
-    let result = sub_fp_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+    let mut params = SyscallArith384ModParams {
+        a: b_ref,
+        b: &P_MINUS_ONE,
+        c: a_ref,
+        module: &P,
+        d: &mut [0, 0, 0, 0, 0, 0],
+    };
+    syscall_arith384_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 6);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 6);
 }
 
 /// # Safety
-///
-/// Negation in Fp
-#[inline]
-pub unsafe fn neg_fp_bls12_381_ptr(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 6);
+/// - `a` must point to a valid `[u64; 6]` (48 bytes), used as both input and output.
+#[no_mangle]
+pub unsafe extern "C" fn neg_fp_bls12_381_c(a: *mut u64) {
+    let a_ref = &*(a as *const [u64; 6]);
 
-    let result = neg_fp_bls12_381(a_in.try_into().unwrap());
+    let mut params = SyscallArith384ModParams {
+        a: a_ref,
+        b: &P_MINUS_ONE,
+        c: &[0, 0, 0, 0, 0, 0],
+        module: &P,
+        d: &mut [0, 0, 0, 0, 0, 0],
+    };
+    syscall_arith384_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 6);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 6);
 }
 
 /// # Safety
-///
-/// Multiplication in Fp
-#[inline]
-pub unsafe fn mul_fp_bls12_381_ptr(a: *mut u64, b: *const u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 6);
-    let b_in = core::slice::from_raw_parts(b, 6);
+/// - `a` must point to a valid `[u64; 6]` (48 bytes), used as both input and output.
+/// - `b` must point to a valid `[u64; 6]` (48 bytes).
+#[no_mangle]
+pub unsafe extern "C" fn mul_fp_bls12_381_c(a: *mut u64, b: *const u64) {
+    let a_ref = &*(a as *const [u64; 6]);
+    let b_ref = &*(b as *const [u64; 6]);
 
-    let result = mul_fp_bls12_381(a_in.try_into().unwrap(), b_in.try_into().unwrap());
+    let mut params = SyscallArith384ModParams {
+        a: a_ref,
+        b: b_ref,
+        c: &[0, 0, 0, 0, 0, 0],
+        module: &P,
+        d: &mut [0, 0, 0, 0, 0, 0],
+    };
+    syscall_arith384_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 6);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 6);
 }
 
 /// # Safety
-///
-/// Squaring in Fp
-#[inline]
-pub unsafe fn square_fp_bls12_381_ptr(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 6);
+/// - `a` must point to a valid `[u64; 6]` (48 bytes), used as both input and output.
+#[no_mangle]
+pub unsafe extern "C" fn square_fp_bls12_381_c(a: *mut u64) {
+    let a_ref = &*(a as *const [u64; 6]);
 
-    let result = square_fp_bls12_381(a_in.try_into().unwrap());
+    let mut params = SyscallArith384ModParams {
+        a: a_ref,
+        b: a_ref,
+        c: &[0, 0, 0, 0, 0, 0],
+        module: &P,
+        d: &mut [0, 0, 0, 0, 0, 0],
+    };
+    syscall_arith384_mod(&mut params);
 
-    let out = core::slice::from_raw_parts_mut(a, 6);
-    out.copy_from_slice(&result);
+    core::ptr::copy_nonoverlapping(params.d.as_ptr(), a, 6);
 }
 
 /// # Safety
-///
-/// Square root in Fp
-#[inline]
-pub unsafe fn sqrt_fp_bls12_381_ptr(a: *mut u64, is_qr: *mut u8) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 6);
-
-    let (result, qr) = sqrt_fp_bls12_381(a_in.try_into().unwrap());
-
-    let out = core::slice::from_raw_parts_mut(a, 6);
-    out.copy_from_slice(&result);
-    *is_qr = if qr { 1 } else { 0 };
+/// - `a` must point to a valid `[u64; 6]` (48 bytes), used as both input and output.
+/// - `is_qr` must point to a valid `u8`.
+#[no_mangle]
+pub unsafe extern "C" fn sqrt_fp_bls12_381_c(a: *mut u64) -> bool {
+    let a_ref = &*(a as *const [u64; 6]);
+    let (result, qr) = sqrt_fp_bls12_381(a_ref);
+    *(a as *mut [u64; 6]) = result;
+    qr
 }
 
 /// # Safety
-///
-/// Inversion of a non-zero element in Fp
-#[inline]
-pub unsafe fn inv_fp_bls12_381_ptr(a: *mut u64) {
-    let a_in = core::slice::from_raw_parts(a as *const u64, 6);
-
-    let result = inv_fp_bls12_381(a_in.try_into().unwrap());
-
-    let out = core::slice::from_raw_parts_mut(a, 6);
-    out.copy_from_slice(&result);
+/// - `a` must point to a valid `[u64; 6]` (48 bytes), used as both input and output.
+#[no_mangle]
+pub unsafe extern "C" fn inv_fp_bls12_381_c(a: *mut u64) {
+    let a_ref = &*(a as *const [u64; 6]);
+    let result = inv_fp_bls12_381(a_ref);
+    *(a as *mut [u64; 6]) = result;
 }

@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 
-use super::utils::{from_limbs_le, to_limbs_le};
+use super::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
 
 lazy_static! {
     pub static ref P: BigUint = BigUint::parse_bytes(
@@ -37,7 +37,7 @@ pub fn fcall_bls12_381_fp_sqrt(params: &[u64], results: &mut [u64]) -> i64 {
 }
 
 fn bls12_381_fp_sqrt(a: &[u64; 6], results: &mut [u64]) {
-    let a_big = from_limbs_le(a);
+    let a_big = biguint_from_u64_digits(a);
 
     // Attempt to compute the square root of a
     let sqrt = a_big.modpow(&P_DIV_4, &P);
@@ -54,11 +54,11 @@ fn bls12_381_fp_sqrt(a: &[u64; 6], results: &mut [u64]) {
         // Compute the square root of a * NQR
         let sqrt_nqr = a_nqr.modpow(&P_DIV_4, &P);
 
-        results[1..7].copy_from_slice(&to_limbs_le::<6>(&sqrt_nqr));
+        results[1..7].copy_from_slice(&n_u64_digits_from_biguint::<6>(&sqrt_nqr));
         return;
     }
 
-    results[1..7].copy_from_slice(&to_limbs_le::<6>(&sqrt));
+    results[1..7].copy_from_slice(&n_u64_digits_from_biguint::<6>(&sqrt));
 }
 
 #[cfg(test)]
@@ -66,10 +66,10 @@ mod tests {
     use super::*;
 
     fn bls12_381_fp_mul(a: &[u64; 6], b: &[u64; 6]) -> [u64; 6] {
-        let a_big = from_limbs_le(a);
-        let b_big = from_limbs_le(b);
+        let a_big = biguint_from_u64_digits(a);
+        let b_big = biguint_from_u64_digits(b);
         let ab_big = (a_big * b_big) % &*P;
-        to_limbs_le::<6>(&ab_big)
+        n_u64_digits_from_biguint::<6>(&ab_big)
     }
 
     #[test]
@@ -139,7 +139,7 @@ mod tests {
         let sqrt = &results[1..7].try_into().unwrap();
         assert_eq!(has_sqrt, 0);
         assert_eq!(sqrt, &expected_sqrt);
-        let nqr = to_limbs_le(&NQR);
+        let nqr = n_u64_digits_from_biguint::<6>(&NQR);
         assert_eq!(bls12_381_fp_mul(sqrt, sqrt), bls12_381_fp_mul(&x, &nqr));
     }
 }

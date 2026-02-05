@@ -18,7 +18,7 @@ use sm_mem::{
     MemAlignWriteByteInstance, MemModuleInstance,
 };
 use sm_rom::{RomInstance, RomSM};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use zisk_common::{BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan};
 use zisk_pil::ADD_256_AIR_IDS;
 use zisk_pil::{
@@ -114,7 +114,7 @@ impl<F: PrimeField64> StateMachines<F> {
 
 pub struct StaticSMBundle<F: PrimeField64> {
     process_only_operation_bus: bool,
-    sm: HashMap<usize, SMType<F>>,
+    sm: BTreeMap<usize, SMType<F>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
@@ -122,7 +122,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
     pub fn new(process_only_operation_bus: bool, sm: Vec<(SMAirType, StateMachines<F>)>) -> Self {
         Self {
             process_only_operation_bus,
-            sm: HashMap::from_iter(
+            sm: BTreeMap::from_iter(
                 sm.into_iter().map(|(air_ids, sm)| (sm.type_id(), (air_ids, sm))),
             ),
         }
@@ -135,10 +135,10 @@ impl<F: PrimeField64> StaticSMBundle<F> {
     pub fn plan_sec(
         &self,
         vec_counters: &mut NestedDeviceMetricsList,
-    ) -> HashMap<usize, Vec<Plan>> {
-        let mut plans = HashMap::new();
+    ) -> BTreeMap<usize, Vec<Plan>> {
+        let mut plans = BTreeMap::new();
 
-        // Iterate over vec_counters hashmap
+        // Iterate over vec_counters BTreeMap
         for (id, (_, sm)) in self.sm.iter() {
             if let Some(counters) = vec_counters.remove(id) {
                 plans.insert(*id, sm.build_planner(self.process_only_operation_bus).plan(counters));
@@ -148,7 +148,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         plans
     }
 
-    pub fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &HashMap<usize, Vec<Plan>>) {
+    pub fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &BTreeMap<usize, Vec<Plan>>) {
         for (id, (_, sm)) in self.sm.iter() {
             if let Some(plans) = plannings.get(id) {
                 sm.configure_instances(pctx, plans);
@@ -267,7 +267,9 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                 for global_idx in global_idxs {
                     let secn_instance = secn_instances.get(global_idx).unwrap();
 
-                    let (_, air_id) = pctx.dctx_get_instance_info(*global_idx);
+                    let (_, air_id) = pctx
+                        .dctx_get_instance_info(*global_idx)
+                        .expect("Failed to get instance info");
                     match air_id {
                         air_id if air_id == BINARY_AIR_IDS[0] => {
                             let binary_basic_instance = secn_instance

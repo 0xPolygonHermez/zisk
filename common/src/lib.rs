@@ -3,6 +3,7 @@ mod component;
 mod emu_minimal_trace;
 mod executor_stats;
 mod instance_context;
+pub mod io;
 mod mpi_context;
 mod planner_helpers;
 mod proof;

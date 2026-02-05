@@ -1,6 +1,6 @@
 //! Finite field Fp12 operations for BLS12-381
 
-use crate::{fcall_msb_pos_384, zisklib::lib::utils::eq};
+use crate::zisklib::{eq, fcall_msb_pos_384};
 
 use super::{
     constants::{
@@ -44,7 +44,10 @@ pub fn mul_fp12_bls12_381(a: &[u64; 72], b: &[u64; 72]) -> [u64; 72] {
     c2 = sub_fp6_bls12_381(&c2, &a1_b1);
     c2 = sub_fp6_bls12_381(&c2, &a2_b2);
 
-    [c1, c2].concat().try_into().unwrap()
+    let mut result = [0u64; 72];
+    result[0..36].copy_from_slice(&c1);
+    result[36..72].copy_from_slice(&c2);
+    result
 }
 
 /// Multiplication of a = a1 + a2·w and b = 1 + (b22·v + b23·v²)·w in Fp12
@@ -57,19 +60,28 @@ pub fn mul_fp12_bls12_381(a: &[u64; 72], b: &[u64; 72]) -> [u64; 72] {
 pub fn sparse_mul_fp12_bls12_381(a: &[u64; 72], b: &[u64; 24]) -> [u64; 72] {
     let a1 = &a[0..36].try_into().unwrap();
     let a2 = &a[36..72].try_into().unwrap();
-    let b22 = &b[0..12].try_into().unwrap();
+    let b22: &[u64; 12] = &b[0..12].try_into().unwrap();
     let b23 = &b[12..24].try_into().unwrap();
 
     // c1 = a1 + a2·(b23·(1+u) + b22·v²)
     let b23u = mul_fp2_bls12_381(&EXT_U, b23);
-    let mut c1 = sparse_mulc_fp6_bls12_381(a2, &[b23u, *b22].concat().try_into().unwrap());
+    let mut sparse_c1 = [0u64; 24];
+    sparse_c1[0..12].copy_from_slice(&b23u);
+    sparse_c1[12..24].copy_from_slice(b22);
+    let mut c1 = sparse_mulc_fp6_bls12_381(a2, &sparse_c1);
     c1 = add_fp6_bls12_381(&c1, a1);
 
     // c2 = a2 + a1·(b22·v + b23·v²)
-    let mut c2 = sparse_mulb_fp6_bls12_381(a1, &[*b22, *b23].concat().try_into().unwrap());
+    let mut sparse_c2 = [0u64; 24];
+    sparse_c2[0..12].copy_from_slice(b22);
+    sparse_c2[12..24].copy_from_slice(b23);
+    let mut c2 = sparse_mulb_fp6_bls12_381(a1, &sparse_c2);
     c2 = add_fp6_bls12_381(&c2, a2);
 
-    [c1, c2].concat().try_into().unwrap()
+    let mut result = [0u64; 72];
+    result[0..36].copy_from_slice(&c1);
+    result[36..72].copy_from_slice(&c2);
+    result
 }
 
 /// Squaring in Fp12
@@ -98,7 +110,10 @@ pub fn square_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
     c1 = add_fp6_bls12_381(&c1, &a1_a2);
     c1 = add_fp6_bls12_381(&c1, &a1_a2_v);
 
-    [c1, c2].concat().try_into().unwrap()
+    let mut result = [0u64; 72];
+    result[0..36].copy_from_slice(&c1);
+    result[36..72].copy_from_slice(&c2);
+    result
 }
 
 /// Inversion in Fp12
@@ -125,7 +140,10 @@ pub fn inv_fp12_bls12_381(a: &[u64; 72]) -> [u64; 72] {
     let c1 = mul_fp6_bls12_381(a1, &denom);
     let c2 = neg_fp6_bls12_381(&mul_fp6_bls12_381(a2, &denom));
 
-    [c1, c2].concat().try_into().unwrap()
+    let mut result = [0u64; 72];
+    result[0..36].copy_from_slice(&c1);
+    result[36..72].copy_from_slice(&c2);
+    result
 }
 
 /// Conjugation in Fp12

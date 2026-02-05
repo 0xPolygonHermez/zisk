@@ -1,6 +1,6 @@
 //! Miller Loop for the pairings over BN254
 
-use crate::{fcall_bn254_add_line_coeffs, fcall_bn254_dbl_line_coeffs, zisklib::lib::utils::eq};
+use crate::zisklib::{eq, fcall_bn254_add_line_coeffs, fcall_bn254_dbl_line_coeffs};
 
 use super::{
     fp::{inv_fp_bn254, mul_fp_bn254, neg_fp_bn254},
@@ -20,7 +20,7 @@ const LOOP_LENGTH: [i8; 65] = [
     0, 1, 0, 0, 0,
 ];
 
-/// Computes the Miller loop for the BN254 curve
+/// Computes the Miller loop of a non-zero point `p` in G1 and a non-zero point `q` in G2
 pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
     // Before the loop starts, compute xp' = -xp/yp and yp' = 1/yp
     let mut xp_prime: [u64; 4] = p[0..4].try_into().unwrap();
@@ -46,7 +46,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
         f = sparse_mul_fp12_bn254(&f, &l);
 
         // Double r
-        r = line_dbl_twist_bn254(&r, &lambda, &mu);
+        r = dbl_twist_with_hints_bn254(&r, &lambda, &mu);
 
         if bit * bit == 1 {
             let q_prime = if bit == 1 { q } else { &neg_twist_bn254(q) };
@@ -62,7 +62,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
             f = sparse_mul_fp12_bn254(&f, &l);
 
             // Add r and q'
-            r = line_add_twist_bn254(&r, q_prime, &lambda, &mu);
+            r = add_twist_with_hints_bn254(&r, q_prime, &lambda, &mu);
         }
     }
 
@@ -79,7 +79,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
     f = sparse_mul_fp12_bn254(&f, &l);
 
     // Update r by r + utf(q)
-    r = line_add_twist_bn254(&r, &q_frob, &lambda, &mu);
+    r = add_twist_with_hints_bn254(&r, &q_frob, &lambda, &mu);
 
     // f = f · line_{twist(r),twist(-utf(utf(q)))}(p)
     let q_frob2 = neg_twist_bn254(&utf_endomorphism_twist_bn254(&q_frob));
@@ -94,7 +94,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
     f
 }
 
-/// Computes the Miller loop for the BN254 curve for a batch of points
+/// Computes the Miller loop for the BN254 curve for a batch of non-zero points `p_i` in G1 and non-zero points `q_i` in G2
 pub fn miller_loop_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) -> [u64; 48] {
     // Before the loop starts, compute xp' = -xp/yp and yp' = 1/yp for each point p
     let mut xp_primes: Vec<[u64; 4]> = Vec::with_capacity(g1_points.len());
@@ -134,7 +134,7 @@ pub fn miller_loop_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) 
             f = sparse_mul_fp12_bn254(&f, &l);
 
             // Double r
-            *r = line_dbl_twist_bn254(r, &lambda, &mu);
+            *r = dbl_twist_with_hints_bn254(r, &lambda, &mu);
 
             if bit * bit == 1 {
                 let q = &g2_points[i];
@@ -151,7 +151,7 @@ pub fn miller_loop_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) 
                 f = sparse_mul_fp12_bn254(&f, &l);
 
                 // Add r and q'
-                *r = line_add_twist_bn254(r, q_prime, &lambda, &mu);
+                *r = add_twist_with_hints_bn254(r, q_prime, &lambda, &mu);
             }
         }
     }
@@ -174,7 +174,7 @@ pub fn miller_loop_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) 
         f = sparse_mul_fp12_bn254(&f, &l);
 
         // Update r by r + utf(q)
-        *r = line_add_twist_bn254(r, &q_frob, &lambda, &mu);
+        *r = add_twist_with_hints_bn254(r, &q_frob, &lambda, &mu);
 
         // f = f · line_{twist(r),twist(-utf(utf(q)))}(p)
         let q_frob2 = neg_twist_bn254(&utf_endomorphism_twist_bn254(&q_frob));
@@ -200,6 +200,7 @@ pub fn miller_loop_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) 
 // In fact, one can use the coefficients of the line to compute the
 // evaluation of the line at p and compute the addition q1 + q2
 
+/// Checks if the line defined by (𝜆,𝜇) passes through non-zero points `q1,q2` in G2
 #[inline]
 fn is_line_twist_bn254(q1: &[u64; 16], q2: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
     // Check if the line passes through q1
@@ -210,6 +211,7 @@ fn is_line_twist_bn254(q1: &[u64; 16], q2: &[u64; 16], lambda: &[u64; 8], mu: &[
     check_q1 && check_q2
 }
 
+/// Checks if the line defined by (𝜆,𝜇) is tangent to the curve at non-zero point `q` in G2
 #[inline]
 fn is_tangent_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
     // Check if the line is tangent to the curve at q
@@ -229,6 +231,7 @@ fn is_tangent_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bo
     check_q && eq(&lhs, &rhs)
 }
 
+/// Check if the line defined by (𝜆,𝜇) passes through non-zero point `q` in G2
 #[inline]
 fn line_check_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
     let x: &[u64; 8] = q[0..8].try_into().unwrap();
@@ -258,8 +261,9 @@ fn line_eval_twist_bn254(
     result
 }
 
+/// Addition of two non-zero points `q1,q2` in G2 with hinted line coefficients (𝜆,𝜇)
 #[inline]
-fn line_add_twist_bn254(
+fn add_twist_with_hints_bn254(
     q1: &[u64; 16],
     q2: &[u64; 16],
     lambda: &[u64; 8],
@@ -284,8 +288,9 @@ fn line_add_twist_bn254(
     ]
 }
 
+/// Doubling of a non-zero point `q` in G2 with hinted line coefficients (𝜆,𝜇)
 #[inline]
-fn line_dbl_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> [u64; 16] {
+fn dbl_twist_with_hints_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> [u64; 16] {
     let x: &[u64; 8] = q[0..8].try_into().unwrap();
 
     // Compute x3 = λ² - 2x

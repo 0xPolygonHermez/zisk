@@ -15,7 +15,7 @@ cfg_if::cfg_if! {
         use lazy_static::lazy_static;
         use num_bigint::BigUint;
 
-        use super::utils::{from_limbs_le, to_limbs_le};
+        use super::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
 
         lazy_static! {
             pub static ref P: BigUint = BigUint::parse_bytes(
@@ -39,10 +39,10 @@ cfg_if::cfg_if! {
         }
 
         fn secp256k1_fp_inv(a: &[u64; 4]) -> [u64; 4] {
-            let a_big = from_limbs_le(a);
+            let a_big = biguint_from_u64_digits(a);
             let inv = a_big.modinv(&P);
             match inv {
-                Some(inverse) => to_limbs_le(&inverse),
+                Some(inverse) => n_u64_digits_from_biguint(&inverse),
                 None => panic!("Inverse does not exist"),
             }
         }

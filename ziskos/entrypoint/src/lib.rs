@@ -1,16 +1,18 @@
 #![allow(unexpected_cfgs)]
+#![allow(unused_imports)]
+
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use core::arch::asm;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod fcall;
+mod profile;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub use fcall::*;
+pub use profile::*;
 
 pub mod zisklib;
-pub use zisklib::*;
 
-mod syscalls;
-pub use syscalls::*;
+pub mod syscalls;
 
 pub mod ziskos_definitions;
 

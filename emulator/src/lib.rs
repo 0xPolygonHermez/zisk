@@ -26,6 +26,9 @@ mod emulator_errors;
 pub mod mem_operations_stats;
 mod regions_of_interest;
 pub mod stats;
+mod stats_cost_mark;
+mod stats_costs;
+pub mod stats_coverage_report;
 pub mod stats_report;
 
 pub use elf_symbol_reader::*;
@@ -42,4 +45,7 @@ pub use emulator_errors::*;
 pub use mem_operations_stats::*;
 pub use regions_of_interest::*;
 pub use stats::*;
+pub use stats_cost_mark::*;
+pub use stats_costs::*;
+pub use stats_coverage_report::*;
 pub use stats_report::*;

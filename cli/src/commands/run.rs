@@ -1,9 +1,9 @@
-use crate::{ZISK_TARGET, ZISK_VERSION_MESSAGE};
 use anyhow::{anyhow, Context, Result};
 use std::{
     env,
     process::{Command, Stdio},
 };
+use zisk_build::{ZISK_TARGET, ZISK_VERSION_MESSAGE};
 
 use std::{fs::File, io::Write, path::Path};
 

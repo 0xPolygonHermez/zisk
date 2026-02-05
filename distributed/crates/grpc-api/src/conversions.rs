@@ -8,17 +8,22 @@
 //! The gRPC protobuf compiler generates Rust types that don't always match our internal domain
 //! model. All conversions implement the `From` and/or `Into` traits for idiomatic Rust usage.
 
+use std::path::PathBuf;
+
 use crate::{
-    coordinator_message::Payload, execute_task_request, execute_task_response, job_status_response,
-    jobs_list_response, launch_proof_response, system_status_response, workers_list_response,
-    AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity, ContributionParams,
-    CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck,
-    JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, LaunchProofRequest,
+    contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
+    execute_task_response, job_status_response, jobs_list_response, launch_proof_response,
+    system_status_response, workers_list_response, AggParams, Challenges,
+    ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage,
+    ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, InputMode, JobCancelled,
+    JobStatus, JobStatusResponse, JobsList, JobsListResponse, LaunchProofRequest,
     LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, Shutdown, StatusInfoResponse,
     SystemStatus, SystemStatusResponse, TaskType, WorkerError, WorkerInfo, WorkerReconnectRequest,
     WorkerRegisterRequest, WorkerRegisterResponse, WorkersList, WorkersListResponse,
 };
 use zisk_distributed_common::*;
+
+use anyhow::Result;
 
 impl From<ComputeCapacity> for GrpcComputeCapacity {
     fn from(capacity: ComputeCapacity) -> Self {
@@ -80,7 +85,7 @@ impl From<JobStatusDto> for JobStatus {
     fn from(dto: JobStatusDto) -> Self {
         JobStatus {
             job_id: dto.job_id.into(),
-            block_id: dto.block_id.into(),
+            data_id: dto.data_id.into(),
             phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
             state: dto.state.to_string(),
             assigned_workers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
@@ -94,7 +99,7 @@ impl From<JobStatusDto> for JobStatusResponse {
     fn from(dto: JobStatusDto) -> Self {
         let job_status = JobStatus {
             job_id: dto.job_id.into(),
-            block_id: dto.block_id.into(),
+            data_id: dto.data_id.into(),
             phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
             state: dto.state.to_string(),
             assigned_workers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
@@ -150,23 +155,58 @@ impl From<SystemStatusDto> for SystemStatusResponse {
 
 impl From<LaunchProofRequestDto> for LaunchProofRequest {
     fn from(dto: LaunchProofRequestDto) -> Self {
+        let (input_mode, input_path) = match dto.input_mode {
+            InputModeDto::InputModeNone => (InputMode::None, None),
+            InputModeDto::InputModePath(path) => {
+                (InputMode::Path, Some(path.display().to_string()))
+            }
+            InputModeDto::InputModeData(path) => {
+                (InputMode::Data, Some(path.display().to_string()))
+            }
+        };
+
         LaunchProofRequest {
-            block_id: dto.block_id.into(),
+            data_id: dto.data_id.into(),
             compute_capacity: dto.compute_capacity,
-            input_path: dto.input_path,
+            input_mode: input_mode.into(),
+            input_path,
             simulated_node: dto.simulated_node,
         }
     }
 }
 
-impl From<LaunchProofRequest> for LaunchProofRequestDto {
-    fn from(req: LaunchProofRequest) -> Self {
-        LaunchProofRequestDto {
-            block_id: req.block_id.into(),
+use std::convert::TryFrom;
+
+impl TryFrom<LaunchProofRequest> for LaunchProofRequestDto {
+    type Error = anyhow::Error;
+
+    fn try_from(req: LaunchProofRequest) -> Result<Self> {
+        Ok(LaunchProofRequestDto {
+            data_id: req.data_id.into(),
             compute_capacity: req.compute_capacity,
-            input_path: req.input_path,
+            input_mode: match InputMode::try_from(req.input_mode).unwrap_or(InputMode::None) {
+                InputMode::None => InputModeDto::InputModeNone,
+                InputMode::Path => {
+                    // Use the input_path field when available
+                    if let Some(path) = req.input_path {
+                        InputModeDto::InputModePath(PathBuf::from(path))
+                    } else {
+                        return Err(anyhow::anyhow!(
+                            "Input mode is Path but input_path is missing"
+                        ));
+                    }
+                }
+                InputMode::Data => {
+                    // Use the input_path field when available
+                    if let Some(path) = req.input_path {
+                        InputModeDto::InputModeData(PathBuf::from(path))
+                    } else {
+                        InputModeDto::InputModeNone // Fallback if path is missing
+                    }
+                }
+            },
             simulated_node: req.simulated_node,
-        }
+        })
     }
 }
 
@@ -287,9 +327,15 @@ impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
 
 impl From<ContributionParamsDto> for ContributionParams {
     fn from(dto: ContributionParamsDto) -> Self {
+        let input_source = match dto.input_source {
+            InputSourceDto::InputPath(path) => Some(InputSource::InputPath(path)),
+            InputSourceDto::InputData(data) => Some(InputSource::InputData(data)),
+            InputSourceDto::InputNull => None,
+        };
+
         ContributionParams {
-            block_id: dto.block_id.as_string(),
-            input_path: dto.input_path,
+            data_id: dto.data_id.as_string(),
+            input_source,
             rank_id: dto.rank_id,
             total_workers: dto.total_workers,
             worker_allocation: dto.worker_allocation,
@@ -326,6 +372,7 @@ impl From<AggParamsDto> for AggParams {
             final_proof: dto.final_proof,
             verify_constraints: dto.verify_constraints,
             aggregation: dto.aggregation,
+            rma: dto.rma,
             final_snark: dto.final_snark,
             verify_proofs: dto.verify_proofs,
             save_proofs: dto.save_proofs,

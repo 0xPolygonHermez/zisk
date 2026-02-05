@@ -313,7 +313,7 @@ impl MemPlanner {
                 from_addr: RAM_W_ADDR_INIT,
                 last_addr: RAM_W_ADDR_INIT,
                 rows: MemTrace::<Goldilocks>::NUM_ROWS as u32,
-                consecutive_addr: false,
+                max_addr_distance: 0xFFFF_FFFF,
             },
             counters.clone(),
         )));
@@ -326,7 +326,7 @@ impl MemPlanner {
                 from_addr: ROM_DATA_W_ADDR_INIT,
                 last_addr: ROM_DATA_W_ADDR_INIT - 1,
                 rows: RomDataTrace::<Goldilocks>::NUM_ROWS as u32,
-                consecutive_addr: true,
+                max_addr_distance: 1 << 24,
             },
             counters.clone(),
         )));
@@ -339,7 +339,7 @@ impl MemPlanner {
                 from_addr: INPUT_DATA_W_ADDR_INIT,
                 last_addr: INPUT_DATA_W_ADDR_INIT,
                 rows: InputDataTrace::<Goldilocks>::NUM_ROWS as u32,
-                consecutive_addr: true,
+                max_addr_distance: 1 << 24,
             },
             counters.clone(),
         )));

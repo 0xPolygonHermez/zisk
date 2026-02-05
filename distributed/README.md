@@ -142,6 +142,7 @@ The table below lists the available configuration options for the Coordinator:
 | `service.environment` | - | - | String | development | Service environment (development, staging, production) |
 | `server.host` | - | - | String | 0.0.0.0 | Server host |
 | `server.port` | `--port` | - | Number | 50051 | Server port |
+| `server.proofs_dir` | `--proofs-dir` | - | String | proofs | Directory to save generated proofs |
 | `server.shutdown_timeout_seconds` | - | - | Number | 30 | Graceful shutdown timeout in seconds |
 | `logging.level` | - | RUST_LOG | String | debug | Logging level (error, warn, info, debug, trace) |
 | `logging.format` | - | - | String | pretty | Logging format (pretty, json, compact) |
@@ -177,6 +178,7 @@ environment = "production"
 [server]
 host = "0.0.0.0"
 port = 50051
+proofs_dir = "proofs"
 
 [logging]
 level = "info"
@@ -375,7 +377,7 @@ The table below lists the available configuration options for the Worker:
 | - | `--verify-constraints` | - | Boolean | false | Whether to verify constraints |
 | - | `--unlock-mapped-memory` | - | Boolean | false | Unlock memory map for the ROM file (mutually exclusive with `--emulator`) |
 | - | `-f`, `--final-snark` | - | Boolean | false | Whether to generate the final SNARK |
-| - | `-r`, `--preallocate` | - | Boolean | false | GPU preallocation flag |
+| - | `-z`, `--preallocate` | - | Boolean | false | GPU preallocation flag |
 | - | `-t`, `--max-streams` | | - | Number | - | Maximum number of GPU streams |
 | - | `-n`, `--number-threads-witness` | - | Number | - | Number of threads for witness computation |
 | - | `-x`, `--max-witness-stored` | - | Number | - | Maximum number of witnesses to store in memory |

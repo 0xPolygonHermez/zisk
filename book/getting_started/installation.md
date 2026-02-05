@@ -55,8 +55,9 @@ brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nloh
 2. During the installation, you will be prompted to select a setup option. You can choose from the following:
 
     1. **Install proving key (default)** – Required for generating and verifying proofs.
-    2. **Install verify key** – Needed only if you want to verify proofs.
-    3. **None** – Choose this if you only want to compile programs and execute them using the ZisK emulator.
+    2. **Install proving key (no constant tree files)** – Install proving key but without constant tree files generation.
+    3. **Install verify key** – Needed only if you want to verify proofs.
+    4. **None** – Choose this if you only want to compile programs and execute them using the ZisK emulator.
 
 3. Verify the Rust toolchain: (which includes support for the `riscv64ima-zisk-zkvm` compilation target):
     ```bash
@@ -191,33 +192,32 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
 4. Generate fixed data:
     ```bash
-    cargo run --release --bin keccakf_fixed_gen
     cargo run --release --bin arith_frops_fixed_gen
     cargo run --release --bin binary_basic_frops_fixed_gen
     cargo run --release --bin binary_extension_frops_fixed_gen
     ```
 
-4. Compile ZisK PIL:
+5. Compile ZisK PIL:
     ```bash
     node ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
     ```
 
     This command will create the `pil/zisk.pilout` file
 
-7. Generate setup data: (this step may take 30-45 minutes):
+6. Generate setup data: (this step may take 30-45 minutes):
     ```bash
-    node ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r
+    node ../pil2-proofman-js/src/main_setup.js --stack-size=8192 -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r -s ./state-machines/starkstructs.json
     ```
 
     This command generates the `build/provingKey` directory.
 
-8. Copy (or move) the `build/provingKey` directory to `$HOME/.zisk` directory:
+7. Copy (or move) the `build/provingKey` directory to `$HOME/.zisk` directory:
 
     ```bash
     cp -R build/provingKey $HOME/.zisk
     ```
 
-9. Generate constant tree files:
+8. Generate constant tree files:
     ```bash
     cargo-zisk check-setup -a
     ```

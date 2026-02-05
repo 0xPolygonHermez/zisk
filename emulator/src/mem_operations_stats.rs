@@ -92,6 +92,29 @@ impl MemoryOperationsStats {
     pub fn get_max_ram_address(&self) -> u64 {
         self.ram.max_addr_read.max(self.ram.max_addr_write)
     }
+    pub fn add_delta(
+        &mut self,
+        reference: &MemoryOperationsStats,
+        current: &MemoryOperationsStats,
+    ) {
+        self.rom.add_delta(&reference.rom, &current.rom);
+        self.ram.add_delta(&reference.ram, &current.ram);
+        self.input.add_delta(&reference.input, &current.input);
+        self.mwrite_dirty_byte += current.mwrite_dirty_byte - reference.mwrite_dirty_byte;
+        self.mwrite_dirty_s64_byte +=
+            current.mwrite_dirty_s64_byte - reference.mwrite_dirty_s64_byte;
+        self.mwrite_dirty_s32_byte +=
+            current.mwrite_dirty_s32_byte - reference.mwrite_dirty_s32_byte;
+        self.mwrite_dirty_s16_byte +=
+            current.mwrite_dirty_s16_byte - reference.mwrite_dirty_s16_byte;
+        if self.full {
+            let default_stats = MemoryZoneStatsData::default();
+            for (page, stats) in &current.pages {
+                let ref_stats = reference.pages.get(page).unwrap_or(&default_stats);
+                self.pages.entry(*page).or_default().add_delta(ref_stats, stats);
+            }
+        }
+    }
 }
 impl MemoryZoneStatsData {
     pub fn new() -> Self {
@@ -153,5 +176,17 @@ impl MemoryZoneStatsData {
             + (self.mread_na1 - self.mread_byte) * MEM_READ_UNALIGNED_1_COST
             + self.mwrite_na2 * MEM_READ_UNALIGNED_2_COST
             + (self.mwrite_na1 - self.mwrite_byte) * MEM_READ_UNALIGNED_1_COST
+    }
+    pub fn add_delta(&mut self, reference: &MemoryZoneStatsData, current: &MemoryZoneStatsData) {
+        self.mread_a += current.mread_a - reference.mread_a;
+        self.mwrite_a += current.mwrite_a - reference.mwrite_a;
+        self.mread_na1 += current.mread_na1 - reference.mread_na1;
+        self.mwrite_na1 += current.mwrite_na1 - reference.mwrite_na1;
+        self.mread_na2 += current.mread_na2 - reference.mread_na2;
+        self.mwrite_na2 += current.mwrite_na2 - reference.mwrite_na2;
+        self.mread_byte += current.mread_byte - reference.mread_byte;
+        self.mwrite_byte += current.mwrite_byte - reference.mwrite_byte;
+        self.max_addr_read = self.max_addr_read.max(current.max_addr_read);
+        self.max_addr_write = self.max_addr_write.max(current.max_addr_write);
     }
 }

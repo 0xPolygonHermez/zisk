@@ -1,7 +1,8 @@
+use std::collections::VecDeque;
 use tiny_keccak::keccakf;
 
 use precompiles_common::MemBusHelpers;
-use std::collections::VecDeque;
+
 use zisk_common::MemCollectorInfo;
 use zisk_common::{BusId, OPERATION_BUS_DATA_SIZE};
 

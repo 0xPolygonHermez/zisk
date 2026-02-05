@@ -1,50 +1,112 @@
+/*
+    Reserved Operation Codes:
+    ==========================
+      - Binary Operations:
+        - 0x02-0x20
+        - 0x50, 0x51, 0x60, 0x61
+      - Binary Extension Operations:
+        - 0x21-0x29
+      - Arithmetic Operations:
+        - 0xB0-0xBF
+      - Precompiles:
+        - 0xE2-0xE7
+        - 0xF0-0xF5
+        - 0xF9-0xFE
+      - Misc:
+        - 0x00 (FLAG)
+        - 0x01 (COPYB)
+        - 0x30 (PUBOUT)
+        - 0xF6-0xF8 (Function Calls)
+        - 0xFF (HALT)
+    ==========================
+*/
+
 const int OP_FLAG = 0x00;
 const int OP_COPYB = 0x01;
-const int OP_SIGNEXTEND_B = 0x02;
-const int OP_SIGNEXTEND_H = 0x03;
-const int OP_SIGNEXTEND_W = 0x04;
-const int OP_ADD = 0x10;
-const int OP_ADD_W = 0x14;
-const int OP_SUB = 0x20;
-const int OP_SUB_W = 0x24;
-const int OP_SLL = 0x30;
-const int OP_SLL_W = 0x34;
-const int OP_SRA = 0x40;
-const int OP_SRL = 0x41;
-const int OP_SRA_W = 0x44;
-const int OP_SRL_W = 0x45;
-const int OP_EQ = 0x50;
-const int OP_EQ_W = 0x54;
-const int OP_LTU = 0x60;
-const int OP_LT = 0x61;
-const int OP_LTU_W = 0x64;
-const int OP_LT_W = 0x65;
-const int OP_LEU = 0x70;
-const int OP_LE = 0x71;
-const int OP_LEU_W = 0x74;
-const int OP_LE_W = 0x75;
-const int OP_AND = 0x80;
-const int OP_OR = 0x90;
-const int OP_XOR = 0xA0;
+
+const int OP_MINU = 0x02;
+const int OP_MIN = 0x03;
+const int OP_MAXU = 0x04;
+const int OP_MAX = 0x05;
+const int OP_LTU = 0x06;
+const int OP_LT = 0x07;
+const int OP_GT = 0x08;
+const int OP_EQ = 0x09;
+const int OP_ADD = 0x0A;
+const int OP_SUB = 0x0B;
+const int OP_LEU = 0x0C;
+const int OP_LE = 0x0D;
+const int OP_AND = 0x0E;
+const int OP_OR = 0x0F;
+const int OP_XOR = 0x10;
+const int OP_LT_ABS_NP = 0x50;
+const int OP_LT_ABS_PN = 0x51;
+const int OP_MINU_W = 0x12;
+const int OP_MIN_W = 0x13;
+const int OP_MAXU_W = 0x14;
+const int OP_MAX_W = 0x15;
+const int OP_LTU_W = 0x16;
+const int OP_LT_W = 0x17;
+const int OP_GT_W = 0x18;
+const int OP_EQ_W = 0x19;
+const int OP_ADD_W = 0x1A;
+const int OP_SUB_W = 0x1B;
+const int OP_LEU_W = 0x1C;
+const int OP_LE_W = 0x1D;
+
+const int OP_SLL = 0x21;
+const int OP_SRL = 0x22;
+const int OP_SRA = 0x23;
+const int OP_SLL_W = 0x24;
+const int OP_SRL_W = 0x25;
+const int OP_SRA_W = 0x26;
+const int OP_SEXT_B = 0x27;
+const int OP_SEXT_H = 0x28;
+const int OP_SEXT_W = 0x29;
+
+const int OP_PUBOUT = 0x30;
+
 const int OP_MULU = 0xB0;
-const int OP_MUL = 0xB1;
-const int OP_MUL_W = 0xB5;
-const int OP_MULUH = 0xB8;
-const int OP_MULH = 0xB9;
-const int OP_MULSUH = 0xBB;
-const int OP_DIVU = 0xC0;
-const int OP_DIV = 0xC1;
-const int OP_DIVU_W = 0xC4;
-const int OP_DIV_W = 0xC5;
-const int OP_REMU = 0xC8;
-const int OP_REM = 0xC9;
-const int OP_REMU_W = 0xCC;
-const int OP_REM_W = 0xCD;
-const int OP_MINU = 0xD0;
-const int OP_MIN = 0xD1;
-const int OP_MINU_W = 0xD4;
-const int OP_MIN_W = 0xD5;
-const int OP_MAXU = 0xE0;
-const int OP_MAX = 0xE1;
-const int OP_MAXU_W = 0xE4;
-const int OP_MAX_W = 0xE5;
+const int OP_MULUH = 0xB1;
+// const int OP_MULSH = 0xB2;
+const int OP_MULSUH = 0xB3;
+const int OP_MUL = 0xB4;
+const int OP_MULH = 0xB5;
+const int OP_MUL_W = 0xB6;
+// const int OP_MULH_W = 0xB7;
+const int OP_DIVU = 0xB8;
+const int OP_REMU = 0xB9;
+const int OP_DIV = 0xBA;
+const int OP_REM = 0xBB;
+const int OP_DIVU_W = 0xBC;
+const int OP_REMU_W = 0xBD;
+const int OP_DIV_W = 0xBE;
+const int OP_REM_W = 0xBF;
+
+const int OP_ARITH_384_MOD = 0xE2;
+const int OP_EC_ADD_BLS12_381 = 0xE3;
+const int OP_EC_DBL_BLS12_381 = 0xE4;
+const int OP_COMPLEX_ADD_BLS12_381 = 0xE5;
+const int OP_COMPLEX_SUB_BLS12_381 = 0xE6;
+const int OP_COMPLEX_MUL_BLS12_381 = 0xE7;
+
+const int OP_ADD256 = 0xF0;
+const int OP_KECCAKF = 0xF1;
+const int OP_ARITH_256 = 0xF2;
+const int OP_ARITH_256_MOD = 0xF3;
+const int OP_EC_ADD_SECP256K1 = 0xF4;
+const int OP_EC_DBL_SECP256K1 = 0xF5;
+
+const int OP_FCALL_PARAM = 0xF6;
+const int OP_FCALL = 0xF7;
+const int OP_FCALL_GET = 0xF8;
+
+const int OP_SHA256F = 0xF9;
+
+const int OP_EC_ADD_BN254 = 0xFA;
+const int OP_EC_DBL_BN254 = 0xFB;
+const int OP_COMPLEX_ADD_BN254 = 0xFC;
+const int OP_COMPLEX_SUB_BN254 = 0xFD;
+const int OP_COMPLEX_MUL_BN254 = 0xFE;
+
+const int OP_HALT = 0xFF;

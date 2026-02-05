@@ -3,7 +3,7 @@ cfg_if! {
     if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
         use core::arch::asm;
         use crate::{ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param};
-        use crate::{FCALL_BN254_TWIST_ADD_LINE_COEFFS_ID, FCALL_BN254_TWIST_DBL_LINE_COEFFS_ID};
+        use super::{FCALL_BN254_TWIST_ADD_LINE_COEFFS_ID, FCALL_BN254_TWIST_DBL_LINE_COEFFS_ID};
     }
 }
 

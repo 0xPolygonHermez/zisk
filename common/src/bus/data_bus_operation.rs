@@ -24,7 +24,8 @@ const INDIRECTION_SIZE: usize = 1;
 const PARAMS_SIZE: usize = 1;
 const SINGLE_RESULT_SIZE: usize = 1;
 
-const DATA_256_BITS_SIZE: usize = 4;
+const DATA_64_BITS_SIZE: usize = 1;
+const DATA_256_BITS_SIZE: usize = 4 * DATA_64_BITS_SIZE;
 const POINT_256_BITS_SIZE: usize = 2 * DATA_256_BITS_SIZE;
 const COMPLEX_OVER_256_BITS_SIZE: usize = 2 * DATA_256_BITS_SIZE;
 
@@ -450,6 +451,7 @@ impl OperationBusData<u64> {
                 }
                 _ => ExtOperationData::OperationData([op, op_type, a, b]),
             },
+
             ZiskOperationType::BigInt => match inst.op {
                 ADD256_OP => {
                     let mut data =

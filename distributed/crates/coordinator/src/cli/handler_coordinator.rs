@@ -1,25 +1,29 @@
 use anyhow::Result;
 use cargo_zisk::ux::print_banner;
 use colored::Colorize;
-use std::net::TcpListener;
+use std::{net::TcpListener, path::PathBuf};
 use tonic::transport::Server;
 use tracing::{error, info};
 use zisk_distributed_coordinator::{create_shutdown_signal, Config, CoordinatorGrpc};
-use zisk_distributed_grpc_api::zisk_distributed_api_server::ZiskDistributedApiServer;
+use zisk_distributed_grpc_api::{
+    zisk_distributed_api_server::ZiskDistributedApiServer, MAX_MESSAGE_SIZE,
+};
 
 pub async fn handle(
     config_file: Option<String>,
     port: Option<u16>,
+    proofs_dir: Option<PathBuf>,
+    no_save_proofs: bool,
     webhook_url: Option<String>,
 ) -> Result<()> {
     // Config file is now optional - if not provided, defaults will be used
     let config_file = config_file.or_else(|| std::env::var("ZISK_COORDINATOR_CONFIG_PATH").ok());
 
     // Load configuration
-    let config = Config::load(config_file, port, webhook_url)?;
+    let config = Config::load(config_file, port, proofs_dir, no_save_proofs, webhook_url)?;
 
     // Initialize tracing - keep guard alive for application lifetime
-    let _log_guard = zisk_distributed_common::tracing::init(Some(&config.logging))?;
+    let _log_guard = zisk_distributed_common::tracing::init(Some(&config.logging), None)?;
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     let grpc_addr = addr.parse().map_err(|e| {
@@ -52,7 +56,9 @@ pub async fn handle(
     // Run the gRPC server with shutdown signal
     tokio::select! {
         result = Server::builder()
-            .add_service(ZiskDistributedApiServer::new(coordinator_service))
+            .add_service(ZiskDistributedApiServer::new(coordinator_service)
+                .max_decoding_message_size(MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(MAX_MESSAGE_SIZE))
             .serve(grpc_addr) => {
             match result {
                 Ok(_) => {

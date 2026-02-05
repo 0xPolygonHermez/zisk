@@ -26,6 +26,14 @@ impl ZiskInstBuilder {
         zib.i.paddr = paddr;
         zib
     }
+    /// Constructor setting the initial pc address and original RISC-V instruction
+    #[inline(always)]
+    pub fn new_from_riscv(paddr: u64, riscv_inst: String) -> ZiskInstBuilder {
+        let mut zib = ZiskInstBuilder::default();
+        zib.i.paddr = paddr;
+        zib.i.riscv_inst = Some(riscv_inst);
+        zib
+    }
 
     /// Converts a string to an a source value
     fn a_src(&self, src: &str) -> u64 {

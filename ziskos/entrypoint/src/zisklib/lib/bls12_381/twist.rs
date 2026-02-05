@@ -1,9 +1,12 @@
 //! Operations on the twist E': y² = x³ + 4·(1+u) of the BLS12-381 curve
 
-use crate::{fcall_msb_pos_384, zisklib::lib::utils::eq};
+use crate::zisklib::{eq, fcall_msb_pos_384};
 
 use super::{
-    constants::{ETWISTED_B, EXT_U, EXT_U_INV, FROBENIUS_GAMMA13, FROBENIUS_GAMMA14, X_ABS_BIN_BE},
+    constants::{
+        ETWISTED_B, EXT_U, EXT_U_INV, FROBENIUS_GAMMA13, FROBENIUS_GAMMA14, IDENTITY_G2,
+        X_ABS_BIN_BE,
+    },
     fp2::{
         add_fp2_bls12_381, conjugate_fp2_bls12_381, dbl_fp2_bls12_381, inv_fp2_bls12_381,
         mul_fp2_bls12_381, neg_fp2_bls12_381, scalar_mul_fp2_bls12_381, square_fp2_bls12_381,
@@ -11,7 +14,7 @@ use super::{
     },
 };
 
-/// Check if a point `p` is on the BLS12-381 twist
+/// Check if a non-zero point `p` is on the BLS12-381 twist
 pub fn is_on_curve_twist_bls12_381(p: &[u64; 24]) -> bool {
     // q in E' iff y² == x³ + 4·(1+u)
     let x: [u64; 12] = p[0..12].try_into().unwrap();
@@ -23,7 +26,7 @@ pub fn is_on_curve_twist_bls12_381(p: &[u64; 24]) -> bool {
     eq(&x_cubed_plus_b, &y_sq)
 }
 
-/// Check if a point `p` is on the BLS12-381 twist subgroup
+/// Check if a non-zero point `p` is on the BLS12-381 twist subgroup
 pub fn is_on_subgroup_twist_bls12_381(p: &[u64; 24]) -> bool {
     // p in subgroup iff:
     //          x·𝜓³(P) + P == 𝜓²(P)
@@ -54,24 +57,10 @@ pub fn add_twist_bls12_381(p1: &[u64; 24], p2: &[u64; 24]) -> [u64; 24] {
         // Is y1 == y2?
         if eq(&y1, &y2) {
             // Compute the doubling
-            let mut lambda = dbl_fp2_bls12_381(&y1);
-            lambda = inv_fp2_bls12_381(&lambda);
-            lambda = scalar_mul_fp2_bls12_381(&lambda, &[0x3, 0, 0, 0, 0, 0]);
-            lambda = mul_fp2_bls12_381(&lambda, &x1);
-            lambda = mul_fp2_bls12_381(&lambda, &x1);
-
-            let mut x3 = square_fp2_bls12_381(&lambda);
-            x3 = sub_fp2_bls12_381(&x3, &x1);
-            x3 = sub_fp2_bls12_381(&x3, &x2);
-
-            let mut y3 = sub_fp2_bls12_381(&x1, &x3);
-            y3 = mul_fp2_bls12_381(&lambda, &y3);
-            y3 = sub_fp2_bls12_381(&y3, &y1);
-
-            return [x3, y3].concat().try_into().unwrap();
+            return dbl_twist_bls12_381(p1);
         } else {
             // Points are the inverse of each other, return the point at infinity
-            return [0u64; 24];
+            return IDENTITY_G2;
         }
     }
 
@@ -89,7 +78,10 @@ pub fn add_twist_bls12_381(p1: &[u64; 24], p2: &[u64; 24]) -> [u64; 24] {
     y3 = mul_fp2_bls12_381(&lambda, &y3);
     y3 = sub_fp2_bls12_381(&y3, &y1);
 
-    [x3, y3].concat().try_into().unwrap()
+    let mut result = [0u64; 24];
+    result[0..12].copy_from_slice(&x3);
+    result[12..24].copy_from_slice(&y3);
+    result
 }
 
 /// Doubling of a non-zero point
@@ -112,7 +104,10 @@ pub fn dbl_twist_bls12_381(p: &[u64; 24]) -> [u64; 24] {
     y3 = mul_fp2_bls12_381(&lambda, &y3);
     y3 = sub_fp2_bls12_381(&y3, &y);
 
-    [x3, y3].concat().try_into().unwrap()
+    let mut result = [0u64; 24];
+    result[0..12].copy_from_slice(&x3);
+    result[12..24].copy_from_slice(&y3);
+    result
 }
 
 /// Negation of a point
@@ -122,22 +117,20 @@ pub fn neg_twist_bls12_381(p: &[u64; 24]) -> [u64; 24] {
 
     // Compute the negation
     let y_neg = neg_fp2_bls12_381(&y);
-    [x, y_neg].concat().try_into().unwrap()
+
+    let mut result = [0u64; 24];
+    result[0..12].copy_from_slice(&x);
+    result[12..24].copy_from_slice(&y_neg);
+    result
 }
 
-/// Multiplies a point `p` on the BLS12-381 curve by a scalar `k` on the BLS12-381 scalar field
+/// Multiplies a non-zero point `p` on the BLS12-381 curve by a scalar `k` on the BLS12-381 scalar field
 pub fn scalar_mul_twist_bls12_381(p: &[u64; 24], k: &[u64; 6]) -> [u64; 24] {
-    // Is p = 𝒪?
-    if *p == [0u64; 24] {
-        // Return 𝒪
-        return [0u64; 24];
-    }
-
     // Direct cases: k = 0, k = 1, k = 2
     match k {
         [0, 0, 0, 0, 0, 0] => {
             // Return 𝒪
-            return [0u64; 24];
+            return IDENTITY_G2;
         }
         [1, 0, 0, 0, 0, 0] => {
             // Return p
@@ -159,20 +152,30 @@ pub fn scalar_mul_twist_bls12_381(p: &[u64; 24], k: &[u64; 6]) -> [u64; 24] {
     // Perform the loop, based on the binary representation of k
 
     // We do the first iteration separately
-    let _max_limb = max_limb as usize;
-    let k_bit = (k[_max_limb] >> max_bit) & 1;
-    assert_eq!(k_bit, 1); // the first received bit should be 1
+    let max_limb = max_limb as usize;
+    let max_bit = max_bit as usize;
+
+    // The first received bit should be 1
+    assert_eq!((k[max_limb] >> max_bit) & 1, 1);
 
     // Start at P
     let mut q = *p;
     let mut k_rec = [0u64; 6];
-    k_rec[_max_limb] |= 1 << max_bit;
+    k_rec[max_limb] |= 1 << max_bit;
+
+    // Determine starting limb/bit for the loop
+    let mut limb = max_limb;
+    let mut bit = if max_bit == 0 {
+        // If max_bit is 0 then limb > 0; otherwise k = 1, which is excluded here
+        limb -= 1;
+        63
+    } else {
+        max_bit - 1
+    };
 
     // Perform the rest of the loop
-    let _max_bit = max_bit as usize;
-    for i in (0..=_max_limb).rev() {
-        let bit_len = if i == _max_limb { _max_bit - 1 } else { 63 };
-        for j in (0..=bit_len).rev() {
+    for i in (0..=limb).rev() {
+        for j in (0..=bit).rev() {
             // Always double
             q = dbl_twist_bls12_381(&q);
 
@@ -185,6 +188,7 @@ pub fn scalar_mul_twist_bls12_381(p: &[u64; 24], k: &[u64; 6]) -> [u64; 24] {
                 k_rec[i] |= 1 << j;
             }
         }
+        bit = 63;
     }
 
     // Check that the reconstructed k is equal to the input k
@@ -194,10 +198,8 @@ pub fn scalar_mul_twist_bls12_381(p: &[u64; 24], k: &[u64; 6]) -> [u64; 24] {
     q
 }
 
-/// Scalar multiplication of a non-zero point by x
+/// Scalar multiplication of a non-zero point `p` by a binary scalar `k`
 pub fn scalar_mul_bin_twist_bls12_381(p: &[u64; 24], k: &[u8]) -> [u64; 24] {
-    // debug_assert!(k == X2DIV3_BIN_BE);
-
     let mut r = *p;
     for &bit in k.iter().skip(1) {
         r = dbl_twist_bls12_381(&r);
@@ -213,7 +215,7 @@ pub fn scalar_mul_by_abs_x_twist_bls12_381(p: &[u64; 24]) -> [u64; 24] {
     scalar_mul_bin_twist_bls12_381(p, &X_ABS_BIN_BE)
 }
 
-/// Compute the untwist-frobenius-twist (utf) endomorphism ψ := 𝜑⁻¹𝜋ₚ𝜑 of a point `p`, where:
+/// Compute the untwist-frobenius-twist (utf) endomorphism ψ := 𝜑⁻¹𝜋ₚ𝜑 of a non-zero point `p`, where:
 ///     𝜑 : E'(Fp2) -> E(Fp12) defined by 𝜑(x,y) = (x/ω²,y/ω³) is the untwist map
 ///     𝜋ₚ : E(Fp12) -> E(Fp12) defined by 𝜋ₚ(x,y) = (xᵖ,yᵖ) is the Frobenius map
 ///     𝜑⁻¹ : E(Fp12) -> E'(Fp2) defined by 𝜑⁻¹(x,y) = (x·ω²,y·ω³) is the twist map
@@ -238,5 +240,8 @@ pub fn utf_endomorphism_twist_bls12_381(p: &[u64; 24]) -> [u64; 24] {
     x = mul_fp2_bls12_381(&x, &EXT_U);
     y = mul_fp2_bls12_381(&y, &EXT_U);
 
-    [x, y].concat().try_into().unwrap()
+    let mut result = [0u64; 24];
+    result[0..12].copy_from_slice(&x);
+    result[12..24].copy_from_slice(&y);
+    result
 }

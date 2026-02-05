@@ -24,7 +24,7 @@ fn generate_test_plans(
             from_addr: from_addr >> 3,
             last_addr: (from_addr >> 3) - if from_addr == 0x8000_0000 { 1 } else { 0 },
             rows,
-            consecutive_addr: true,
+            max_addr_distance: 1,
         },
         Arc::new(counters),
     );

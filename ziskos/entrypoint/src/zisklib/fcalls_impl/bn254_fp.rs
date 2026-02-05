@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 
-use super::utils::{from_limbs_le, to_limbs_le};
+use super::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
 
 lazy_static! {
     pub static ref P: BigUint = BigUint::parse_bytes(
@@ -26,49 +26,49 @@ pub fn fcall_bn254_fp_inv(params: &[u64], results: &mut [u64]) -> i64 {
 }
 
 pub fn bn254_fp_add(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
-    let a_big = from_limbs_le(a);
-    let b_big = from_limbs_le(b);
+    let a_big = biguint_from_u64_digits(a);
+    let b_big = biguint_from_u64_digits(b);
     let sum = (a_big + b_big) % &*P;
-    to_limbs_le(&sum)
+    n_u64_digits_from_biguint(&sum)
 }
 
 pub fn bn254_fp_dbl(a: &[u64; 4]) -> [u64; 4] {
-    let a_big = from_limbs_le(a);
+    let a_big = biguint_from_u64_digits(a);
     let double = (a_big.clone() + a_big) % &*P;
-    to_limbs_le(&double)
+    n_u64_digits_from_biguint(&double)
 }
 
 pub fn bn254_fp_sub(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
-    let a_big = from_limbs_le(a);
-    let b_big = from_limbs_le(b);
+    let a_big = biguint_from_u64_digits(a);
+    let b_big = biguint_from_u64_digits(b);
     let diff = if a_big >= b_big { (a_big - b_big) % &*P } else { ((a_big + &*P) - b_big) % &*P };
-    to_limbs_le(&diff)
+    n_u64_digits_from_biguint(&diff)
 }
 
 pub fn bn254_fp_neg(a: &[u64; 4]) -> [u64; 4] {
-    let a_big = from_limbs_le(a);
+    let a_big = biguint_from_u64_digits(a);
     let neg = &*P - a_big;
-    to_limbs_le(&neg)
+    n_u64_digits_from_biguint(&neg)
 }
 
 pub fn bn254_fp_mul(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
-    let a_big = from_limbs_le(a);
-    let b_big = from_limbs_le(b);
+    let a_big = biguint_from_u64_digits(a);
+    let b_big = biguint_from_u64_digits(b);
     let product = (a_big * b_big) % &*P;
-    to_limbs_le(&product)
+    n_u64_digits_from_biguint(&product)
 }
 
 pub fn bn254_fp_square(a: &[u64; 4]) -> [u64; 4] {
-    let a_big = from_limbs_le(a);
+    let a_big = biguint_from_u64_digits(a);
     let square = (a_big.clone() * a_big) % &*P;
-    to_limbs_le(&square)
+    n_u64_digits_from_biguint(&square)
 }
 
 pub fn bn254_fp_inv(a: &[u64; 4]) -> [u64; 4] {
-    let a_big = from_limbs_le(a);
+    let a_big = biguint_from_u64_digits(a);
     let inv = a_big.modinv(&P);
     match inv {
-        Some(inverse) => to_limbs_le(&inverse),
+        Some(inverse) => n_u64_digits_from_biguint(&inverse),
         None => {
             // Handle the case where the inverse does not exist
             panic!("Inverse does not exist");

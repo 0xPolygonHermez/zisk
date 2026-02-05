@@ -1,4 +1,6 @@
-/target
+# Cargo build
+**/target
+
 /*.tar.gz
 /riscof
 /build*

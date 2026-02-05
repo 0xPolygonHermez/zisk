@@ -391,7 +391,7 @@ impl ZiskService {
             Some(asm_services)
         };
 
-        proofman.register_witness(witness_lib.as_mut(), library);
+        proofman.register_witness(witness_lib.as_mut(), library)?;
 
         let witness_lib = Arc::new(witness_lib);
 

@@ -75,7 +75,7 @@ async fn send_webhook(
         .post(&webhook_url)
         .header("Content-Type", "application/json")
         .json(&payload)
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(60))
         .send()
         .await?;
 

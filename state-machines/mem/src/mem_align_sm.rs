@@ -7,7 +7,7 @@ use fields::PrimeField64;
 use pil_std_lib::Std;
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
@@ -58,13 +58,16 @@ pub struct MemAlignSM<F: PrimeField64> {
 
     /// The table ID for the Mem Align ROM State Machine
     table_id: usize,
+
+    /// The range ID for the byte range check
+    range_id: usize,
 }
 
 macro_rules! debug_info {
     ($prefix:expr, $($arg:tt)*) => {
         #[cfg(feature = "debug_mem_align")]
         {
-            tracing::info!(concat!("MemAlign: ",$prefix), $($arg)*);
+            tracing::debug!(concat!("MemAlign: ",$prefix), $($arg)*);
         }
     };
 }
@@ -72,13 +75,17 @@ macro_rules! debug_info {
 impl<F: PrimeField64> MemAlignSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Get the table ID
-        let table_id = std.get_virtual_table_id(MemAlignRomSM::TABLE_ID);
+        let table_id =
+            std.get_virtual_table_id(MemAlignRomSM::TABLE_ID).expect("Failed to get table ID");
+        let range_id =
+            std.get_range_id(0, CHUNK_BITS_MASK as i64, None).expect("Failed to get range ID");
 
         Arc::new(Self {
             std: std.clone(),
             #[cfg(feature = "debug_mem_align")]
             num_computed_rows: Mutex::new(0),
             table_id,
+            range_id,
         })
     }
 
@@ -742,13 +749,13 @@ impl<F: PrimeField64> MemAlignSM<F> {
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut trace = MemAlignTraceType::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = MemAlignTraceType::new_from_vec(trace_buffer)?;
         let mut reg_range_check = vec![0u32; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
 
-        tracing::info!(
+        tracing::debug!(
             "··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
             used_rows,
             num_rows,
@@ -805,12 +812,11 @@ impl<F: PrimeField64> MemAlignSM<F> {
         reg_range_check[0] += CHUNK_NUM as u32 * padding_size as u32;
         self.update_std_range_check(reg_range_check);
 
-        AirInstance::new_from_trace(FromTrace::new(&mut trace))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }
 
     fn update_std_range_check(&self, reg_range_check: Vec<u32>) {
         // Perform the range checks
-        let range_id = self.std.get_range_id(0, CHUNK_BITS_MASK as i64, None);
-        self.std.range_checks(range_id, reg_range_check);
+        self.std.range_checks(self.range_id, reg_range_check);
     }
 }

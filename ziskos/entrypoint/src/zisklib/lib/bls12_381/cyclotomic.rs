@@ -26,7 +26,12 @@ pub fn compress_cyclo_bls12_381(a: &[u64; 72]) -> [u64; 48] {
     // let a1: [u64; 12] = a[48..60].try_into().unwrap();
     let a5: [u64; 12] = a[60..72].try_into().unwrap();
 
-    [a2, a3, a4, a5].concat().try_into().unwrap()
+    let mut result = [0u64; 48];
+    result[0..12].copy_from_slice(&a2);
+    result[12..24].copy_from_slice(&a3);
+    result[24..36].copy_from_slice(&a4);
+    result[36..48].copy_from_slice(&a5);
+    result
 }
 
 /// Decompression in the cyclotomic subgroup GΦ6(p²)
@@ -89,7 +94,14 @@ pub fn decompress_cyclo_bls12_381(a: &[u64; 48]) -> [u64; 72] {
         (a0, a1)
     };
 
-    [a0, *a4, *a3, *a2, a1, *a5].concat().try_into().unwrap()
+    let mut result = [0u64; 72];
+    result[0..12].copy_from_slice(&a0);
+    result[12..24].copy_from_slice(a4);
+    result[24..36].copy_from_slice(a3);
+    result[36..48].copy_from_slice(a2);
+    result[48..60].copy_from_slice(&a1);
+    result[60..72].copy_from_slice(a5);
+    result
 }
 
 /// Squaring in the cyclotomic subgroup GΦ6(p²)
@@ -147,7 +159,12 @@ pub fn square_cyclo_bls12_381(a: &[u64; 48]) -> [u64; 48] {
     b5 = add_fp2_bls12_381(a5, &b5);
     b5 = dbl_fp2_bls12_381(&b5);
 
-    [b2, b3, b4, b5].concat().try_into().unwrap()
+    let mut result = [0u64; 48];
+    result[0..12].copy_from_slice(&b2);
+    result[12..24].copy_from_slice(&b3);
+    result[24..36].copy_from_slice(&b4);
+    result[36..48].copy_from_slice(&b5);
+    result
 }
 
 /// Exponentiation in the cyclotomic subgroup GΦ6(p²) by the exponent x

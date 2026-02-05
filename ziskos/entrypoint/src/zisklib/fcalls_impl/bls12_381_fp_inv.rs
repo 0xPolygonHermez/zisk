@@ -1,7 +1,8 @@
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
+use num_traits::Zero;
 
-use super::utils::{from_limbs_le, to_limbs_le};
+use super::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
 
 lazy_static! {
     pub static ref P: BigUint = BigUint::parse_bytes(
@@ -26,10 +27,10 @@ pub fn fcall_bls12_381_fp_inv(params: &[u64], results: &mut [u64]) -> i64 {
 }
 
 pub(crate) fn bls12_381_fp_inv(a: &[u64; 6]) -> [u64; 6] {
-    let a_big = from_limbs_le(a);
+    let a_big = biguint_from_u64_digits(a);
     let inv = a_big.modinv(&P);
     match inv {
-        Some(inverse) => to_limbs_le(&inverse),
+        Some(inverse) => n_u64_digits_from_biguint::<6>(&inverse),
         None => {
             // Handle the case where the inverse does not exist
             panic!("Inverse does not exist");
@@ -38,42 +39,45 @@ pub(crate) fn bls12_381_fp_inv(a: &[u64; 6]) -> [u64; 6] {
 }
 
 pub(crate) fn bls12_381_fp_add(a: &[u64; 6], b: &[u64; 6]) -> [u64; 6] {
-    let a_big = from_limbs_le(a);
-    let b_big = from_limbs_le(b);
+    let a_big = biguint_from_u64_digits(a);
+    let b_big = biguint_from_u64_digits(b);
     let sum = (a_big + b_big) % &*P;
-    to_limbs_le(&sum)
+    n_u64_digits_from_biguint::<6>(&sum)
 }
 
 pub(crate) fn bls12_381_fp_dbl(a: &[u64; 6]) -> [u64; 6] {
-    let a_big = from_limbs_le(a);
-    let double = (a_big.clone() + a_big) % &*P;
-    to_limbs_le(&double)
+    let a_big = biguint_from_u64_digits(a);
+    let double = (a_big << 1) % &*P;
+    n_u64_digits_from_biguint::<6>(&double)
 }
 
 pub(crate) fn bls12_381_fp_neg(a: &[u64; 6]) -> [u64; 6] {
-    let a_big = from_limbs_le(a);
+    let a_big = biguint_from_u64_digits(a);
+    if a_big.is_zero() {
+        return [0u64; 6];
+    }
     let neg = &*P - a_big;
-    to_limbs_le(&neg)
+    n_u64_digits_from_biguint::<6>(&neg)
 }
 
 pub(crate) fn bls12_381_fp_sub(a: &[u64; 6], b: &[u64; 6]) -> [u64; 6] {
-    let a_big = from_limbs_le(a);
-    let b_big = from_limbs_le(b);
-    let diff = if a_big >= b_big { (a_big - b_big) % &*P } else { ((a_big + &*P) - b_big) % &*P };
-    to_limbs_le(&diff)
+    let a_big = biguint_from_u64_digits(a);
+    let b_big = biguint_from_u64_digits(b);
+    let diff = if a_big >= b_big { a_big - b_big } else { (a_big + &*P) - b_big };
+    n_u64_digits_from_biguint::<6>(&diff)
 }
 
 pub(crate) fn bls12_381_fp_mul(a: &[u64; 6], b: &[u64; 6]) -> [u64; 6] {
-    let a_big = from_limbs_le(a);
-    let b_big = from_limbs_le(b);
+    let a_big = biguint_from_u64_digits(a);
+    let b_big = biguint_from_u64_digits(b);
     let product = (a_big * b_big) % &*P;
-    to_limbs_le(&product)
+    n_u64_digits_from_biguint::<6>(&product)
 }
 
 pub(crate) fn bls12_381_fp_square(a: &[u64; 6]) -> [u64; 6] {
-    let a_big = from_limbs_le(a);
-    let square = (a_big.clone() * a_big) % &*P;
-    to_limbs_le(&square)
+    let a_big = biguint_from_u64_digits(a);
+    let square = (&a_big * &a_big) % &*P;
+    n_u64_digits_from_biguint::<6>(&square)
 }
 
 #[cfg(test)]

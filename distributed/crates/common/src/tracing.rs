@@ -1,4 +1,5 @@
 use anyhow::Result;
+use proofman_common::set_global_rank;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
 use tracing_subscriber::{
@@ -65,7 +66,10 @@ impl fmt::Display for LogFormat {
 /// buffered logs may be lost.
 ///
 /// Returns `Ok(None)` if only console logging is configured.
-pub fn init(logging_config: Option<&LoggingConfig>) -> Result<Option<WorkerGuard>> {
+pub fn init(
+    logging_config: Option<&LoggingConfig>,
+    rank: Option<i32>,
+) -> Result<Option<WorkerGuard>> {
     // Prioritize logging_config values over environment variables
     let log_level =
         logging_config.map(|config| config.level.clone()).unwrap_or_else(|| "info".to_string());
@@ -90,6 +94,10 @@ pub fn init(logging_config: Option<&LoggingConfig>) -> Result<Option<WorkerGuard
         for directive in ["h2=info", "tonic=info", "hyper=info", "tower=info"] {
             env_filter = env_filter.add_directive(directive.parse().unwrap());
         }
+    }
+
+    if let Some(r) = rank {
+        set_global_rank(r);
     }
 
     // Apply console logging with optional file logging

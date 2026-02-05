@@ -17,14 +17,15 @@ while true; do
     echo " 6) Test sha_hasher"
     echo " 7) Test pessimistic proof"
     echo " 8) Test Ethereum block"
-    echo " 9) Install setup from public packages"
-    echo "10) Install setup from local packages"
-    echo "11) Shell"
-    echo "12) Exit"
+    echo " 9) Test ELF diagnostic"
+    echo "10) Install setup from public packages"
+    echo "11) Install setup from local packages"
+    echo "12) Shell"
+    echo "13) Exit"
     echo
 
     # Prompt for user selection
-    read -p "Select an option [1-12]: " option
+    read -p "Select an option [1-13]: " option
     echo
 
     case $option in
@@ -53,21 +54,24 @@ while true; do
             run_timed "./test_eth_block.sh"
             ;;
         9)
-            run_timed "./install_setup_public.sh"
+            run_timed "./test_diagnostic.sh"
             ;;
         10)
-            run_timed "./install_setup_local.sh"
+            run_timed "./install_setup_public.sh"
             ;;
         11)
+            run_timed "./install_setup_local.sh"
+            ;;
+        12)
             info "Open shell"
             bash -i
             ;;
-        12)
+        13)
             info "Exiting ZisK Release Kit. Goodbye!"
             exit
             ;;
         *)
-            info "Invalid selection. Please enter a number between 1 and 12."
+            info "Invalid selection. Please enter a number between 1 and 13."
             ;;
     esac
 

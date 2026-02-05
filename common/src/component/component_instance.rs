@@ -4,7 +4,7 @@
 
 use crate::{BusDevice, CheckPoint, ChunkId, PayloadType};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::any::Any;
 
 /// Represents the type of an instance, either a standalone instance or a table.
@@ -37,8 +37,8 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
         _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         _trace_buffer: Vec<F>,
-    ) -> Option<AirInstance<F>> {
-        None
+    ) -> ProofmanResult<Option<AirInstance<F>>> {
+        Ok(None)
     }
 
     /// Retrieves the checkpoint associated with the instance.
@@ -138,7 +138,7 @@ macro_rules! table_instance {
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
                 _trace_buffer: Vec<F>,
-            ) -> Option<AirInstance<F>> {
+            ) -> ProofmanResult<Option<AirInstance<F>>> {
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
 
@@ -153,12 +153,12 @@ macro_rules! table_instance {
                         )
                     });
 
-                    Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
+                    Ok(Some(AirInstance::new_from_trace(FromTrace::new(&mut trace))))
                 } else {
                     multiplicity.par_iter().for_each(|m| {
                         m.swap(0, std::sync::atomic::Ordering::Relaxed);
                     });
-                    None
+                    Ok(None)
                 }
             }
 
@@ -256,7 +256,7 @@ macro_rules! table_instance_array {
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
                 _trace_buffer: Vec<F>,
-            ) -> Option<AirInstance<F>> {
+            ) -> ProofmanResult<Option<AirInstance<F>>> {
                 let multiplicities = self.table_sm.detach_multiplicities();
                 self.table_sm.set_calculated();
                 pctx.dctx_distribute_multiplicities(multiplicities, self.ictx.global_id);
@@ -273,19 +273,19 @@ macro_rules! table_instance_array {
                         }
                     });
 
-                    Some(AirInstance::new(TraceInfo::new(
+                    Ok(Some(AirInstance::new(TraceInfo::new(
                         trace.airgroup_id,
                         trace.air_id,
                         buffer,
                         false,
-                    )))
+                    ))))
                 } else {
                     multiplicities.par_iter().for_each(|vec| {
                         for i in 0..vec.len() {
                             vec[i].swap(0, std::sync::atomic::Ordering::Relaxed);
                         }
                     });
-                    None
+                    Ok(None)
                 }
             }
 
@@ -374,7 +374,7 @@ macro_rules! instance {
                 &self,
                 _pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
-            ) -> Option<AirInstance<F>> {
+            ) -> ProofmanResult<Option<AirInstance<F>>> {
                 Some(self.sm.compute_witness(&self.inputs))
             }
 

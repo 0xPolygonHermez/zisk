@@ -28,7 +28,7 @@ use mem_common::{
     RAM_W_ADDR_END, RAM_W_ADDR_INIT,
 };
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use zisk_core::{RAM_ADDR, RAM_SIZE};
 
 const DUAL_RANGE_MAX: usize = (1 << 24) - 1;
@@ -37,6 +37,12 @@ const DUAL_PARTIAL_RANGE_MAX: usize = 1 << 20;
 pub struct MemSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
+
+    range_id: usize,
+
+    dual_range_id: usize,
+
+    range_16bits_id: usize,
 }
 #[derive(Debug, Default)]
 pub struct MemPreviousSegment {
@@ -48,7 +54,14 @@ pub struct MemPreviousSegment {
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> MemSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        Arc::new(Self { std: std.clone() })
+        let range_id =
+            std.get_range_id(0, MEM_INC_C_MAX_RANGE as i64, None).expect("Failed to get range ID");
+        let dual_range_id =
+            std.get_range_id(0, DUAL_RANGE_MAX as i64, None).expect("Failed to get dual range ID");
+        let range_16bits_id =
+            std.get_range_id(0, 0xFFFF, None).expect("Failed to get 16 bits range ID");
+
+        Arc::new(Self { range_id, dual_range_id, range_16bits_id, std: std.clone() })
     }
 
     pub fn get_to_addr() -> u32 {
@@ -96,16 +109,12 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut trace = MemTraceType::<F>::new_from_vec(trace_buffer);
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = MemTraceType::<F>::new_from_vec(trace_buffer)?;
 
-        let std = self.std.clone();
-
-        let range_id = std.get_range_id(0, MEM_INC_C_MAX_RANGE as i64, None);
         let mut range_check_data: Vec<u32> = vec![0; MEM_INC_C_SIZE];
 
         // 2^20 * 2 = 2^21 = 2MB
-        let dual_range_id = std.get_range_id(0, DUAL_RANGE_MAX as i64, None);
         let mut dual_partial_range: Vec<u16> = vec![0; DUAL_PARTIAL_RANGE_MAX];
 
         // use special counter for internal reads
@@ -157,11 +166,11 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                         increment_step
                     );
                     if increment_step >= DUAL_PARTIAL_RANGE_MAX as u64 {
-                        self.std.range_check(dual_range_id, increment_step as i64, 1);
+                        self.std.range_check(self.dual_range_id, increment_step as i64, 1);
                     } else if dual_partial_range[increment_step as usize] == u16::MAX {
                         dual_partial_range[increment_step as usize] = 0;
                         self.std.range_check(
-                            dual_range_id,
+                            self.dual_range_id,
                             increment_step as i64,
                             u16::MAX as u64 + 1,
                         );
@@ -280,7 +289,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
         let distance_end = RAM_W_ADDR_END - last_addr;
 
-        self.std.range_checks(range_id, range_check_data);
+        self.std.range_checks(self.range_id, range_check_data);
 
         // Add one in range_check_data_max because it's used by intermediate reads, and reads
         // add one to distance to allow same step on read operations.
@@ -309,18 +318,16 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         air_values.distance_end[0] = F::from_u16(distance_end[0]);
         air_values.distance_end[1] = F::from_u16(distance_end[1]);
 
-        let range_16bits_id = std.get_range_id(0, 0xFFFF, None);
-
-        self.std.range_check(range_16bits_id, distance_base[0] as i64, 1);
-        self.std.range_check(range_16bits_id, distance_base[1] as i64, 1);
-        self.std.range_check(range_16bits_id, distance_end[0] as i64, 1);
-        self.std.range_check(range_16bits_id, distance_end[1] as i64, 1);
+        self.std.range_check(self.range_16bits_id, distance_base[0] as i64, 1);
+        self.std.range_check(self.range_16bits_id, distance_base[1] as i64, 1);
+        self.std.range_check(self.range_16bits_id, distance_end[0] as i64, 1);
+        self.std.range_check(self.range_16bits_id, distance_end[1] as i64, 1);
 
         for (value, count) in dual_partial_range.iter().enumerate() {
             if *count == 0 {
                 continue;
             }
-            self.std.range_check(dual_range_id, value as i64, *count as u64);
+            self.std.range_check(self.dual_range_id, value as i64, *count as u64);
         }
 
         #[cfg(feature = "debug_mem")]
@@ -331,6 +338,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             Self::save_to_file(&trace, &filename);
             println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
         }
-        AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 }
