@@ -1950,6 +1950,21 @@ impl Coordinator {
 
         let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
 
+        // Extract execution time from Phase 1 results to split phase1 into execution + contributions
+        let phase1_execution_time = job
+            .results
+            .get(&JobPhase::Contributions)
+            .and_then(|results| results.values().next())
+            .and_then(|job_result| match &job_result.data {
+                JobResultData::Challenges(contributions_result) => {
+                    Some(contributions_result.execution_info.execution_time)
+                }
+                _ => None,
+            })
+            .unwrap_or(0.0);
+
+        let phase1_contributions_time = phase1_duration.as_seconds_f32() - phase1_execution_time;
+
         let header = format!("[Job] Finished {} successfully ✔", job_id).green();
         let duration_str = format!("Duration: {:.3}s", duration.as_secs_f32()).bold();
         let steps_str = if let Some(executed_steps) = job.executed_steps {
@@ -1958,10 +1973,11 @@ impl Coordinator {
             "Steps: N/A".to_string().red().bold()
         };
         info!(
-            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} Inputs: {:?}, Capacity: {} ",
+            "{} {} ({:.3}s+{:.3}s+{:.3}s+{:.3}s) {} Inputs: {:?}, Capacity: {} ",
             header,
             duration_str,
-            phase1_duration.as_seconds_f32(),
+            phase1_execution_time,
+            phase1_contributions_time,
             phase2_duration.as_seconds_f32(),
             phase3_duration.as_seconds_f32(),
             steps_str,
