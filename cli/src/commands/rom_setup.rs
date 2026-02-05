@@ -89,8 +89,8 @@ impl ZiskRomSetup {
             &self.elf_path,
             &self.zisk_path,
             &self.output_dir,
-            self.verbose > 0,
             self.hints,
+            self.verbose > 0,
         )?;
 
         println!();
