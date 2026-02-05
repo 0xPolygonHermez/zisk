@@ -1,8 +1,8 @@
+use anyhow::Result;
 use serde::Serialize;
 use std::io::{Cursor, Read};
-use std::sync::Mutex;
 use std::path::PathBuf;
-use anyhow::Result;
+use std::sync::Mutex;
 
 use crate::io::ZiskIO;
 

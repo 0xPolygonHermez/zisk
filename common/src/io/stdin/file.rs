@@ -1,12 +1,12 @@
 //! A file-based implementation of ZiskStdin.
 //! This module provides functionality to read input data from a file.
 
+use anyhow::Result;
 use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use anyhow::Result;
 
 use crate::io::ZiskIO;
 

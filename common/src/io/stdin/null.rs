@@ -1,9 +1,9 @@
 use tracing::warn;
 
 use crate::io::ZiskIO;
+use anyhow::Result;
 use serde::Serialize;
 use std::path::PathBuf;
-use anyhow::Result;
 
 pub struct ZiskNullStdin;
 
