@@ -97,8 +97,8 @@ impl ProverEngine for AsmProver {
     }
 
     fn setup(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
-        let proving_key = self.core_prover.backend.get_proving_key_path();
-        let (rom_bin_path, vk) = ensure_custom_commits(proving_key, elf)?;
+        let pctx = self.core_prover.backend.get_pctx()?;
+        let (rom_bin_path, vk) = ensure_custom_commits(&pctx, elf)?;
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path)]);
 
         let default_cache_path = std::env::var("HOME")

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use fields::{Goldilocks, PrimeField64};
 use proofman_common::{
-    write_custom_commit_trace, GlobalInfo, ProofType, ProofmanResult, StarkInfo,
+    write_custom_commit_trace, GlobalInfo, ProofCtx, ProofType, ProofmanResult, StarkInfo,
 };
 use sm_rom::RomSM;
 use std::env;
@@ -52,6 +52,7 @@ pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
 }
 
 pub fn gen_elf_hash<F: PrimeField64>(
+    pctx: &ProofCtx<F>,
     elf: &[u8],
     rom_buffer_path: &Path,
     blowup_factor: u64,
@@ -63,6 +64,7 @@ pub fn gen_elf_hash<F: PrimeField64>(
     RomSM::compute_custom_trace_rom(elf, &mut custom_rom_trace);
 
     write_custom_commit_trace(
+        pctx,
         &mut custom_rom_trace,
         blowup_factor,
         merkle_tree_arity,

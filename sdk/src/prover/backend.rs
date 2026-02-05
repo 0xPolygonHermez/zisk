@@ -1,10 +1,10 @@
 use crate::create_debug_info;
 use crate::ZiskPublics;
-use crate::{
-    ensure_custom_commits, ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramVK,
-    ZiskProof, ZiskProveResult, ZiskVerifyConstraintsResult,
-};
 use crate::{ProofMode, ProofOpts};
+use crate::{
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramVK, ZiskProof,
+    ZiskProveResult, ZiskVerifyConstraintsResult,
+};
 use anyhow::Result;
 use colored::Colorize;
 use fields::Goldilocks;
@@ -12,11 +12,13 @@ use proofman::{
     get_vadcop_final_proof_vkey, verify_snark_proof, AggProofs, ProofInfo, ProofMan, ProvePhase,
     ProvePhaseInputs, ProvePhaseResult, SnarkProof, SnarkProtocol, SnarkWrapper,
 };
-use proofman_common::ProofOptions;
+use proofman_common::{ProofCtx, ProofOptions};
 use proofman_util::VadcopFinalProof;
+use rom_setup::rom_merkle_setup_verkey;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::OnceLock;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
@@ -62,8 +64,11 @@ impl ProverBackend {
         }
     }
 
-    pub fn get_proving_key_path(&self) -> &PathBuf {
-        &self.proving_key_path
+    pub fn get_pctx(&self) -> Result<Arc<ProofCtx<Goldilocks>>> {
+        let proofman = self.proofman.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
+        })?;
+        Ok(proofman.get_wcm().get_pctx())
     }
 
     pub fn register_witness_lib(
@@ -259,7 +264,8 @@ impl ProverBackend {
 
     pub(crate) fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
         let proving_key_path = self.proving_key_path.clone();
-        let (_, vk) = ensure_custom_commits(&proving_key_path, elf)?;
+
+        let vk = rom_merkle_setup_verkey(elf, &None, proving_key_path.as_path())?;
 
         Ok(ZiskProgramVK { vk })
     }

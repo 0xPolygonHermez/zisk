@@ -5,10 +5,13 @@ use std::path::PathBuf;
 use crate::{commands::get_proving_key, ux::print_banner};
 use colored::Colorize;
 use fields::Goldilocks;
-use proofman_common::initialize_logger;
+use proofman_common::{
+    initialize_logger, MpiCtx, ParamsGPU, ProofCtx, ProofType, SetupCtx, SetupsVadcop,
+};
 use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
 use std::fs;
+use std::sync::Arc;
 use zisk_common::ElfBinaryOwned;
 
 #[derive(Parser)]
@@ -35,8 +38,8 @@ pub struct ZiskRomSetup {
     #[clap(short = 'n', long, default_value_t = false)]
     pub hints: bool,
 
-    #[clap(short = 'v', long, default_value_t = false)]
-    pub verbose: bool,
+    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
+    pub verbose: u8,
 }
 
 impl ZiskRomSetup {
@@ -53,6 +56,22 @@ impl ZiskRomSetup {
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
+        let mpi_ctx = Arc::new(MpiCtx::new());
+        let mut pctx = ProofCtx::create_ctx(proving_key, false, self.verbose.into(), mpi_ctx)?;
+
+        let params_gpu = ParamsGPU::new(false);
+        let sctx = Arc::new(SetupCtx::<Goldilocks>::new(
+            &pctx.global_info,
+            &ProofType::Basic,
+            false,
+            &params_gpu,
+            &[],
+        ));
+        let setups_vadcop =
+            Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &params_gpu, &[]));
+        pctx.set_device_buffers(&sctx, &setups_vadcop, false, &params_gpu)?;
+        let pctx = Arc::new(pctx);
+
         tracing::info!("Computing setup for ROM {}", self.elf_path.display());
 
         tracing::info!("Computing merkle root");
@@ -64,9 +83,15 @@ impl ZiskRomSetup {
             self.elf_path.file_stem().unwrap().to_str().unwrap().to_string(),
             self.hints,
         );
-        rom_merkle_setup::<Goldilocks>(&elf, &self.output_dir, &proving_key)?;
+        rom_merkle_setup::<Goldilocks>(&pctx, &elf, &self.output_dir)?;
 
-        gen_assembly(&self.elf_path, &self.zisk_path, &self.output_dir, self.verbose, self.hints)?;
+        gen_assembly(
+            &self.elf_path,
+            &self.zisk_path,
+            &self.output_dir,
+            self.verbose > 0,
+            self.hints,
+        )?;
 
         println!();
         tracing::info!("{}", "ROM setup successfully completed".bright_green().bold());

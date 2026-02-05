@@ -1,11 +1,11 @@
-use fields::Goldilocks;
+use fields::PrimeField64;
 use std::collections::HashMap;
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Result;
 
-use proofman_common::{json_to_debug_instances_map, DebugInfo, ProofmanResult};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ProofCtx, ProofmanResult};
 use rom_setup::{get_elf_data_hash, rom_merkle_setup};
 use zisk_common::ElfBinaryLike;
 
@@ -76,18 +76,18 @@ pub fn get_proving_key_snark(proving_key_snark: Option<&PathBuf>) -> PathBuf {
     proving_key_snark.cloned().unwrap_or_else(get_default_proving_key_snark)
 }
 
-pub fn ensure_custom_commits(
-    proving_key: &Path,
+pub fn ensure_custom_commits<F: PrimeField64>(
+    pctx: &ProofCtx<F>,
     elf: &impl ElfBinaryLike,
 ) -> Result<(PathBuf, Vec<u8>)> {
-    rom_merkle_setup::<Goldilocks>(elf, &None, proving_key)
+    rom_merkle_setup(pctx, elf, &None)
 }
 
-pub fn get_custom_commits_map(
-    proving_key: &Path,
+pub fn get_custom_commits_map<F: PrimeField64>(
+    pctx: &ProofCtx<F>,
     elf: &impl ElfBinaryLike,
 ) -> Result<HashMap<String, PathBuf>> {
-    let (rom_bin_path, _) = ensure_custom_commits(proving_key, elf)?;
+    let (rom_bin_path, _) = ensure_custom_commits(pctx, elf)?;
     Ok(HashMap::from([("rom".to_string(), rom_bin_path)]))
 }
 

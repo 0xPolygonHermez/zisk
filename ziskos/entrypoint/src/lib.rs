@@ -46,12 +46,12 @@ macro_rules! entrypoint {
 use crate::ziskos_definitions::ziskos_config::*;
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-pub fn read_input() -> Vec<u8> {
+pub(crate) fn read_input() -> Vec<u8> {
     read_input_slice().to_vec()
 }
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-pub fn read_input() -> Vec<u8> {
+pub(crate) fn read_input() -> Vec<u8> {
     use std::{fs::File, io::Read};
 
     let mut file =
@@ -62,7 +62,7 @@ pub fn read_input() -> Vec<u8> {
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-pub fn read_input_slice<'a>() -> &'a [u8] {
+fn read_input_slice<'a>() -> &'a [u8] {
     // Create a slice of the first 8 bytes to get the size
     let bytes = unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), 8) };
     // Convert the slice to a u64 (little-endian)
@@ -71,8 +71,9 @@ pub fn read_input_slice<'a>() -> &'a [u8] {
     unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(16), size as usize) }
 }
 
+#[allow(unused)]
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-pub fn read_input_slice() -> Box<[u8]> {
+fn read_input_slice() -> Box<[u8]> {
     read_input().into_boxed_slice()
 }
 
