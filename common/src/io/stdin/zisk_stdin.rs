@@ -1,7 +1,7 @@
 use crate::io::{ZiskFileStdin, ZiskMemoryStdin, ZiskNullStdin};
 use anyhow::Result;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 pub trait ZiskIO: Send + Sync {
@@ -20,7 +20,7 @@ pub trait ZiskIO: Send + Sync {
     /// Write a slice of bytes to the buffer.
     fn write_slice(&self, data: &[u8]);
 
-    fn save(&self, path: &PathBuf) -> Result<()>;
+    fn save(&self, path: &Path) -> Result<()>;
 }
 
 pub enum ZiskIOVariant {
@@ -70,7 +70,7 @@ impl ZiskIO for ZiskIOVariant {
         }
     }
 
-    fn save(&self, path: &PathBuf) -> Result<()> {
+    fn save(&self, path: &Path) -> Result<()> {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.save(path),
             ZiskIOVariant::Null(null_stdin) => null_stdin.save(path),
@@ -105,7 +105,7 @@ impl ZiskIO for ZiskStdin {
         self.io.write_slice(data)
     }
 
-    fn save(&self, path: &PathBuf) -> Result<()> {
+    fn save(&self, path: &Path) -> Result<()> {
         self.io.save(path)
     }
 }

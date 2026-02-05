@@ -3,7 +3,7 @@ use tracing::warn;
 use crate::io::ZiskIO;
 use anyhow::Result;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::Path;
 
 pub struct ZiskNullStdin;
 
@@ -19,7 +19,7 @@ impl ZiskIO for ZiskNullStdin {
     fn write_slice(&self, _data: &[u8]) {
         warn!("NullStdin does not support writing");
     }
-    fn save(&self, _path: &PathBuf) -> Result<()> {
+    fn save(&self, _path: &Path) -> Result<()> {
         warn!("NullStdin does not support saving");
         Ok(())
     }
