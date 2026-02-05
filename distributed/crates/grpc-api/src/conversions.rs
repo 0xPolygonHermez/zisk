@@ -419,7 +419,17 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                         challenge: c.challenge,
                     })
                     .collect();
-                Some(ExecuteTaskResponseResultDataDto::Challenges(challenges))
+                let exec_info = challenges_list.execution_info.unwrap();
+                let execution_info = ExecutionInfoDto {
+                    execution_time: exec_info.execution_time,
+                    publics: exec_info.publics,
+                    proof_values: exec_info.proof_values,
+                    summary_info: exec_info.summary_info,
+                };
+                Some(ExecuteTaskResponseResultDataDto::Challenges(ContributionsResultDataDto {
+                    execution_info,
+                    challenges,
+                }))
             }
             Some(execute_task_response::ResultData::Proofs(proof_list)) => {
                 let proofs: Vec<ProofDto> = proof_list

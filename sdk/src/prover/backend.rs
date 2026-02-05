@@ -9,8 +9,8 @@ use anyhow::Result;
 use colored::Colorize;
 use fields::Goldilocks;
 use proofman::{
-    get_vadcop_final_proof_vkey, verify_snark_proof, AggProofs, ProofInfo, ProofMan, ProvePhase,
-    ProvePhaseInputs, ProvePhaseResult, SnarkProof, SnarkProtocol, SnarkWrapper,
+    get_vadcop_final_proof_vkey, verify_snark_proof, AggProofs, ExecutionInfo, ProofInfo, ProofMan,
+    ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkProof, SnarkProtocol, SnarkWrapper,
 };
 use proofman_common::{ProofCtx, ProofOptions};
 use proofman_util::VadcopFinalProof;
@@ -504,6 +504,14 @@ impl ProverBackend {
         proofman
             .generate_proof_from_lib(phase_inputs, options, phase.clone())
             .map_err(|e| anyhow::anyhow!("Error generating proof in phase {:?}: {}", phase, e))
+    }
+
+    pub(crate) fn get_execution_info(&self) -> Result<ExecutionInfo> {
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot get execution info in verifier mode"))?;
+        Ok(proofman.get_execution_info())
     }
 
     pub(crate) fn aggregate_proofs(

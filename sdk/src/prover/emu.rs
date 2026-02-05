@@ -5,7 +5,7 @@ use crate::{
     ZiskProof, ZiskProveResult, ZiskPublics, ZiskVerifyConstraintsResult,
 };
 use crate::{ensure_custom_commits, ProofMode, ProofOpts};
-use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
+use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, VerboseMode};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -103,6 +103,10 @@ impl ProverEngine for EmuProver {
             .execution_result()
             .map(|(exec_result, _)| exec_result.steps)
             .unwrap_or(0)
+    }
+
+    fn get_execution_info(&self) -> Result<ExecutionInfo> {
+        self.core_prover.backend.get_execution_info()
     }
 
     fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult> {

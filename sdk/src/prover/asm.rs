@@ -7,7 +7,7 @@ use crate::{
 };
 use crate::{ProofMode, ProofOpts};
 use asm_runner::{AsmRunnerOptions, AsmServices};
-use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
+use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, VerboseMode};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::DEFAULT_CACHE_PATH;
@@ -149,6 +149,10 @@ impl ProverEngine for AsmProver {
             custom_commits_map,
         )?;
         Ok(ZiskProgramVK { vk })
+    }
+
+    fn get_execution_info(&self) -> Result<ExecutionInfo> {
+        self.core_prover.backend.get_execution_info()
     }
 
     fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult> {

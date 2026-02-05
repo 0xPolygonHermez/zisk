@@ -4,7 +4,9 @@ mod emu;
 pub use asm::*;
 use backend::*;
 pub use emu::*;
-use proofman::{AggProofs, ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkProtocol};
+use proofman::{
+    AggProofs, ExecutionInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkProtocol,
+};
 use proofman_common::ProofOptions;
 use sha2::{Digest, Sha256};
 
@@ -465,6 +467,8 @@ pub trait ProverEngine {
 
     fn executed_steps(&self) -> u64;
 
+    fn get_execution_info(&self) -> Result<ExecutionInfo>;
+
     fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult>;
 
     fn stats(
@@ -563,6 +567,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Get the number of executed steps by the prover after a proof generation or execution.
     pub fn executed_steps(&self) -> u64 {
         self.prover.executed_steps()
+    }
+
+    pub fn get_execution_info(&self) -> Result<ExecutionInfo> {
+        self.prover.get_execution_info()
     }
 
     /// Execute the prover with the given standard input and output path.

@@ -296,8 +296,16 @@ message ExecuteTaskResponse {
   }
 }
 
+message ExecuteInfo {
+  float execution_time = 1;
+  repeated uint64 publics = 2;
+  repeated uint64 proof_values = 3;
+  string summary_info = 4;
+}
+
 message ChallengesList {
   repeated Challenges challenges = 1;
+  ExecuteInfo execution_info = 2;
 }
 
 message Challenges {

@@ -39,7 +39,7 @@ use crate::{
 use chrono::{DateTime, Utc};
 use colored::Colorize;
 use dashmap::DashMap;
-use proofman::ContributionsInfo;
+use proofman::{ContributionsInfo, ExecutionInfo};
 use std::{
     collections::HashMap,
     sync::{
@@ -53,13 +53,13 @@ use tracing::{error, info, warn};
 use zisk_common::io::{StreamSource, ZiskStream};
 use zisk_distributed_common::{
     AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
-    CoordinatorMessageDto, DataId, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
-    ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, HintsModeDto,
-    HintsSourceDto, InputSourceDto, InputsModeDto, Job, JobExecutionMode, JobId, JobPhase,
-    JobResult, JobResultData, JobState, JobStatusDto, JobsListDto, LaunchProofRequestDto,
-    LaunchProofResponseDto, MetricsDto, ProofDto, ProveParamsDto, StatusInfoDto, StreamMessageKind,
-    SystemStatusDto, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto,
-    WorkerState, WorkersListDto,
+    ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
+    ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
+    HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, Job,
+    JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
+    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
+    ProveParamsDto, StatusInfoDto, StreamMessageKind, SystemStatusDto, WorkerErrorDto, WorkerId,
+    WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
 };
 
 use proofman_util::VadcopFinalProof;
@@ -1173,6 +1173,9 @@ impl Coordinator {
             return Ok(());
         }
 
+        // Print execution summary from Phase 1 completion
+        self.print_execution_summary(&job);
+
         // Validate and extract challenges in a single operation to minimize lock time
         let challenges = self.validate_and_extract_challenges(&job).await?;
 
@@ -1241,14 +1244,15 @@ impl Coordinator {
         result_data: ExecuteTaskResponseResultDataDto,
     ) -> CoordinatorResult<JobResultData> {
         match result_data {
-            ExecuteTaskResponseResultDataDto::Challenges(challenges) => {
-                if challenges.is_empty() {
+            ExecuteTaskResponseResultDataDto::Challenges(ch_list) => {
+                if ch_list.challenges.is_empty() {
                     return Err(CoordinatorError::InvalidRequest(
                         "Received empty Challenges result data".to_string(),
                     ));
                 }
 
-                let contributions: Vec<ContributionsInfo> = challenges
+                let contributions: Vec<ContributionsInfo> = ch_list
+                    .challenges
                     .into_iter()
                     .map(|challenge| ContributionsInfo {
                         worker_index: challenge.worker_index,
@@ -1257,11 +1261,43 @@ impl Coordinator {
                     })
                     .collect();
 
-                Ok(JobResultData::Challenges(contributions))
+                let execution_info = ExecutionInfo {
+                    summary_info: ch_list.execution_info.summary_info,
+                    publics: ch_list.execution_info.publics,
+                    proof_values: ch_list.execution_info.proof_values,
+                    execution_time: ch_list.execution_info.execution_time,
+                };
+
+                Ok(JobResultData::Challenges(ContributionsResult {
+                    execution_info,
+                    challenges: contributions,
+                }))
             }
             _ => Err(CoordinatorError::InvalidRequest(
                 "Expected Challenges result data for Phase1".to_string(),
             )),
+        }
+    }
+
+    /// Prints execution summary information from Phase 1 completion.
+    ///
+    /// Extracts and displays execution information from the first completed worker's
+    /// contribution results, including timing, summary info, and key metrics.
+    ///
+    /// # Parameters
+    ///
+    /// * `job` - Reference to the job containing Phase 1 results
+    fn print_execution_summary(&self, job: &Job) {
+        // Find the first completed contribution result to extract ExecutionInfo summary
+        if let Some(contributions_results) = job.results.get(&JobPhase::Contributions) {
+            if let Some((_worker_id, job_result)) = contributions_results.iter().next() {
+                if let JobResultData::Challenges(contributions_result) = &job_result.data {
+                    info!(
+                        "Execution Summary: {}",
+                        contributions_result.execution_info.summary_info
+                    );
+                }
+            }
         }
     }
 
@@ -1283,13 +1319,27 @@ impl Coordinator {
         );
         let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
+        // Get execution time from the worker's result
+        let exec_time_info = job
+            .results
+            .get(&JobPhase::Contributions)
+            .and_then(|results| results.get(worker_id))
+            .and_then(|job_result| match &job_result.data {
+                JobResultData::Challenges(contributions_result) => {
+                    Some(contributions_result.execution_info.execution_time)
+                }
+                _ => None,
+            })
+            .unwrap_or(0.0);
+
         info!(
-            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, {:.3}s)",
+            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, {:.3}s (execution {:.3}s))",
             worker_id,
             job.job_id,
             phase1_results_len,
             job.workers.len(),
-            duration_ms.as_secs_f32()
+            duration_ms.as_secs_f32(),
+            exec_time_info
         );
 
         // Ensure we have results from all assigned workers before proceeding.
@@ -1352,7 +1402,7 @@ impl Coordinator {
             // Simulation mode: replicate single worker's challenges across all expected workers
             // This maintains algorithm correctness while using minimal computational resources
             let first_challenges = match phase1_results.values().next().unwrap().data {
-                JobResultData::Challenges(ref values) => values,
+                JobResultData::Challenges(ref values) => &values.challenges,
                 _ => unreachable!("Expected Challenges data in Phase1 results"),
             };
 
@@ -1364,7 +1414,7 @@ impl Coordinator {
             let challenges: Vec<Vec<ContributionsInfo>> = phase1_results
                 .values()
                 .map(|results| match &results.data {
-                    JobResultData::Challenges(values) => values.clone(),
+                    JobResultData::Challenges(values) => values.challenges.clone(),
                     _ => unreachable!("Expected Challenges data in Phase1 results"),
                 })
                 .collect();

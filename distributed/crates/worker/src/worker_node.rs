@@ -1,6 +1,6 @@
 use crate::{worker::ComputationResult, ProverConfig, Worker};
 use anyhow::{anyhow, Result};
-use proofman::{AggProofs, ContributionsInfo};
+use proofman::{AggProofs, ContributionsInfo, ExecutionInfo};
 use std::path::Path;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
@@ -254,7 +254,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<Vec<ContributionsInfo>>,
+        result: Result<(ExecutionInfo, Vec<ContributionsInfo>)>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
@@ -276,11 +276,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         "Inconsistent state: operation reported success but returned Err result"
                     ));
                 }
-                (vec![], e.to_string())
+                ((ExecutionInfo::default(), vec![]), e.to_string())
             }
         };
 
         let challenges: Vec<Challenges> = result_data
+            .1
             .into_iter()
             .map(|cont| Challenges {
                 worker_index: cont.worker_index,
@@ -289,13 +290,23 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             })
             .collect();
 
+        let execution_info: ExecuteInfo = ExecuteInfo {
+            execution_time: result_data.0.execution_time,
+            publics: result_data.0.publics,
+            proof_values: result_data.0.proof_values,
+            summary_info: result_data.0.summary_info,
+        };
+
         let message = WorkerMessage {
             payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
                 worker_id: self.worker_config.worker.worker_id.as_string(),
                 job_id: job_id.as_string(),
                 task_type: TaskType::PartialContribution as i32,
                 success,
-                result_data: Some(ResultData::Challenges(ChallengesList { challenges })),
+                result_data: Some(ResultData::Challenges(ChallengesList {
+                    challenges,
+                    execution_info: Some(execution_info),
+                })),
                 error_message,
             })),
         };
