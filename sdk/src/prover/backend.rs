@@ -14,8 +14,8 @@ use anyhow::Result;
 use colored::Colorize;
 use fields::Goldilocks;
 use proofman::{
-    AggProofs, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkProtocol, ExecutionInfo
-    SnarkWrapper,
+    AggProofs, ExecutionInfo, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
+    SnarkProtocol, SnarkWrapper,
 };
 use proofman_common::{ProofCtx, ProofOptions};
 use proofman_util::VadcopFinalProof;
@@ -149,7 +149,9 @@ impl ProverBackend {
             anyhow::anyhow!("Failed to get execution result from emulator prover")
         })?;
 
-        Ok(ZiskExecuteResult { execution: result, duration: elapsed })
+        let publics = proofman.get_publics();
+
+        Ok(ZiskExecuteResult::new(result, elapsed, &publics))
     }
 
     pub(crate) fn stats(
@@ -402,7 +404,8 @@ impl ProverBackend {
                     proof_options.output_dir_path.clone(),
                 )?;
 
-                let publics = ZiskPublics::new(vadcop_proof.public_values);
+                let publics = ZiskPublics::new(&vadcop_proof.public_values);
+                let program_vk = ZiskProgramVK::new_from_publics(&vadcop_proof.public_values);
                 if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
                     Ok(ZiskProveResult::new(
                         execution_result,
@@ -412,6 +415,7 @@ impl ProverBackend {
                         ZiskProofWithPublicValues {
                             proof: ZiskProof::Plonk(snark_proof.proof_bytes),
                             publics,
+                            program_vk,
                         },
                     ))
                 } else if snark_proof.protocol_id == SnarkProtocol::Fflonk.protocol_id() {
@@ -423,6 +427,7 @@ impl ProverBackend {
                         ZiskProofWithPublicValues {
                             proof: ZiskProof::Fflonk(snark_proof.proof_bytes),
                             publics,
+                            program_vk,
                         },
                     ))
                 } else {
@@ -443,11 +448,50 @@ impl ProverBackend {
                     elapsed,
                     stats,
                     proof_id,
-                    ZiskProofWithPublicValues { proof, publics: ZiskPublics::new(p.public_values) },
+                    ZiskProofWithPublicValues {
+                        proof,
+                        publics: ZiskPublics::new(&p.public_values),
+                        program_vk: ZiskProgramVK::new_from_publics(&p.public_values),
+                    },
                 ))
             }
             (_, None) => Ok(ZiskProveResult::new_null(execution_result, elapsed, stats)),
         }
+    }
+
+    pub(crate) fn compress(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        program_vk: &ZiskProgramVK,
+    ) -> Result<ZiskProofWithPublicValues> {
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot compress in verifier mode"))?;
+
+        let proof_bytes = match proof {
+            ZiskProof::VadcopFinal(bytes) => bytes.clone(),
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Cannot generate SNARK proof. Only VadcopFinal proofs can be converted to SNARK proofs.",
+                ));
+            }
+        };
+
+        let mut pubs = program_vk.vk.clone();
+        pubs.extend(publics.public_bytes());
+        let vadcop_final_proof = VadcopFinalProof::new(proof_bytes, pubs, false);
+
+        let compressed_proof = proofman
+            .generate_vadcop_final_proof_compressed(&vadcop_final_proof, None, false)
+            .map_err(|e| anyhow::anyhow!("Error generating compressed proof: {}", e))?;
+
+        Ok(ZiskProofWithPublicValues {
+            proof: ZiskProof::VadcopFinalCompressed(compressed_proof.proof),
+            publics: ZiskPublics::new(&compressed_proof.public_values),
+            program_vk: ZiskProgramVK::new_from_publics(&compressed_proof.public_values),
+        })
     }
 
     pub(crate) fn prove_snark(
@@ -455,7 +499,7 @@ impl ProverBackend {
         proof: &ZiskProof,
         publics: &ZiskPublics,
         program_vk: &ZiskProgramVK,
-    ) -> Result<ZiskProof> {
+    ) -> Result<ZiskProofWithPublicValues> {
         if self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
@@ -482,9 +526,17 @@ impl ProverBackend {
             .generate_final_snark_proof(&vadcop_final_proof, None)?;
 
         if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
-            Ok(ZiskProof::Plonk(snark_proof.proof_bytes))
+            Ok(ZiskProofWithPublicValues {
+                proof: ZiskProof::Plonk(snark_proof.proof_bytes),
+                publics: publics.clone(),
+                program_vk: program_vk.clone(),
+            })
         } else if snark_proof.protocol_id == SnarkProtocol::Fflonk.protocol_id() {
-            Ok(ZiskProof::Fflonk(snark_proof.proof_bytes))
+            Ok(ZiskProofWithPublicValues {
+                proof: ZiskProof::Fflonk(snark_proof.proof_bytes),
+                publics: publics.clone(),
+                program_vk: program_vk.clone(),
+            })
         } else {
             Err(anyhow::anyhow!("Unsupported snark protocol id: {}", snark_proof.protocol_id))
         }

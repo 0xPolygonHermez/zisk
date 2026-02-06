@@ -28,6 +28,31 @@ use zisk_common::{
 pub struct ZiskExecuteResult {
     pub execution: ZiskExecutionResult,
     pub duration: Duration,
+    pub publics: ZiskPublics,
+}
+
+impl ZiskExecuteResult {
+    pub fn new(execution: ZiskExecutionResult, duration: Duration, publics: &[u8]) -> Self {
+        Self { execution, duration, publics: ZiskPublics::new(publics) }
+    }
+
+    pub fn get_publics(&self) -> &ZiskPublics {
+        &self.publics
+    }
+
+    pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
+        &self,
+    ) -> Result<T> {
+        self.publics.read()
+    }
+
+    pub fn get_execution_steps(&self) -> &u64 {
+        &self.execution.steps
+    }
+
+    pub fn get_duration(&self) -> Duration {
+        self.duration
+    }
 }
 
 pub struct ZiskVerifyConstraintsResult {
@@ -36,8 +61,24 @@ pub struct ZiskVerifyConstraintsResult {
     pub stats: ExecutorStatsHandle,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZiskProgramVK {
     pub vk: Vec<u8>,
+}
+
+impl ZiskProgramVK {
+    pub fn new_from_publics(publics: &[u8]) -> Self {
+        assert!(
+            publics.len() >= 32,
+            "Not enough bytes to extract program VK (expected at least 32 bytes)"
+        );
+
+        Self { vk: publics[0..32].to_vec() }
+    }
+
+    pub fn new_empty() -> Self {
+        Self { vk: vec![0u8; 32] }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -258,7 +299,7 @@ pub struct ZiskPublics {
 }
 
 impl ZiskPublics {
-    pub fn new(publics_bytes: Vec<u8>) -> Self {
+    pub fn new(publics_bytes: &[u8]) -> Self {
         assert!(
             publics_bytes.len() == ZISK_PUBLICS * 8 + 32,
             "Not enough bytes to fill ZiskPublics"
@@ -406,11 +447,12 @@ impl ZiskPublics {
 pub struct ZiskProofWithPublicValues {
     pub proof: ZiskProof,
     pub publics: ZiskPublics,
+    pub program_vk: ZiskProgramVK,
 }
 
 impl ZiskProofWithPublicValues {
-    pub fn new(proof: ZiskProof, publics: ZiskPublics) -> Self {
-        Self { proof, publics }
+    pub fn new(proof: ZiskProof, publics: ZiskPublics, program_vk: ZiskProgramVK) -> Self {
+        Self { proof, publics, program_vk }
     }
 
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
@@ -431,17 +473,59 @@ impl ZiskProofWithPublicValues {
         Ok(proof_with_publics)
     }
 
-    pub fn get_vadcop_final_proof(&self, vk: &ZiskProgramVK) -> Result<VadcopFinalProof> {
+    pub fn get_vadcop_final_proof(&self) -> Result<VadcopFinalProof> {
         match &self.proof {
             ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalCompressed(proof_bytes) => {
                 let compressed = matches!(self.proof, ZiskProof::VadcopFinalCompressed(_));
-                let mut pubs = vk.vk.clone();
+                let mut pubs = self.program_vk.vk.clone();
                 pubs.extend(self.publics.public_bytes());
                 Ok(VadcopFinalProof::new(proof_bytes.clone(), pubs, compressed))
             }
 
             _ => Err(anyhow::anyhow!("Proof is not a Vadcop final proof")),
         }
+    }
+
+    pub fn get_proof(&self) -> &ZiskProof {
+        &self.proof
+    }
+
+    pub fn get_publics(&self) -> &ZiskPublics {
+        &self.publics
+    }
+
+    pub fn get_program_vk(&self) -> &ZiskProgramVK {
+        &self.program_vk
+    }
+
+    /// Create ZiskProofWithPublicValues directly from a Vadcop proof byte array.
+    ///
+    /// This method parses the proof format (n_publics, publics..., proof...) and extracts
+    /// the public values and program VK directly, without creating an intermediate VadcopFinalProof.
+    ///
+    /// # Parameters
+    ///
+    /// * `proof` - The proof as a slice of u64 values
+    /// * `compressed` - Whether the proof is compressed
+    ///
+    /// # Returns
+    ///
+    /// A ZiskProofWithPublicValues containing the parsed proof, publics, and program VK
+    pub fn new_from_vadcop_proof(proof: &[u64], compressed: bool) -> Result<Self> {
+        let vadcop_proof = VadcopFinalProof::new_from_proof(proof, compressed)
+            .map_err(|e| anyhow::anyhow!("Failed to parse Vadcop proof: {}", e))?;
+
+        let zisk_proof = if compressed {
+            ZiskProof::VadcopFinalCompressed(vadcop_proof.proof)
+        } else {
+            ZiskProof::VadcopFinal(vadcop_proof.proof)
+        };
+
+        Ok(Self {
+            proof: zisk_proof,
+            publics: ZiskPublics::new(&vadcop_proof.public_values),
+            program_vk: ZiskProgramVK::new_from_publics(&vadcop_proof.public_values),
+        })
     }
 }
 
@@ -477,6 +561,7 @@ impl ZiskProveResult {
             proof_with_publics: ZiskProofWithPublicValues {
                 proof: ZiskProof::Null(),
                 publics: ZiskPublics::new_empty(),
+                program_vk: ZiskProgramVK::new_empty(),
             },
         }
     }
@@ -489,8 +574,8 @@ impl ZiskProveResult {
         self.duration
     }
 
-    pub fn get_execution(&self) -> &ZiskExecutionResult {
-        &self.execution
+    pub fn get_execution_steps(&self) -> &u64 {
+        &self.execution.steps
     }
 
     pub fn get_proof_id(&self) -> Option<&String> {
@@ -503,6 +588,10 @@ impl ZiskProveResult {
 
     pub fn get_publics(&self) -> &ZiskPublics {
         &self.proof_with_publics.publics
+    }
+
+    pub fn get_program_vk(&self) -> &ZiskProgramVK {
+        &self.proof_with_publics.program_vk
     }
 
     pub fn get_proof_with_publics(&self) -> &ZiskProofWithPublicValues {
@@ -579,7 +668,14 @@ pub trait ProverEngine {
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
-    ) -> Result<ZiskProof>;
+    ) -> Result<ZiskProofWithPublicValues>;
+
+    fn compress(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        vk: &ZiskProgramVK,
+    ) -> Result<ZiskProofWithPublicValues>;
 
     fn prove_phase(
         &self,
@@ -707,8 +803,17 @@ impl<C: ZiskBackend> ZiskProver<C> {
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
-    ) -> Result<ZiskProof> {
+    ) -> Result<ZiskProofWithPublicValues> {
         self.prover.prove_snark(proof, publics, vk)
+    }
+
+    pub fn compress(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        vk: &ZiskProgramVK,
+    ) -> Result<ZiskProofWithPublicValues> {
+        self.prover.compress(proof, publics, vk)
     }
 
     pub fn prove_phase(

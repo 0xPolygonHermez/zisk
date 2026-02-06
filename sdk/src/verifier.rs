@@ -41,7 +41,7 @@ pub fn get_program_vk(elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
     get_program_vk_with_proving_key(elf, proving_key_path)
 }
 
-pub(crate) fn verify_zisk_snark_proof_with_proving_key(
+pub fn verify_zisk_snark_proof_with_proving_key(
     proof: &ZiskProof,
     publics: &ZiskPublics,
     program_vk: &ZiskProgramVK,
@@ -87,7 +87,7 @@ pub(crate) fn verify_zisk_snark_proof_with_proving_key(
     }
 }
 
-pub(crate) fn verify_zisk_proof_with_proving_key(
+pub fn verify_zisk_proof_with_proving_key(
     zisk_proof: &ZiskProof,
     publics: &ZiskPublics,
     program_vk: &ZiskProgramVK,
@@ -107,7 +107,7 @@ pub(crate) fn verify_zisk_proof_with_proving_key(
     }
 }
 
-pub(crate) fn get_program_vk_with_proving_key(
+pub fn get_program_vk_with_proving_key(
     elf: &impl ElfBinaryLike,
     proving_key_path: PathBuf,
 ) -> Result<ZiskProgramVK> {

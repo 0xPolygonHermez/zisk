@@ -2,7 +2,7 @@
 //!
 //! This module provides a high-level API for reading inputs and committing public outputs.
 
-use crate::{read_input, set_output};
+use crate::{read_input, read_input_slice, set_output};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Read a deserializable object from the input stream.
@@ -20,7 +20,7 @@ use serde::{de::DeserializeOwned, Serialize};
 /// let data: MyStruct = ziskos::io::read();
 /// ```
 pub fn read<T: DeserializeOwned>() -> T {
-    let bytes = read_input();
+    let bytes = read_input_slice();
     bincode::deserialize(&bytes).expect("Deserialization failed")
 }
 
