@@ -143,6 +143,12 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     }
 
     #[must_use]
+    pub fn with_snark(mut self, snark: bool) -> Self {
+        self.snark_wrapper = snark;
+        self
+    }
+
+    #[must_use]
     pub fn proving_key_path(mut self, proving_key: PathBuf) -> Self {
         self.proving_key = Some(proving_key);
         self

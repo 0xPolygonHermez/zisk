@@ -54,6 +54,10 @@ pub struct ZiskProve {
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
+    /// Setup folder path for SNARK
+    #[clap(short = 'w', long)]
+    pub proving_key_snark: Option<PathBuf>,
+
     /// Output dir path
     #[clap(short = 'o', long, default_value = "tmp")]
     pub output_dir: PathBuf,
@@ -110,6 +114,9 @@ pub struct ZiskProve {
 
     #[clap(short = 'r', long, default_value_t = false)]
     pub rma: bool,
+
+    #[clap(long, default_value_t = false)]
+    pub snark: bool,
 }
 
 impl ZiskProve {
@@ -140,6 +147,10 @@ impl ZiskProve {
 
         if let Some(hints) = &self.hints {
             print_banner_field("Prec. Hints", hints);
+        }
+
+        if self.snark && self.compressed {
+            anyhow::bail!("Compressed proofs are not supported for SNARK generation.");
         }
 
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
@@ -240,8 +251,10 @@ impl ZiskProve {
         let prover = ProverClient::builder()
             .aggregation(self.aggregation)
             .proving_key_path_opt(self.proving_key.clone())
+            .proving_key_snark_path_opt(self.proving_key_snark.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
+            .with_snark(self.snark)
             .gpu(gpu_params)
             .print_command_info()
             .build()?;
@@ -280,7 +293,9 @@ impl ZiskProve {
             .aggregation(self.aggregation)
             .asm()
             .proving_key_path_opt(self.proving_key.clone())
+            .proving_key_snark_path_opt(self.proving_key_snark.clone())
             .verbose(self.verbose)
+            .with_snark(self.snark)
             .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
             .base_port_opt(self.port)
@@ -310,8 +325,18 @@ impl ZiskProve {
         if let Some(hints_stream) = hints_stream {
             prover.set_hints_stream(hints_stream)?;
         }
-        let result = prover.prove(stdin).with_proof_options(proof_options).run()?;
+
         let world_rank = prover.world_rank();
+
+        let mut prover = prover.prove(stdin).with_proof_options(proof_options);
+        if self.snark {
+            prover = prover.plonk();
+        }
+        if self.compressed {
+            prover = prover.compressed();
+        }
+
+        let result = prover.run()?;
 
         Ok((vk, result, world_rank))
     }
