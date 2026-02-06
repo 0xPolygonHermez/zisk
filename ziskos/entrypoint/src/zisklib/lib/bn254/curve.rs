@@ -7,13 +7,13 @@ use crate::{
         syscall_bn254_curve_add, syscall_bn254_curve_dbl, SyscallBn254CurveAddParams,
         SyscallPoint256,
     },
-    zisklib::{eq, fcall_msb_pos_256, is_zero},
+    zisklib::{eq, fcall_msb_pos_256, is_zero, lt},
 };
 
 use super::{
     constants::{E_B, G1_IDENTITY, P},
-    fp::{add_fp_bn254, inv_fp_bn254, is_canonical_fp_bn254, mul_fp_bn254, square_fp_bn254},
-    fr::{is_canonical_fr_bn254, reduce_fr_bn254, scalar_bytes_be_to_u64_le_bn254},
+    fp::{add_fp_bn254, inv_fp_bn254, mul_fp_bn254, square_fp_bn254},
+    fr::{reduce_fr_bn254, scalar_bytes_be_to_u64_le_bn254},
 };
 
 /// G1 add result codes
@@ -22,7 +22,7 @@ const G1_ADD_SUCCESS_INFINITY: u8 = 1;
 const G1_ADD_ERR_INVALID: u8 = 2;
 const G1_ADD_ERR_NOT_ON_CURVE: u8 = 3;
 
-/// G1 MSM result codes
+/// G1 mul result codes
 const G1_MUL_SUCCESS: u8 = 0;
 const G1_MUL_SUCCESS_INFINITY: u8 = 1;
 const G1_MUL_ERR_NOT_IN_FIELD: u8 = 2;
@@ -124,7 +124,7 @@ pub fn add_complete_bn254(
         // Validate p2 field elements and curve membership
         let x2: [u64; 4] = p2[0..4].try_into().unwrap();
         let y2: [u64; 4] = p2[4..8].try_into().unwrap();
-        if !is_canonical_fp_bn254(&x2) || !is_canonical_fp_bn254(&y2) {
+        if !lt(&x2, &P) || !lt(&y2, &P) {
             return Err(G1_ADD_ERR_INVALID);
         }
         if !is_on_curve_bn254(
@@ -141,7 +141,7 @@ pub fn add_complete_bn254(
         // Validate p1 field elements and curve membership
         let x1: [u64; 4] = p1[0..4].try_into().unwrap();
         let y1: [u64; 4] = p1[4..8].try_into().unwrap();
-        if !is_canonical_fp_bn254(&x1) || !is_canonical_fp_bn254(&y1) {
+        if !lt(&x1, &P) || !lt(&y1, &P) {
             return Err(G1_ADD_ERR_INVALID);
         }
         if !is_on_curve_bn254(
@@ -157,7 +157,7 @@ pub fn add_complete_bn254(
     // Both points are non-identity, validate both
     let x1: [u64; 4] = p1[0..4].try_into().unwrap();
     let y1: [u64; 4] = p1[4..8].try_into().unwrap();
-    if !is_canonical_fp_bn254(&x1) || !is_canonical_fp_bn254(&y1) {
+    if !lt(&x1, &P) || !lt(&y1, &P) {
         return Err(G1_ADD_ERR_INVALID);
     }
     if !is_on_curve_bn254(
@@ -170,7 +170,7 @@ pub fn add_complete_bn254(
 
     let x2: [u64; 4] = p2[0..4].try_into().unwrap();
     let y2: [u64; 4] = p2[4..8].try_into().unwrap();
-    if !is_canonical_fp_bn254(&x2) || !is_canonical_fp_bn254(&y2) {
+    if !lt(&x2, &P) || !lt(&y2, &P) {
         return Err(G1_ADD_ERR_INVALID);
     }
     if !is_on_curve_bn254(
@@ -317,7 +317,7 @@ pub fn mul_complete_bn254(
     let x: [u64; 4] = p[0..4].try_into().unwrap();
     let y: [u64; 4] = p[4..8].try_into().unwrap();
 
-    if !is_canonical_fp_bn254(&x) || !is_canonical_fp_bn254(&y) {
+    if !lt(&x, &P) || !lt(&y, &P) {
         return Err(G1_MUL_ERR_NOT_IN_FIELD);
     }
 
@@ -329,16 +329,12 @@ pub fn mul_complete_bn254(
         return Err(G1_MUL_ERR_NOT_ON_CURVE);
     }
 
-    // Reduce the scalar if not canonical
-    let k = if !is_canonical_fr_bn254(k) {
-        reduce_fr_bn254(
-            k,
-            #[cfg(feature = "hints")]
-            hints,
-        )
-    } else {
-        *k
-    };
+    // Reduce the scalar
+    let k = reduce_fr_bn254(
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     // Perform scalar multiplication
     Ok(scalar_mul_bn254(

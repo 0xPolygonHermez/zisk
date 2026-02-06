@@ -1,10 +1,9 @@
 use crate::hints::macros::define_hint_ptr;
-
-const SHA256_HINT_ID: u32 = 0x0100;
+use zisk_common::HINT_SHA256;
 
 define_hint_ptr! {
     sha256 => {
-        hint_id: SHA256_HINT_ID,
+        hint_id: HINT_SHA256,
         param: f,
         is_result: false,
     }

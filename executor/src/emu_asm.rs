@@ -15,9 +15,10 @@ use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use sm_rom::RomSM;
-#[cfg(feature = "stats")]
-use zisk_common::ExecutorStatsEvent;
-use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace, ExecutorStatsHandle, ZiskExecutionResult};
+use zisk_common::{
+    io::ZiskStdin, stats_begin, stats_end, ChunkId, EmuTrace, ExecutorStatsHandle, StatsScope,
+    ZiskExecutionResult,
+};
 use zisk_core::{ZiskRom, MAX_INPUT_SIZE};
 use ziskemu::ZiskEmulator;
 
@@ -116,7 +117,7 @@ impl EmulatorAsm {
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
-        _caller_stats_id: u64,
+        _caller_stats_scope: &StatsScope,
     ) -> (
         Vec<EmuTrace>,
         DeviceMetricsList,
@@ -124,29 +125,16 @@ impl EmulatorAsm {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        #[cfg(feature = "stats")]
-        let parent_stats_id = stats.next_id();
-        #[cfg(feature = "stats")]
-        stats.add_stat(
-            _caller_stats_id,
-            parent_stats_id,
-            "EXECUTE_WITH_ASSEMBLY",
-            0,
-            ExecutorStatsEvent::Begin,
-        );
+        stats_begin!(stats, _caller_stats_scope, _exec_scope, "EXECUTE_WITH_ASSEMBLY", 0);
 
-        #[cfg(feature = "stats")]
-        let stats_id = stats.next_id();
-        #[cfg(feature = "stats")]
-        stats.add_stat(parent_stats_id, stats_id, "ASM_WRITE_INPUT", 0, ExecutorStatsEvent::Begin);
+        stats_begin!(stats, &_exec_scope, _write_scope, "ASM_WRITE_INPUT", 0);
 
         let mut input_writer = self.shmem_input_writer.lock().unwrap();
         input_writer.get_or_insert_with(|| self.create_shmem_writer(&AsmService::MO));
 
         write_input(&mut stdin.lock().unwrap(), input_writer.as_ref().unwrap());
 
-        #[cfg(feature = "stats")]
-        stats.add_stat(parent_stats_id, stats_id, "ASM_WRITE_INPUT", 0, ExecutorStatsEvent::End);
+        stats_end!(stats, &_write_scope);
 
         let chunk_size = self.chunk_size;
         let (world_rank, local_rank, base_port) =
@@ -207,8 +195,7 @@ impl EmulatorAsm {
             );
         }
 
-        #[cfg(feature = "stats")]
-        stats.add_stat(0, parent_stats_id, "EXECUTE_WITH_ASSEMBLY", 0, ExecutorStatsEvent::End);
+        stats_end!(stats, &_exec_scope);
 
         (min_traces, main_count, secn_count, Some(handle_mo), execution_result)
     }
@@ -237,12 +224,13 @@ impl EmulatorAsm {
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
     ) -> (Vec<EmuTrace>, DeviceMetricsList, NestedDeviceMetricsList) {
-        #[cfg(feature = "stats")]
-        let parent_stats_id = stats.next_id();
-        #[cfg(feature = "stats")]
-        stats.add_stat(0, parent_stats_id, "RUN_MT_ASSEMBLY", 0, ExecutorStatsEvent::Begin);
+        stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
         let results_mu: Mutex<Vec<(ChunkId, _)>> = Mutex::new(Vec::new());
+
+        // Capture the parent scope ID so it can be copied into the closure
+        #[allow(unused_variables)]
+        let mt_scope_id = _mt_scope.id();
 
         let emu_traces = rayon::in_place_scope(|scope| {
             let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
@@ -250,16 +238,7 @@ impl EmulatorAsm {
                 let zisk_rom = &self.zisk_rom;
                 let results_ref = &results_mu;
                 scope.spawn(move |_| {
-                    #[cfg(feature = "stats")]
-                    let stats_id = stats.next_id();
-                    #[cfg(feature = "stats")]
-                    stats.add_stat(
-                        parent_stats_id,
-                        stats_id,
-                        "MT_CHUNK_PLAYER",
-                        0,
-                        ExecutorStatsEvent::Begin,
-                    );
+                    stats_begin!(stats, mt_scope_id, _chunk_scope, "MT_CHUNK_PLAYER", 0);
 
                     let mut data_bus = sm_bundle.build_data_bus_counters();
 
@@ -272,14 +251,7 @@ impl EmulatorAsm {
 
                     data_bus.on_close();
 
-                    #[cfg(feature = "stats")]
-                    stats.add_stat(
-                        parent_stats_id,
-                        stats_id,
-                        "MT_CHUNK_PLAYER",
-                        0,
-                        ExecutorStatsEvent::End,
-                    );
+                    stats_end!(stats, &_chunk_scope);
 
                     results_ref.lock().unwrap().push((chunk_id, data_bus));
                 });
@@ -329,8 +301,7 @@ impl EmulatorAsm {
             }
         }
 
-        #[cfg(feature = "stats")]
-        stats.add_stat(0, parent_stats_id, "RUN_MT_ASSEMBLY", 0, ExecutorStatsEvent::End);
+        stats_end!(stats, &_mt_scope);
         (emu_traces, main_count, secn_count)
     }
 }
@@ -342,7 +313,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
-        caller_stats_id: u64,
+        caller_stats_scope: &StatsScope,
     ) -> (
         Vec<EmuTrace>,
         DeviceMetricsList,
@@ -350,6 +321,6 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        self.execute(stdin, pctx, sm_bundle, stats, caller_stats_id)
+        self.execute(stdin, pctx, sm_bundle, stats, caller_stats_scope)
     }
 }

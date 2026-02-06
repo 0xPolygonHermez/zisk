@@ -11,6 +11,206 @@ use zisk_pil::*;
 
 use crate::Stats;
 
+/// Trait for types that can be converted to a stats ID.
+/// Implemented for `u64` (raw ID), `StatsScope`, and references `&T` where `T: IntoStatsId`.
+pub trait IntoStatsId {
+    fn as_stats_id(&self) -> u64;
+}
+
+impl IntoStatsId for u64 {
+    #[inline]
+    fn as_stats_id(&self) -> u64 {
+        *self
+    }
+}
+
+impl IntoStatsId for StatsScope {
+    #[inline]
+    fn as_stats_id(&self) -> u64 {
+        self.id()
+    }
+}
+
+impl<T: IntoStatsId> IntoStatsId for &T {
+    #[inline]
+    fn as_stats_id(&self) -> u64 {
+        (*self).as_stats_id()
+    }
+}
+
+/// Creates a new stats scope (StatsScope) and emits a Begin event.
+/// When `stats` feature is disabled, creates a zero-sized StatsScope.
+///
+/// # Usage
+/// ```ignore
+/// stats_begin!(self.stats, 0, parent_scope, "PARENT_OP", 0);
+/// stats_begin!(self.stats, &parent_scope, child_scope, "CHILD_OP", 0);
+/// // ... work ...
+/// stats_end!(self.stats, &child_scope);
+/// stats_end!(self.stats, &parent_scope);
+/// ```
+#[cfg(feature = "stats")]
+#[macro_export]
+macro_rules! stats_begin {
+    ($stats:expr, $parent:expr, $scope:ident, $name:expr, $index:expr) => {
+        let $scope = $crate::StatsScope::new(
+            $crate::IntoStatsId::as_stats_id(&$parent),
+            $stats.next_id(),
+            $name,
+            $index,
+        );
+        $stats.add_stat(
+            $scope.parent_id(),
+            $scope.id(),
+            $name,
+            $index,
+            $crate::ExecutorStatsEvent::Begin,
+        );
+    };
+}
+
+#[cfg(not(feature = "stats"))]
+#[macro_export]
+macro_rules! stats_begin {
+    ($stats:expr, $parent:expr, $scope:ident, $name:expr, $index:expr) => {
+        let $scope = $crate::StatsScope;
+    };
+}
+
+/// Ends a stats scope with an End event.
+/// Uses name and index from the scope (passed to stats_begin).
+/// When `stats` feature is disabled, this generates no code.
+///
+/// # Usage
+/// ```ignore
+/// stats_begin!(self.stats, &parent_scope, child_scope, "CHILD_OP", 0);
+/// // ... work ...
+/// stats_end!(self.stats, &child_scope);
+/// ```
+#[cfg(feature = "stats")]
+#[macro_export]
+macro_rules! stats_end {
+    ($stats:expr, $scope:expr) => {
+        $stats.add_stat(
+            $scope.parent_id(),
+            $scope.id(),
+            $scope.name(),
+            $scope.index(),
+            $crate::ExecutorStatsEvent::End,
+        );
+    };
+}
+
+#[cfg(not(feature = "stats"))]
+#[macro_export]
+macro_rules! stats_end {
+    ($stats:expr, $scope:expr) => {};
+}
+
+/// Records a stats mark event (single point in time, not a scope).
+/// When `stats` feature is disabled, this generates no code.
+///
+/// # Usage
+/// ```ignore
+/// stats_mark!(self.stats, &parent_scope, "CHECKPOINT_NAME", index);
+/// ```
+#[cfg(feature = "stats")]
+#[macro_export]
+macro_rules! stats_mark {
+    ($stats:expr, $parent:expr, $name:expr, $index:expr) => {
+        let __mark_id = $stats.next_id();
+        $stats.add_stat(
+            $crate::IntoStatsId::as_stats_id(&$parent),
+            __mark_id,
+            $name,
+            $index,
+            $crate::ExecutorStatsEvent::Mark,
+        );
+    };
+}
+
+#[cfg(not(feature = "stats"))]
+#[macro_export]
+macro_rules! stats_mark {
+    ($stats:expr, $parent:expr, $name:expr, $index:expr) => {};
+}
+
+/// Stats scope that holds scope information (parent_id, id, name, index).
+/// Created by `stats_begin!` macro, ended by `stats_end!` macro.
+/// When `stats` feature is disabled, this is a zero-sized type.
+///
+/// # Usage
+/// ```ignore
+/// stats_begin!(self.stats, 0, parent_scope, "PARENT", 0);
+/// stats_begin!(self.stats, &parent_scope, child_scope, "CHILD", 0);
+/// // ... work ...
+/// stats_end!(self.stats, &child_scope);
+/// stats_end!(self.stats, &parent_scope);
+/// ```
+#[cfg(feature = "stats")]
+pub struct StatsScope {
+    parent_id: u64,
+    id: u64,
+    name: &'static str,
+    index: usize,
+}
+
+#[cfg(feature = "stats")]
+impl StatsScope {
+    /// Creates a new stats scope. Does NOT emit Begin - use `stats_begin!` macro instead.
+    #[inline]
+    pub fn new(parent_id: u64, id: u64, name: &'static str, index: usize) -> Self {
+        Self { parent_id, id, name, index }
+    }
+
+    #[inline]
+    pub fn parent_id(&self) -> u64 {
+        self.parent_id
+    }
+
+    #[inline]
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    #[inline]
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+
+    #[inline]
+    pub fn index(&self) -> usize {
+        self.index
+    }
+}
+
+/// Zero-sized type when stats feature is disabled. All methods are no-ops.
+#[cfg(not(feature = "stats"))]
+pub struct StatsScope;
+
+#[cfg(not(feature = "stats"))]
+impl StatsScope {
+    #[inline]
+    pub fn parent_id(&self) -> u64 {
+        0
+    }
+
+    #[inline]
+    pub fn id(&self) -> u64 {
+        0
+    }
+
+    #[inline]
+    pub fn name(&self) -> &'static str {
+        ""
+    }
+
+    #[inline]
+    pub fn index(&self) -> usize {
+        0
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ExecutorStatsEvent {
     Begin,
@@ -89,25 +289,22 @@ impl ExecutorStats {
             val if val == MEM_AIR_IDS[0] => "MEM".to_string(),
             val if val == ROM_DATA_AIR_IDS[0] => "ROM_DATA".to_string(),
             val if val == INPUT_DATA_AIR_IDS[0] => "INPUT_DATA".to_string(),
+            val if val == DMA_PRE_POST_AIR_IDS[0] => "DMA_PRE_POST".to_string(),
             val if val == MEM_ALIGN_AIR_IDS[0] => "MEM_ALIGN".to_string(),
             val if val == MEM_ALIGN_BYTE_AIR_IDS[0] => "MEM_ALIGN_BYTE".to_string(),
             val if val == MEM_ALIGN_READ_BYTE_AIR_IDS[0] => "MEM_ALIGN_READ_BYTE".to_string(),
             val if val == MEM_ALIGN_WRITE_BYTE_AIR_IDS[0] => "MEM_ALIGN_WRITE_BYTE".to_string(),
-            // val if val == MEM_ALIGN_ROM_AIR_IDS[0] => "MEM_ALIGN_ROM".to_string(),
             val if val == ARITH_AIR_IDS[0] => "ARITH".to_string(),
-            // val if val == ARITH_TABLE_AIR_IDS[0] => "ARITH_TABLE".to_string(),
-            // val if val == ARITH_RANGE_TABLE_AIR_IDS[0] => "ARITH_RANGE_TABLE".to_string(),
             val if val == ARITH_EQ_AIR_IDS[0] => "ARITH_EQ".to_string(),
-            // val if val == ARITH_EQ_LT_TABLE_AIR_IDS[0] => "ARITH_EQ_LT_TABLE".to_string(),
+            val if val == ARITH_EQ_384_AIR_IDS[0] => "ARITH_EQ_384".to_string(),
             val if val == BINARY_AIR_IDS[0] => "BINARY".to_string(),
             val if val == BINARY_ADD_AIR_IDS[0] => "BINARY_ADD".to_string(),
-            // val if val == BINARY_TABLE_AIR_IDS[0] => "BINARY_TABLE".to_string(),
             val if val == BINARY_EXTENSION_AIR_IDS[0] => "BINARY_EXTENSION".to_string(),
-            // val if val == BINARY_EXTENSION_TABLE_AIR_IDS[0] => "BINARY_EXTENSION_TABLE".to_string(),
+            val if val == ADD_256_AIR_IDS[0] => "ADD_256".to_string(),
             val if val == KECCAKF_AIR_IDS[0] => "KECCAKF".to_string(),
-            // val if val == KECCAKF_TABLE_AIR_IDS[0] => "KECCAKF_TABLE".to_string(),
             val if val == SHA_256_F_AIR_IDS[0] => "SHA_256_F".to_string(),
-            // val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
+            val if val == POSEIDON_2_AIR_IDS[0] => "POSEIDON_2".to_string(),
+            val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
             _ => format!("Unknown air_id: {air_id}"),
         }
     }

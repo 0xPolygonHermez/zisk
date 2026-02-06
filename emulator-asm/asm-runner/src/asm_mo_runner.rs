@@ -1,7 +1,6 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
-use zisk_common::ExecutorStatsHandle;
-use zisk_common::Plan;
+use zisk_common::{stats_begin, stats_end, stats_mark, ExecutorStatsHandle, Plan};
 
 use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
@@ -18,9 +17,6 @@ use crate::{
 use mem_planner_cpp::MemPlanner;
 
 use anyhow::{Context, Result};
-
-#[cfg(feature = "stats")]
-use zisk_common::ExecutorStatsEvent;
 
 #[cfg(feature = "save_mem_plans")]
 use mem_common::save_plans;
@@ -93,10 +89,7 @@ impl AsmRunnerMO {
         base_port: Option<u16>,
         _stats: ExecutorStatsHandle,
     ) -> Result<Self> {
-        #[cfg(feature = "stats")]
-        let parent_stats_id = _stats.next_id();
-        #[cfg(feature = "stats")]
-        _stats.add_stat(0, parent_stats_id, "ASM_MO_RUNNER", 0, ExecutorStatsEvent::Begin);
+        stats_begin!(_stats, 0, _runner_scope, "ASM_MO_RUNNER", 0);
 
         let port = AsmServices::port_base_for(base_port, local_rank);
 
@@ -105,20 +98,17 @@ impl AsmRunnerMO {
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        let __stats = _stats.clone();
+        // Capture parent id for thread
+        let _parent_id = _runner_scope.id();
+        let _thread_stats = _stats.clone();
 
         let handle = std::thread::spawn(move || {
-            #[cfg(feature = "stats")]
-            let stats_id = __stats.next_id();
-            #[cfg(feature = "stats")]
-            __stats.add_stat(parent_stats_id, stats_id, "ASM_MO", 0, ExecutorStatsEvent::Begin);
+            stats_begin!(_thread_stats, _parent_id, _mo_scope, "ASM_MO", 0);
 
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
             let result = asm_services.send_memory_ops_request(max_steps, chunk_size);
 
-            // Add to executor stats
-            #[cfg(feature = "stats")]
-            __stats.add_stat(parent_stats_id, stats_id, "ASM_MO", 0, ExecutorStatsEvent::End);
+            stats_end!(_thread_stats, &_mo_scope);
 
             result
         });
@@ -134,16 +124,7 @@ impl AsmRunnerMO {
         // Initialize C++ memory operations trace
         mem_planner.execute();
 
-        #[cfg(feature = "stats")]
-        let stats_id = _stats.next_id();
-        #[cfg(feature = "stats")]
-        _stats.add_stat(
-            parent_stats_id,
-            stats_id,
-            "MO_PROCESS_CHUNKS",
-            0,
-            ExecutorStatsEvent::Begin,
-        );
+        stats_begin!(_stats, &_runner_scope, _process_scope, "MO_PROCESS_CHUNKS", 0);
 
         // Threshold (in bytes) used to detect when we need to check for new shared memory files.
         // Must match MAX_CHUNK_TRACE_SIZE from main.c to ensure we check before the producer
@@ -192,18 +173,7 @@ impl AsmRunnerMO {
 
                     data_ptr = unsafe { data_ptr.add(1) };
 
-                    // Add to executor stats
-                    #[cfg(feature = "stats")]
-                    {
-                        let stats_id = _stats.next_id();
-                        _stats.add_stat(
-                            parent_stats_id,
-                            stats_id,
-                            "MO_CHUNK_DONE",
-                            0,
-                            ExecutorStatsEvent::Mark,
-                        );
-                    }
+                    stats_mark!(_stats, &_runner_scope, "MO_CHUNK_DONE", 0);
 
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
@@ -249,45 +219,22 @@ impl AsmRunnerMO {
         let mut mem_align_plans = mem_planner.wait_mem_align_plans();
         mem_planner.wait();
 
-        // Add to executor stats
-        #[cfg(feature = "stats")]
-        _stats.add_stat(parent_stats_id, stats_id, "MO_PROCESS_CHUNKS", 0, ExecutorStatsEvent::End);
-
-        #[cfg(feature = "stats")]
-        let stats_id = _stats.next_id();
-        #[cfg(feature = "stats")]
-        _stats.add_stat(
-            parent_stats_id,
-            stats_id,
-            "MO_COLLECT_PLANS",
-            0,
-            ExecutorStatsEvent::Begin,
-        );
+        stats_end!(_stats, &_process_scope);
+        stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);
 
         let plans = mem_planner.collect_plans(&mut mem_align_plans);
 
         #[cfg(feature = "save_mem_plans")]
         save_plans(&plans, "mem_plans_cpp.txt");
 
-        // Add to executor stats
-        #[cfg(feature = "stats")]
-        _stats.add_stat(parent_stats_id, stats_id, "MO_COLLECT_PLANS", 0, ExecutorStatsEvent::End);
+        stats_end!(_stats, &_collect_scope);
 
-        // #[cfg(feature = "stats")]
-        // {
-        //     let mem_stats = mem_planner.get_mem_stats();
-        //     for i in mem_stats {
-        //         _stats.add_stat(i);
-        //     }
-        // }
         preloaded.handle_mo = Some(std::thread::spawn(move || {
             drop(mem_planner);
             MemPlanner::new()
         }));
 
-        #[cfg(feature = "stats")]
-        _stats.add_stat(0, parent_stats_id, "ASM_MO_RUNNER", 0, ExecutorStatsEvent::End);
-
+        stats_end!(_stats, &_runner_scope);
         Ok(AsmRunnerMO::new(plans))
     }
 }

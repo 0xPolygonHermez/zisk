@@ -12,7 +12,7 @@ use super::{
         mul_fp2_bls12_381, neg_fp2_bls12_381, scalar_mul_fp2_bls12_381, sqrt_fp2_bls12_381,
         square_fp2_bls12_381, sub_fp2_bls12_381,
     },
-    fr::scalar_bytes_be_to_u64_le_bls12_381,
+    fr::{reduce_fr_bls12_381, scalar_bytes_be_to_u64_le_bls12_381},
 };
 
 /// G2 add result codes
@@ -846,7 +846,12 @@ pub fn msm_complete_twist_bls12_381(
         }
 
         // Skip zero scalars
-        if *scalar == [0, 0, 0, 0] {
+        if reduce_fr_bls12_381(
+            scalar,
+            #[cfg(feature = "hints")]
+            hints,
+        ) == [0, 0, 0, 0]
+        {
             continue;
         }
 

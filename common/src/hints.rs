@@ -53,41 +53,44 @@ use std::fmt::Display;
 use anyhow::Result;
 
 // === CONTROL CODES ===
-const CTRL_START: u32 = 0x0000;
-const CTRL_END: u32 = 0x0001;
-const CTRL_CANCEL: u32 = 0x0002;
-const CTRL_ERROR: u32 = 0x0003;
+pub const CTRL_START: u32 = 0x0000;
+pub const CTRL_END: u32 = 0x0001;
+pub const CTRL_CANCEL: u32 = 0x0002;
+pub const CTRL_ERROR: u32 = 0x0003;
 
 // === BUILT-IN HINT CODES ===
 // SHA256 hint codes
-const HINT_SHA256: u32 = 0x0100;
+pub const HINT_SHA256: u32 = 0x0100;
 
 // BN254 hint codes
-const HINT_BN254_G1_ADD: u32 = 0x0200;
-const HINT_BN254_G1_MUL: u32 = 0x0201;
-const HINT_BN254_PAIRING_CHECK: u32 = 0x0205;
+pub const HINT_BN254_G1_ADD: u32 = 0x0200;
+pub const HINT_BN254_G1_MUL: u32 = 0x0201;
+pub const HINT_BN254_PAIRING_CHECK: u32 = 0x0205;
 
 // Secp256k1 hint codes
-const HINT_SECP256K1_RECOVER: u32 = 0x0300;
-const HINT_SECP256R1_ECDSA_VERIFY: u32 = 0x0301;
+pub const HINT_SECP256K1_ECDSA_ADDRESS_RECOVER: u32 = 0x0300;
+pub const HINT_SECP256K1_ECDSA_VERIFY_ADDRESS_RECOVER: u32 = 0x0301;
+
+// Secp256r1 hint codes
+pub const HINT_SECP256R1_ECDSA_VERIFY: u32 = 0x0380;
 
 // BLS12-381 hint codes
-const HINT_BLS12_381_G1_ADD: u32 = 0x0400;
-const HINT_BLS12_381_G1_MSM: u32 = 0x0401;
-const HINT_BLS12_381_G2_ADD: u32 = 0x0405;
-const HINT_BLS12_381_G2_MSM: u32 = 0x0406;
-const HINT_BLS12_381_PAIRING_CHECK: u32 = 0x040A;
-const HINT_BLS12_381_FP_TO_G1: u32 = 0x0410;
-const HINT_BLS12_381_FP2_TO_G2: u32 = 0x0411;
+pub const HINT_BLS12_381_G1_ADD: u32 = 0x0400;
+pub const HINT_BLS12_381_G1_MSM: u32 = 0x0401;
+pub const HINT_BLS12_381_G2_ADD: u32 = 0x0405;
+pub const HINT_BLS12_381_G2_MSM: u32 = 0x0406;
+pub const HINT_BLS12_381_PAIRING_CHECK: u32 = 0x040A;
+pub const HINT_BLS12_381_FP_TO_G1: u32 = 0x0410;
+pub const HINT_BLS12_381_FP2_TO_G2: u32 = 0x0411;
 
 // Modular exponentiation hint codes
-const HINT_MODEXP: u32 = 0x0500;
+pub const HINT_MODEXP: u32 = 0x0500;
 
 // KZG hint codes
-const HINT_VERIFY_KZG_PROOF: u32 = 0x0600;
+pub const HINT_VERIFY_KZG_PROOF: u32 = 0x0600;
 
 // Keccak256 hint codes
-const HINT_KECCAK256: u32 = 0x0700;
+pub const HINT_KECCAK256: u32 = 0x0700;
 
 /// Control code variants for stream control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -146,8 +149,12 @@ pub enum BuiltInHint {
     Bn254PairingCheck = HINT_BN254_PAIRING_CHECK,
 
     // Secp256k1 hint types.
-    /// secp256k1 ECDSA signature recovery.
-    Secp256k1Recover = HINT_SECP256K1_RECOVER,
+    /// secp256k1 ECDSA address recovery.
+    Secp256k1EcdsaAddressRecover = HINT_SECP256K1_ECDSA_ADDRESS_RECOVER,
+    /// secp256k1 ECDSA signature verification and address recovery.
+    Secp256k1EcdsaVerifyAddressRecover = HINT_SECP256K1_ECDSA_VERIFY_ADDRESS_RECOVER,
+
+    // Secp256r1 hint types.
     /// secp256r1 (P-256) signature verification.
     Secp256r1EcdsaVerify = HINT_SECP256R1_ECDSA_VERIFY,
 
@@ -190,7 +197,11 @@ impl Display for BuiltInHint {
             BuiltInHint::Bn254G1Mul => "BN254_G1_MUL",
             BuiltInHint::Bn254PairingCheck => "BN254_PAIRING_CHECK",
             // Secp256k1 Hints
-            BuiltInHint::Secp256k1Recover => "SECP256K1_RECOVER",
+            BuiltInHint::Secp256k1EcdsaAddressRecover => "SECP256K1_ECDSA_ADDRESS_RECOVER",
+            BuiltInHint::Secp256k1EcdsaVerifyAddressRecover => {
+                "SECP256K1_ECDSA_VERIFY_ADDRESS_RECOVER"
+            }
+            // Secp256r1 Hints
             BuiltInHint::Secp256r1EcdsaVerify => "SECP256R1_ECDSA_VERIFY",
             // BLS12-381 Hints
             BuiltInHint::Bls12_381G1Add => "BLS12_381_G1_ADD",
@@ -224,7 +235,11 @@ impl TryFrom<u32> for BuiltInHint {
             HINT_BN254_G1_MUL => Ok(Self::Bn254G1Mul),
             HINT_BN254_PAIRING_CHECK => Ok(Self::Bn254PairingCheck),
             // Secp256k1 Hints
-            HINT_SECP256K1_RECOVER => Ok(Self::Secp256k1Recover),
+            HINT_SECP256K1_ECDSA_ADDRESS_RECOVER => Ok(Self::Secp256k1EcdsaAddressRecover),
+            HINT_SECP256K1_ECDSA_VERIFY_ADDRESS_RECOVER => {
+                Ok(Self::Secp256k1EcdsaVerifyAddressRecover)
+            }
+            // Secp256r1 Hints
             HINT_SECP256R1_ECDSA_VERIFY => Ok(Self::Secp256r1EcdsaVerify),
             // BLS12-381 Hints
             HINT_BLS12_381_G1_ADD => Ok(Self::Bls12_381G1Add),
@@ -303,7 +318,13 @@ impl HintCode {
             HintCode::BuiltIn(BuiltInHint::Bn254G1Mul) => HINT_BN254_G1_MUL,
             HintCode::BuiltIn(BuiltInHint::Bn254PairingCheck) => HINT_BN254_PAIRING_CHECK,
             // Secp256k1 Hints
-            HintCode::BuiltIn(BuiltInHint::Secp256k1Recover) => HINT_SECP256K1_RECOVER,
+            HintCode::BuiltIn(BuiltInHint::Secp256k1EcdsaAddressRecover) => {
+                HINT_SECP256K1_ECDSA_ADDRESS_RECOVER
+            }
+            HintCode::BuiltIn(BuiltInHint::Secp256k1EcdsaVerifyAddressRecover) => {
+                HINT_SECP256K1_ECDSA_VERIFY_ADDRESS_RECOVER
+            }
+            // Secp256r1 Hints
             HintCode::BuiltIn(BuiltInHint::Secp256r1EcdsaVerify) => HINT_SECP256R1_ECDSA_VERIFY,
             // BLS12-381 Hints
             HintCode::BuiltIn(BuiltInHint::Bls12_381G1Add) => HINT_BLS12_381_G1_ADD,

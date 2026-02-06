@@ -12,3 +12,24 @@ sha2 = "0.10.8"
 
 [build-dependencies]
 zisk-build = { workspace = true }
+
+[features]
+default = []
+packed = ["zisk-sdk/packed"]
+gpu = ["zisk-sdk/gpu", "packed"]
+
+[[bin]]
+name = "prove"
+path = "bin/prove.rs"
+
+[[bin]]
+name = "execute"
+path = "bin/execute.rs"
+
+[[bin]]
+name = "plonk"
+path = "bin/plonk.rs"
+
+[[bin]]
+name = "compressed"
+path = "bin/compressed.rs"

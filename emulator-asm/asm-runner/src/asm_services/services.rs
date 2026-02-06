@@ -176,7 +176,7 @@ impl AsmServices {
 
     fn wait_for_service_ready(service: &AsmService, port: u16) {
         let addr = format!("127.0.0.1:{port}");
-        let timeout = Duration::from_secs(50 * 5);
+        let timeout = Duration::from_secs(60);
         let retry_delay = Duration::from_millis(100);
         let start = Instant::now();
 

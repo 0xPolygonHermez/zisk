@@ -214,6 +214,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ark-secp256r1"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5cf8be5820de567729bfa73a410ddd07cec8ad102d9a4bf61fd6b2e60db264e8"
+dependencies = [
+ "ark-ec",
+ "ark-ff",
+ "ark-std",
+]
+
+[[package]]
 name = "ark-serialize"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1140,7 +1151,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#4836fde21c866747b2575aab03e7a07b80fb4064"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#1d992d56cb6d356b3252a2cd93d34495f6640b25"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2129,6 +2140,7 @@ dependencies = [
  "ark-bn254",
  "ark-ff",
  "ark-secp256k1",
+ "ark-secp256r1",
  "ark-std",
  "fields 0.16.0",
  "k256",
@@ -2326,6 +2338,7 @@ dependencies = [
  "ark-bn254",
  "ark-ff",
  "ark-secp256k1",
+ "ark-secp256r1",
  "ark-std",
  "cfg-if",
  "circuit",
@@ -3178,7 +3191,6 @@ dependencies = [
 name = "sm-main"
 version = "0.16.0"
 dependencies = [
- "asm-runner",
  "fields 0.16.0",
  "mem-common",
  "num-bigint",
@@ -4606,7 +4618,7 @@ dependencies = [
  "sha2",
  "tiny-keccak",
  "zisk-pil",
- "ziskos",
+ "ziskos-hints",
 ]
 
 [[package]]
@@ -4743,7 +4755,9 @@ dependencies = [
 name = "ziskos"
 version = "0.16.0"
 dependencies = [
+ "anyhow",
  "bincode",
+ "bytes",
  "cfg-if",
  "ctor",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0)",
@@ -4761,6 +4775,7 @@ dependencies = [
  "sha2",
  "static_assertions",
  "tiny-keccak",
+ "zisk-common",
 ]
 
 [[package]]

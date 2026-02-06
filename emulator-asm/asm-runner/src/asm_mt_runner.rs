@@ -1,4 +1,5 @@
 use named_sem::NamedSemaphore;
+use zisk_common::{stats_begin, stats_end, stats_mark};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
 
@@ -16,9 +17,6 @@ use crate::{
 };
 
 use anyhow::{Context, Result};
-
-#[cfg(feature = "stats")]
-use zisk_common::ExecutorStatsEvent;
 
 pub struct MTOutputShmem {
     pub output_shmem: AsmMultiSharedMemory<AsmMTHeader>,
@@ -67,12 +65,7 @@ impl AsmRunnerMT {
         base_port: Option<u16>,
         _stats: ExecutorStatsHandle,
     ) -> Result<Vec<Arc<EmuTrace>>> {
-        let __stats = _stats.clone();
-
-        #[cfg(feature = "stats")]
-        let parent_stats_id = __stats.next_id();
-        #[cfg(feature = "stats")]
-        _stats.add_stat(0, parent_stats_id, "ASM_MT_RUNNER", 0, ExecutorStatsEvent::Begin);
+        stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
 
         let port = AsmServices::port_base_for(base_port, local_rank);
 
@@ -81,18 +74,17 @@ impl AsmRunnerMT {
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
+        // Capture parent id for thread
+        let _parent_id = _runner_scope.id();
+        let _thread_stats = _stats.clone();
         let handle = std::thread::spawn(move || {
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
 
-            #[cfg(feature = "stats")]
-            let stats_id = __stats.next_id();
-            #[cfg(feature = "stats")]
-            __stats.add_stat(parent_stats_id, stats_id, "ASM_MT", 0, ExecutorStatsEvent::Begin);
+            stats_begin!(_thread_stats, _parent_id, _mt_scope, "ASM_MT", 0);
             let start = Instant::now();
             let result = asm_services.send_minimal_trace_request(max_steps, chunk_size);
 
-            #[cfg(feature = "stats")]
-            __stats.add_stat(parent_stats_id, stats_id, "ASM_MT", 0, ExecutorStatsEvent::End);
+            stats_end!(_thread_stats, &_mt_scope);
 
             (result, start.elapsed())
         });
@@ -101,8 +93,6 @@ impl AsmRunnerMT {
 
         // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMTChunk;
-
-        let __stats = _stats.clone();
 
         // Calculate threshold for detecting when to map additional shared memory files.
         // CRITICAL: These constants must match main.c to ensure we check for new files BEFORE
@@ -135,17 +125,7 @@ impl AsmRunnerMT {
         let exit_code = loop {
             match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
-                    #[cfg(feature = "stats")]
-                    {
-                        let stats_id = __stats.next_id();
-                        __stats.add_stat(
-                            parent_stats_id,
-                            stats_id,
-                            "MT_CHUNK_DONE",
-                            0,
-                            ExecutorStatsEvent::Mark,
-                        );
-                    }
+                    stats_mark!(_stats, &_runner_scope, "MT_CHUNK_DONE", 0);
 
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
@@ -211,9 +191,7 @@ impl AsmRunnerMT {
         assert!(response.trace_len > 0);
         assert!(response.trace_len <= response.allocated_len);
 
-        #[cfg(feature = "stats")]
-        _stats.add_stat(0, parent_stats_id, "ASM_MT_RUNNER", 0, ExecutorStatsEvent::End);
-
+        stats_end!(_stats, &_runner_scope);
         Ok(emu_traces)
     }
 }

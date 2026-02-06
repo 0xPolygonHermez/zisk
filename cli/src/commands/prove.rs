@@ -2,19 +2,14 @@ use crate::ux::{print_banner, print_banner_field};
 use anyhow::Result;
 
 use colored::Colorize;
-use proofman::{get_vadcop_final_proof_vkey, SnarkProof, SnarkProtocol};
 use proofman_common::ParamsGPU;
-use proofman_util::VadcopFinalProof;
 use std::fs;
 use std::path::PathBuf;
 use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::ElfBinaryOwned;
-#[cfg(feature = "stats")]
-use zisk_common::ExecutorStatsEvent;
-use zisk_sdk::ZiskProgramVK;
-use zisk_sdk::{get_proving_key, ProofOpts, ProverClient, ZiskProof, ZiskProveResult};
+use zisk_sdk::{ProofOpts, ProverClient, ZiskProof, ZiskProveResult};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -175,69 +170,41 @@ impl ZiskProve {
             self.emulator
         };
 
-        let (vk, result, world_rank) = if emulator {
+        let (result, world_rank) = if emulator {
             self.run_emu(stdin, gpu_params)?
         } else {
             self.run_asm(stdin, hints_stream, gpu_params)?
         };
 
         if world_rank == 0 {
-            let elapsed = result.duration.as_secs_f64();
+            let elapsed = result.get_duration().as_secs_f64();
             tracing::info!("");
             tracing::info!(
                 "{}",
                 "--- PROVE SUMMARY ------------------------".bright_green().bold()
             );
 
-            match result.proof {
-                ZiskProof::VadcopFinal(ref proof) | ZiskProof::VadcopFinalCompressed(ref proof) => {
-                    let compressed = matches!(result.proof, ZiskProof::VadcopFinalCompressed(_));
-                    let vadcop_final_proof = VadcopFinalProof::new(
-                        proof.clone(),
-                        result.publics.bytes_u64(&vk),
-                        compressed,
-                    );
-                    vadcop_final_proof
-                        .save(self.output_dir.join("vadcop_final_proof.bin"))
-                        .map_err(|e| {
-                            anyhow::anyhow!(
-                                "Failed to save VadcopFinalProof to output dir {:?}: {}",
-                                self.output_dir.join("vadcop_final_proof.bin").display(),
-                                e
-                            )
-                        })?;
-                }
-                ZiskProof::Plonk(ref proof) | ZiskProof::Fflonk(ref proof) => {
-                    let protocol_id = match result.proof {
-                        ZiskProof::Plonk(_) => SnarkProtocol::Plonk.protocol_id(),
-                        ZiskProof::Fflonk(_) => SnarkProtocol::Fflonk.protocol_id(),
-                        _ => unreachable!(),
-                    };
-                    let proving_key = get_proving_key(self.proving_key.as_ref());
-                    let vadcop_verkey = get_vadcop_final_proof_vkey(&proving_key, false)?;
-
-                    let snark_proof = SnarkProof {
-                        proof_bytes: proof.clone(),
-                        public_bytes: result.publics.bytes_solidity(&vk, &vadcop_verkey),
-                        public_snark_bytes: result.publics.hash_solidity(&vk, &vadcop_verkey),
-                        protocol_id,
-                    };
-                    snark_proof.save(self.output_dir.join("snark_proof.bin")).map_err(|e| {
-                        anyhow::anyhow!(
-                            "Failed to save SnarkProof to output dir {:?}: {}",
-                            self.output_dir.join("snark_proof.bin").display(),
-                            e
-                        )
-                    })?;
-                }
-                ZiskProof::Null() => {}
-            }
-
-            if let Some(proof_id) = &result.proof_id {
+            if let Some(proof_id) = &result.get_proof_id() {
+                let output_dir = match result.get_proof() {
+                    ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalCompressed(_) => {
+                        self.output_dir.join("vadcop_final_proof.bin")
+                    }
+                    ZiskProof::Plonk(_) | ZiskProof::Fflonk(_) => {
+                        self.output_dir.join("final_snark_proof.bin")
+                    }
+                    _ => {
+                        return Err(anyhow::anyhow!("Unsupported proof type for saving proof file"))
+                    }
+                };
+                result.save_proof_with_publics(output_dir)?;
                 tracing::info!("      Proof ID: {}", proof_id);
             }
             tracing::info!("    ► Statistics");
-            tracing::info!("      time: {} seconds, steps: {}", elapsed, result.execution.steps);
+            tracing::info!(
+                "      time: {} seconds, steps: {}",
+                elapsed,
+                result.get_execution_steps()
+            );
         }
 
         Ok(())
@@ -247,7 +214,7 @@ impl ZiskProve {
         &mut self,
         stdin: ZiskStdin,
         gpu_params: Option<ParamsGPU>,
-    ) -> Result<(ZiskProgramVK, ZiskProveResult, i32)> {
+    ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClient::builder()
             .aggregation(self.aggregation)
             .proving_key_path_opt(self.proving_key.clone())
@@ -266,7 +233,7 @@ impl ZiskProve {
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             false,
         );
-        let vk = prover.setup(&elf)?;
+        prover.setup(&elf)?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -277,10 +244,18 @@ impl ZiskProve {
             output_dir_path: Some(self.output_dir.clone()),
         };
 
-        let result = prover.prove(stdin).with_proof_options(proof_options).run()?;
+        let mut prover = prover.prove(stdin).with_proof_options(proof_options);
+        if self.snark {
+            prover = prover.plonk();
+        }
+        if self.compressed {
+            prover = prover.compressed();
+        }
+        let result = prover.run()?;
+
         let world_rank = prover.world_rank();
 
-        Ok((vk, result, world_rank))
+        Ok((result, world_rank))
     }
 
     pub fn run_asm(
@@ -288,7 +263,7 @@ impl ZiskProve {
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
         gpu_params: Option<ParamsGPU>,
-    ) -> Result<(ZiskProgramVK, ZiskProveResult, i32)> {
+    ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClient::builder()
             .aggregation(self.aggregation)
             .asm()
@@ -311,7 +286,7 @@ impl ZiskProve {
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             hints_stream.is_some(),
         );
-        let vk = prover.setup(&elf)?;
+        prover.setup(&elf)?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -338,6 +313,6 @@ impl ZiskProve {
 
         let result = prover.run()?;
 
-        Ok((vk, result, world_rank))
+        Ok((result, world_rank))
     }
 }

@@ -1,12 +1,11 @@
 //! Pairing over BN254
 
-use crate::zisklib::lib::utils::{eq, gt, is_one};
+use crate::zisklib::lib::utils::{eq, is_one, lt};
 
 use super::{
-    constants::{G1_IDENTITY, G2_IDENTITY, P, P_MINUS_ONE},
+    constants::{G1_IDENTITY, G2_IDENTITY, P},
     curve::{g1_bytes_be_to_u64_le_bn254, is_on_curve_bn254},
     final_exp::final_exp_bn254,
-    fp::is_canonical_fp_bn254,
     miller_loop::{miller_loop_batch_bn254, miller_loop_bn254},
     twist::{g2_bytes_be_to_u64_le_bn254, is_on_curve_twist_bn254, is_on_subgroup_twist_bn254},
 };
@@ -175,7 +174,7 @@ pub fn pairing_check_bn254(
         // Validate G1 point field elements
         let x1: [u64; 4] = g1[0..4].try_into().unwrap();
         let y1: [u64; 4] = g1[4..8].try_into().unwrap();
-        if !is_canonical_fp_bn254(&x1) || !is_canonical_fp_bn254(&y1) {
+        if !lt(&x1, &P) || !lt(&y1, &P) {
             return Err(PAIRING_CHECK_ERR_G1_INVALID);
         }
 
@@ -193,11 +192,7 @@ pub fn pairing_check_bn254(
         let x2_i: [u64; 4] = g2[4..8].try_into().unwrap();
         let y2_r: [u64; 4] = g2[8..12].try_into().unwrap();
         let y2_i: [u64; 4] = g2[12..16].try_into().unwrap();
-        if !is_canonical_fp_bn254(&x2_r)
-            || !is_canonical_fp_bn254(&x2_i)
-            || !is_canonical_fp_bn254(&y2_r)
-            || !is_canonical_fp_bn254(&y2_i)
-        {
+        if !lt(&x2_r, &P) || !lt(&x2_i, &P) || !lt(&y2_r, &P) || !lt(&y2_i, &P) {
             return Err(PAIRING_CHECK_ERR_G2_INVALID);
         }
 

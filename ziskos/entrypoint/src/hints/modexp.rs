@@ -1,10 +1,9 @@
 use crate::hints::macros::define_hint_ptr;
-
-const MODEXP_HINT_ID: u32 = 0x0500;
+use zisk_common::HINT_MODEXP;
 
 define_hint_ptr! {
     modexp_bytes => {
-        hint_id: MODEXP_HINT_ID,
+        hint_id: HINT_MODEXP,
         params: (base, exp, modulus),
         is_result: false,
     }

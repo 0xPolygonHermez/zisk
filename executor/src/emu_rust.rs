@@ -44,7 +44,7 @@ impl EmulatorRust {
     /// * `_pctx` - Proof context carrying field-parameterized configuration for execution.
     /// * `sm_bundle` - Static state machine bundle used for counting device metrics.
     /// * `_stats` - Handle to executor statistics collection.
-    /// * `_caller_stats_id` - Identifier used to associate collected statistics with the caller.
+    /// * `_caller_stats_scope` - Stats scope used to associate collected statistics with the caller.
     ///
     /// # Returns
     /// A tuple containing:
@@ -56,10 +56,7 @@ impl EmulatorRust {
     pub fn execute<F: PrimeField64>(
         &self,
         stdin: &Mutex<ZiskStdin>,
-        _pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
-        _stats: &ExecutorStatsHandle,
-        _caller_stats_id: u64,
     ) -> (
         Vec<EmuTrace>,
         DeviceMetricsList,
@@ -165,10 +162,10 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
     fn execute(
         &self,
         stdin: &Mutex<ZiskStdin>,
-        pctx: &ProofCtx<F>,
+        _pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
-        stats: &ExecutorStatsHandle,
-        caller_stats_id: u64,
+        _stats: &ExecutorStatsHandle,
+        _caller_stats_scope: &zisk_common::StatsScope,
     ) -> (
         Vec<EmuTrace>,
         DeviceMetricsList,
@@ -176,6 +173,6 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        self.execute(stdin, pctx, sm_bundle, stats, caller_stats_id)
+        self.execute(stdin, sm_bundle)
     }
 }

@@ -42,6 +42,7 @@ use dashmap::DashMap;
 use proofman::{ContributionsInfo, ExecutionInfo};
 use std::{
     collections::HashMap,
+    fs,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -62,7 +63,7 @@ use zisk_distributed_common::{
     WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
 };
 
-use proofman_util::VadcopFinalProof;
+use zisk_sdk::ZiskProofWithPublicValues;
 
 /// Trait for sending messages to workers through various communication channels.
 ///
@@ -438,17 +439,19 @@ impl Coordinator {
         // Save proof to disk
         if state == JobState::Completed && !self.config.server.no_save_proofs {
             let folder = self.config.server.proofs_dir.clone();
-            let vadcop_proof = VadcopFinalProof::new_from_proof(&final_proof.unwrap(), true)
-                .map_err(|e| {
-                    CoordinatorError::Internal(format!("Failed to create VadcopFinalProof: {}", e))
-                })?;
-            zisk_common::save_proof(job_id.as_str(), folder, &vadcop_proof, false).map_err(
-                |e| {
-                    error!("Failed to save proof for job {}: {}", job_id, e);
-                    job.cleanup();
-                    CoordinatorError::Internal(e.to_string())
-                },
-            )?;
+
+            let zisk_proof = ZiskProofWithPublicValues::new_from_vadcop_proof(
+                &final_proof.unwrap(),
+                self.config.coordinator.compressed_proofs,
+            )
+            .map_err(|e| CoordinatorError::Internal(format!("Failed to create proof: {}", e)))?;
+            fs::create_dir_all(&folder).map_err(|e| {
+                CoordinatorError::Internal(format!("Failed to create proofs directory: {}", e))
+            })?;
+            let raw_path = folder.join(format!("proof_{}.fri", job_id));
+            zisk_proof
+                .save(raw_path)
+                .map_err(|e| CoordinatorError::Internal(format!("Failed to save proof: {}", e)))?;
         }
 
         // Clean up process data for the job

@@ -25,7 +25,9 @@ use ziskos_hints::handlers::bn254::{
 use ziskos_hints::handlers::keccak256::keccak256_hint;
 use ziskos_hints::handlers::kzg::verify_kzg_proof_hint;
 use ziskos_hints::handlers::modexp::modexp_hint;
-use ziskos_hints::handlers::secp256k1::secp256k1_recover_hint;
+use ziskos_hints::handlers::secp256k1::{
+    secp256k1_ecdsa_address_recover, secp256k1_ecdsa_verify_address_recover,
+};
 use ziskos_hints::handlers::secp256r1::secp256r1_ecdsa_verify_hint;
 use ziskos_hints::handlers::sha256::sha256_hint;
 
@@ -659,7 +661,12 @@ impl HintsProcessor {
             BuiltInHint::Bn254PairingCheck => bn254_pairing_check_hint(&data), // TODO: check
 
             // Secp256k1 Hints
-            BuiltInHint::Secp256k1Recover => secp256k1_recover_hint(&data),
+            BuiltInHint::Secp256k1EcdsaAddressRecover => secp256k1_ecdsa_address_recover(&data),
+            BuiltInHint::Secp256k1EcdsaVerifyAddressRecover => {
+                secp256k1_ecdsa_verify_address_recover(&data)
+            }
+
+            // Secp256r1 Hints
             BuiltInHint::Secp256r1EcdsaVerify => secp256r1_ecdsa_verify_hint(&data),
 
             // BLS12-381 Hint Codes

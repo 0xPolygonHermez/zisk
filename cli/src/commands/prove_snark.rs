@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use crate::ux::print_banner;
 use proofman::SnarkWrapper;
-use proofman_util::VadcopFinalProof;
+use zisk_sdk::ZiskProofWithPublicValues;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -15,6 +15,12 @@ use proofman_util::VadcopFinalProof;
 pub struct ZiskProveSnark {
     #[clap(short = 'p', long)]
     pub proof: String,
+
+    /// ELF file path
+    /// This is the path to the ROM file that the witness computation dynamic library will use
+    /// to generate the witness.
+    #[clap(short = 'e', long)]
+    pub elf: PathBuf,
 
     /// Setup folder path
     #[clap(short = 'k', long)]
@@ -36,12 +42,18 @@ impl ZiskProveSnark {
 
         print_banner();
 
-        let proof = VadcopFinalProof::load(&self.proof).map_err(|e| {
-            anyhow::anyhow!("Failed to load VadcopFinalProof from file {}: {}", self.proof, e)
+        let zisk_proof = ZiskProofWithPublicValues::load(&self.proof).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to load ZiskProofWithPublicValues from file {}: {}",
+                self.proof,
+                e
+            )
         })?;
 
         let snark_wrapper: SnarkWrapper<Goldilocks> =
             SnarkWrapper::new(&self.proving_key_snark, self.verbose.into())?;
+
+        let proof = zisk_proof.get_vadcop_final_proof()?;
 
         let snark_proof = snark_wrapper.generate_final_snark_proof(
             &proof,

@@ -1,13 +1,13 @@
-use tracing::error;
-use zisk_common::ExecutorStatsHandle;
-
 use crate::{
     sem_chunk_done_name, shmem_output_name, AsmRHData, AsmRHHeader, AsmRunError, AsmService,
     AsmServices, AsmSharedMemory, SEM_CHUNK_DONE_WAIT_DURATION,
 };
-use anyhow::{Context, Result};
 use named_sem::NamedSemaphore;
 use std::sync::atomic::{fence, Ordering};
+use tracing::error;
+use zisk_common::{stats_begin, stats_end, ExecutorStatsHandle};
+
+use anyhow::{Context, Result};
 
 pub struct RHOutputShmem {
     pub output_shmem: AsmSharedMemory<AsmRHHeader>,
@@ -29,9 +29,6 @@ impl RHOutputShmem {
         Ok(Self { output_shmem: output_shared_memory })
     }
 }
-
-#[cfg(feature = "stats")]
-use zisk_common::ExecutorStatsEvent;
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
@@ -59,12 +56,7 @@ impl AsmRunnerRH {
         unlock_mapped_memory: bool,
         _stats: ExecutorStatsHandle,
     ) -> Result<AsmRunnerRH> {
-        let __stats = _stats.clone();
-
-        #[cfg(feature = "stats")]
-        let parent_stats_id = __stats.next_id();
-        #[cfg(feature = "stats")]
-        _stats.add_stat(0, parent_stats_id, "ASM_RH_RUNNER", 0, ExecutorStatsEvent::Begin);
+        stats_begin!(_stats, 0, _runner_scope, "ASM_RH_RUNNER", 0);
 
         let port = AsmServices::port_base_for(base_port, local_rank);
 
@@ -105,10 +97,7 @@ impl AsmRunnerRH {
         let asm_rowh_output =
             AsmRHData::from_shared_memory(&asm_shared_memory.as_ref().unwrap().output_shmem);
 
-        // Add to executor stats
-        #[cfg(feature = "stats")]
-        _stats.add_stat(0, parent_stats_id, "ASM_RH_RUNNER", 0, ExecutorStatsEvent::End);
-
+        stats_end!(_stats, &_runner_scope);
         Ok(AsmRunnerRH::new(asm_rowh_output))
     }
 }

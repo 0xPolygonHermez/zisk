@@ -62,7 +62,7 @@ pub(crate) fn read_input() -> Vec<u8> {
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-fn read_input_slice<'a>() -> &'a [u8] {
+pub fn read_input_slice<'a>() -> &'a [u8] {
     // Create a slice of the first 8 bytes to get the size
     let bytes = unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), 8) };
     // Convert the slice to a u64 (little-endian)
@@ -73,7 +73,7 @@ fn read_input_slice<'a>() -> &'a [u8] {
 
 #[allow(unused)]
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-fn read_input_slice() -> Box<[u8]> {
+pub fn read_input_slice() -> Box<[u8]> {
     read_input().into_boxed_slice()
 }
 

@@ -30,10 +30,9 @@ use zisk_common::io::{StreamSource, ZiskStdin, ZiskStream};
 
 use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
-use zisk_common::ChunkId;
 use zisk_common::{
-    BusDevice, BusDeviceMetrics, CheckPoint, EmuTrace, ExecutorStatsHandle, Instance, InstanceCtx,
-    InstanceType, Plan, Stats, ZiskExecutionResult,
+    stats_begin, stats_end, BusDevice, BusDeviceMetrics, CheckPoint, ChunkId, EmuTrace,
+    ExecutorStatsHandle, Instance, InstanceCtx, InstanceType, Plan, Stats, ZiskExecutionResult,
 };
 use zisk_pil::{
     ZiskPublicValues, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
@@ -45,8 +44,6 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex, RwLock},
 };
-#[cfg(feature = "stats")]
-use zisk_common::ExecutorStatsEvent;
 
 use crossbeam::atomic::AtomicCell;
 
@@ -285,16 +282,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             .expect("Failed to get instance info");
         let witness_start_time = Instant::now();
 
-        #[cfg(feature = "stats")]
-        let stats_id = self.stats.next_id();
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(
-            _caller_stats_id,
-            stats_id,
-            "AIR_MAIN_WITNESS",
-            air_id,
-            ExecutorStatsEvent::Begin,
-        );
+        stats_begin!(self.stats, _caller_stats_id, _stats_scope, "AIR_MAIN_WITNESS", air_id);
 
         let min_traces_guard = self.min_traces.read().unwrap();
         let min_traces = min_traces_guard.as_ref().expect("min_traces should not be None");
@@ -309,14 +297,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
 
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(
-            _caller_stats_id,
-            stats_id,
-            "AIR_MAIN_WITNESS",
-            air_id,
-            ExecutorStatsEvent::End,
-        );
+        stats_end!(self.stats, &_stats_scope);
 
         let stats = Stats {
             airgroup_id,
@@ -353,16 +334,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         #[cfg(feature = "stats")]
         let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id)?;
-        #[cfg(feature = "stats")]
-        let stats_id = self.stats.next_id();
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(
-            _caller_stats_id,
-            stats_id,
-            "AIR_SECN_WITNESS",
-            air_id,
-            ExecutorStatsEvent::Begin,
-        );
+        stats_begin!(self.stats, _caller_stats_id, _stats_scope, "AIR_SECN_WITNESS", air_id);
 
         let collectors_by_instance = {
             let mut guard = self.collectors_by_instance.write().unwrap();
@@ -385,16 +357,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         {
             pctx.add_air_instance(air_instance, global_id);
         }
-        #[cfg(feature = "stats")]
-        {
-            self.stats.add_stat(
-                _caller_stats_id,
-                stats_id,
-                "AIR_SECN_WITNESS",
-                air_id,
-                ExecutorStatsEvent::End,
-            );
-        }
+
+        stats_end!(self.stats, &_stats_scope);
+
         self.stats.set_witness_duration(global_id, witness_start_time.elapsed().as_millis());
         Ok(())
     }
@@ -630,16 +595,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ) -> ProofmanResult<()> {
         #[cfg(feature = "stats")]
         let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id)?;
-        #[cfg(feature = "stats")]
-        let stats_id = self.stats.next_id();
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(
-            _caller_stats_id,
-            stats_id,
-            "AIR_WITNESS_TABLE",
-            air_id,
-            ExecutorStatsEvent::Begin,
-        );
+        stats_begin!(self.stats, _caller_stats_id, _stats_scope, "AIR_WITNESS_TABLE", air_id);
+
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
         if let Some(air_instance) =
@@ -653,14 +610,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             }
         }
 
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(
-            _caller_stats_id,
-            stats_id,
-            "AIR_WITNESS_TABLE",
-            air_id,
-            ExecutorStatsEvent::Begin,
-        );
+        stats_end!(self.stats, &_stats_scope);
 
         Ok(())
     }
@@ -729,12 +679,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         pctx: Arc<ProofCtx<F>>,
         global_ids: &RwLock<Vec<usize>>,
     ) -> ProofmanResult<()> {
-        #[cfg(feature = "stats")]
-        let parent_stats_id = self.stats.next_id();
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(0, parent_stats_id, "EXECUTE", 0, ExecutorStatsEvent::Begin);
-
         self.reset();
+
+        stats_begin!(self.stats, 0, _exec_scope, "EXECUTE", 0);
 
         // Set the start time of the current execution
         self.stats.set_start_time(Instant::now());
@@ -750,16 +697,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 
         let (min_traces, main_count, mut secn_count, handle_mo, execution_result) =
-            self.emulator.execute(
-                &self.stdin,
-                &pctx,
-                &self.sm_bundle,
-                &self.stats,
-                #[cfg(feature = "stats")]
-                parent_stats_id,
-                #[cfg(not(feature = "stats"))]
-                0,
-            );
+            self.emulator.execute(&self.stdin, &pctx, &self.sm_bundle, &self.stats, &_exec_scope);
 
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
@@ -767,11 +705,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         *self.execution_result.lock().unwrap() = execution_result;
 
         // Plan the main and secondary instances using the counted metrics
-        // stats_begin!(stats_next_id!(), parent_stats_id, "PLAN");
-        #[cfg(feature = "stats")]
-        let stats_id = self.stats.next_id();
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(parent_stats_id, stats_id, "MAIN_PLAN", 0, ExecutorStatsEvent::Begin);
+        stats_begin!(self.stats, &_exec_scope, _main_plan_scope, "MAIN_PLAN", 0);
 
         timer_start_info!(PLAN);
         let (main_planning, public_values) =
@@ -779,87 +713,37 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         *self.min_traces.write().unwrap() = Some(min_traces);
         self.assign_main_instances(&pctx, global_ids, main_planning);
 
-        // Add to executor stats
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(parent_stats_id, stats_id, "MAIN_PLAN", 0, ExecutorStatsEvent::End);
-        #[cfg(feature = "stats")]
-        let stats_id = self.stats.next_id();
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(parent_stats_id, stats_id, "SECN_PLAN", 0, ExecutorStatsEvent::Begin);
+        stats_end!(self.stats, &_main_plan_scope);
+        stats_begin!(self.stats, &_exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
 
         let mut secn_planning = self.sm_bundle.plan_sec(&mut secn_count);
 
         timer_stop_and_log_info!(PLAN);
 
         timer_start_info!(PLAN_MEM_CPP);
-        // Add to executor stats
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(parent_stats_id, stats_id, "SECN_PLAN", 0, ExecutorStatsEvent::End);
+        stats_end!(self.stats, &_secn_plan_scope);
 
         if let Some(handle_mo) = handle_mo {
-            #[cfg(feature = "stats")]
-            let stats_id = self.stats.next_id();
-            #[cfg(feature = "stats")]
-            self.stats.add_stat(
-                parent_stats_id,
-                stats_id,
-                "MO_PLAN_WAIT",
-                0,
-                ExecutorStatsEvent::Begin,
-            );
+            stats_begin!(self.stats, &_exec_scope, _mo_wait_scope, "MO_PLAN_WAIT", 0);
 
             // Wait for the memory operations thread to finish
             let asm_runner_mo =
                 handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
 
-            // Add to executor stats
-            #[cfg(feature = "stats")]
-            self.stats.add_stat(
-                parent_stats_id,
-                stats_id,
-                "MO_PLAN_WAIT",
-                0,
-                ExecutorStatsEvent::End,
-            );
-            #[cfg(feature = "stats")]
-            let stats_id = self.stats.next_id();
-            #[cfg(feature = "stats")]
-            self.stats.add_stat(
-                parent_stats_id,
-                stats_id,
-                "MO_PLAN_ADD",
-                0,
-                ExecutorStatsEvent::Begin,
-            );
+            stats_end!(self.stats, &_mo_wait_scope);
+            stats_begin!(self.stats, &_exec_scope, _mo_add_scope, "MO_PLAN_ADD", 0);
 
             secn_planning
                 .entry(self.sm_bundle.get_mem_sm_id())
                 .or_default()
                 .extend(asm_runner_mo.plans);
 
-            // Add to executor stats
-            #[cfg(feature = "stats")]
-            self.stats.add_stat(
-                parent_stats_id,
-                stats_id,
-                "MO_PLAN_ADD",
-                0,
-                ExecutorStatsEvent::End,
-            );
+            stats_end!(self.stats, &_mo_add_scope);
         }
 
         timer_stop_and_log_info!(PLAN_MEM_CPP);
 
-        #[cfg(feature = "stats")]
-        let stats_id = self.stats.next_id();
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(
-            parent_stats_id,
-            stats_id,
-            "CONFIGURE_INSTANCES",
-            0,
-            ExecutorStatsEvent::Begin,
-        );
+        stats_begin!(self.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
 
         // Configure the instances
         self.sm_bundle.configure_instances(&pctx, &secn_planning);
@@ -916,21 +800,11 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             }
         }
 
-        // Add to executor stats
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(
-            parent_stats_id,
-            stats_id,
-            "CONFIGURE_INSTANCES",
-            0,
-            ExecutorStatsEvent::End,
-        );
-
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(0, parent_stats_id, "EXECUTE", 0, ExecutorStatsEvent::End);
+        stats_end!(self.stats, &_config_scope);
+        stats_end!(self.stats, &_exec_scope);
 
         // #[cfg(feature = "stats")]
-        // self.stats.lock().unwrap().store_stats();
+        // self.stats.store_stats();
 
         Ok(())
     }
@@ -955,10 +829,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             return Ok(());
         }
 
-        #[cfg(feature = "stats")]
-        let parent_stats_id = self.stats.next_id();
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(0, parent_stats_id, "CALCULATE_WITNESS", 0, ExecutorStatsEvent::Begin);
+        stats_begin!(self.stats, 0, _witness_scope, "CALCULATE_WITNESS", 0);
 
         let is_asm_emulator = self.emulator.is_asm_emulator();
 
@@ -975,10 +846,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                         &pctx,
                         main_instance,
                         buffer_pool.take_buffer(),
-                        #[cfg(feature = "stats")]
-                        parent_stats_id,
-                        #[cfg(not(feature = "stats"))]
-                        0,
+                        _witness_scope.id(),
                     )?;
                 } else {
                     let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
@@ -1015,10 +883,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                                 global_id,
                                 &**secn_instance,
                                 buffer_pool.take_buffer(),
-                                #[cfg(feature = "stats")]
-                                parent_stats_id,
-                                #[cfg(not(feature = "stats"))]
-                                0,
+                                _witness_scope.id(),
                             )?;
                         }
                         InstanceType::Table => self.witness_table(
@@ -1027,20 +892,14 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                             global_id,
                             &**secn_instance,
                             Vec::new(),
-                            #[cfg(feature = "stats")]
-                            parent_stats_id,
-                            #[cfg(not(feature = "stats"))]
-                            0,
+                            _witness_scope.id(),
                         )?,
                     }
                 }
             }
             Ok(())
         })?;
-
-        // Add to executor stats
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(0, parent_stats_id, "CALCULATE_WITNESS", 0, ExecutorStatsEvent::End);
+        stats_end!(self.stats, &_witness_scope);
 
         Ok(())
     }
@@ -1054,16 +913,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         n_cores: usize,
         _buffer_pool: &dyn BufferPool<F>,
     ) -> ProofmanResult<()> {
-        #[cfg(feature = "stats")]
-        let parent_stats_id = self.stats.next_id();
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(
-            0,
-            parent_stats_id,
-            "PRE_CALCULATE_WITNESS",
-            0,
-            ExecutorStatsEvent::Begin,
-        );
+        stats_begin!(self.stats, 0, _pre_scope, "PRE_CALCULATE_WITNESS", 0);
 
         if stage != 1 {
             return Ok(());
@@ -1123,15 +973,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             }
         });
 
-        // Add to executor stats
-        #[cfg(feature = "stats")]
-        self.stats.add_stat(
-            0,
-            parent_stats_id,
-            "PRE_CALCULATE_WITNESS",
-            0,
-            ExecutorStatsEvent::End,
-        );
+        stats_end!(self.stats, &_pre_scope);
         Ok(())
     }
 

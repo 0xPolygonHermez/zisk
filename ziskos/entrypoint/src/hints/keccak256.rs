@@ -1,10 +1,9 @@
 use crate::hints::macros::define_hint_ptr;
-
-const KECCAK256_HINT_ID: u32 = 0x0700;
+use zisk_common::HINT_KECCAK256;
 
 define_hint_ptr! {
     keccak256 => {
-        hint_id: KECCAK256_HINT_ID,
+        hint_id: HINT_KECCAK256,
         param: input,
         is_result: false,
     }

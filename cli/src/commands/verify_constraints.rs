@@ -9,8 +9,6 @@ use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::ElfBinaryOwned;
-#[cfg(feature = "stats")]
-use zisk_common::ExecutorStatsEvent;
 use zisk_sdk::{ProverClient, ZiskVerifyConstraintsResult};
 
 #[derive(Parser)]

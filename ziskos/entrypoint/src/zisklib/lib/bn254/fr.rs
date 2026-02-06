@@ -5,13 +5,11 @@ use crate::{
 
 use super::constants::R;
 
-// Checks if a 256-bit integer `x` is in canonical form
-#[inline]
-pub fn is_canonical_fr_bn254(x: &[u64; 4]) -> bool {
-    lt(x, &R)
-}
-
 pub fn reduce_fr_bn254(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 4] {
+    if lt(x, &R) {
+        return *x;
+    }
+
     // x·1 + 0
     let mut params = SyscallArith256ModParams {
         a: x,
