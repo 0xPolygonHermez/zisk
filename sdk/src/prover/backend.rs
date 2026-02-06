@@ -370,8 +370,6 @@ impl ProverBackend {
             )
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
 
-        let elapsed = start.elapsed();
-
         let (proof_id, proof) = match proof {
             ProvePhaseResult::Full(proof_id, proof) => (proof_id, proof),
             _ => (None, None),
@@ -409,7 +407,7 @@ impl ProverBackend {
                 if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
                     Ok(ZiskProveResult::new(
                         execution_result,
-                        elapsed,
+                        start.elapsed(),
                         stats,
                         proof_id,
                         ZiskProofWithPublicValues {
@@ -421,7 +419,7 @@ impl ProverBackend {
                 } else if snark_proof.protocol_id == SnarkProtocol::Fflonk.protocol_id() {
                     Ok(ZiskProveResult::new(
                         execution_result,
-                        elapsed,
+                        start.elapsed(),
                         stats,
                         proof_id,
                         ZiskProofWithPublicValues {
@@ -445,7 +443,7 @@ impl ProverBackend {
                 };
                 Ok(ZiskProveResult::new(
                     execution_result,
-                    elapsed,
+                    start.elapsed(),
                     stats,
                     proof_id,
                     ZiskProofWithPublicValues {
@@ -455,7 +453,7 @@ impl ProverBackend {
                     },
                 ))
             }
-            (_, None) => Ok(ZiskProveResult::new_null(execution_result, elapsed, stats)),
+            (_, None) => Ok(ZiskProveResult::new_null(execution_result, start.elapsed(), stats)),
         }
     }
 
