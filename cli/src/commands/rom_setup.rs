@@ -59,7 +59,9 @@ impl ZiskRomSetup {
         let mpi_ctx = Arc::new(MpiCtx::new());
         let mut pctx = ProofCtx::create_ctx(proving_key, false, self.verbose.into(), mpi_ctx)?;
 
-        let params_gpu = ParamsGPU::new(false);
+        let mut params_gpu = ParamsGPU::new(false);
+        params_gpu.with_max_number_streams(1);
+
         let sctx = Arc::new(SetupCtx::<Goldilocks>::new(
             &pctx.global_info,
             &ProofType::Basic,

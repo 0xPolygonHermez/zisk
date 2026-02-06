@@ -476,13 +476,13 @@ impl ProverBackend {
         pubs.extend(publics.public_bytes());
         let vadcop_final_proof = VadcopFinalProof::new(proof_bytes, pubs, false);
 
-        let device_ptr = self.proofman.as_ref().map(|p| p.get_device_buffers_ptr()); 
+        let device_ptr = self.proofman.as_ref().map(|p| p.get_device_buffers_ptr());
 
-        let snark_proof = self
-            .snark_wrapper
-            .as_ref()
-            .unwrap()
-            .generate_final_snark_proof(&vadcop_final_proof, None, device_ptr)?;
+        let snark_proof = self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(
+            &vadcop_final_proof,
+            None,
+            device_ptr,
+        )?;
 
         if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
             Ok(ZiskProof::Plonk(snark_proof.proof_bytes))
