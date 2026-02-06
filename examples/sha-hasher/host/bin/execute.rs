@@ -35,7 +35,7 @@ fn main() -> Result<()> {
     println!("Executing program (no proof generation)...");
     let result = client.execute(stdin.clone())?;
 
-    println!("✅ Execution completed successfully!");
+    println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());
     println!("Duration: {:?}", result.get_duration());
 

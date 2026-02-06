@@ -222,7 +222,7 @@ impl ZiskProve {
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             false,
         );
-        let _vk = prover.setup(&elf)?;
+        prover.setup(&elf)?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -265,7 +265,7 @@ impl ZiskProve {
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             hints_stream.is_some(),
         );
-        let _vk = prover.setup(&elf)?;
+        prover.setup(&elf)?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,

@@ -43,7 +43,7 @@ fn main() -> Result<()> {
     )?;
     println!("Compressed proof verification successful!");
 
-    println!("✅ Successfully generated and verified compressed proof!");
+    println!("\u{2713} Successfully generated and verified compressed proof!");
 
     Ok(())
 }

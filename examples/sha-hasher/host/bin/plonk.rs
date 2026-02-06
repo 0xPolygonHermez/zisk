@@ -46,7 +46,7 @@ fn main() -> Result<()> {
     client.verify(proof.get_proof(), proof.get_publics(), &vk)?;
     println!("Saved PLONK proof verification successful!");
 
-    println!("✅ Successfully generated and verified PLONK proof!");
+    println!("\u{2713} Successfully generated and verified PLONK proof!");
 
     Ok(())
 }

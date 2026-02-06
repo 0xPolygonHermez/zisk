@@ -76,7 +76,7 @@ fn main() -> Result<()> {
     client.verify(&proof_with_publics.proof, &proof_with_publics.publics, &vk)?;
     println!("Proof with publics verification successful!");
 
-    println!("✅ Successfully generated and verified all proofs!");
+    println!("\u{2713} Successfully generated and verified all proofs!");
 
     Ok(())
 }
