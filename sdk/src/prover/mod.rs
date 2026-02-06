@@ -8,9 +8,10 @@ use proofman::{
     AggProofs, ExecutionInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkProtocol,
 };
 use proofman_common::ProofOptions;
+use proofman_util::VadcopFinalProof;
 use sha2::{Digest, Sha256};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::{
@@ -96,7 +97,7 @@ pub enum ProofMode {
     Snark,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ZiskProof {
     Null(),
     VadcopFinal(Vec<u8>),
@@ -250,6 +251,7 @@ impl ZiskProof {
 
 pub const ZISK_PUBLICS: usize = 64;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZiskPublics {
     data: Vec<u8>,
     ptr: Cell<usize>,
@@ -400,13 +402,55 @@ impl ZiskPublics {
     }
 }
 
-pub struct ZiskProveResult {
-    pub execution: ZiskExecutionResult,
-    pub duration: Duration,
-    pub stats: ExecutorStatsHandle,
-    pub proof_id: Option<String>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZiskProofWithPublicValues {
     pub proof: ZiskProof,
     pub publics: ZiskPublics,
+}
+
+impl ZiskProofWithPublicValues {
+    pub fn new(proof: ZiskProof, publics: ZiskPublics) -> Self {
+        Self { proof, publics }
+    }
+
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
+        bincode::serialize_into(
+            File::create(path.as_ref()).with_context(|| {
+                format!("failed to create file for saving proof: {}", path.as_ref().display())
+            })?,
+            self,
+        )
+        .map_err(Into::into)
+    }
+
+    pub fn load(path: impl AsRef<Path>) -> Result<Self> {
+        let file = File::open(path.as_ref()).with_context(|| {
+            format!("failed to open file for loading proof: {}", path.as_ref().display())
+        })?;
+        let proof_with_publics: ZiskProofWithPublicValues = bincode::deserialize_from(file)?;
+        Ok(proof_with_publics)
+    }
+
+    pub fn get_vadcop_final_proof(&self, vk: &ZiskProgramVK) -> Result<VadcopFinalProof> {
+        match &self.proof {
+            ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalCompressed(proof_bytes) => {
+                let compressed = matches!(self.proof, ZiskProof::VadcopFinalCompressed(_));
+                let mut pubs = vk.vk.clone();
+                pubs.extend(self.publics.public_bytes());
+                Ok(VadcopFinalProof::new(proof_bytes.clone(), pubs, compressed))
+            }
+
+            _ => Err(anyhow::anyhow!("Proof is not a Vadcop final proof")),
+        }
+    }
+}
+
+pub struct ZiskProveResult {
+    execution: ZiskExecutionResult,
+    duration: Duration,
+    stats: ExecutorStatsHandle,
+    proof_id: Option<String>,
+    proof_with_publics: ZiskProofWithPublicValues,
 }
 
 impl ZiskProveResult {
@@ -415,10 +459,9 @@ impl ZiskProveResult {
         duration: Duration,
         stats: ExecutorStatsHandle,
         proof_id: Option<String>,
-        proof: ZiskProof,
-        publics: ZiskPublics,
+        proof_with_publics: ZiskProofWithPublicValues,
     ) -> Self {
-        Self { execution, duration, stats, proof_id, proof, publics }
+        Self { execution, duration, stats, proof_id, proof_with_publics }
     }
 
     pub fn new_null(
@@ -431,20 +474,51 @@ impl ZiskProveResult {
             duration,
             stats,
             proof_id: None,
-            proof: ZiskProof::Null(),
-            publics: ZiskPublics::new_empty(),
+            proof_with_publics: ZiskProofWithPublicValues {
+                proof: ZiskProof::Null(),
+                publics: ZiskPublics::new_empty(),
+            },
         }
+    }
+
+    pub fn get_stats(&self) -> &ExecutorStatsHandle {
+        &self.stats
+    }
+
+    pub fn get_duration(&self) -> Duration {
+        self.duration
+    }
+
+    pub fn get_execution(&self) -> &ZiskExecutionResult {
+        &self.execution
+    }
+
+    pub fn get_proof_id(&self) -> Option<&String> {
+        self.proof_id.as_ref()
+    }
+
+    pub fn get_proof(&self) -> &ZiskProof {
+        &self.proof_with_publics.proof
+    }
+
+    pub fn get_publics(&self) -> &ZiskPublics {
+        &self.proof_with_publics.publics
+    }
+
+    pub fn get_proof_with_publics(&self) -> &ZiskProofWithPublicValues {
+        &self.proof_with_publics
+    }
+
+    pub fn save_proof_with_publics(&self, path: impl AsRef<Path>) -> Result<()> {
+        self.proof_with_publics.save(path)
     }
 
     /// Deserialize a value from public outputs.
     /// The value must have been previously written with bincode serialization using `commit()`.
-    pub fn get_publics<T: serde::Serialize + serde::de::DeserializeOwned>(&self) -> Result<T> {
-        self.publics.read()
-    }
-
-    /// Reset the reading pointer to the beginning of public outputs.
-    pub fn reset_publics(&self) {
-        self.publics.head();
+    pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
+        &self,
+    ) -> Result<T> {
+        self.proof_with_publics.publics.read()
     }
 }
 

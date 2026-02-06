@@ -2,13 +2,14 @@ mod builder;
 mod client;
 mod prover;
 mod utils;
+mod verifier;
 mod zisk_lib_loader;
 
 pub use builder::*;
 pub use client::ProverClient;
-pub use proofman_util::VadcopFinalProof;
 pub use prover::*;
 pub use utils::*;
+pub use verifier::*;
 pub use zisk_lib_loader::*;
 
 pub struct RankInfo {

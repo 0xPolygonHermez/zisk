@@ -171,19 +171,20 @@ impl ZiskProve {
         };
 
         if world_rank == 0 {
-            let elapsed = result.duration.as_secs_f64();
+            let elapsed = result.get_duration().as_secs_f64();
             tracing::info!("");
             tracing::info!(
                 "{}",
                 "--- PROVE SUMMARY ------------------------".bright_green().bold()
             );
 
-            match result.proof {
+            match result.get_proof() {
                 ZiskProof::VadcopFinal(ref proof) | ZiskProof::VadcopFinalCompressed(ref proof) => {
-                    let compressed = matches!(result.proof, ZiskProof::VadcopFinalCompressed(_));
+                    let compressed =
+                        matches!(result.get_proof(), ZiskProof::VadcopFinalCompressed(_));
                     let vadcop_final_proof = VadcopFinalProof::new(
                         proof.clone(),
-                        result.publics.bytes_u64(&vk),
+                        result.get_publics().bytes_u64(&vk),
                         compressed,
                     );
                     vadcop_final_proof
@@ -197,7 +198,7 @@ impl ZiskProve {
                         })?;
                 }
                 ZiskProof::Plonk(ref proof) | ZiskProof::Fflonk(ref proof) => {
-                    let protocol_id = match result.proof {
+                    let protocol_id = match result.get_proof() {
                         ZiskProof::Plonk(_) => SnarkProtocol::Plonk.protocol_id(),
                         ZiskProof::Fflonk(_) => SnarkProtocol::Fflonk.protocol_id(),
                         _ => unreachable!(),
@@ -207,8 +208,8 @@ impl ZiskProve {
 
                     let snark_proof = SnarkProof {
                         proof_bytes: proof.clone(),
-                        public_bytes: result.publics.bytes_solidity(&vk, &vadcop_verkey),
-                        public_snark_bytes: result.publics.hash_solidity(&vk, &vadcop_verkey),
+                        public_bytes: result.get_publics().bytes_solidity(&vk, &vadcop_verkey),
+                        public_snark_bytes: result.get_publics().hash_solidity(&vk, &vadcop_verkey),
                         protocol_id,
                     };
                     snark_proof.save(self.output_dir.join("snark_proof.bin")).map_err(|e| {
@@ -222,11 +223,15 @@ impl ZiskProve {
                 ZiskProof::Null() => {}
             }
 
-            if let Some(proof_id) = &result.proof_id {
+            if let Some(proof_id) = &result.get_proof_id() {
                 tracing::info!("      Proof ID: {}", proof_id);
             }
             tracing::info!("    ► Statistics");
-            tracing::info!("      time: {} seconds, steps: {}", elapsed, result.execution.steps);
+            tracing::info!(
+                "      time: {} seconds, steps: {}",
+                elapsed,
+                result.get_execution().steps
+            );
         }
 
         Ok(())

@@ -5,7 +5,7 @@ use proofman_common::initialize_logger;
 use proofman_util::VadcopFinalProof;
 use std::fs;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_verifier::verify_zisk_proof;
+use zisk_verifier::verify_vadcop_final_proof;
 
 use super::get_default_verkey;
 
@@ -42,7 +42,7 @@ impl ZiskVerify {
 
         let vk = &self.get_verkey();
 
-        let result = verify_zisk_proof(&proof, vk);
+        let result = verify_vadcop_final_proof(&proof, vk);
 
         let elapsed = start.elapsed();
 

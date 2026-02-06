@@ -38,14 +38,14 @@ fn main() -> Result<()> {
 
     let proof_opts = ProofOpts::default().minimal_memory();
     let vadcop_result = client.prove(stdin).with_proof_options(proof_opts).run()?;
-    client.verify(&vadcop_result.proof, &vadcop_result.publics, &vkey)?;
+    client.verify(&vadcop_result.get_proof(), &vadcop_result.get_publics(), &vkey)?;
 
-    let result = client.prove_snark(&vadcop_result.proof, &vadcop_result.publics, &vkey)?;
-    client.verify(&result, &vadcop_result.publics, &vkey)?;
+    let result = client.prove_snark(&vadcop_result.get_proof(), &vadcop_result.get_publics(), &vkey)?;
+    client.verify(&result, &vadcop_result.get_publics(), &vkey)?;
 
     result.save("/tmp/sha_hasher_proof_snark.bin")?;
 
-    let output: Output = vadcop_result.get_publics()?;
+    let output: Output = vadcop_result.get_public_values()?;
     println!("Deserialized public outputs: {:?}", output);
     println!("Hash: {:02x?}", output.hash);
     println!("Iterations: {}", output.iterations);
