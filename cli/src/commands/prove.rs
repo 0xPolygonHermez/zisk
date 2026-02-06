@@ -244,6 +244,8 @@ impl ZiskProve {
             output_dir_path: Some(self.output_dir.clone()),
         };
 
+        let world_rank = prover.world_rank();
+
         let mut prover = prover.prove(stdin).with_proof_options(proof_options);
         if self.snark {
             prover = prover.plonk();
@@ -252,8 +254,6 @@ impl ZiskProve {
             prover = prover.compressed();
         }
         let result = prover.run()?;
-
-        let world_rank = prover.world_rank();
 
         Ok((result, world_rank))
     }

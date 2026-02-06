@@ -106,6 +106,7 @@ impl AsmRunnerMO {
             stats_begin!(_thread_stats, _parent_id, _mo_scope, "ASM_MO", 0);
 
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+            #[allow(clippy::let_and_return)]
             let result = asm_services.send_memory_ops_request(max_steps, chunk_size);
 
             stats_end!(_thread_stats, &_mo_scope);
