@@ -244,23 +244,18 @@ impl HintsProcessor {
     /// * `Ok(false)` - Batch processed successfully, no CTRL_END
     /// * `Err` - If a previous error occurred or hints are malformed
     pub fn process_hints(&self, hints: &[u64], first_batch: bool) -> Result<bool> {
-        const ALLOW_UNALIGNED: bool = false;
-        const HEADER_SIZE: usize = if ALLOW_UNALIGNED { 8 } else { 1 };
+        const HEADER_SIZE: usize = 1;
 
         let mut has_ctrl_end = false;
 
         // Parse hints and dispatch to pool
         let mut idx = 0;
-        while idx < hints.len() * HEADER_SIZE {
+        while idx < hints.len() {
             // Check for error before processing each hint
             if self.state.error_flag.load(Ordering::Acquire) {
                 return Err(anyhow::anyhow!("Processing stopped due to previous error"));
             }
-            let hint = if ALLOW_UNALIGNED {
-                PrecompileHint::from_unaligned_u64_slice(hints, idx, true)?
-            } else {
-                PrecompileHint::from_u64_slice(hints, idx, true)?
-            };
+            let hint = PrecompileHint::from_u64_slice(hints, idx, true)?;
 
             // println!("Received Hint <= {:?}:", hint);
 
@@ -278,8 +273,7 @@ impl HintsProcessor {
                 }
             }
 
-            let length =
-                if ALLOW_UNALIGNED { hint.data_len_bytes } else { hint.data.len() } + HEADER_SIZE;
+            let length = hint.data.len() + HEADER_SIZE;
 
             if let Some(stats) = &self.stats {
                 if !matches!(hint.hint_code, HintCode::Ctrl(_)) {
