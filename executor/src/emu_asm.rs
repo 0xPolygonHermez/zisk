@@ -23,9 +23,6 @@ use zisk_core::{ZiskRom, MAX_INPUT_SIZE};
 use ziskemu::ZiskEmulator;
 
 pub struct EmulatorAsm {
-    /// ZisK ROM, a binary file containing the ZisK program to be executed.
-    pub zisk_rom: Arc<ZiskRom>,
-
     /// World rank for distributed execution. Default to 0 for single-node execution.
     world_rank: i32,
 
@@ -60,7 +57,6 @@ pub struct EmulatorAsm {
 impl EmulatorAsm {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        zisk_rom: Arc<ZiskRom>,
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
@@ -76,7 +72,6 @@ impl EmulatorAsm {
             .expect("Failed to create PreloadedMO");
 
         Self {
-            zisk_rom,
             world_rank,
             local_rank,
             base_port,
@@ -113,6 +108,7 @@ impl EmulatorAsm {
     #[allow(clippy::type_complexity)]
     pub fn execute<F: PrimeField64>(
         &self,
+        zisk_rom: &ZiskRom,
         stdin: &Mutex<ZiskStdin>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
@@ -181,7 +177,7 @@ impl EmulatorAsm {
             })
         });
 
-        let (min_traces, main_count, secn_count) = self.run_mt_assembly(sm_bundle, stats);
+        let (min_traces, main_count, secn_count) = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
 
         // Store execute steps
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
@@ -221,6 +217,7 @@ impl EmulatorAsm {
 
     fn run_mt_assembly<F: PrimeField64>(
         &self,
+        zisk_rom: &ZiskRom,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
     ) -> (Vec<EmuTrace>, DeviceMetricsList, NestedDeviceMetricsList) {
@@ -235,7 +232,6 @@ impl EmulatorAsm {
         let emu_traces = rayon::in_place_scope(|scope| {
             let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
                 let chunk_id = ChunkId(idx);
-                let zisk_rom = &self.zisk_rom;
                 let results_ref = &results_mu;
                 scope.spawn(move |_| {
                     stats_begin!(stats, mt_scope_id, _chunk_scope, "MT_CHUNK_PLAYER", 0);
@@ -309,6 +305,7 @@ impl EmulatorAsm {
 impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
     fn execute(
         &self,
+        zisk_rom: &ZiskRom,
         stdin: &Mutex<ZiskStdin>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
@@ -321,6 +318,6 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        self.execute(stdin, pctx, sm_bundle, stats, caller_stats_scope)
+        self.execute(zisk_rom, stdin, pctx, sm_bundle, stats, caller_stats_scope)
     }
 }

@@ -208,7 +208,6 @@ impl<F: PrimeField64> WitnessLib<F> {
         let emulator = if is_asm_emulator {
             debug!("Using ASM emulator");
             EmulatorKind::Asm(EmulatorAsm::new(
-                zisk_rom.clone(),
                 world_rank,
                 local_rank,
                 self.base_port,
@@ -218,7 +217,7 @@ impl<F: PrimeField64> WitnessLib<F> {
             ))
         } else {
             debug!("Using Rust emulator");
-            EmulatorKind::Rust(EmulatorRust::new(zisk_rom.clone(), self.chunk_size))
+            EmulatorKind::Rust(EmulatorRust::new(self.chunk_size))
         };
 
         // Create hints pipeline with null hints stream initially.
@@ -250,14 +249,9 @@ impl<F: PrimeField64> WitnessLib<F> {
             None
         };
 
-        let executor = Arc::new(ZiskExecutor::new(
-            zisk_rom,
-            std,
-            sm_bundle,
-            self.chunk_size,
-            emulator,
-            hints_stream,
-        ));
+        let executor =
+            Arc::new(ZiskExecutor::new(std, sm_bundle, self.chunk_size, emulator, hints_stream));
+        executor.set_rom(zisk_rom);
 
         // Step 7: Register the executor as a component in the Witness Manager
         wcm.register_component(executor.clone());

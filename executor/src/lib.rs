@@ -1,3 +1,5 @@
+mod air_classifier;
+mod collector;
 mod dummy_counter;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod emu_asm;
@@ -5,10 +7,18 @@ mod emu_asm;
 mod emu_asm_stub;
 mod emu_rust;
 mod executor;
+mod planner;
+mod registry;
+mod rom_executor;
 mod sm_static_bundle;
+mod state;
 mod static_data_bus;
 mod static_data_bus_collect;
+mod witness_generator;
+mod witness_orchestrator;
 
+use air_classifier::*;
+use collector::*;
 pub use dummy_counter::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use emu_asm::*;
@@ -16,9 +26,15 @@ pub use emu_asm::*;
 pub use emu_asm_stub::*;
 pub use emu_rust::*;
 pub use executor::*;
+use planner::*;
+use registry::*;
+use rom_executor::*;
 pub use sm_static_bundle::*;
+pub use state::*;
 pub use static_data_bus::*;
 pub use static_data_bus_collect::*;
+use witness_generator::*;
+use witness_orchestrator::*;
 
 pub type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
 pub type NestedDeviceMetricsList = HashMap<usize, DeviceMetricsList>;
@@ -28,12 +44,14 @@ use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::{collections::HashMap, sync::Mutex, thread::JoinHandle};
 use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope, ZiskExecutionResult};
+use zisk_core::ZiskRom;
 
 /// Trait for unified execution across different emulator backends
 pub trait Emulator<F: PrimeField64>: Send + Sync {
     /// Execute the emulator
     fn execute(
         &self,
+        zisk_rom: &ZiskRom,
         stdin: &Mutex<ZiskStdin>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
@@ -64,6 +82,7 @@ impl EmulatorKind {
 impl<F: PrimeField64> Emulator<F> for EmulatorKind {
     fn execute(
         &self,
+        zisk_rom: &ZiskRom,
         stdin: &Mutex<ZiskStdin>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
@@ -77,8 +96,8 @@ impl<F: PrimeField64> Emulator<F> for EmulatorKind {
         ZiskExecutionResult,
     ) {
         match self {
-            Self::Asm(e) => e.execute(stdin, pctx, sm_bundle, stats, caller_stats_scope),
-            Self::Rust(e) => e.execute(stdin, sm_bundle),
+            Self::Asm(e) => e.execute(zisk_rom, stdin, pctx, sm_bundle, stats, caller_stats_scope),
+            Self::Rust(e) => e.execute(zisk_rom, stdin, sm_bundle),
         }
     }
 }

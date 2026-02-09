@@ -92,6 +92,81 @@ pub struct Stats {
     pub num_chunks: usize,
 }
 
+impl Stats {
+    /// Creates stats for an instance with no collection phase.
+    ///
+    /// Used for main instances and ROM instances with ASM emulator that skip collection.
+    /// Sets `collect_duration` to 0 and `num_chunks` to 0.
+    pub fn new_no_collection(airgroup_id: usize, air_id: usize) -> Self {
+        Self {
+            airgroup_id,
+            air_id,
+            collect_start_time: Instant::now(),
+            collect_duration: 0,
+            witness_start_time: Instant::now(),
+            witness_duration: 0,
+            num_chunks: 0,
+        }
+    }
+
+    /// Creates stats for an instance with a pending collection phase.
+    ///
+    /// Used when collection is about to start. The `collect_duration` will be
+    /// updated later via `set_collect_duration` when collection completes.
+    pub fn new_pending_collection(airgroup_id: usize, air_id: usize, num_chunks: usize) -> Self {
+        Self {
+            airgroup_id,
+            air_id,
+            collect_start_time: Instant::now(),
+            collect_duration: 0,
+            witness_start_time: Instant::now(),
+            witness_duration: 0,
+            num_chunks,
+        }
+    }
+
+    /// Creates stats for an instance with completed collection.
+    ///
+    /// Used when collection has finished and we know the actual timing.
+    pub fn new_with_collection(
+        airgroup_id: usize,
+        air_id: usize,
+        num_chunks: usize,
+        collect_start_time: Instant,
+        collect_duration: u64,
+    ) -> Self {
+        Self {
+            airgroup_id,
+            air_id,
+            collect_start_time,
+            collect_duration,
+            witness_start_time: Instant::now(),
+            witness_duration: 0,
+            num_chunks,
+        }
+    }
+
+    /// Creates stats for a main instance (no collection, witness already computed).
+    ///
+    /// Used when witness computation has finished and we know the timing.
+    /// Main instances don't have a collection phase.
+    pub fn new_main_completed(
+        airgroup_id: usize,
+        air_id: usize,
+        witness_start_time: Instant,
+    ) -> Self {
+        Self {
+            airgroup_id,
+            air_id,
+            collect_start_time: Instant::now(),
+            collect_duration: 0,
+            witness_start_time,
+            witness_duration: witness_start_time.elapsed().as_millis(),
+            num_chunks: 0,
+        }
+    }
+}
+
 pub trait ElfBinaryLike {
     fn elf(&self) -> &[u8];
     fn name(&self) -> &str;
