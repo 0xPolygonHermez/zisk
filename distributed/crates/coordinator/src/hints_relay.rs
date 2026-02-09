@@ -4,8 +4,11 @@ use anyhow::Result;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
-use zisk_common::{io::StreamProcessor, CtrlHint, HintCode, PrecompileHint};
+use std::sync::{Arc, Mutex};
+use zisk_common::{
+    io::StreamProcessor, CtrlHint, HintCode, PartialPrecompileHint, PrecHintParseResult,
+    PrecompileHint,
+};
 use zisk_distributed_common::StreamMessageKind;
 
 type AsyncDispatcher = Arc<
@@ -18,6 +21,12 @@ pub struct PrecompileHintsRelay {
     sequence_number: Arc<AtomicU32>,
     dispatcher: AsyncDispatcher,
     runtime_handle: tokio::runtime::Handle,
+
+    /// Buffer for incomplete hint data between batches
+    pending_partial: Mutex<Option<PartialPrecompileHint>>,
+
+    /// Maximum allowed buffer size in bytes (to prevent unbounded growth)
+    max_buffer_size: usize,
 }
 
 impl PrecompileHintsRelay {
@@ -39,18 +48,40 @@ impl PrecompileHintsRelay {
             sequence_number: Arc::new(AtomicU32::new(0)),
             dispatcher,
             runtime_handle: tokio::runtime::Handle::current(),
+            pending_partial: Mutex::new(None),
+            max_buffer_size: Self::DEFAULT_MAX_BUFFER_SIZE,
         }
     }
+
+    /// Default maximum buffer size: 128KB in bytes
+    const DEFAULT_MAX_BUFFER_SIZE: usize = 128 * 1024;
 
     pub fn process_hints(&self, hints: &[u64], first_batch: bool) -> Result<bool> {
         let mut has_ctrl_start = false;
         let mut has_ctrl_end = false;
 
+        // Take any pending partial hint from previous batch
+        let mut pending_partial = self.pending_partial.lock().unwrap().take();
+
         // Parse hints and dispatch to pool
         let mut idx = 0;
         while idx < hints.len() {
-            let hint = PrecompileHint::from_u64_slice(hints, idx, true)?;
-            let length = hint.data.len();
+            let (parsed_hint, consumed) = PrecompileHint::from_u64_slice(
+                hints,
+                idx,
+                true,
+                pending_partial.take(),
+                self.max_buffer_size,
+            )?;
+            let hint = match parsed_hint {
+                PrecHintParseResult::Complete(hint) => hint,
+                PrecHintParseResult::Partial(partial) => {
+                    // Store partial for next batch and exit loop
+                    *self.pending_partial.lock().unwrap() = Some(partial);
+                    break;
+                }
+            };
+            let length = consumed;
 
             // Validate hint type is in valid range before accessing stats array
 

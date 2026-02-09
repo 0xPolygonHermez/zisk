@@ -347,6 +347,73 @@ impl HintCode {
     }
 }
 
+/// Represents a partially received hint when the slice doesn't contain all data.
+///
+/// This is returned when the hint header has been parsed but there isn't enough
+/// data in the slice to complete the hint.
+#[derive(Debug, Clone)]
+pub struct PartialPrecompileHint {
+    /// The type of hint, determining how the data should be processed.
+    pub hint_code: HintCode,
+    /// Whether this hint contains pass-through data (true) or requires computation (false).
+    pub is_passthrough: bool,
+    /// The partial hint payload data received so far.
+    pub data: Vec<u64>,
+    /// Total data length in bytes expected for this hint.
+    pub expected_len_bytes: usize,
+    /// Number of u64s still needed to complete the hint.
+    pub remaining_u64s: usize,
+}
+
+impl PartialPrecompileHint {
+    /// Continues parsing a partial hint by accumulating more data from the slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `slice` - The new data slice to accumulate
+    ///
+    /// # Returns
+    ///
+    /// * `Ok((PrecHintParseResult, usize))` - The result and number of u64s consumed from the slice
+    /// * `PrecHintParseResult::Complete` - If enough data was accumulated to complete the hint
+    /// * `PrecHintParseResult::Partial` - If more data is still needed
+    #[inline(always)]
+    pub fn continue_from_slice(mut self, slice: &[u64]) -> (PrecHintParseResult, usize) {
+        let available = slice.len();
+
+        if available >= self.remaining_u64s {
+            // We have enough data to complete the hint
+            let consumed = self.remaining_u64s;
+            self.data.extend_from_slice(&slice[..consumed]);
+
+            (
+                PrecHintParseResult::Complete(PrecompileHint {
+                    hint_code: self.hint_code,
+                    is_passthrough: self.is_passthrough,
+                    data: self.data,
+                    data_len_bytes: self.expected_len_bytes,
+                }),
+                consumed,
+            )
+        } else {
+            // Still not enough data, accumulate what we have
+            self.data.extend_from_slice(slice);
+            self.remaining_u64s -= available;
+
+            (PrecHintParseResult::Partial(self), available)
+        }
+    }
+}
+
+/// Result of parsing a hint from a u64 slice.
+#[derive(Debug)]
+pub enum PrecHintParseResult {
+    /// A complete hint was successfully parsed.
+    Complete(PrecompileHint),
+    /// A partial hint was received; more data is needed.
+    Partial(PartialPrecompileHint),
+}
+
 /// Represents a single precompile hint parsed from a `u64` slice.
 ///
 /// A hint consists of a type identifier and associated data. The hint type
@@ -380,21 +447,72 @@ impl std::fmt::Debug for PrecompileHint {
 }
 
 impl PrecompileHint {
-    /// Parses a [`PrecompileHint`] from a slice of `u64` values at the given index.
+    /// Parses a [`PrecompileHint`] from a slice of `u64` values at the given index,
+    /// optionally continuing from a previously received partial hint.
     ///
     /// # Arguments
     ///
     /// * `slice` - The source slice containing concatenated hints
     /// * `idx` - The index where the hint header starts
     /// * `allow_custom` - If true, unknown codes create Custom variant; if false, return error
+    /// * `partial` - Optional partial hint from a previous call to continue accumulating
+    /// * `max_buffer_size` - Maximum allowed hint data size in bytes; hints exceeding this return error
     ///
     /// # Returns
     ///
-    /// * `Ok(PrecompileHint)` - Successfully parsed hint
-    /// * `Err` - If the slice is too short or the index is out of bounds
+    /// * `Ok((PrecHintParseResult, usize))` - The parse result and number of u64s consumed
+    /// * `PrecHintParseResult::Complete` - Successfully parsed a complete hint
+    /// * `PrecHintParseResult::Partial` - Parsed header but slice doesn't contain all data
+    /// * `Err` - If the slice is empty, index is out of bounds, hint code is invalid,
+    ///   or hint size exceeds `max_buffer_size`
     #[inline(always)]
-    pub fn from_u64_slice(slice: &[u64], idx: usize, allow_custom: bool) -> Result<Self> {
-        if slice.is_empty() || idx >= slice.len() {
+    pub fn from_u64_slice(
+        slice: &[u64],
+        idx: usize,
+        allow_custom: bool,
+        partial: Option<PartialPrecompileHint>,
+        max_buffer_size: usize,
+    ) -> Result<(PrecHintParseResult, usize)> {
+        // If we have a partial hint, continue accumulating from it
+        if let Some(partial_hint) = partial {
+            let available = slice.len() - idx;
+
+            if available >= partial_hint.remaining_u64s {
+                // We have enough data to complete the hint
+                let consumed = partial_hint.remaining_u64s;
+                let mut data = partial_hint.data;
+                data.extend_from_slice(&slice[idx..idx + consumed]);
+
+                return Ok((
+                    PrecHintParseResult::Complete(PrecompileHint {
+                        hint_code: partial_hint.hint_code,
+                        is_passthrough: partial_hint.is_passthrough,
+                        data,
+                        data_len_bytes: partial_hint.expected_len_bytes,
+                    }),
+                    consumed,
+                ));
+            } else {
+                // Still not enough data, accumulate what we have
+                let mut data = partial_hint.data;
+                data.extend_from_slice(&slice[idx..]);
+                let remaining_u64s = partial_hint.remaining_u64s - available;
+
+                return Ok((
+                    PrecHintParseResult::Partial(PartialPrecompileHint {
+                        hint_code: partial_hint.hint_code,
+                        is_passthrough: partial_hint.is_passthrough,
+                        data,
+                        expected_len_bytes: partial_hint.expected_len_bytes,
+                        remaining_u64s,
+                    }),
+                    available,
+                ));
+            }
+        }
+
+        // No partial hint, parse from scratch
+        if slice.len() <= idx {
             return Err(anyhow::anyhow!("Slice too short or index out of bounds"));
         }
 
@@ -402,18 +520,20 @@ impl PrecompileHint {
 
         // Extract length from lower 32 bits
         let length = header & 0xFFFFFFFF;
+        let length_bytes = length as usize;
+
+        // Validate against max buffer size
+        if length_bytes > max_buffer_size {
+            return Err(anyhow::anyhow!(
+                "Hint data size {} bytes exceeds max buffer size {} bytes",
+                length_bytes,
+                max_buffer_size
+            ));
+        }
 
         // Calculate how many u64s are needed to hold length
         let num_u64s = length.div_ceil(8) as usize;
 
-        anyhow::ensure!(
-            slice.len() >= idx + 1 + num_u64s,
-            "Slice too short for hint data {}: expected {} u64s, got {}",
-            (header >> 32) as u32,
-            num_u64s,
-            slice.len() - idx - 1
-        );
-
         // Extract hint code from upper 32 bits
         let hint_code_32 = (header >> 32) as u32;
         // Extract pass-through flag from bit 31 (MSB) - shift is faster than mask
@@ -426,86 +546,42 @@ impl PrecompileHint {
         } else {
             HintCode::try_from(hint_code_value)?
         };
+
+        let available_u64s = slice.len() - idx - 1;
+
+        // Check if we have enough data for the complete hint
+        if available_u64s < num_u64s {
+            // Return partial hint with whatever data we have
+            let data = slice[idx + 1..].to_vec();
+            let remaining_u64s = num_u64s - available_u64s;
+            // Consumed: 1 header + all available data
+            let consumed = 1 + available_u64s;
+
+            return Ok((
+                PrecHintParseResult::Partial(PartialPrecompileHint {
+                    hint_code,
+                    is_passthrough,
+                    data,
+                    expected_len_bytes: length_bytes,
+                    remaining_u64s,
+                }),
+                consumed,
+            ));
+        }
 
         // Create a new Vec with the hint data.
         let data = slice[idx + 1..idx + 1 + num_u64s].to_vec();
+        // Consumed: 1 header + num_u64s data
+        let consumed = 1 + num_u64s;
 
-        Ok(PrecompileHint { hint_code, is_passthrough, data, data_len_bytes: length as usize })
-    }
-
-    /// Parses a [`PrecompileHint`] from a slice of `u64` values at the given byte index.
-    ///
-    /// # Arguments
-    ///
-    /// * `slice` - The source slice containing concatenated hints
-    /// * `idx` - The **byte index** where the hint header starts
-    /// * `allow_custom` - If true, unknown codes create Custom variant; if false, return error
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(PrecompileHint)` - Successfully parsed hint
-    /// * `Err` - If the slice is too short or the index is out of bounds
-    #[inline(always)]
-    pub fn from_unaligned_u64_slice(slice: &[u64], idx: usize, allow_custom: bool) -> Result<Self> {
-        const HEADER_SIZE: usize = 8;
-
-        // Convert u64 slice to byte slice
-        let byte_slice =
-            unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const u8, slice.len() * 8) };
-
-        if idx + HEADER_SIZE > byte_slice.len() {
-            return Err(anyhow::anyhow!("Slice too short for header at byte index {}", idx));
-        }
-
-        // Read 8-byte header as u64 (little-endian)
-        let header = u64::from_le_bytes(byte_slice[idx..idx + HEADER_SIZE].try_into().unwrap());
-
-        // Extract length from lower 32 bits (length is in bytes)
-        let length = (header & 0xFFFFFFFF) as usize;
-
-        // Calculate how many u64s are needed to hold length bytes
-        let num_u64s = length.div_ceil(8);
-        println!("Header: {:#x}, Length: {}, Num u64s: {}", header, length, num_u64s);
-        anyhow::ensure!(
-            idx + HEADER_SIZE + length <= byte_slice.len(),
-            "Slice too short for hint data {}: expected {} bytes, got {}",
-            (header >> 32) as u32,
-            length,
-            byte_slice.len() - idx - HEADER_SIZE
-        );
-
-        // Extract hint code from upper 32 bits
-        let hint_code_32 = (header >> 32) as u32;
-        // Extract pass-through flag from bit 31 (MSB) - shift is faster than mask
-        let is_passthrough = hint_code_32 >> 31 != 0;
-        // Extract the actual hint code from bits 0-30 - mask is optimal
-        let hint_code_value = hint_code_32 & 0x7FFFFFFF;
-
-        let hint_code = if allow_custom {
-            HintCode::try_from(hint_code_value).unwrap_or(HintCode::Custom(hint_code_value))
-        } else {
-            HintCode::try_from(hint_code_value)?
-        };
-
-        // Extract data bytes and convert to u64 with optimal performance
-        let data_bytes = &byte_slice[idx + HEADER_SIZE..idx + HEADER_SIZE + length];
-        let mut data = Vec::with_capacity(num_u64s);
-
-        let mut offset = 0;
-        // Process full u64s with direct unaligned reads
-        while offset + 8 <= data_bytes.len() {
-            let value = unsafe { (data_bytes.as_ptr().add(offset) as *const u64).read_unaligned() };
-            data.push(u64::from_le(value));
-            offset += 8;
-        }
-
-        // Handle last partial u64 if any
-        if offset < data_bytes.len() {
-            let mut bytes = [0u8; 8];
-            bytes[..data_bytes.len() - offset].copy_from_slice(&data_bytes[offset..]);
-            data.push(u64::from_le_bytes(bytes));
-        }
-
-        Ok(PrecompileHint { hint_code, is_passthrough, data, data_len_bytes: length })
+        Ok((
+            PrecHintParseResult::Complete(PrecompileHint {
+                hint_code,
+                is_passthrough,
+                data,
+                data_len_bytes: length_bytes,
+            }),
+            consumed,
+        ))
     }
 }
