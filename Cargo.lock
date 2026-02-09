@@ -1434,29 +1434,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "env_filter"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bf3c259d255ca70051b30e2e95b5446cdb8949ac4cd22c0d7fd634d89f568e2"
-dependencies = [
- "log",
- "regex",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.11.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13c863f0904021b108aa8b2f55046443e6b1ebde8fd4a15c399893aae4fa069f"
-dependencies = [
- "anstream",
- "anstyle",
- "env_filter",
- "jiff",
- "log",
-]
-
-[[package]]
 name = "equator"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2271,30 +2248,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
-name = "jiff"
-version = "0.2.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d89a5b5e10d5a9ad6e5d1f4bd58225f655d6fe9767575a5e8ac5a6fe64e04495"
-dependencies = [
- "jiff-static",
- "log",
- "portable-atomic",
- "portable-atomic-util",
- "serde_core",
-]
-
-[[package]]
-name = "jiff-static"
-version = "0.2.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff7a39c8862fc1369215ccf0a8f12dd4598c7f6484704359f0351bd617034dbf"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.114",
-]
-
-[[package]]
 name = "jni"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3063,15 +3016,6 @@ name = "portable-atomic"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
-
-[[package]]
-name = "portable-atomic-util"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a9db96d7fa8782dd8c15ce32ffe8680bbd1e978a43bf51a34d39483540495f5"
-dependencies = [
- "portable-atomic",
-]
 
 [[package]]
 name = "potential_utf"
@@ -6256,6 +6200,7 @@ dependencies = [
  "asm-runner",
  "bincode",
  "colored",
+ "executor",
  "fields",
  "libloading",
  "proofman",
@@ -6266,9 +6211,9 @@ dependencies = [
  "sha2",
  "tracing",
  "zisk-common",
+ "zisk-core",
  "zisk-distributed-common",
  "zisk-verifier",
- "zisk-witness",
  "zstd",
 ]
 
@@ -6279,45 +6224,6 @@ dependencies = [
  "anyhow",
  "proofman-util",
  "proofman-verifier",
-]
-
-[[package]]
-name = "zisk-witness"
-version = "0.16.0"
-dependencies = [
- "anyhow",
- "asm-runner",
- "data-bus",
- "env_logger",
- "executor",
- "fields",
- "mem-common",
- "pil-std-lib",
- "precomp-arith-eq",
- "precomp-arith-eq-384",
- "precomp-big-int",
- "precomp-dma",
- "precomp-keccakf",
- "precomp-poseidon2",
- "precomp-sha256f",
- "precompiles-hints",
- "proofman",
- "proofman-common",
- "proofman-macros",
- "proofman-util",
- "rayon",
- "sm-arith",
- "sm-binary",
- "sm-frequent-ops",
- "sm-main",
- "sm-mem",
- "sm-rom",
- "tracing",
- "witness",
- "zisk-common",
- "zisk-core",
- "zisk-pil",
- "ziskemu",
 ]
 
 [[package]]

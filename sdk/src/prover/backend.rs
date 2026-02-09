@@ -7,11 +7,12 @@ use crate::{
 };
 use crate::{ProofMode, ProofOpts};
 use crate::{
-    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramVK, ZiskProof,
-    ZiskProveResult, ZiskVerifyConstraintsResult,
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProgramVK,
+    ZiskProof, ZiskProveResult, ZiskVerifyConstraintsResult,
 };
 use anyhow::Result;
 use colored::Colorize;
+use executor::ZiskExecutor;
 use fields::Goldilocks;
 use proofman::{
     AggProofs, ExecutionInfo, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
@@ -22,18 +23,16 @@ use proofman_util::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::OnceLock;
 use zisk_common::stats_mark;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     ElfBinaryLike, ExecutorStatsHandle, ZiskExecutionResult,
 };
-use zisk_witness::WitnessLib;
 
 pub(crate) struct ProverBackend {
     proofman: Option<ProofMan<Goldilocks>>,
     snark_wrapper: Option<SnarkWrapper<Goldilocks>>,
-    witness_lib: OnceLock<WitnessLib<Goldilocks>>,
+    executor: Option<Arc<ZiskExecutor<Goldilocks>>>,
     proving_key_path: PathBuf,
     proving_key_snark_path: Option<PathBuf>,
 }
@@ -42,13 +41,14 @@ impl ProverBackend {
     pub fn new(
         proofman: ProofMan<Goldilocks>,
         snark_wrapper: Option<SnarkWrapper<Goldilocks>>,
+        executor: Arc<ZiskExecutor<Goldilocks>>,
         proving_key_path: PathBuf,
         proving_key_snark_path: Option<PathBuf>,
     ) -> Self {
         Self {
             proofman: Some(proofman),
             snark_wrapper,
-            witness_lib: OnceLock::new(),
+            executor: Some(executor),
             proving_key_path,
             proving_key_snark_path,
         }
@@ -61,7 +61,7 @@ impl ProverBackend {
         Self {
             proofman: None,
             snark_wrapper: None,
-            witness_lib: OnceLock::new(),
+            executor: None,
             proving_key_path,
             proving_key_snark_path,
         }
@@ -74,56 +74,52 @@ impl ProverBackend {
         Ok(proofman.get_wcm().get_pctx())
     }
 
-    pub fn register_witness_lib(
-        &self,
-        elf: &[u8],
-        mut witness_lib: WitnessLib<Goldilocks>,
-        custom_commits_map: HashMap<String, PathBuf>,
-    ) -> Result<()> {
+    pub fn register_program(&self, program_pk: &ZiskProgramPK) -> Result<()> {
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
+        })?;
+
         let proofman = self.proofman.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
         })?;
 
-        witness_lib.register_witness(elf, &proofman.get_wcm())?;
+        executor.set_zisk_rom(program_pk.zisk_rom.clone());
 
-        if self.witness_lib.set(witness_lib).is_err() {
-            return Err(anyhow::anyhow!("Witness library has already been registered."));
-        }
-
+        let custom_commits_map =
+            HashMap::from([("rom".to_string(), program_pk.elf_bin_path.clone())]);
         proofman
             .register_custom_commits(custom_commits_map)
             .map_err(|e| anyhow::anyhow!(e.to_string()))
     }
 
     pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        let witness_lib = self.witness_lib.get().ok_or_else(|| {
-            anyhow::anyhow!("Witness_lib is not initialized. Please initialize it before use.")
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
         })?;
-        witness_lib.set_stdin(stdin);
+        executor.set_stdin(stdin);
         Ok(())
     }
 
     pub fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()> {
-        let witness_lib = self.witness_lib.get().ok_or_else(|| {
-            anyhow::anyhow!("Witness_lib is not initialized. Please initialize it before use.")
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
         })?;
-        witness_lib.set_hints_stream(hints_stream)
+        executor.set_hints_stream_src(hints_stream)
     }
 
     pub fn execution_result(&self) -> Result<(ZiskExecutionResult, ExecutorStatsHandle)> {
-        let witness_lib = self.witness_lib.get().ok_or_else(|| {
-            anyhow::anyhow!("Witness_lib is not initialized. Please initialize it before use.")
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
         })?;
 
-        let (result, stats) = witness_lib.execution_result().ok_or_else(|| {
-            anyhow::anyhow!("Failed to get execution result from emulator prover")
-        })?;
+        let (result, stats) = executor.get_execution_result();
 
         Ok((result, stats))
     }
 
     pub(crate) fn execute(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         output_path: Option<PathBuf>,
     ) -> Result<ZiskExecuteResult> {
@@ -132,11 +128,13 @@ impl ProverBackend {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Cannot execute in verifier mode"))?;
 
-        let witness_lib = self.witness_lib.get().ok_or_else(|| {
-            anyhow::anyhow!("witness_lib is not initialized. Please initialize it before use.")
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
         })?;
 
-        witness_lib.set_stdin(stdin);
+        self.register_program(pk)?;
+
+        executor.set_stdin(stdin);
 
         let start = std::time::Instant::now();
 
@@ -146,9 +144,7 @@ impl ProverBackend {
 
         let elapsed = start.elapsed();
 
-        let (result, _) = witness_lib.execution_result().ok_or_else(|| {
-            anyhow::anyhow!("Failed to get execution result from emulator prover")
-        })?;
+        let (result, _) = executor.get_execution_result();
 
         let publics = proofman.get_publics();
 
@@ -157,6 +153,7 @@ impl ProverBackend {
 
     pub(crate) fn stats(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
@@ -167,13 +164,15 @@ impl ProverBackend {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Cannot compute stats in verifier mode"))?;
 
-        let witness_lib = self.witness_lib.get().ok_or_else(|| {
-            anyhow::anyhow!("witness_lib is not initialized. Please initialize it before use.")
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
         })?;
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        witness_lib.set_stdin(stdin);
+        self.register_program(pk)?;
+
+        executor.set_stdin(stdin);
 
         let world_rank = proofman.get_world_rank();
         let local_rank = proofman.get_local_rank();
@@ -207,15 +206,14 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
         let (_, stats): (ZiskExecutionResult, ExecutorStatsHandle) =
-            witness_lib.execution_result().ok_or_else(|| {
-                anyhow::anyhow!("Failed to get execution result from emulator prover")
-            })?;
+            executor.get_execution_result();
 
         Ok((world_rank, n_processes, Some(stats)))
     }
 
     pub(crate) fn verify_constraints_debug(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
@@ -224,24 +222,24 @@ impl ProverBackend {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Cannot verify constraints in verifier mode"))?;
 
-        let witness_lib = self.witness_lib.get().ok_or_else(|| {
-            anyhow::anyhow!("witness_lib is not initialized. Please initialize it before use.")
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
         })?;
 
         let start = std::time::Instant::now();
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        witness_lib.set_stdin(stdin);
+        self.register_program(pk)?;
+
+        executor.set_stdin(stdin);
 
         proofman
             .verify_proof_constraints_from_lib(&debug_info, false)
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
         let elapsed = start.elapsed();
 
-        let (result, stats) = witness_lib.execution_result().ok_or_else(|| {
-            anyhow::anyhow!("Failed to get execution result from emulator prover")
-        })?;
+        let (result, stats) = executor.get_execution_result();
 
         stats_mark!(stats, 0, "END", 0);
 
@@ -253,69 +251,19 @@ impl ProverBackend {
 
     pub(crate) fn verify_constraints(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        self.verify_constraints_debug(stdin, None)
+        self.verify_constraints_debug(pk, stdin, None)
     }
 
     pub(crate) fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
         get_program_vk_with_proving_key(elf, self.proving_key_path.clone())
     }
 
-    pub(crate) fn prove_debug(
-        &self,
-        stdin: ZiskStdin,
-        proof_options: ProofOpts,
-    ) -> Result<ZiskProveResult> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot prove in verifier mode"))?;
-
-        let witness_lib = self.witness_lib.get().ok_or_else(|| {
-            anyhow::anyhow!("witness_lib is not initialized. Please initialize it before use.")
-        })?;
-
-        let start = std::time::Instant::now();
-
-        witness_lib.set_stdin(stdin);
-
-        proofman.set_barrier();
-        proofman
-            .generate_proof_from_lib(
-                ProvePhaseInputs::Full(ProofInfo::new(None, 1, vec![0], 0)),
-                ProofOptions::new(
-                    false,
-                    false,
-                    false,
-                    false,
-                    proof_options.verify_proofs,
-                    proof_options.minimal_memory,
-                    proof_options.save_proofs,
-                    proof_options.output_dir_path.clone(),
-                ),
-                ProvePhase::Full,
-            )
-            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
-
-        let elapsed = start.elapsed();
-
-        let (execution_result, stats) = witness_lib.execution_result().ok_or_else(|| {
-            anyhow::anyhow!("Failed to get execution result from emulator prover")
-        })?;
-
-        stats_mark!(stats, 0, "END", 0);
-
-        #[cfg(feature = "stats")]
-        stats.store_stats();
-
-        proofman.set_barrier();
-
-        Ok(ZiskProveResult::new_null(execution_result, elapsed, stats))
-    }
-
     pub(crate) fn prove(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         mode: ProofMode,
         proof_options: ProofOpts,
@@ -325,9 +273,11 @@ impl ProverBackend {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Cannot prove in verifier mode"))?;
 
-        let witness_lib = self.witness_lib.get().ok_or_else(|| {
-            anyhow::anyhow!("witness_lib is not initialized. Please initialize it before use.")
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
         })?;
+
+        self.register_program(pk)?;
 
         if mode == ProofMode::Snark && self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
@@ -337,7 +287,7 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        witness_lib.set_stdin(stdin);
+        executor.set_stdin(stdin);
 
         let compressed = matches!(mode, ProofMode::VadcopFinalCompressed);
 
@@ -364,9 +314,7 @@ impl ProverBackend {
             _ => (None, None),
         };
 
-        let (execution_result, stats) = witness_lib.execution_result().ok_or_else(|| {
-            anyhow::anyhow!("Failed to get execution result from emulator prover")
-        })?;
+        let (execution_result, stats) = executor.get_execution_result();
 
         // Store the stats in stats.json
         stats_mark!(stats, 0, "END", 0);

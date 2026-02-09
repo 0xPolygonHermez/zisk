@@ -22,9 +22,6 @@ use crate::{
 };
 
 pub struct EmulatorRust {
-    /// ZisK ROM, a binary file containing the ZisK program to be executed.
-    pub zisk_rom: Arc<ZiskRom>,
-
     /// Chunk size for processing.
     chunk_size: u64,
 }
@@ -33,8 +30,12 @@ impl EmulatorRust {
     /// The number of threads to use for parallel processing when computing minimal traces.
     const NUM_THREADS: usize = 16;
 
-    pub fn new(zisk_rom: Arc<ZiskRom>, chunk_size: u64) -> Self {
-        Self { zisk_rom, chunk_size }
+    pub fn new(chunk_size: u64) -> Self {
+        Self { chunk_size }
+    }
+
+    pub fn get_chunk_size(&self) -> u64 {
+        self.chunk_size
     }
 
     /// Computes minimal traces by processing the ZisK ROM with the given public inputs.
@@ -56,6 +57,7 @@ impl EmulatorRust {
     pub fn execute<F: PrimeField64>(
         &self,
         stdin: &Mutex<ZiskStdin>,
+        zisk_rom: &Arc<ZiskRom>,
         sm_bundle: &StaticSMBundle<F>,
     ) -> (
         Vec<EmuTrace>,
@@ -64,7 +66,7 @@ impl EmulatorRust {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        let min_traces = self.run_emulator(Self::NUM_THREADS, &mut stdin.lock().unwrap());
+        let min_traces = self.run_emulator(zisk_rom, Self::NUM_THREADS, &mut stdin.lock().unwrap());
 
         // Store execute steps
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
@@ -72,13 +74,18 @@ impl EmulatorRust {
         let execution_result = ZiskExecutionResult::new(steps);
 
         timer_start_info!(COUNT);
-        let (main_count, secn_count) = self.count(&min_traces, sm_bundle);
+        let (main_count, secn_count) = self.count(zisk_rom, &min_traces, sm_bundle);
         timer_stop_and_log_info!(COUNT);
 
         (min_traces, main_count, secn_count, None, execution_result)
     }
 
-    fn run_emulator(&self, num_threads: usize, stdin: &mut ZiskStdin) -> Vec<EmuTrace> {
+    fn run_emulator(
+        &self,
+        zisk_rom: &Arc<ZiskRom>,
+        num_threads: usize,
+        stdin: &mut ZiskStdin,
+    ) -> Vec<EmuTrace> {
         // Call emulate with these options
         let input_data = stdin.read();
 
@@ -89,7 +96,7 @@ impl EmulatorRust {
             ..EmuOptions::default()
         };
 
-        ZiskEmulator::compute_minimal_traces(&self.zisk_rom, &input_data, &emu_options, num_threads)
+        ZiskEmulator::compute_minimal_traces(zisk_rom, &input_data, &emu_options, num_threads)
             .expect("Error during emulator execution")
     }
 
@@ -106,6 +113,7 @@ impl EmulatorRust {
     ///   containing the metrics for each chunk.
     fn count<F: PrimeField64>(
         &self,
+        zisk_rom: &Arc<ZiskRom>,
         min_traces: &[EmuTrace],
         sm_bundle: &StaticSMBundle<F>,
     ) -> (DeviceMetricsList, NestedDeviceMetricsList) {
@@ -115,7 +123,7 @@ impl EmulatorRust {
                 let mut data_bus = sm_bundle.build_data_bus_counters();
 
                 ZiskEmulator::process_emu_trace::<F, _, _>(
-                    &self.zisk_rom,
+                    zisk_rom,
                     minimal_trace,
                     &mut data_bus,
                     true,
@@ -162,6 +170,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
     fn execute(
         &self,
         stdin: &Mutex<ZiskStdin>,
+        zisk_rom: &Arc<ZiskRom>,
         _pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         _stats: &ExecutorStatsHandle,
@@ -173,6 +182,6 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        self.execute(stdin, sm_bundle)
+        self.execute(stdin, zisk_rom, sm_bundle)
     }
 }

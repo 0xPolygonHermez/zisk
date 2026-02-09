@@ -8,7 +8,9 @@ mod executor;
 mod sm_static_bundle;
 mod static_data_bus;
 mod static_data_bus_collect;
+mod utils;
 
+use anyhow::Result;
 pub use dummy_counter::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use emu_asm::*;
@@ -19,6 +21,10 @@ pub use executor::*;
 pub use sm_static_bundle::*;
 pub use static_data_bus::*;
 pub use static_data_bus_collect::*;
+use std::sync::Arc;
+pub use utils::*;
+use zisk_common::io::StreamSource;
+use zisk_core::ZiskRom;
 
 pub type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
 pub type NestedDeviceMetricsList = HashMap<usize, DeviceMetricsList>;
@@ -35,6 +41,7 @@ pub trait Emulator<F: PrimeField64>: Send + Sync {
     fn execute(
         &self,
         stdin: &Mutex<ZiskStdin>,
+        zisk_rom: &Arc<ZiskRom>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
@@ -59,12 +66,34 @@ impl EmulatorKind {
     pub fn is_asm_emulator(&self) -> bool {
         matches!(self, Self::Asm(_))
     }
+
+    pub fn get_chunk_size(&self) -> u64 {
+        match self {
+            Self::Asm(e) => e.get_chunk_size(),
+            Self::Rust(e) => e.get_chunk_size(),
+        }
+    }
+
+    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
+        match self {
+            Self::Asm(e) => e.set_hints_stream_src(stream),
+            Self::Rust(_) => Err(anyhow::anyhow!("Hints stream not supported in Rust emulator")),
+        }
+    }
+
+    pub fn reset_hints_stream(&self) {
+        match self {
+            Self::Asm(e) => e.reset_hints_stream(),
+            Self::Rust(_) => (), // No hints stream in Rust emulator
+        }
+    }
 }
 
 impl<F: PrimeField64> Emulator<F> for EmulatorKind {
     fn execute(
         &self,
         stdin: &Mutex<ZiskStdin>,
+        zisk_rom: &Arc<ZiskRom>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
@@ -77,8 +106,8 @@ impl<F: PrimeField64> Emulator<F> for EmulatorKind {
         ZiskExecutionResult,
     ) {
         match self {
-            Self::Asm(e) => e.execute(stdin, pctx, sm_bundle, stats, caller_stats_scope),
-            Self::Rust(e) => e.execute(stdin, sm_bundle),
+            Self::Asm(e) => e.execute(stdin, zisk_rom, pctx, sm_bundle, stats, caller_stats_scope),
+            Self::Rust(e) => e.execute(stdin, zisk_rom, sm_bundle),
         }
     }
 }

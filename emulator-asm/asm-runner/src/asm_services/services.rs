@@ -45,6 +45,7 @@ impl fmt::Display for AsmService {
 
 const ASM_SERVICE_BASE_PORT: u16 = 23115;
 
+#[derive(Debug, Clone)]
 pub struct AsmServices {
     world_rank: i32,
     local_rank: i32,

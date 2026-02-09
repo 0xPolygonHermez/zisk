@@ -20,13 +20,12 @@
 //! maintaining clarity and modularity in the computation process.
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use sm_rom::RomInstance;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use witness::WitnessComponent;
-use zisk_common::io::{StreamSource, ZiskStdin, ZiskStream};
+use zisk_common::io::{StreamSource, ZiskStdin};
 
 use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
@@ -75,14 +74,8 @@ pub struct ZiskExecutor<F: PrimeField64> {
     /// The emulator backend used for execution.
     emulator: EmulatorKind,
 
-    /// Chunk size for processing.
-    chunk_size: u64,
-
-    /// Pipeline for handling precompile hints.
-    hints_stream: Mutex<Option<ZiskStream>>,
-
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
-    zisk_rom: Arc<ZiskRom>,
+    zisk_rom: RwLock<Arc<ZiskRom>>,
 
     /// Planning information for main state machines.
     min_traces: Arc<RwLock<Option<Vec<EmuTrace>>>>,
@@ -95,9 +88,6 @@ pub struct ZiskExecutor<F: PrimeField64> {
 
     /// Secondary state machine instances, indexed by their global ID.
     secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
-
-    /// Standard library instance, providing common functionalities.
-    std: Arc<Std<F>>,
 
     /// Execution result, including the number of executed steps.
     execution_result: Mutex<ZiskExecutionResult>,
@@ -117,28 +107,17 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ///
     /// # Arguments
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
-    /// * `hints_stream` - Optional hints stream for processing precompile hints.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        zisk_rom: Arc<ZiskRom>,
-        std: Arc<Std<F>>,
-        sm_bundle: StaticSMBundle<F>,
-        chunk_size: u64,
-        emulator: EmulatorKind,
-        hints_stream: Option<ZiskStream>,
-    ) -> Self {
+    pub fn new(sm_bundle: StaticSMBundle<F>, emulator: EmulatorKind) -> Self {
         Self {
+            zisk_rom: RwLock::new(Arc::new(ZiskRom::default())),
             stdin: Mutex::new(ZiskStdin::null()),
             emulator,
-            chunk_size,
-            hints_stream: Mutex::new(hints_stream),
-            zisk_rom,
             min_traces: Arc::new(RwLock::new(None)),
             secn_planning: RwLock::new(Vec::new()),
             main_instances: RwLock::new(HashMap::new()),
             secn_instances: RwLock::new(HashMap::new()),
             collectors_by_instance: Arc::new(RwLock::new(HashMap::new())),
-            std,
             execution_result: Mutex::new(ZiskExecutionResult::default()),
             sm_bundle,
             stats: ExecutorStatsHandle::new(),
@@ -150,12 +129,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         *guard = stdin;
     }
 
+    pub fn set_zisk_rom(&self, zisk_rom: Arc<ZiskRom>) {
+        let mut guard = self.zisk_rom.write().unwrap();
+        *guard = zisk_rom.clone();
+        self.sm_bundle.set_zisk_rom(zisk_rom.clone());
+    }
+
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
-        if let Some(hints_stream) = self.hints_stream.lock().unwrap().as_mut() {
-            hints_stream.set_hints_stream_src(stream)
-        } else {
-            Err(anyhow::anyhow!("No hints stream configured"))
-        }
+        self.emulator.set_hints_stream_src(stream)
     }
 
     #[allow(clippy::type_complexity)]
@@ -200,7 +181,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// # Returns
     /// A main instance for the provided global ID.
     fn create_main_instance(&self, plan: Plan, global_id: usize) -> MainInstance<F> {
-        MainInstance::new(InstanceCtx::new(global_id, plan), self.std.clone())
+        MainInstance::new(InstanceCtx::new(global_id, plan), self.sm_bundle.get_std())
     }
 
     /// Adds secondary state machine instances to the proof context and assigns global IDs.
@@ -288,9 +269,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let min_traces = min_traces_guard.as_ref().expect("min_traces should not be None");
 
         let air_instance = main_instance.compute_witness(
-            &self.zisk_rom,
+            &self.zisk_rom.read().unwrap(),
             min_traces,
-            self.chunk_size,
+            self.emulator.get_chunk_size(),
             main_instance,
             trace_buffer,
         )?;
@@ -481,7 +462,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 let _stats = &self.stats;
                 let min_traces = &min_traces;
                 let data_buses = &data_buses;
-                let zisk_rom = &self.zisk_rom;
                 let global_ids_map = &global_ids_map;
                 let global_id_chunks = &global_id_chunks;
                 let ordered_chunks = &ordered_chunks;
@@ -504,7 +484,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                         }
 
                         ZiskEmulator::process_emu_traces::<F, _, _>(
-                            zisk_rom,
+                            &self.zisk_rom.read().unwrap(),
                             min_traces,
                             chunk_id,
                             &mut data_bus,
@@ -686,18 +666,18 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Set the start time of the current execution
         self.stats.set_start_time(Instant::now());
 
-        // Process and write precompile atomically
-        if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
-            if let Some(hints_stream) = hints_stream_guard.as_mut() {
-                let _ = hints_stream.start_stream();
-            }
-        }
-
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 
         let (min_traces, main_count, mut secn_count, handle_mo, execution_result) =
-            self.emulator.execute(&self.stdin, &pctx, &self.sm_bundle, &self.stats, &_exec_scope);
+            self.emulator.execute(
+                &self.stdin,
+                &self.zisk_rom.read().unwrap(),
+                &pctx,
+                &self.sm_bundle,
+                &self.stats,
+                &_exec_scope,
+            );
 
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
@@ -709,7 +689,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 
         timer_start_info!(PLAN);
         let (main_planning, public_values) =
-            MainPlanner::plan::<F>(&min_traces, main_count, self.chunk_size);
+            MainPlanner::plan::<F>(&min_traces, main_count, self.emulator.get_chunk_size());
         *self.min_traces.write().unwrap() = Some(min_traces);
         self.assign_main_instances(&pctx, global_ids, main_planning);
 
@@ -794,11 +774,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             }
         }
 
-        if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
-            if let Some(hints_stream) = hints_stream_guard.as_mut() {
-                hints_stream.reset();
-            }
-        }
+        self.emulator.reset_hints_stream();
 
         stats_end!(self.stats, &_config_scope);
         stats_end!(self.stats, &_exec_scope);

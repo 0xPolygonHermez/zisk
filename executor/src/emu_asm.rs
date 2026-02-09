@@ -7,14 +7,19 @@ use std::{
 use crate::{
     DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
 };
+use anyhow::Result;
+use asm_runner::HintsFile;
+use asm_runner::HintsShmem;
 use asm_runner::{
     shmem_input_name, write_input, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmService, AsmServices,
     MOOutputShmem, MTOutputShmem, RHOutputShmem, SharedMemoryWriter,
 };
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
+use precompiles_hints::HintsProcessor;
 use proofman_common::ProofCtx;
 use sm_rom::RomSM;
+use zisk_common::io::{StreamSource, ZiskStream};
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, ChunkId, EmuTrace, ExecutorStatsHandle, StatsScope,
     ZiskExecutionResult,
@@ -23,9 +28,6 @@ use zisk_core::{ZiskRom, MAX_INPUT_SIZE};
 use ziskemu::ZiskEmulator;
 
 pub struct EmulatorAsm {
-    /// ZisK ROM, a binary file containing the ZisK program to be executed.
-    pub zisk_rom: Arc<ZiskRom>,
-
     /// World rank for distributed execution. Default to 0 for single-node execution.
     world_rank: i32,
 
@@ -55,18 +57,21 @@ pub struct EmulatorAsm {
     /// Shared memory writers for each assembly service.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     shmem_input_writer: Arc<Mutex<Option<SharedMemoryWriter>>>,
+
+    /// Pipeline for handling precompile hints.
+    hints_stream: Mutex<Option<ZiskStream>>,
 }
 
 impl EmulatorAsm {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        zisk_rom: Arc<ZiskRom>,
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
         chunk_size: u64,
         rom_sm: Option<Arc<RomSM>>,
+        verbose_mode: proofman_common::VerboseMode,
     ) -> Self {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         let asm_shmem_mt = MTOutputShmem::new(local_rank, base_port, unlock_mapped_memory)
@@ -75,8 +80,33 @@ impl EmulatorAsm {
         let asm_shmem_mo = MOOutputShmem::new(local_rank, base_port, unlock_mapped_memory)
             .expect("Failed to create PreloadedMO");
 
+        // Create hints pipeline with null hints stream initially.
+        // Debug flag: true = HintsShmem (shared memory), false = HintsFile (file output)
+
+        const USE_SHARED_MEMORY_HINTS: bool = true;
+
+        let hints_processor = if USE_SHARED_MEMORY_HINTS {
+            let hints_shmem = HintsShmem::new(base_port, local_rank, unlock_mapped_memory)
+                .expect("zisk_lib: Failed to create HintsShmem");
+
+            HintsProcessor::builder(hints_shmem)
+                .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
+                .build()
+                .expect("zisk_lib: Failed to create PrecompileHintsProcessor")
+        } else {
+            let hints_file = HintsFile::new(format!("hints_results_{}.bin", local_rank))
+                .expect("zisk_lib: Failed to create HintsFile");
+
+            HintsProcessor::builder(hints_file)
+                .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
+                .build()
+                .expect("zisk_lib: Failed to create PrecompileHintsProcessor")
+        };
+
+        let hints_stream = Some(ZiskStream::new(hints_processor));
+
         Self {
-            zisk_rom,
+            hints_stream: Mutex::new(hints_stream),
             world_rank,
             local_rank,
             base_port,
@@ -91,6 +121,30 @@ impl EmulatorAsm {
             asm_shmem_rh: Arc::new(Mutex::new(None)),
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             shmem_input_writer: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn get_chunk_size(&self) -> u64 {
+        self.chunk_size
+    }
+
+    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
+        if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
+            if let Some(hints_stream) = hints_stream_guard.as_mut() {
+                hints_stream.set_hints_stream_src(stream)
+            } else {
+                Err(anyhow::anyhow!("No hints stream configured"))
+            }
+        } else {
+            Err(anyhow::anyhow!("Failed to acquire hints stream lock"))
+        }
+    }
+
+    pub fn reset_hints_stream(&self) {
+        if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
+            if let Some(hints_stream) = hints_stream_guard.as_mut() {
+                hints_stream.reset();
+            }
         }
     }
 
@@ -114,6 +168,7 @@ impl EmulatorAsm {
     pub fn execute<F: PrimeField64>(
         &self,
         stdin: &Mutex<ZiskStdin>,
+        zisk_rom: &Arc<ZiskRom>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
@@ -125,6 +180,12 @@ impl EmulatorAsm {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
+        if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
+            if let Some(hints_stream) = hints_stream_guard.as_mut() {
+                let _ = hints_stream.start_stream();
+            }
+        }
+
         stats_begin!(stats, _caller_stats_scope, _exec_scope, "EXECUTE_WITH_ASSEMBLY", 0);
 
         stats_begin!(stats, &_exec_scope, _write_scope, "ASM_WRITE_INPUT", 0);
@@ -181,7 +242,7 @@ impl EmulatorAsm {
             })
         });
 
-        let (min_traces, main_count, secn_count) = self.run_mt_assembly(sm_bundle, stats);
+        let (min_traces, main_count, secn_count) = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
 
         // Store execute steps
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
@@ -221,6 +282,7 @@ impl EmulatorAsm {
 
     fn run_mt_assembly<F: PrimeField64>(
         &self,
+        zisk_rom: &Arc<ZiskRom>,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
     ) -> (Vec<EmuTrace>, DeviceMetricsList, NestedDeviceMetricsList) {
@@ -235,7 +297,6 @@ impl EmulatorAsm {
         let emu_traces = rayon::in_place_scope(|scope| {
             let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
                 let chunk_id = ChunkId(idx);
-                let zisk_rom = &self.zisk_rom;
                 let results_ref = &results_mu;
                 scope.spawn(move |_| {
                     stats_begin!(stats, mt_scope_id, _chunk_scope, "MT_CHUNK_PLAYER", 0);
@@ -310,6 +371,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
     fn execute(
         &self,
         stdin: &Mutex<ZiskStdin>,
+        zisk_rom: &Arc<ZiskRom>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
@@ -321,6 +383,6 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        self.execute(stdin, pctx, sm_bundle, stats, caller_stats_scope)
+        self.execute(stdin, zisk_rom, pctx, sm_bundle, stats, caller_stats_scope)
     }
 }

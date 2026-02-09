@@ -16,7 +16,7 @@ use zisk_common::ElfBinaryOwned;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind, StreamPayloadDto};
-use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProver};
+use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProgramPK, ZiskProver};
 
 use proofman::ExecutionInfo;
 use proofman::ProofInfo;
@@ -258,6 +258,8 @@ pub struct Worker<T: ZiskBackend + 'static> {
 
     stream_buffers: HashMap<JobId, (u32, HashMap<u32, Vec<u8>>)>, // (job_id, (next_seq, (seq_number, data)))
     hints_processor: Option<HintsProcessor>,
+
+    pk: ZiskProgramPK,
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
@@ -286,7 +288,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover_config.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             false,
         );
-        prover.setup(&elf)?;
+        let (pk, _) = prover.setup(&elf)?;
 
         Ok(Worker::<Emu> {
             _worker_id: worker_id,
@@ -296,6 +298,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_computation: None,
             prover,
             prover_config,
+            pk,
             stream_buffers: HashMap::new(),
             hints_processor: None,
         })
@@ -329,7 +332,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover_config.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             prover_config.hints,
         );
-        prover.setup(&elf)?;
+        let (pk, _) = prover.setup(&elf)?;
 
         Ok(Worker::<Asm> {
             _worker_id: worker_id,
@@ -339,6 +342,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_computation: None,
             prover,
             prover_config,
+            pk,
             stream_buffers: HashMap::new(),
             hints_processor: None,
         })
@@ -496,6 +500,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
+        let pk = self.pk.clone();
 
         let options = self.get_proof_options(false);
 
@@ -525,6 +530,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 phase_inputs,
                 inputs_source,
                 hints_source,
+                &pk,
                 options,
             )
             .await;
@@ -562,6 +568,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         phase_inputs: ProvePhaseInputs,
         input_source: InputSourceDto,
         hints_source: HintsSourceDto,
+        pk: &ZiskProgramPK,
         options: ProofOptions,
     ) -> Result<Vec<ContributionsInfo>> {
         let phase = proofman::ProvePhase::Contributions;
@@ -595,6 +602,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 // No hints to set
             }
         }
+
+        prover.register_program(pk)?;
 
         let challenge = match prover.prove_phase(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Contributions(challenge)) => {
@@ -873,6 +882,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     phase_inputs,
                     input_source_dto,
                     hints_source_dto,
+                    &self.pk,
                     options,
                 )
                 .await;

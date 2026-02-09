@@ -233,7 +233,7 @@ impl ZiskProve {
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             false,
         );
-        prover.setup(&elf)?;
+        let (pk, _) = prover.setup(&elf)?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -246,7 +246,7 @@ impl ZiskProve {
 
         let world_rank = prover.world_rank();
 
-        let mut prover = prover.prove(stdin).with_proof_options(proof_options);
+        let mut prover = prover.prove(&pk, stdin).with_proof_options(proof_options);
         if self.snark {
             prover = prover.plonk();
         }
@@ -286,7 +286,7 @@ impl ZiskProve {
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             hints_stream.is_some(),
         );
-        prover.setup(&elf)?;
+        let (pk, _) = prover.setup(&elf)?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -303,7 +303,7 @@ impl ZiskProve {
 
         let world_rank = prover.world_rank();
 
-        let mut prover = prover.prove(stdin).with_proof_options(proof_options);
+        let mut prover = prover.prove(&pk, stdin).with_proof_options(proof_options);
         if self.snark {
             prover = prover.plonk();
         }

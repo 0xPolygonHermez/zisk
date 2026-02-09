@@ -20,16 +20,16 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().asm().base_port(54321).snark().build().unwrap();
 
     println!("Setting up program and generating verification key...");
-    let vkey = client.setup(&ELF)?;
+    let (pk, vkey) = client.setup(&ELF)?;
     println!("Setup completed successfully");
 
     println!("Generating PLONK proof (this may take a while)...");
-    let snark_proof = client.prove(stdin).plonk().run()?;
+    let snark_proof = client.prove(&pk, stdin).plonk().run()?;
     println!("PLONK proof generated successfully in {:?}", snark_proof.get_duration());
     println!("Execution steps: {}", snark_proof.get_execution_steps());
 
     // Alternatively, it can also be done in two steps
-    // let vadcop_result = client.prove(stdin).run()?;
+    // let vadcop_result = client.prove(&pk, stdin).run()?;
     // let snark_proof = client.prove_snark(&vadcop_result.get_proof(), &vadcop_result.get_publics(), &vkey)?;
 
     println!("Verifying PLONK proof...");

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::{NestedDeviceMetricsList, StaticDataBusCollect};
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use precomp_arith_eq::{ArithEqInstance, ArithEqManager};
 use precomp_arith_eq_384::ArithEq384Instance;
 use precomp_arith_eq_384::ArithEq384Manager;
@@ -37,7 +38,7 @@ use zisk_pil::{
     POSEIDON_2_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS, SHA_256_F_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
-use crate::StaticDataBus;
+use crate::{StaticDataBus, ZiskRom};
 use rayon::prelude::*;
 
 type SMAirType = Vec<(usize, usize)>;
@@ -134,17 +135,35 @@ impl<F: PrimeField64> StateMachines<F> {
 pub struct StaticSMBundle<F: PrimeField64> {
     process_only_operation_bus: bool,
     sm: BTreeMap<usize, SMType<F>>,
+    std: Arc<Std<F>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(process_only_operation_bus: bool, sm: Vec<(SMAirType, StateMachines<F>)>) -> Self {
+    pub fn new(
+        process_only_operation_bus: bool,
+        std: Arc<Std<F>>,
+        sm: Vec<(SMAirType, StateMachines<F>)>,
+    ) -> Self {
         Self {
             process_only_operation_bus,
             sm: BTreeMap::from_iter(
                 sm.into_iter().map(|(air_ids, sm)| (sm.type_id(), (air_ids, sm))),
             ),
+            std,
         }
+    }
+
+    pub fn set_zisk_rom(&self, zisk_rom: Arc<ZiskRom>) {
+        for (_, sm) in self.sm.values() {
+            if let StateMachines::RomSM(rom_sm) = sm {
+                rom_sm.set_zisk_rom(zisk_rom.clone());
+            }
+        }
+    }
+
+    pub fn get_std(&self) -> Arc<Std<F>> {
+        self.std.clone()
     }
 
     pub fn get_mem_sm_id(&self) -> usize {

@@ -136,8 +136,8 @@ impl ZiskExecute {
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             false,
         );
-        prover.setup(&elf)?;
-        prover.execute(stdin)
+        let (pk, _) = prover.setup(&elf)?;
+        prover.execute(&pk, stdin)
     }
 
     pub fn run_asm(
@@ -164,10 +164,10 @@ impl ZiskExecute {
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             hints_stream.is_some(),
         );
-        prover.setup(&elf)?;
+        let (pk, _) = prover.setup(&elf)?;
         if let Some(hints_stream) = hints_stream {
             prover.set_hints_stream(hints_stream)?;
         }
-        prover.execute(stdin)
+        prover.execute(&pk, stdin)
     }
 }

@@ -149,9 +149,9 @@ impl ZiskVerifyConstraints {
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             false,
         );
-        prover.setup(&elf)?;
+        let (pk, _) = prover.setup(&elf)?;
 
-        prover.verify_constraints_debug(stdin, self.debug.clone())
+        prover.verify_constraints_debug(&pk, stdin, self.debug.clone())
     }
 
     pub fn run_asm(
@@ -178,11 +178,11 @@ impl ZiskVerifyConstraints {
             self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
             hints_stream.is_some(),
         );
-        prover.setup(&elf)?;
+        let (pk, _) = prover.setup(&elf)?;
 
         if let Some(hints_stream) = hints_stream {
             prover.set_hints_stream(hints_stream)?;
         }
-        prover.verify_constraints_debug(stdin, self.debug.clone())
+        prover.verify_constraints_debug(&pk, stdin, self.debug.clone())
     }
 }

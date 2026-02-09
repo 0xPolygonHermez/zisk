@@ -3,15 +3,16 @@ mod client;
 mod prover;
 mod utils;
 mod verifier;
-mod zisk_lib_loader;
 
 pub use builder::*;
 pub use client::ProverClient;
 pub use prover::*;
 pub use utils::*;
 pub use verifier::*;
-pub use zisk_lib_loader::*;
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RankInfo {
     pub world_rank: i32,
     pub local_rank: i32,

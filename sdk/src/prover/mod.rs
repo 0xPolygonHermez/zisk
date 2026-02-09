@@ -11,19 +11,24 @@ use proofman_common::ProofOptions;
 use proofman_util::VadcopFinalProof;
 use sha2::{Digest, Sha256};
 
+use crate::RankInfo;
 use anyhow::{Context, Result};
+use asm_runner::AsmServices;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::{
     cell::Cell,
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
+use tracing::info;
 use zisk_common::ElfBinaryLike;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     ExecutorStatsHandle, ZiskExecutionResult,
 };
+use zisk_core::ZiskRom;
 
 pub struct ZiskExecuteResult {
     pub execution: ZiskExecutionResult,
@@ -59,6 +64,30 @@ pub struct ZiskVerifyConstraintsResult {
     pub execution: ZiskExecutionResult,
     pub duration: Duration,
     pub stats: ExecutorStatsHandle,
+}
+
+#[derive(Debug, Clone)]
+pub struct ZiskProgramPK {
+    pub zisk_rom: Arc<ZiskRom>,
+    pub elf_bin_path: PathBuf,
+    pub asm_services: Option<AsmServices>,
+    pub rank_info: RankInfo,
+}
+
+impl Drop for ZiskProgramPK {
+    fn drop(&mut self) {
+        // Shut down ASM microservices
+        info!(">>> [{}] Stopping ASM microservices.", self.rank_info.world_rank);
+        if let Some(asm_services) = &self.asm_services {
+            if let Err(e) = asm_services.stop_asm_services() {
+                tracing::error!(
+                    ">>> [{}] Failed to stop ASM microservices: {}",
+                    self.rank_info.world_rank,
+                    e
+                );
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -618,7 +647,7 @@ pub struct ZiskAggPhaseResult {
 }
 
 pub trait ProverEngine {
-    fn setup(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK>;
+    fn setup(&self, elf: &impl ElfBinaryLike) -> Result<(ZiskProgramPK, ZiskProgramVK)>;
 
     fn world_rank(&self) -> i32;
 
@@ -626,16 +655,24 @@ pub trait ProverEngine {
 
     fn set_stdin(&self, stdin: ZiskStdin) -> Result<()>;
 
+    fn register_program(&self, pk: &ZiskProgramPK) -> Result<()>;
+
     fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()>;
 
     fn executed_steps(&self) -> u64;
 
     fn get_execution_info(&self) -> Result<ExecutionInfo>;
 
-    fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult>;
+    fn execute(
+        &self,
+        pk: &ZiskProgramPK,
+        stdin: ZiskStdin,
+        output_path: Option<PathBuf>,
+    ) -> Result<ZiskExecuteResult>;
 
     fn stats(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
@@ -644,20 +681,24 @@ pub trait ProverEngine {
 
     fn verify_constraints_debug(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult>;
 
-    fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult>;
+    fn verify_constraints(
+        &self,
+        pk: &ZiskProgramPK,
+        stdin: ZiskStdin,
+    ) -> Result<ZiskVerifyConstraintsResult>;
 
     fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK>;
 
     fn verify(&self, proof: &ZiskProof, publics: &ZiskPublics, vk: &ZiskProgramVK) -> Result<()>;
 
-    fn prove_debug(&self, stdin: ZiskStdin, proof_options: ProofOpts) -> Result<ZiskProveResult>;
-
     fn prove(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         mode: ProofMode,
         proof_options: ProofOpts,
@@ -709,13 +750,17 @@ impl<C: ZiskBackend> ZiskProver<C> {
         Self { prover }
     }
 
-    pub fn setup(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
+    pub fn setup(&self, elf: &impl ElfBinaryLike) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
         self.prover.setup(elf)
     }
 
     /// Set the standard input for the current proof.
     pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
         self.prover.set_stdin(stdin)
+    }
+
+    pub fn register_program(&self, pk: &ZiskProgramPK) -> Result<()> {
+        self.prover.register_program(pk)
     }
 
     pub fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()> {
@@ -745,33 +790,39 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     /// Execute the prover with the given standard input and output path.
     /// It only runs the execution without generating a proof.
-    pub fn execute(&self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
-        self.prover.execute(stdin, None)
+    pub fn execute(&self, pk: &ZiskProgramPK, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
+        self.prover.execute(pk, stdin, None)
     }
 
     /// Get the execution statistics with the given standard input and debug information.
     pub fn stats(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        self.prover.stats(stdin, debug_info, minimal_memory, mpi_node)
+        self.prover.stats(pk, stdin, debug_info, minimal_memory, mpi_node)
     }
 
     /// Verify the constraints with the given standard input and debug information.
     pub fn verify_constraints_debug(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        self.prover.verify_constraints_debug(stdin, debug_info)
+        self.prover.verify_constraints_debug(pk, stdin, debug_info)
     }
 
     /// Verify the constraints with the given standard input.
-    pub fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
-        self.prover.verify_constraints(stdin)
+    pub fn verify_constraints(
+        &self,
+        pk: &ZiskProgramPK,
+        stdin: ZiskStdin,
+    ) -> Result<ZiskVerifyConstraintsResult> {
+        self.prover.verify_constraints(pk, stdin)
     }
 
     pub fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
@@ -792,10 +843,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
     ///
     /// # Example
     /// ```ignore
-    /// let result = prover.prove(stdin).compressed().run()?;
+    /// let result = prover.prove(&pk, stdin).compressed().run()?;
     /// ```
-    pub fn prove(&self, stdin: ZiskStdin) -> ProveBuilder<'_, C> {
-        ProveBuilder::new(&self.prover, stdin)
+    pub fn prove<'a>(&'a self, pk: &'a ZiskProgramPK, stdin: ZiskStdin) -> ProveBuilder<'a, C> {
+        ProveBuilder::new(&self.prover, pk, stdin)
     }
 
     pub fn prove_snark(
@@ -852,14 +903,21 @@ impl<C: ZiskBackend> ZiskProver<C> {
 /// ```
 pub struct ProveBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
+    pk: &'a ZiskProgramPK,
     stdin: ZiskStdin,
     mode: ProofMode,
     proof_options: ProofOpts,
 }
 
 impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
-    fn new(prover: &'a C::Prover, stdin: ZiskStdin) -> Self {
-        Self { prover, stdin, mode: ProofMode::VadcopFinal, proof_options: ProofOpts::default() }
+    fn new(prover: &'a C::Prover, pk: &'a ZiskProgramPK, stdin: ZiskStdin) -> Self {
+        Self {
+            prover,
+            pk,
+            stdin,
+            mode: ProofMode::VadcopFinal,
+            proof_options: ProofOpts::default(),
+        }
     }
 
     /// Enable compressed proof generation.
@@ -880,10 +938,6 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
 
     /// Execute the proof generation with the configured options.
     pub fn run(self) -> Result<ZiskProveResult> {
-        self.prover.prove(self.stdin, self.mode, self.proof_options)
-    }
-
-    pub fn run_debug(self) -> Result<ZiskProveResult> {
-        self.prover.prove_debug(self.stdin, self.proof_options)
+        self.prover.prove(self.pk, self.stdin, self.mode, self.proof_options)
     }
 }

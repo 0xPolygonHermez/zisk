@@ -26,7 +26,6 @@ members = [
     "state-machines/mem",
     "state-machines/mem-cpp",
     "state-machines/rom",
-    "witness-computation",
     "ziskos/entrypoint",
     "ziskos-hints",
     "precompiles/arith_eq",
@@ -92,7 +91,6 @@ sm-frequent-ops = { path = "state-machines/frequent-ops" }
 mem-common = { path = "state-machines/mem-common" }
 mem-planner-cpp = { path = "state-machines/mem-cpp" }
 sm-rom = { path = "state-machines/rom" }
-zisk-witness = { path = "witness-computation" }
 ziskclib = { path = "ziskclib" }
 ziskos = { path = "ziskos/entrypoint" }
 ziskos-hints = { path = "ziskos-hints" }
