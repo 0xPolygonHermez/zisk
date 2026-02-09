@@ -12,6 +12,7 @@ use sm_rom::RomInstance;
 use std::collections::HashMap;
 use std::sync::Arc;
 use zisk_common::{BusDevice, Instance, InstanceType, Stats, StatsScope};
+use zisk_core::ZiskRom;
 
 /// Type alias for the secondary instances map (owned).
 type SecnInstanceMap<F> = HashMap<usize, Box<dyn Instance<F>>>;
@@ -79,6 +80,10 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         let witness_generator = WitnessGenerator::new(chunk_size);
 
         Self { collector, witness_generator, is_asm_emulator }
+    }
+
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) {
+        self.collector.set_rom(zisk_rom.clone());
     }
 
     /// Computes witness for a single global ID.

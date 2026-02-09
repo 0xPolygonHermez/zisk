@@ -154,10 +154,10 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         }
     }
 
-    pub fn set_zisk_rom(&self, zisk_rom: Arc<ZiskRom>) {
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) {
         for (_, sm) in self.sm.values() {
             if let StateMachines::RomSM(rom_sm) = sm {
-                rom_sm.set_zisk_rom(zisk_rom.clone());
+                rom_sm.set_rom(zisk_rom.clone());
             }
         }
     }

@@ -94,7 +94,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// # Arguments
     /// * `zisk_rom` - The ZisK ROM to execute.
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>, use_hints: bool) {
-        self.state.set_rom(zisk_rom, use_hints);
+        self.state.set_rom(zisk_rom.clone(), use_hints);
+        self.orchestrator.set_rom(zisk_rom);
     }
 
     /// Sets the standard input for execution.

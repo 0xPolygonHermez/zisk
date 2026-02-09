@@ -32,7 +32,7 @@ use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
 /// The `RomSM` struct represents the ROM State Machine
 pub struct RomSM {
     /// Zisk Rom
-    zisk_rom: Mutex<Arc<ZiskRom>>,
+    zisk_rom: Mutex<Option<Arc<ZiskRom>>>,
 
     /// Shared biod instruction counter for monitoring ROM operations.
     bios_inst_count: Arc<Vec<AtomicU64>>,
@@ -62,7 +62,7 @@ impl RomSM {
         };
 
         Arc::new(Self {
-            zisk_rom: Mutex::new(Arc::new(ZiskRom::default())),
+            zisk_rom: Mutex::new(None),
             bios_inst_count: Arc::new(bios_inst_count),
             prog_inst_count: Arc::new(prog_inst_count),
             asm_runner_handler: Mutex::new(None),
@@ -73,8 +73,8 @@ impl RomSM {
         *self.asm_runner_handler.lock().unwrap() = Some(handler);
     }
 
-    pub fn set_zisk_rom(&self, zisk_rom: Arc<ZiskRom>) {
-        *self.zisk_rom.lock().unwrap() = zisk_rom;
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) {
+        *self.zisk_rom.lock().unwrap() = Some(zisk_rom);
     }
 
     /// Computes the witness for the provided plan using the given ROM.
@@ -327,7 +327,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
         let handle_rh = handle_rh_guard.take();
 
         Box::new(RomInstance::new(
-            self.zisk_rom.lock().unwrap().clone(),
+            self.zisk_rom.lock().unwrap().as_ref().unwrap().clone(),
             ictx,
             self.bios_inst_count.clone(),
             self.prog_inst_count.clone(),

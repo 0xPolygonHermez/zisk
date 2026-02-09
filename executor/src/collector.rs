@@ -28,6 +28,7 @@ use std::{
     time::Instant,
 };
 use zisk_common::{CheckPoint, EmuTrace, Instance, Stats};
+use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
 use crate::{state::ChunkCollector, ExecutionState, StaticSMBundle};
@@ -44,6 +45,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// * `sm_bundle` - State machine bundle.
     pub fn new(sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
         Self { sm_bundle }
+    }
+
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) {
+        self.sm_bundle.set_rom(zisk_rom);
     }
 
     /// Computes which chunks need to be executed for each instance.
