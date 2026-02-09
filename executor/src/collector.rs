@@ -14,6 +14,7 @@
 //! Uses a greedy algorithm that prioritizes completing instances that need
 //! fewer remaining chunks, minimizing time-to-first-completion.
 
+use anyhow::Result;
 use crossbeam::atomic::AtomicCell;
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
@@ -159,10 +160,11 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         state: &ExecutionState<F>,
         global_id: usize,
         instance: &Box<dyn Instance<F>>,
-    ) {
+    ) -> Result<()> {
         let mut map = HashMap::with_capacity(1);
         map.insert(global_id, instance);
-        self.collect(pctx, state, map);
+        self.collect(pctx, state, map)?;
+        Ok(())
     }
 
     /// Collects chunk data for the given secondary instances.
@@ -180,7 +182,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         pctx: &ProofCtx<F>,
         state: &ExecutionState<F>,
         secn_instances: HashMap<usize, &Box<dyn Instance<F>>>,
-    ) {
+    ) -> Result<()> {
         let min_traces_guard = state.min_traces.read().unwrap();
         let min_traces = min_traces_guard.as_ref().expect("min_traces should not be None");
 
@@ -229,6 +231,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         }
 
         let next_chunk = AtomicUsize::new(0);
+        let zisk_rom = state.get_rom()?;
 
         rayon::in_place_scope(|scope| {
             for _ in 0..rayon::current_num_threads() {
@@ -239,7 +242,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 let stats = &state.stats;
                 let min_traces = &min_traces;
                 let data_buses = &data_buses;
-                let zisk_rom = state.get_rom();
+                let zisk_rom = &zisk_rom;
                 let global_ids_map = &global_ids_map;
                 let global_id_chunks = &global_id_chunks;
                 let ordered_chunks = &ordered_chunks;
@@ -262,7 +265,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                         }
 
                         ZiskEmulator::process_emu_traces::<F, _, _>(
-                            &zisk_rom,
+                            zisk_rom,
                             min_traces,
                             chunk_id,
                             &mut data_bus,
@@ -331,5 +334,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 });
             }
         });
+
+        Ok(())
     }
 }

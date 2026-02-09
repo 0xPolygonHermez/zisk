@@ -93,8 +93,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ///
     /// # Arguments
     /// * `zisk_rom` - The ZisK ROM to execute.
-    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) {
-        self.state.set_rom(zisk_rom);
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>, use_hints: bool) {
+        self.state.set_rom(zisk_rom, use_hints);
     }
 
     /// Sets the standard input for execution.
@@ -136,11 +136,15 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Phase 1: Execute ROM to collect minimal traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 
-        let zisk_rom = self.state.get_rom();
+        let zisk_rom = self
+            .state
+            .get_rom()
+            .map_err(|e| proofman_common::ProofmanError::InvalidSetup(e.to_string()))?;
         let output = self.rom_executor.execute(
             &zisk_rom,
             &pctx,
             self.registry.sm_bundle(),
+            self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
             &_exec_scope,
         );
@@ -222,8 +226,6 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Create secondary instances
         self.registry.populate_secn_instances(&self.state, &secn_global_ids);
 
-        self.rom_executor.reset_hints_stream();
-
         // Configure instance checkpoints using registry method
         self.registry.configure_checkpoints(&pctx, &self.state, &secn_global_ids);
 
@@ -282,9 +284,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         }
 
         let pool = create_pool(n_cores);
-        pool.install(|| {
-            self.orchestrator.pre_calculate(&pctx, &self.state, global_ids);
-        });
+        let result =
+            pool.install(|| self.orchestrator.pre_calculate(&pctx, &self.state, global_ids));
+        result?;
 
         stats_end!(self.state.stats, &_pre_scope);
         Ok(())

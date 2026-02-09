@@ -182,7 +182,9 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
                     self.register_empty_collector(state, global_id, airgroup_id, air_id);
                 } else {
                     // Collect data for this instance
-                    self.collector.collect_single(pctx, state, global_id, secn_instance);
+                    self.collector.collect_single(pctx, state, global_id, secn_instance).map_err(
+                        |e| proofman_common::ProofmanError::InvalidConfiguration(e.to_string()),
+                    )?;
                 }
             }
         }
@@ -269,7 +271,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         pctx: &ProofCtx<F>,
         state: &ExecutionState<F>,
         global_ids: &[usize],
-    ) {
+    ) -> ProofmanResult<()> {
         let secn_instances_guard = state.secn_instances.read().unwrap();
 
         let mut instances_to_collect = HashMap::new();
@@ -303,8 +305,11 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
 
         // Collect all instances that need collection
         if !instances_to_collect.is_empty() {
-            self.collector.collect(pctx, state, instances_to_collect);
+            self.collector
+                .collect(pctx, state, instances_to_collect)
+                .map_err(|e| proofman_common::ProofmanError::InvalidConfiguration(e.to_string()))?;
         }
+        Ok(())
     }
 
     /// Handles ROM instance pre-calculation.

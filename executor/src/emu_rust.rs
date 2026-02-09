@@ -169,6 +169,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
         stdin: &Mutex<ZiskStdin>,
         _pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
+        _use_hints: bool,
         _stats: &ExecutorStatsHandle,
         _caller_stats_scope: &zisk_common::StatsScope,
     ) -> (

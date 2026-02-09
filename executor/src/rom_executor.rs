@@ -68,6 +68,7 @@ impl RomExecutor {
     /// * `zisk_rom` - The ROM to execute.
     /// * `pctx` - Proof context.
     /// * `sm_bundle` - State machine bundle.
+    /// * `use_hints` - Flag to indicate whether to use hints.
     /// * `stats` - Statistics handle.
     /// * `caller_stats_scope` - Parent statistics scope.
     ///
@@ -78,12 +79,13 @@ impl RomExecutor {
         zisk_rom: &ZiskRom,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
+        use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
     ) -> RomExecutionOutput {
         let (min_traces, main_count, secn_count, handle_mo, execution_result) = self
             .emulator
-            .execute(zisk_rom, &self.stdin, pctx, sm_bundle, stats, caller_stats_scope);
+            .execute(zisk_rom, &self.stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope);
 
         RomExecutionOutput { min_traces, main_count, secn_count, handle_mo, execution_result }
     }

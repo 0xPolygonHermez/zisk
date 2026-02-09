@@ -52,6 +52,7 @@ use std::{collections::HashMap, sync::Mutex, thread::JoinHandle};
 use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope, ZiskExecutionResult};
 
 /// Trait for unified execution across different emulator backends
+#[allow(clippy::too_many_arguments)]
 pub trait Emulator<F: PrimeField64>: Send + Sync {
     /// Execute the emulator
     fn execute(
@@ -60,6 +61,7 @@ pub trait Emulator<F: PrimeField64>: Send + Sync {
         stdin: &Mutex<ZiskStdin>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
+        use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
     ) -> (
@@ -112,6 +114,7 @@ impl<F: PrimeField64> Emulator<F> for EmulatorKind {
         stdin: &Mutex<ZiskStdin>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
+        use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
     ) -> (
@@ -122,7 +125,9 @@ impl<F: PrimeField64> Emulator<F> for EmulatorKind {
         ZiskExecutionResult,
     ) {
         match self {
-            Self::Asm(e) => e.execute(zisk_rom, stdin, pctx, sm_bundle, stats, caller_stats_scope),
+            Self::Asm(e) => {
+                e.execute(zisk_rom, stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
+            }
             Self::Rust(e) => e.execute(zisk_rom, stdin, sm_bundle),
         }
     }

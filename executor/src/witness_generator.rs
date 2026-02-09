@@ -55,7 +55,9 @@ impl WitnessGenerator {
 
         stats_begin!(state.stats, _caller_stats_id, _stats_scope, "AIR_MAIN_WITNESS", air_id);
 
-        let zisk_rom = state.get_rom();
+        let zisk_rom = state
+            .get_rom()
+            .map_err(|e| proofman_common::ProofmanError::InvalidConfiguration(e.to_string()))?;
         let min_traces_guard = state.min_traces.read().unwrap();
         let min_traces = min_traces_guard.as_ref().expect("min_traces should not be None");
 

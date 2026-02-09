@@ -1,10 +1,14 @@
 //! Shared execution state for the ZisK executor components.
 
+use anyhow::Result;
 use fields::PrimeField64;
 use sm_main::MainInstance;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, RwLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, RwLock,
+    },
 };
 use zisk_common::{BusDevice, EmuTrace, ExecutorStatsHandle, Instance, Plan, ZiskExecutionResult};
 use zisk_core::ZiskRom;
@@ -36,6 +40,12 @@ pub struct ExecutionState<F: PrimeField64> {
 
     /// Statistics collected during the execution.
     pub stats: ExecutorStatsHandle,
+
+    /// Flag to indicate if the ROM has been initialized
+    pub is_rom_initialized: AtomicBool,
+
+    /// Flag to indicate whether to use hints during execution
+    pub use_hints: AtomicBool,
 }
 
 impl<F: PrimeField64> ExecutionState<F> {
@@ -50,6 +60,8 @@ impl<F: PrimeField64> ExecutionState<F> {
             collectors_by_instance: Arc::new(RwLock::new(HashMap::new())),
             execution_result: Mutex::new(ZiskExecutionResult::default()),
             stats: ExecutorStatsHandle::new(),
+            is_rom_initialized: AtomicBool::new(false),
+            use_hints: AtomicBool::new(false),
         }
     }
 
@@ -57,21 +69,28 @@ impl<F: PrimeField64> ExecutionState<F> {
     ///
     /// This can be called between executions to change the ROM/ELF
     /// without recreating the executor.
-    pub fn set_rom(&self, rom: Arc<ZiskRom>) {
+    pub fn set_rom(&self, rom: Arc<ZiskRom>, use_hints: bool) {
         *self.zisk_rom.write().unwrap() = Some(rom);
+        self.is_rom_initialized.store(true, Ordering::SeqCst);
+        self.use_hints.store(use_hints, Ordering::SeqCst);
     }
 
     /// Gets the current ZisK ROM.
     ///
     /// # Panics
     /// Panics if no ROM has been set.
-    pub fn get_rom(&self) -> Arc<ZiskRom> {
-        self.zisk_rom
+    pub fn get_rom(&self) -> Result<Arc<ZiskRom>> {
+        if !self.is_rom_initialized.load(Ordering::SeqCst) {
+            return Err(anyhow::anyhow!("ROM not initialized. Call set_rom() before get_rom()"));
+        }
+
+        Ok(self
+            .zisk_rom
             .read()
             .unwrap()
             .as_ref()
             .expect("ROM not set. Call set_rom() before execute()")
-            .clone()
+            .clone())
     }
 
     /// Resets all internal state to default values.

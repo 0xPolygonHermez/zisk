@@ -59,7 +59,7 @@ pub struct EmulatorAsm {
     shmem_input_writer: Arc<Mutex<Option<SharedMemoryWriter>>>,
 
     /// Pipeline for handling precompile hints.
-    hints_stream: Mutex<Option<ZiskStream>>,
+    hints_stream: Mutex<ZiskStream>,
 }
 
 impl EmulatorAsm {
@@ -103,10 +103,8 @@ impl EmulatorAsm {
                 .expect("zisk_lib: Failed to create PrecompileHintsProcessor")
         };
 
-        let hints_stream = Some(ZiskStream::new(hints_processor));
-
         Self {
-            hints_stream: Mutex::new(hints_stream),
+            hints_stream: Mutex::new(ZiskStream::new(hints_processor)),
             world_rank,
             local_rank,
             base_port,
@@ -130,11 +128,7 @@ impl EmulatorAsm {
 
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
         if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
-            if let Some(hints_stream) = hints_stream_guard.as_mut() {
-                hints_stream.set_hints_stream_src(stream)
-            } else {
-                Err(anyhow::anyhow!("No hints stream configured"))
-            }
+            hints_stream_guard.set_hints_stream_src(stream)
         } else {
             Err(anyhow::anyhow!("Failed to acquire hints stream lock"))
         }
@@ -142,9 +136,7 @@ impl EmulatorAsm {
 
     pub fn reset_hints_stream(&self) {
         if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
-            if let Some(hints_stream) = hints_stream_guard.as_mut() {
-                hints_stream.reset();
-            }
+            hints_stream_guard.reset();
         }
     }
 
@@ -165,12 +157,14 @@ impl EmulatorAsm {
     /// * `Option<JoinHandle<AsmRunnerMO>>` - Optional join handle for the memory-only ASM runner.
     /// * `ZiskExecutionResult` - The result of executing the ZisK ROM.
     #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     pub fn execute<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
         stdin: &Mutex<ZiskStdin>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
+        use_hints: bool,
         stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
     ) -> (
@@ -180,10 +174,8 @@ impl EmulatorAsm {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
-            if let Some(hints_stream) = hints_stream_guard.as_mut() {
-                let _ = hints_stream.start_stream();
-            }
+        if use_hints {
+            self.hints_stream.lock().unwrap().start_stream().expect("Failed to start hints stream");
         }
 
         stats_begin!(stats, _caller_stats_scope, _exec_scope, "EXECUTE_WITH_ASSEMBLY", 0);
@@ -374,6 +366,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         stdin: &Mutex<ZiskStdin>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
+        use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
     ) -> (
@@ -383,6 +376,6 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        self.execute(zisk_rom, stdin, pctx, sm_bundle, stats, caller_stats_scope)
+        self.execute(zisk_rom, stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
     }
 }

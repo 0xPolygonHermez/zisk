@@ -1,6 +1,7 @@
 //! ZiskStream is responsible for reading precompile hints from a stream source and sent to a hints processor.
 
 use anyhow::Result;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -48,6 +49,8 @@ pub struct ZiskStream {
 
     /// Join handle for the background thread.
     thread_handle: Option<JoinHandle<()>>,
+
+    hints_stream_initialized: AtomicBool,
 }
 
 impl ZiskStream {
@@ -59,7 +62,12 @@ impl ZiskStream {
     /// # Returns
     /// A new `ZiskStream` instance without a running thread.
     pub fn new(hints_processor: impl StreamProcessor) -> Self {
-        Self { hints_processor: Arc::new(hints_processor), tx: None, thread_handle: None }
+        Self {
+            hints_processor: Arc::new(hints_processor),
+            tx: None,
+            thread_handle: None,
+            hints_stream_initialized: AtomicBool::new(false),
+        }
     }
 
     /// Stop the current background thread if running.
@@ -98,6 +106,8 @@ impl ZiskStream {
         });
 
         self.thread_handle = Some(thread_handle);
+
+        self.hints_stream_initialized.store(true, Ordering::SeqCst);
 
         Ok(())
     }
@@ -142,6 +152,7 @@ impl ZiskStream {
 
     pub fn reset(&mut self) {
         self.hints_processor.reset();
+        self.hints_stream_initialized.store(false, Ordering::SeqCst);
     }
 
     /// Trigger the background thread to process hints asynchronously.
@@ -154,6 +165,12 @@ impl ZiskStream {
     /// * `Ok(())` - If the command was successfully sent
     /// * `Err` - If there's no active thread or the channel is closed
     pub fn start_stream(&mut self) -> Result<()> {
+        if !self.hints_stream_initialized.load(Ordering::SeqCst) {
+            return Err(anyhow::anyhow!(
+                "Hints stream is not initialized. Call set_hints_stream_src first."
+            ));
+        }
+
         if let Some(tx) = &self.tx {
             tx.send(ThreadCommand::Process).map_err(|e| {
                 anyhow::anyhow!("Failed to send process command to background thread: {}", e)
