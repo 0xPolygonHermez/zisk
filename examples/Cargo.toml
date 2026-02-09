@@ -1,5 +1,5 @@
 [workspace]
-members = ["sha-hasher/host", "sha-hasher/guest"]
+members = ["sha-hasher/host", "sha-hasher/guest", "fibonacci/host", "fibonacci/guest"]
 
 resolver = "2"
 

@@ -1117,6 +1117,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "fibonacci-guest"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "ziskos",
+]
+
+[[package]]
+name = "fibonacci-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "sha2",
+ "zisk-build",
+ "zisk-common",
+ "zisk-sdk",
+]
+
+[[package]]
 name = "fields"
 version = "0.16.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#c9502fcb7acea00dc1554b9873f3154bf468cb9a"
