@@ -13,7 +13,9 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 use tracing::{debug, info};
 use zisk_common::io::{StreamProcessor, StreamSink};
-use zisk_common::{BuiltInHint, CtrlHint, HintCode, PrecompileHint};
+use zisk_common::{
+    BuiltInHint, CtrlHint, HintCode, PartialPrecompileHint, PrecHintParseResult, PrecompileHint,
+};
 use ziskos_hints::handlers::bls381::{
     bls12_381_fp2_to_g2_hint, bls12_381_fp_to_g1_hint, bls12_381_g1_add_hint,
     bls12_381_g1_msm_hint, bls12_381_g2_add_hint, bls12_381_g2_msm_hint,
@@ -80,6 +82,7 @@ pub struct HintsProcessorBuilder {
     num_threads: usize,
     enable_stats: bool,
     custom_handlers: HashMap<u32, CustomHintHandler>,
+    max_buffer_size: usize,
 }
 
 impl HintsProcessorBuilder {
@@ -120,6 +123,24 @@ impl HintsProcessorBuilder {
         self
     }
 
+    /// Sets the maximum buffer size for partial hint accumulation.
+    ///
+    /// When receiving chunked data, incomplete hints are buffered until
+    /// the next chunk arrives. This limit prevents unbounded memory growth
+    /// from malformed headers declaring huge data lengths.
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - Maximum buffer size in number of u64 elements
+    ///
+    /// # Default
+    ///
+    /// 128KB (16,384 u64 elements)
+    pub fn max_buffer_size(mut self, size: usize) -> Self {
+        self.max_buffer_size = size;
+        self
+    }
+
     /// Builds the [`HintsProcessor`] with the configured settings.
     ///
     /// # Returns
@@ -152,6 +173,8 @@ impl HintsProcessorBuilder {
             custom_handlers: Arc::new(self.custom_handlers),
             stream_active: AtomicBool::new(false),
             instant: Mutex::new(None),
+            pending_partial: Mutex::new(None),
+            max_buffer_size: self.max_buffer_size,
         })
     }
 }
@@ -188,10 +211,20 @@ pub struct HintsProcessor {
 
     /// Timestamp of when the current stream started (for performance metrics)
     instant: Mutex<Option<std::time::Instant>>,
+
+    /// Buffer for incomplete hint data between batches
+    pending_partial: Mutex<Option<PartialPrecompileHint>>,
+
+    /// Maximum allowed buffer size in bytes (to prevent unbounded growth)
+    max_buffer_size: usize,
 }
 
 impl HintsProcessor {
+    /// Default number of worker threads in the thread pool.
     const DEFAULT_NUM_THREADS: usize = 32;
+
+    /// Default maximum buffer size: 128KB in bytes
+    const DEFAULT_MAX_BUFFER_SIZE: usize = 128 * 1024;
 
     /// Creates a builder for configuring a [`HintsProcessor`].
     ///
@@ -213,6 +246,7 @@ impl HintsProcessor {
             num_threads: Self::DEFAULT_NUM_THREADS,
             enable_stats: false,
             custom_handlers: HashMap::new(),
+            max_buffer_size: Self::DEFAULT_MAX_BUFFER_SIZE,
         }
     }
 
@@ -244,9 +278,10 @@ impl HintsProcessor {
     /// * `Ok(false)` - Batch processed successfully, no CTRL_END
     /// * `Err` - If a previous error occurred or hints are malformed
     pub fn process_hints(&self, hints: &[u64], first_batch: bool) -> Result<bool> {
-        const HEADER_SIZE: usize = 1;
-
         let mut has_ctrl_end = false;
+
+        // Take any pending partial hint from previous batch
+        let mut pending_partial = self.pending_partial.lock().unwrap().take();
 
         // Parse hints and dispatch to pool
         let mut idx = 0;
@@ -255,7 +290,21 @@ impl HintsProcessor {
             if self.state.error_flag.load(Ordering::Acquire) {
                 return Err(anyhow::anyhow!("Processing stopped due to previous error"));
             }
-            let hint = PrecompileHint::from_u64_slice(hints, idx, true)?;
+            let (parsed_hint, consumed) = PrecompileHint::from_u64_slice(
+                hints,
+                idx,
+                true,
+                pending_partial.take(),
+                self.max_buffer_size,
+            )?;
+            let hint = match parsed_hint {
+                PrecHintParseResult::Complete(hint) => hint,
+                PrecHintParseResult::Partial(partial) => {
+                    // Store partial for next batch and exit loop
+                    *self.pending_partial.lock().unwrap() = Some(partial);
+                    break;
+                }
+            };
 
             // println!("Received Hint <= {:?}:", hint);
 
@@ -273,7 +322,7 @@ impl HintsProcessor {
                 }
             }
 
-            let length = hint.data.len() + HEADER_SIZE;
+            let length = consumed;
 
             if let Some(stats) = &self.stats {
                 if !matches!(hint.hint_code, HintCode::Ctrl(_)) {
