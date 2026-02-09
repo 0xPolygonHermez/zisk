@@ -143,6 +143,7 @@ impl ProverEngine for AsmProver {
                 elf_bin_path: rom_bin_path,
                 asm_services: Some(asm_services),
                 rank_info: self.core_prover.rank_info.clone(),
+                use_hints: elf.with_hints(),
             },
             ZiskProgramVK { vk },
         ))

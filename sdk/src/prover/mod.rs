@@ -72,6 +72,7 @@ pub struct ZiskProgramPK {
     pub elf_bin_path: PathBuf,
     pub asm_services: Option<AsmServices>,
     pub rank_info: RankInfo,
+    pub use_hints: bool,
 }
 
 impl Drop for ZiskProgramPK {
