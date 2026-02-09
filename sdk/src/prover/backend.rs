@@ -83,7 +83,7 @@ impl ProverBackend {
             anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
         })?;
 
-        executor.set_zisk_rom(program_pk.zisk_rom.clone());
+        executor.set_rom(program_pk.zisk_rom.clone());
 
         let custom_commits_map =
             HashMap::from([("rom".to_string(), program_pk.elf_bin_path.clone())]);

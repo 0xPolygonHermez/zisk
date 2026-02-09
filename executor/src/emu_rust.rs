@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-    thread::JoinHandle,
-};
+use std::{collections::HashMap, sync::Mutex, thread::JoinHandle};
 
 use asm_runner::AsmRunnerMO;
 use data_bus::DataBusTrait;
@@ -56,8 +52,8 @@ impl EmulatorRust {
     /// * `ZiskExecutionResult` - Summary of the emulator execution, including the total number of steps.
     pub fn execute<F: PrimeField64>(
         &self,
+        zisk_rom: &ZiskRom,
         stdin: &Mutex<ZiskStdin>,
-        zisk_rom: &Arc<ZiskRom>,
         sm_bundle: &StaticSMBundle<F>,
     ) -> (
         Vec<EmuTrace>,
@@ -82,7 +78,7 @@ impl EmulatorRust {
 
     fn run_emulator(
         &self,
-        zisk_rom: &Arc<ZiskRom>,
+        zisk_rom: &ZiskRom,
         num_threads: usize,
         stdin: &mut ZiskStdin,
     ) -> Vec<EmuTrace> {
@@ -113,7 +109,7 @@ impl EmulatorRust {
     ///   containing the metrics for each chunk.
     fn count<F: PrimeField64>(
         &self,
-        zisk_rom: &Arc<ZiskRom>,
+        zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         sm_bundle: &StaticSMBundle<F>,
     ) -> (DeviceMetricsList, NestedDeviceMetricsList) {
@@ -169,8 +165,8 @@ impl EmulatorRust {
 impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
     fn execute(
         &self,
+        zisk_rom: &ZiskRom,
         stdin: &Mutex<ZiskStdin>,
-        zisk_rom: &Arc<ZiskRom>,
         _pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         _stats: &ExecutorStatsHandle,
@@ -182,6 +178,6 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        self.execute(stdin, zisk_rom, sm_bundle)
+        self.execute(zisk_rom, stdin, sm_bundle)
     }
 }

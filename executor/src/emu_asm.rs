@@ -167,8 +167,8 @@ impl EmulatorAsm {
     #[allow(clippy::type_complexity)]
     pub fn execute<F: PrimeField64>(
         &self,
+        zisk_rom: &ZiskRom,
         stdin: &Mutex<ZiskStdin>,
-        zisk_rom: &Arc<ZiskRom>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
@@ -282,7 +282,7 @@ impl EmulatorAsm {
 
     fn run_mt_assembly<F: PrimeField64>(
         &self,
-        zisk_rom: &Arc<ZiskRom>,
+        zisk_rom: &ZiskRom,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
     ) -> (Vec<EmuTrace>, DeviceMetricsList, NestedDeviceMetricsList) {
@@ -370,8 +370,8 @@ impl EmulatorAsm {
 impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
     fn execute(
         &self,
+        zisk_rom: &ZiskRom,
         stdin: &Mutex<ZiskStdin>,
-        zisk_rom: &Arc<ZiskRom>,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
@@ -383,6 +383,6 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         Option<JoinHandle<AsmRunnerMO>>,
         ZiskExecutionResult,
     ) {
-        self.execute(stdin, zisk_rom, pctx, sm_bundle, stats, caller_stats_scope)
+        self.execute(zisk_rom, stdin, pctx, sm_bundle, stats, caller_stats_scope)
     }
 }

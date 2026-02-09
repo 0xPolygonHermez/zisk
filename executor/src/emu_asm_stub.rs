@@ -17,7 +17,6 @@ pub struct EmulatorAsm {}
 impl EmulatorAsm {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        _zisk_rom: Arc<ZiskRom>,
         _world_rank: i32,
         _local_rank: i32,
         _base_port: Option<u16>,
@@ -31,6 +30,7 @@ impl EmulatorAsm {
     #[allow(clippy::type_complexity)]
     pub fn execute<F: PrimeField64>(
         &self,
+        _zisk_rom: &ZiskRom,
         _stdin: &Mutex<ZiskStdin>,
         _pctx: &ProofCtx<F>,
         _sm_bundle: &StaticSMBundle<F>,
