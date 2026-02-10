@@ -38,3 +38,7 @@ path = "bin/compressed.rs"
 [[bin]]
 name = "verify-constraints"
 path = "bin/verify-constraints.rs"
+
+[[bin]]
+name = "ziskemu"
+path = "bin/ziskemu.rs"

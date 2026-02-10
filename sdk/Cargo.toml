@@ -20,6 +20,8 @@ colored = { workspace = true }
 tracing = { workspace = true }
 zstd = { workspace = true }
 zisk-distributed-common = { workspace = true }
+ziskemu = { workspace = true }
+zisk-core = { workspace = true }
 zisk-verifier = { workspace = true }
 zisk-witness = { workspace = true }
 sha2 = { workspace = true }
