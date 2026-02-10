@@ -12,11 +12,7 @@ name = "cargo-zisk"
 path = "src/bin/cargo-zisk.rs"
 
 [build-dependencies]
-vergen = { version = "8", default-features = false, features = [
-    "build",
-    "git",
-    "git2",
-] }
+vergen-git2.workspace = true
 
 [dependencies]
 zisk-common = { workspace = true }
