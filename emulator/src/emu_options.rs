@@ -50,8 +50,8 @@ pub struct EmuOptions {
     /// the riscof GHA tests.  Enabled with `-c`.
     #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "false")]
     pub log_output: bool,
-    /// Log the output to console in riscof format.  Enabled with `-r`.
-    #[clap(short = 'r', long, value_name = "LOG_OUTPUT_RISCOF", default_value = "false")]
+    /// Log the output to console in riscof format.  Enabled with `-f`.
+    #[clap(short = 'f', long, value_name = "LOG_OUTPUT_RISCOF", default_value = "false")]
     pub log_output_riscof: bool,
     /// Trace every this number of steps.
     pub chunk_size: Option<u64>,
