@@ -5,7 +5,6 @@
 //! data to precompile operations in the ZisK zkVM.
 
 use anyhow::Result;
-use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::collections::{HashMap, VecDeque};
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -89,18 +88,11 @@ pub type CustomHintHandler = Arc<dyn Fn(&[u64]) -> Result<Vec<u64>> + Send + Syn
 /// Builder for configuring and constructing a [`HintsProcessor`].
 pub struct HintsProcessorBuilder {
     hints_sink: Arc<dyn StreamSink>,
-    num_threads: usize,
     enable_stats: bool,
     custom_handlers: HashMap<u32, CustomHintHandler>,
 }
 
 impl HintsProcessorBuilder {
-    /// Sets the number of worker threads in the thread pool.
-    pub fn num_threads(mut self, num_threads: usize) -> Self {
-        self.num_threads = num_threads;
-        self
-    }
-
     /// Enables or disables statistics collection.
     pub fn enable_stats(mut self, enable: bool) -> Self {
         self.enable_stats = enable;
@@ -137,13 +129,8 @@ impl HintsProcessorBuilder {
     /// # Returns
     ///
     /// * `Ok(HintsProcessor)` - Successfully constructed processor
-    /// * `Err` - If the thread pool fails to initialize
+    /// * `Err` - If initialization fails
     pub fn build(self) -> Result<HintsProcessor> {
-        let pool = ThreadPoolBuilder::new()
-            .num_threads(self.num_threads)
-            .build()
-            .map_err(|e| anyhow::anyhow!("Failed to create thread pool: {}", e))?;
-
         let state = Arc::new(HintProcessorState::new());
         let hints_sink = self.hints_sink;
 
@@ -155,7 +142,6 @@ impl HintsProcessorBuilder {
         });
 
         Ok(HintsProcessor {
-            pool,
             num_hint: AtomicUsize::new(0),
             state,
             stats: if self.enable_stats { Some(Mutex::new(HashMap::new())) } else { None },
@@ -172,12 +158,9 @@ impl HintsProcessorBuilder {
 /// Processor for precompile hints that supports parallel execution.
 ///
 /// This struct provides methods to parse and process a stream of concatenated
-/// hints, using a dedicated Rayon thread pool for parallel processing while
+/// hints, using Rayon's global thread pool for parallel processing while
 /// preserving the original order of results.
 pub struct HintsProcessor {
-    /// The thread pool used for parallel hint processing.
-    pool: ThreadPool,
-
     num_hint: AtomicUsize,
 
     /// Shared state for parallel hint processing
@@ -207,9 +190,6 @@ pub struct HintsProcessor {
 }
 
 impl HintsProcessor {
-    /// Default number of worker threads in the thread pool.
-    const DEFAULT_NUM_THREADS: usize = 32;
-
     /// Creates a builder for configuring a [`HintsProcessor`].
     ///
     /// # Arguments
@@ -220,14 +200,12 @@ impl HintsProcessor {
     ///
     /// ```ignore
     /// let processor = HintsProcessor::builder(my_sink)
-    ///     .num_threads(16)
     ///     .enable_stats(false)
     ///     .build()?;
     /// ```
     pub fn builder(hints_sink: impl StreamSink) -> HintsProcessorBuilder {
         HintsProcessorBuilder {
             hints_sink: Arc::new(hints_sink),
-            num_threads: Self::DEFAULT_NUM_THREADS,
             enable_stats: false,
             custom_handlers: HashMap::new(),
         }
@@ -407,7 +385,7 @@ impl HintsProcessor {
             // Spawn processing task for async hints (Noop already handled above)
             let state = Arc::clone(&self.state);
             let custom_handlers = Arc::clone(&self.custom_handlers);
-            self.pool.spawn(move || {
+            rayon::spawn(move || {
                 Self::worker_thread(state, hint, generation, seq_id, custom_handlers);
             });
 
@@ -757,7 +735,6 @@ mod tests {
 
     fn processor() -> HintsProcessor {
         HintsProcessor::builder(NullHints)
-            .num_threads(2)
             .custom_hint(0x7FFF_0000, |data| {
                 // This should never be called for pass-through hints
                 // but we register it to avoid "no handler" errors
@@ -1048,7 +1025,7 @@ mod tests {
 
         let received = Arc::new(Mutex::new(Vec::new()));
         let sink = RecordingSink { received: Arc::clone(&received) };
-        let p = HintsProcessor::builder(sink).num_threads(2).build().unwrap();
+        let p = HintsProcessor::builder(sink).build().unwrap();
 
         // Send some data (16 bytes = 2 u64s, 8 bytes = 1 u64)
         let data = vec![
@@ -1090,7 +1067,7 @@ mod tests {
 
         let should_fail = Arc::new(AtomicBool::new(false));
         let sink = FailingSink { should_fail: Arc::clone(&should_fail) };
-        let p = HintsProcessor::builder(sink).num_threads(2).build().unwrap();
+        let p = HintsProcessor::builder(sink).build().unwrap();
 
         // First batch succeeds (8 bytes = 1 u64)
         let data1 = vec![make_header(TEST_PASSTHROUGH_HINT, 8), 0x01];
@@ -1125,14 +1102,13 @@ mod tests {
         assert!(p3.stats.is_some());
 
         // Custom threads
-        let p4 = HintsProcessor::builder(NullHints).num_threads(4).build().unwrap();
+        let p4 = HintsProcessor::builder(NullHints).build().unwrap();
         let data = vec![make_header(TEST_PASSTHROUGH_HINT, 1), 0x42];
         assert!(p4.process_hints(&data, false).is_ok());
         assert!(p4.wait_for_completion().is_ok());
 
         // Chaining multiple options
-        let p5 =
-            HintsProcessor::builder(NullHints).num_threads(8).enable_stats(true).build().unwrap();
+        let p5 = HintsProcessor::builder(NullHints).enable_stats(true).build().unwrap();
         assert!(p5.stats.is_some());
     }
 
@@ -1141,7 +1117,7 @@ mod tests {
     fn test_stress_throughput() {
         use std::time::Instant;
 
-        let p = HintsProcessor::builder(NullHints).num_threads(32).build().unwrap();
+        let p = HintsProcessor::builder(NullHints).build().unwrap();
 
         // Generate a large batch of hints
         const NUM_HINTS: usize = 100_000;
@@ -1174,7 +1150,7 @@ mod tests {
     fn test_stress_concurrent_batches() {
         use std::time::Instant;
 
-        let p = HintsProcessor::builder(NullHints).num_threads(32).build().unwrap();
+        let p = HintsProcessor::builder(NullHints).build().unwrap();
 
         const NUM_BATCHES: usize = 1_000;
         const HINTS_PER_BATCH: usize = 100;
@@ -1213,7 +1189,7 @@ mod tests {
     fn test_stress_with_resets() {
         use std::time::Instant;
 
-        let p = HintsProcessor::builder(NullHints).num_threads(32).build().unwrap();
+        let p = HintsProcessor::builder(NullHints).build().unwrap();
 
         const ITERATIONS: usize = 100;
         const HINTS_PER_ITER: usize = 1_000;
@@ -1284,7 +1260,6 @@ mod tests {
         const MED_HINT: u32 = 0x7FFF_0002; // Delays 5ms
 
         let p = HintsProcessor::builder(sink)
-            .num_threads(8)
             .custom_hint(FAST_HINT, |data| {
                 // No delay - returns immediately
                 Ok(vec![data[0] * 2])
@@ -1652,7 +1627,6 @@ mod tests {
         const VARIABLE_HINT: u32 = 0x7FFF_0100;
 
         let p = HintsProcessor::builder(sink)
-            .num_threads(16)
             .custom_hint(VARIABLE_HINT, |data| {
                 // Pseudo-random delay based on hash of input value (0-15ms range)
                 // This creates unpredictable completion order across runs
