@@ -10,9 +10,8 @@ use proofman_common::{
 };
 use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
-use std::fs;
 use std::sync::Arc;
-use zisk_common::ElfBinaryOwned;
+use zisk_common::ElfBinaryFromFile;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -77,13 +76,7 @@ impl ZiskRomSetup {
         tracing::info!("Computing setup for ROM {}", self.elf.display());
 
         tracing::info!("Computing merkle root");
-        let elf_bytes = fs::read(&self.elf)
-            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
-        let elf = ElfBinaryOwned::new(
-            elf_bytes,
-            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            self.hints,
-        );
+        let elf = ElfBinaryFromFile::new(&self.elf, self.hints)?;
         rom_merkle_setup::<Goldilocks>(&pctx, &elf, &self.output_dir)?;
 
         gen_assembly(&self.elf, &self.zisk_path, &self.output_dir, self.hints, self.verbose > 0)?;

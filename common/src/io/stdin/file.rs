@@ -2,7 +2,7 @@
 //! This module provides functionality to read input data from a file.
 
 use anyhow::Result;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -36,7 +36,7 @@ impl ZiskFileStdin {
 }
 
 impl ZiskIO for ZiskFileStdin {
-    fn read(&self) -> Vec<u8> {
+    fn read_bytes(&self) -> Vec<u8> {
         fs::read(&self.path).expect("Could not read inputs file")
     }
 
@@ -48,6 +48,12 @@ impl ZiskIO for ZiskFileStdin {
     fn read_into(&self, buffer: &mut [u8]) {
         let mut reader = self.reader.lock().unwrap();
         reader.read_exact(buffer).expect("Failed to read into buffer");
+    }
+
+    fn read<T: DeserializeOwned>(&self) -> Result<T> {
+        let mut reader = self.reader.lock().unwrap();
+        bincode::deserialize_from(&mut *reader)
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize from file: {}", e))
     }
 
     fn write<T: Serialize>(&self, _data: &T) {

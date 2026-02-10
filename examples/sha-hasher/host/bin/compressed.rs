@@ -30,16 +30,16 @@ fn main() -> Result<()> {
 
     println!("Compressing proof (this may take a while)...");
     let compressed_result =
-        client.compress(&vadcop_result.get_proof(), &vadcop_result.get_publics(), &vkey)?;
+        client.compress(vadcop_result.get_proof(), vadcop_result.get_publics(), &vkey)?;
 
     // Alternatively, you can also call `compressed()` on the `ProverClient.prove` method to generate a compressed proof directly.
     // let result = client.prove(stdin).with_proof_options(proof_opts).compressed().run()?;
 
     println!("Verifying compressed proof...");
     client.verify(
-        &compressed_result.get_proof(),
-        &compressed_result.get_publics(),
-        &compressed_result.get_program_vk(),
+        compressed_result.get_proof(),
+        compressed_result.get_publics(),
+        compressed_result.get_program_vk(),
     )?;
     println!("Compressed proof verification successful!");
 

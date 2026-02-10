@@ -1,11 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use std::fs;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::ElfBinaryOwned;
+use zisk_common::ElfBinaryFromFile;
 use zisk_sdk::{ProverClient, ZiskExecuteResult};
 
 use crate::ux::{print_banner, print_banner_field};
@@ -129,13 +128,8 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        let elf_bin = fs::read(&self.elf)
-            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
-        let elf = ElfBinaryOwned::new(
-            elf_bin,
-            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            false,
-        );
+        let elf = ElfBinaryFromFile::new(&self.elf, false)?;
+
         prover.setup(&elf)?;
         prover.execute(stdin)
     }
@@ -157,13 +151,7 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        let elf_bin = fs::read(&self.elf)
-            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
-        let elf = ElfBinaryOwned::new(
-            elf_bin,
-            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            hints_stream.is_some(),
-        );
+        let elf = ElfBinaryFromFile::new(&self.elf, hints_stream.is_some())?;
         prover.setup(&elf)?;
         if let Some(hints_stream) = hints_stream {
             prover.set_hints_stream(hints_stream)?;

@@ -332,7 +332,7 @@ pub unsafe fn unmap(ptr: *mut c_void, size: usize) {
 pub fn write_input(stdin: &mut ZiskStdin, shmem_input_writer: &SharedMemoryWriter) {
     const HEADER_SIZE: usize = size_of::<AsmInputHeader>();
 
-    let inputs = stdin.read();
+    let inputs = stdin.read_bytes();
 
     let shmem_input_size = (HEADER_SIZE + inputs.len() + 7) & !7;
 

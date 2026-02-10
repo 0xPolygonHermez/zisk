@@ -8,6 +8,7 @@
 *.pilout
 *.fixed
 /tmp
+**/tmp
 *.log
 /emulator-asm/build*
 /emulator-asm/src/dma/*.o
