@@ -5,34 +5,32 @@ use std::{env, process};
 use zisk_core::Riscv2zisk;
 
 /// Performs a transpilation of a RISC-V ELF file to a Zisk ROM file.  
-/// The binary accepts 2 arguments: the path of the input RISC-V ELF file, and the path of the
-/// output Zisk rom file.  
+/// The binary accepts 3 arguments (4 including the executable name):
+/// -  the path of the input RISC-V ELF file
+/// -  the path of the output Zisk rom file  
+/// -  the generation method
+///
 /// After parsing the arguments, the main function calls Riscv2zisk::runfile to perform the actual
 /// work.
 fn main() {
-    println!("riscv2zisk converts an ELF RISCV file into a ZISK ASM file");
-
     // Get program arguments
     let args: Vec<String> = env::args().collect();
 
     // Check program arguments length
-    if args.len() < 3 || args.len() > 4 {
-        eprintln!("Error parsing arguments: invalid number of arguments={}.  Usage: riscv2zisk <elf_riscv_file> [<i86-64_asm_file>] <generation_method>", args.len());
+    if args.len() != 4 {
+        eprintln!("Error parsing arguments: invalid number of arguments={}", args.len());
         for (i, arg) in args.iter().enumerate() {
             eprintln!("Argument {i}: {arg}");
         }
+        eprintln!("Usage: riscv2zisk <riscv_elf_file> <i86-64_asm_file> <generation_method>");
         process::exit(1);
     }
 
-    // Get the 2 input parameters: ELF (RISCV) file name (input data) and ZisK file name (output
-    // data)
+    // Get the 3 arguments: the input ELF file, the output ASM file and the generation method
     let elf_file = args[1].clone();
-    println!("ELF (RISCV) file: {elf_file}");
-    let (asm_file, gen_arg) = if args.len() == 4 {
-        (Some(args[2].clone()), args[3].clone())
-    } else {
-        (None, args[2].clone())
-    };
+    let asm_file = args[2].clone();
+    let gen_arg = args[3].clone();
+    println!("riscv2zisk converts a RISCV ELF file ({elf_file}) into a ZISK ASM file ({asm_file}), using generation method {gen_arg}.");
 
     let generation_method = match gen_arg.as_str() {
         "--gen=0" => zisk_core::AsmGenerationMethod::AsmFast,
@@ -47,7 +45,7 @@ fn main() {
         "--gen=9" => zisk_core::AsmGenerationMethod::AsmMemReads,
         "--gen=10" => zisk_core::AsmGenerationMethod::AsmChunkPlayerMemReadsCollectMain,
         _ => {
-            eprintln!("Invalid generation method. Use --gen=0 (fast), =1 (minimal trace), =2 (rom histogram), =3 (main trace), =4 (chunks), =5 (bus op), =6 (zip) or =7 (mem op).");
+            eprintln!("Invalid generation method. Use --gen=0 (fast), =1 (minimal trace), =2 (rom histogram), =3 (main trace), =4 (chunks), =5 (bus op), =6 (zip), =7 (mem op), =8 (min trace chunk player), =9 (mem reads), =10 (mem reads chunk player).");
             process::exit(1);
         }
     };
@@ -62,7 +60,7 @@ fn main() {
     let rv2zk = Riscv2zisk::new(&elf);
 
     // Convert program
-    if let Err(e) = rv2zk.runfile(asm_file.unwrap(), generation_method, true, true, false) {
+    if let Err(e) = rv2zk.runfile(asm_file, generation_method, true, true, false) {
         println!("Application error: {e}");
         process::exit(1);
     }

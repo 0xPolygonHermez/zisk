@@ -1,4 +1,7 @@
+use anyhow::Result;
 use std::fmt;
+use std::fs;
+use std::path::Path;
 use std::time::Instant;
 
 /// Type representing a chunk identifier.
@@ -98,19 +101,25 @@ pub trait ElfBinaryLike {
     fn with_hints(&self) -> bool;
 }
 
-pub struct ElfBinaryOwned {
+pub struct ElfBinaryFromFile {
     pub elf: Vec<u8>,
     pub name: String,
     pub with_hints: bool,
 }
 
-impl ElfBinaryOwned {
-    pub const fn new(elf: Vec<u8>, name: String, with_hints: bool) -> Self {
-        Self { elf, name, with_hints }
+impl ElfBinaryFromFile {
+    pub fn new(elf: &Path, with_hints: bool) -> Result<Self> {
+        let elf_bin = fs::read(elf)
+            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", elf.display(), e))?;
+        Ok(Self {
+            elf: elf_bin,
+            name: elf.file_stem().unwrap().to_str().unwrap().to_string(),
+            with_hints,
+        })
     }
 }
 
-impl ElfBinaryLike for ElfBinaryOwned {
+impl ElfBinaryLike for ElfBinaryFromFile {
     fn elf(&self) -> &[u8] {
         &self.elf
     }

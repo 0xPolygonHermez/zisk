@@ -38,11 +38,7 @@ symbolic-demangle = { version = "12.16", features = ["rust", "cpp"] }
 symbolic-common = "12.16"
 
 [build-dependencies]
-vergen = { version = "8", default-features = false, features = [
-    "build",
-    "git",
-    "git2",
-] }
+vergen-git2 = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

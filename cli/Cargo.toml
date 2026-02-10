@@ -12,11 +12,7 @@ name = "cargo-zisk"
 path = "src/bin/cargo-zisk.rs"
 
 [build-dependencies]
-vergen = { version = "8", default-features = false, features = [
-    "build",
-    "git",
-    "git2",
-] }
+vergen-git2.workspace = true
 
 [dependencies]
 zisk-common = { workspace = true }
@@ -37,7 +33,6 @@ tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
-libloading = { workspace = true }
 zisk-sdk = { workspace = true }
 zisk-verifier = { workspace = true }
 

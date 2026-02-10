@@ -12,7 +12,6 @@ proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 zisk-common = { workspace = true }
 fields = { workspace = true }
-libloading = { workspace = true }
 anyhow = { workspace = true }
 proofman = { workspace = true }
 rom-setup = { workspace = true }

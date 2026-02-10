@@ -248,7 +248,9 @@ impl ProverBackend {
         #[cfg(feature = "stats")]
         stats.store_stats();
 
-        Ok(ZiskVerifyConstraintsResult { execution: result, duration: elapsed, stats })
+        let publics = proofman.get_publics();
+
+        Ok(ZiskVerifyConstraintsResult::new(result, elapsed, stats, &publics))
     }
 
     pub(crate) fn verify_constraints(

@@ -23,7 +23,7 @@ pub fn build_hint_buffer() -> Arc<HintBuffer> {
         inner: Mutex::new(HintBufferInner {
             buf: BytesMut::with_capacity(DEFAULT_BUFFER_LEN),
             commit_pos: 0,
-            closed: false,
+            closed: true,
             paused: false,
         }),
         not_empty: Condvar::new(),

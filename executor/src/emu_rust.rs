@@ -80,7 +80,7 @@ impl EmulatorRust {
 
     fn run_emulator(&self, num_threads: usize, stdin: &mut ZiskStdin) -> Vec<EmuTrace> {
         // Call emulate with these options
-        let input_data = stdin.read();
+        let input_data = stdin.read_bytes();
 
         // Settings for the emulator
         let emu_options = EmuOptions {

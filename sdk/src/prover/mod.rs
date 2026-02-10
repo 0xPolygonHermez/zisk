@@ -59,6 +59,36 @@ pub struct ZiskVerifyConstraintsResult {
     pub execution: ZiskExecutionResult,
     pub duration: Duration,
     pub stats: ExecutorStatsHandle,
+    pub publics: ZiskPublics,
+}
+
+impl ZiskVerifyConstraintsResult {
+    pub fn new(
+        execution: ZiskExecutionResult,
+        duration: Duration,
+        stats: ExecutorStatsHandle,
+        publics: &[u8],
+    ) -> Self {
+        Self { execution, duration, stats, publics: ZiskPublics::new(publics) }
+    }
+
+    pub fn get_publics(&self) -> &ZiskPublics {
+        &self.publics
+    }
+
+    pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
+        &self,
+    ) -> Result<T> {
+        self.publics.read()
+    }
+
+    pub fn get_execution_steps(&self) -> &u64 {
+        &self.execution.steps
+    }
+
+    pub fn get_duration(&self) -> Duration {
+        self.duration
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

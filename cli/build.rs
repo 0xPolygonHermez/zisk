@@ -1,5 +1,15 @@
 fn main() {
-    vergen::EmitBuilder::builder().build_timestamp().git_sha(true).emit().unwrap();
+    let mut builder = vergen_git2::Emitter::default();
+    builder
+        .add_instructions(
+            &vergen_git2::BuildBuilder::default().build_timestamp(true).build().unwrap(),
+        )
+        .unwrap();
+    builder
+        .add_instructions(&vergen_git2::Git2Builder::default().sha(true).build().unwrap())
+        .unwrap();
+    builder.emit().unwrap();
+
     let disable_distributed =
         std::env::vars().any(|(k, _)| k == "CARGO_FEATURE_DISABLE_DISTRIBUTED");
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();

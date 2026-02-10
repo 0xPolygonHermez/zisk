@@ -12,7 +12,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::reinterpret_vec;
-use zisk_common::ElfBinaryOwned;
+use zisk_common::ElfBinaryFromFile;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind, StreamPayloadDto};
@@ -157,19 +157,9 @@ impl ProverConfig {
                         prover_service_config.elf.display()
                     )
                 })?;
-            let elf_bin = fs::read(&prover_service_config.elf).map_err(|e| {
-                anyhow::anyhow!(
-                    "Error reading ELF file {}: {}",
-                    prover_service_config.elf.display(),
-                    e
-                )
-            })?;
+            let elf =
+                ElfBinaryFromFile::new(&prover_service_config.elf, prover_service_config.hints)?;
 
-            let elf = ElfBinaryOwned::new(
-                elf_bin,
-                prover_service_config.elf.file_stem().unwrap().to_str().unwrap().to_string(),
-                prover_service_config.hints,
-            );
             let hash = get_elf_data_hash(&elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
             let stem = if prover_service_config.hints {
@@ -278,14 +268,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        let elf_bin = fs::read(&prover_config.elf).map_err(|e| {
-            anyhow::anyhow!("Error reading ELF file {}: {}", prover_config.elf.display(), e)
-        })?;
-        let elf = ElfBinaryOwned::new(
-            elf_bin,
-            prover_config.elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            false,
-        );
+        let elf = ElfBinaryFromFile::new(&prover_config.elf, prover_config.hints)?;
         prover.setup(&elf)?;
 
         Ok(Worker::<Emu> {
@@ -321,14 +304,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        let elf_bin = fs::read(&prover_config.elf).map_err(|e| {
-            anyhow::anyhow!("Error reading ELF file {}: {}", prover_config.elf.display(), e)
-        })?;
-        let elf = ElfBinaryOwned::new(
-            elf_bin,
-            prover_config.elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            prover_config.hints,
-        );
+        let elf = ElfBinaryFromFile::new(&prover_config.elf, prover_config.hints)?;
         prover.setup(&elf)?;
 
         Ok(Worker::<Asm> {

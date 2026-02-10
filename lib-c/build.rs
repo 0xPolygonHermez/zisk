@@ -45,8 +45,46 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", abs_lib_path.display());
     println!("cargo:rustc-link-lib=static={library_name}");
 
+    // Track C source files for recompilation
+    track_sources(&c_path);
+
     // Link required libraries
     for lib in &["pthread", "gmp", "stdc++", "gmpxx", "c"] {
         println!("cargo:rustc-link-lib={lib}");
+    }
+}
+
+/// Tell Cargo to track C source files for changes
+fn track_sources(dir: &Path) {
+    // Track all C/C++ source files and headers recursively
+    if let Ok(entries) = std::fs::read_dir(dir.join("src")) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                track_sources_recursive(&path);
+            } else if let Some(ext) = path.extension() {
+                if ext == "c" || ext == "cpp" || ext == "h" || ext == "hpp" || ext == "asm" {
+                    println!("cargo:rerun-if-changed={}", path.display());
+                }
+            }
+        }
+    }
+
+    // Also track the Makefile itself
+    println!("cargo:rerun-if-changed={}", dir.join("Makefile").display());
+}
+
+fn track_sources_recursive(dir: &Path) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                track_sources_recursive(&path);
+            } else if let Some(ext) = path.extension() {
+                if ext == "c" || ext == "cpp" || ext == "h" || ext == "hpp" || ext == "asm" {
+                    println!("cargo:rerun-if-changed={}", path.display());
+                }
+            }
+        }
     }
 }

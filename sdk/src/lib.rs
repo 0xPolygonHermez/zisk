@@ -29,3 +29,11 @@ macro_rules! include_elf {
         }
     }};
 }
+
+/// Macro to get the ELF file path at compile time
+#[macro_export]
+macro_rules! elf_path {
+    ($arg:literal) => {{
+        env!(concat!("ZISK_ELF_", $arg))
+    }};
+}

@@ -701,7 +701,7 @@ impl HintsProcessor {
             // BN254 Hint Codes
             BuiltInHint::Bn254G1Add => bn254_g1_add_hint(&data),
             BuiltInHint::Bn254G1Mul => bn254_g1_mul_hint(&data),
-            BuiltInHint::Bn254PairingCheck => bn254_pairing_check_hint(&data), // TODO: check
+            BuiltInHint::Bn254PairingCheck => bn254_pairing_check_hint(&data),
 
             // Secp256k1 Hints
             BuiltInHint::Secp256k1EcdsaAddressRecover => secp256k1_ecdsa_address_recover(&data),
@@ -714,18 +714,18 @@ impl HintsProcessor {
 
             // BLS12-381 Hint Codes
             BuiltInHint::Bls12_381G1Add => bls12_381_g1_add_hint(&data),
-            BuiltInHint::Bls12_381G1Msm => bls12_381_g1_msm_hint(&data), // TODO: check
-            BuiltInHint::Bls12_381G2Add => bls12_381_g2_add_hint(&data), // TODO: check
-            BuiltInHint::Bls12_381G2Msm => bls12_381_g2_msm_hint(&data), // TODO: check
-            BuiltInHint::Bls12_381PairingCheck => bls12_381_pairing_check_hint(&data), // TODO: check
+            BuiltInHint::Bls12_381G1Msm => bls12_381_g1_msm_hint(&data),
+            BuiltInHint::Bls12_381G2Add => bls12_381_g2_add_hint(&data),
+            BuiltInHint::Bls12_381G2Msm => bls12_381_g2_msm_hint(&data),
+            BuiltInHint::Bls12_381PairingCheck => bls12_381_pairing_check_hint(&data),
             BuiltInHint::Bls12_381FpToG1 => bls12_381_fp_to_g1_hint(&data),
             BuiltInHint::Bls12_381Fp2ToG2 => bls12_381_fp2_to_g2_hint(&data),
 
             // Modular Exponentiation Hint Codes
-            BuiltInHint::ModExp => modexp_hint(&data), // TODO: check
+            BuiltInHint::ModExp => modexp_hint(&data),
 
             // KZG Hint Codes
-            BuiltInHint::VerifyKzgProof => verify_kzg_proof_hint(&data), // TODO: check
+            BuiltInHint::VerifyKzgProof => verify_kzg_proof_hint(&data),
 
             // Keccak256 Hint Codes
             BuiltInHint::Keccak256 => keccak256_hint(&data, data_len_bytes),

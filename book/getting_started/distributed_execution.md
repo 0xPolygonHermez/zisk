@@ -1,64 +1,76 @@
-# ZisK Distributed Proving System
+# Distributed Proving
 
-A distributed proof generation system for the ZisK zkVM that orchestrates proof tasks across multiple worker nodes. The system enables horizontal scaling of proof generation workloads, allowing you to distribute computationally intensive proving operations across multiple machines for improved performance and throughput.
+Generating a ZisK proof can be computationally intensive, especially for large programs. The distributed proving system lets you split the workload across multiple machines, reducing proof generation time by parallelizing the work.
 
-## Architecture
+This chapter covers how to set up and run a distributed proving cluster, from launching a coordinator to connecting workers and submitting proof requests.
 
-The system is composed of two main actors:
+## How It Works
 
-- **Coordinator:** Manages incoming proof requests and splits the work, based on required compute capacity, across distributed available workers.  
-- **Worker:** Registers to the coordinator, reporting its compute capacity, and waits for tasks to be assigned. A **Worker** can be a single machine or a cluster of machines.
+A distributed proving cluster consists of two roles:
 
-## Proof Generation Process
+- A **Coordinator** that receives proof requests and orchestrates the work.
+- One or more **Workers** that execute the actual proof computation.
 
-The process of generating a proof proceeds as follows:  
-1. The **Coordinator** starts on a host and listens for incoming proof requests.  
-2. **Worker** nodes connect to the Coordinator, registering their compute capacity and availability.  
-3. When a proof generation request is received, the Coordinator splits the work across multiple Workers according to the requested compute capacity. A proof generation job is divided into three phases:
-   - **Partial Contributions:** Each Worker computes its partial challenges.
-   - **Prove:** Workers compute the global challenge and generate their respective partial proofs.  
-   - **Aggregation:** A designated Worker aggregates all partial proofs and produces the final proof for the client.
-4. The Coordinator collects the final proof and returns it to the client.
+When you submit a proof request, the process unfolds in three phases:
 
-### Key Concepts
+1. **Partial Contributions** — The coordinator assigns segments of the work to available workers based on their compute capacity. Each worker computes its partial challenges independently.
+2. **Prove** — Workers compute the global challenge and generate their respective partial proofs.
+3. **Aggregation** — The first worker to finish is selected as the aggregator. It collects all partial proofs and produces the final proof.
 
-**Worker Selection:** The Coordinator selects Workers based on their reported compute capacity and availability. When a proof request is received, the Coordinator evaluates the required compute capacity and selects Workers sequentially from the pool of available Workers until the total capacity requirement is met. When a worker is assigned to a job, it is marked as busy and will not receive new tasks until it completes the current job.
+The coordinator returns the final proof to the client once aggregation completes.
 
-**Aggregator Selection:** The first Worker to send its partial proof to the Coordinator is selected as the Aggregator to perform the aggregation of all partial proofs into the final proof. The other Workers are marked as available again after sending their partial proofs.
+Workers report their compute capacity when they register. The coordinator selects workers sequentially from the available pool until the requested capacity is met. While assigned to a job, a worker is marked as busy and won't receive new tasks.
 
-## Quick Start
+## Getting Started
 
-### Manual Build and Run
+### Building
+
+From the project root, build both binaries:
 
 ```bash
-# Build binaries (from project root)
 cargo build --release --bin zisk-coordinator --bin zisk-worker
+```
 
-# Run coordinator
+### Running Locally
+
+**1. Start the coordinator:**
+
+```bash
 cargo run --release --bin zisk-coordinator
+```
 
-# Run a worker node (in another terminal)
+**2. Start a worker** (in a separate terminal):
+
+```bash
 cargo run --release --bin zisk-worker -- --elf <elf-file-path> --inputs-folder <inputs-folder>
+```
 
-# Generate a proof (in another terminal)
+**3. Submit a proof request** (in a separate terminal):
+
+```bash
 cargo run --release --bin zisk-coordinator prove --inputs-uri <input-filename> --compute-capacity 10
 ```
 
+The `--compute-capacity` flag specifies how many compute units the proof requires. The coordinator assigns workers until this capacity is covered.
+
 ### Docker Deployment
 
-The easiest way to run the distributed system:
+For multi-machine setups, Docker simplifies deployment:
 
 ```bash
-# 0. Build the Docker image (CPU-only, default)
+# Build the image (CPU-only)
 docker build -t zisk-distributed:latest -f distributed/Dockerfile .
 
-# 0b. Build with GPU support (if needed)
+# For GPU support
 docker build --build-arg GPU=true -t zisk-distributed:gpu -f distributed/Dockerfile .
 
-# Create a user-defined network so container names resolve via DNS
+# Create a network for container DNS resolution
 docker network create zisk-net || true
+```
 
-# 1. Start coordinator container (detached)
+**Start the coordinator:**
+
+```bash
 LOGS_DIR="<logs-folder>"
 docker run -d --rm --name zisk-coordinator \
   --network zisk-net \
@@ -66,12 +78,11 @@ docker run -d --rm --name zisk-coordinator \
   -e RUST_LOG=info \
   zisk-distributed:latest \
   zisk-coordinator --config /app/config/coordinator/dev.toml
+```
 
-# 2. View coordinator logs
-docker logs -f zisk-coordinator
+**Start a worker:**
 
-# 3. Start worker container(s) in a different terminal(s) - they connect to coordinator by container name
-# Replace paths with your actual directories
+```bash
 LOGS_DIR="<logs-folder>"
 PROVING_KEY_DIR="<provingKey-folder>"
 ELF_DIR="<elf-folder>"
@@ -86,27 +97,25 @@ docker run -d --rm --name zisk-worker-1 \
   -e RUST_LOG=info \
   zisk-distributed:latest zisk-worker --coordinator-url http://zisk-coordinator:50051 \
     --elf /app/elf/zec.elf --proving-key /app/proving-keys --inputs-folder /app/inputs
-
-# 4. View coordinator logs
-docker logs -f zisk-worker-1
-
-# Generate a proof (use filename only, not full path)
-docker exec -it zisk-coordinator \
-  zisk-coordinator prove --inputs-uri <input-filename> --compute-capacity 10
-
-# Stop containers
-docker stop zisk-coordinator zisk-worker-1
-docker rm zisk-coordinator zisk-worker-1
 ```
 
-**Note:** 
-- **GPU Support:** Use `--build-arg GPU=true` when building if you need GPU acceleration
-- **Configuration:** Built-in configs are used by default, no external mounting needed
-- **Paths in container:**
-  - Configuration: `/app/config/{coordinator,worker}/`
-  - Binaries: `/app/bin/`
-  - Cache: `/app/.zisk/cache/` (mounted from host `$HOME/.zisk/cache`)
-  - Logs: `/var/log/distributed/`
+**Submit a proof:**
+
+```bash
+docker exec -it zisk-coordinator \
+  zisk-coordinator prove --inputs-uri <input-filename> --compute-capacity 10
+```
+
+> **Note:** Use the filename only when submitting proofs, not the full path. Workers resolve files relative to their `--inputs-folder`.
+
+**Container paths reference:**
+
+| Path | Purpose |
+|------|---------|
+| `/app/config/{coordinator,worker}/` | Configuration files |
+| `/app/bin/` | Binaries |
+| `/app/.zisk/cache/` | Cache (mount from host `$HOME/.zisk/cache`) |
+| `/var/log/distributed/` | Log files |
 
 ## Coordinator
 
