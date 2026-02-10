@@ -1,8 +1,8 @@
-use std::fmt;
-use std::time::Instant;
-use std::path::Path;
-use std::fs;
 use anyhow::Result;
+use std::fmt;
+use std::fs;
+use std::path::Path;
+use std::time::Instant;
 
 /// Type representing a chunk identifier.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
