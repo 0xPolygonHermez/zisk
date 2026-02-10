@@ -6682,6 +6682,7 @@ dependencies = [
  "sha2",
  "static_assertions",
  "tiny-keccak",
+ "tokio",
  "zisk-common",
 ]
 

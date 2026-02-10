@@ -55,7 +55,7 @@ fn main() -> io::Result<()> {
     // Open the connection (waits for client to connect)
     writer.open().map_err(io::Error::other)?;
 
-    println!("Client connected! Starting data transfer...");
+    println!("Client connected! Starting hint data transfer...");
 
     let shutdown = Arc::new(AtomicBool::new(false));
 
@@ -75,23 +75,14 @@ fn main() -> io::Result<()> {
         }
     });
 
-    // File structure:
-    // - First 8 bytes: header
-    // - Middle: batches of hints (each hint = 26 * 8 = 208 bytes)
-    // - Last 8 bytes: footer
-
-    const HINT_SIZE: usize = 26 * 8; // 208 bytes per hint
-    const HINTS_PER_BATCH: usize = 100;
-    const BATCH_SIZE: usize = HINTS_PER_BATCH * HINT_SIZE; // 20,800 bytes
-
-    if file_data.len() < 16 {
-        eprintln!("Error: File too small (need at least 16 bytes for header+footer)");
-        return Ok(());
-    }
+    // Sleep 500ms
+    thread::sleep(Duration::from_millis(500));
 
     let mut offset = 0;
-    let mut message_num = 0;
+    let mut hint_count = 0;
+    let mut first_hint = true;
 
+    let start_time = std::time::Instant::now();
     loop {
         if shutdown.load(Ordering::Relaxed) {
             println!("\nShutdown requested, exiting...");
@@ -99,49 +90,61 @@ fn main() -> io::Result<()> {
         }
 
         if offset >= file_data.len() {
-            // All data sent
-            println!("All data sent successfully!");
-            println!("Connection active. Press '0' to close...");
-            while !shutdown.load(Ordering::Relaxed) {
-                thread::sleep(Duration::from_millis(100));
-            }
-            break;
+            panic!("Reached end of file data unexpectedly!");
         }
 
-        // Determine what to send in this message
-        let (start, end) = if offset == 0 {
-            // First message: 8 bytes header
-            (0, 8)
-        } else if offset + 8 >= file_data.len() {
-            // Last message: final 8 bytes
-            (file_data.len() - 8, file_data.len())
-        } else {
-            // Middle messages: batches of hints
-            let data_end = file_data.len() - 8; // Before footer
-            let remaining_data = data_end - offset;
-            let batch_size = std::cmp::min(BATCH_SIZE, remaining_data);
-            (offset, offset + batch_size)
-        };
+        let mut hint_total_len = 8;
 
-        let chunk = &file_data[start..end];
+        let hint_header = u64::from_le_bytes(file_data[offset..offset + 8].try_into().unwrap());
+        let hint_id = (hint_header >> 32) as u32 & 0x7FFF_FFFF;
 
-        match writer.write(chunk) {
+        if first_hint {
+            // HINT_START
+            assert!(hint_id == 0, "Invalid hint file format: first hint must be START");
+            println!("Received START hint");
+            first_hint = false;
+        }
+
+        let hint_data_len = hint_header & 0x_FFFF_FFFF;
+        let pad = (8 - (hint_data_len % 8)) % 8; // Padding to align to 8 bytes
+        let data_len_with_pad = hint_data_len + pad as u64;
+
+        hint_total_len += data_len_with_pad;
+
+        if (offset + hint_total_len as usize) > file_data.len() {
+            eprintln!("Error: Hint data length exceeds file ends");
+            return Ok(());
+        }
+
+        let data_with_pad = &file_data[offset..offset + hint_total_len as usize];
+        match writer.write(data_with_pad) {
             Ok(_) => {
-                message_num += 1;
-                println!(
-                    "Message {}: Sent {} bytes (offset {}-{})",
-                    message_num,
-                    chunk.len(),
-                    start,
-                    end
-                );
-                offset = end;
+                if hint_count % 100 == 0 && hint_id != 0 && hint_id != 1 {
+                    println!("#{} Hint id: 0x{:x}, sent: {} bytes, offset: {}",
+                        hint_count,
+                        hint_id,
+                        hint_total_len,
+                        offset
+                    );
+                }
             }
             Err(e) => {
                 eprintln!("Error writing to Unix socket: {}", e);
                 break;
             }
         }
+        offset += hint_total_len as usize;
+
+        if hint_id != 1 && hint_id != 0 {
+            hint_count += 1;
+        }
+
+        if hint_id == 1 {
+            // HINT_END
+            println!("Received END hint. All hints sent, total: {}, time elapsed: {:?}", hint_count, start_time.elapsed());
+            break;
+        }
+
     }
 
     println!("Closing connection...");
