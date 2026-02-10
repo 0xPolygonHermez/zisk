@@ -21,7 +21,7 @@ pub fn ziskemu(
     let inputs = stdin.read_bytes();
 
     let options = EmuOptions { log_output: true, ..options.clone() };
-    let result = ZiskEmulator::process_rom(&zisk_rom, &inputs, options, callback);
+    let result = ZiskEmulator::process_rom(&zisk_rom, &inputs, &options, callback);
     match result {
         Ok(result) => {
             // println!("Emulation completed successfully");
