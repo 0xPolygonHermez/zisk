@@ -29,7 +29,6 @@ sha2 = { workspace = true }
 fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0", features = [
     "verify",
 ] }
-tokio = { workspace = true }
 
 [target.'cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), any(zisk_hints, zisk_hints_debug)))'.dependencies]
 bytes = { version = "1.11.0", optional = true }
@@ -37,6 +36,7 @@ once_cell = { version = "1.21.3", optional = true }
 paste = { version = "1.0", optional = true }
 zisk-common = { path = "../../common", optional = true }
 anyhow = { workspace = true, optional = true }
+tokio = { workspace = true }
 
 [target.'cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints_metrics))'.dependencies]
 ctor = { version = "0.2", optional = true }
