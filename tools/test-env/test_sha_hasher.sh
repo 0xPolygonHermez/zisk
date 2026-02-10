@@ -46,7 +46,7 @@ main() {
     INPUT_BIN="build/input.bin"
 
     step "Running program with ziskemu..."
-    ensure ziskemu -e "$ELF_PATH" -i "$INPUT_BIN" | tee ziskemu_output.log || return 1
+    ensure ziskemu -e "$ELF_PATH" -i "$INPUT_BIN" -r | tee ziskemu_output.log || return 1
     if ! grep -qE ${EXPECTED_OUTPUT} ziskemu_output.log; then
         err "run ziskemu failed"
         return 1

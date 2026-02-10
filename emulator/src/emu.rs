@@ -2545,7 +2545,7 @@ impl<'a> Emu<'a> {
     }
 
     /// Get the output as a vector of u32
-    pub fn get_output_riscof_32(&self) -> Vec<u32> {
+    pub fn get_output_32(&self) -> Vec<u32> {
         let n = ZISK_PUBLICS;
         let mut addr = OUTPUT_ADDR;
         let mut output: Vec<u32> = Vec::with_capacity(n);
@@ -2558,7 +2558,7 @@ impl<'a> Emu<'a> {
     }
 
     /// Get the output as a vector of u32
-    pub fn get_output_32(&self) -> Vec<u32> {
+    pub fn get_output_riscof_32(&self) -> Vec<u32> {
         let n = self.ctx.inst_ctx.mem.read(OUTPUT_ADDR, 4);
         let mut addr = OUTPUT_ADDR + 4;
         let mut output: Vec<u32> = Vec::with_capacity(n as usize);
