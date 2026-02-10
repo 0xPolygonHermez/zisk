@@ -16,8 +16,8 @@ zisk-common = { workspace = true }
 
 [features]
 default = []
-packed = ["zisk-sdk/packed"]
-gpu = ["zisk-sdk/gpu", "packed"]
+packed = []
+gpu = ["zisk-sdk/gpu"]
 
 [[bin]]
 name = "prove"

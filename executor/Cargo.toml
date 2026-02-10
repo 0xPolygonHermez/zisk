@@ -53,6 +53,21 @@ named-sem = { workspace = true }
 [features]
 default = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
-gpu = ["proofman-common/gpu", "proofman/gpu" ]
-packed = ["proofman-common/packed"]
+gpu = ["proofman-common/gpu", "proofman/gpu", "packed"]
+packed = [
+    "proofman-common/packed",
+    "precomp-keccakf/packed",
+    "precomp-sha256f/packed",
+    "precomp-poseidon2/packed",
+    "precomp-arith-eq/packed",
+    "precomp-arith-eq-384/packed",
+    "precomp-big-int/packed",
+    "precomp-dma/packed",
+    "sm-arith/packed",
+    "sm-binary/packed",
+    "sm-main/packed",
+    "sm-mem/packed",
+    "sm-frequent-ops/packed",
+    "sm-rom/packed",
+]
 stats = []

@@ -43,7 +43,6 @@ precompiles-helpers = { workspace = true }
 zisk-common = { workspace = true }
 lib-c = { workspace = true }
 
-proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
@@ -75,10 +74,8 @@ nom = "7"
 
 [features]
 default = []
-gpu = ["proofman-common/gpu", "packed"]
-packed = ["proofman-common/packed"]
-diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
-no_lib_link = ["proofman-common/no_lib_link"]
+gpu = ["packed"]
+packed = []
 test_data = []
 test_data_secp256k1 = []
 test_data_secp256r1 = []

@@ -20,6 +20,7 @@ colored = { workspace = true }
 tracing = { workspace = true }
 zstd = { workspace = true }
 zisk-distributed-common = { workspace = true }
+executor = { workspace = true }
 ziskemu = { workspace = true }
 zisk-core = { workspace = true }
 zisk-verifier = { workspace = true }
@@ -33,11 +34,12 @@ default = []
 gpu = [
     "proofman/gpu",
     "proofman-common/gpu",
-    "zisk-distributed-common/gpu",
     "rom-setup/gpu",
-    "packed",
+    "executor/gpu",
+    "ziskemu/gpu",
+    "packed"
 ]
-packed = ["proofman-common/packed"]
+packed = ["proofman-common/packed", "executor/packed", "zisk-witness/packed"]
 stats = []
 disable_distributed = [
     "proofman/disable_distributed",
