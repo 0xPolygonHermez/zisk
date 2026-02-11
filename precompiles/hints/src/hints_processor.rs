@@ -1446,16 +1446,19 @@ mod tests {
     fn test_multiple_partial_hints_interleaved() {
         let p = processor();
 
-        // Start two hints in first batch, complete them in different subsequent batches
+        // Start first hint in first batch, start second hint in second batch, and
+        // complete them in different subsequent batches.
         let batch1 = vec![
             make_header(TEST_PASSTHROUGH_HINT, 16),
-            0x1111,                                // First hint: header + partial data
+            0x1111, // First hint: header + partial data (incomplete)
+        ];
+        let batch2 = vec![
+            0x2222,                                // Completes first hint
             make_header(TEST_PASSTHROUGH_HINT, 8), // Second hint: header only
         ];
-        let batch2 = vec![0x2222]; // Completes first hint
         let batch3 = vec![0x3333]; // Completes second hint
 
-        // First batch has two partial hints
+        // First batch has a single partial hint
         assert!(p.process_hints(&batch1, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 

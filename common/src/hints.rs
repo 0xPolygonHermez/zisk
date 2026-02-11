@@ -365,46 +365,6 @@ pub struct PartialPrecompileHint {
     pub remaining_u64s: usize,
 }
 
-impl PartialPrecompileHint {
-    /// Continues parsing a partial hint by accumulating more data from the slice.
-    ///
-    /// # Arguments
-    ///
-    /// * `slice` - The new data slice to accumulate
-    ///
-    /// # Returns
-    ///
-    /// * `(PrecHintParseResult, usize)` - The result and number of u64s consumed from the slice
-    /// * `PrecHintParseResult::Complete` - If enough data was accumulated to complete the hint
-    /// * `PrecHintParseResult::Partial` - If more data is still needed
-    #[inline(always)]
-    pub fn continue_from_slice(mut self, slice: &[u64]) -> (PrecompileHintParseResult, usize) {
-        let available = slice.len();
-
-        if available >= self.remaining_u64s {
-            // We have enough data to complete the hint
-            let consumed = self.remaining_u64s;
-            self.data.extend_from_slice(&slice[..consumed]);
-
-            (
-                PrecompileHintParseResult::Complete(PrecompileHint {
-                    hint_code: self.hint_code,
-                    is_passthrough: self.is_passthrough,
-                    data: self.data,
-                    data_len_bytes: self.expected_len_bytes,
-                }),
-                consumed,
-            )
-        } else {
-            // Still not enough data, accumulate what we have
-            self.data.extend_from_slice(slice);
-            self.remaining_u64s -= available;
-
-            (PrecompileHintParseResult::Partial(self), available)
-        }
-    }
-}
-
 /// Result of parsing a hint from a u64 slice.
 #[derive(Debug)]
 pub enum PrecompileHintParseResult {
@@ -456,15 +416,13 @@ impl PrecompileHint {
     /// * `idx` - The index where the hint header starts
     /// * `allow_custom` - If true, unknown codes create Custom variant; if false, return error
     /// * `partial` - Optional partial hint from a previous call to continue accumulating
-    /// * `max_buffer_size` - Maximum allowed hint data size in bytes; hints exceeding this return error
     ///
     /// # Returns
     ///
-    /// * `Ok((PrecHintParseResult, usize))` - The parse result and number of u64s consumed
-    /// * `PrecHintParseResult::Complete` - Successfully parsed a complete hint
-    /// * `PrecHintParseResult::Partial` - Parsed header but slice doesn't contain all data
-    /// * `Err` - If the slice is empty, index is out of bounds, hint code is invalid,
-    ///   or hint size exceeds `max_buffer_size`
+    /// * `Ok((PrecompileHintParseResult, usize))` - The parse result and number of u64s consumed
+    /// * `PrecompileHintParseResult::Complete` - Successfully parsed a complete hint
+    /// * `PrecompileHintParseResult::Partial` - Parsed header but slice doesn't contain all data
+    /// * `Err` - If the slice is empty, index is out of bounds or hint code is invalid
     #[inline(always)]
     pub fn from_u64_slice(
         slice: &[u64],
