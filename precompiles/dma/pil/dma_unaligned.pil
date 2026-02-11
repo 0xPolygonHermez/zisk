@@ -1,6 +1,4 @@
 
-// TODO: Optimization Dma32AlignedOp
-
 airtemplate DmaUnaligned(int N = 2**21, const int RC = 2, const expr enable = 1) {
 
     const expr L1 = get_L1();
@@ -121,7 +119,7 @@ airtemplate DmaUnaligned(int N = 2**21, const int RC = 2, const expr enable = 1)
         (1 - segment_previous_seq_end) * L1 * (segment_first_bytes[i] - read_bytes[i]) === 0;
 
         // force segment_next_bytes to zero, when it's finish of input
-        segment_last_seq_end * segment_next_bytes[i] == 0;
+        segment_last_seq_end * segment_next_bytes[i] === 0;
 
         // to force the "received" values from the bus are 0 when the last row of the previous segment
         // is final of input (seq_end).
@@ -178,13 +176,13 @@ airtemplate DmaUnaligned(int N = 2**21, const int RC = 2, const expr enable = 1)
     //   src64 = 'src64 + 1
     //   dst64 = 'dst64 + 1
 
-    continue_seq_on_l1 * (count - (segment_previous_count - 1)) == 0;
+    continue_seq_on_l1 * (count - (segment_previous_count - 1)) === 0;
     continue_seq_on_no_l1 * (count - ('count - 1)) === 0;
 
-    continue_seq_on_l1 * (src64 - (segment_previous_src64 + 1)) == 0;
+    continue_seq_on_l1 * (src64 - (segment_previous_src64 + 1)) === 0;
     continue_seq_on_no_l1 * (src64 - ('src64 + 1)) === 0;
 
-    continue_seq_on_l1 * (dst64 - (segment_previous_dst64 + 1)) == 0;
+    continue_seq_on_l1 * (dst64 - (segment_previous_dst64 + 1)) === 0;
     continue_seq_on_no_l1 * (dst64 - ('dst64 + 1)) === 0;    
 
     // LATCHS:
@@ -192,13 +190,14 @@ airtemplate DmaUnaligned(int N = 2**21, const int RC = 2, const expr enable = 1)
     //   offset = 'offset
     //   is_mem_eq = 'is_mem_eq
     //   main_step = 'main_step
-    continue_seq_on_l1 * (offset - segment_previous_offset) == 0;
+    
+    continue_seq_on_l1 * (offset - segment_previous_offset) === 0;
     continue_seq_on_no_l1 * (offset - 'offset) === 0;
 
-    continue_seq_on_l1 * (is_mem_eq - segment_previous_is_mem_eq) == 0;
+    continue_seq_on_l1 * (is_mem_eq - segment_previous_is_mem_eq) === 0;
     continue_seq_on_no_l1 * (is_mem_eq - 'is_mem_eq) === 0;    
 
-    continue_seq_on_l1 * (main_step - segment_previous_main_step) == 0;
+    continue_seq_on_l1 * (main_step - segment_previous_main_step) === 0;
     continue_seq_on_no_l1 * (main_step - 'main_step) === 0;    
 
     // At end of sequence

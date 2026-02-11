@@ -54,8 +54,9 @@ mpi = { workspace = true }
 [features]
 default = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
-gpu = ["proofman-common/gpu", "proofman/gpu", "packed"]
-packed = ["proofman-common/packed"]
+diagnostic = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
+gpu = ["zisk-sdk/gpu"]
+packed = ["zisk-sdk/packed"]
 stats = []
 verify = ["fields/verify"]
 

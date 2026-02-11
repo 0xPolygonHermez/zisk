@@ -46,14 +46,14 @@ main() {
     INPUT_BIN="build/input.bin"
 
     step "Running program with ziskemu..."
-    ensure ziskemu -e "$ELF_PATH" -i "$INPUT_BIN" | tee ziskemu_output.log || return 1
+    ensure ziskemu -e "$ELF_PATH" -i "$INPUT_BIN" -f | tee ziskemu_output.log || return 1
     if ! grep -qE ${EXPECTED_OUTPUT} ziskemu_output.log; then
         err "run ziskemu failed"
         return 1
     fi
 
     step "Running program with cargo-zisk run..."
-    ensure cargo-zisk run --release -i build/input.bin | tee run_output.log || return 1
+    ensure cargo-zisk run --release -i build/input.bin -f | tee run_output.log || return 1
     if ! grep -qE ${EXPECTED_OUTPUT} run_output.log; then
         err "run program failed"
         return 1

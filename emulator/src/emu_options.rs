@@ -48,8 +48,11 @@ pub struct EmuOptions {
     pub log_step: bool,
     /// Log the output to console. This option is set by default to true as a requirement to pass
     /// the riscof GHA tests.  Enabled with `-c`.
-    #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "true")]
+    #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "false")]
     pub log_output: bool,
+    /// Log the output to console in riscof format.  Enabled with `-f`.
+    #[clap(short = 'f', long, value_name = "LOG_OUTPUT_RISCOF", default_value = "false")]
+    pub log_output_riscof: bool,
     /// Trace every this number of steps.
     pub chunk_size: Option<u64>,
     /// Log performance metrics.  Enabled with `-m`.
@@ -109,6 +112,7 @@ impl Default for EmuOptions {
             verbose: false,
             log_step: false,
             log_output: false,
+            log_output_riscof: false,
             chunk_size: None,
             log_metrics: false,
             tracerv: false,
@@ -137,6 +141,7 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "TRACE: {:?}", self.trace)?;
         writeln!(f, "OUTPUT: {:?}", self.output)?;
         writeln!(f, "LOG_OUTPUT: {:?}", self.log_output)?;
+        writeln!(f, "LOG_OUTPUT_RISCOF: {:?}", self.log_output_riscof)?;
         writeln!(f, "VERBOSE: {}", self.verbose)?;
         writeln!(f, "CHUNK_SIZE: {:?}", self.chunk_size)?;
         writeln!(f, "METRICS: {:?}", self.log_metrics)?;
@@ -165,5 +170,6 @@ impl EmuOptions {
             && !self.stats
             && !self.generate_minimal_traces
             && !self.log_output
+            && !self.log_output_riscof
     }
 }

@@ -1,13 +1,13 @@
 use crate::{
     check_paths_exist,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult, ZiskProgramVK,
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult, ZiskProgramVK,
     ZiskProof, ZiskProofWithPublicValues, ZiskProveResult, ZiskPublics,
     ZiskVerifyConstraintsResult,
 };
 use crate::{ensure_custom_commits, ProofMode, ProofOpts};
 use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
-use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, VerboseMode};
+use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, VerboseMode};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use zisk_common::io::{StreamSource, ZiskStdin};
@@ -231,13 +231,12 @@ impl EmuCoreProver {
         )
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
-        let world_rank = proofman.get_world_rank();
-        let local_rank = proofman.get_local_rank();
+        let rank_info = proofman.get_rank_info();
 
         if logging_config.is_some() {
-            zisk_distributed_common::init(logging_config.as_ref(), Some(world_rank))?;
+            zisk_distributed_common::init(logging_config.as_ref(), Some(&rank_info))?;
         } else {
-            initialize_logger(verbose.into(), Some(world_rank));
+            initialize_logger(verbose.into(), Some(&rank_info));
         }
 
         proofman.set_barrier();
@@ -251,12 +250,7 @@ impl EmuCoreProver {
         let core =
             ProverBackend::new(proofman, snark_wrapper, proving_key, Some(proving_key_snark));
 
-        Ok(Self {
-            backend: core,
-            rank_info: RankInfo { world_rank, local_rank },
-            verbose: verbose.into(),
-            shared_tables,
-        })
+        Ok(Self { backend: core, rank_info, verbose: verbose.into(), shared_tables })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -265,7 +259,7 @@ impl EmuCoreProver {
 
         Ok(Self {
             backend: core_prover,
-            rank_info: RankInfo { world_rank: 0, local_rank: 0 },
+            rank_info: RankInfo { world_rank: 0, local_rank: 0, n_processes: 1 },
             verbose: VerboseMode::Info,
             shared_tables: false,
         })

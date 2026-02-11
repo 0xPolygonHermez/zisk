@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use fields::Goldilocks;
 
 use proofman::{check_setup_snark, ProofMan};
-use proofman_common::initialize_logger;
+use zisk_sdk::setup_logger;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -38,7 +38,7 @@ impl ZiskCheckSetup {
         println!("{} CheckSetup", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
-        initialize_logger(self.verbose.into(), None);
+        setup_logger(self.verbose.into());
 
         ProofMan::<Goldilocks>::check_setup(
             get_proving_key(self.proving_key.as_ref()),

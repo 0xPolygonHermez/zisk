@@ -38,6 +38,9 @@ pub struct ZiskRun {
     #[clap(long, short = 'm')]
     metrics: bool,
 
+    #[clap(short = 'f', long)]
+    riscof: bool,
+
     #[clap(last = true)]
     args: Vec<String>,
 }
@@ -78,6 +81,9 @@ impl ZiskRun {
                     return Err(anyhow!("Input file does not exist at path: {}", path.display()));
                 }
                 input_command = format!("-i {}", input);
+            }
+            if self.riscof {
+                extra_command += " -f ";
             }
             runner_command = format!("ziskemu {input_command} {extra_command} -e");
         } else {

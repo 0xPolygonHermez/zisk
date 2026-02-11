@@ -30,5 +30,8 @@ fn main() {
 
     let output = Output { hash, iterations: n, magic_number: 0xDEADBEEF };
 
+    println!("Computed hash: {:02x?}", output.hash);
+    println!("Iterations: {}", output.iterations);
+
     ziskos::io::commit(&output);
 }

@@ -3,8 +3,8 @@ use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use proofman::{verify_snark_proof, SnarkProof};
-use proofman_common::initialize_logger;
 use std::path::PathBuf;
+use zisk_sdk::setup_logger;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -26,7 +26,7 @@ impl ZiskVerifySnark {
         println!("{} ZiskVerifySnark", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
-        initialize_logger(self.verbose.into(), None);
+        setup_logger(self.verbose.into());
 
         let proof = SnarkProof::load(&self.proof).map_err(|e| {
             anyhow::anyhow!("Failed to load SnarkProof from file {}: {}", self.proof, e)

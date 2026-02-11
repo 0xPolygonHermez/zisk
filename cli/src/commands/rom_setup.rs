@@ -5,13 +5,12 @@ use std::path::PathBuf;
 use crate::{commands::get_proving_key, ux::print_banner};
 use colored::Colorize;
 use fields::Goldilocks;
-use proofman_common::{
-    initialize_logger, MpiCtx, ParamsGPU, ProofCtx, ProofType, SetupCtx, SetupsVadcop,
-};
+use proofman_common::{MpiCtx, ParamsGPU, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
 use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
 use std::sync::Arc;
 use zisk_common::ElfBinaryFromFile;
+use zisk_sdk::setup_logger;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -43,7 +42,7 @@ pub struct ZiskRomSetup {
 
 impl ZiskRomSetup {
     pub fn run(&self) -> Result<()> {
-        initialize_logger(proofman_common::VerboseMode::Info, None);
+        setup_logger(self.verbose.into());
 
         tracing::info!(
             "{}",

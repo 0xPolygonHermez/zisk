@@ -18,7 +18,6 @@ zisk-pil = { workspace = true }
 mem-planner-cpp = { workspace = true }
 mem-common = { workspace = true }
 
-proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
@@ -34,11 +33,8 @@ num-traits = "0.2"
 
 [features]
 default = []
-gpu = ["proofman-common/gpu", "packed"]
-packed = ["proofman-common/packed"]
-no_lib_link = ["proofman-common/no_lib_link"]
-diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
-disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
+gpu = ["packed"]
+packed = []
 debug_mem = []
 debug_mem_align = []
 save_mem_bus_data = []

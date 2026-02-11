@@ -16,8 +16,8 @@ zisk-common = { workspace = true }
 
 [features]
 default = []
-packed = ["zisk-sdk/packed"]
-gpu = ["zisk-sdk/gpu", "packed"]
+packed = []
+gpu = ["zisk-sdk/gpu"]
 
 [[bin]]
 name = "prove"
@@ -38,3 +38,7 @@ path = "bin/compressed.rs"
 [[bin]]
 name = "verify-constraints"
 path = "bin/verify-constraints.rs"
+
+[[bin]]
+name = "ziskemu"
+path = "bin/ziskemu.rs"
