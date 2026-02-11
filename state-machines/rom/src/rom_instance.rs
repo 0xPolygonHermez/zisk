@@ -15,6 +15,7 @@ use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::sync::Mutex;
+use zisk_common::StatsType;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
     InstanceType, Metrics, PayloadType, ROM_BUS_ID,
@@ -198,6 +199,10 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
     /// An `InstanceType` representing the type of this instance (`InstanceType::Instance`).
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn stats_type(&self) -> StatsType {
+        StatsType::Memory
     }
 
     /// Builds an input collector for the instance.

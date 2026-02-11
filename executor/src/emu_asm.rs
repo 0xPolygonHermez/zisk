@@ -17,7 +17,6 @@ use proofman_common::ProofCtx;
 use sm_rom::RomSM;
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, ChunkId, EmuTrace, ExecutorStatsHandle, StatsScope,
-    ZiskExecutionResult,
 };
 use zisk_core::{ZiskRom, MAX_INPUT_SIZE};
 use ziskemu::ZiskEmulator;
@@ -109,7 +108,7 @@ impl EmulatorAsm {
     /// * `DeviceMetricsList` - Flat device metrics collected during execution.
     /// * `NestedDeviceMetricsList` - Hierarchical device metrics collected during execution.
     /// * `Option<JoinHandle<AsmRunnerMO>>` - Optional join handle for the memory-only ASM runner.
-    /// * `ZiskExecutionResult` - The result of executing the ZisK ROM.
+    /// * `u64` - Total number of steps.
     #[allow(clippy::type_complexity)]
     pub fn execute<F: PrimeField64>(
         &self,
@@ -123,7 +122,7 @@ impl EmulatorAsm {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
-        ZiskExecutionResult,
+        u64,
     ) {
         stats_begin!(stats, _caller_stats_scope, _exec_scope, "EXECUTE_WITH_ASSEMBLY", 0);
 
@@ -186,8 +185,6 @@ impl EmulatorAsm {
         // Store execute steps
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
 
-        let execution_result = ZiskExecutionResult::new(steps);
-
         // If the world rank is 0, wait for the ROM Histogram thread to finish and set the handler
         if has_rom_sm {
             self.rom_sm.as_ref().unwrap().set_asm_runner_handler(
@@ -197,7 +194,7 @@ impl EmulatorAsm {
 
         stats_end!(stats, &_exec_scope);
 
-        (min_traces, main_count, secn_count, Some(handle_mo), execution_result)
+        (min_traces, main_count, secn_count, Some(handle_mo), steps)
     }
 
     fn create_shmem_writer(&self, service: &asm_runner::AsmService) -> SharedMemoryWriter {
@@ -319,7 +316,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
-        ZiskExecutionResult,
+        u64,
     ) {
         self.execute(stdin, pctx, sm_bundle, stats, caller_stats_scope)
     }

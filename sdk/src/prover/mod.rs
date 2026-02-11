@@ -22,7 +22,7 @@ use std::{
 use zisk_common::ElfBinaryLike;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ZiskExecutionResult,
+    ExecutorStatsHandle, StatsCostPerType, ZiskExecutionResult,
 };
 
 pub struct ZiskExecuteResult {
@@ -46,12 +46,16 @@ impl ZiskExecuteResult {
         self.publics.read()
     }
 
-    pub fn get_execution_steps(&self) -> &u64 {
-        &self.execution.steps
+    pub fn get_execution_steps(&self) -> u64 {
+        self.execution.steps
     }
 
-    pub fn get_execution_cost(&self) -> &u64 {
-        &self.execution.cost
+    pub fn get_execution_total_cost(&self) -> u64 {
+        self.execution.cost_per_type.total_cost()
+    }
+
+    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
+        &self.execution.cost_per_type
     }
 
     pub fn get_duration(&self) -> Duration {
@@ -86,12 +90,16 @@ impl ZiskVerifyConstraintsResult {
         self.publics.read()
     }
 
-    pub fn get_execution_steps(&self) -> &u64 {
-        &self.execution.steps
+    pub fn get_execution_steps(&self) -> u64 {
+        self.execution.steps
     }
 
-    pub fn get_execution_cost(&self) -> &u64 {
-        &self.execution.cost
+    pub fn get_execution_total_cost(&self) -> u64 {
+        self.execution.cost_per_type.total_cost()
+    }
+
+    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
+        &self.execution.cost_per_type
     }
 
     pub fn get_duration(&self) -> Duration {
@@ -612,12 +620,16 @@ impl ZiskProveResult {
         self.duration
     }
 
-    pub fn get_execution_steps(&self) -> &u64 {
-        &self.execution.steps
+    pub fn get_execution_steps(&self) -> u64 {
+        self.execution.steps
     }
 
-    pub fn get_execution_cost(&self) -> &u64 {
-        &self.execution.cost
+    pub fn get_execution_total_cost(&self) -> u64 {
+        self.execution.cost_per_type.total_cost()
+    }
+
+    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
+        &self.execution.cost_per_type
     }
 
     pub fn get_proof_id(&self) -> Option<&String> {

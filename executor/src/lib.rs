@@ -27,7 +27,7 @@ use asm_runner::AsmRunnerMO;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::{collections::HashMap, sync::Mutex, thread::JoinHandle};
-use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope, ZiskExecutionResult};
+use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
 
 /// Trait for unified execution across different emulator backends
 pub trait Emulator<F: PrimeField64>: Send + Sync {
@@ -44,7 +44,7 @@ pub trait Emulator<F: PrimeField64>: Send + Sync {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
-        ZiskExecutionResult,
+        u64,
     );
 }
 
@@ -74,7 +74,7 @@ impl<F: PrimeField64> Emulator<F> for EmulatorKind {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
-        ZiskExecutionResult,
+        u64,
     ) {
         match self {
             Self::Asm(e) => e.execute(stdin, pctx, sm_bundle, stats, caller_stats_scope),

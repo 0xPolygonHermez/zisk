@@ -9,6 +9,7 @@ use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
+use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
     PayloadType,
@@ -133,6 +134,10 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
     /// An `InstanceType` representing the type of this instance (`InstanceType::Instance`).
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn stats_type(&self) -> StatsType {
+        StatsType::Opcodes
     }
 
     /// Builds an input collector for the instance.

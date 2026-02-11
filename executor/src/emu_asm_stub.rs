@@ -9,7 +9,7 @@ use asm_runner::AsmRunnerMO;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use sm_rom::RomSM;
-use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope, ZiskExecutionResult};
+use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
 
 pub struct EmulatorAsm {}
@@ -41,7 +41,7 @@ impl EmulatorAsm {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
-        ZiskExecutionResult,
+        u64,
     ) {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }

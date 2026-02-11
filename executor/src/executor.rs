@@ -32,11 +32,12 @@ use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{
     stats_begin, stats_end, BusDevice, BusDeviceMetrics, CheckPoint, ChunkId, EmuTrace,
-    ExecutorStatsHandle, Instance, InstanceCtx, InstanceType, Plan, Stats, ZiskExecutionResult,
+    ExecutorStatsHandle, Instance, InstanceCtx, InstanceType, Plan, Stats, StatsType,
+    ZiskExecutionResult,
 };
 use zisk_pil::{
     ZiskPublicValues, INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+    SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 use std::time::Instant;
@@ -47,6 +48,7 @@ use std::{
 
 use crossbeam::atomic::AtomicCell;
 
+use zisk_common::StatsCostPerType;
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
@@ -175,10 +177,23 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     fn assign_main_instances(
         &self,
         pctx: &ProofCtx<F>,
+        sctx: &SetupCtx<F>,
         global_ids: &RwLock<Vec<usize>>,
         main_planning: Vec<Plan>,
-    ) {
+    ) -> u64 {
         let mut main_instances = self.main_instances.write().unwrap();
+
+        let setup_main = sctx.get_setup(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).unwrap();
+        let n_bits = setup_main.stark_info.stark_struct.n_bits;
+        let total_cols: u64 = setup_main
+            .stark_info
+            .map_sections_n
+            .iter()
+            .filter(|(key, _)| *key != "const")
+            .map(|(_, value)| *value)
+            .sum();
+        let cost = (1 << n_bits) * total_cols;
+        let total_cost = cost * main_planning.len() as u64;
 
         for mut plan in main_planning {
             let global_id = pctx
@@ -190,6 +205,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 .entry(global_id)
                 .or_insert_with(|| self.create_main_instance(plan, global_id));
         }
+
+        total_cost
     }
 
     /// Creates main state machine instance based on a main planning.
@@ -677,7 +694,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     fn execute(
         &self,
         pctx: Arc<ProofCtx<F>>,
-        _sctx: Arc<SetupCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
         global_ids: &RwLock<Vec<usize>>,
     ) -> ProofmanResult<()> {
         self.reset();
@@ -697,13 +714,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 
-        let (min_traces, main_count, mut secn_count, handle_mo, execution_result) =
+        let (min_traces, main_count, mut secn_count, handle_mo, steps) =
             self.emulator.execute(&self.stdin, &pctx, &self.sm_bundle, &self.stats, &_exec_scope);
 
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
-
-        // Store the execution result
-        *self.execution_result.lock().unwrap() = execution_result;
 
         // Plan the main and secondary instances using the counted metrics
         stats_begin!(self.stats, &_exec_scope, _main_plan_scope, "MAIN_PLAN", 0);
@@ -712,7 +726,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         let (main_planning, public_values) =
             MainPlanner::plan::<F>(&min_traces, main_count, self.chunk_size);
         *self.min_traces.write().unwrap() = Some(min_traces);
-        self.assign_main_instances(&pctx, global_ids, main_planning);
+        let cost_main = self.assign_main_instances(&pctx, &sctx, global_ids, main_planning);
 
         stats_end!(self.stats, &_main_plan_scope);
         stats_begin!(self.stats, &_exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
@@ -771,12 +785,16 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Update internal state with the computed minimal traces and planning.
         *self.secn_planning.write().unwrap() = secn_planning;
 
+        let mut cost_per_type = StatsCostPerType::default();
+        cost_per_type.add_cost(StatsType::Main, cost_main);
+
         let mut secn_instances = self.secn_instances.write().unwrap();
         for global_id in &secn_global_ids_vec {
             secn_instances
                 .entry(*global_id)
                 .or_insert_with(|| self.create_secn_instance(*global_id));
             secn_instances[global_id].reset();
+            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(*global_id)?;
             if secn_instances[global_id].instance_type() == InstanceType::Instance {
                 let checkpoint = secn_instances[global_id].check_point();
                 let chunks = match checkpoint {
@@ -786,13 +804,23 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                         chunk_ids.iter().map(|id| id.as_usize()).collect()
                     }
                 };
-                let (_, air_id) =
-                    pctx.dctx_get_instance_info(*global_id).expect("Failed to get instance info");
                 let mem_global_id = air_id == MEM_AIR_IDS[0]
                     || air_id == ROM_DATA_AIR_IDS[0]
                     || air_id == INPUT_DATA_AIR_IDS[0];
                 pctx.dctx_set_chunks(*global_id, chunks, mem_global_id);
             }
+
+            let setup = sctx.get_setup(airgroup_id, air_id)?;
+            let n_bits = setup.stark_info.stark_struct.n_bits;
+            let total_cols: u64 = setup
+                .stark_info
+                .map_sections_n
+                .iter()
+                .filter(|(key, _)| *key != "const")
+                .map(|(_, value)| *value)
+                .sum();
+            let cost = (1 << n_bits) * total_cols;
+            cost_per_type.add_cost(secn_instances[global_id].stats_type(), cost);
         }
 
         if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
@@ -806,6 +834,26 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 
         // #[cfg(feature = "stats")]
         // self.stats.store_stats();
+
+        let tables_air_ids =
+            [SPECIFIED_RANGES_AIR_IDS[0], VIRTUAL_TABLE_0_AIR_IDS[0], VIRTUAL_TABLE_1_AIR_IDS[0]];
+        for air_id in tables_air_ids {
+            let setup = sctx.get_setup(ZISK_AIRGROUP_ID, air_id)?;
+            let n_bits = setup.stark_info.stark_struct.n_bits;
+            let total_cols: u64 = setup
+                .stark_info
+                .map_sections_n
+                .iter()
+                .filter(|(key, _)| *key != "const")
+                .map(|(_, value)| *value)
+                .sum();
+            let cost = (1 << n_bits) * total_cols;
+            cost_per_type.add_cost(StatsType::Tables, cost);
+        }
+
+        // Store the execution result
+        let execution_result = ZiskExecutionResult::new(steps, cost_per_type);
+        *self.execution_result.lock().unwrap() = execution_result;
 
         Ok(())
     }
