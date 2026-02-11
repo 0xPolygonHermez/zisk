@@ -180,10 +180,13 @@ impl HintBuffer {
 
                         hint_pos += chunk_size;
                     }
+                    // Reset write buffer
+                    buf_start = chunk_pos;
+                    buf_end = chunk_pos;
+                } else {
+                    // Accumulate current hint into write buffer
+                    buf_end += hint_len;
                 }
-
-                // Accumulate current hint into write buffer
-                buf_end += hint_len;
                 // Advance to next hint
                 chunk_pos += hint_len;
             }
