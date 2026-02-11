@@ -471,7 +471,6 @@ impl PrecompileHint {
         idx: usize,
         allow_custom: bool,
         partial: Option<PartialPrecompileHint>,
-        max_buffer_size: usize,
     ) -> Result<(PrecHintParseResult, usize)> {
         // If we have a partial hint, continue accumulating from it
         if let Some(partial_hint) = partial {
@@ -521,15 +520,6 @@ impl PrecompileHint {
         // Extract length from lower 32 bits
         let length = header & 0xFFFFFFFF;
         let length_bytes = length as usize;
-
-        // Validate against max buffer size
-        if length_bytes > max_buffer_size {
-            return Err(anyhow::anyhow!(
-                "Hint data size {} bytes exceeds max buffer size {} bytes",
-                length_bytes,
-                max_buffer_size
-            ));
-        }
 
         // Calculate how many u64s are needed to hold length
         let num_u64s = length.div_ceil(8) as usize;

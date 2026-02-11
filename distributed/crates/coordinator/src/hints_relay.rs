@@ -24,9 +24,6 @@ pub struct PrecompileHintsRelay {
 
     /// Buffer for incomplete hint data between batches
     pending_partial: Mutex<Option<PartialPrecompileHint>>,
-
-    /// Maximum allowed buffer size in bytes (to prevent unbounded growth)
-    max_buffer_size: usize,
 }
 
 impl PrecompileHintsRelay {
@@ -49,12 +46,8 @@ impl PrecompileHintsRelay {
             dispatcher,
             runtime_handle: tokio::runtime::Handle::current(),
             pending_partial: Mutex::new(None),
-            max_buffer_size: Self::DEFAULT_MAX_BUFFER_SIZE,
         }
     }
-
-    /// Default maximum buffer size: 128KB in bytes
-    const DEFAULT_MAX_BUFFER_SIZE: usize = 128 * 1024;
 
     pub fn process_hints(&self, hints: &[u64], first_batch: bool) -> Result<bool> {
         let mut has_ctrl_start = false;
@@ -66,13 +59,9 @@ impl PrecompileHintsRelay {
         // Parse hints and dispatch to pool
         let mut idx = 0;
         while idx < hints.len() {
-            let (parsed_hint, consumed) = PrecompileHint::from_u64_slice(
-                hints,
-                idx,
-                true,
-                pending_partial.take(),
-                self.max_buffer_size,
-            )?;
+            let (parsed_hint, consumed) =
+                PrecompileHint::from_u64_slice(hints, idx, true, pending_partial.take())?;
+
             let hint = match parsed_hint {
                 PrecHintParseResult::Complete(hint) => hint,
                 PrecHintParseResult::Partial(partial) => {

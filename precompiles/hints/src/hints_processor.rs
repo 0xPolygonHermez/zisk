@@ -82,7 +82,6 @@ pub struct HintsProcessorBuilder {
     num_threads: usize,
     enable_stats: bool,
     custom_handlers: HashMap<u32, CustomHintHandler>,
-    max_buffer_size: usize,
 }
 
 impl HintsProcessorBuilder {
@@ -123,24 +122,6 @@ impl HintsProcessorBuilder {
         self
     }
 
-    /// Sets the maximum buffer size for partial hint accumulation.
-    ///
-    /// When receiving chunked data, incomplete hints are buffered until
-    /// the next chunk arrives. This limit prevents unbounded memory growth
-    /// from malformed headers declaring huge data lengths.
-    ///
-    /// # Arguments
-    ///
-    /// * `size` - Maximum buffer size in number of u64 elements
-    ///
-    /// # Default
-    ///
-    /// 128KB (16,384 u64 elements)
-    pub fn max_buffer_size(mut self, size: usize) -> Self {
-        self.max_buffer_size = size;
-        self
-    }
-
     /// Builds the [`HintsProcessor`] with the configured settings.
     ///
     /// # Returns
@@ -174,7 +155,6 @@ impl HintsProcessorBuilder {
             stream_active: AtomicBool::new(false),
             instant: Mutex::new(None),
             pending_partial: Mutex::new(None),
-            max_buffer_size: self.max_buffer_size,
         })
     }
 }
@@ -214,17 +194,11 @@ pub struct HintsProcessor {
 
     /// Buffer for incomplete hint data between batches
     pending_partial: Mutex<Option<PartialPrecompileHint>>,
-
-    /// Maximum allowed buffer size in bytes (to prevent unbounded growth)
-    max_buffer_size: usize,
 }
 
 impl HintsProcessor {
     /// Default number of worker threads in the thread pool.
     const DEFAULT_NUM_THREADS: usize = 32;
-
-    /// Default maximum buffer size: 128KB in bytes
-    const DEFAULT_MAX_BUFFER_SIZE: usize = 128 * 1024;
 
     /// Creates a builder for configuring a [`HintsProcessor`].
     ///
@@ -246,7 +220,6 @@ impl HintsProcessor {
             num_threads: Self::DEFAULT_NUM_THREADS,
             enable_stats: false,
             custom_handlers: HashMap::new(),
-            max_buffer_size: Self::DEFAULT_MAX_BUFFER_SIZE,
         }
     }
 
@@ -290,13 +263,9 @@ impl HintsProcessor {
             if self.state.error_flag.load(Ordering::Acquire) {
                 return Err(anyhow::anyhow!("Processing stopped due to previous error"));
             }
-            let (parsed_hint, consumed) = PrecompileHint::from_u64_slice(
-                hints,
-                idx,
-                true,
-                pending_partial.take(),
-                self.max_buffer_size,
-            )?;
+            let (parsed_hint, consumed) =
+                PrecompileHint::from_u64_slice(hints, idx, true, pending_partial.take())?;
+
             let hint = match parsed_hint {
                 PrecHintParseResult::Complete(hint) => hint,
                 PrecHintParseResult::Partial(partial) => {
