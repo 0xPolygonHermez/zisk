@@ -376,24 +376,8 @@ impl HintsProcessor {
                     }
 
                     let num_hints = self.num_hint.load(Ordering::Relaxed);
-                    let elapsed = self.instant.lock().as_ref().unwrap().unwrap().elapsed();
-                    let rate = num_hints as f64 / elapsed.as_secs_f64();
 
-                    let (value, unit) = if rate >= 1_000_000.0 {
-                        (rate / 1_000_000.0, "MHz")
-                    } else if rate >= 1_000.0 {
-                        (rate / 1_000.0, "kHz")
-                    } else {
-                        (rate, "Hz")
-                    };
-
-                    debug!(
-                        "Processed {} hints in {:.0?} ({}{})",
-                        num_hints,
-                        elapsed,
-                        value.round(),
-                        unit
-                    );
+                    info!("··· Processed {} hints", num_hints);
 
                     break;
                 }
@@ -450,12 +434,12 @@ impl HintsProcessor {
 
         if has_ctrl_end {
             if let Some(stats) = &self.stats {
-                info!("Hints stats:");
+                debug!("Hints stats:");
                 let stats = stats.lock().unwrap();
                 let mut sorted_stats: Vec<_> = stats.iter().collect();
                 sorted_stats.sort_by_key(|(&hint_code, _)| hint_code.to_u32());
                 for (hint_code, count) in sorted_stats {
-                    info!("    {}: {}", hint_code, count);
+                    debug!("    {}: {}", hint_code, count);
                 }
             }
         }
