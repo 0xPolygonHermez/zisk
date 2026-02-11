@@ -374,11 +374,11 @@ impl PartialPrecompileHint {
     ///
     /// # Returns
     ///
-    /// * `Ok((PrecHintParseResult, usize))` - The result and number of u64s consumed from the slice
+    /// * `(PrecHintParseResult, usize)` - The result and number of u64s consumed from the slice
     /// * `PrecHintParseResult::Complete` - If enough data was accumulated to complete the hint
     /// * `PrecHintParseResult::Partial` - If more data is still needed
     #[inline(always)]
-    pub fn continue_from_slice(mut self, slice: &[u64]) -> (PrecHintParseResult, usize) {
+    pub fn continue_from_slice(mut self, slice: &[u64]) -> (PrecompileHintParseResult, usize) {
         let available = slice.len();
 
         if available >= self.remaining_u64s {
@@ -387,7 +387,7 @@ impl PartialPrecompileHint {
             self.data.extend_from_slice(&slice[..consumed]);
 
             (
-                PrecHintParseResult::Complete(PrecompileHint {
+                PrecompileHintParseResult::Complete(PrecompileHint {
                     hint_code: self.hint_code,
                     is_passthrough: self.is_passthrough,
                     data: self.data,
@@ -400,14 +400,14 @@ impl PartialPrecompileHint {
             self.data.extend_from_slice(slice);
             self.remaining_u64s -= available;
 
-            (PrecHintParseResult::Partial(self), available)
+            (PrecompileHintParseResult::Partial(self), available)
         }
     }
 }
 
 /// Result of parsing a hint from a u64 slice.
 #[derive(Debug)]
-pub enum PrecHintParseResult {
+pub enum PrecompileHintParseResult {
     /// A complete hint was successfully parsed.
     Complete(PrecompileHint),
     /// A partial hint was received; more data is needed.
@@ -471,7 +471,7 @@ impl PrecompileHint {
         idx: usize,
         allow_custom: bool,
         partial: Option<PartialPrecompileHint>,
-    ) -> Result<(PrecHintParseResult, usize)> {
+    ) -> Result<(PrecompileHintParseResult, usize)> {
         // If we have a partial hint, continue accumulating from it
         if let Some(partial_hint) = partial {
             let available = slice.len() - idx;
@@ -483,7 +483,7 @@ impl PrecompileHint {
                 data.extend_from_slice(&slice[idx..idx + consumed]);
 
                 return Ok((
-                    PrecHintParseResult::Complete(PrecompileHint {
+                    PrecompileHintParseResult::Complete(PrecompileHint {
                         hint_code: partial_hint.hint_code,
                         is_passthrough: partial_hint.is_passthrough,
                         data,
@@ -498,7 +498,7 @@ impl PrecompileHint {
                 let remaining_u64s = partial_hint.remaining_u64s - available;
 
                 return Ok((
-                    PrecHintParseResult::Partial(PartialPrecompileHint {
+                    PrecompileHintParseResult::Partial(PartialPrecompileHint {
                         hint_code: partial_hint.hint_code,
                         is_passthrough: partial_hint.is_passthrough,
                         data,
@@ -548,7 +548,7 @@ impl PrecompileHint {
             let consumed = 1 + available_u64s;
 
             return Ok((
-                PrecHintParseResult::Partial(PartialPrecompileHint {
+                PrecompileHintParseResult::Partial(PartialPrecompileHint {
                     hint_code,
                     is_passthrough,
                     data,
@@ -565,7 +565,7 @@ impl PrecompileHint {
         let consumed = 1 + num_u64s;
 
         Ok((
-            PrecHintParseResult::Complete(PrecompileHint {
+            PrecompileHintParseResult::Complete(PrecompileHint {
                 hint_code,
                 is_passthrough,
                 data,

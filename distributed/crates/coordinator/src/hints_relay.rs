@@ -6,8 +6,8 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use zisk_common::{
-    io::StreamProcessor, CtrlHint, HintCode, PartialPrecompileHint, PrecHintParseResult,
-    PrecompileHint,
+    io::StreamProcessor, CtrlHint, HintCode, PartialPrecompileHint, PrecompileHint,
+    PrecompileHintParseResult,
 };
 use zisk_distributed_common::StreamMessageKind;
 
@@ -66,8 +66,8 @@ impl PrecompileHintsRelay {
                 PrecompileHint::from_u64_slice(hints, idx, true, pending_partial.take())?;
 
             let hint = match parsed_hint {
-                PrecHintParseResult::Complete(hint) => hint,
-                PrecHintParseResult::Partial(partial) => {
+                PrecompileHintParseResult::Complete(hint) => hint,
+                PrecompileHintParseResult::Partial(partial) => {
                     // Store partial for next batch and exit loop
                     *self.pending_partial.lock().unwrap() = Some(partial);
                     break;
@@ -102,7 +102,7 @@ impl PrecompileHintsRelay {
             }
             has_ctrl_end = hint.hint_code == HintCode::Ctrl(CtrlHint::End);
 
-            idx += length + 1;
+            idx += length;
         }
 
         if has_ctrl_start {
