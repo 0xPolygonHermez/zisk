@@ -24,9 +24,6 @@ pub struct PrecompileHintsRelay {
 
     /// Buffer for incomplete hint data between batches
     pending_partial: Mutex<Option<PartialPrecompileHint>>,
-
-    /// Maximum allowed buffer size in bytes (to prevent unbounded growth)
-    max_buffer_size: usize,
 }
 
 impl PrecompileHintsRelay {
@@ -49,7 +46,6 @@ impl PrecompileHintsRelay {
             dispatcher,
             runtime_handle: tokio::runtime::Handle::current(),
             pending_partial: Mutex::new(None),
-            max_buffer_size: Self::DEFAULT_MAX_BUFFER_SIZE,
         }
     }
 
@@ -66,13 +62,9 @@ impl PrecompileHintsRelay {
         // Parse hints and dispatch to pool
         let mut idx = 0;
         while idx < hints.len() {
-            let (parsed_hint, consumed) = PrecompileHint::from_u64_slice(
-                hints,
-                idx,
-                true,
-                pending_partial.take(),
-                self.max_buffer_size,
-            )?;
+            let (parsed_hint, consumed) =
+                PrecompileHint::from_u64_slice(hints, idx, true, pending_partial.take())?;
+
             let hint = match parsed_hint {
                 PrecHintParseResult::Complete(hint) => hint,
                 PrecHintParseResult::Partial(partial) => {
@@ -154,10 +146,20 @@ impl PrecompileHintsRelay {
 
         self.runtime_handle.block_on((self.dispatcher)(seq_num, StreamMessageKind::End, vec![]));
     }
+
+    /// Reset internal state for clean execution
+    fn reset_state(&self) {
+        self.sequence_number.store(0, Ordering::SeqCst);
+        *self.pending_partial.lock().unwrap() = None;
+    }
 }
 
 impl StreamProcessor for PrecompileHintsRelay {
     fn process(&self, data: &[u64], first_batch: bool) -> Result<bool> {
         self.process_hints(data, first_batch)
+    }
+
+    fn reset(&self) {
+        self.reset_state();
     }
 }

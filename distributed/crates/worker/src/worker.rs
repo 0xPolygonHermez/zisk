@@ -10,7 +10,7 @@ use std::fs;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
-use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::io::{StreamProcessor, StreamSource, ZiskStdin};
 use zisk_common::reinterpret_vec;
 use zisk_common::ElfBinaryFromFile;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
@@ -564,8 +564,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 prover.set_hints_stream(hints_stream)?;
             }
             HintsSourceDto::HintsStream(_hints_uri) => {
-                // let hints_stream = StreamSource::from_uri(hints_uri.into())?;
-                // prover.set_hints_stream(hints_stream)?;
+                // For HintsStream, the worker will receive hint data via stream_data messages
+                // The hints will be processed by the hints_processor in process_stream_data
+                // No need to set hints_stream on prover for this case
             }
             HintsSourceDto::HintsNull => {
                 // No hints to set
@@ -620,6 +621,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 }
             }
 
+            // Reset hints processor state for the new stream/job
+            // This is crucial for consecutive proofs to work correctly
+            if let Some(ref mut hints_processor) = self.hints_processor {
+                hints_processor.reset();
+            }
+
             return Ok(());
         } else if stream_type == StreamMessageKind::End {
             // Ensure buffer exists
@@ -630,6 +637,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     job_id,
                 ));
             }
+
+            // Clean up the stream buffer for this job
+            self.stream_buffers.remove(&job_id);
 
             return Ok(());
         }

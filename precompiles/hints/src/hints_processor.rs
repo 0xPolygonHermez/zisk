@@ -174,7 +174,6 @@ impl HintsProcessorBuilder {
             stream_active: AtomicBool::new(false),
             instant: Mutex::new(None),
             pending_partial: Mutex::new(None),
-            max_buffer_size: self.max_buffer_size,
         })
     }
 }
@@ -214,9 +213,6 @@ pub struct HintsProcessor {
 
     /// Buffer for incomplete hint data between batches
     pending_partial: Mutex<Option<PartialPrecompileHint>>,
-
-    /// Maximum allowed buffer size in bytes (to prevent unbounded growth)
-    max_buffer_size: usize,
 }
 
 impl HintsProcessor {
@@ -290,13 +286,9 @@ impl HintsProcessor {
             if self.state.error_flag.load(Ordering::Acquire) {
                 return Err(anyhow::anyhow!("Processing stopped due to previous error"));
             }
-            let (parsed_hint, consumed) = PrecompileHint::from_u64_slice(
-                hints,
-                idx,
-                true,
-                pending_partial.take(),
-                self.max_buffer_size,
-            )?;
+            let (parsed_hint, consumed) =
+                PrecompileHint::from_u64_slice(hints, idx, true, pending_partial.take())?;
+
             let hint = match parsed_hint {
                 PrecHintParseResult::Complete(hint) => hint,
                 PrecHintParseResult::Partial(partial) => {
@@ -733,6 +725,7 @@ impl HintsProcessor {
     }
 
     fn reset(&self) {
+        self.pending_partial.lock().unwrap().take();
         self.hints_sink.reset();
     }
 }
