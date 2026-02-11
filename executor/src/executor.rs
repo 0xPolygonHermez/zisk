@@ -677,6 +677,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     fn execute(
         &self,
         pctx: Arc<ProofCtx<F>>,
+        _sctx: Arc<SetupCtx<F>>,
         global_ids: &RwLock<Vec<usize>>,
     ) -> ProofmanResult<()> {
         self.reset();
