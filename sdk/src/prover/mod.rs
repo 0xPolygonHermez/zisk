@@ -50,6 +50,10 @@ impl ZiskExecuteResult {
         &self.execution.steps
     }
 
+    pub fn get_execution_cost(&self) -> &u64 {
+        &self.execution.cost
+    }
+
     pub fn get_duration(&self) -> Duration {
         self.duration
     }
@@ -84,6 +88,10 @@ impl ZiskVerifyConstraintsResult {
 
     pub fn get_execution_steps(&self) -> &u64 {
         &self.execution.steps
+    }
+
+    pub fn get_execution_cost(&self) -> &u64 {
+        &self.execution.cost
     }
 
     pub fn get_duration(&self) -> Duration {
@@ -606,6 +614,10 @@ impl ZiskProveResult {
 
     pub fn get_execution_steps(&self) -> &u64 {
         &self.execution.steps
+    }
+
+    pub fn get_execution_cost(&self) -> &u64 {
+        &self.execution.cost
     }
 
     pub fn get_proof_id(&self) -> Option<&String> {

@@ -115,9 +115,18 @@ impl ProverBackend {
             anyhow::anyhow!("Witness_lib is not initialized. Please initialize it before use.")
         })?;
 
-        let (result, stats) = witness_lib.execution_result().ok_or_else(|| {
+        let (mut result, stats) = witness_lib.execution_result().ok_or_else(|| {
             anyhow::anyhow!("Failed to get execution result from emulator prover")
         })?;
+
+        let proofman = self.proofman.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
+        })?;
+
+        let cost = proofman
+            .get_execution_cost()
+            .map_err(|e| anyhow::anyhow!("Failed to get execution cost from proofman: {}", e))?;
+        result.cost = cost;
 
         Ok((result, stats))
     }
@@ -146,9 +155,14 @@ impl ProverBackend {
 
         let elapsed = start.elapsed();
 
-        let (result, _) = witness_lib.execution_result().ok_or_else(|| {
+        let (mut result, _) = witness_lib.execution_result().ok_or_else(|| {
             anyhow::anyhow!("Failed to get execution result from emulator prover")
         })?;
+
+        let cost = proofman
+            .get_execution_cost()
+            .map_err(|e| anyhow::anyhow!("Failed to get execution cost from proofman: {}", e))?;
+        result.cost = cost;
 
         let publics = proofman.get_publics();
 
@@ -237,9 +251,13 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
         let elapsed = start.elapsed();
 
-        let (result, stats) = witness_lib.execution_result().ok_or_else(|| {
+        let (mut result, stats) = witness_lib.execution_result().ok_or_else(|| {
             anyhow::anyhow!("Failed to get execution result from emulator prover")
         })?;
+        let cost = proofman
+            .get_execution_cost()
+            .map_err(|e| anyhow::anyhow!("Failed to get execution cost from proofman: {}", e))?;
+        result.cost = cost;
 
         stats_mark!(stats, 0, "END", 0);
 
@@ -300,9 +318,14 @@ impl ProverBackend {
 
         let elapsed = start.elapsed();
 
-        let (execution_result, stats) = witness_lib.execution_result().ok_or_else(|| {
+        let (mut execution_result, stats) = witness_lib.execution_result().ok_or_else(|| {
             anyhow::anyhow!("Failed to get execution result from emulator prover")
         })?;
+
+        let cost = proofman
+            .get_execution_cost()
+            .map_err(|e| anyhow::anyhow!("Failed to get execution cost from proofman: {}", e))?;
+        execution_result.cost = cost;
 
         stats_mark!(stats, 0, "END", 0);
 
@@ -364,9 +387,14 @@ impl ProverBackend {
             _ => (None, None),
         };
 
-        let (execution_result, stats) = witness_lib.execution_result().ok_or_else(|| {
+        let (mut execution_result, stats) = witness_lib.execution_result().ok_or_else(|| {
             anyhow::anyhow!("Failed to get execution result from emulator prover")
         })?;
+
+        let cost = proofman
+            .get_execution_cost()
+            .map_err(|e| anyhow::anyhow!("Failed to get execution cost from proofman: {}", e))?;
+        execution_result.cost = cost;
 
         // Store the stats in stats.json
         stats_mark!(stats, 0, "END", 0);

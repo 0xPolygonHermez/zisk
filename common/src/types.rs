@@ -71,11 +71,12 @@ impl fmt::Display for SegmentId {
 #[derive(Debug, Default, Clone)]
 pub struct ZiskExecutionResult {
     pub steps: u64,
+    pub cost: u64,
 }
 
 impl ZiskExecutionResult {
     pub fn new(executed_steps: u64) -> Self {
-        Self { steps: executed_steps }
+        Self { steps: executed_steps, cost: 0 }
     }
 }
 
