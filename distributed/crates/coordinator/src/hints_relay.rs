@@ -143,10 +143,20 @@ impl PrecompileHintsRelay {
 
         self.runtime_handle.block_on((self.dispatcher)(seq_num, StreamMessageKind::End, vec![]));
     }
+
+    /// Reset internal state for clean execution
+    fn reset_state(&self) {
+        self.sequence_number.store(0, Ordering::SeqCst);
+        *self.pending_partial.lock().unwrap() = None;
+    }
 }
 
 impl StreamProcessor for PrecompileHintsRelay {
     fn process(&self, data: &[u64], first_batch: bool) -> Result<bool> {
         self.process_hints(data, first_batch)
+    }
+
+    fn reset(&self) {
+        self.reset_state();
     }
 }

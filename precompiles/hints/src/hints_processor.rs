@@ -702,6 +702,7 @@ impl HintsProcessor {
     }
 
     fn reset(&self) {
+        self.pending_partial.lock().unwrap().take();
         self.hints_sink.reset();
     }
 }
