@@ -175,14 +175,12 @@ impl ProverBackend {
 
         witness_lib.set_stdin(stdin);
 
-        let world_rank = proofman.get_world_rank();
-        let local_rank = proofman.get_local_rank();
-        let n_processes = proofman.get_n_processes();
+        let rank_info = proofman.get_rank_info();
 
         let mut is_active = true;
 
         if let Some(mpi_node) = _mpi_node {
-            if local_rank != mpi_node as i32 {
+            if rank_info.local_rank != mpi_node as i32 {
                 is_active = false;
             }
         }
@@ -192,11 +190,11 @@ impl ProverBackend {
         if !is_active {
             println!(
                 "{}: {}",
-                format!("Rank {local_rank}").bright_yellow().bold(),
+                format!("Rank {}", rank_info.local_rank).bright_yellow().bold(),
                 "Inactive rank, skipping computation.".bright_yellow()
             );
 
-            return Ok((world_rank, n_processes, None));
+            return Ok((rank_info.world_rank, rank_info.n_processes, None));
         }
 
         proofman
@@ -211,7 +209,7 @@ impl ProverBackend {
                 anyhow::anyhow!("Failed to get execution result from emulator prover")
             })?;
 
-        Ok((world_rank, n_processes, Some(stats)))
+        Ok((rank_info.world_rank, rank_info.n_processes, Some(stats)))
     }
 
     pub(crate) fn verify_constraints_debug(

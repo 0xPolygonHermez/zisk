@@ -2,14 +2,14 @@ use crate::get_asm_paths;
 use crate::{
     check_paths_exist, ensure_custom_commits,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult, ZiskProgramVK,
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult, ZiskProgramVK,
     ZiskProof, ZiskProofWithPublicValues, ZiskProveResult, ZiskPublics,
     ZiskVerifyConstraintsResult,
 };
 use crate::{ProofMode, ProofOpts};
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
-use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, VerboseMode};
+use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, VerboseMode};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::DEFAULT_CACHE_PATH;
 use std::sync::OnceLock;
@@ -297,13 +297,12 @@ impl AsmCoreProver {
         )
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
-        let world_rank = proofman.get_world_rank();
-        let local_rank = proofman.get_local_rank();
+        let rank_info = proofman.get_rank_info();
 
         if logging_config.is_some() {
-            zisk_distributed_common::init(logging_config.as_ref(), Some(world_rank))?;
+            zisk_distributed_common::init(logging_config.as_ref(), Some(&rank_info))?;
         } else {
-            initialize_logger(verbose.into(), Some(world_rank));
+            initialize_logger(verbose.into(), Some(&rank_info));
         }
 
         proofman.set_barrier();
@@ -320,7 +319,7 @@ impl AsmCoreProver {
         Ok(Self {
             backend: core,
             asm_services: OnceLock::new(),
-            rank_info: RankInfo { world_rank, local_rank },
+            rank_info,
             verbose: verbose.into(),
             shared_tables,
             base_port,
@@ -335,7 +334,7 @@ impl AsmCoreProver {
         Ok(Self {
             backend: core_prover,
             asm_services: OnceLock::new(),
-            rank_info: RankInfo { world_rank: 0, local_rank: 0 },
+            rank_info: RankInfo { world_rank: 0, local_rank: 0, n_processes: 1 },
             verbose: VerboseMode::Info,
             shared_tables: false,
             base_port: None,

@@ -113,10 +113,7 @@ impl<F: PrimeField64> WitnessLib<F> {
     pub fn register_witness(&mut self, elf: &[u8], wcm: &WitnessManager<F>) -> ProofmanResult<()> {
         assert_eq!(self.asm_mt_path.is_some(), self.asm_rh_path.is_some());
 
-        let world_rank = wcm.get_world_rank();
-        let local_rank = wcm.get_local_rank();
-
-        proofman_common::initialize_logger(self.verbose_mode, Some(world_rank));
+        let rank_info = wcm.get_rank_info();
 
         // Step 1: Create an instance of the RISCV -> ZisK program converter
         let rv2zk = Riscv2zisk::new(elf);
@@ -209,8 +206,8 @@ impl<F: PrimeField64> WitnessLib<F> {
             debug!("Using ASM emulator");
             EmulatorKind::Asm(EmulatorAsm::new(
                 zisk_rom.clone(),
-                world_rank,
-                local_rank,
+                rank_info.world_rank,
+                rank_info.local_rank,
                 self.base_port,
                 self.unlock_mapped_memory,
                 self.chunk_size,
@@ -227,17 +224,21 @@ impl<F: PrimeField64> WitnessLib<F> {
             const USE_SHARED_MEMORY_HINTS: bool = true;
 
             let hints_processor = if USE_SHARED_MEMORY_HINTS {
-                let hints_shmem =
-                    HintsShmem::new(self.base_port, local_rank, self.unlock_mapped_memory)
-                        .expect("zisk_lib: Failed to create HintsShmem");
+                let hints_shmem = HintsShmem::new(
+                    self.base_port,
+                    rank_info.local_rank,
+                    self.unlock_mapped_memory,
+                )
+                .expect("zisk_lib: Failed to create HintsShmem");
 
                 HintsProcessor::builder(hints_shmem)
                     .enable_stats(self.verbose_mode != proofman_common::VerboseMode::Info)
                     .build()
                     .expect("zisk_lib: Failed to create PrecompileHintsProcessor")
             } else {
-                let hints_file = HintsFile::new(format!("hints_results_{}.bin", local_rank))
-                    .expect("zisk_lib: Failed to create HintsFile");
+                let hints_file =
+                    HintsFile::new(format!("hints_results_{}.bin", rank_info.local_rank))
+                        .expect("zisk_lib: Failed to create HintsFile");
 
                 HintsProcessor::builder(hints_file)
                     .enable_stats(self.verbose_mode != proofman_common::VerboseMode::Info)

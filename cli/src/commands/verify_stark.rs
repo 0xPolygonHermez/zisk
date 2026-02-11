@@ -1,10 +1,11 @@
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use proofman_common::initialize_logger;
 use std::path::PathBuf;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{get_proving_key, verify_zisk_proof_with_proving_key, ZiskProofWithPublicValues};
+use zisk_sdk::{
+    get_proving_key, setup_logger, verify_zisk_proof_with_proving_key, ZiskProofWithPublicValues,
+};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -23,7 +24,7 @@ pub struct ZiskVerify {
 
 impl ZiskVerify {
     pub fn run(&self) -> Result<()> {
-        initialize_logger(self.verbose.into(), None);
+        setup_logger(self.verbose.into());
 
         tracing::info!(
             "{}",

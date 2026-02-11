@@ -14,10 +14,7 @@ pub use verifier::*;
 pub use zisk_lib_loader::*;
 pub use ziskemu::*;
 
-pub struct RankInfo {
-    pub world_rank: i32,
-    pub local_rank: i32,
-}
+pub use proofman_common::VerboseMode;
 
 #[macro_export]
 macro_rules! include_elf {

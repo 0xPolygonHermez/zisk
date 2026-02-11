@@ -5,7 +5,10 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-use proofman_common::{json_to_debug_instances_map, DebugInfo, ProofCtx, ProofmanResult};
+use proofman_common::{
+    initialize_logger, json_to_debug_instances_map, DebugInfo, ProofCtx, ProofmanResult,
+    VerboseMode,
+};
 use rom_setup::{get_elf_data_hash, rom_merkle_setup};
 use zisk_common::ElfBinaryLike;
 
@@ -116,4 +119,8 @@ pub fn create_debug_info(
         Some(None) => Ok(DebugInfo::new_debug()),
         Some(Some(debug_value)) => json_to_debug_instances_map(proving_key, debug_value.clone()),
     }
+}
+
+pub fn setup_logger(verbose: VerboseMode) {
+    initialize_logger(verbose, None);
 }

@@ -4,7 +4,8 @@ use clap::Parser;
 use colored::Colorize;
 
 use anyhow::{Context, Result};
-use proofman_common::initialize_logger;
+use proofman_common::VerboseMode;
+use zisk_sdk::setup_logger;
 
 use crate::{commands::get_home_zisk_path, ux::print_banner};
 
@@ -15,7 +16,7 @@ pub struct ZiskClean;
 
 impl ZiskClean {
     pub fn run(&self) -> Result<()> {
-        initialize_logger(proofman_common::VerboseMode::Info, None);
+        setup_logger(VerboseMode::Info);
 
         print_banner();
         tracing::info!(
