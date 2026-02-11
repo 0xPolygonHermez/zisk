@@ -15,7 +15,6 @@ path = "src/mem_sim.rs"
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
-mem-planner-cpp = { workspace = true }
 mem-common = { workspace = true }
 
 proofman-common = { workspace = true }

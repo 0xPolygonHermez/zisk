@@ -18,12 +18,12 @@ rom-setup = { workspace = true }
 asm-runner = { workspace = true }
 colored = { workspace = true }
 tracing = { workspace = true }
-zstd = { workspace = true }
 zisk-distributed-common = { workspace = true }
 executor = { workspace = true }
 ziskemu = { workspace = true }
 zisk-core = { workspace = true }
 zisk-verifier = { workspace = true }
+zisk-build = { workspace = true }
 zisk-witness = { workspace = true }
 sha2 = { workspace = true }
 bincode = { workspace = true }
@@ -44,7 +44,11 @@ stats = []
 disable_distributed = [
     "proofman/disable_distributed",
     "proofman-common/disable_distributed",
+    "executor/disable_distributed",
+    "zisk-common/disable_distributed",
+    "zisk-build/disable_distributed",
 ]
+diagnostic = ["proofman-common/diagnostic"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }

@@ -10,7 +10,6 @@ categories = { workspace = true }
 [dependencies]
 sm-main = { workspace = true }
 sm-rom = { workspace = true }
-rom-setup = { workspace = true }
 zisk-pil = { workspace = true }
 ziskemu = { workspace = true }
 zisk-core = { workspace = true }
@@ -29,7 +28,6 @@ tracing = { workspace = true }
 itertools = { workspace = true }
 rayon = { workspace = true }
 pil-std-lib = { workspace = true }
-precompiles-hints = { workspace = true }
 anyhow = { workspace = true }
 crossbeam = "0.8.4"
 
@@ -52,7 +50,7 @@ named-sem = { workspace = true }
 
 [features]
 default = []
-disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
+disable_distributed = []
 gpu = ["proofman-common/gpu", "proofman/gpu", "packed"]
 packed = [
     "proofman-common/packed",

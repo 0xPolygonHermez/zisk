@@ -1,8 +1,8 @@
 use std::path::PathBuf;
-use zisk_common::io::{ZiskIO, ZiskStdin};
+use zisk_sdk::{ZiskIO, ZiskStdin, build_program};
 
 fn main() {
-    zisk_build::build_program("../guest");
+    build_program("../guest");
     let n = 1000u32;
     let stdin_save = ZiskStdin::new();
     stdin_save.write(&n);

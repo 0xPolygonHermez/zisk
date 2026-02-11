@@ -184,7 +184,6 @@ reqwest = { version = "0.12", features = [
     "json",
     "rustls-tls",
 ], default-features = false }
-zstd = "0.13"
 vergen-git2 = { version = "9", default-features = false, features = [
     "build",
 ] }

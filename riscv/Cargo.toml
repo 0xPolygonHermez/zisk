@@ -6,6 +6,3 @@ license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
-
-[dependencies]
-elf = "0.7.4"
