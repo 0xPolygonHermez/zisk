@@ -53,7 +53,7 @@ main() {
     fi
 
     step "Running program with cargo-zisk run..."
-    ensure cargo-zisk run --release -i build/input.bin | tee run_output.log || return 1
+    ensure cargo-zisk run --release -i build/input.bin -f | tee run_output.log || return 1
     if ! grep -qE ${EXPECTED_OUTPUT} run_output.log; then
         err "run program failed"
         return 1
