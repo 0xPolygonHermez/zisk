@@ -3,10 +3,7 @@
 //! It is responsible for computing witnesses for ROM-related execution plans,
 
 use std::{
-    sync::{
-        atomic::{AtomicBool, AtomicU64},
-        Arc,
-    },
+    sync::{atomic::AtomicU64, Arc},
     thread::JoinHandle,
 };
 
@@ -48,8 +45,6 @@ pub struct RomInstance {
 
     /// Cached result from the assembly runner thread.
     asm_result: Mutex<Option<AsmRunnerRH>>,
-
-    calculated: AtomicBool,
 }
 
 impl RomInstance {
@@ -76,7 +71,6 @@ impl RomInstance {
             counter_stats: Mutex::new(None),
             handle_rh: Mutex::new(handle_rh),
             asm_result: Mutex::new(None),
-            calculated: AtomicBool::new(false),
         }
     }
 
@@ -172,17 +166,32 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         let air_instance = Some(RomSM::compute_witness(
             &self.zisk_rom,
             self.counter_stats.lock().unwrap().as_ref().unwrap(),
-            &self.calculated,
             trace_buffer,
         )?);
-        self.calculated.store(true, std::sync::atomic::Ordering::Relaxed);
         Ok(air_instance)
     }
 
     fn reset(&self) {
         *self.counter_stats.lock().unwrap() = None;
         *self.asm_result.lock().unwrap() = None;
-        self.calculated.store(false, std::sync::atomic::Ordering::Relaxed);
+
+        let bios_counts = self.bios_inst_count.lock().unwrap().clone();
+        let prog_counts = self.prog_inst_count.lock().unwrap().clone();
+
+        rayon::join(
+            || {
+                use rayon::prelude::*;
+                bios_counts
+                    .par_iter()
+                    .for_each(|i| i.store(0, std::sync::atomic::Ordering::Relaxed));
+            },
+            || {
+                use rayon::prelude::*;
+                prog_counts
+                    .par_iter()
+                    .for_each(|i| i.store(0, std::sync::atomic::Ordering::Relaxed));
+            },
+        );
     }
 
     /// Retrieves the checkpoint associated with this instance.
