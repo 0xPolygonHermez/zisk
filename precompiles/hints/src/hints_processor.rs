@@ -696,7 +696,9 @@ impl HintsProcessor {
     fn reset(&self) {
         self.num_hint.store(0, Ordering::Relaxed);
         self.state.reset();
-        self.stats.as_ref().map(|s| s.lock().unwrap().clear());
+        if let Some(stats) = self.stats.as_ref() {
+            stats.lock().unwrap().clear();
+        }
         self.hints_sink.reset();
         self.stream_active.store(false, Ordering::Release);
         self.instant.lock().unwrap().take();
