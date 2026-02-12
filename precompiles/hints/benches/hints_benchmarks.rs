@@ -36,65 +36,56 @@ fn parallel_speedup_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("parallel_speedup");
     group.sample_size(10); // Reduce sample size for slower benchmarks
 
-    let thread_counts = [1, 2, 4, 8, 16];
+    group.bench_function(BenchmarkId::from_parameter("default_threads"), |b| {
+        b.iter(|| {
+            let received = Arc::new(Mutex::new(Vec::new()));
+            let received_clone = received.clone();
+            let sink = BenchSink { received: received_clone };
 
-    for &num_threads in &thread_counts {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(format!("{}_threads", num_threads)),
-            &num_threads,
-            |b, &threads| {
-                b.iter(|| {
-                    let received = Arc::new(Mutex::new(Vec::new()));
-                    let received_clone = received.clone();
-                    let sink = BenchSink { received: received_clone };
+            let p = HintsProcessor::builder(sink)
+                .custom_hint(FAST_HINT, |data: &[u64]| -> Result<Vec<u64>> {
+                    thread::sleep(Duration::from_millis(1));
+                    Ok(vec![data[0] + 1])
+                })
+                .custom_hint(MEDIUM_HINT, |data: &[u64]| -> Result<Vec<u64>> {
+                    thread::sleep(Duration::from_millis(5));
+                    Ok(vec![data[0] + 2])
+                })
+                .custom_hint(SLOW_HINT, |data: &[u64]| -> Result<Vec<u64>> {
+                    thread::sleep(Duration::from_millis(10));
+                    Ok(vec![data[0] + 3])
+                })
+                .build()
+                .unwrap();
 
-                    let p = HintsProcessor::builder(sink)
-                        .num_threads(threads)
-                        .custom_hint(FAST_HINT, |data: &[u64]| -> Result<Vec<u64>> {
-                            thread::sleep(Duration::from_millis(1));
-                            Ok(vec![data[0] + 1])
-                        })
-                        .custom_hint(MEDIUM_HINT, |data: &[u64]| -> Result<Vec<u64>> {
-                            thread::sleep(Duration::from_millis(5));
-                            Ok(vec![data[0] + 2])
-                        })
-                        .custom_hint(SLOW_HINT, |data: &[u64]| -> Result<Vec<u64>> {
-                            thread::sleep(Duration::from_millis(10));
-                            Ok(vec![data[0] + 3])
-                        })
-                        .build()
-                        .unwrap();
+            let mut data = Vec::new();
+            let mut hint_idx = 0;
 
-                    let mut data = Vec::new();
-                    let mut hint_idx = 0;
+            for _ in 0..NUM_FAST {
+                data.push(make_header(FAST_HINT, 1));
+                data.push(hint_idx);
+                hint_idx += 1;
+            }
 
-                    for _ in 0..NUM_FAST {
-                        data.push(make_header(FAST_HINT, 1));
-                        data.push(hint_idx);
-                        hint_idx += 1;
-                    }
+            for _ in 0..NUM_MEDIUM {
+                data.push(make_header(MEDIUM_HINT, 1));
+                data.push(hint_idx);
+                hint_idx += 1;
+            }
 
-                    for _ in 0..NUM_MEDIUM {
-                        data.push(make_header(MEDIUM_HINT, 1));
-                        data.push(hint_idx);
-                        hint_idx += 1;
-                    }
+            for _ in 0..NUM_SLOW {
+                data.push(make_header(SLOW_HINT, 1));
+                data.push(hint_idx);
+                hint_idx += 1;
+            }
 
-                    for _ in 0..NUM_SLOW {
-                        data.push(make_header(SLOW_HINT, 1));
-                        data.push(hint_idx);
-                        hint_idx += 1;
-                    }
+            p.process_hints(black_box(&data), false).unwrap();
+            p.wait_for_completion().unwrap();
 
-                    p.process_hints(black_box(&data), false).unwrap();
-                    p.wait_for_completion().unwrap();
-
-                    let results = received.lock().unwrap();
-                    assert_eq!(results.len(), NUM_FAST + NUM_MEDIUM + NUM_SLOW);
-                });
-            },
-        );
-    }
+            let results = received.lock().unwrap();
+            assert_eq!(results.len(), NUM_FAST + NUM_MEDIUM + NUM_SLOW);
+        });
+    });
 
     group.finish();
 }
@@ -122,7 +113,6 @@ fn microsecond_hints_benchmark(c: &mut Criterion) {
                 let sink = BenchSink { received: received_clone };
 
                 let p = HintsProcessor::builder(sink)
-                    .num_threads(16)
                     .custom_hint(hint_code, move |data: &[u64]| -> Result<Vec<u64>> {
                         thread::sleep(Duration::from_micros(micros as u64));
                         Ok(vec![data[0] + 1])
@@ -174,7 +164,6 @@ fn workload_patterns_benchmark(c: &mut Criterion) {
                 let sink = BenchSink { received: received_clone };
 
                 let p = HintsProcessor::builder(sink)
-                    .num_threads(8)
                     .custom_hint(VERY_FAST, |data: &[u64]| -> Result<Vec<u64>> {
                         thread::sleep(Duration::from_micros(500));
                         Ok(vec![data[0] + 1])
@@ -241,7 +230,7 @@ fn noop_throughput_benchmark(c: &mut Criterion) {
     for &count in &hint_counts {
         group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &num_hints| {
             b.iter(|| {
-                let p = HintsProcessor::builder(NullSink).num_threads(32).build().unwrap();
+                let p = HintsProcessor::builder(NullSink).build().unwrap();
 
                 let mut data = Vec::with_capacity(num_hints * 2);
                 for i in 0..num_hints {
