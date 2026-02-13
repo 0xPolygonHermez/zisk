@@ -44,19 +44,48 @@ This will create a project with the following structure:
 ├── build.rs
 ├── Cargo.toml
 ├── .gitignore
-└── src
-    └── main.rs
+├── guest
+|   ├── src
+|   |    └── main.rs
+|   └── Cargo.toml
+└── host
+    ├── src
+    |    └── main.rs
+    ├── bin
+    |    ├── compressed.rs
+    |    ├── execute.rs
+    |    ├── prove.rs
+    |    ├── plonk.rs
+    |    ├── verify-constraints.rs
+    |    └── ziskemu.rs
+    ├── build.rs
+    └── Cargo.toml
 ```
 
 The example program takes a number `n` as input and computes the SHA-256 hash `n` times.
 
 The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20). This file is used in `main.rs` as input to calculate the hash.
 
-You can run the program on your native architecture with the following command:
+## Build
+
+The next step is to build the program using the `cargo-zisk` command to generate an ELF file (RISC-V), which will be used later to generate the proof. Execute:
+
 ```bash
-cargo run
+cargo-zisk build --release
 ```
-The output will be:
+
+This command builds the program using the `zkvm` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/elf/riscv64ima-zisk-zkvm-elf/release` directory.
+
+## Execute
+
+Before generating a proof, you can test the program using the ZisK emulator to ensure its correctness:
+
+```bash
+cargo run --release --bin ziskemu
+```
+
+The emulator will execute the program and display the public outputs:
+
 ```
 public 0: 0x98211882
 public 1: 0xbd13089b
@@ -68,73 +97,53 @@ public 6: 0x1f142cac
 public 7: 0x233f1280
 ```
 
-## Build
+These outputs should match the native execution, confirming the program works correctly.
 
-The next step is to build the program using the `cargo-zisk` command to generate an ELF file (RISC-V), which will be used later to generate the proof. Execute:
+## Verify Constraints
 
-```bash
-cargo-zisk build --release
-```
-
-This command builds the program using the `zkvm` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-zisk-zkvm-elf/release` directory.
-
-## Execute
-
-Before generating a proof, you can test the program using the ZisK emulator to ensure its correctness. Specify the ELF file (using the `-e` or `--elf flag`) and the input file `input.bin` (using the `-i` or `--inputs` flag):
+Once you've confirmed the program executes correctly, you can verify the constraints without generating a full proof. This is useful for debugging and ensuring correctness:
 
 ```bash
-ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
+cargo run --release --bin verify-constraints
 ```
 
-The output will be:
-```
-98211882
-bd13089b
-6ccf1fca
-81f7f0e4
-abf6352a
-0c39c9b1
-1f142cac
-233f1280
-```
+This command will:
+1. Execute the program using the ZisK emulator
+2. Generate the execution trace
+3. Verify all arithmetic and logical constraints
+4. Check that all state machine transitions are valid
 
-Alternatively, you can build and run the program with:
+If successful, you'll see:
 
-```bash
-cargo-zisk run --release -i build/input.bin
+```
+✓ All constraints for Instance #0 of Main were verified
+✓ All constraints for Instance #0 of Rom were verified
+...
+✓ All global constraints were successfully verified
 ```
 
 ## Prove
 
-Before generating a proof, you need to generate the program setup files. Execute:
+To generate a cryptographic proof of execution, run:
 
 ```bash
-cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher
+cargo run --release --bin prove
 ```
 
-Once the program setup is complete, you can generate and verify a proof using the `cargo-zisk prove` command by providing the ELF file (with the `-e` or `--elf` flag) and the input file (with the `-i` or `--input` flag).
+This will:
+1. Execute the program and generate the execution trace
+2. Compute witness values for all state machines
+3. Generate the polynomial commitments
+4. Create the zk-STARK proof
 
-To generate and verify a proof for the previously built ELF and input files, execute:
+The proof will be saved in the `./proof` directory. This process may take several minutes depending on the program complexity.
+
+## Compressed Proof (Optional)
+
+After generating the proof, you can optionally create a compressed version to reduce the proof size:
 
 ```bash
-cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -o proof -a -y
+cargo run --release --bin compressed
 ```
 
-This command generates the proof in the `./proof` directory. If everything goes well, you will see a message similar to:
-
-```
-...
-[INFO ] ProofMan:     ✓ Vadcop Final proof was verified
-[INFO ]      stop <<< GENERATING_VADCOP_PROOF 91706ms
-[INFO ] ProofMan: Proofs generated successfully
-```
-
-**Note**: You can use concurrent proof generation and GPU support to reduce proving time. For more details, refer to the [Writing Programs](./writing_programs.md) guide.
-
-## Verify Proof
-
-To verify a generated proof, use the following command:
-
-```bash
-cargo-zisk verify -p ./proof/vadcop_final_proof.bin
-```
+This generates an additional compressed proof on top of the existing one using recursive composition. The compressed proof is significantly smaller while maintaining the same security guarantees.

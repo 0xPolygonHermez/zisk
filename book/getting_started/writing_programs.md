@@ -44,14 +44,7 @@ use ziskos::{read_input_slice, set_output};
 use byteorder::ByteOrder;
 
 fn main() {
-    // Read the input data as a byte array from ziskos
-    let input = read_input_slice();
-
-    // Convert the input data to a u64 integer
-    let n: u64 = match input.as_ref().try_into() {
-        Ok(input_bytes) => u64::from_le_bytes(input_bytes),
-        Err(e) => panic!("Invalid input, error: {}", e),
-    };
+    let n: u32 = ziskos::io::read();
 
     let mut hash = [0u8; 32];
 
@@ -63,11 +56,7 @@ fn main() {
         hash = Into::<[u8; 32]>::into(*digest);
     }
 
-    // Split 'hash' value into chunks of 32 bits and write them to ziskos output
-    for i in 0..8 {
-        let val = byteorder::BigEndian::read_u32(&mut hash[i * 4..i * 4 + 4]);
-        set_output(i, val);
-    }
+    ziskos::io::commit(&output);
 }
 ```
 
@@ -86,26 +75,30 @@ ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
 ```
 
 ### Input/Output Data
-To provide input data for ZisK, you need to write that data in a binary file (e.g., `input.bin`).
 
-If your program requires complex input data, consider using a serialization mechanism (like [`bincode`](https://crates.io/crates/bincode) crate) to store it in `input.bin` file.
-
-In your program, use the `ziskos::read_input_slice()` function to retrieve the input data from the `input.bin` file:
+To read input data in your ZisK program, use the `ziskos::io::read()` function, which deserializes data from the input:
 
 ```rust
-// Read the input data as a byte array from ziskos
-let input = read_input_slice();
+// Read a u32 value from input
+let n: u32 = ziskos::io::read();
 ```
 
-To write public output data, use the `ziskos::set_output()` function. Since the function accepts `u32` values, split the output data into 32-bit chunks if necessary and increase the `id` parameter of the function in each call:
+You can also read custom types that implement the `Deserialize` trait:
 
 ```rust
-// Split 'hash' value into chunks of 32 bits and write them to ziskos output
-for i in 0..8 {
-    let val = byteorder::BigEndian::read_u32(&mut hash[i * 4..i * 4 + 4]);
-    set_output(i, val);
-}
+// Read a custom struct from input
+let my_data: MyStruct = ziskos::io::read();
 ```
+
+To write public output data, use the `ziskos::io::commit()` function, which serializes and commits the output:
+
+```rust
+// Commit the hash as public output
+let hash: [u8; 32] = compute_hash();
+ziskos::io::commit(&hash);
+```
+
+The output can be any type that implements the `Serialize` trait. The data will be serialized and made available as public outputs that can be verified by anyone checking the proof.
 
 ## Build
 
