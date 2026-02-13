@@ -38,6 +38,7 @@ main() {
     rm -rf "$PROJECT_NAME"
     ensure cargo-zisk sdk new "$PROJECT_NAME" || return 1
     cd "$PROJECT_NAME"
+    cd guest
 
     step "Building program..."
     ensure cargo-zisk build --release || return 1
