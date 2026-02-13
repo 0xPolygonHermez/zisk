@@ -1,0 +1,506 @@
+require "std_constants.pil"
+require "std_lookup.pil"
+require "operations.pil"
+require "opids.pil"
+
+// Precompile in charge of performing the BLAKE2b round function. 
+// For reference: https://datatracker.ietf.org/doc/html/rfc7693 or https://www.blake2.net/
+
+// We use little-endian representation
+
+airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION_BUS_ID) {
+    /*
+       ═══════════════════════════════════════════════════════════════════════════
+       BLAKE2B ROUND FUNCTION SPECIFICATION
+       ═══════════════════════════════════════════════════════════════════════════
+       
+       BLAKE2BR(v: [u64; 16], m: [u64; 16], round_idx: u32) -> [u64; 16]
+       
+       Each round consists of 8 G function calls:
+            • 4 Column steps  (G0-G3): Mix columns independently
+            • 4 Diagonal steps (G0-G3): Mix diagonals independently
+
+       Each G function performs 8 sequential operations on 4 u64 values:
+            v[a] := (v[a] + v[b] + x) mod 2⁶⁴
+            v[d] := (v[d] ^ v[a]) >>> 32
+            v[c] := (v[c] + v[d]) mod 2⁶⁴
+            v[b] := (v[b] ^ v[c]) >>> 24
+            v[a] := (v[a] + v[b] + y) mod 2⁶⁴
+            v[d] := (v[d] ^ v[a]) >>> 16
+            v[c] := (v[c] + v[d]) mod 2⁶⁴
+            v[b] := (v[b] ^ v[c]) >>> 63
+
+       Message words x,y selected by SIGMA[round_idx % 10]
+
+       ═══════════════════════════════════════════════════════════════════════════
+       EXECUTION TRACE LAYOUT (24 clocks per round)
+       ═══════════════════════════════════════════════════════════════════════════
+
+       Each G function uses 3 rows:
+            Row 0: Initial state + first message word  (input)
+            Row 1: Intermediate state + second message (intermediate)
+            Row 2: Final state                         (output)
+
+           ROW     va[2]    vb[2][32]    vc[2]    vd[2][32]   ms0[2]        STAGE              
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  0   |  v[0]    |  v[4]    |  v[8]    |  v[12]   | m[s[0]]  |  G1 - COL MIX  | <-- V/M IN
+        |  1   |  v[0]i   |  v[4]i   |  v[8]i   |  v[12]i  | m[s[1]]  |  G1 - COL MIX  | <-- M IN
+        |  2   |  v[0]o   |  v[4]o   |  v[8]o   |  v[12]o  | XXXXXXX  |  G1 - COL MIX  |
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  3   |  v[1]    |  v[5]    |  v[9]    |  v[13]   | m[s[2]]  |  G2 - COL MIX  | <-- V/M IN
+        |  4   |  v[1]i   |  v[5]i   |  v[9]i   |  v[13]i  | m[s[3]]  |  G2 - COL MIX  | <-- M IN
+        |  5   |  v[1]o   |  v[5]o   |  v[9]o   |  v[13]o  | XXXXXXX  |  G2 - COL MIX  |
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  6   |  v[2]    |  v[6]    |  v[10]   |  v[14]   | m[s[4]]  |  G3 - COL MIX  | <-- V/M IN
+        |  7   |  v[2]i   |  v[6]i   |  v[10]i  |  v[14]i  | m[s[5]]  |  G3 - COL MIX  | <-- M IN
+        |  8   |  v[2]o   |  v[6]o   |  v[10]o  |  v[14]o  | XXXXXXX  |  G3 - COL MIX  |
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  9   |  v[3]    |  v[7]    |  v[11]   |  v[15]   | m[s[6]]  |  G4 - COL MIX  | <-- V/M IN
+        |  10  |  v[3]i   |  v[7]i   |  v[11]i  |  v[15]i  | m[s[7]]  |  G4 - COL MIX  | <-- M IN
+        |  11  |  v[3]o   |  v[7]o   |  v[11]o  |  v[15]o  | XXXXXXX  |  G4 - COL MIX  |
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  12  |  v[0]    |  v[5]    |  v[10]   |  v[15]   | m[s[8]]  |  G1 - DIA MIX  | <-- M IN
+        |  13  |  v[0]i   |  v[5]i   |  v[10]i  |  v[15]i  | m[s[9]]  |  G1 - DIA MIX  | <-- M IN
+        |  14  |  v[0]o   |  v[5]o   |  v[10]o  |  v[15]o  | XXXXXXX  |  G1 - DIA MIX  | <-- V OUT
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  15  |  v[1]    |  v[6]    |  v[11]   |  v[12]   | m[s[10]] |  G2 - DIA MIX  | <-- M IN
+        |  16  |  v[1]i   |  v[6]i   |  v[11]i  |  v[12]i  | m[s[11]] |  G2 - DIA MIX  | <-- M IN
+        |  17  |  v[1]o   |  v[6]o   |  v[11]o  |  v[12]o  | XXXXXXXX |  G2 - DIA MIX  | <-- V OUT
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  18  |  v[2]    |  v[7]    |  v[8]    |  v[13]   | m[s[12]] |  G3 - DIA MIX  | <-- M IN
+        |  19  |  v[2]i   |  v[7]i   |  v[8]i   |  v[13]i  | m[s[13]] |  G3 - DIA MIX  | <-- M IN
+        |  20  |  v[2]o   |  v[7]o   |  v[8]o   |  v[13]o  | XXXXXXXX |  G3 - DIA MIX  | <-- V OUT
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  21  |  v[3]    |  v[4]    |  v[9]    |  v[14]   | m[s[14]] |  G4 - DIA MIX  | <-- M IN
+        |  22  |  v[3]i   |  v[4]i   |  v[9]i   |  v[14]i  | m[s[15]] |  G4 - DIA MIX  | <-- M IN
+        |  23  |  v[3]o   |  v[4]o   |  v[9]o   |  v[14]o  | XXXXXXXX |  G4 - DIA MIX  | <-- V OUT
+        |------|----------|----------|----------|----------|----------|----------------|
+    */
+
+    const int CLOCKS_PER_G = 3;
+    const int G_FUNCTIONS_PER_ROUND = 8;
+    const int CLOCK_NUM = CLOCKS_PER_G * G_FUNCTIONS_PER_ROUND;
+
+    // Ensure that the Blake2br fits
+    if (N < 2*CLOCK_NUM) {
+        error(`Blake2br requires N >= ${2*CLOCK_NUM}, got N=${N}`);
+    }
+
+    // Calculate usable capacity
+    const int NUM_NON_USABLE_ROWS = N % CLOCK_NUM;
+    const int NUM_BLAKE2BR;
+    if (NUM_NON_USABLE_ROWS == 0) {
+        NUM_BLAKE2BR = N / CLOCK_NUM;
+    } else {
+        NUM_BLAKE2BR = (N - NUM_NON_USABLE_ROWS) / CLOCK_NUM - 1; // The -1 is because CLOCK_NUM is not a divisor of N
+    }
+    println(`Blake2br capacity: ${NUM_BLAKE2BR} rounds (N=${N})`);
+
+    col fixed CLK_0 = [[1, 0:(CLOCK_NUM-1)]:NUM_BLAKE2BR, 0...];
+
+    const expr CLK[CLOCK_NUM];
+    for (int i = 0; i < CLOCK_NUM; i++) {
+        CLK[i] = (i)'CLK_0;
+    }
+
+    // Define the clock selectors
+    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Blake2broperation, 0 otherwise
+    col witness bits(1) in_use;       // 1 when the Blake2br operation is in use, 0 otherwise
+
+    in_use_clk_0 * (1 - in_use_clk_0) === 0;
+    in_use * (1 - in_use) === 0;
+
+    in_use_clk_0 - CLK_0 * in_use === 0; // This constraint is two-fold:
+                                         //   · in_use_clk_0 can only be active when CLK_0 is active
+                                         //   · if in_use is active then so is in_use_clk_0
+
+    // Selector latching: once activated, stays active for full cycle
+    const expr in_use_continues = clock_set(start: 1, end: CLOCK_NUM);
+    in_use_continues * (in_use - 'in_use) === 0;
+
+    // --> Constraints to assert the BLAKE2B round function
+
+    /// Message word permutation schedule
+    const int SIGMA[10][16];
+    SIGMA[0] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    SIGMA[1] = [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3];
+    SIGMA[2] = [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4];
+    SIGMA[3] = [7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8];
+    SIGMA[4] = [9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13];
+    SIGMA[5] = [2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9];
+    SIGMA[6] = [12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11];
+    SIGMA[7] = [13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10];
+    SIGMA[8] = [6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5];
+    SIGMA[9] = [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0];
+
+    // 1] Start by deriving m[SIGMA[idx][off + 2*i]], m[SIGMA[idx][off + 2*i + 1]]
+
+    // Indicator of the SIGMA index
+    col witness bits(4) idx;
+    
+    // idx should be a value in [0,10) that is fixed along the cycle
+    (1 - CLK_0) * (idx - 'idx) === 0;
+
+    col witness bits(1) idx_sel[10];
+    expr sum_sel = 0;
+    expr sum_w_sel = 0;
+    for (int i = 0; i < 10; i++) {
+        // Selectors are bits
+        idx_sel[i] * (idx_sel[i] - 1) === 0;
+
+        // Add all selectors
+        sum_sel += idx_sel[i];
+
+        // Add weighted selectors to compute idx
+        sum_w_sel += idx_sel[i] * i;
+    }
+    sum_sel * (sum_sel - 1) === 0; // At most one of the idx_sel is active
+    idx === sum_w_sel;             // Check that idx is the index of the active idx_sel
+                                   // Moreover, this ensures that idx is in [0,10)
+                                   // Since idx is fixed within the cycle, all idx_sel are fixed as well
+
+    // SIGMA[idx] = ∑ᵢ idx_sel[i]·SIGMA[i]
+    col witness bits(4) s;
+    expr s_expr = 0;
+    for (int j = 0; j < 10; j++) {
+        expr sum_sigmas = 0;
+        int sig_idx = 0;
+        for (int k = 0; k < CLOCK_NUM; k++) {
+            if (k > 0 && k % 2 == 0) {
+                continue;
+            }
+            sum_sigmas += CLK[k] * SIGMA[j][sig_idx];
+            sig_idx++;
+        }
+        s_expr += idx_sel[j] * sum_sigmas;
+    }
+    s <== s_expr;
+
+    // Permutation to get actual message words from indices
+    col fixed MSG_IDX = [0, 1, 0, 2, 3, 0, 4, 5, 0, 6, 7, 0,
+                         8, 9, 0, 10, 11, 0, 12, 13, 0, 14, 15, 0]...;
+
+    // The m-values in order
+    col witness bits(32) m[2];
+
+    // The m-values in the index order
+    col witness bits(32) ms[2];
+
+    const expr ms_next[2] = [ms[0]', ms[1]'];
+
+    // TODO: Decide the selector!
+    permutation_assumes(opid: BLAKE2BR_PERMUTATION_ID, expressions: [MSG_IDX, m[0], m[1]]);
+    permutation_proves(opid: BLAKE2BR_PERMUTATION_ID, expressions: [s, ms[0], ms[1]]);
+
+    // 2] Compute the g mixing function
+
+    // The four v-values of g
+    col witness bits(32) va[2];
+    col witness bits(1)  vb[2][32];
+    col witness bits(32) vc[2];
+    col witness bits(1)  vd[2][32];
+
+    // va and vc will be range checked later on
+
+    // vb and vd are bits
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 32; j++) {
+            vb[i][j] * (1 - vb[i][j]) === 0;
+            vd[i][j] * (1 - vd[i][j]) === 0;
+        }
+    }
+
+    // Define intermediate v-values
+    expr va_im[2] = [va[0]', va[1]'];
+    expr vc_im[2] = [vc[0]', vc[1]'];
+    expr vb_im[2][32];
+    expr vd_im[2][32];
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 32; j++) {
+            vb_im[i][j] = vb[i][j]';
+            vd_im[i][j] = vd[i][j]';
+        }
+    }
+
+    // Define output v-values
+    expr va_out[2] = [va[0]'2, va[1]'2];
+    expr vc_out[2] = [vc[0]'2, vc[1]'2];
+    expr vb_out[2][32];
+    expr vd_out[2][32];
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 32; j++) {
+            vb_out[i][j] = vb[i][j]'2;
+            vd_out[i][j] = vd[i][j]'2;
+        }
+    }
+
+    // Verify the internal operations of the g function
+    // va' == (va + vb + ms) mod 2**64
+    expr vbpack[2] = [pack(vb[0]), pack(vb[1])];
+    add3_check(va_im, va, vbpack, ms);
+
+    // vd' == (vd ^ va') >>> 32 iff va' == (vd' <<< 32) ^ vd
+    rotl_xor_check(va_im, vd_im, vd, 32);
+
+    // vc' == (vc + vd') mod 2**64
+    expr vdimpack[2] = [pack(vd_im[0]), pack(vd_im[1])];
+    add2_check(vc_im, vc, vdimpack);
+
+    // vb' == (vb ^ vc') >>> 24 iff vc' == (vb' <<< 24) ^ vb
+    rotl_xor_check(vc_im, vb_im, vb, 24);
+
+    // va'' == (va' + vb' + ms) mod 2**64
+    expr vbimpack[2] = [pack(vb_im[0]), pack(vb_im[1])];
+    add3_check(va_out, va_im, vbimpack, ms_next);
+
+    // vd'' == (vd' ^ va'') >>> 16 iff va'' == (vd'' <<< 16) ^ vd'
+    rotl_xor_check(va_out, vd_out, vd_im, 16);
+
+    // vc'' == (vc' + vd'') mod 2**64
+    expr vdoutpack[2] = [pack(vd_out[0]), pack(vd_out[1])];
+    add2_check(vc_out, vc_im, vdoutpack);
+
+    // vb'' == (vb' ^ vc'') >>> 63 iff vc'' == (vb'' <<< 63) ^ vb'
+    rotl_xor_check(vc_out, vb_out, vb_im, 63);
+
+    // --> Constraints to read inputs from memory and write outputs to memory
+
+    /*
+        We should take care of how we handle the memory access.
+
+        The Blake2br inputs are received via two indirections and one value inside a structure.
+        The address received from the MainSM is the address of the structure
+        The first indirection is the adress of the state
+        The second indirection is the address of the input
+        We have to relate all these addresses, by proving that:
+            · ADDR_STATE === ADDR_IND_0
+            · ADDR_INPUT === ADDR_IND_1
+        while sending both addr_ind_0 and addr_ind_1 to the memory.         
+    */
+
+    col witness bits(40) step_addr;
+
+    /*
+        MEMORY ACCESS MAP
+        =========================================================
+          0 | STEP_MAIN     | R | ADDR_STATE       |  state[0]
+            | ...           |   | ...              |  ...      
+         15 | STEP_MAIN     | R | ADDR_STATE + 120 |  state[15] 
+         16 | STEP_MAIN     | R | ADDR_INPUT       |  input[0]
+            | ...           |   | ...              |  ...    
+         31 | STEP_MAIN     | R | ADDR_INPUT + 120 |  input[15] 
+         32 | STEP_MAIN + 1 | W | ADDR_STATE       |  state[0]
+            | ...           |   | ...              |  ...    
+         47 | STEP_MAIN + 1 | W | ADDR_STATE + 120 |  state[15]
+         48 | STEP_MAIN     | R | ADDR_OP          |  index
+         49 | STEP_MAIN     | R | ADDR_OP + 8      |  ADDR_IND_0
+         50 | STEP_MAIN     | R | ADDR_OP + 16     |  ADDR_IND_1
+        =========================================================
+    */
+
+    const int STEP_MAIN = 0;
+    const int ADDR_OP = STEP_MAIN + 1;
+    const int ADDR_STATE = ADDR_OP + 1;
+    const int ADDR_INPUT = ADDR_STATE + 1;
+    const int ADDR_IND_0 = ADDR_INPUT + 1;
+    const int ADDR_IND_1 = ADDR_IND_0 + 1;
+
+    clock_eq(step_addr, ADDR_STATE, ADDR_IND_0) === 0;
+    clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
+
+    // Perform 4 memory operations in parallel
+    // Total: 51 mem ops, Steps Needed: ceil(51/4) = 12 < 24 (CLOCK_NUM)
+    //   - 0..3  -> Read  State
+    //   - 4..7  -> Read  Input
+    //   - 8..11 -> Write State
+    //   -  12   -> Read Index and ADDR_INDs
+    const int READ_STIN_OPS = 32;
+    const int WRITE_STOUT_OPS = 16;
+    const int READ_REM_OPS = 3;
+    const int MEM_OPS = READ_STIN_OPS + WRITE_STOUT_OPS + READ_REM_OPS;
+    
+    const int MEM_OPS_IN_PARALLEL = 4;
+    const int CLOCKS_WITH_READ_STIN_OPS = (READ_STIN_OPS + MEM_OPS_IN_PARALLEL - 1) / MEM_OPS_IN_PARALLEL;
+    const int CLOCKS_WITH_WRITE_STOUT_OPS = (WRITE_STOUT_OPS + MEM_OPS_IN_PARALLEL - 1) / MEM_OPS_IN_PARALLEL;
+    const int CLOCKS_WITH_MEM_OPS = (MEM_OPS + MEM_OPS_IN_PARALLEL - 1) / MEM_OPS_IN_PARALLEL;
+
+    const expr mem_sel = clock_set(in_use, start: 0, end: CLOCKS_WITH_MEM_OPS);
+
+    const expr mem_is_write = clock_set(start: CLOCKS_WITH_READ_STIN_OPS, end: CLOCKS_WITH_WRITE_STOUT_OPS);
+
+    const expr main_step = clock_shift(step_addr, STEP_MAIN, start: 0, end: CLOCKS_WITH_MEM_OPS);
+
+    for (int i = 0; i < MEM_OPS_IN_PARALLEL; i++) {
+        const expr mem_addr = clock_shift(step_addr, ADDR_STATE, start: 0,  end: 4,  delta: 8*i) +
+                              clock_shift(step_addr, ADDR_INPUT, start: 4,  end: 8,  delta: 8*i) +
+                              clock_shift(step_addr, ADDR_STATE, start: 8,  end: 12, delta: 8*i) +
+                              clock_shift(step_addr, ADDR_OP,    start: 12,          delta: 8*i);
+
+        // TODO!
+        // expr mem_value[2];
+        // mem_value[0] = CLK[0] * a_packed'3 + CLK[1] * a_packed + CLK[2] * e_packed' + CLK[3] * 2'e_packed +
+        //             CLK[4] * w_spacked + CLK[5] * w_spacked' + CLK[6] * w_spacked'2 + CLK[7] * w_spacked'3 +
+        //             CLK[8] * w_spacked'4 + CLK[9] * w_spacked'5 + CLK[10] * w_spacked'6 + CLK[11] * w_spacked'7 +
+        //             CLK[12] * a_packed'59 + CLK[13] * a_packed'56 + CLK[14] * e_packed'57 + CLK[15] * e_packed'54 +
+        //             clock_map(step_addr, ADDR_IND_0, 16) + clock_map(step_addr, ADDR_IND_1, 17);
+
+        // mem_value[1] = CLK[0] * a_packed'2 + CLK[1] * 'a_packed + CLK[2] * e_packed + CLK[3] * 3'e_packed +
+        //             CLK[4] * w_spacked' + CLK[5] * w_spacked'2 + CLK[6] * w_spacked'3 + CLK[7] * w_spacked'4 +
+        //             CLK[8] * w_spacked'5 + CLK[9] * w_spacked'6 + CLK[10] * w_spacked'7 + CLK[11] * w_spacked'8 +
+        //             CLK[12] * a_packed'58 + CLK[13] * a_packed'55 + CLK[14] * e_packed'56 + CLK[15] * e_packed'53;
+        //             // addresses are 32-bit values
+        const expr mem_value[2] = [0 , 0];
+
+        precompiled_mem_op(
+            is_write: mem_is_write,
+            sel: mem_sel,
+            main_step: main_step,
+            addr: mem_addr,
+            value: mem_value
+        );
+    }
+
+    // --> Constraints to make sure that this coprocessor is called from the main processor
+
+    lookup_proves(operation_bus_id, [OP_BLAKE2BR, 0, 0, step_addr'(ADDR_OP), 0, 0, 0, 0, step_addr'(STEP_MAIN)], mul: in_use_clk_0);
+
+    function pack(const expr a[]): expr {
+        const int len = length(a);
+        expr packed = 0;
+        for (int j = 0; j < len; j++) {
+            packed += a[j] * 2**j;
+        }
+        return packed;
+    }
+
+    // Checks a == (b + c + d) mod 2⁶⁴
+    // Assumes a,b,c,d are all given as 2 limbs of 32-bits each, i.e., a = a0 + 2³²·a1 < 2⁶⁴
+    // It also assumes that p > 3·2³²
+    function add3_check(const expr a[], const expr b[], const expr c[], const expr d[]): expr[] {
+        assert(length(a) == 2 && length(b) == 2 && length(c) == 2 && length(d) == 2);
+        // a == (b + c + d) mod 2⁶⁴ iff a - b - c - d = 0, -2⁶⁴, -2·2⁶⁴ (over the integers)
+
+        // Since we work over a finite field, we instead check that
+        //   (1) a0 - b0 - c0 - d0 = 0, -2³², -2·2³² (mod p)
+        //   (2) a - b - c - d = 0, -2⁶⁴, -2·2⁶⁴ (mod p)
+
+        // Notice that since p > 2·2³² we have that (1) holds over the integers
+        // Now since a - b - c - d = (a0 - b0 - c0 - d0) + 2³²·(a1 - b1 - c1 - d1),
+        // we have that a - b - c - d = 0 (mod 2³²) (3)
+
+        // Using CRT with (2) and (3) we obtain:
+        //   a - b - c - d = 0, -2⁶⁴, -2·2⁶⁴ (mod 2³²·p) (4)
+        // Now, since a,b,c,d < 2⁶⁴ and 2³²·p > 3·2⁶⁴, we have that (4) holds over the integers
+
+        expr sum_0 = a[0] - b[0] - c[0] - d[0];
+        expr sum_1 = a[1] - b[1] - c[1] - d[1];
+        expr sum = sum_0 + P2_32*sum_1;
+
+        sum_0 * (sum_0 + P2_32) * (sum_0 + 2*P2_32) === 0;
+        sum * (sum + P2_64) * (sum + 2*P2_64) === 0;
+    }
+
+    // Checks a == (b + c) mod 2⁶⁴
+    // Assumes a,b,c are all given as 2 limbs of 32-bits each, i.e., a = a0 + 2³²·a1 < 2⁶⁴
+    // It also assumes that p > 2·2³²
+    function add2_check(const expr a[], const expr b[], const expr c[]): expr[] {
+        assert(length(a) == 2 && length(b) == 2 && length(c) == 2);
+
+        // a == (b + c) mod 2⁶⁴ iff a - b - c = 0, -2⁶⁴ (over the integers)
+
+        // Since we work over a finite field, we instead check that
+        //   (1) a0 - b0 - c0 = 0, -2³² (mod p)
+        //   (2) a - b - c = 0, -2⁶⁴ (mod p)
+
+        // Notice that since p > 2³² we have that (1) holds over the integers
+        // Now since a - b - c = (a0 - b0 - c0) + 2³²·(a1 - b1 - c1),
+        // we have that a - b - c = 0 (mod 2³²) (3)
+
+        // Using CRT with (2) and (3) we obtain:
+        //   a - b - c = 0, -2⁶⁴ (mod 2³²·p) (4)
+        // Now, since a,b,c < 2⁶⁴ and 2³²·p > 2·2⁶⁴, we have that (4) holds over the integers
+
+        expr sum_0 = a[0] - b[0] - c[0];
+        expr sum_1 = a[1] - b[1] - c[1];
+        expr sum = sum_0 + P2_32*sum_1;
+
+        sum_0 * (sum_0 + P2_32) === 0;
+        sum * (sum + P2_64) === 0;
+    }
+
+    // Checks a == (b <<< n) ^ c
+    // Assumes a is given as 2 limbs of 32-bits each, i.e., a = a0 + 2³²·a1
+    // Assumes b,c are both given unpacked as 64 bits, i.e., b = b0 + 2·b1 + ... + 2⁶³·b63
+    function rotl_xor_check(const expr a[], const expr b[][], const expr c[][], const int n) {
+        assert(length(a) == 2 && length(b) == 2 && length(c) == 2);
+        assert(length(b[0]) == 32 && length(b[1]) == 32 && length(c[0]) == 32 && length(c[1]) == 32);
+
+        // Unpack b and c into 64-bit arrays
+        expr b_unpacked[64];
+        expr c_unpacked[64];
+        for (int i = 0; i < 32; i++) {
+            b_unpacked[i] = b[0][i];
+            b_unpacked[32 + i] = b[1][i];
+            c_unpacked[i] = c[0][i];
+            c_unpacked[32 + i] = c[1][i];
+        }
+
+        // Rotate
+        expr b_rot[64];
+        for (int i = 0; i < 64; i++) {
+            b_rot[i] = b_unpacked[(i + 64 - n) % 64];
+        }
+
+        // XOR
+        expr xor_result[64];
+        for (int i = 0; i < 64; i++) {
+            xor_result[i] = b_rot[i] + c_unpacked[i] - 2 * b_rot[i] * c_unpacked[i];
+        }
+
+        // Pack into two 32-bit limbs
+        expr packed_low = 0;
+        expr packed_high = 0;
+        for (int i = 0; i < 32; i++) {
+            packed_low += xor_result[i] * 2**i;
+            packed_high += xor_result[32 + i] * 2**i;
+        }
+        
+        // Check equality
+        a[0] === packed_low;
+        a[1] === packed_high;
+
+        // Notice that these equalities also ensure that a[0], a[1] are range checked
+    }
+
+    function clock_eq(const expr mvcol, int pos1, int pos2): const expr {
+        return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2));
+    }
+
+    function clock_set(const expr mvcol = 1, int start = 0, int end = -1): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start;
+        }
+        for (int i = start; i < end; i++) {
+            result += air.CLK[i];
+        }
+        return result * mvcol;
+    }
+
+    function clock_shift(const expr mvcol, const int pos, const int start = 0, int end = -1, int offset = 0,  const int delta = 0): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start + 1;
+        }
+        for (int i = start; i < end; i++) {
+            const int iclock = (pos - i) % air.CLOCK_NUM;
+            if (offset != 0) {
+                result += air.CLK[i] * (mvcol'(iclock) + offset);
+            } else {
+                result += air.CLK[i] * mvcol'(iclock);
+            }
+            offset += delta;
+        }
+        return result;
+    }
+}
