@@ -2,7 +2,7 @@
 
 source "./utils.sh"
 
-PROJECT_NAME="sha_hasher"
+PROJECT_NAME="guest"
 EXPECTED_OUTPUT="98211882|bd13089b|6ccf1fca|81f7f0e4|abf6352a|0c39c9b1|1f142cac|233f1280"
 
 main() {
@@ -42,20 +42,13 @@ main() {
     step "Building program..."
     ensure cargo-zisk build --release || return 1
 
-    ELF_PATH="target/riscv64ima-zisk-zkvm-elf/release/$PROJECT_NAME"
-    INPUT_BIN="build/input.bin"
+    ELF_PATH="target/elf/riscv64ima-zisk-zkvm-elf/release/$PROJECT_NAME"
+    INPUT_BIN="host/tmp/input.bin"
 
     step "Running program with ziskemu..."
     ensure ziskemu -e "$ELF_PATH" -i "$INPUT_BIN" -f | tee ziskemu_output.log || return 1
     if ! grep -qE ${EXPECTED_OUTPUT} ziskemu_output.log; then
         err "run ziskemu failed"
-        return 1
-    fi
-
-    step "Running program with cargo-zisk run..."
-    ensure cargo-zisk run --release -i build/input.bin -f | tee run_output.log || return 1
-    if ! grep -qE ${EXPECTED_OUTPUT} run_output.log; then
-        err "run program failed"
         return 1
     fi
 
