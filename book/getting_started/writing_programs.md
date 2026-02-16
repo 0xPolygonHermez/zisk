@@ -44,14 +44,7 @@ use ziskos::{read_input_slice, set_output};
 use byteorder::ByteOrder;
 
 fn main() {
-    // Read the input data as a byte array from ziskos
-    let input = read_input_slice();
-
-    // Convert the input data to a u64 integer
-    let n: u64 = match input.as_ref().try_into() {
-        Ok(input_bytes) => u64::from_le_bytes(input_bytes),
-        Err(e) => panic!("Invalid input, error: {}", e),
-    };
+    let n: u32 = ziskos::io::read();
 
     let mut hash = [0u8; 32];
 
@@ -63,21 +56,16 @@ fn main() {
         hash = Into::<[u8; 32]>::into(*digest);
     }
 
-    // Split 'hash' value into chunks of 32 bits and write them to ziskos output
-    for i in 0..8 {
-        let val = byteorder::BigEndian::read_u32(&mut hash[i * 4..i * 4 + 4]);
-        set_output(i, val);
-    }
+    ziskos::io::commit(&output);
 }
 ```
 
 `Cargo.toml`:
 ```toml
 [package]
-name = "sha_hasher"
+name = "guest"
 version = "0.1.0"
 edition = "2021"
-default-run = "sha_hasher"
 
 [dependencies]
 byteorder = "1.5.0"
@@ -86,26 +74,30 @@ ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
 ```
 
 ### Input/Output Data
-To provide input data for ZisK, you need to write that data in a binary file (e.g., `input.bin`).
 
-If your program requires complex input data, consider using a serialization mechanism (like [`bincode`](https://crates.io/crates/bincode) crate) to store it in `input.bin` file.
-
-In your program, use the `ziskos::read_input_slice()` function to retrieve the input data from the `input.bin` file:
+To read input data in your ZisK program, use the `ziskos::io::read()` function, which deserializes data from the input:
 
 ```rust
-// Read the input data as a byte array from ziskos
-let input = read_input_slice();
+// Read a u32 value from input
+let n: u32 = ziskos::io::read();
 ```
 
-To write public output data, use the `ziskos::set_output()` function. Since the function accepts `u32` values, split the output data into 32-bit chunks if necessary and increase the `id` parameter of the function in each call:
+You can also read custom types that implement the `Deserialize` trait:
 
 ```rust
-// Split 'hash' value into chunks of 32 bits and write them to ziskos output
-for i in 0..8 {
-    let val = byteorder::BigEndian::read_u32(&mut hash[i * 4..i * 4 + 4]);
-    set_output(i, val);
-}
+// Read a custom struct from input
+let my_data: MyStruct = ziskos::io::read();
 ```
+
+To write public output data, use the `ziskos::io::commit()` function, which serializes and commits the output:
+
+```rust
+// Commit the hash as public output
+let hash: [u8; 32] = compute_hash();
+ziskos::io::commit(&hash);
+```
+
+The output can be any type that implements the `Serialize` trait. The data will be serialized and made available as public outputs that can be verified by anyone checking the proof.
 
 ## Build
 
@@ -117,7 +109,7 @@ Once your program is ready to run on ZisK, compile it into an ELF file (RISC-V a
 cargo-zisk build
 ```
 
-This command compiles the program using the `zisk` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-zisk-zkvm-elf/debug` directory.
+This command compiles the program using the `zisk` target. The resulting `guest` ELF file (without extension) is generated in the `./target/riscv64ima-zisk-zkvm-elf/debug` directory.
 
 For production, compile the ELF file with the `--release` flag, similar to how you compile Rust projects:
 
@@ -125,7 +117,7 @@ For production, compile the ELF file with the `--release` flag, similar to how y
 cargo-zisk build --release
 ```
 
-In this case, the `sha_hasher` ELF file will be generated in the `./target/riscv64ima-zisk-zkvm-elf/release` directory.
+In this case, the `guest` ELF file will be generated in the `./target/elf/riscv64ima-zisk-zkvm-elf/release` directory.
 
 ## Execute
 
@@ -133,13 +125,7 @@ You can test your compiled program using the ZisK emulator (`ziskemu`) before ge
 
 ```bash
 cargo-zisk build --release
-ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
-```
-
-Alternatively, you can build and execute the program in the ZisK emulator with a single command:
-
-```bash
-cargo-zisk run --release -i build/input.bin
+ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin
 ```
 
 If the program requires a large number of ZisK steps, you might encounter the following error:
@@ -150,7 +136,7 @@ Error: Error executing Run command
 
 To resolve this, you can increase the number of execution steps using the `-n` (`--max-steps`) flag. For example:
 ```bash
-ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -n 10000000000
+ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -n 10000000000
 ```
 
 ## Metrics and Statistics
@@ -158,36 +144,23 @@ ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
 ### Performance Metrics
 You can get performance metrics related to the program execution in ZisK using the `-m` (`--log-metrics`) flag in the `cargo-zisk run` command or in `ziskemu` tool:
 
-```bash
-cargo-zisk run --release -i build/input.bin -m
-```
-
-Or
 
 ```bash
-ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -m
+ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -m
 ```
 
 The output will include details such as execution time, throughput, and clock cycles per step:
 ```
 process_rom() steps=85309 duration=0.0009 tp=89.8565 Msteps/s freq=3051.0000 33.9542 clocks/step
-98211882
-bd13089b
-6ccf1fca
 ...
 ```
 
 ### Execution Statistics
-You can get statistics related to the program execution in Zisk using the `-x` (`--stats`) flag in the `cargo-zisk run` command or in `ziskemu` tool:
+You can get statistics related to the program execution in Zisk using the `-X` (`--stats`) flag in `ziskemu` tool:
+
 
 ```bash
-cargo-zisk run --release -i build/input.bin -x
-```
-
-Or
-
-```bash
-ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -x
+ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -X
 ```
 
 The output will include details such as cost definitions, total cost, register reads/writes, opcode statistics, etc:
@@ -218,10 +191,6 @@ Opcodes:
     xor: 1.06 sec (77 steps/op) (13774 ops)
     signextend_b: 0.03 sec (109 steps/op) (320 ops)
     signextend_w: 0.03 sec (109 steps/op) (320 ops)
-
-98211882
-bd13089b
-6ccf1fca
 ...
 ```
 
@@ -232,7 +201,7 @@ bd13089b
 Before generating a proof (or verifying the constraints), you need to generate the program setup files. This must be done the first time after building the program ELF file, or any time it changes:
 
 ```bash
-cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -k $HOME/.zisk/provingKey
+cargo-zisk rom-setup -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -k $HOME/.zisk/provingKey
 ```
 In this command:
 
@@ -251,14 +220,12 @@ cargo-zisk clean
 Before generating a proof (which can take some time), you can verify that all constraints are satisfied:
 
 ```bash
-LIB_EXT=$([[ "$(uname)" == "Darwin" ]] && echo "dylib" || echo "so")
-cargo-zisk verify-constraints -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.$LIB_EXT -k $HOME/.zisk/provingKey
+cargo-zisk verify-constraints -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -k $HOME/.zisk/provingKey
 ```
 In this command:
 
 * `-e` (`--elf`) specifies the ELF file location.
 * `-i` (`--input`) specifies the input file location.
-* `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.$LIB_EXT`.
 * `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
 
 If everything is correct, you will see an output similar to:
@@ -274,14 +241,12 @@ If everything is correct, you will see an output similar to:
 To generate a proof, run the following command:
 
 ```bash
-LIB_EXT=$([[ "$(uname)" == "Darwin" ]] && echo "dylib" || echo "so")
-cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.$LIB_EXT -k $HOME/.zisk/provingKey -o proof -a -y
+cargo-zisk prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -k $HOME/.zisk/provingKey -o proof -a -y
 ```
 In this command:
 
 * `-e` (`--elf`) specifies the ELF file location.
 * `-i` (`--input`) specifies the input file location.
-* `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.$LIB_EXT`.
 * `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
 * `-o` (`--output`) determines the output directory (in this example `proof`).
 * `-a` (`--aggregation`) indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.
@@ -347,7 +312,7 @@ You can combine GPU-based execution with concurrent proof generation using multi
 To verify a generated proof, use the following command:
 
 ```bash
-cargo-zisk verify -p ./proof/vadcop_final_proof.bin -s $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.starkinfo.json -e $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verifier.bin -k $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json
+cargo-zisk verify -p ./proof/vadcop_final_proof.bin -k $HOME/.zisk/provingKey
 ```
 
 In this command:

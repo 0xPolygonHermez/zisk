@@ -1,5 +1,5 @@
 use anyhow::Result;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use std::io::{Cursor, Read};
 use std::path::Path;
 use std::sync::Mutex;
@@ -31,7 +31,7 @@ impl ZiskMemoryStdin {
 }
 
 impl ZiskIO for ZiskMemoryStdin {
-    fn read(&self) -> Vec<u8> {
+    fn read_bytes(&self) -> Vec<u8> {
         // Return all the data
         self.data.lock().unwrap().clone()
     }
@@ -44,6 +44,12 @@ impl ZiskIO for ZiskMemoryStdin {
     fn read_into(&self, buffer: &mut [u8]) {
         let mut cursor = self.cursor.lock().unwrap();
         cursor.read_exact(buffer).expect("Failed to read into buffer from memory");
+    }
+
+    fn read<T: DeserializeOwned>(&self) -> Result<T> {
+        let mut cursor = self.cursor.lock().unwrap();
+        bincode::deserialize_from(&mut *cursor)
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize from memory: {}", e))
     }
 
     fn write<T: Serialize>(&self, data: &T) {

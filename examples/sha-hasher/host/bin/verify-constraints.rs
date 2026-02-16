@@ -1,8 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use zisk_sdk::{include_elf, ElfBinary, ProverClient, ZiskIO, ZiskStdin};
-
-pub const ELF: ElfBinary = include_elf!("sha-hasher-guest");
+use std::path::PathBuf;
+use zisk_sdk::{elf_path, ElfBinaryFromFile, ProverClient, ZiskIO, ZiskStdin};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Output {
@@ -14,25 +13,27 @@ struct Output {
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
 
-    // Create an input stream and write '1000' to it.
-    let n = 1000u32;
-    let stdin = ZiskStdin::new();
-    stdin.write(&n);
+    let elf = ElfBinaryFromFile::new(&PathBuf::from(elf_path!("sha-hasher-guest")), false)?;
+
+    let current_dir = std::env::current_dir()?;
+    let stdin =
+        ZiskStdin::from_file(current_dir.join("sha-hasher/host/tmp/verify_constraints_input.bin"))?;
+
+    let n: u32 = stdin.read()?;
     println!("Input prepared: {} iterations", n);
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::builder().asm().base_port(54321).build().unwrap();
+    let client = ProverClient::builder().emu().verify_constraints().build().unwrap();
 
     println!("Setting up program...");
-    let (pk, _) = client.setup(&ELF)?;
+    let (pk, _vkey) = client.setup(&elf)?;
     println!("Setup completed successfully");
 
-    // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    println!("Executing program (no proof generation)...");
-    let result = client.execute(&pk, stdin.clone())?;
+    println!("Verifying constraints (no proof generation)...");
+    let result = client.verify_constraints(&pk, stdin.clone())?;
 
-    println!("\u{2713} Execution completed successfully!");
+    println!("\u{2713} VerifyConstraints completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());
     println!("Duration: {:?}", result.get_duration());
 

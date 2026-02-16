@@ -125,7 +125,7 @@ impl SharedMemoryWriter {
     /// # Arguments
     /// * `data` - A slice of data to write to shared memory
     #[inline]
-    pub fn write_ring_buffer<T>(&mut self, data: &[T]) {
+    pub fn write_ring_buffer<T>(&mut self, data: &[T]) -> Result<()> {
         let byte_size = std::mem::size_of_val(data);
 
         let data_ptr = data.as_ptr() as *const u8;
@@ -159,12 +159,14 @@ impl SharedMemoryWriter {
                 }
             }
 
-            // // Force changes to be flushed to the shared memory
-            // #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            // if msync(self.ptr as *mut _, self.size, MS_SYNC) != 0 {
-            //     return Err(io::Error::last_os_error());
-            // }
+            // Force changes to be flushed to the shared memory
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            if msync(self.ptr as *mut _, self.size, MS_SYNC) != 0 {
+                return Err(io::Error::last_os_error());
+            }
         }
+
+        Ok(())
     }
 
     /// Reads a u64 from shared memory at a specific offset (in bytes)

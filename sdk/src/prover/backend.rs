@@ -18,7 +18,7 @@ use proofman::{
     AggProofs, ExecutionInfo, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
     SnarkProtocol, SnarkWrapper,
 };
-use proofman_common::{ProofCtx, ProofOptions};
+use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_util::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -138,7 +138,7 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        proofman
+        let planning_info = proofman
             .execute_from_lib(output_path)
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
@@ -148,7 +148,7 @@ impl ProverBackend {
 
         let publics = proofman.get_publics();
 
-        Ok(ZiskExecuteResult::new(result, elapsed, &publics))
+        Ok(ZiskExecuteResult::new(result, planning_info, elapsed, &publics))
     }
 
     pub(crate) fn stats(
@@ -174,14 +174,12 @@ impl ProverBackend {
 
         executor.set_stdin(stdin);
 
-        let world_rank = proofman.get_world_rank();
-        let local_rank = proofman.get_local_rank();
-        let n_processes = proofman.get_n_processes();
+        let rank_info = proofman.get_rank_info();
 
         let mut is_active = true;
 
         if let Some(mpi_node) = _mpi_node {
-            if local_rank != mpi_node as i32 {
+            if rank_info.local_rank != mpi_node as i32 {
                 is_active = false;
             }
         }
@@ -191,11 +189,11 @@ impl ProverBackend {
         if !is_active {
             println!(
                 "{}: {}",
-                format!("Rank {local_rank}").bright_yellow().bold(),
+                format!("Rank {}", rank_info.local_rank).bright_yellow().bold(),
                 "Inactive rank, skipping computation.".bright_yellow()
             );
 
-            return Ok((world_rank, n_processes, None));
+            return Ok((rank_info.world_rank, rank_info.n_processes, None));
         }
 
         proofman
@@ -208,7 +206,41 @@ impl ProverBackend {
         let (_, stats): (ZiskExecutionResult, ExecutorStatsHandle) =
             executor.get_execution_result();
 
-        Ok((world_rank, n_processes, Some(stats)))
+        Ok((rank_info.world_rank, rank_info.n_processes, Some(stats)))
+    }
+
+    pub(crate) fn get_instance_trace(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot get instance trace in verifier mode"))?;
+
+        proofman
+            .get_instance_trace(instance_id, first_row, num_rows, offset)
+            .map_err(|e| anyhow::anyhow!("Error getting instance trace: {}", e))
+    }
+
+    pub(crate) fn get_instance_fixed(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot get instance fixed in verifier mode"))?;
+
+        proofman
+            .get_instance_fixed(instance_id, first_row, num_rows, offset)
+            .map_err(|e| anyhow::anyhow!("Error getting instance fixed: {}", e))
     }
 
     pub(crate) fn verify_constraints_debug(
@@ -246,7 +278,9 @@ impl ProverBackend {
         #[cfg(feature = "stats")]
         stats.store_stats();
 
-        Ok(ZiskVerifyConstraintsResult { execution: result, duration: elapsed, stats })
+        let publics = proofman.get_publics();
+
+        Ok(ZiskVerifyConstraintsResult::new(result, elapsed, stats, &publics))
     }
 
     pub(crate) fn verify_constraints(

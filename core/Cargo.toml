@@ -20,18 +20,14 @@ precompiles-helpers = { workspace = true }
 lib-c = { workspace = true }
 ziskos-hints = { workspace = true }
 riscv = { workspace = true }
-zisk-pil = { workspace = true }
 
 rayon = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 fields = { workspace = true }
 sha2 = { workspace = true }
 paste = { workspace = true }
 
 
-indexmap = { version = "2.2.6", features = ["serde"] }
-json = "0.12.4"
 elf = "0.7.4"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 

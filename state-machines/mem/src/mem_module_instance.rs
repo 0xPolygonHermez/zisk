@@ -5,6 +5,7 @@ use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::prelude::*;
 use std::sync::Arc;
+use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
@@ -134,6 +135,10 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
 
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn stats_type(&self) -> StatsType {
+        StatsType::Memory
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

@@ -11,7 +11,7 @@ use proofman_common::ProofCtx;
 use std::{sync::Mutex, thread::JoinHandle};
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    EmuTrace, ExecutorStatsHandle, StatsScope, ZiskExecutionResult,
+    EmuTrace, ExecutorStatsHandle, StatsScope,
 };
 use zisk_core::ZiskRom;
 
@@ -26,7 +26,7 @@ pub struct RomExecutionOutput {
     /// Handle to memory operations thread (for ASM emulator).
     pub handle_mo: Option<JoinHandle<AsmRunnerMO>>,
     /// Execution result with step counts.
-    pub execution_result: ZiskExecutionResult,
+    pub steps: u64,
 }
 
 pub struct RomExecutor {
@@ -83,10 +83,16 @@ impl RomExecutor {
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
     ) -> RomExecutionOutput {
-        let (min_traces, main_count, secn_count, handle_mo, execution_result) = self
-            .emulator
-            .execute(zisk_rom, &self.stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope);
+        let (min_traces, main_count, secn_count, handle_mo, steps) = self.emulator.execute(
+            zisk_rom,
+            &self.stdin,
+            pctx,
+            sm_bundle,
+            use_hints,
+            stats,
+            caller_stats_scope,
+        );
 
-        RomExecutionOutput { min_traces, main_count, secn_count, handle_mo, execution_result }
+        RomExecutionOutput { min_traces, main_count, secn_count, handle_mo, steps }
     }
 }

@@ -1,14 +1,14 @@
 use crate::{
     check_paths_exist,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProgramVK,
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProgramVK,
     ZiskProof, ZiskProofWithPublicValues, ZiskProveResult, ZiskPublics,
     ZiskVerifyConstraintsResult,
 };
 use crate::{ensure_custom_commits, ProofMode, ProofOpts};
 use executor::{get_packed_info, init_executor_emu};
 use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
-use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
+use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo};
 use std::path::PathBuf;
 use std::sync::Arc;
 use zisk_common::io::{StreamSource, ZiskStdin};
@@ -139,6 +139,26 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.stats(pk, stdin, debug_info, minimal_memory, mpi_node)
     }
 
+    fn get_instance_trace(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.core_prover.backend.get_instance_trace(instance_id, first_row, num_rows, offset)
+    }
+
+    fn get_instance_fixed(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.core_prover.backend.get_instance_fixed(instance_id, first_row, num_rows, offset)
+    }
+
     fn verify_constraints_debug(
         &self,
         pk: &ZiskProgramPK,
@@ -246,13 +266,12 @@ impl EmuCoreProver {
         )
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
-        let world_rank = proofman.get_world_rank();
-        let local_rank = proofman.get_local_rank();
+        let rank_info = proofman.get_rank_info();
 
         if logging_config.is_some() {
-            zisk_distributed_common::init(logging_config.as_ref(), Some(world_rank))?;
+            zisk_distributed_common::init(logging_config.as_ref(), Some(&rank_info))?;
         } else {
-            initialize_logger(verbose.into(), Some(world_rank));
+            initialize_logger(verbose.into(), Some(&rank_info));
         }
 
         proofman.set_barrier();
@@ -273,13 +292,16 @@ impl EmuCoreProver {
             Some(proving_key_snark),
         );
 
-        Ok(Self { backend: core, rank_info: RankInfo { world_rank, local_rank } })
+        Ok(Self { backend: core, rank_info })
     }
 
     #[allow(clippy::too_many_arguments)]
     pub fn new_verifier(proving_key: PathBuf, proving_key_snark: PathBuf) -> Result<Self> {
         let core_prover = ProverBackend::new_verifier(proving_key, Some(proving_key_snark));
 
-        Ok(Self { backend: core_prover, rank_info: RankInfo { world_rank: 0, local_rank: 0 } })
+        Ok(Self {
+            backend: core_prover,
+            rank_info: RankInfo { world_rank: 0, local_rank: 0, n_processes: 1 },
+        })
     }
 }

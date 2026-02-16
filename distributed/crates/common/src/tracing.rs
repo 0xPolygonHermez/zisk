@@ -1,5 +1,5 @@
 use anyhow::Result;
-use proofman_common::set_global_rank;
+use proofman_common::{set_global_rank, RankInfo};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
 use tracing_subscriber::{
@@ -68,7 +68,7 @@ impl fmt::Display for LogFormat {
 /// Returns `Ok(None)` if only console logging is configured.
 pub fn init(
     logging_config: Option<&LoggingConfig>,
-    rank: Option<i32>,
+    rank: Option<&RankInfo>,
 ) -> Result<Option<WorkerGuard>> {
     // Prioritize logging_config values over environment variables
     let log_level =
@@ -97,7 +97,9 @@ pub fn init(
     }
 
     if let Some(r) = rank {
-        set_global_rank(r);
+        if r.n_processes > 1 {
+            set_global_rank(r.world_rank);
+        }
     }
 
     // Apply console logging with optional file logging

@@ -11,6 +11,7 @@ use crate::{is_elf_file, RAM_ADDR, RAM_SIZE};
 
 const RAM_START_ADDR: u64 = RAM_ADDR;
 const RAM_END_ADDR: u64 = RAM_ADDR + RAM_SIZE;
+const MAX_ELF_SECTION_SIZE: usize = 1024 * 1024 * 1024; // 1 GiB, arbitrary limit to prevent OOM from malformed ELFs
 
 /// Raw bytes of `data` that will live at `addr` once the ROM has booted.
 #[derive(Debug, Clone)]
@@ -81,6 +82,12 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
                 // BSS sections - uninitialized data, should be zero-filled
                 // Create a zero-filled vector of the appropriate size
                 let size = sh.sh_size as usize;
+                if size > MAX_ELF_SECTION_SIZE {
+                    return Err(format!(
+                        "ELF section at 0x{:08x} has size {} which exceeds the maximum allowed size of {} bytes.",
+                        sh.sh_addr, size, MAX_ELF_SECTION_SIZE
+                    ).into());
+                }
                 // Align size to 4 bytes
                 let aligned_size = (size + 3) & !3;
                 vec![0u8; aligned_size]

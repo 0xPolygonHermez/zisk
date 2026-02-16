@@ -33,10 +33,14 @@ use std::{
 use witness::WitnessComponent;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    stats_begin, stats_end, BusDeviceMetrics, ChunkId, ExecutorStatsHandle, ZiskExecutionResult,
+    stats_begin, stats_end, BusDeviceMetrics, ChunkId, ExecutorStatsHandle, StatsCostPerType,
+    StatsType, ZiskExecutionResult,
 };
 use zisk_core::ZiskRom;
 use zisk_pil::ZiskPublicValues;
+use zisk_pil::{
+    SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS, ZISK_AIRGROUP_ID,
+};
 
 use anyhow::Result;
 
@@ -125,6 +129,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     fn execute(
         &self,
         pctx: Arc<ProofCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
         global_ids: &RwLock<Vec<usize>>,
     ) -> ProofmanResult<()> {
         self.state.reset();
@@ -152,9 +157,6 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
-        // Store the execution result
-        self.state.set_execution_result(output.execution_result);
-
         // Phase 2: Plan main instances
         stats_begin!(self.state.stats, &_exec_scope, _main_plan_scope, "MAIN_PLAN", 0);
 
@@ -162,8 +164,8 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         let main_output = self.planner.plan_main::<F>(&output.min_traces, output.main_count);
         *self.state.min_traces.write().unwrap() = Some(output.min_traces);
 
-        let main_assignments =
-            self.planner.assign_main_instances(&pctx, global_ids, main_output.plans);
+        let (main_assignments, cost_main) =
+            self.planner.assign_main_instances(&pctx, &sctx, global_ids, main_output.plans);
         self.registry.populate_main_instances(&self.state, main_assignments);
 
         stats_end!(self.state.stats, &_main_plan_scope);
@@ -206,6 +208,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Configure secondary state machine instances based on planning
         self.registry.configure_sm_instances(&pctx, &secn_planning);
 
+        let mut cost_per_type = StatsCostPerType::default();
+        cost_per_type.add_cost(StatsType::Main, cost_main);
+
         let mut secn_planning: Vec<_> =
             secn_planning.into_iter().flat_map(|(_, plans)| plans).collect();
 
@@ -235,6 +240,28 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 
         stats_end!(self.state.stats, &_config_scope);
         stats_end!(self.state.stats, &_exec_scope);
+
+        let tables_air_ids =
+            [SPECIFIED_RANGES_AIR_IDS[0], VIRTUAL_TABLE_0_AIR_IDS[0], VIRTUAL_TABLE_1_AIR_IDS[0]];
+        for air_id in tables_air_ids {
+            let setup = sctx.get_setup(ZISK_AIRGROUP_ID, air_id)?;
+            let n_bits = setup.stark_info.stark_struct.n_bits;
+            let total_cols: u64 = setup
+                .stark_info
+                .map_sections_n
+                .iter()
+                .filter(|(key, _)| *key != "const")
+                .map(|(_, value)| *value)
+                .sum();
+            let cost = (1 << n_bits) * total_cols;
+            cost_per_type.add_cost(StatsType::Tables, cost);
+        }
+
+        // Store the execution result
+        let execution_result = ZiskExecutionResult::new(output.steps, cost_per_type);
+
+        // Store the execution result
+        self.state.set_execution_result(execution_result);
 
         Ok(())
     }

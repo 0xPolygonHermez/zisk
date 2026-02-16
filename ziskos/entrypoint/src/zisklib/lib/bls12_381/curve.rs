@@ -385,16 +385,14 @@ pub fn sub_complete_bls12_381(
     if p1_is_inf && p2_is_inf {
         // O - O = O
         return G1_IDENTITY;
-    }
-    if p1_is_inf {
+    } else if p1_is_inf {
         // O - P2 = -P2
         return neg_bls12_381(
             p2,
             #[cfg(feature = "hints")]
             hints,
         );
-    }
-    if p2_is_inf {
+    } else if p2_is_inf {
         // P1 - O = P1
         return *p1;
     }

@@ -3,12 +3,11 @@ use anyhow::Result;
 
 use colored::Colorize;
 use proofman_common::ParamsGPU;
-use std::fs;
 use std::path::PathBuf;
 use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ElfBinaryOwned;
+use zisk_common::ElfBinaryFromFile;
 use zisk_sdk::{ProofOpts, ProverClient, ZiskProof, ZiskProveResult};
 
 // Structure representing the 'prove' subcommand of cargo.
@@ -42,7 +41,7 @@ pub struct ZiskProve {
     pub inputs: Option<String>,
 
     /// Precompiles Hints path
-    #[clap(long)]
+    #[clap(short = 'H', long)]
     pub hints: Option<String>,
 
     /// Setup folder path
@@ -154,7 +153,7 @@ impl ZiskProve {
             Some(uri) => {
                 let stream = StreamSource::from_uri(uri)?;
                 if matches!(stream, StreamSource::Quic(_)) {
-                    anyhow::bail!("QUIC hints source is not supported for execution.");
+                    anyhow::bail!("QUIC hints source is not supported in CLI mode.");
                 }
                 Some(stream)
             }
@@ -226,13 +225,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let elf_bin = fs::read(&self.elf)
-            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
-        let elf = ElfBinaryOwned::new(
-            elf_bin,
-            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            false,
-        );
+        let elf = ElfBinaryFromFile::new(&self.elf, false)?;
         let (pk, _) = prover.setup(&elf)?;
 
         let proof_options = ProofOpts {
@@ -279,13 +272,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let elf_bin = fs::read(&self.elf)
-            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
-        let elf = ElfBinaryOwned::new(
-            elf_bin,
-            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            hints_stream.is_some(),
-        );
+        let elf = ElfBinaryFromFile::new(&self.elf, hints_stream.is_some())?;
         let (pk, _) = prover.setup(&elf)?;
 
         let proof_options = ProofOpts {

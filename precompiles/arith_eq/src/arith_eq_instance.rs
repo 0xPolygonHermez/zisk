@@ -13,11 +13,11 @@ use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
+use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
     InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
-
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithEqTrace;
 
@@ -117,6 +117,10 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     /// An `InstanceType` representing the type of this instance (`InstanceType::Instance`).
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn stats_type(&self) -> StatsType {
+        StatsType::Precompiled
     }
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {

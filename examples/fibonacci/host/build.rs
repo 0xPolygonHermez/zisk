@@ -1,3 +1,3 @@
 fn main() {
-    zisk_build::build_program("../guest");
+    zisk_sdk::build_program("../guest");
 }

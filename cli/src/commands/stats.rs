@@ -6,7 +6,7 @@ use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
 use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ElfBinaryOwned;
+use zisk_common::ElfBinaryFromFile;
 use zisk_common::{ExecutorStatsHandle, Stats};
 use zisk_pil::*;
 use zisk_sdk::ProverClient;
@@ -43,7 +43,7 @@ pub struct ZiskStats {
     pub inputs: Option<String>,
 
     /// Precompiles Hints path
-    #[clap(long)]
+    #[clap(short = 'H', long)]
     pub hints: Option<String>,
 
     /// Setup folder path
@@ -113,7 +113,7 @@ impl ZiskStats {
             Some(uri) => {
                 let stream = StreamSource::from_uri(uri)?;
                 if matches!(stream, StreamSource::Quic(_)) {
-                    anyhow::bail!("QUIC hints source is not supported for execution.");
+                    anyhow::bail!("QUIC hints source is not supported in CLI mode.");
                 }
                 Some(stream)
             }
@@ -160,13 +160,7 @@ impl ZiskStats {
             .print_command_info()
             .build()?;
 
-        let elf_bin = fs::read(&self.elf)
-            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
-        let elf = ElfBinaryOwned::new(
-            elf_bin,
-            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            false,
-        );
+        let elf = ElfBinaryFromFile::new(&self.elf, false)?;
         let (pk, _) = prover.setup(&elf)?;
 
         prover.stats(
@@ -195,13 +189,7 @@ impl ZiskStats {
             .print_command_info()
             .build()?;
 
-        let elf_bin = fs::read(&self.elf)
-            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", self.elf.display(), e))?;
-        let elf = ElfBinaryOwned::new(
-            elf_bin,
-            self.elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            hints_stream.is_some(),
-        );
+        let elf = ElfBinaryFromFile::new(&self.elf, hints_stream.is_some())?;
         let (pk, _) = prover.setup(&elf)?;
 
         if let Some(hints_stream) = hints_stream {

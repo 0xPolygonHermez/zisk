@@ -21,6 +21,6 @@ fn main() {
         a = b;
         b = c;
     }
-    
+
     ziskos::io::commit(&b);
 }

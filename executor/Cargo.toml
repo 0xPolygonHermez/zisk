@@ -10,7 +10,6 @@ categories = { workspace = true }
 [dependencies]
 sm-main = { workspace = true }
 sm-rom = { workspace = true }
-rom-setup = { workspace = true }
 zisk-pil = { workspace = true }
 ziskemu = { workspace = true }
 zisk-core = { workspace = true }
@@ -52,7 +51,22 @@ named-sem = { workspace = true }
 
 [features]
 default = []
-disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
+disable_distributed = []
 gpu = ["proofman-common/gpu", "proofman/gpu", "packed"]
-packed = ["proofman-common/packed"]
+packed = [
+    "proofman-common/packed",
+    "precomp-keccakf/packed",
+    "precomp-sha256f/packed",
+    "precomp-poseidon2/packed",
+    "precomp-arith-eq/packed",
+    "precomp-arith-eq-384/packed",
+    "precomp-big-int/packed",
+    "precomp-dma/packed",
+    "sm-arith/packed",
+    "sm-binary/packed",
+    "sm-main/packed",
+    "sm-mem/packed",
+    "sm-frequent-ops/packed",
+    "sm-rom/packed",
+]
 stats = []

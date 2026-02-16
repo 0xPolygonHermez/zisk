@@ -8,6 +8,7 @@
 *.pilout
 *.fixed
 /tmp
+**/tmp
 *.log
 /emulator-asm/build*
 /emulator-asm/src/dma/*.o
@@ -22,3 +23,5 @@ state-machines/frequent-ops/src/frequent_ops_fixed.bin
 state-machines/arith/src/arith_frops_fixed.bin
 state-machines/binary/src/binary_basic_frops_fixed.bin
 state-machines/binary/src/binary_extension_frops_fixed.bin
+reth-inputs/
+hints/

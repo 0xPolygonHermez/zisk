@@ -3,6 +3,7 @@ mod client;
 mod prover;
 mod utils;
 mod verifier;
+mod ziskemu;
 
 pub use builder::*;
 pub use client::ProverClient;
@@ -10,13 +11,13 @@ pub use prover::*;
 pub use utils::*;
 pub use verifier::*;
 
-use serde::{Deserialize, Serialize};
+pub use ziskemu::*;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RankInfo {
-    pub world_rank: i32,
-    pub local_rank: i32,
-}
+pub use proofman_common::VerboseMode;
+
+pub use zisk_common::{io::*, ElfBinary, ElfBinaryFromFile};
+
+pub use zisk_build::*;
 
 #[macro_export]
 macro_rules! include_elf {
@@ -28,5 +29,13 @@ macro_rules! include_elf {
             name: $arg,
             with_hints: WITH_HINTS,
         }
+    }};
+}
+
+/// Macro to get the ELF file path at compile time
+#[macro_export]
+macro_rules! elf_path {
+    ($arg:literal) => {{
+        env!(concat!("ZISK_ELF_", $arg))
     }};
 }

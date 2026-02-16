@@ -2,7 +2,7 @@ use crate::get_asm_paths;
 use crate::{
     check_paths_exist, ensure_custom_commits,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProgramVK,
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProgramVK,
     ZiskProof, ZiskProofWithPublicValues, ZiskProveResult, ZiskPublics,
     ZiskVerifyConstraintsResult,
 };
@@ -10,7 +10,7 @@ use crate::{ProofMode, ProofOpts};
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use executor::{get_packed_info, init_executor_asm};
 use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
-use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
+use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo, VerboseMode};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::DEFAULT_CACHE_PATH;
 use std::path::PathBuf;
@@ -132,6 +132,8 @@ impl ProverEngine for AsmProver {
             .with_base_port(self.core_prover.base_port)
             .with_world_rank(world_rank)
             .with_local_rank(local_rank)
+            .with_verbose(self.core_prover.verbose == VerboseMode::Debug)
+            .with_metrics(self.core_prover.verbose == VerboseMode::Debug)
             .with_unlock_mapped_memory(self.core_prover.unlock_mapped_memory);
 
         asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
@@ -171,6 +173,26 @@ impl ProverEngine for AsmProver {
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.core_prover.backend.stats(pk, stdin, debug_info, minimal_memory, mpi_node)
+    }
+
+    fn get_instance_trace(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.core_prover.backend.get_instance_trace(instance_id, first_row, num_rows, offset)
+    }
+
+    fn get_instance_fixed(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.core_prover.backend.get_instance_fixed(instance_id, first_row, num_rows, offset)
     }
 
     fn verify_constraints_debug(
@@ -255,6 +277,7 @@ pub struct AsmCoreProver {
     rank_info: RankInfo,
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
+    verbose: VerboseMode,
 }
 
 impl AsmCoreProver {
@@ -283,13 +306,12 @@ impl AsmCoreProver {
         )
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
-        let world_rank = proofman.get_world_rank();
-        let local_rank = proofman.get_local_rank();
+        let rank_info = proofman.get_rank_info();
 
         if logging_config.is_some() {
-            zisk_distributed_common::init(logging_config.as_ref(), Some(world_rank))?;
+            zisk_distributed_common::init(logging_config.as_ref(), Some(&rank_info))?;
         } else {
-            initialize_logger(verbose.into(), Some(world_rank));
+            initialize_logger(verbose.into(), Some(&rank_info));
         }
 
         proofman.set_barrier();
@@ -318,9 +340,10 @@ impl AsmCoreProver {
 
         Ok(Self {
             backend: core,
-            rank_info: RankInfo { world_rank, local_rank },
+            rank_info,
             base_port,
             unlock_mapped_memory,
+            verbose: verbose.into(),
         })
     }
 
@@ -330,9 +353,10 @@ impl AsmCoreProver {
 
         Ok(Self {
             backend: core_prover,
-            rank_info: RankInfo { world_rank: 0, local_rank: 0 },
+            rank_info: RankInfo { world_rank: 0, local_rank: 0, n_processes: 1 },
             base_port: None,
             unlock_mapped_memory: false,
+            verbose: VerboseMode::Info,
         })
     }
 }

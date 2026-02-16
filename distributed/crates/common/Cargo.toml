@@ -18,6 +18,3 @@ uuid = { version = "1.0", features = ["v4"] }
 thiserror = "2.0"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-
-[features]
-gpu = ["proofman/gpu", "proofman-common/gpu"]

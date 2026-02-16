@@ -177,7 +177,7 @@ airtemplate Dma64Aligned(int N = 2**21, const int RC = 2, const int op_x_row = 4
     //   
     // If not finish sequence in previous row, means current it's a continuation of previous sequence
     // count match with previous value plus ops_in_row.
-    continue_seq_on_l1 * (count - (segment_previous_count - op_x_row)) == 0;
+    continue_seq_on_l1 * (count - (segment_previous_count - op_x_row)) === 0;
     continue_seq_on_no_l1 * (count - ('count - op_x_row)) === 0;
 
     // If finish sequence count match with ops_in_row, because final count must be 0.

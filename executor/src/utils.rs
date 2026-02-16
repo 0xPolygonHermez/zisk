@@ -68,10 +68,9 @@ fn initialize_executor<F: PrimeField64>(
     unlock_mapped_memory: Option<bool>,
     wcm: &WitnessManager<F>,
 ) -> Result<Arc<ZiskExecutor<F>>> {
-    let world_rank = wcm.get_world_rank();
-    let local_rank = wcm.get_local_rank();
+    let rank_info = wcm.get_rank_info();
 
-    proofman_common::initialize_logger(verbose_mode, Some(world_rank));
+    proofman_common::initialize_logger(verbose_mode, Some(&rank_info));
 
     // Step 3: Initialize the secondary state machines
     let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
@@ -153,8 +152,8 @@ fn initialize_executor<F: PrimeField64>(
     let emulator = if is_asm_emulator {
         debug!("Using ASM emulator");
         EmulatorKind::Asm(EmulatorAsm::new(
-            world_rank,
-            local_rank,
+            rank_info.world_rank,
+            rank_info.local_rank,
             base_port,
             unlock_mapped_memory.unwrap_or(false),
             CHUNK_SIZE,

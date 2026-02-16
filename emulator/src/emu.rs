@@ -21,6 +21,8 @@ use zisk_core::{
     STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
+pub const ZISK_PUBLICS: usize = 64;
+
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
 pub struct Emu<'a> {
@@ -2542,21 +2544,21 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step
     }
 
-    /// Get the output as a vector of u64
-    pub fn get_output(&self) -> Vec<u64> {
-        let n = self.ctx.inst_ctx.mem.read(OUTPUT_ADDR, 8);
-        let mut addr = OUTPUT_ADDR + 8;
-
-        let mut output: Vec<u64> = Vec::with_capacity(n as usize);
+    /// Get the output as a vector of u32
+    pub fn get_output_32(&self) -> Vec<u32> {
+        let n = ZISK_PUBLICS;
+        let mut addr = OUTPUT_ADDR;
+        let mut output: Vec<u32> = Vec::with_capacity(n);
         for _i in 0..n {
-            output.push(self.ctx.inst_ctx.mem.read(addr, 8));
-            addr += 8;
+            output.push(self.ctx.inst_ctx.mem.read(addr, 4) as u32);
+            addr += 4;
         }
+
         output
     }
 
     /// Get the output as a vector of u32
-    pub fn get_output_32(&self) -> Vec<u32> {
+    pub fn get_output_riscof_32(&self) -> Vec<u32> {
         let n = self.ctx.inst_ctx.mem.read(OUTPUT_ADDR, 4);
         let mut addr = OUTPUT_ADDR + 4;
         let mut output: Vec<u32> = Vec::with_capacity(n as usize);
@@ -2565,22 +2567,15 @@ impl<'a> Emu<'a> {
             addr += 4;
         }
 
-        // let mut addr = OUTPUT_ADDR;
-        // let mut output: Vec<u32> = Vec::with_capacity(32);
-        // for _i in 0..32 {
-        //     output.push(self.ctx.inst_ctx.mem.read(addr, 4) as u32);
-        //     addr += 4;
-        // }
-
         output
     }
 
     /// Get the output as a vector of u8
     pub fn get_output_8(&self) -> Vec<u8> {
-        let n = self.ctx.inst_ctx.mem.read(OUTPUT_ADDR, 4);
-        let mut addr = OUTPUT_ADDR + 4;
+        let n = ZISK_PUBLICS;
+        let mut addr = OUTPUT_ADDR;
 
-        let mut output: Vec<u8> = Vec::with_capacity(n as usize);
+        let mut output: Vec<u8> = Vec::with_capacity(n);
         for _i in 0..n {
             output.push(self.ctx.inst_ctx.mem.read(addr, 1) as u8);
             output.push(self.ctx.inst_ctx.mem.read(addr + 1, 1) as u8);

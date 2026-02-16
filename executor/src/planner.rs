@@ -4,10 +4,11 @@
 //! state machine instances to the proof context.
 
 use fields::PrimeField64;
-use proofman_common::ProofCtx;
+use proofman_common::{ProofCtx, SetupCtx};
 use sm_main::MainPlanner;
 use std::{collections::BTreeMap, sync::RwLock};
 use zisk_common::{EmuTrace, InstanceType, Plan};
+use zisk_pil::{MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::AirClassifier;
 use crate::{DeviceMetricsList, NestedDeviceMetricsList, StaticSMBundle};
@@ -87,10 +88,23 @@ impl InstancePlanner {
     pub fn assign_main_instances<F: PrimeField64>(
         &self,
         pctx: &ProofCtx<F>,
+        sctx: &SetupCtx<F>,
         global_ids: &RwLock<Vec<usize>>,
         plans: Vec<Plan>,
-    ) -> Vec<(usize, Plan)> {
+    ) -> (Vec<(usize, Plan)>, u64) {
         let mut assignments = Vec::with_capacity(plans.len());
+
+        let setup_main = sctx.get_setup(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).unwrap();
+        let n_bits = setup_main.stark_info.stark_struct.n_bits;
+        let total_cols: u64 = setup_main
+            .stark_info
+            .map_sections_n
+            .iter()
+            .filter(|(key, _)| *key != "const")
+            .map(|(_, value)| *value)
+            .sum();
+        let cost = (1 << n_bits) * total_cols;
+        let total_cost = cost * plans.len() as u64;
 
         for mut plan in plans {
             let global_id = pctx
@@ -101,7 +115,7 @@ impl InstancePlanner {
             assignments.push((global_id, plan));
         }
 
-        assignments
+        (assignments, total_cost)
     }
 
     /// Assigns secondary instances to the proof context.

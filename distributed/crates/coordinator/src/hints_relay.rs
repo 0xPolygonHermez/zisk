@@ -4,8 +4,11 @@ use anyhow::Result;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
-use zisk_common::{io::StreamProcessor, CtrlHint, HintCode, PrecompileHint};
+use std::sync::{Arc, Mutex};
+use zisk_common::{
+    io::StreamProcessor, CtrlHint, HintCode, PartialPrecompileHint, PrecompileHint,
+    PrecompileHintParseResult,
+};
 use zisk_distributed_common::StreamMessageKind;
 
 type AsyncDispatcher = Arc<
@@ -18,6 +21,9 @@ pub struct PrecompileHintsRelay {
     sequence_number: Arc<AtomicU32>,
     dispatcher: AsyncDispatcher,
     runtime_handle: tokio::runtime::Handle,
+
+    /// Buffer for incomplete hint data between batches
+    pending_partial: Mutex<Option<PartialPrecompileHint>>,
 }
 
 impl PrecompileHintsRelay {
@@ -39,6 +45,7 @@ impl PrecompileHintsRelay {
             sequence_number: Arc::new(AtomicU32::new(0)),
             dispatcher,
             runtime_handle: tokio::runtime::Handle::current(),
+            pending_partial: Mutex::new(None),
         }
     }
 
@@ -46,11 +53,24 @@ impl PrecompileHintsRelay {
         let mut has_ctrl_start = false;
         let mut has_ctrl_end = false;
 
+        // Take any pending partial hint from previous batch
+        let mut pending_partial = self.pending_partial.lock().unwrap().take();
+
         // Parse hints and dispatch to pool
         let mut idx = 0;
         while idx < hints.len() {
-            let hint = PrecompileHint::from_u64_slice(hints, idx, true)?;
-            let length = hint.data.len();
+            let (parsed_hint, consumed) =
+                PrecompileHint::from_u64_slice(hints, idx, true, pending_partial.take())?;
+
+            let hint = match parsed_hint {
+                PrecompileHintParseResult::Complete(hint) => hint,
+                PrecompileHintParseResult::Partial(partial) => {
+                    // Store partial for next batch and exit loop
+                    *self.pending_partial.lock().unwrap() = Some(partial);
+                    break;
+                }
+            };
+            let length = consumed;
 
             // Validate hint type is in valid range before accessing stats array
 
@@ -79,7 +99,7 @@ impl PrecompileHintsRelay {
             }
             has_ctrl_end = hint.hint_code == HintCode::Ctrl(CtrlHint::End);
 
-            idx += length + 1;
+            idx += length;
         }
 
         if has_ctrl_start {
@@ -87,7 +107,7 @@ impl PrecompileHintsRelay {
         }
 
         // Call async dispatcher - blocks on async work for zero overhead
-        self.send_hints_data(hints.to_vec());
+        self.send_hints_data(hints);
 
         if has_ctrl_end {
             self.send_hints_end();
@@ -102,18 +122,14 @@ impl PrecompileHintsRelay {
         self.runtime_handle.block_on((self.dispatcher)(seq_num, StreamMessageKind::Start, vec![]));
     }
 
-    fn send_hints_data(&self, hints: Vec<u64>) {
+    fn send_hints_data(&self, hints: &[u64]) {
         let seq_num = self.sequence_number.fetch_add(1, Ordering::SeqCst);
 
-        // Convert Vec<u64> to Vec<u8> for wire protocol
+        // Safe conversion: &[u64] → Vec<u8> for wire protocol
         let payload = unsafe {
-            let mut hints_vec = hints.to_vec();
-            let ptr = hints_vec.as_mut_ptr() as *mut u8;
-            let len = hints_vec.len() * std::mem::size_of::<u64>();
-            let capacity = hints_vec.capacity() * std::mem::size_of::<u64>();
-            std::mem::forget(hints_vec);
-            Vec::from_raw_parts(ptr, len, capacity)
-        };
+            std::slice::from_raw_parts(hints.as_ptr() as *const u8, std::mem::size_of_val(hints))
+        }
+        .to_vec();
 
         self.runtime_handle.block_on((self.dispatcher)(seq_num, StreamMessageKind::Data, payload));
     }
@@ -123,10 +139,20 @@ impl PrecompileHintsRelay {
 
         self.runtime_handle.block_on((self.dispatcher)(seq_num, StreamMessageKind::End, vec![]));
     }
+
+    /// Reset internal state for clean execution
+    fn reset_state(&self) {
+        self.sequence_number.store(0, Ordering::SeqCst);
+        *self.pending_partial.lock().unwrap() = None;
+    }
 }
 
 impl StreamProcessor for PrecompileHintsRelay {
     fn process(&self, data: &[u64], first_batch: bool) -> Result<bool> {
         self.process_hints(data, first_batch)
+    }
+
+    fn reset(&self) {
+        self.reset_state();
     }
 }

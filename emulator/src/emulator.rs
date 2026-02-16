@@ -171,6 +171,17 @@ impl ZiskEmulator {
             }
         }
 
+        // Log output to console if requested
+        if options.log_output_riscof {
+            // Get the emulation output as a u32 vector
+            let output = emu.get_output_riscof_32();
+
+            // Log the output to console
+            for o in &output {
+                println!("{o:08x}");
+            }
+        }
+
         Ok(output)
     }
 

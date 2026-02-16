@@ -345,23 +345,23 @@ const DMA_64_ALIGNED_OPS_BY_ROW: usize = 4;
 
 // Cost definitions: Area x Op
 const INTERNAL_COST: u64 = 0;
-const BINARY_COST: u64 = 75;
-const BINARY_ADD_COST: u64 = 26;
-const BINARY_E_COST: u64 = 54;
+const BINARY_COST: u64 = 60;
+const BINARY_ADD_COST: u64 = 25;
+const BINARY_E_COST: u64 = 53;
 const ARITHA32_COST: u64 = 95;
 const ARITHAM32_COST: u64 = 95;
-const KECCAK_COST: u64 = (((93846 * 86) - 1) / 63) + 1;
+const KECCAK_COST: u64 = 25 * 3022;
 const SHA256_COST: u64 = 72 * 121;
 const POSEIDON2_COST: u64 = 14 * 75;
-const ARITH_EQ_COST: u64 = 85 * 16;
+const ARITH_EQ_COST: u64 = 89 * 16;
 const FCALL_COST: u64 = INTERNAL_COST;
 const ARITH_EQ_384_COST: u64 = 79 * 24;
 const ADD256_COST: u64 = 104;
-const DMA_COST: u64 = 39;
+const DMA_COST: u64 = 42;
 
 const DMA_64_ALIGNED_COST: u64 = 40;
 const DMA_UNALIGNED_COST: u64 = 42;
-const DMA_PRE_POST_COST: u64 = 84;
+const DMA_PRE_POST_COST: u64 = 88;
 
 // const OP_DMA_64_ALIGNED: u8 = 0xda;
 // const OP_DMA_UNALIGNED: u8 = 0xdb;

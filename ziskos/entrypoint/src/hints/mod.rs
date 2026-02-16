@@ -23,6 +23,7 @@ use std::{
     io::{self, BufWriter, Write},
     sync::Arc,
 };
+use tokio::sync::oneshot;
 use zisk_common::io::{StreamWrite, UnixSocketStreamWriter};
 
 #[cfg(zisk_hints_single_thread)]
@@ -71,9 +72,9 @@ impl HintFileWriterHandleCell {
 }
 
 pub fn init_hints() -> io::Result<()> {
-    // Record the main thread id to validate single-threaded calls later
+    // Initialize the main thread ID for single-threaded assert (if enabled)
     #[cfg(zisk_hints_single_thread)]
-    let _ = MAIN_TID.set(std::thread::current().id());
+    let _ = MAIN_TID.set(None); // Placeholder value to mark uninitialized
 
     if let Some(handle) = HINT_WRITER_HANDLE.take() {
         HINT_BUFFER.close();
@@ -92,13 +93,23 @@ pub fn init_hints() -> io::Result<()> {
         }
     }
 
+    #[cfg(zisk_hints_metrics)]
+    crate::hints::metrics::reset_metrics();
+
     HINT_BUFFER.reset();
 
     Ok(())
 }
 
-pub fn init_hints_file(hints_file_path: PathBuf) -> io::Result<()> {
+pub fn init_hints_file(
+    hints_file_path: PathBuf,
+    ready: Option<oneshot::Sender<()>>,
+) -> io::Result<()> {
     init_hints()?;
+
+    if let Some(tx) = ready {
+        let _ = tx.send(());
+    }
 
     let handle = thread::spawn(move || write_hints_to_file(hints_file_path));
     HINT_WRITER_HANDLE.store(handle);
@@ -106,16 +117,23 @@ pub fn init_hints_file(hints_file_path: PathBuf) -> io::Result<()> {
     Ok(())
 }
 
-pub fn init_hints_socket(socket_path: PathBuf) -> io::Result<()> {
+pub fn init_hints_socket(
+    socket_path: PathBuf,
+    ready: Option<oneshot::Sender<()>>,
+) -> io::Result<()> {
     init_hints()?;
 
     // Create the Unix socket writer (server)
     let mut socket_writer = UnixSocketWriter::new(&socket_path).map_err(io::Error::other)?;
 
+    // Notify that socket is ready after client connects
+    if let Some(tx) = ready {
+        let _ = tx.send(());
+    }
+
     // Open the connection (waits for client to connect)
     // TODO: Implement open timeout
     socket_writer.open().map_err(io::Error::other)?;
-    println!("Client connected to hints socket! Starting hint data transfer...");
 
     let handle = thread::spawn(move || write_hints_to_socket(socket_writer));
     HINT_WRITER_HANDLE.store(handle);
@@ -154,6 +172,7 @@ pub fn write_hints<W: Write>(writer: &mut W) -> io::Result<()> {
 
     // Write hints from the buffer
     HINT_BUFFER.drain_to_writer(writer)?;
+
     // Write HINT_END
     if !disable_prefix {
         let end_header: u64 = ((HINT_END as u64) << 32) | 0u64;
@@ -193,6 +212,10 @@ impl UnixSocketWriter {
     pub fn open(&mut self) -> Result<()> {
         self.inner.open()
     }
+
+    pub fn close(&mut self) -> Result<()> {
+        self.inner.close()
+    }
 }
 
 impl Write for UnixSocketWriter {
@@ -210,11 +233,13 @@ fn write_hints_to_socket(mut socket_writer: UnixSocketWriter) -> io::Result<()> 
 
     write_hints(&mut socket_writer)?;
 
+    socket_writer.close().map_err(io::Error::other)?;
+
     Ok(())
 }
 
 #[cfg(zisk_hints_single_thread)]
-static MAIN_TID: OnceCell<ThreadId> = OnceCell::new();
+static MAIN_TID: OnceCell<Option<ThreadId>> = OnceCell::new();
 
 #[cfg(zisk_hints_single_thread)]
 #[inline(always)]
@@ -223,16 +248,24 @@ pub(crate) fn check_main_thread() {
     let tid = std::thread::current().id();
     match MAIN_TID.get() {
         Some(main) => {
-            if *main != tid {
-                panic!(
-                    "Precompile hint function called from non-main thread, main={:?}, current={:?}",
-                    main, tid
-                );
+            match main {
+                Some(main) => {
+                    if *main != tid {
+                        panic!(
+                            "Precompile hint function called from non-main thread, main={:?}, current={:?}",
+                            main, tid
+                        );
+                    }
+                }
+                None => {
+                    // If not initialized yet, record the first caller thread as main
+                    let _ = MAIN_TID.set(Some(tid));
+                }
             }
         }
         None => {
             // If not initialized yet, record the first caller thread as main
-            let _ = MAIN_TID.set(tid);
+            let _ = MAIN_TID.set(Some(tid));
         }
     }
 }

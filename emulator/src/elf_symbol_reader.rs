@@ -1,4 +1,5 @@
 use memmap2::Mmap;
+use object::elf::STT_GNU_IFUNC;
 use object::{elf::STT_FUNC, Object, ObjectSymbol, Symbol, SymbolFlags, SymbolKind};
 
 use std::fs::File;
@@ -48,7 +49,8 @@ impl ElfSymbolReader {
             if let Ok(name) = symbol.name() {
                 if !name.is_empty() {
                     if let SymbolFlags::Elf { st_info, .. } = symbol.flags() {
-                        if (st_info & STT_FUNC) != 0 {
+                        let st_type = st_info & 0x0f;
+                        if st_type == STT_FUNC || st_type == STT_GNU_IFUNC {
                             let name = self.demangle_name(name);
                             let address = symbol.address();
                             let size = symbol.size();
