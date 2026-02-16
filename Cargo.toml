@@ -72,6 +72,7 @@ ziskemu = { path = "emulator" }
 asm-runner = { path = "emulator-asm/asm-runner" }
 executor = { path = "executor" }
 lib-c = { path = "lib-c" }
+lib-float = { path = "lib-float" }
 zisk-pil = { path = "pil" }
 precomp-arith-eq = { path = "precompiles/arith_eq" }
 precomp-arith-eq-384 = { path = "precompiles/arith_eq_384" }
