@@ -256,7 +256,9 @@ uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime);
 
 void configure (void);
 void server_setup (void);
-void server_reset (void);
+void server_reset_fast (void);
+void server_reset_slow (void);
+void server_reset_trace (void);
 void server_run (void);
 void server_cleanup (void);
 
@@ -635,7 +637,9 @@ int main(int argc, char *argv[])
     server_setup();
 
     // Reset the server, i.e. reset memory
-    server_reset();
+    server_reset_fast();
+    server_reset_slow();
+    server_reset_trace();
 
     // Create socket file descriptor
     int server_fd;
@@ -766,6 +770,8 @@ int main(int argc, char *argv[])
 
                         server_run();
 
+                        server_reset_fast();
+
                         response[0] = TYPE_MT_RESPONSE;
                         response[1] = (MEM_END && !MEM_ERROR) ? 0 : 1;
                         response[2] = trace_size;
@@ -794,6 +800,8 @@ int main(int argc, char *argv[])
                         set_max_steps(request[1]);
 
                         server_run();
+
+                        server_reset_fast();
 
                         response[0] = TYPE_RH_RESPONSE;
                         response[1] = MEM_END ? 0 : 1;
@@ -825,6 +833,8 @@ int main(int argc, char *argv[])
 
                         server_run();
 
+                        server_reset_fast();
+
                         response[0] = TYPE_MO_RESPONSE;
                         response[1] = MEM_END ? 0 : 1;
                         response[2] = trace_size;
@@ -854,6 +864,8 @@ int main(int argc, char *argv[])
                         set_chunk_size(request[2]);
 
                         server_run();
+
+                        server_reset_fast();
 
                         response[0] = TYPE_MA_RESPONSE;
                         response[1] = MEM_END ? 0 : 1;
@@ -888,6 +900,8 @@ int main(int argc, char *argv[])
 
                         server_run();
 
+                        server_reset_fast();
+
                         response[0] = TYPE_CM_RESPONSE;
                         response[1] = 0;
                         response[2] = trace_size;
@@ -918,6 +932,8 @@ int main(int argc, char *argv[])
 
                         server_run();
 
+                        server_reset_fast();
+
                         response[0] = TYPE_FA_RESPONSE;
                         response[1] = MEM_END ? 0 : 1;
                         response[2] = 0;
@@ -947,6 +963,8 @@ int main(int argc, char *argv[])
                         set_chunk_size(request[2]);
 
                         server_run();
+
+                        server_reset_fast();
 
                         response[0] = TYPE_MR_RESPONSE;
                         response[1] = MEM_END ? 0 : 1;
@@ -980,6 +998,8 @@ int main(int argc, char *argv[])
                         print_pc_counter = pChunk[3];
 
                         server_run();
+
+                        server_reset_fast();
 
                         response[0] = TYPE_CA_RESPONSE;
                         response[1] = 0;
@@ -1033,7 +1053,7 @@ int main(int argc, char *argv[])
 #endif
             if (bReset)
             {
-                server_reset();
+                server_reset_slow();
             }
 
             if (bShutdown)
@@ -4011,10 +4031,14 @@ void server_setup (void)
     if (verbose) printf("sem_open(%s) succeeded\n", sem_shutdown_done_name);
 }
 
-void server_reset (void)
+void server_reset_fast (void)
 {
+    // Reset precompile read address for next emulation
     if (precompile_results_enabled && (gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain)) *precompile_read_address = 0;
+}
 
+void server_reset_slow (void)
+{
     // Reset RAM data for next emulation
     if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
@@ -4027,32 +4051,16 @@ void server_reset (void)
         duration = TimeDiff(start_time, stop_time);
         if (verbose) printf("server_reset() memset(ram) in %lu us\n", duration);
 #endif
-        if ((gen_method != Fast) && (gen_method != RomHistogram))
-        {
-            // Reset trace: init output header data
-            pOutputTrace[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-            pOutputTrace[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-            pOutputTrace[2] = trace_size; // MT allocated size [8] -> to be updated after reallocation
-            pOutputTrace[3] = 0; // MT used size [8] -> to be updated after completion
-            
-            // Reset trace used size
-            trace_used_size = 0;
-        }
     }
 }
 
-void server_run (void)
+void server_reset_trace (void)
 {
-    if ((gen_method == RomHistogram)) {
-        memset((void *)trace_address, 0, trace_size);
-    }
-
-#ifdef ASM_CALL_METRICS
-    reset_asm_call_metrics();
-#endif
-
-    // Init trace header
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain) && (gen_method != Fast))
+    // Reset RAM data for next emulation
+    if ( (gen_method != ChunkPlayerMTCollectMem) &&
+         (gen_method != ChunkPlayerMemReadsCollectMain) &&
+         (gen_method != Fast) &&
+         (gen_method != RomHistogram) )
     {
         // Reset trace: init output header data
         pOutputTrace[0] = 0x000100; // Version, e.g. v1.0.0 [8]
@@ -4063,6 +4071,22 @@ void server_run (void)
         // Reset trace used size
         trace_used_size = 0;
     }
+}
+
+void server_run (void)
+{
+    // If ROM histogram, reset the trace area to 0 for the histogram data since it represents the
+    // ROM instruction multiplicity and one of them will be increased at every executed instruction
+    if ((gen_method == RomHistogram)) {
+        memset((void *)trace_address, 0, trace_size);
+    }
+
+#ifdef ASM_CALL_METRICS
+    reset_asm_call_metrics();
+#endif
+
+    // Init trace header
+    server_reset_trace();
 
     // Sync input shared memory
     if (msync((void *)INPUT_ADDR, MAX_INPUT_SIZE, MS_SYNC) != 0) {
@@ -4435,8 +4459,22 @@ extern int _print_regs()
     // printf("\n");
 }
 
+//struct timeval print_pc_tv;
 extern int _print_pc (uint64_t pc, uint64_t c)
 {
+    // print_pc_counter++;
+    // {
+    //     struct timeval tv;
+    //     gettimeofday(&tv, NULL);
+    //     uint64_t duration = TimeDiff(print_pc_tv, tv);
+    //     if (duration > 900)
+    //     {
+    //         uint64_t chunk = print_pc_counter / chunk_size;
+    //         printf("print_pc() pc=%lx counter=%lu sec=%lu usec=%lu duration=%lu chunk=%lu\n", pc, print_pc_counter, tv.tv_sec, tv.tv_usec, duration, chunk);
+    //         fflush(stdout);
+    //     }
+    //     print_pc_tv = tv;
+    // }
     printf("s=%lu pc=%lx c=%lx", print_pc_counter, pc, c);
     /* Used for debugging
     printf(" r0=%lx", reg_0);
@@ -4489,8 +4527,12 @@ extern void _chunk_done()
     //     struct timeval tv;
     //     gettimeofday(&tv, NULL);
     //     uint64_t duration = TimeDiff(chunk_done_tv, tv);
+    //     if (duration > 5000)
+    //     {
+    //         printf("chunk_done() counter=%lu sec=%lu usec=%lu duration=%lu\n", chunk_done_counter, tv.tv_sec, tv.tv_usec, duration);
+    //         fflush(stdout);
+    //     }
     //     chunk_done_tv = tv;
-    //     printf("chunk_done() counter=%lu sec=%lu usec=%lu duration=%lu\n", chunk_done_counter, tv.tv_sec, tv.tv_usec, duration);
     // }
     //gettimeofday(&sync_start, NULL);
     __sync_synchronize();

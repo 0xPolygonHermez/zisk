@@ -397,9 +397,10 @@ void precompile_cache_store( uint8_t* data, uint64_t size)
     fwrite(data, 1, size, precompile_file);
     fflush(precompile_file);
 #ifdef ASM_PRECOMPILE_CACHE_DEBUG
+    uint64_t previous_total_precompile_cache_size = total_precompile_cache_size;
     total_precompile_cache_size += size;
     total_precompile_cache_counter++;
-    printf("precompile_cache_store() Stored %lu bytes at pos=%lu total_precompile_cache_size=%lu total_precompile_cache_counter=%lu\n", size, ftell(precompile_file), total_precompile_cache_size, total_precompile_cache_counter);
+    printf("precompile_cache_store() Stored %lu bytes at pos=%lu file_size=%lu total_precompile_cache_size=%lu total_precompile_cache_counter=%lu\n", size, previous_total_precompile_cache_size, ftell(precompile_file), total_precompile_cache_size, total_precompile_cache_counter);
 #endif
 }
 
@@ -500,7 +501,15 @@ extern int _opcode_keccak(uint64_t address)
 #ifdef ASM_CALL_METRICS
     if (emu_verbose) printf("opcode_keccak() calling keccakf1600_generic() counter=%lu address=%08lx\n", asm_call_metrics.keccak_counter, address);
 #else
-    if (emu_verbose) printf("opcode_keccak() calling keccakf1600_generic() address=%08lx\n", address);
+    if (emu_verbose)
+    {
+        printf("opcode_keccak() calling keccakf1600_generic() address=%08lx\n", address);
+        for (uint64_t i=0; i<200; i++)
+        {
+            printf("%02x", ((uint8_t *)address)[i]);
+        }
+        printf("\n");
+    }
 #endif
 #endif
 
@@ -523,7 +532,15 @@ extern int _opcode_keccak(uint64_t address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_keccak() called keccakf1600_generic()\n");
+    if (emu_verbose)
+    {
+        printf("opcode_keccak() called keccakf1600_generic()\n");
+        for (uint64_t i=0; i<200; i++)
+        {
+            printf("%02x", ((uint8_t *)address)[i]);
+        }
+        printf("\n");
+    }
 #endif
 #ifdef ASM_CALL_METRICS
     asm_call_metrics.keccak_counter++;
