@@ -34,6 +34,7 @@ impl EmulatorAsm {
         _stdin: &Mutex<ZiskStdin>,
         _pctx: &ProofCtx<F>,
         _sm_bundle: &StaticSMBundle<F>,
+        _use_hints: bool,
         _stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
     ) -> (
@@ -43,6 +44,18 @@ impl EmulatorAsm {
         Option<JoinHandle<AsmRunnerMO>>,
         u64,
     ) {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
+    pub fn get_chunk_size(&self) -> u64 {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
+    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
+    pub fn reset_hints_stream(&self) {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 }
