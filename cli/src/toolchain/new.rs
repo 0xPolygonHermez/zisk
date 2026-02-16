@@ -21,6 +21,8 @@ impl NewCmd {
         // Clone the repository.
         let output = Command::new("git")
             .arg("clone")
+            .arg("--branch")
+            .arg("pre-develop-0.16.0")
             .arg(repo_url)
             .arg(root.as_os_str())
             .arg("--recurse-submodules")
