@@ -114,7 +114,7 @@ jobs:
   test-macos:
     name: Test on macOS
     runs-on: macos-14
-    timeout-minutes: 15
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
