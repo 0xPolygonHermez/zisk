@@ -506,7 +506,7 @@ extern int _opcode_keccak(uint64_t address)
         printf("opcode_keccak() calling keccakf1600_generic() address=%08lx\n", address);
         for (uint64_t i=0; i<200; i++)
         {
-            printf("%02x", ((uint8_t *)address)[i]);
+            printf("%02x", ((uint8_t *)(uintptr_t)address)[i]);
         }
         printf("\n");
     }
@@ -537,7 +537,7 @@ extern int _opcode_keccak(uint64_t address)
         printf("opcode_keccak() called keccakf1600_generic()\n");
         for (uint64_t i=0; i<200; i++)
         {
-            printf("%02x", ((uint8_t *)address)[i]);
+            printf("%02x", ((uint8_t *)(uintptr_t)address)[i]);
         }
         printf("\n");
     }
