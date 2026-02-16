@@ -8,7 +8,7 @@ fn main() {
     // Read the input data
     let n: u32 = ziskos::io::read();
 
-    let module = 233;
+    let module = 253;
 
     ziskos::io::commit(&n);
     ziskos::io::commit(&module);
@@ -17,7 +17,7 @@ fn main() {
     let mut b = 1;
     for _ in 0..n {
         let mut c = a + b;
-        c %= 233;
+        c %= module;
         a = b;
         b = c;
     }
