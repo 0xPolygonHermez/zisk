@@ -4382,101 +4382,116 @@ void server_cleanup (void)
     }
 }
 
-// extern uint64_t reg_0;
-// extern uint64_t reg_1;
-// extern uint64_t reg_2;
-// extern uint64_t reg_3;
-// extern uint64_t reg_4;
-// extern uint64_t reg_5;
-// extern uint64_t reg_6;
-// extern uint64_t reg_7;
-// extern uint64_t reg_8;
-// extern uint64_t reg_9;
-// extern uint64_t reg_10;
-// extern uint64_t reg_11;
-// extern uint64_t reg_12;
-// extern uint64_t reg_13;
-// extern uint64_t reg_14;
-// extern uint64_t reg_15;
-// extern uint64_t reg_16;
-// extern uint64_t reg_17;
-// extern uint64_t reg_18;
-// extern uint64_t reg_19;
-// extern uint64_t reg_20;
-// extern uint64_t reg_21;
-// extern uint64_t reg_22;
-// extern uint64_t reg_23;
-// extern uint64_t reg_24;
-// extern uint64_t reg_25;
-// extern uint64_t reg_26;
-// extern uint64_t reg_27;
-// extern uint64_t reg_28;
-// extern uint64_t reg_29;
-// extern uint64_t reg_30;
-// extern uint64_t reg_31;
-// extern uint64_t reg_32;
-// extern uint64_t reg_33;
-// extern uint64_t reg_34;
+//#define PRINT_REGS
+#ifdef PRINT_REGS
+extern uint64_t reg_0;
+extern uint64_t reg_1;
+extern uint64_t reg_2;
+extern uint64_t reg_3;
+extern uint64_t reg_4;
+extern uint64_t reg_5;
+extern uint64_t reg_6;
+extern uint64_t reg_7;
+extern uint64_t reg_8;
+extern uint64_t reg_9;
+extern uint64_t reg_10;
+extern uint64_t reg_11;
+extern uint64_t reg_12;
+extern uint64_t reg_13;
+extern uint64_t reg_14;
+extern uint64_t reg_15;
+extern uint64_t reg_16;
+extern uint64_t reg_17;
+extern uint64_t reg_18;
+extern uint64_t reg_19;
+extern uint64_t reg_20;
+extern uint64_t reg_21;
+extern uint64_t reg_22;
+extern uint64_t reg_23;
+extern uint64_t reg_24;
+extern uint64_t reg_25;
+extern uint64_t reg_26;
+extern uint64_t reg_27;
+extern uint64_t reg_28;
+extern uint64_t reg_29;
+extern uint64_t reg_30;
+extern uint64_t reg_31;
+extern uint64_t reg_32;
+extern uint64_t reg_33;
+extern uint64_t reg_34;
+#endif
 
 extern int _print_regs()
 {
-    // printf("print_regs()\n");
-    // printf("\treg[ 0]=%lu=0x%lx=@%p\n", reg_0,  reg_0,  &reg_0);
-    // //printf("\treg[ 1]=%lu=0x%lx=@%p\n", reg_1,  reg_1,  &reg_1);
-    // //printf("\treg[ 2]=%lu=0x%lx=@%p\n", reg_2,  reg_2,  &reg_2);
-    // printf("\treg[ 3]=%lu=0x%lx=@%p\n", reg_3,  reg_3,  &reg_3);
-    // printf("\treg[ 4]=%lu=0x%lx=@%p\n", reg_4,  reg_4,  &reg_4);
-    // /*printf("\treg[ 5]=%lu=0x%lx=@%p\n", reg_5,  reg_5,  &reg_5);
-    // printf("\treg[ 6]=%lu=0x%lx=@%p\n", reg_6,  reg_6,  &reg_6);
-    // printf("\treg[ 7]=%lu=0x%lx=@%p\n", reg_7,  reg_7,  &reg_7);
-    // printf("\treg[ 8]=%lu=0x%lx=@%p\n", reg_8,  reg_8,  &reg_8);
-    // printf("\treg[ 9]=%lu=0x%lx=@%p\n", reg_9,  reg_9,  &reg_9);
-    // printf("\treg[10]=%lu=0x%lx=@%p\n", reg_10, reg_10, &reg_10);
-    // printf("\treg[11]=%lu=0x%lx=@%p\n", reg_11, reg_11, &reg_11);
-    // printf("\treg[12]=%lu=0x%lx=@%p\n", reg_12, reg_12, &reg_12);
-    // printf("\treg[13]=%lu=0x%lx=@%p\n", reg_13, reg_13, &reg_13);
-    // printf("\treg[14]=%lu=0x%lx=@%p\n", reg_14, reg_14, &reg_14);
-    // printf("\treg[15]=%lu=0x%lx=@%p\n", reg_15, reg_15, &reg_15);
-    // printf("\treg[16]=%lu=0x%lx=@%p\n", reg_16, reg_16, &reg_16);
-    // printf("\treg[17]=%lu=0x%lx=@%p\n", reg_17, reg_17, &reg_17);
-    // printf("\treg[18]=%lu=0x%lx=@%p\n", reg_18, reg_18, &reg_18);*/
-    // printf("\treg[19]=%lu=0x%lx=@%p\n", reg_19, reg_19, &reg_19);
-    // printf("\treg[20]=%lu=0x%lx=@%p\n", reg_20, reg_20, &reg_20);
-    // printf("\treg[21]=%lu=0x%lx=@%p\n", reg_21, reg_21, &reg_21);
-    // printf("\treg[22]=%lu=0x%lx=@%p\n", reg_22, reg_22, &reg_22);
-    // printf("\treg[23]=%lu=0x%lx=@%p\n", reg_23, reg_23, &reg_23);
-    // printf("\treg[24]=%lu=0x%lx=@%p\n", reg_24, reg_24, &reg_24);
-    // printf("\treg[25]=%lu=0x%lx=@%p\n", reg_25, reg_25, &reg_25);
-    // printf("\treg[26]=%lu=0x%lx=@%p\n", reg_26, reg_26, &reg_26);
-    // printf("\treg[27]=%lu=0x%lx=@%p\n", reg_27, reg_27, &reg_27);
-    // printf("\treg[28]=%lu=0x%lx=@%p\n", reg_28, reg_28, &reg_28);
-    // printf("\treg[29]=%lu=0x%lx=@%p\n", reg_29, reg_29, &reg_29);
-    // printf("\treg[30]=%lu=0x%lx=@%p\n", reg_30, reg_30, &reg_30);
-    // printf("\treg[31]=%lu=0x%lx=@%p\n", reg_31, reg_31, &reg_31);
-    // printf("\treg[32]=%lu=0x%lx=@%p\n", reg_32, reg_32, &reg_32);
-    // printf("\treg[33]=%lu=0x%lx=@%p\n", reg_33, reg_33, &reg_33);
-    // printf("\treg[34]=%lu=0x%lx=@%p\n", reg_34, reg_34, &reg_34);
-    // printf("\n");
+#ifdef PRINT_REGS
+    printf("print_regs()\n");
+    printf("\treg[ 0]=%lu=0x%lx=@%p\n", reg_0,  reg_0,  &reg_0);
+    printf("\treg[ 1]=%lu=0x%lx=@%p\n", reg_1,  reg_1,  &reg_1);
+    printf("\treg[ 2]=%lu=0x%lx=@%p\n", reg_2,  reg_2,  &reg_2);
+    printf("\treg[ 3]=%lu=0x%lx=@%p\n", reg_3,  reg_3,  &reg_3);
+    printf("\treg[ 4]=%lu=0x%lx=@%p\n", reg_4,  reg_4,  &reg_4);
+    printf("\treg[ 5]=%lu=0x%lx=@%p\n", reg_5,  reg_5,  &reg_5);
+    printf("\treg[ 6]=%lu=0x%lx=@%p\n", reg_6,  reg_6,  &reg_6);
+    printf("\treg[ 7]=%lu=0x%lx=@%p\n", reg_7,  reg_7,  &reg_7);
+    printf("\treg[ 8]=%lu=0x%lx=@%p\n", reg_8,  reg_8,  &reg_8);
+    printf("\treg[ 9]=%lu=0x%lx=@%p\n", reg_9,  reg_9,  &reg_9);
+    printf("\treg[10]=%lu=0x%lx=@%p\n", reg_10, reg_10, &reg_10);
+    printf("\treg[11]=%lu=0x%lx=@%p\n", reg_11, reg_11, &reg_11);
+    printf("\treg[12]=%lu=0x%lx=@%p\n", reg_12, reg_12, &reg_12);
+    printf("\treg[13]=%lu=0x%lx=@%p\n", reg_13, reg_13, &reg_13);
+    printf("\treg[14]=%lu=0x%lx=@%p\n", reg_14, reg_14, &reg_14);
+    printf("\treg[15]=%lu=0x%lx=@%p\n", reg_15, reg_15, &reg_15);
+    printf("\treg[16]=%lu=0x%lx=@%p\n", reg_16, reg_16, &reg_16);
+    printf("\treg[17]=%lu=0x%lx=@%p\n", reg_17, reg_17, &reg_17);
+    printf("\treg[18]=%lu=0x%lx=@%p\n", reg_18, reg_18, &reg_18);
+    printf("\treg[19]=%lu=0x%lx=@%p\n", reg_19, reg_19, &reg_19);
+    printf("\treg[20]=%lu=0x%lx=@%p\n", reg_20, reg_20, &reg_20);
+    printf("\treg[21]=%lu=0x%lx=@%p\n", reg_21, reg_21, &reg_21);
+    printf("\treg[22]=%lu=0x%lx=@%p\n", reg_22, reg_22, &reg_22);
+    printf("\treg[23]=%lu=0x%lx=@%p\n", reg_23, reg_23, &reg_23);
+    printf("\treg[24]=%lu=0x%lx=@%p\n", reg_24, reg_24, &reg_24);
+    printf("\treg[25]=%lu=0x%lx=@%p\n", reg_25, reg_25, &reg_25);
+    printf("\treg[26]=%lu=0x%lx=@%p\n", reg_26, reg_26, &reg_26);
+    printf("\treg[27]=%lu=0x%lx=@%p\n", reg_27, reg_27, &reg_27);
+    printf("\treg[28]=%lu=0x%lx=@%p\n", reg_28, reg_28, &reg_28);
+    printf("\treg[29]=%lu=0x%lx=@%p\n", reg_29, reg_29, &reg_29);
+    printf("\treg[30]=%lu=0x%lx=@%p\n", reg_30, reg_30, &reg_30);
+    printf("\treg[31]=%lu=0x%lx=@%p\n", reg_31, reg_31, &reg_31);
+    printf("\treg[32]=%lu=0x%lx=@%p\n", reg_32, reg_32, &reg_32);
+    printf("\treg[33]=%lu=0x%lx=@%p\n", reg_33, reg_33, &reg_33);
+    printf("\treg[34]=%lu=0x%lx=@%p\n", reg_34, reg_34, &reg_34);
+    printf("\n");
+#endif
 }
 
-//struct timeval print_pc_tv;
+//#define PRINT_PC_DURATION
+#ifdef PRINT_PC_DURATION
+struct timeval print_pc_tv;
+#endif
+
 extern int _print_pc (uint64_t pc, uint64_t c)
 {
-    // print_pc_counter++;
-    // {
-    //     struct timeval tv;
-    //     gettimeofday(&tv, NULL);
-    //     uint64_t duration = TimeDiff(print_pc_tv, tv);
-    //     if (duration > 900)
-    //     {
-    //         uint64_t chunk = print_pc_counter / chunk_size;
-    //         printf("print_pc() pc=%lx counter=%lu sec=%lu usec=%lu duration=%lu chunk=%lu\n", pc, print_pc_counter, tv.tv_sec, tv.tv_usec, duration, chunk);
-    //         fflush(stdout);
-    //     }
-    //     print_pc_tv = tv;
-    // }
+#ifdef PRINT_PC_DURATION
+    print_pc_counter++;
+    {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        uint64_t duration = TimeDiff(print_pc_tv, tv);
+        if (duration > 900)
+        {
+            uint64_t chunk = print_pc_counter / chunk_size;
+            printf("print_pc() pc=%lx counter=%lu sec=%lu usec=%lu duration=%lu chunk=%lu\n", pc, print_pc_counter, tv.tv_sec, tv.tv_usec, duration, chunk);
+            fflush(stdout);
+        }
+        print_pc_tv = tv;
+    }
+#endif
+
     printf("s=%lu pc=%lx c=%lx", print_pc_counter, pc, c);
-    /* Used for debugging
+
+//#define PRINT_PC_REGS
+#ifdef PRINT_PC_REGS
+    /* Used for debugging */
     printf(" r0=%lx", reg_0);
     printf(" r1=%lx", reg_1);
     printf(" r2=%lx", reg_2);
@@ -4509,36 +4524,54 @@ extern int _print_pc (uint64_t pc, uint64_t c)
     printf(" r29=%lx", reg_29);
     printf(" r30=%lx", reg_30);
     printf(" r31=%lx", reg_31);
-    */
+#endif
+
     printf("\n");
     fflush(stdout);
     print_pc_counter++;
 }
 
-// uint64_t chunk_done_counter = 0;
-// struct timeval chunk_done_tv;
-// struct timeval sync_start, sync_stop;
-// uint64_t sync_duration = 0;
+//#define CHUNK_DONE_DURATION
+#ifdef CHUNK_DONE_DURATION
+uint64_t chunk_done_counter = 0;
+struct timeval chunk_done_tv;
+#endif
+
+//#define CHUNK_DONE_SYNC_DURATION
+#ifdef CHUNK_DONE_SYNC_DURATION
+struct timeval sync_start, sync_stop;
+uint64_t sync_duration = 0;
+#endif
+
 extern void _chunk_done()
 {
-    // chunk_done_counter++;
-    // if ((chunk_done_counter & 0xFF) == 0)
-    // {
-    //     struct timeval tv;
-    //     gettimeofday(&tv, NULL);
-    //     uint64_t duration = TimeDiff(chunk_done_tv, tv);
-    //     if (duration > 5000)
-    //     {
-    //         printf("chunk_done() counter=%lu sec=%lu usec=%lu duration=%lu\n", chunk_done_counter, tv.tv_sec, tv.tv_usec, duration);
-    //         fflush(stdout);
-    //     }
-    //     chunk_done_tv = tv;
-    // }
-    //gettimeofday(&sync_start, NULL);
+#ifdef CHUNK_DONE_DURATION
+    chunk_done_counter++;
+    if ((chunk_done_counter & 0xFF) == 0)
+    {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        uint64_t duration = TimeDiff(chunk_done_tv, tv);
+        if (duration > 5000)
+        {
+            printf("chunk_done() counter=%lu sec=%lu usec=%lu duration=%lu\n", chunk_done_counter, tv.tv_sec, tv.tv_usec, duration);
+            fflush(stdout);
+        }
+        chunk_done_tv = tv;
+    }
+#endif
+
+#ifdef CHUNK_DONE_SYNC_DURATION
+    gettimeofday(&sync_start, NULL);
+#endif
+
     __sync_synchronize();
-    // gettimeofday(&sync_stop, NULL);
-    // sync_duration += TimeDiff(sync_start, sync_stop);
-    // printf("chunk_done() sync_duration=%lu\n", sync_duration);
+
+#ifdef CHUNK_DONE_SYNC_DURATION
+    gettimeofday(&sync_stop, NULL);
+    sync_duration += TimeDiff(sync_start, sync_stop);
+    printf("chunk_done() sync_duration=%lu\n", sync_duration);
+#endif
 
     // Notify the caller that a new chunk is done and its trace is ready to be consumed
     assert(call_chunk_done);
