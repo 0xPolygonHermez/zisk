@@ -11,6 +11,8 @@ use proofman_common::ProofCtx;
 use sm_rom::RomSM;
 use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
+use zisk_common::io::StreamSource;
+use anyhow::Result;
 
 pub struct EmulatorAsm {}
 
@@ -23,6 +25,7 @@ impl EmulatorAsm {
         _unlock_mapped_memory: bool,
         _chunk_size: u64,
         _rom_sm: Option<Arc<RomSM>>,
+        _verbose_mode: proofman_common::VerboseMode,
     ) -> Self {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
