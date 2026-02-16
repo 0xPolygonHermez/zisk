@@ -134,6 +134,10 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.get_instance_trace(instance_id, first_row, num_rows, offset)
     }
 
+    fn get_instance_air_values(&self, instance_id: usize) -> Result<Vec<u64>> {
+        self.core_prover.backend.get_instance_air_values(instance_id)
+    }
+
     fn get_instance_fixed(
         &self,
         instance_id: usize,

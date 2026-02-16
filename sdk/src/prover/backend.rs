@@ -229,6 +229,17 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Error getting instance trace: {}", e))
     }
 
+    pub(crate) fn get_instance_air_values(&self, instance_id: usize) -> Result<Vec<u64>> {
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot get instance AIR values in verifier mode"))?;
+
+        proofman
+            .get_instance_air_values(instance_id)
+            .map_err(|e| anyhow::anyhow!("Error getting instance AIR values: {}", e))
+    }
+
     pub(crate) fn get_instance_fixed(
         &self,
         instance_id: usize,
