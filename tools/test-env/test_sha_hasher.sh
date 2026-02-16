@@ -3,7 +3,7 @@
 source "./utils.sh"
 
 PROJECT_NAME="guest"
-EXPECTED_OUTPUT="98211882|bd13089b|6ccf1fca|81f7f0e4|abf6352a|0c39c9b1|1f142cac|233f1280"
+EXPECTED_OUTPUT="4fcbc136|2ce46a82|2248a8eb|785f0c7e|9dca7861|7267cace|d028d7e5|f6a2309c|000003e8|deadbeef"
 
 main() {
     info "▶️  Running $(basename "$0") script..."
@@ -40,13 +40,13 @@ main() {
     cd "$PROJECT_NAME"
 
     step "Building program..."
-    ensure cargo-zisk build --release || return 1
+    ensure cargo build --bin host --release || return 1
 
     ELF_PATH="target/elf/riscv64ima-zisk-zkvm-elf/release/$PROJECT_NAME"
     INPUT_BIN="host/tmp/input.bin"
 
     step "Running program with ziskemu..."
-    ensure ziskemu -e "$ELF_PATH" -i "$INPUT_BIN" -f | tee ziskemu_output.log || return 1
+    ensure ziskemu -e "$ELF_PATH" -i "$INPUT_BIN" -c | tee ziskemu_output.log || return 1
     if ! grep -qE ${EXPECTED_OUTPUT} ziskemu_output.log; then
         err "run ziskemu failed"
         return 1
