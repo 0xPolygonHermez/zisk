@@ -42,6 +42,7 @@ main() {
 
     step "Building program..."
     ensure cargo-zisk build --release || return 1
+    cd ..
 
     ELF_PATH="target/elf/riscv64ima-zisk-zkvm-elf/release/$PROJECT_NAME"
     INPUT_BIN="host/tmp/input.bin"
