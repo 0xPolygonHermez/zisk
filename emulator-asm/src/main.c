@@ -728,7 +728,12 @@ int main(int argc, char *argv[])
         struct sockaddr_in address;
         int addrlen = sizeof(address);
         int client_fd;
-        if (!silent) printf("%s Waiting for incoming connections to port %u...\n", log_name, port);
+        if (!silent)
+        {
+            printf("%s Waiting for incoming connections to port %u...\n", log_name, port);
+            fflush(stdout);
+            fflush(stderr);
+        }
         client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
         if (client_fd < 0)
         {
