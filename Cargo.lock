@@ -5953,6 +5953,7 @@ dependencies = [
  "elf",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdebug-mode)",
  "lib-c",
+ "lib-float",
  "paste",
  "precompiles-helpers",
  "rayon",

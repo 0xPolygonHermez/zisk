@@ -19,8 +19,9 @@
 //! maintaining clarity and modularity in the computation process.
 
 use crate::{
-    state::ExecutionState, witness_orchestrator::WitnessContext, AirClassifier, EmulatorKind,
-    InstancePlanner, InstanceRegistry, RomExecutor, StaticSMBundle, WitnessOrchestrator,
+    state::ExecutionState, witness_orchestrator::WitnessContext, AirClassifier, AsmResources,
+    EmulatorKind, InstancePlanner, InstanceRegistry, RomExecutor, StaticSMBundle,
+    WitnessOrchestrator,
 };
 use fields::PrimeField64;
 use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanResult, SetupCtx};
@@ -105,6 +106,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// Sets the standard input for execution.
     pub fn set_stdin(&self, stdin: ZiskStdin) {
         self.rom_executor.set_stdin(stdin);
+    }
+
+    /// Sets ASM resources for execution (only applicable for ASM emulator).
+    pub fn set_asm_resources(&self, asm_resources: AsmResources) {
+        self.rom_executor.set_asm_resources(asm_resources);
     }
 
     /// Sets the hints stream source.

@@ -64,7 +64,6 @@ fn initialize_executor<F: PrimeField64>(
     verbose_mode: proofman_common::VerboseMode,
     shared_tables: bool,
     is_asm_emulator: bool,
-    base_port: Option<u16>,
     unlock_mapped_memory: Option<bool>,
     wcm: &WitnessManager<F>,
 ) -> Result<Arc<ZiskExecutor<F>>> {
@@ -154,7 +153,6 @@ fn initialize_executor<F: PrimeField64>(
         EmulatorKind::Asm(EmulatorAsm::new(
             rank_info.world_rank,
             rank_info.local_rank,
-            base_port,
             unlock_mapped_memory.unwrap_or(false),
             CHUNK_SIZE,
             Some(rom_sm.clone()),
@@ -180,16 +178,15 @@ pub fn init_executor_emu<F: PrimeField64>(
     shared_tables: bool,
     wcm: &WitnessManager<F>,
 ) -> Result<Arc<ZiskExecutor<F>>> {
-    initialize_executor(verbose, shared_tables, false, None, None, wcm)
+    initialize_executor(verbose, shared_tables, false, None, wcm)
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn init_executor_asm<F: PrimeField64>(
     verbose: VerboseMode,
     shared_tables: bool,
-    base_port: Option<u16>,
     unlock_mapped_memory: bool,
     wcm: &WitnessManager<F>,
 ) -> Result<Arc<ZiskExecutor<F>>> {
-    initialize_executor(verbose, shared_tables, true, base_port, Some(unlock_mapped_memory), wcm)
+    initialize_executor(verbose, shared_tables, true, Some(unlock_mapped_memory), wcm)
 }

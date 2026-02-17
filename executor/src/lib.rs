@@ -92,6 +92,13 @@ impl EmulatorKind {
         }
     }
 
+    pub fn set_asm_resources(&self, asm_resources: AsmResources) {
+        match self {
+            Self::Asm(e) => e.set_asm_resources(asm_resources),
+            Self::Rust(_) => (), // No ASM resources in Rust emulator
+        };
+    }
+
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
         match self {
             Self::Asm(e) => e.set_hints_stream_src(stream),

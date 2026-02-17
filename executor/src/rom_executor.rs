@@ -3,7 +3,10 @@
 //! This module handles the execution of a ZisK ROM program, coordinating
 //! the emulator backend and hints stream processing.
 
-use crate::{DeviceMetricsList, Emulator, EmulatorKind, NestedDeviceMetricsList, StaticSMBundle};
+use crate::{
+    AsmResources, DeviceMetricsList, Emulator, EmulatorKind, NestedDeviceMetricsList,
+    StaticSMBundle,
+};
 use anyhow::Result;
 use asm_runner::AsmRunnerMO;
 use fields::PrimeField64;
@@ -50,6 +53,10 @@ impl RomExecutor {
     /// Sets the standard input for execution.
     pub fn set_stdin(&self, stdin: ZiskStdin) {
         *self.stdin.lock().unwrap() = stdin;
+    }
+
+    pub fn set_asm_resources(&self, asm_resources: AsmResources) {
+        self.emulator.set_asm_resources(asm_resources);
     }
 
     /// Sets the hints stream source.

@@ -26,25 +26,17 @@ use zisk_common::{
 use zisk_core::{ZiskRom, MAX_INPUT_SIZE};
 use ziskemu::ZiskEmulator;
 
-pub struct EmulatorAsm {
-    /// World rank for distributed execution. Default to 0 for single-node execution.
-    world_rank: i32,
-
-    /// Local rank for distributed execution. Default to 0 for single-node execution.
-    local_rank: i32,
-
+/// Encapsulates assembly-related resources including shared memory and hints stream.
+#[derive(Clone)]
+pub struct AsmResources {
     /// Optional baseline port to communicate with assembly microservices.
     base_port: Option<u16>,
 
-    /// Map unlocked flag
-    /// This is used to unlock the memory map for the ROM file.
+    /// Local rank for distributed execution.
+    local_rank: i32,
+
+    /// Map unlocked flag.
     unlock_mapped_memory: bool,
-
-    /// Chunk size for processing.
-    chunk_size: u64,
-
-    /// Optional ROM state machine, used for assembly ROM execution.
-    rom_sm: Option<Arc<RomSM>>,
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     asm_shmem_mt: Arc<Mutex<MTOutputShmem>>,
@@ -58,58 +50,66 @@ pub struct EmulatorAsm {
     shmem_input_writer: Arc<Mutex<Option<SharedMemoryWriter>>>,
 
     /// Pipeline for handling precompile hints.
-    hints_stream: Mutex<ZiskStream>,
+    hints_stream: Option<Arc<Mutex<ZiskStream>>>,
 }
 
-impl EmulatorAsm {
-    #[allow(clippy::too_many_arguments)]
+impl std::fmt::Debug for AsmResources {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AsmResources")
+            .field("base_port", &self.base_port)
+            .field("local_rank", &self.local_rank)
+            .field("unlock_mapped_memory", &self.unlock_mapped_memory)
+            .finish_non_exhaustive()
+    }
+}
+
+impl AsmResources {
     pub fn new(
-        world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
-        chunk_size: u64,
-        rom_sm: Option<Arc<RomSM>>,
         verbose_mode: proofman_common::VerboseMode,
+        with_hints: bool,
     ) -> Self {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         let asm_shmem_mt = MTOutputShmem::new(local_rank, base_port, unlock_mapped_memory)
-            .expect("Failed to create PreloadedMT");
+            .expect("asm_resources: Failed to create PreloadedMT");
+
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         let asm_shmem_mo = MOOutputShmem::new(local_rank, base_port, unlock_mapped_memory)
-            .expect("Failed to create PreloadedMO");
+            .expect("asm_resources: Failed to create PreloadedMO");
 
         // Create hints pipeline with null hints stream initially.
         // Debug flag: true = HintsShmem (shared memory), false = HintsFile (file output)
 
         const USE_SHARED_MEMORY_HINTS: bool = true;
 
-        let hints_processor = if USE_SHARED_MEMORY_HINTS {
-            let hints_shmem = HintsShmem::new(base_port, local_rank, unlock_mapped_memory)
-                .expect("zisk_lib: Failed to create HintsShmem");
+        let hints_stream = if with_hints {
+            let hints_processor = if USE_SHARED_MEMORY_HINTS {
+                let hints_shmem = HintsShmem::new(base_port, local_rank, unlock_mapped_memory)
+                    .expect("asm_resources: Failed to create HintsShmem");
 
-            HintsProcessor::builder(hints_shmem)
-                .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
-                .build()
-                .expect("zisk_lib: Failed to create PrecompileHintsProcessor")
+                HintsProcessor::builder(hints_shmem)
+                    .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
+                    .build()
+                    .expect("asm_resources: Failed to create PrecompileHintsProcessor")
+            } else {
+                let hints_file = HintsFile::new(format!("hints_results_{}.bin", local_rank))
+                    .expect("asm_resources: Failed to create HintsFile");
+
+                HintsProcessor::builder(hints_file)
+                    .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
+                    .build()
+                    .expect("asm_resources: Failed to create PrecompileHintsProcessor")
+            };
+
+            Some(Arc::new(Mutex::new(ZiskStream::new(hints_processor))))
         } else {
-            let hints_file = HintsFile::new(format!("hints_results_{}.bin", local_rank))
-                .expect("zisk_lib: Failed to create HintsFile");
-
-            HintsProcessor::builder(hints_file)
-                .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
-                .build()
-                .expect("zisk_lib: Failed to create PrecompileHintsProcessor")
+            None
         };
 
         Self {
-            hints_stream: Mutex::new(ZiskStream::new(hints_processor)),
-            world_rank,
-            local_rank,
-            base_port,
-            unlock_mapped_memory,
-            chunk_size,
-            rom_sm,
+            hints_stream,
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             asm_shmem_mt: Arc::new(Mutex::new(asm_shmem_mt)),
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -118,6 +118,73 @@ impl EmulatorAsm {
             asm_shmem_rh: Arc::new(Mutex::new(None)),
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             shmem_input_writer: Arc::new(Mutex::new(None)),
+            base_port,
+            local_rank,
+            unlock_mapped_memory,
+        }
+    }
+
+    pub fn start_stream(&self) -> Result<()> {
+        if let Some(hints_stream) = &self.hints_stream {
+            hints_stream.lock().unwrap().start_stream()
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
+        if let Some(hints_stream) = &self.hints_stream {
+            hints_stream.lock().unwrap().set_hints_stream_src(stream)
+        } else {
+            Err(anyhow::anyhow!("Hints stream not initialized"))
+        }
+    }
+
+    pub fn reset(&self) {
+        if let Some(hints_stream) = &self.hints_stream {
+            hints_stream.lock().unwrap().reset();
+        }
+    }
+}
+
+pub struct EmulatorAsm {
+    /// World rank for distributed execution. Default to 0 for single-node execution.
+    world_rank: i32,
+
+    /// Local rank for distributed execution. Default to 0 for single-node execution.
+    local_rank: i32,
+
+    /// Map unlocked flag
+    /// This is used to unlock the memory map for the ROM file.
+    unlock_mapped_memory: bool,
+
+    /// Chunk size for processing.
+    chunk_size: u64,
+
+    /// Optional ROM state machine, used for assembly ROM execution.
+    rom_sm: Option<Arc<RomSM>>,
+
+    /// Assembly resources including shared memory and hints stream.
+    asm_resources: Mutex<Option<AsmResources>>,
+}
+
+impl EmulatorAsm {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        world_rank: i32,
+        local_rank: i32,
+        unlock_mapped_memory: bool,
+        chunk_size: u64,
+        rom_sm: Option<Arc<RomSM>>,
+        _verbose_mode: proofman_common::VerboseMode,
+    ) -> Self {
+        Self {
+            world_rank,
+            local_rank,
+            unlock_mapped_memory,
+            chunk_size,
+            rom_sm,
+            asm_resources: Mutex::new(None),
         }
     }
 
@@ -125,18 +192,16 @@ impl EmulatorAsm {
         self.chunk_size
     }
 
+    pub fn set_asm_resources(&self, asm_resources: AsmResources) {
+        *self.asm_resources.lock().unwrap() = Some(asm_resources);
+    }
+
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
-        if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
-            hints_stream_guard.set_hints_stream_src(stream)
-        } else {
-            Err(anyhow::anyhow!("Failed to acquire hints stream lock"))
-        }
+        self.asm_resources.lock().unwrap().as_ref().unwrap().set_hints_stream_src(stream)
     }
 
     pub fn reset_hints_stream(&self) {
-        if let Ok(mut hints_stream_guard) = self.hints_stream.lock() {
-            hints_stream_guard.reset();
-        }
+        self.asm_resources.lock().unwrap().as_ref().unwrap().reset();
     }
 
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
@@ -173,30 +238,50 @@ impl EmulatorAsm {
         Option<JoinHandle<AsmRunnerMO>>,
         u64,
     ) {
+        let asm_resources_guard = self.asm_resources.lock().unwrap();
+        let asm_resources = asm_resources_guard.as_ref().expect("AsmResources not initialized");
+
         if use_hints {
-            self.hints_stream.lock().unwrap().start_stream().expect("Failed to start hints stream");
+            asm_resources.start_stream().expect("Failed to start hints stream");
         }
 
         stats_begin!(stats, _caller_stats_scope, _exec_scope, "EXECUTE_WITH_ASSEMBLY", 0);
 
         stats_begin!(stats, &_exec_scope, _write_scope, "ASM_WRITE_INPUT", 0);
 
-        let mut input_writer = self.shmem_input_writer.lock().unwrap();
-        input_writer.get_or_insert_with(|| self.create_shmem_writer(&AsmService::MO));
+        asm_resources.shmem_input_writer.lock().unwrap().get_or_insert_with(|| {
+            let port =
+                AsmServices::port_base_for(asm_resources.base_port, asm_resources.local_rank);
+            let shmem_input_name = shmem_input_name(port, asm_resources.local_rank);
+            tracing::debug!(
+                "Initializing SharedMemoryWriter for service {:?} at '{}'",
+                AsmService::MO,
+                shmem_input_name
+            );
+            SharedMemoryWriter::new(
+                &shmem_input_name,
+                MAX_INPUT_SIZE as usize,
+                asm_resources.unlock_mapped_memory,
+            )
+            .expect("Failed to create SharedMemoryWriter")
+        });
 
-        write_input(&mut stdin.lock().unwrap(), input_writer.as_ref().unwrap());
+        write_input(
+            &mut stdin.lock().unwrap(),
+            asm_resources.shmem_input_writer.lock().unwrap().as_ref().unwrap(),
+        );
 
         stats_end!(stats, &_write_scope);
 
         let chunk_size = self.chunk_size;
-        let (world_rank, local_rank, base_port) =
-            (self.world_rank, self.local_rank, self.base_port);
+        let (world_rank, local_rank) = (self.world_rank, self.local_rank);
 
         let _stats = stats.clone();
 
         // Run the assembly Memory Operations (MO) runner thread
         let handle_mo = std::thread::spawn({
-            let asm_shmem_mo = self.asm_shmem_mo.clone();
+            let asm_shmem_mo = asm_resources.asm_shmem_mo.clone();
+            let base_port = asm_resources.base_port;
             move || {
                 AsmRunnerMO::run(
                     &mut asm_shmem_mo.lock().unwrap(),
@@ -217,7 +302,8 @@ impl EmulatorAsm {
         let _stats = stats.clone();
 
         let handle_rh = (has_rom_sm).then(|| {
-            let asm_shmem_rh = self.asm_shmem_rh.clone();
+            let asm_shmem_rh = asm_resources.asm_shmem_rh.clone();
+            let base_port = asm_resources.base_port;
             let unlock_mapped_memory = self.unlock_mapped_memory;
             std::thread::spawn(move || {
                 AsmRunnerRH::run(
@@ -232,6 +318,7 @@ impl EmulatorAsm {
                 .expect("Error during ROM Histogram execution")
             })
         });
+        drop(asm_resources_guard);
 
         let (min_traces, main_count, secn_count) = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
 
@@ -248,25 +335,6 @@ impl EmulatorAsm {
         stats_end!(stats, &_exec_scope);
 
         (min_traces, main_count, secn_count, Some(handle_mo), steps)
-    }
-
-    fn create_shmem_writer(&self, service: &asm_runner::AsmService) -> SharedMemoryWriter {
-        let port = AsmServices::port_base_for(self.base_port, self.local_rank);
-
-        let shmem_input_name = shmem_input_name(port, self.local_rank);
-
-        tracing::debug!(
-            "Initializing SharedMemoryWriter for service {:?} at '{}'",
-            service,
-            shmem_input_name
-        );
-
-        SharedMemoryWriter::new(
-            &shmem_input_name,
-            MAX_INPUT_SIZE as usize,
-            self.unlock_mapped_memory,
-        )
-        .expect("Failed to create SharedMemoryWriter")
     }
 
     fn run_mt_assembly<F: PrimeField64>(
@@ -307,17 +375,21 @@ impl EmulatorAsm {
                 });
             };
 
-            AsmRunnerMT::run_and_count(
-                &mut self.asm_shmem_mt.lock().unwrap(),
+            let asm_resources_guard = self.asm_resources.lock().unwrap();
+            let asm_resources = asm_resources_guard.as_ref().expect("AsmResources not initialized");
+            let result = AsmRunnerMT::run_and_count(
+                &mut asm_resources.asm_shmem_mt.lock().unwrap(),
                 MAX_NUM_STEPS,
                 self.chunk_size,
                 on_chunk,
                 self.world_rank,
                 self.local_rank,
-                self.base_port,
+                asm_resources.base_port,
                 stats.clone(),
             )
-            .expect("Error during ASM execution")
+            .expect("Error during ASM execution");
+            drop(asm_resources_guard);
+            result
         });
 
         // Unwrap the Arc pointers now that all rayon tasks have completed

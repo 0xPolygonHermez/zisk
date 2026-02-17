@@ -251,6 +251,11 @@ impl AsmServices {
         base_port.unwrap_or(ASM_SERVICE_BASE_PORT) + rank_offset
     }
 
+    pub fn port_base_offset(base_port: Option<u16>, n_processes: i32, n_setups: u64) -> u16 {
+        let setups_offset = n_setups as u16 * (n_processes as u16 * Self::SERVICES.len() as u16);
+        base_port.unwrap_or(ASM_SERVICE_BASE_PORT) + setups_offset
+    }
+
     pub fn send_status_request(&self, service: &AsmService) -> Result<PingResponse> {
         self.send_request(service, &PingRequest {})
     }

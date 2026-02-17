@@ -83,6 +83,10 @@ impl ProverBackend {
             anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
         })?;
 
+        if let Some(asm_resources) = &program_pk.asm_resources {
+            executor.set_asm_resources(asm_resources.clone());
+        }
+
         executor.set_rom(program_pk.zisk_rom.clone(), program_pk.use_hints);
 
         let custom_commits_map =

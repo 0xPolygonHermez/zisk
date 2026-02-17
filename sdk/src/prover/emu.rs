@@ -99,6 +99,7 @@ impl ProverEngine for EmuProver {
             ZiskProgramPK {
                 zisk_rom,
                 elf_bin_path: rom_bin_path,
+                asm_resources: None,
                 asm_services: None,
                 rank_info: self.core_prover.rank_info.clone(),
                 use_hints: false,

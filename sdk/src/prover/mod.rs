@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 
 use anyhow::{Context, Result};
 use asm_runner::AsmServices;
+use executor::AsmResources;
 use proofman::PlanningInfo;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -122,6 +123,7 @@ impl ZiskVerifyConstraintsResult {
 pub struct ZiskProgramPK {
     pub zisk_rom: Arc<ZiskRom>,
     pub elf_bin_path: PathBuf,
+    pub asm_resources: Option<AsmResources>,
     pub asm_services: Option<AsmServices>,
     pub rank_info: RankInfo,
     pub use_hints: bool,

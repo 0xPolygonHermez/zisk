@@ -12,7 +12,7 @@ fn main() -> Result<()> {
     stdin.write(&n);
 
     // Create a `ProverClient` method.
-    let client = ProverClient::builder().build().unwrap();
+    let client = ProverClient::builder().asm().build().unwrap();
 
     let (pk, vkey) = client.setup(&ELF)?;
 

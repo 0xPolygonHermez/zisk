@@ -8,12 +8,13 @@ use crate::{
 };
 use crate::{ProofMode, ProofOpts};
 use asm_runner::{AsmRunnerOptions, AsmServices};
-use executor::{get_packed_info, init_executor_asm};
+use executor::{get_packed_info, init_executor_asm, AsmResources};
 use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo, VerboseMode};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::DEFAULT_CACHE_PATH;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::ElfBinaryLike;
@@ -31,6 +32,7 @@ impl ZiskBackend for Asm {
 
 pub struct AsmProver {
     pub(crate) core_prover: AsmCoreProver,
+    pub n_setups: AtomicU64,
 }
 
 impl AsmProver {
@@ -62,13 +64,13 @@ impl AsmProver {
             logging_config,
         )?;
 
-        Ok(Self { core_prover })
+        Ok(Self { core_prover, n_setups: AtomicU64::new(0) })
     }
 
     pub fn new_verifier(proving_key: PathBuf, proving_key_snark: PathBuf) -> Result<Self> {
         let core_prover = AsmCoreProver::new_verifier(proving_key, proving_key_snark)?;
 
-        Ok(Self { core_prover })
+        Ok(Self { core_prover, n_setups: AtomicU64::new(0) })
     }
 }
 
@@ -105,6 +107,18 @@ impl ProverEngine for AsmProver {
         let pctx = self.core_prover.backend.get_pctx()?;
         let (rom_bin_path, vk) = ensure_custom_commits(&pctx, elf)?;
 
+        let world_rank = self.core_prover.rank_info.world_rank;
+        let local_rank = self.core_prover.rank_info.local_rank;
+        let n_processes = self.core_prover.rank_info.n_processes;
+        let unlock_mapped_memory = self.core_prover.unlock_mapped_memory;
+        let verbose_mode = self.core_prover.verbose;
+        let rank_info = self.core_prover.rank_info.clone();
+        let base_port = Some(AsmServices::port_base_offset(
+            self.core_prover.base_port,
+            n_processes,
+            self.n_setups.load(Ordering::SeqCst),
+        ));
+
         let rv2zk = Riscv2zisk::new(elf.elf());
 
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
@@ -124,27 +138,36 @@ impl ProverEngine for AsmProver {
         check_paths_exist(&asm_rh_path)?;
 
         timer_start_info!(STARTING_ASM_MICROSERVICES);
-        let world_rank = self.core_prover.rank_info.world_rank;
-        let local_rank = self.core_prover.rank_info.local_rank;
-        let asm_services = AsmServices::new(world_rank, local_rank, self.core_prover.base_port);
+        let asm_services = AsmServices::new(world_rank, local_rank, base_port);
 
         let asm_runner_options = AsmRunnerOptions::new()
-            .with_base_port(self.core_prover.base_port)
+            .with_base_port(base_port)
             .with_world_rank(world_rank)
             .with_local_rank(local_rank)
-            .with_verbose(self.core_prover.verbose == VerboseMode::Debug)
-            .with_metrics(self.core_prover.verbose == VerboseMode::Debug)
-            .with_unlock_mapped_memory(self.core_prover.unlock_mapped_memory);
+            .with_verbose(verbose_mode == VerboseMode::Debug)
+            .with_metrics(verbose_mode == VerboseMode::Debug)
+            .with_unlock_mapped_memory(unlock_mapped_memory);
 
         asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
+
+        let asm_resources = AsmResources::new(
+            local_rank,
+            base_port,
+            unlock_mapped_memory,
+            verbose_mode,
+            elf.with_hints(),
+        );
+
+        self.n_setups.fetch_add(1, Ordering::SeqCst);
 
         Ok((
             ZiskProgramPK {
                 zisk_rom,
                 elf_bin_path: rom_bin_path,
                 asm_services: Some(asm_services),
-                rank_info: self.core_prover.rank_info.clone(),
+                asm_resources: Some(asm_resources),
+                rank_info,
                 use_hints: elf.with_hints(),
             },
             ZiskProgramVK { vk },
@@ -325,7 +348,6 @@ impl AsmCoreProver {
         let executor = init_executor_asm(
             verbose.into(),
             shared_tables,
-            base_port,
             unlock_mapped_memory,
             &proofman.get_wcm(),
         )?;
