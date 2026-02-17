@@ -306,7 +306,7 @@ bool silent = false;
 bool metrics = true;
 bool trace = false;
 bool trace_trace = false;
-bool verbose = false;
+bool verbose = true;
 bool save_to_file = false;
 bool share_input_shm = false; // Shares input shared memories: input, precompile results and control input, using a common name
 bool open_input_shm = false; // Opens existing input shared memories, without creating them.  They must be previously created by another process (assembly emulator or witness computation)
@@ -4152,8 +4152,9 @@ void server_run (void)
 
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
-    if (verbose) printf("trace_address=%lx\n", trace_address);
+    if (verbose) printf("Before calling emulator_start() trace_address=%lx\n", trace_address);
     emulator_start();
+    if (verbose) printf("After calling emulator_start() trace_address=%lx\n", trace_address);
     gettimeofday(&stop_time,NULL);
     assembly_duration = TimeDiff(start_time, stop_time);
 
