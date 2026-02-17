@@ -1,5 +1,7 @@
 use anyhow::Result;
-use zisk_sdk::{ZiskStdin, ZiskIO, ElfBinary, ProverClient, ZiskProofWithPublicValues, include_elf};
+use zisk_sdk::{
+    ElfBinary, ProverClient, ZiskIO, ZiskProofWithPublicValues, ZiskStdin, include_elf,
+};
 
 pub const ELF: ElfBinary = include_elf!("sha-hasher-guest");
 
@@ -14,7 +16,7 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client with SNARK support...");
-    let client = ProverClient::builder().asm().base_port(54321).snark().build().unwrap();
+    let client = ProverClient::builder().asm().base_port(54321).snark().verbose(2).build().unwrap();
 
     println!("Setting up program and generating verification key...");
     let vkey = client.setup(&ELF)?;

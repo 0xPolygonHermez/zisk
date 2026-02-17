@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use zisk_sdk::{ProverClient, elf_path, ZiskStdin, ZiskIO, ElfBinaryFromFile};
+use zisk_sdk::{ElfBinaryFromFile, ProverClient, ZiskIO, ZiskStdin, elf_path};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Output {

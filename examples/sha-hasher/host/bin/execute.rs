@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use zisk_sdk::{ZiskStdin, ZiskIO, ElfBinary, ProverClient, include_elf};
+use zisk_sdk::{ElfBinary, ProverClient, ZiskIO, ZiskStdin, include_elf};
 
 pub const ELF: ElfBinary = include_elf!("sha-hasher-guest");
 

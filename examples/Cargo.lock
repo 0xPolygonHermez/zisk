@@ -171,7 +171,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62945a2f7e6de02a31fe400aa489f0e0f5b2502e69f95f853adb82a96c7a6b60"
 dependencies = [
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -184,7 +184,7 @@ dependencies = [
  "num-traits",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -245,7 +245,7 @@ checksum = "213888f660fddcca0d257e88e54ac05bca01885f258ccdf695bafd77031bb69d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -310,7 +310,7 @@ checksum = "3109e49b1e4909e9db6515a30c633684d68cdeaa252f215214cb4fa1a5bfee2c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
  "synstructure",
 ]
 
@@ -322,7 +322,7 @@ checksum = "7b18050c2cd6fe86c3a76584ef5e0baf286d038cda203eb6223df2cc413565f7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -385,14 +385,14 @@ dependencies = [
  "regex",
  "rustc-hash 1.1.0",
  "shlex",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
 name = "bitflags"
-version = "2.10.0"
+version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
+checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
 name = "blake3"
@@ -437,7 +437,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -577,9 +577,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.58"
+version = "4.5.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63be97961acde393029492ce0be7a1af7e323e6bae9511ebfac33751be5e6806"
+checksum = "c5caf74d17c3aec5495110c34cc3f78644bfa89af6c8993ed4de2790e49b6499"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -587,9 +587,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.58"
+version = "4.5.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f13174bda5dfd69d7e947827e5af4b0f2f94a4a3ee92912fba07a66150f21e2"
+checksum = "370daa45065b80218950227371916a1633217ae42b2715b2287b606dcd618e24"
 dependencies = [
  "anstream",
  "anstyle",
@@ -606,7 +606,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -807,15 +807,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a2785755761f3ddc1492979ce1e48d2c00d09311c39e4466429188f3dd6501"
 dependencies = [
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
 name = "curves"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#ed83276f2d22797b95289c11003828b0ccad826a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2#f39e3b4dfb6a540af4e0c6b6e2224311354cf67b"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "num-bigint",
  "num-traits",
 ]
@@ -847,7 +847,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "strsim",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -858,7 +858,7 @@ checksum = "fc34b93ccb385b40dc71c6fceac4b2ad23662c7eeb248cf10d529b7e055b6ead"
 dependencies = [
  "darling_core",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -925,7 +925,7 @@ dependencies = [
  "darling",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -935,7 +935,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab63b0e2bf4d5928aff72e83a7dace85d7bba5fe12dcc3c5a572d78caffd3f3c"
 dependencies = [
  "derive_builder_core",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -956,7 +956,7 @@ checksum = "97369cbbc041bc366949bc74d34658d6cda5621039731c6310521892a3a20ae0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -974,7 +974,7 @@ dependencies = [
  "enum-ordinalize",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -1006,7 +1006,7 @@ checksum = "8ca9601fb2d62598ee17836250842873a413586e5d7ed88b356e38ddbb0ec631"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -1042,7 +1042,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "itertools 0.14.0",
  "mem-common",
  "mem-planner-cpp",
@@ -1095,7 +1095,18 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fields"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#ed83276f2d22797b95289c11003828b0ccad826a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2#f39e3b4dfb6a540af4e0c6b6e2224311354cf67b"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "serde",
+]
+
+[[package]]
+name = "fields"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#312a7cd2b7e5d2a60231db4a6e3fda20b2d92721"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -1148,15 +1159,15 @@ checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
 name = "futures-core"
-version = "0.3.31"
+version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05f29059c0c2090612e8d742178b0580d2dc940c837851ad723096f87af6663e"
+checksum = "7e3450815272ef58cec6d564423f6e755e25379b217b0bc688e295ba24df6b1d"
 
 [[package]]
 name = "futures-sink"
-version = "0.3.31"
+version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e575fab7d1e0dcb8d0c7bcf9a63ee213816ab51902e6d244a95819acacf1d4f7"
+checksum = "c39754e157331b013978ec91992bde1ac089843443c49cbc7f46150b0fad0893"
 
 [[package]]
 name = "generic-array"
@@ -1518,6 +1529,10 @@ name = "lib-c"
 version = "0.16.0"
 
 [[package]]
+name = "lib-float"
+version = "0.16.0"
+
+[[package]]
 name = "libc"
 version = "0.2.182"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1629,7 +1644,7 @@ name = "mem-common"
 version = "0.16.0"
 dependencies = [
  "clap",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -1663,9 +1678,9 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "memmap2"
-version = "0.9.9"
+version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "744133e4a0e0a658e1374cf3bf8e415c4052a15a111acd372764c55b4177d490"
+checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
 dependencies = [
  "libc",
 ]
@@ -1837,18 +1852,18 @@ dependencies = [
 
 [[package]]
 name = "objc2-core-foundation"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c10c2894a6fed806ade6027bcd50662746363a9589d3ec9d9bef30a4e4bc166"
+checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
  "bitflags",
 ]
 
 [[package]]
 name = "objc2-io-kit"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71c1c64d6120e51cd86033f67176b1cb66780c2efe34dec55176f77befd93c0a"
+checksum = "33fafba39597d6dc1fb709123dfa8289d39406734be322956a69f0931c73bb15"
 dependencies = [
  "libc",
  "objc2-core-foundation",
@@ -1955,10 +1970,10 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "pil-std-lib"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#ed83276f2d22797b95289c11003828b0ccad826a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2#f39e3b4dfb6a540af4e0c6b6e2224311354cf67b"
 dependencies = [
  "colored",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -2017,7 +2032,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -2053,7 +2068,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -2084,7 +2099,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -2105,7 +2120,7 @@ dependencies = [
 name = "precomp-dma"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -2128,7 +2143,7 @@ name = "precomp-keccakf"
 version = "0.16.0"
 dependencies = [
  "circuit",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -2148,7 +2163,7 @@ dependencies = [
 name = "precomp-poseidon2"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -2168,7 +2183,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -2187,7 +2202,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -2232,7 +2247,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -2256,7 +2271,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#ed83276f2d22797b95289c11003828b0ccad826a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2#f39e3b4dfb6a540af4e0c6b6e2224311354cf67b"
 dependencies = [
  "bincode",
  "blake3",
@@ -2267,7 +2282,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "libloading",
  "mpi",
  "num-bigint",
@@ -2292,7 +2307,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#ed83276f2d22797b95289c11003828b0ccad826a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2#f39e3b4dfb6a540af4e0c6b6e2224311354cf67b"
 dependencies = [
  "bincode",
  "borsh",
@@ -2302,7 +2317,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "lazy_static",
  "libloading",
  "mpi",
@@ -2324,9 +2339,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#ed83276f2d22797b95289c11003828b0ccad826a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2#f39e3b4dfb6a540af4e0c6b6e2224311354cf67b"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -2337,17 +2352,17 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#ed83276f2d22797b95289c11003828b0ccad826a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2#f39e3b4dfb6a540af4e0c6b6e2224311354cf67b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#ed83276f2d22797b95289c11003828b0ccad826a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2#f39e3b4dfb6a540af4e0c6b6e2224311354cf67b"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2356,7 +2371,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#ed83276f2d22797b95289c11003828b0ccad826a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2#f39e3b4dfb6a540af4e0c6b6e2224311354cf67b"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -2368,10 +2383,10 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#ed83276f2d22797b95289c11003828b0ccad826a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2#f39e3b4dfb6a540af4e0c6b6e2224311354cf67b"
 dependencies = [
  "bytemuck",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -2605,7 +2620,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "colored",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -2791,9 +2806,9 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "security-framework"
-version = "3.5.1"
+version = "3.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3297343eaf830f66ede390ea39da1d462b6b0c1b000f420d0a83f898bbbe6ef"
+checksum = "d17b898a6d6948c3a8ee4372c17cb384f90d2e6e912ef00895b14fd7ab54ec38"
 dependencies = [
  "bitflags",
  "core-foundation",
@@ -2804,9 +2819,9 @@ dependencies = [
 
 [[package]]
 name = "security-framework-sys"
-version = "2.15.0"
+version = "2.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc1f0cbffaac4852523ce30d8bd3c5cdc873501d96ff467ca09b6767bb8cd5c0"
+checksum = "321c8673b092a9a42605034a9879d73cb79101ed5fd117bc9a597b89b4e9e61a"
 dependencies = [
  "core-foundation-sys",
  "libc",
@@ -2858,7 +2873,7 @@ checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -2968,7 +2983,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sm-arith"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -2988,7 +3003,7 @@ dependencies = [
 name = "sm-binary"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -3008,7 +3023,7 @@ name = "sm-frequent-ops"
 version = "0.16.0"
 dependencies = [
  "clap",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "num-bigint",
  "proofman-common",
  "proofman-util",
@@ -3022,7 +3037,7 @@ dependencies = [
 name = "sm-main"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "mem-common",
  "num-bigint",
  "pil-std-lib",
@@ -3041,7 +3056,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "mem-common",
  "num-bigint",
  "num-traits",
@@ -3062,7 +3077,7 @@ name = "sm-rom"
 version = "0.16.0"
 dependencies = [
  "asm-runner",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "itertools 0.14.0",
  "proofman-common",
  "proofman-macros",
@@ -3152,9 +3167,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.115"
+version = "2.0.116"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e614ed320ac28113fa64972c4262d5dbc89deacdfd00c34a3e4cea073243c12"
+checksum = "3df424c70518695237746f84cede799c9c58fcb37450d7b23716568cc8bc69cb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3169,7 +3184,7 @@ checksum = "728a70f3dbaf5bab7f0c4b1ac8d7ae5ea60a4b5549c8a5914361c99147a709d2"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -3188,9 +3203,9 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.38.1"
+version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5792d209c2eac902426c0c4a166c9f72147db453af548cf9bf3242644c4d4fe3"
+checksum = "fe840c5b1afe259a5657392a4dbb74473a14c8db999c3ec2f4ae812e028a94da"
 dependencies = [
  "libc",
  "memchr",
@@ -3260,7 +3275,7 @@ checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -3271,7 +3286,7 @@ checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -3375,7 +3390,7 @@ checksum = "af407857209536a95c8e56f8231ef2c2e2aff839b22e07a1ffcbc617e9db9fa5"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -3449,9 +3464,9 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.0.8+spec-1.1.0"
+version = "1.0.9+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0742ff5ff03ea7e67c8ae6c93cac239e0d9784833362da3f9a9c1da8dfefcbdc"
+checksum = "702d4415e08923e7e1ef96cd5727c0dfed80b4d2fa25db9647fe5eb6f7c5a4c4"
 dependencies = [
  "winnow",
 ]
@@ -3507,7 +3522,7 @@ checksum = "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -3576,9 +3591,9 @@ checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.23"
+version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "537dd038a89878be9b64dd4bd1b260315c1bb94f4d784956b81e27a088d9a09e"
+checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "unicode-width"
@@ -3624,11 +3639,11 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.20.0"
+version = "1.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee48d38b119b0cd71fe4141b30f5ba9c7c5d9f4e7a3a8b4a674e4b6ef789976f"
+checksum = "b672338555252d43fd2240c714dc444b8c6fb0a5c5335e65a07bba7742735ddb"
 dependencies = [
- "getrandom 0.3.4",
+ "getrandom 0.4.1",
  "js-sys",
  "wasm-bindgen",
 ]
@@ -3756,7 +3771,7 @@ dependencies = [
  "bumpalo",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
  "wasm-bindgen-shared",
 ]
 
@@ -3952,7 +3967,7 @@ checksum = "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -3963,7 +3978,7 @@ checksum = "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -4313,7 +4328,7 @@ dependencies = [
  "heck",
  "indexmap",
  "prettyplease",
- "syn 2.0.115",
+ "syn 2.0.116",
  "wasm-metadata",
  "wit-bindgen-core",
  "wit-component",
@@ -4329,7 +4344,7 @@ dependencies = [
  "prettyplease",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
  "wit-bindgen-core",
  "wit-bindgen-rust",
 ]
@@ -4374,10 +4389,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#ed83276f2d22797b95289c11003828b0ccad826a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2#f39e3b4dfb6a540af4e0c6b6e2224311354cf67b"
 dependencies = [
  "colored",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -4443,7 +4458,7 @@ checksum = "b659052874eb698efe5b9e8cf382204678a0086ebf46982b79d6ca3182927e5d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
  "synstructure",
 ]
 
@@ -4464,7 +4479,7 @@ checksum = "4122cd3169e94605190e77839c9a40d40ed048d305bfdc146e7df40ab0f3e517"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -4484,7 +4499,7 @@ checksum = "d71e5d6e06ab090c67b5e44993ec16b72dcbaabc526db883a360057678b48502"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
  "synstructure",
 ]
 
@@ -4505,7 +4520,7 @@ checksum = "85a5b4158499876c763cb03bc4e49185d3cccbabb15b33c627f7884f43db852e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -4538,7 +4553,7 @@ checksum = "eadce39539ca5cb3985590102671f2567e659fca9666581ad3411d59207951f3"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -4559,7 +4574,7 @@ version = "0.16.0"
 dependencies = [
  "anyhow",
  "bincode",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "libc",
  "mpi",
  "proofman",
@@ -4582,8 +4597,9 @@ name = "zisk-core"
 version = "0.16.0"
 dependencies = [
  "elf",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "lib-c",
+ "lib-float",
  "paste",
  "precompiles-helpers",
  "rayon",
@@ -4617,7 +4633,7 @@ dependencies = [
 name = "zisk-pil"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "proofman-common",
  "proofman-macros",
  "rayon",
@@ -4634,7 +4650,7 @@ dependencies = [
  "bincode",
  "colored",
  "executor",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "proofman",
  "proofman-common",
  "proofman-util",
@@ -4668,7 +4684,7 @@ dependencies = [
  "asm-runner",
  "data-bus",
  "executor",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "mem-common",
  "pil-std-lib",
  "precomp-arith-eq",
@@ -4704,7 +4720,7 @@ version = "0.16.0"
 dependencies = [
  "clap",
  "data-bus",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "mem-common",
  "memmap2",
  "num-format",
@@ -4716,7 +4732,7 @@ dependencies = [
  "sm-binary",
  "symbolic-common",
  "symbolic-demangle",
- "sysinfo 0.38.1",
+ "sysinfo 0.38.0",
  "vergen-git2",
  "zisk-common",
  "zisk-core",
@@ -4732,7 +4748,7 @@ dependencies = [
  "bytes",
  "cfg-if",
  "ctor",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -4757,7 +4773,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fplonk_gpu_2)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",

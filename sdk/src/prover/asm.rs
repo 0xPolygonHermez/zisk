@@ -336,7 +336,14 @@ impl AsmCoreProver {
         let mut snark_wrapper = None;
         if use_snark_wrapper {
             check_paths_exist(&proving_key_snark)?;
-            snark_wrapper = Some(SnarkWrapper::new(&proving_key_snark, verbose.into())?);
+            let (aux_trace, d_buffers, reload_fixed_pols_gpu) = proofman.get_preallocated_buffers();
+            snark_wrapper = Some(SnarkWrapper::new_with_preallocated_buffers(
+                &proving_key_snark,
+                verbose.into(),
+                Some(aux_trace),
+                Some(d_buffers),
+                Some(reload_fixed_pols_gpu),
+            )?);
         }
 
         let core =
