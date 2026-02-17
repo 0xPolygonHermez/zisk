@@ -303,7 +303,7 @@ void file_lock(void);
 bool output = false;
 bool output_riscof = false;
 bool silent = false;
-bool metrics = false;
+bool metrics = true;
 bool trace = false;
 bool trace_trace = false;
 bool verbose = false;
