@@ -4194,6 +4194,8 @@ void server_run (void)
             precompile_written_address ? *precompile_written_address : 0,
             precompile_read_address ? *precompile_read_address : 0
         );
+        fflush(stdout);
+        fflush(stderr);
         if (gen_method == RomHistogram)
         {
             printf("Rom histogram size=%lu\n", histogram_size);
