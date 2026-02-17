@@ -6,6 +6,7 @@ use std::{
 use crate::{DeviceMetricsList, NestedDeviceMetricsList, StaticSMBundle};
 use asm_runner::AsmRunnerMO;
 
+use crate::AsmResources;
 use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;

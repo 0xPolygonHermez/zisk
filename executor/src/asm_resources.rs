@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use asm_runner::HintsFile;
 use asm_runner::HintsShmem;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use asm_runner::{MOOutputShmem, MTOutputShmem, RHOutputShmem, SharedMemoryWriter};
 use precompiles_hints::HintsProcessor;
 use zisk_common::io::{StreamSource, ZiskStream};
