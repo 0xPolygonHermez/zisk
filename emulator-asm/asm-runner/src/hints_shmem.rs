@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow::Result;
 use named_sem::NamedSemaphore;
-use std::cell::RefCell;
+use std::{cell::RefCell, sync::atomic::AtomicBool};
 use tracing::debug;
 use zisk_common::io::StreamSink;
 
@@ -50,6 +50,7 @@ struct UnifiedResources {
 
 /// HintsShmem struct manages the writing of processed precompile hints to shared memory.
 pub struct HintsShmem {
+    has_rom_sm: AtomicBool,
     /// Unified resources (single data buffer and control writer)
     unified: RefCell<UnifiedResources>,
     /// Separate resources (control_reader and semaphores for each service)
@@ -103,7 +104,11 @@ impl HintsShmem {
 
         let separate = Self::create_separate_resources(separate_names)?;
 
-        Ok(Self { unified: RefCell::new(unified), separate: RefCell::new(separate) })
+        Ok(Self {
+            unified: RefCell::new(unified),
+            separate: RefCell::new(separate),
+            has_rom_sm: AtomicBool::new(true),
+        })
     }
 
     /// Create the unified resources (single data buffer and control writer).
@@ -198,6 +203,12 @@ impl StreamSink for HintsShmem {
         let mut unified = self.unified.borrow_mut();
         let mut separate = self.separate.borrow_mut();
 
+        let separate = if self.has_rom_sm.load(std::sync::atomic::Ordering::SeqCst) {
+            &mut separate
+        } else {
+            &mut separate[0..2]
+        };
+
         // Read current write position once
         let write_pos = unified.control_writer.read_u64_at(0);
 
@@ -213,8 +224,20 @@ impl StreamSink for HintsShmem {
                 .unwrap();
 
             // Calculate occupied space based on slowest consumer (saturating to avoid underflow)
-            let occupied_space = write_pos.saturating_sub(min_read_pos);
-            let available_space = Self::BUFFER_CAPACITY_U64.saturating_sub(occupied_space);
+            debug_assert!(
+                write_pos >= min_read_pos,
+                "Write position ({}) is behind minimum read position ({})",
+                write_pos,
+                min_read_pos
+            );
+            let occupied_space = write_pos - min_read_pos;
+            debug_assert!(
+                occupied_space <= Self::BUFFER_CAPACITY_U64,
+                "Occupied space ({}) exceeds buffer capacity ({})",
+                occupied_space,
+                Self::BUFFER_CAPACITY_U64
+            );
+            let available_space = Self::BUFFER_CAPACITY_U64 - occupied_space;
 
             // Flow control based on buffer occupancy
             if available_space >= data_size {
@@ -229,7 +252,7 @@ impl StreamSink for HintsShmem {
         }
 
         // Write data ONCE to the unified shared memory buffer
-        unified.data_writer.write_ring_buffer(&processed);
+        unified.data_writer.write_ring_buffer(&processed)?;
 
         // Update write position ONCE in control memory
         unified.control_writer.write_u64_at(0, write_pos + data_size);
@@ -247,5 +270,16 @@ impl StreamSink for HintsShmem {
         let mut unified = self.unified.borrow_mut();
         unified.control_writer.write_u64_at(0, 0);
         unified.data_writer.reset();
+
+        // Drain stale semaphore signals from previous execution
+        let mut separate = self.separate.borrow_mut();
+        for res in separate.iter_mut() {
+            while res.sem_available.try_wait().is_ok() {}
+            while res.sem_read.try_wait().is_ok() {}
+        }
+    }
+
+    fn set_has_rom_sm(&self, has_rom_sm: bool) {
+        self.has_rom_sm.store(has_rom_sm, std::sync::atomic::Ordering::SeqCst);
     }
 }

@@ -1,8 +1,5 @@
 use anyhow::Result;
-use zisk_common::ElfBinary;
-use zisk_common::io::ZiskIO;
-use zisk_common::io::ZiskStdin;
-use zisk_sdk::{ProofOpts, ProverClient, include_elf};
+use zisk_sdk::{ZiskStdin, ZiskIO, ElfBinary, ProofOpts, ProverClient, include_elf};
 
 pub const ELF: ElfBinary = include_elf!("sha-hasher-guest");
 

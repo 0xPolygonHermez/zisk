@@ -12,7 +12,7 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::prelude::*;
 use zisk_common::{
     io::{ZiskIO, ZiskStdin},
-    ChunkId, EmuTrace, ExecutorStatsHandle, ZiskExecutionResult,
+    ChunkId, EmuTrace, ExecutorStatsHandle,
 };
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
@@ -52,7 +52,7 @@ impl EmulatorRust {
     /// * `DeviceMetricsList` - Metrics for primary devices.
     /// * `NestedDeviceMetricsList` - Metrics for secondary/nested devices.
     /// * `None`.
-    /// * `ZiskExecutionResult` - Summary of the emulator execution, including the total number of steps.
+    /// * `u64` - Total number of steps.
     pub fn execute<F: PrimeField64>(
         &self,
         stdin: &Mutex<ZiskStdin>,
@@ -62,20 +62,18 @@ impl EmulatorRust {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
-        ZiskExecutionResult,
+        u64,
     ) {
         let min_traces = self.run_emulator(Self::NUM_THREADS, &mut stdin.lock().unwrap());
 
         // Store execute steps
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
 
-        let execution_result = ZiskExecutionResult::new(steps);
-
         timer_start_info!(COUNT);
         let (main_count, secn_count) = self.count(&min_traces, sm_bundle);
         timer_stop_and_log_info!(COUNT);
 
-        (min_traces, main_count, secn_count, None, execution_result)
+        (min_traces, main_count, secn_count, None, steps)
     }
 
     fn run_emulator(&self, num_threads: usize, stdin: &mut ZiskStdin) -> Vec<EmuTrace> {
@@ -171,7 +169,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
-        ZiskExecutionResult,
+        u64,
     ) {
         self.execute(stdin, sm_bundle)
     }

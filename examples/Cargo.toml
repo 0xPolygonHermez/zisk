@@ -15,5 +15,3 @@ ziskos = { path = "../ziskos/entrypoint" }
 
 # Host dependencies
 zisk-sdk = { path = "../sdk" }
-zisk-build = { path = "../ziskbuild" }
-zisk-common = { path = "../common" }

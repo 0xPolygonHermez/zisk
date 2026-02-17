@@ -3,6 +3,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Condvar, Mutex};
 
 pub const DEFAULT_BUFFER_LEN: usize = 1 << 20; // 1 MiB
+                                               // TODO: Set MAX_WRITE_LEN based on writer type (file or socket)
 pub const MAX_WRITER_LEN: usize = 128 * 1024; // 128KB is the max write size for Unix sockets
 pub const HEADER_LEN: usize = 8;
 
@@ -16,6 +17,7 @@ struct HintBufferInner {
     commit_pos: usize,
     closed: bool,
     paused: bool,
+    // counter: u64,
 }
 
 pub fn build_hint_buffer() -> Arc<HintBuffer> {
@@ -25,6 +27,7 @@ pub fn build_hint_buffer() -> Arc<HintBuffer> {
             commit_pos: 0,
             closed: true,
             paused: false,
+            // counter: 0,
         }),
         not_empty: Condvar::new(),
     })
@@ -55,6 +58,7 @@ impl HintBuffer {
         g.commit_pos = 0;
         g.closed = false;
         g.paused = false;
+        // g.counter = 0;
         self.not_empty.notify_all();
     }
 
@@ -88,20 +92,17 @@ impl HintBuffer {
 
         let mut g = self.inner.lock().unwrap();
 
-        #[cfg(zisk_hints_metrics)]
-        crate::hints::metrics::inc_hint_count(hint_id);
-
         g.write_bytes(&header);
+
+        // g.counter += 1;
+
+        // if g.counter ==  32672 {
+        //     panic!("Hint counter reached");
+        // }
     }
 
     #[inline(always)]
     pub fn write_hint_data(&self, data: *const u8, len: usize) {
-        assert!(
-            HEADER_LEN + len <= MAX_WRITER_LEN,
-            "Hint size ({} bytes) exceeds max hint size ({} bytes)",
-            HEADER_LEN + len,
-            MAX_WRITER_LEN
-        );
         let payload = unsafe { std::slice::from_raw_parts(data, len) };
         self.inner.lock().unwrap().write_bytes(payload);
     }
@@ -147,6 +148,12 @@ impl HintBuffer {
                     u64::from_le_bytes(header_bytes.try_into().unwrap())
                 };
 
+                #[cfg(zisk_hints_metrics)]
+                {
+                    let hint_id = (hint_header >> 32) as u32 & 0x7FFF_FFFF;
+                    crate::hints::metrics::inc_hint_count(hint_id);
+                }
+
                 let hint_data_len = (hint_header & 0xFFFF_FFFF) as usize;
                 let pad = (8 - (hint_data_len & 7)) & 7;
                 let hint_len = HEADER_LEN + hint_data_len + pad;
@@ -163,10 +170,33 @@ impl HintBuffer {
                     buf_end = chunk_pos;
                 }
 
-                // Accumulate current hint into write buffer
-                buf_end += hint_len;
-                // Advance to next hint
-                chunk_pos += hint_len;
+                // If single hint exceeds MAX_WRITER_LEN, write it in chunks
+                if hint_len > MAX_WRITER_LEN {
+                    let mut hint_pos = 0usize;
+                    while hint_pos < hint_len {
+                        let chunk_size = std::cmp::min(MAX_WRITER_LEN, hint_len - hint_pos);
+                        let hint_bytes: &[u8] = unsafe {
+                            core::slice::from_raw_parts(
+                                chunk_base.add(chunk_pos + hint_pos),
+                                chunk_size,
+                            )
+                        };
+
+                        writer.write_all(hint_bytes)?;
+
+                        hint_pos += chunk_size;
+                    }
+                    // Advance to next hint
+                    chunk_pos += hint_len;
+                    // Reset write buffer
+                    buf_start = chunk_pos;
+                    buf_end = chunk_pos;
+                } else {
+                    // Accumulate current hint into write buffer
+                    buf_end += hint_len;
+                    // Advance to next hint
+                    chunk_pos += hint_len;
+                }
             }
 
             // Flush any remaining data in write buffer

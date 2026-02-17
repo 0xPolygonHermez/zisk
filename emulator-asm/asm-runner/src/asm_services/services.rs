@@ -105,8 +105,6 @@ impl AsmServices {
         );
 
         // First service has to create the shared memory, the rest can use it
-        // Es a dir, passar ZISK_15200_0 com a prefix a tots els asm services,
-        // passar --shared_input_shmem a tots tres, i passar --open_input_shmem al segon i al tercer.
         options.share_input_shmem = true;
         options.open_input_shmem = false;
         self.start_asm_service(service, trimmed_path, &options, &shm_prefix);

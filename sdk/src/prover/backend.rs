@@ -17,7 +17,7 @@ use proofman::{
     AggProofs, ExecutionInfo, ProofInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
     SnarkProtocol, SnarkWrapper,
 };
-use proofman_common::{ProofCtx, ProofOptions};
+use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_util::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -140,7 +140,7 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        proofman
+        let planning_info = proofman
             .execute_from_lib(output_path)
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
@@ -152,7 +152,7 @@ impl ProverBackend {
 
         let publics = proofman.get_publics();
 
-        Ok(ZiskExecuteResult::new(result, elapsed, &publics))
+        Ok(ZiskExecuteResult::new(result, planning_info, elapsed, &publics))
     }
 
     pub(crate) fn stats(
@@ -210,6 +210,51 @@ impl ProverBackend {
             })?;
 
         Ok((rank_info.world_rank, rank_info.n_processes, Some(stats)))
+    }
+
+    pub(crate) fn get_instance_trace(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot get instance trace in verifier mode"))?;
+
+        proofman
+            .get_instance_trace(instance_id, first_row, num_rows, offset)
+            .map_err(|e| anyhow::anyhow!("Error getting instance trace: {}", e))
+    }
+
+    pub(crate) fn get_instance_air_values(&self, instance_id: usize) -> Result<Vec<u64>> {
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot get instance AIR values in verifier mode"))?;
+
+        proofman
+            .get_instance_air_values(instance_id)
+            .map_err(|e| anyhow::anyhow!("Error getting instance AIR values: {}", e))
+    }
+
+    pub(crate) fn get_instance_fixed(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot get instance fixed in verifier mode"))?;
+
+        proofman
+            .get_instance_fixed(instance_id, first_row, num_rows, offset)
+            .map_err(|e| anyhow::anyhow!("Error getting instance fixed: {}", e))
     }
 
     pub(crate) fn verify_constraints_debug(

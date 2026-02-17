@@ -1,10 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use zisk_common::ElfBinary;
-use zisk_common::io::ZiskIO;
-use zisk_common::io::ZiskStdin;
 use zisk_sdk::{
+    ZiskStdin, ZiskIO, ElfBinary,
     ProofOpts, ProverClient, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, include_elf,
 };
 

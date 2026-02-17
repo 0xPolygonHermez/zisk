@@ -9,6 +9,7 @@ use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
+use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
     InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
@@ -100,6 +101,10 @@ impl<F: PrimeField64> Instance<F> for Poseidon2Instance<F> {
     /// An `InstanceType` representing the type of this instance (`InstanceType::Instance`).
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn stats_type(&self) -> StatsType {
+        StatsType::Precompiled
     }
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {

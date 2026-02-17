@@ -9,7 +9,7 @@ use crate::{
 use crate::{ProofMode, ProofOpts};
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
-use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, VerboseMode};
+use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo, VerboseMode};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::DEFAULT_CACHE_PATH;
 use std::sync::OnceLock;
@@ -124,6 +124,8 @@ impl ProverEngine for AsmProver {
             .with_base_port(self.core_prover.base_port)
             .with_world_rank(world_rank)
             .with_local_rank(local_rank)
+            .with_verbose(self.core_prover.verbose == VerboseMode::Debug)
+            .with_metrics(self.core_prover.verbose == VerboseMode::Debug)
             .with_unlock_mapped_memory(self.core_prover.unlock_mapped_memory);
 
         asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
@@ -168,6 +170,30 @@ impl ProverEngine for AsmProver {
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
+    }
+
+    fn get_instance_trace(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.core_prover.backend.get_instance_trace(instance_id, first_row, num_rows, offset)
+    }
+
+    fn get_instance_air_values(&self, instance_id: usize) -> Result<Vec<u64>> {
+        self.core_prover.backend.get_instance_air_values(instance_id)
+    }
+
+    fn get_instance_fixed(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.core_prover.backend.get_instance_fixed(instance_id, first_row, num_rows, offset)
     }
 
     fn verify_constraints_debug(

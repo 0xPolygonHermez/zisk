@@ -10,7 +10,7 @@ use std::fs;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
-use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::io::{StreamProcessor, StreamSource, ZiskStdin};
 use zisk_common::reinterpret_vec;
 use zisk_common::ElfBinaryFromFile;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
@@ -564,8 +564,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 prover.set_hints_stream(hints_stream)?;
             }
             HintsSourceDto::HintsStream(_hints_uri) => {
-                // let hints_stream = StreamSource::from_uri(hints_uri.into())?;
-                // prover.set_hints_stream(hints_stream)?;
+                // For HintsStream, the worker will receive hint data via stream_data messages
+                // The hints will be processed by the hints_processor in process_stream_data
+                // No need to set hints_stream on prover for this case
             }
             HintsSourceDto::HintsNull => {
                 // No hints to set
@@ -601,11 +602,25 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let local_rank = self.prover.local_rank();
             let unlock_mapped_memory = self.prover_config.unlock_mapped_memory;
             let hints_shmem = HintsShmem::new(base_port, local_rank, unlock_mapped_memory)?;
-            self.hints_processor = Some(
-                HintsProcessor::builder(hints_shmem)
-                    .build()
-                    .map_err(|e| anyhow::anyhow!("Failed to initialize hints processor: {}", e))?,
-            );
+            let processor = HintsProcessor::builder(hints_shmem)
+                .build()
+                .map_err(|e| anyhow::anyhow!("Failed to initialize hints processor: {}", e))?;
+
+            let worker_idx = self
+                .current_job
+                .as_ref()
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Received stream data for job {}, but no current job is set",
+                        job_id
+                    )
+                })?
+                .lock()
+                .await
+                .rank_id as usize;
+
+            processor.set_has_rom_sm(worker_idx == 0);
+            self.hints_processor = Some(processor);
         }
 
         // Check the existence of stream buffer based on stream type
@@ -620,6 +635,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 }
             }
 
+            // Reset hints processor state for the new stream/job
+            // This is crucial for consecutive proofs to work correctly
+            if let Some(ref mut hints_processor) = self.hints_processor {
+                hints_processor.reset();
+            }
+
+            println!(
+                "Stream START received for job {}, initialized buffer and reset hints processor",
+                job_id
+            );
             return Ok(());
         } else if stream_type == StreamMessageKind::End {
             // Ensure buffer exists
@@ -631,9 +656,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 ));
             }
 
+            // Clean up the stream buffer for this job
+            self.stream_buffers.remove(&job_id);
+
+            println!("Stream END received for job {}, cleaned up buffer", job_id);
             return Ok(());
         }
-
+        println!(
+            "Received stream data for job {}, stream type {:?}, processing...",
+            job_id, stream_type
+        );
         let element = self.stream_buffers.get_mut(&job_id).ok_or_else(|| {
             anyhow::anyhow!(
                 "Received stream data without START for job {} stream type {:?}",
@@ -657,6 +689,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         // Check if this is the expected sequence number
         // If not, buffer it for later processing
         if current_seq != *next_seq {
+            println!(
+                "Received out-of-order stream data for job {}, expected seq {}, got seq {}, buffering",
+                job_id, *next_seq, current_seq
+            );
             stream_buffer.insert(current_seq, payload);
             return Ok(());
         }

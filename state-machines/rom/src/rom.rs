@@ -10,10 +10,7 @@
 
 use std::{
     path::PathBuf,
-    sync::{
-        atomic::{AtomicBool, AtomicU64},
-        Arc, Mutex,
-    },
+    sync::{atomic::AtomicU64, Arc, Mutex},
     thread::JoinHandle,
 };
 
@@ -85,7 +82,6 @@ impl RomSM {
     pub fn compute_witness<F: PrimeField64>(
         rom: &ZiskRom,
         counter_stats: &CounterStats,
-        calculated: &AtomicBool,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
         let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer)?;
@@ -106,18 +102,9 @@ impl RomSM {
                 if counter_stats.bios_inst_count.is_empty() {
                     multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
                 } else {
-                    match calculated.load(std::sync::atomic::Ordering::Relaxed) {
-                        true => {
-                            multiplicity = counter_stats.bios_inst_count
-                                [((inst.paddr - ROM_ENTRY) as usize) >> 2]
-                                .swap(0, std::sync::atomic::Ordering::Relaxed);
-                        }
-                        false => {
-                            multiplicity = counter_stats.bios_inst_count
-                                [((inst.paddr - ROM_ENTRY) as usize) >> 2]
-                                .load(std::sync::atomic::Ordering::Relaxed);
-                        }
-                    }
+                    multiplicity = counter_stats.bios_inst_count
+                        [((inst.paddr - ROM_ENTRY) as usize) >> 2]
+                        .load(std::sync::atomic::Ordering::Relaxed);
 
                     if multiplicity == 0 {
                         continue;
@@ -127,18 +114,8 @@ impl RomSM {
                     }
                 }
             } else {
-                match calculated.load(std::sync::atomic::Ordering::Relaxed) {
-                    true => {
-                        multiplicity = counter_stats.prog_inst_count
-                            [(inst.paddr - ROM_ADDR) as usize]
-                            .swap(0, std::sync::atomic::Ordering::Relaxed)
-                    }
-                    false => {
-                        multiplicity = counter_stats.prog_inst_count
-                            [(inst.paddr - ROM_ADDR) as usize]
-                            .load(std::sync::atomic::Ordering::Relaxed)
-                    }
-                }
+                multiplicity = counter_stats.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
+                    .load(std::sync::atomic::Ordering::Relaxed);
                 if multiplicity == 0 {
                     continue;
                 }

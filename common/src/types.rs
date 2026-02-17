@@ -68,14 +68,89 @@ impl fmt::Display for SegmentId {
     }
 }
 
+pub enum StatsType {
+    Main,
+    Memory,
+    Opcodes,
+    Precompiled,
+    Tables,
+    Other,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct StatsCostPerType {
+    pub main_cost: u64,
+    pub opcode_cost: u64,
+    pub memory_cost: u64,
+    pub precompile_cost: u64,
+    pub tables_cost: u64,
+    pub other_cost: u64,
+}
+
+impl StatsCostPerType {
+    pub fn total_cost(&self) -> u64 {
+        self.main_cost
+            + self.opcode_cost
+            + self.memory_cost
+            + self.precompile_cost
+            + self.tables_cost
+            + self.other_cost
+    }
+
+    pub fn add_cost(&mut self, stats_type: StatsType, cost: u64) {
+        match stats_type {
+            StatsType::Main => self.main_cost += cost,
+            StatsType::Opcodes => self.opcode_cost += cost,
+            StatsType::Memory => self.memory_cost += cost,
+            StatsType::Precompiled => self.precompile_cost += cost,
+            StatsType::Tables => self.tables_cost += cost,
+            StatsType::Other => self.other_cost += cost,
+        }
+    }
+}
+
+impl fmt::Display for StatsCostPerType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let total = self.total_cost();
+        if total == 0 {
+            return write!(f, "total=0");
+        }
+
+        let mut parts = Vec::new();
+
+        let pct = (self.main_cost as f64 / total as f64) * 100.0;
+        parts.push(format!("main={} ({:.1}%)", self.main_cost, pct));
+
+        let pct = (self.opcode_cost as f64 / total as f64) * 100.0;
+        parts.push(format!("opcode={} ({:.1}%)", self.opcode_cost, pct));
+
+        let pct = (self.memory_cost as f64 / total as f64) * 100.0;
+        parts.push(format!("memory={} ({:.1}%)", self.memory_cost, pct));
+
+        let pct = (self.precompile_cost as f64 / total as f64) * 100.0;
+        parts.push(format!("precompile={} ({:.1}%)", self.precompile_cost, pct));
+
+        let pct = (self.tables_cost as f64 / total as f64) * 100.0;
+        parts.push(format!("tables={} ({:.1}%)", self.tables_cost, pct));
+
+        if self.other_cost > 0 {
+            let pct = (self.other_cost as f64 / total as f64) * 100.0;
+            parts.push(format!("other={} ({:.1}%)", self.other_cost, pct));
+        }
+
+        write!(f, "total={} [{}]", total, parts.join(", "))
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct ZiskExecutionResult {
     pub steps: u64,
+    pub cost_per_type: StatsCostPerType,
 }
 
 impl ZiskExecutionResult {
-    pub fn new(executed_steps: u64) -> Self {
-        Self { steps: executed_steps }
+    pub fn new(executed_steps: u64, cost_per_type: StatsCostPerType) -> Self {
+        Self { steps: executed_steps, cost_per_type }
     }
 }
 

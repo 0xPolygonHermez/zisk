@@ -17,7 +17,7 @@ pub enum CoordinatorError {
     InsufficientCapacity,
 
     // Internal errors - logged but not exposed to clients
-    #[error("Internal service error")]
+    #[error("Internal service error: {0}")]
     Internal(String),
 
     #[error("Worker error: {0}")]

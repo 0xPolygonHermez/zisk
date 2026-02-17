@@ -7,7 +7,7 @@ use crate::{
 };
 use crate::{ensure_custom_commits, ProofMode, ProofOpts};
 use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
-use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, VerboseMode};
+use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo, VerboseMode};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use zisk_common::io::{StreamSource, ZiskStdin};
@@ -122,6 +122,30 @@ impl ProverEngine for EmuProver {
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
+    }
+
+    fn get_instance_trace(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.core_prover.backend.get_instance_trace(instance_id, first_row, num_rows, offset)
+    }
+
+    fn get_instance_air_values(&self, instance_id: usize) -> Result<Vec<u64>> {
+        self.core_prover.backend.get_instance_air_values(instance_id)
+    }
+
+    fn get_instance_fixed(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.core_prover.backend.get_instance_fixed(instance_id, first_row, num_rows, offset)
     }
 
     fn verify_constraints_debug(

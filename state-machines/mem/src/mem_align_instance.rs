@@ -4,6 +4,7 @@ use mem_common::MemAlignCheckPoint;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
+use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
@@ -62,6 +63,10 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
 
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn stats_type(&self) -> StatsType {
+        StatsType::Memory
     }
 
     /// Builds an input collector for the instance.

@@ -9,7 +9,6 @@ categories = { workspace = true }
 
 [dependencies]
 proofman-common = { workspace = true }
-proofman = { workspace = true }
 proofman-macros = { workspace = true }
 fields = { workspace = true }
 serde = { workspace = true }

@@ -7,11 +7,12 @@ pub use emu::*;
 use proofman::{
     AggProofs, ExecutionInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkProtocol,
 };
-use proofman_common::ProofOptions;
+use proofman_common::{ProofOptions, RowInfo};
 use proofman_util::VadcopFinalProof;
 use sha2::{Digest, Sha256};
 
 use anyhow::{Context, Result};
+use proofman::PlanningInfo;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::{
@@ -22,18 +23,24 @@ use std::{
 use zisk_common::ElfBinaryLike;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ZiskExecutionResult,
+    ExecutorStatsHandle, StatsCostPerType, ZiskExecutionResult,
 };
 
 pub struct ZiskExecuteResult {
     pub execution: ZiskExecutionResult,
+    pub planning_info: PlanningInfo,
     pub duration: Duration,
     pub publics: ZiskPublics,
 }
 
 impl ZiskExecuteResult {
-    pub fn new(execution: ZiskExecutionResult, duration: Duration, publics: &[u8]) -> Self {
-        Self { execution, duration, publics: ZiskPublics::new(publics) }
+    pub fn new(
+        execution: ZiskExecutionResult,
+        planning_info: PlanningInfo,
+        duration: Duration,
+        publics: &[u8],
+    ) -> Self {
+        Self { execution, planning_info, duration, publics: ZiskPublics::new(publics) }
     }
 
     pub fn get_publics(&self) -> &ZiskPublics {
@@ -46,8 +53,16 @@ impl ZiskExecuteResult {
         self.publics.read()
     }
 
-    pub fn get_execution_steps(&self) -> &u64 {
-        &self.execution.steps
+    pub fn get_execution_steps(&self) -> u64 {
+        self.execution.steps
+    }
+
+    pub fn get_execution_total_cost(&self) -> u64 {
+        self.execution.cost_per_type.total_cost()
+    }
+
+    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
+        &self.execution.cost_per_type
     }
 
     pub fn get_duration(&self) -> Duration {
@@ -82,8 +97,16 @@ impl ZiskVerifyConstraintsResult {
         self.publics.read()
     }
 
-    pub fn get_execution_steps(&self) -> &u64 {
-        &self.execution.steps
+    pub fn get_execution_steps(&self) -> u64 {
+        self.execution.steps
+    }
+
+    pub fn get_execution_total_cost(&self) -> u64 {
+        self.execution.cost_per_type.total_cost()
+    }
+
+    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
+        &self.execution.cost_per_type
     }
 
     pub fn get_duration(&self) -> Duration {
@@ -604,8 +627,16 @@ impl ZiskProveResult {
         self.duration
     }
 
-    pub fn get_execution_steps(&self) -> &u64 {
-        &self.execution.steps
+    pub fn get_execution_steps(&self) -> u64 {
+        self.execution.steps
+    }
+
+    pub fn get_execution_total_cost(&self) -> u64 {
+        self.execution.cost_per_type.total_cost()
+    }
+
+    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
+        &self.execution.cost_per_type
     }
 
     pub fn get_proof_id(&self) -> Option<&String> {
@@ -661,6 +692,24 @@ pub trait ProverEngine {
     fn executed_steps(&self) -> u64;
 
     fn get_execution_info(&self) -> Result<ExecutionInfo>;
+
+    fn get_instance_trace(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>>;
+
+    fn get_instance_air_values(&self, instance_id: usize) -> Result<Vec<u64>>;
+
+    fn get_instance_fixed(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>>;
 
     fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult>;
 
@@ -788,6 +837,33 @@ impl<C: ZiskBackend> ZiskProver<C> {
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         self.prover.stats(stdin, debug_info, minimal_memory, mpi_node)
+    }
+
+    /// Get the instance trace for a given instance ID and row range.
+    pub fn get_instance_trace(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.prover.get_instance_trace(instance_id, first_row, num_rows, offset)
+    }
+
+    /// Get the instance AIR values for a given instance ID.
+    pub fn get_instance_air_values(&self, instance_id: usize) -> Result<Vec<u64>> {
+        self.prover.get_instance_air_values(instance_id)
+    }
+
+    /// Get the instance fixed for a given instance ID and row range.
+    pub fn get_instance_fixed(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.prover.get_instance_fixed(instance_id, first_row, num_rows, offset)
     }
 
     /// Verify the constraints with the given standard input and debug information.

@@ -2,7 +2,7 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
-use crate::{BusDevice, CheckPoint, ChunkId, PayloadType};
+use crate::{BusDevice, CheckPoint, ChunkId, PayloadType, StatsType};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::any::Any;
@@ -79,6 +79,10 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
     /// # Returns
     /// A reference to self as `&dyn Any`.
     fn as_any(&self) -> &dyn Any;
+
+    fn stats_type(&self) -> StatsType {
+        StatsType::Other
+    }
 
     fn reset(&self) {}
 }

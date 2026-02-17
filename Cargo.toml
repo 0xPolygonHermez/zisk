@@ -73,6 +73,7 @@ ziskemu = { path = "emulator" }
 asm-runner = { path = "emulator-asm/asm-runner" }
 executor = { path = "executor" }
 lib-c = { path = "lib-c" }
+lib-float = { path = "lib-float" }
 zisk-pil = { path = "pil" }
 precomp-arith-eq = { path = "precompiles/arith_eq" }
 precomp-arith-eq-384 = { path = "precompiles/arith_eq_384" }
@@ -186,7 +187,6 @@ reqwest = { version = "0.12", features = [
     "json",
     "rustls-tls",
 ], default-features = false }
-zstd = "0.13"
 vergen-git2 = { version = "9", default-features = false, features = [
     "build",
 ] }

@@ -16,6 +16,10 @@ pub use ziskemu::*;
 
 pub use proofman_common::VerboseMode;
 
+pub use zisk_common::{io::*, ElfBinary, ElfBinaryFromFile};
+
+pub use zisk_build::*;
+
 #[macro_export]
 macro_rules! include_elf {
     ($arg:literal) => {{

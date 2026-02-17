@@ -31,6 +31,8 @@ pub trait StreamSink: Send + Sync + 'static {
     fn submit(&self, processed: Vec<u64>) -> anyhow::Result<()>;
 
     fn reset(&self) {}
+
+    fn set_has_rom_sm(&self, _has_rom_sm: bool) {}
 }
 
 enum ThreadCommand {
