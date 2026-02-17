@@ -31,6 +31,7 @@ impl EmulatorAsm {
     }
 
     #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     pub fn execute<F: PrimeField64>(
         &self,
         _zisk_rom: &ZiskRom,
