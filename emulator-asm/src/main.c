@@ -4096,6 +4096,22 @@ void server_run (void)
         exit(-1);
     }
 
+    // Sync control input shared memory
+    if (msync((void *)shmem_control_input_address, CONTROL_INPUT_SIZE, MS_SYNC) != 0) {
+        printf("ERROR: msync failed for shmem_control_input_address errno=%d=%s\n", errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+
+    // Sync precompile shared memory
+    if (msync((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE, MS_SYNC) != 0) {
+        printf("ERROR: msync failed for shmem_precompile_address errno=%d=%s\n", errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+
     /*******/
     /* ASM */
     /*******/
@@ -5288,24 +5304,41 @@ int _wait_for_prec_avail (void)
     // Increment wait counter
     wait_counter++;
 
-    // Sync precompile shared memory
+    // Sync control output shared memory so that the writer can see the precompile reads we have
+    // done, and thus update the precompile_written_address if needed
     if (msync((void *)shmem_control_output_address, CONTROL_OUTPUT_SIZE, MS_SYNC) != 0) {
-        printf("ERROR: 1 msync failed for shmem_control_output_address errno=%d=%s\n", errno, strerror(errno));
+        printf("ERROR: msync failed for shmem_control_output_address errno=%d=%s\n", errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
 
-    // Tell the writer that we have read the precompile results
+    // Tell the writer that we have read some precompile results
     sem_post(sem_prec_read);
 
-    // Make sure the semaphore is reset before checking the condition,
+    // Make sure the precompile available semaphore is reset before checking the condition,
     // since the caller may have posted it (even several times) before we called sem_wait()
     while (sem_trywait(sem_prec_avail) == 0) {/*printf("Purging sem_prec_avail\n");*/};
+
+    // Sync control input shared memory so that we can see the latest precompile_written_address value
+    if (msync((void *)shmem_control_input_address, CONTROL_INPUT_SIZE, MS_SYNC) != 0) {
+        printf("ERROR: msync failed for shmem_control_input_address errno=%d=%s\n", errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
 
     // Check if there are already precompile results available
     if (*precompile_written_address > *precompile_read_address)
     {
+        // Sync precompile shared memory
+        if (msync((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE, MS_SYNC) != 0) {
+            printf("ERROR: msync failed for shmem_precompile_address errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
         return 0;
     }
 
@@ -5333,6 +5366,15 @@ int _wait_for_prec_avail (void)
             fflush(stderr);
             exit(-1);
         }
+
+        // Sync control input shared memory so that we can see the latest precompile_written_address value
+        if (msync((void *)shmem_control_input_address, CONTROL_INPUT_SIZE, MS_SYNC) != 0) {
+            printf("ERROR: msync failed for shmem_control_input_address errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
         if (*precompile_exit_address != 0)
         {
             printf("ERROR: wait_for_prec_avail() found precompile_exit_address=%lu\n", *precompile_exit_address);
@@ -5342,36 +5384,22 @@ int _wait_for_prec_avail (void)
         }
         if (*precompile_written_address > *precompile_read_address)
         {
+            // Sync precompile shared memory
+            if (msync((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE, MS_SYNC) != 0) {
+                printf("ERROR: msync failed for shmem_precompile_address errno=%d=%s\n", errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
+
             return 0;
         }
     }
 
-    // // Wait for control input shared memory to synchronize
-    // uint64_t written;
-    // uint64_t read;
-    // for (uint64_t i=0; i<CONTROL_NUMBER_OF_RETRIES; i++)
-    // {
-    //     written = *precompile_written_address;
-    //     read = *precompile_read_address;
-
-    //     // When some data is available, exit the loop
-    //     if (written != read) break;
-
-    //     // Retry
-    //     //printf("WARNING: wait_for_prec_avail() found written=%lu == read=%lu i=%lu retrying...\n", written, read, i);
-    //     usleep(CONTROL_RETRY_DELAY_US);
-    // }
-
-    // // Check if some data is available
-    // if (written == read)
-    // {
-    //     printf("ERROR: wait_for_prec_avail() found written=%lu == read=%lu\n", written, read);
-    //     fflush(stdout);
-    //     fflush(stderr);
-    //     exit(-1);
-    // }
-
-    return 0;
+    printf("ERROR: wait_for_prec_avail() unreachable code\n");
+    fflush(stdout);
+    fflush(stderr);
+    exit(-1);
 }
 
 void post_prec_read (void)
