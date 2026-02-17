@@ -10,6 +10,7 @@ use mem_common::MemCounters;
 use precomp_arith_eq::ArithEqCounterInputGen;
 use precomp_arith_eq_384::ArithEq384CounterInputGen;
 use precomp_big_int::Add256CounterInputGen;
+use precomp_blake2::Blake2CounterInputGen;
 use precomp_dma::DmaCounterInputGen;
 use precomp_keccakf::KeccakfCounterInputGen;
 use precomp_poseidon2::Poseidon2CounterInputGen;
@@ -21,7 +22,7 @@ use sm_main::MainCounter;
 use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
 use zisk_core::{
     ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BIG_INT_OP_TYPE_ID,
-    BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, DMA_OP_TYPE_ID, KECCAK_OP_TYPE_ID,
+    BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, BLAKE2_OP_TYPE_ID, DMA_OP_TYPE_ID, KECCAK_OP_TYPE_ID,
     POSEIDON2_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID, SHA256_OP_TYPE_ID,
 };
 
@@ -46,6 +47,7 @@ pub struct StaticDataBus<D> {
     pub keccakf_counter: (usize, KeccakfCounterInputGen),
     pub sha256f_counter: (usize, Sha256fCounterInputGen),
     pub poseidon2_counter: (usize, Poseidon2CounterInputGen),
+    pub blake2_counter: (usize, Blake2CounterInputGen),
     pub arith_eq_counter: (usize, ArithEqCounterInputGen),
     pub arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
     pub add_256_counter: (usize, Add256CounterInputGen),
@@ -66,6 +68,7 @@ impl StaticDataBus<PayloadType> {
         keccakf_counter: (usize, KeccakfCounterInputGen),
         sha256f_counter: (usize, Sha256fCounterInputGen),
         poseidon2_counter: (usize, Poseidon2CounterInputGen),
+        blake2_counter: (usize, Blake2CounterInputGen),
         arith_eq_counter: (usize, ArithEqCounterInputGen),
         arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
         add_256_counter: (usize, Add256CounterInputGen),
@@ -81,6 +84,7 @@ impl StaticDataBus<PayloadType> {
             keccakf_counter,
             sha256f_counter,
             poseidon2_counter,
+            blake2_counter,
             arith_eq_counter,
             arith_eq_384_counter,
             add_256_counter,
@@ -137,6 +141,11 @@ impl StaticDataBus<PayloadType> {
                     &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
                 POSEIDON2_OP_TYPE_ID => self.poseidon2_counter.1.process_data(
+                    &bus_id,
+                    data,
+                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
+                ),
+                BLAKE2_OP_TYPE_ID => self.blake2_counter.1.process_data(
                     &bus_id,
                     data,
                     &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
@@ -209,6 +218,7 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             (Some(self.keccakf_counter.0), Some(Box::new(self.keccakf_counter.1))),
             (Some(self.sha256f_counter.0), Some(Box::new(self.sha256f_counter.1))),
             (Some(self.poseidon2_counter.0), Some(Box::new(self.poseidon2_counter.1))),
+            (Some(self.blake2_counter.0), Some(Box::new(self.blake2_counter.1))),
             (Some(self.arith_eq_counter.0), Some(Box::new(self.arith_eq_counter.1))),
             (Some(self.arith_eq_384_counter.0), Some(Box::new(self.arith_eq_384_counter.1))),
             (Some(self.add_256_counter.0), Some(Box::new(self.add_256_counter.1))),

@@ -12,7 +12,7 @@ use crate::{
 
 use super::{
     constants::{E_B, G1_IDENTITY, P},
-    fp::{add_fp_bn254, inv_fp_bn254, mul_fp_bn254, square_fp_bn254},
+    fp::{add_fp_bn254, inv_fp_bn254, mul_fp_bn254, neg_fp_bn254, square_fp_bn254},
     fr::{reduce_fr_bn254, scalar_bytes_be_to_u64_le_bn254},
 };
 
@@ -199,6 +199,20 @@ pub fn dbl_bn254(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -
         hints,
     );
     [p1.x[0], p1.x[1], p1.x[2], p1.x[3], p1.y[0], p1.y[1], p1.y[2], p1.y[3]]
+}
+
+/// Negation of a point
+pub fn neg_bn254(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 8] {
+    let x: [u64; 4] = p[0..4].try_into().unwrap();
+    let y: [u64; 4] = p[4..8].try_into().unwrap();
+
+    // Compute the negation
+    let y_neg = neg_fp_bn254(
+        &y,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    [x[0], x[1], x[2], x[3], y_neg[0], y_neg[1], y_neg[2], y_neg[3]]
 }
 
 /// Multiplies a non-zero point `p` on the BN254 curve by a scalar `k` on the BN254 scalar field

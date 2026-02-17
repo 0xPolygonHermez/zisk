@@ -1585,6 +1585,7 @@ dependencies = [
  "precomp-arith-eq",
  "precomp-arith-eq-384",
  "precomp-big-int",
+ "precomp-blake2",
  "precomp-dma",
  "precomp-keccakf",
  "precomp-poseidon2",
@@ -3298,6 +3299,25 @@ dependencies = [
  "fields",
  "generic-array",
  "lib-c",
+ "mem-common",
+ "pil-std-lib",
+ "precompiles-common",
+ "proofman-common",
+ "proofman-macros",
+ "proofman-util",
+ "rayon",
+ "sm-mem",
+ "tracing",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+]
+
+[[package]]
+name = "precomp-blake2"
+version = "0.16.0"
+dependencies = [
+ "fields",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -6587,6 +6607,7 @@ dependencies = [
  "precomp-arith-eq",
  "precomp-arith-eq-384",
  "precomp-big-int",
+ "precomp-blake2",
  "precomp-dma",
  "precomp-keccakf",
  "precomp-poseidon2",

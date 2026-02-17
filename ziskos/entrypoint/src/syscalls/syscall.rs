@@ -1,5 +1,7 @@
 // Syscall 0x800 - 0x84F (80 syscalls)
 
+// Important: Syscalls should be contiguous and in the same order as in riscv2zisk_context.rs
+
 pub const SYSCALL_KECCAKF_ID: u16 = 0x800;
 pub const SYSCALL_ARITH256_ID: u16 = 0x801;
 pub const SYSCALL_ARITH256_MOD_ID: u16 = 0x802;
@@ -23,3 +25,4 @@ pub const SYSCALL_DMA_MEMCPY_ID: u16 = 0x813;
 pub const SYSCALL_DMA_MEMCMP_ID: u16 = 0x814;
 pub const SYSCALL_SECP256R1_ADD_ID: u16 = 0x815;
 pub const SYSCALL_SECP256R1_DBL_ID: u16 = 0x816;
+pub const SYSCALL_BLAKE2B_ROUND_ID: u16 = 0x817;
