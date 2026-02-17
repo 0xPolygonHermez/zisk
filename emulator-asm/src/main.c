@@ -4049,14 +4049,14 @@ void server_reset_slow (void)
 #ifdef DEBUG
         gettimeofday(&stop_time, NULL);
         duration = TimeDiff(start_time, stop_time);
-        if (verbose) printf("server_reset() memset(ram) in %lu us\n", duration);
+        if (verbose) printf("server_reset_slow() memset(ram) in %lu us\n", duration);
 #endif
     }
 }
 
 void server_reset_trace (void)
 {
-    // Reset RAM data for next emulation
+    // Reset trace header and trace_used_size for next emulation
     if ( (gen_method != ChunkPlayerMTCollectMem) &&
          (gen_method != ChunkPlayerMemReadsCollectMain) &&
          (gen_method != Fast) &&
