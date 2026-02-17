@@ -110,6 +110,25 @@ typedef enum {
 } GenMethod;
 GenMethod gen_method = Fast;
 
+const char * gen_method_achronym(GenMethod method)
+{
+    switch (method)
+    {
+        case Fast: return "FT";
+        case MinimalTrace: return "MT";
+        case RomHistogram: return "RH";
+        case MainTrace: return "MA";
+        case ChunksOnly: return "CO";
+        //case BusOp: return "bus-op";
+        case Zip: return "ZP";
+        case MemOp: return "MO";
+        case ChunkPlayerMTCollectMem: return "CPM";
+        case MemReads: return "MR";
+        case ChunkPlayerMemReadsCollectMain: return "CPMCM";
+        default: return "?";
+    }
+}
+
 // Service TCP parameters
 #define SERVER_IP "127.0.0.1"  // Change to your server IP
 uint16_t port = 0;
@@ -582,6 +601,8 @@ void trace_map_initialize (void)
     pOutputTrace = (uint64_t *)TRACE_ADDR;
 }
 
+bool redirect_output_to_file = true;
+
 int main(int argc, char *argv[])
 {
 #ifdef DEBUG
@@ -605,6 +626,19 @@ int main(int argc, char *argv[])
 
     // Parse arguments
     parse_arguments(argc, argv);
+
+    // Redirect output to file if requested
+    if (redirect_output_to_file)
+    {
+        char redirect_output_file[256];
+        snprintf(redirect_output_file, sizeof(redirect_output_file), "/tmp/%s_%s_output.txt", shm_prefix, gen_method_achronym(gen_method));
+
+        // Redirect stdout to file
+        freopen(redirect_output_file, "w", stdout);
+        
+        // Redirect stderr to the same file
+        freopen(redirect_output_file, "a", stderr);
+    }
 
     // Configure based on parguments
     configure();
@@ -4141,7 +4175,7 @@ void server_run (void)
         uint64_t step_duration_ns = steps == 0 ? 0 : (duration * 1000) / steps;
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
-        printf("Duration = %lu us, realloc counter = %lu, wait counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%% of %lu), end=%lu, error=%lu, max steps=%lu, chunk size=%lu\n",
+        printf("Duration = %lu us, realloc counter = %lu, wait counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%% of %lu), end=%lu, error=%lu, max steps=%lu, chunk size=%lu, prec_written=%lu, prec_read=%lu\n",
             duration,
             realloc_counter,
             wait_counter,
@@ -4156,7 +4190,10 @@ void server_run (void)
             end,
             error,
             max_steps,
-            chunk_size);
+            chunk_size,
+            precompile_written_address ? *precompile_written_address : 0,
+            precompile_read_address ? *precompile_read_address : 0
+        );
         if (gen_method == RomHistogram)
         {
             printf("Rom histogram size=%lu\n", histogram_size);
