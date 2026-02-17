@@ -1,4 +1,5 @@
 mod air_classifier;
+mod asm_resources;
 mod collector;
 mod dummy_counter;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -21,6 +22,7 @@ mod witness_generator;
 mod witness_orchestrator;
 
 use air_classifier::*;
+pub use asm_resources::*;
 use collector::*;
 pub use dummy_counter::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

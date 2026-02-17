@@ -21,7 +21,6 @@ impl EmulatorAsm {
     pub fn new(
         _world_rank: i32,
         _local_rank: i32,
-        _base_port: Option<u16>,
         _unlock_mapped_memory: bool,
         _chunk_size: u64,
         _rom_sm: Option<Arc<RomSM>>,
@@ -50,11 +49,15 @@ impl EmulatorAsm {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
+    pub fn set_asm_resources(&self, _asm_resources: AsmResources) {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
     pub fn get_chunk_size(&self) -> u64 {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
+    pub fn set_hints_stream_src(&self, _stream: StreamSource) -> Result<()> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
