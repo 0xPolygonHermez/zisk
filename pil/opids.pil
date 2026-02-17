@@ -28,6 +28,7 @@ const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
 // Precompiles
 const int ARITH_EQ_LT_TABLE_ID = 5002;
 const int KECCAKF_TABLE_ID = 126;
+const int BLAKE2BR_PERMUTATION_ID = 127;
 
 // DMA
 const int DMA_BUS_ID = 8000;

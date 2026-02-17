@@ -1,0 +1,29 @@
+[package]
+name = "precomp-blake2"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
+zisk-pil = { workspace = true }
+precompiles-common = { workspace = true }
+sm-mem = { workspace = true }
+mem-common = { workspace = true }
+
+proofman-common = { workspace = true }
+proofman-macros = { workspace = true }
+proofman-util = { workspace = true }
+pil-std-lib = { workspace = true }
+fields = { workspace=true }
+tracing = { workspace = true }
+rayon = { workspace = true }
+
+[features]
+default = []
+gpu = ["packed"]
+packed = []

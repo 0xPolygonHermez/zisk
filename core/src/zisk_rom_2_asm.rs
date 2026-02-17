@@ -244,6 +244,7 @@ impl ZiskAsmContext {
                 | ZiskOp::Add256
                 | ZiskOp::Secp256r1Add
                 | ZiskOp::Secp256r1Dbl
+                | ZiskOp::Blake2
         )
     }
 
@@ -311,6 +312,9 @@ impl ZiskAsmContext {
         self.precompile_results()
     }
     pub fn precompile_results_add256(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_blake2(&self) -> bool {
         self.precompile_results()
     }
     pub fn call_wait_for_prec_avail(&self) -> bool {
@@ -640,6 +644,7 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_bls12_381_complex_sub\n";
         *code += ".extern opcode_bls12_381_complex_mul\n";
         *code += ".extern opcode_add256\n";
+        *code += ".extern opcode_blake2\n";
         *code += ".extern chunk_done\n";
         *code += ".extern print_fcall_ctx\n";
         *code += ".extern print_pc\n";
@@ -5447,6 +5452,9 @@ impl ZiskRom2Asm {
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Blake2 => {
+                unimplemented!();
             }
             ZiskOp::PubOut => {
                 assert!(ctx.store_b_in_c);

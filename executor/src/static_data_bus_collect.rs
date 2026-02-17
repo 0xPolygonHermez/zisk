@@ -12,6 +12,8 @@ use precomp_arith_eq_384::ArithEq384Collector;
 use precomp_arith_eq_384::ArithEq384CounterInputGen;
 use precomp_big_int::Add256Collector;
 use precomp_big_int::Add256CounterInputGen;
+use precomp_blake2::Blake2Collector;
+use precomp_blake2::Blake2CounterInputGen;
 use precomp_dma::Dma64AlignedCollector;
 use precomp_dma::DmaCollector;
 use precomp_dma::DmaCounterInputGen;
@@ -64,6 +66,8 @@ pub struct StaticDataBusCollect<D, F: PrimeField64> {
     pub sha256f_inputs_generator: Sha256fCounterInputGen,
     pub poseidon2_collector: Vec<(usize, Poseidon2Collector)>,
     pub poseidon2_inputs_generator: Poseidon2CounterInputGen,
+    pub blake2_collector: Vec<(usize, Blake2Collector)>,
+    pub blake2_inputs_generator: Blake2CounterInputGen,
 
     /// Arithmetic equality collectors
     pub arith_eq_collector: Vec<(usize, ArithEqCollector)>,
@@ -97,6 +101,7 @@ const ARITH_TYPE: u64 = ZiskOperationType::Arith as u64;
 const KECCAK_TYPE: u64 = ZiskOperationType::Keccak as u64;
 const SHA256_TYPE: u64 = ZiskOperationType::Sha256 as u64;
 const POSEIDON2_TYPE: u64 = ZiskOperationType::Poseidon2 as u64;
+const BLAKE2_TYPE: u64 = ZiskOperationType::Blake2 as u64;
 const ARITH_EQ_TYPE: u64 = ZiskOperationType::ArithEq as u64;
 const ARITH_EQ_384_TYPE: u64 = ZiskOperationType::ArithEq384 as u64;
 const BIG_INT_OP_TYPE_ID: u64 = ZiskOperationType::BigInt as u64;
@@ -115,6 +120,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         keccakf_collector: Vec<(usize, KeccakfCollector)>,
         sha256f_collector: Vec<(usize, Sha256fCollector)>,
         poseidon2_collector: Vec<(usize, Poseidon2Collector)>,
+        blake2_collector: Vec<(usize, Blake2Collector)>,
         arith_eq_collector: Vec<(usize, ArithEqCollector)>,
         arith_eq_384_collector: Vec<(usize, ArithEq384Collector)>,
         add256_collector: Vec<(usize, Add256Collector)>,
@@ -128,6 +134,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         keccakf_inputs_generator: KeccakfCounterInputGen,
         sha256f_inputs_generator: Sha256fCounterInputGen,
         poseidon2_inputs_generator: Poseidon2CounterInputGen,
+        blake2_inputs_generator: Blake2CounterInputGen,
         arith_inputs_generator: ArithCounterInputGen,
         add256_inputs_generator: Add256CounterInputGen,
         dma_inputs_generator: DmaCounterInputGen,
@@ -142,6 +149,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             keccakf_collector,
             sha256f_collector,
             poseidon2_collector,
+            blake2_collector,
             arith_eq_collector,
             arith_eq_384_collector,
             add256_collector,
@@ -155,6 +163,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             keccakf_inputs_generator,
             sha256f_inputs_generator,
             poseidon2_inputs_generator,
+            blake2_inputs_generator,
             arith_inputs_generator,
             add256_inputs_generator,
             dma_inputs_generator,
@@ -238,6 +247,19 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                         poseidon2_collector.process_data(&bus_id, data);
                     }
                     self.poseidon2_inputs_generator.process_data(
+                        &bus_id,
+                        data,
+                        &mut MemCollectorProcessor::new(
+                            &mut self.mem_collector,
+                            &mut self.mem_align_collector,
+                        ),
+                    );
+                }
+                BLAKE2_TYPE => {
+                    for (_, blake2_collector) in &mut self.blake2_collector {
+                        blake2_collector.process_data(&bus_id, data);
+                    }
+                    self.blake2_inputs_generator.process_data(
                         &bus_id,
                         data,
                         &mut MemCollectorProcessor::new(
@@ -388,6 +410,10 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
         }
 
         for (id, collector) in self.poseidon2_collector {
+            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+        }
+
+        for (id, collector) in self.blake2_collector {
             result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
         }
 

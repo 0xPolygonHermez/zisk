@@ -1,8 +1,6 @@
 mod round;
-mod utils;
 
-use round::blake2b_round;
-use utils::*;
+pub use round::blake2b_round;
 
 /// BLAKE2b initialization vectors
 const IV: [u64; 8] = [
@@ -16,11 +14,7 @@ const IV: [u64; 8] = [
     0x5BE0CD19137E2179,
 ];
 
-/// BLAKE2b state representation as 16 x 64-bit words
-/// v[0..15] each containing 64 bits
-type Blake2StateBits = [[u64; 64]; 16];
-
-/// BLAKE2b compression function F
+/// BLAKE2b compression function
 ///
 /// # Arguments
 /// * `rounds` - Number of rounds (typically 12 for BLAKE2b)
@@ -28,68 +22,27 @@ type Blake2StateBits = [[u64; 64]; 16];
 /// * `message` - The message block m (16 x 64-bit words as bits)
 /// * `t` - Offset counters (2 x 64-bit words)
 /// * `f` - Final block flag
-pub fn blake2b(rounds: u32, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 2], f: bool) {
-    // Initialize working vector v
-    let mut v: Blake2StateBits = [[0u64; 64]; 16];
+pub fn blake2b_compress(rounds: u32, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 2], f: bool) {
+    let mut v = [0u64; 16];
 
-    // Convert inputs to bit representation
-    let mut h_bits: [[u64; 64]; 8] = [[0u64; 64]; 8];
-    for i in 0..8 {
-        h_bits[i] = bits_from_u64(h[i]);
-    }
+    v[..8].copy_from_slice(h);
+    v[8..16].copy_from_slice(&IV);
 
-    let mut m_bits: [[u64; 64]; 16] = [[0u64; 64]; 16];
-    for i in 0..16 {
-        m_bits[i] = bits_from_u64(m[i]);
-    }
+    v[12] ^= t[0];
+    v[13] ^= t[1];
 
-    // Convert iv to bits
-    let mut iv_bits: [[u64; 64]; 8] = [[0u64; 64]; 8];
-    for i in 0..8 {
-        iv_bits[i] = bits_from_u64(IV[i]);
-    }
-
-    // v[0..7] = h[0..7]
-    v[0..8].copy_from_slice(&h_bits);
-
-    // v[8..15] = IV[0..7]
-    v[8..16].copy_from_slice(&iv_bits);
-
-    // v[12] ^= t[0] (low word of offset)
-    #[allow(clippy::needless_range_loop)]
-    for z in 0..64 {
-        v[12][z] ^= (t[0] >> z) & 1;
-    }
-
-    // v[13] ^= t[1] (high word of offset)
-    #[allow(clippy::needless_range_loop)]
-    for z in 0..64 {
-        v[13][z] ^= (t[1] >> z) & 1;
-    }
-
-    // v[14] ^= 0xFFFFFFFFFFFFFFFF if f is true (invert all bits)
     if f {
-        #[allow(clippy::needless_range_loop)]
-        for z in 0..64 {
-            v[14][z] ^= 1;
-        }
+        v[14] = !v[14];
     }
 
-    // Perform rounds
     for r in 0..rounds {
-        blake2b_round(&mut v, &m_bits, r);
+        println!("Blake2b_round with v = {:x?}, m = {:x?}", v, m);
+        blake2b_round(&mut v, m, r);
+        panic!("Blake2b_round with v = {:x?}, m = {:x?}", v, m);
     }
 
-    // Finalize: h[i] = h[i] ^ v[i] ^ v[i+8]
     for i in 0..8 {
-        for z in 0..64 {
-            h_bits[i][z] ^= v[i][z] ^ v[i + 8][z];
-        }
-    }
-
-    // Convert back to u64
-    for i in 0..8 {
-        h[i] = u64_from_bits(&h_bits[i]);
+        h[i] ^= v[i] ^ v[i + 8];
     }
 }
 
@@ -151,7 +104,7 @@ mod tests {
 
         let f = true;
 
-        blake2b(rounds, &mut h, &m, &t, f);
+        blake2b_compress(rounds, &mut h, &m, &t, f);
 
         // Expected output (8 × u64, little-endian)
         let expected = [
@@ -226,7 +179,7 @@ mod tests {
 
         let f = true;
 
-        blake2b(rounds, &mut h, &m, &t, f);
+        blake2b_compress(rounds, &mut h, &m, &t, f);
 
         let expected: [u64; 8] = [
             0xba80a53f981c4d0du64.swap_bytes(),
@@ -300,7 +253,7 @@ mod tests {
 
         let f = false;
 
-        blake2b(rounds, &mut h, &m, &t, f);
+        blake2b_compress(rounds, &mut h, &m, &t, f);
 
         let expected: [u64; 8] = [
             0x75ab69d3190a562cu64.swap_bytes(),
@@ -374,7 +327,7 @@ mod tests {
 
         let f = true;
 
-        blake2b(rounds, &mut h, &m, &t, f);
+        blake2b_compress(rounds, &mut h, &m, &t, f);
 
         let expected: [u64; 8] = [
             0xb63a380cb2897d52u64.swap_bytes(),

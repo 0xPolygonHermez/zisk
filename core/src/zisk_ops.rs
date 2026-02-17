@@ -23,7 +23,7 @@ use std::{
 use tiny_keccak::keccakf;
 
 use crate::{
-    sha256f, EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation,
+    blake2br, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation,
     EXTRA_PARAMS, M64, REG_A0, SYS_ADDR,
 };
 
@@ -56,6 +56,7 @@ pub enum OpType {
     ArithEq384,
     BigInt,
     Dma,
+    Blake2,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -74,6 +75,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::ArithEq384 => ZiskOperationType::ArithEq384,
             OpType::BigInt => ZiskOperationType::BigInt,
             OpType::Dma => ZiskOperationType::Dma,
+            OpType::Blake2 => ZiskOperationType::Blake2,
         }
     }
 }
@@ -96,6 +98,7 @@ impl Display for OpType {
             Self::ArithEq384 => write!(f, "Arith384"),
             Self::BigInt => write!(f, "BigInt"),
             Self::Dma => write!(f, "Dma"),
+            Self::Blake2 => write!(f, "Blake2"),
         }
     }
 }
@@ -119,6 +122,7 @@ impl FromStr for OpType {
             "aeq384" => Ok(Self::ArithEq384),
             "bint" => Ok(Self::BigInt),
             "dma" => Ok(Self::Dma),
+            "bl" => Ok(Self::Blake2),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -358,6 +362,7 @@ const FCALL_COST: u64 = INTERNAL_COST;
 const ARITH_EQ_384_COST: u64 = 79 * 24;
 const ADD256_COST: u64 = 104;
 const DMA_COST: u64 = 42;
+const BLAKE2_COST: u64 = 1; //TODO: TBD
 
 const DMA_64_ALIGNED_COST: u64 = 40;
 const DMA_UNALIGNED_COST: u64 = 42;
@@ -455,6 +460,7 @@ define_ops! {
     (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, 64, opc_secp256k1_dbl, op_secp256k1_dbl, ops_secp256k1_dbl),
     (Secp256r1Add, "secp256r1_add", ArithEq, ARITH_EQ_COST, 0xe8, 144, 64, opc_secp256r1_add, op_secp256r1_add, ops_secp256r1_add),
     (Secp256r1Dbl, "secp256r1_dbl", ArithEq, ARITH_EQ_COST, 0xe9, 64, 64, opc_secp256r1_dbl, op_secp256r1_dbl, ops_secp256r1_dbl),
+    (Blake2, "blake2", Blake2, BLAKE2_COST, 0xea, 280 , 128, opc_blake2, op_blake2, ops_blake2),
     (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, 0, opc_fcall_param, op_fcall_param, ops_none),
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, 0, opc_fcall, op_fcall, ops_none),
     (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, 0, opc_fcall_get, op_fcall_get, ops_none),
@@ -1319,7 +1325,7 @@ pub fn opc_sha256(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 4 + 4;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 4, 4, &mut data, "sha256");
+    precompiled_load_data(ctx, 2, 2, 4, 4, None, &mut data, "sha256");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // Get the state and input slices
@@ -1445,12 +1451,57 @@ pub fn ops_poseidon2(ctx: &InstContext, stats: &mut dyn OpStats) {
 }
 
 #[inline(always)]
+pub fn opc_blake2(ctx: &mut InstContext) {
+    const WORDS: usize = 3 + 2 * 16; // index,addr_state,addr_input,state[16],input[16]
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 3, 2, 16, 0, Some(0), &mut data, "blake2");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // Get the state and input slices
+        // 0 - index
+        // 1 - addr_state
+        // 2 - addr_input
+        let index = data[0];
+        let (params, rest) = data.split_at_mut(3);
+        let (state_slice, input_slice) = rest.split_at_mut(16);
+        let state: &mut [u64; 16] = state_slice.try_into().unwrap();
+        let input: &[u64; 16] = input_slice[..16].try_into().unwrap();
+
+        // Compute the blake2br output with the fastest implementation available
+        blake2br(index, state, input);
+
+        let state_addr = params[1];
+        for (i, d) in state.iter().enumerate() {
+            ctx.mem.write(state_addr + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Blake2 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_blake2(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_blake2() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_blake2(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[4, 8], &[], 1);
+}
+
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
 pub fn precompiled_load_data(
     ctx: &mut InstContext,
     params_count: usize,
     load_indirections: usize,
     load_chunks: usize,
     load_rem: usize,
+    direct_load_param_idx: Option<usize>,
     data: &mut [u64],
     title: &str,
 ) {
@@ -1461,7 +1512,7 @@ pub fn precompiled_load_data(
         load_chunks,
         load_rem,
         0,
-        None,
+        direct_load_param_idx,
         data,
         title,
     );
@@ -1475,7 +1526,7 @@ pub fn precompiled_load_data_with_result(
     load_indirections: usize,
     load_chunks: usize,
     load_rem: usize,
-    direct_load_param: Option<usize>,
+    direct_load_param_idx: Option<usize>,
     data: &mut [u64],
     title: &str,
 ) {
@@ -1486,7 +1537,7 @@ pub fn precompiled_load_data_with_result(
         load_chunks,
         load_rem,
         1,
-        direct_load_param,
+        direct_load_param_idx,
         data,
         title,
     );
@@ -1501,7 +1552,7 @@ fn internal_precompiled_load_data(
     load_chunks: usize,
     load_rem: usize,
     result: usize,
-    direct_load_param: Option<usize>, // If one of the load parameters isn't an indirection
+    direct_load_param_idx: Option<usize>, // Index of the load parameters that isn't an indirection
     data: &mut [u64],
     title: &str,
 ) {
@@ -1532,10 +1583,10 @@ fn internal_precompiled_load_data(
         return;
     }
 
-    // Write the indirections to data
+    // Write the indirections/direct_params to data
     for (i, data) in data.iter_mut().enumerate().take(params_count) {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
-        if indirection & 0x7 != 0 && Some(i) != direct_load_param {
+        if indirection & 0x7 != 0 && Some(i) != direct_load_param_idx {
             panic!(
                 "[{title}] precompiled_check_address() found address_{i} [0x{address:08X}]=0x{indirection:08X} \
                 not aligned to 8 bytes at PC:0x{:08X} STEP:{}",
@@ -1545,11 +1596,23 @@ fn internal_precompiled_load_data(
         *data = indirection;
     }
 
+    // Write the data
     let mut data_offset = params_count;
     for i in 0..load_indirections {
+        let param_idx = if let Some(direct_idx) = direct_load_param_idx {
+            if i >= direct_idx {
+                i + 1
+            } else {
+                i
+            }
+        } else {
+            i
+        };
+
         let data_offset = i * load_chunks + data_offset;
         // if there aren't indirections, take directly from the address
-        let param_address = if params_count == 0 { address + data_offset as u64 } else { data[i] };
+        let param_address =
+            if params_count == 0 { address + data_offset as u64 } else { data[param_idx] };
         for j in 0..load_chunks {
             let addr = param_address + (8 * j as u64);
             data[data_offset + j] = ctx.mem.read(addr, 8);
@@ -1678,7 +1741,7 @@ pub fn opc_arith256(ctx: &mut InstContext) {
     const WORDS: usize = 5 + 3 * 4;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 5, 3, 4, 0, &mut data, "arith256");
+    precompiled_load_data(ctx, 5, 3, 4, 0, None, &mut data, "arith256");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 5 indirections
@@ -1725,7 +1788,7 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
     const WORDS: usize = 5 + 4 * 4;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 5, 4, 4, 0, &mut data, "arith256_mod");
+    precompiled_load_data(ctx, 5, 4, 4, 0, None, &mut data, "arith256_mod");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 5 indirections
@@ -1771,7 +1834,7 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "secp256k1_add");
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "secp256k1_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -1810,7 +1873,7 @@ pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "secp256k1_dbl");
+    precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "secp256k1_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         let p1: &[u64; 8] = &data;
@@ -1844,7 +1907,7 @@ pub fn opc_secp256r1_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "secp256r1_add");
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "secp256r1_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -1883,7 +1946,7 @@ pub fn opc_secp256r1_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "secp256r1_dbl");
+    precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "secp256r1_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         let p1: &[u64; 8] = &data;
@@ -1917,7 +1980,7 @@ pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_curve_add");
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_curve_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -1957,7 +2020,7 @@ pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "bn254_curve_dbl");
+    precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "bn254_curve_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         let p1: &[u64; 8] = &data;
@@ -1991,7 +2054,7 @@ pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_add");
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_complex_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -2031,7 +2094,7 @@ pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_sub");
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_complex_sub");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -2071,7 +2134,7 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_mul");
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_complex_mul");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -2111,7 +2174,7 @@ pub fn opc_arith384_mod(ctx: &mut InstContext) {
     const WORDS: usize = 5 + 4 * 6;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 5, 4, 6, 0, &mut data, "arith384_mod");
+    precompiled_load_data(ctx, 5, 4, 6, 0, None, &mut data, "arith384_mod");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 5 indirections
@@ -2157,7 +2220,7 @@ pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_curve_add");
+    precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_curve_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -2197,7 +2260,7 @@ pub fn opc_bls12_381_curve_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 12;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 0, 1, 12, 0, &mut data, "bls12_381_curve_dbl");
+    precompiled_load_data(ctx, 0, 1, 12, 0, None, &mut data, "bls12_381_curve_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         let p1: &[u64; 12] = &data;
@@ -2231,7 +2294,7 @@ pub fn opc_bls12_381_complex_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_add");
+    precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_complex_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -2271,7 +2334,7 @@ pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_sub");
+    precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_complex_sub");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -2311,7 +2374,7 @@ pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_mul");
+    precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_complex_mul");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections

@@ -34,6 +34,7 @@ members = [
     "precompiles/hints",
     "precompiles/keccakf",
     "precompiles/sha256f",
+    "precompiles/blake2",
     "precompiles/big_int",
     "precompiles/dma",
     "lib-c",
@@ -79,6 +80,7 @@ precompiles-common = { path = "precompiles/common" }
 precompiles-helpers = { path = "precompiles/helpers" }
 precomp-keccakf = { path = "precompiles/keccakf" }
 precomp-sha256f = { path = "precompiles/sha256f" }
+precomp-blake2 = { path = "precompiles/blake2" }
 precomp-poseidon2 = { path = "precompiles/poseidon2" }
 precomp-big-int = { path = "precompiles/big_int" }
 precomp-dma = { path = "precompiles/dma" }

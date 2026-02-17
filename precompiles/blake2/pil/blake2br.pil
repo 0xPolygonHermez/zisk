@@ -1,5 +1,6 @@
 require "std_constants.pil"
 require "std_lookup.pil"
+require "std_permutation.pil"
 require "operations.pil"
 require "opids.pil"
 
@@ -7,6 +8,8 @@ require "opids.pil"
 // For reference: https://datatracker.ietf.org/doc/html/rfc7693 or https://www.blake2.net/
 
 // We use little-endian representation
+
+// TODO: Add missing range checks!
 
 airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION_BUS_ID) {
     /*
@@ -79,44 +82,38 @@ airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION
 
     const int CLOCKS_PER_G = 3;
     const int G_FUNCTIONS_PER_ROUND = 8;
-    const int CLOCK_NUM = CLOCKS_PER_G * G_FUNCTIONS_PER_ROUND;
+    const int CLOCKS = CLOCKS_PER_G * G_FUNCTIONS_PER_ROUND;
 
     // Ensure that the Blake2br fits
-    if (N < 2*CLOCK_NUM) {
-        error(`Blake2br requires N >= ${2*CLOCK_NUM}, got N=${N}`);
+    if (N < 2*CLOCKS) {
+        error(`Blake2br requires N >= ${2*CLOCKS}, got N=${N}`);
     }
 
     // Calculate usable capacity
-    const int NUM_NON_USABLE_ROWS = N % CLOCK_NUM;
+    const int NUM_NON_USABLE_ROWS = N % CLOCKS;
     const int NUM_BLAKE2BR;
     if (NUM_NON_USABLE_ROWS == 0) {
-        NUM_BLAKE2BR = N / CLOCK_NUM;
+        NUM_BLAKE2BR = N / CLOCKS;
     } else {
-        NUM_BLAKE2BR = (N - NUM_NON_USABLE_ROWS) / CLOCK_NUM - 1; // The -1 is because CLOCK_NUM is not a divisor of N
+        NUM_BLAKE2BR = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1; // The -1 is because CLOCKS is not a divisor of N
     }
     println(`Blake2br capacity: ${NUM_BLAKE2BR} rounds (N=${N})`);
 
-    col fixed CLK_0 = [[1, 0:(CLOCK_NUM-1)]:NUM_BLAKE2BR, 0...];
+    col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_BLAKE2BR, 0...];
 
-    const expr CLK[CLOCK_NUM];
-    for (int i = 0; i < CLOCK_NUM; i++) {
+    const expr CLK[CLOCKS];
+    for (int i = 0; i < CLOCKS; i++) {
         CLK[i] = (i)'CLK_0;
     }
 
-    // Define the clock selectors
-    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Blake2broperation, 0 otherwise
-    col witness bits(1) in_use;       // 1 when the Blake2br operation is in use, 0 otherwise
+    // Define the clock selector
+    col witness bits(1) in_use; // 1 when the Blake2br operation is in use, 0 otherwise
 
-    in_use_clk_0 * (1 - in_use_clk_0) === 0;
     in_use * (1 - in_use) === 0;
 
-    in_use_clk_0 - CLK_0 * in_use === 0; // This constraint is two-fold:
-                                         //   · in_use_clk_0 can only be active when CLK_0 is active
-                                         //   · if in_use is active then so is in_use_clk_0
-
     // Selector latching: once activated, stays active for full cycle
-    const expr in_use_continues = clock_set(start: 1, end: CLOCK_NUM);
-    in_use_continues * (in_use - 'in_use) === 0;
+    const expr in_use_active = clock_set(start: 1, end: CLOCKS);
+    in_use_active * (in_use - 'in_use) === 0;
 
     // --> Constraints to assert the BLAKE2B round function
 
@@ -165,7 +162,7 @@ airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION
     for (int j = 0; j < 10; j++) {
         expr sum_sigmas = 0;
         int sig_idx = 0;
-        for (int k = 0; k < CLOCK_NUM; k++) {
+        for (int k = 0; k < CLOCKS; k++) {
             if (k > 0 && k % 2 == 0) {
                 continue;
             }
@@ -188,11 +185,19 @@ airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION
 
     const expr ms_next[2] = [ms[0]', ms[1]'];
 
-    // TODO: Decide the selector!
-    permutation_assumes(opid: BLAKE2BR_PERMUTATION_ID, expressions: [MSG_IDX, m[0], m[1]]);
-    permutation_proves(opid: BLAKE2BR_PERMUTATION_ID, expressions: [s, ms[0], ms[1]]);
+    // Perform the permutation
+    col witness bits(1) in_use_clk_perm; // 1 when the permutation is activated
+    const expr perm_active = clock_set(in_use, start: 0, end: CLOCKS - G_FUNCTIONS_PER_ROUND, step: 2, skip: 1);
+    in_use_clk_perm <== perm_active;
+
+    permutation_assumes(opid: BLAKE2BR_PERMUTATION_ID, expressions: [MSG_IDX, m[0], m[1]], sel: in_use_clk_perm);
+    permutation_proves(opid: BLAKE2BR_PERMUTATION_ID, expressions: [s, ms[0], ms[1]], sel: in_use_clk_perm);
 
     // 2] Compute the g mixing function
+
+    col witness bits(1) in_use_clk_g; // 1 when the g function is activated
+    const expr g_active = clock_set(in_use, start: 0, end: CLOCKS / 3, step: 1, skip: 2);
+    in_use_clk_g <== g_active;
 
     // The four v-values of g
     col witness bits(32) va[2];
@@ -309,7 +314,7 @@ airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION
     clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
 
     // Perform 4 memory operations in parallel
-    // Total: 51 mem ops, Steps Needed: ceil(51/4) = 12 < 24 (CLOCK_NUM)
+    // Total: 51 mem ops, Steps Needed: ceil(51/4) = 12 < 24 (CLOCKS)
     //   - 0..3  -> Read  State
     //   - 4..7  -> Read  Input
     //   - 8..11 -> Write State
@@ -361,6 +366,8 @@ airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION
     }
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
+    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Blake2br operation, 0 otherwise
+    in_use_clk_0 <== CLK_0 * in_use;
 
     lookup_proves(operation_bus_id, [OP_BLAKE2BR, 0, 0, step_addr'(ADDR_OP), 0, 0, 0, 0, step_addr'(STEP_MAIN)], mul: in_use_clk_0);
 
@@ -396,8 +403,8 @@ airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION
         expr sum_1 = a[1] - b[1] - c[1] - d[1];
         expr sum = sum_0 + P2_32*sum_1;
 
-        sum_0 * (sum_0 + P2_32) * (sum_0 + 2*P2_32) === 0;
-        sum * (sum + P2_64) * (sum + 2*P2_64) === 0;
+        air.in_use_clk_g * (sum_0 * (sum_0 + P2_32) * (sum_0 + 2*P2_32)) === 0;
+        air.in_use_clk_g * (sum * (sum + P2_64) * (sum + 2*P2_64)) === 0;
     }
 
     // Checks a == (b + c) mod 2⁶⁴
@@ -424,8 +431,8 @@ airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION
         expr sum_1 = a[1] - b[1] - c[1];
         expr sum = sum_0 + P2_32*sum_1;
 
-        sum_0 * (sum_0 + P2_32) === 0;
-        sum * (sum + P2_64) === 0;
+        air.in_use_clk_g * (sum_0 * (sum_0 + P2_32)) === 0;
+        air.in_use_clk_g * (sum * (sum + P2_64)) === 0;
     }
 
     // Checks a == (b <<< n) ^ c
@@ -466,8 +473,8 @@ airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION
         }
         
         // Check equality
-        a[0] === packed_low;
-        a[1] === packed_high;
+        air.in_use_clk_g * (a[0] - packed_low) === 0;
+        air.in_use_clk_g * (a[1] - packed_high) === 0;
 
         // Notice that these equalities also ensure that a[0], a[1] are range checked
     }
@@ -476,13 +483,26 @@ airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION
         return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2));
     }
 
-    function clock_set(const expr mvcol = 1, int start = 0, int end = -1): const expr {
+    function clock_set(const expr mvcol = 1, int start = 0, int end = -1, const int step = 1, const int skip = 0): const expr {
         expr result = 0;
         if (end == -1) {
-            end = start;
+            end = start + 1;
         }
-        for (int i = start; i < end; i++) {
-            result += air.CLK[i];
+        
+        int clock_idx = start;
+        int count = 0;
+        int in_group = 0;
+        while (count < end - start) {
+            result += air.CLK[clock_idx];
+            count++;
+            in_group++;
+            clock_idx++;
+            
+            // After 'step' consecutive clocks, skip 'skip' clocks
+            if (skip > 0 && in_group == step) {
+                clock_idx += skip;
+                in_group = 0;
+            }
         }
         return result * mvcol;
     }
@@ -493,7 +513,7 @@ airtemplate Blake2br(const int N = 2**22, const int operation_bus_id = OPERATION
             end = start + 1;
         }
         for (int i = start; i < end; i++) {
-            const int iclock = (pos - i) % air.CLOCK_NUM;
+            const int iclock = (pos - i) % air.CLOCKS;
             if (offset != 0) {
                 result += air.CLK[i] * (mvcol'(iclock) + offset);
             } else {

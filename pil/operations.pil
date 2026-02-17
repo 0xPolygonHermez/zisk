@@ -11,7 +11,7 @@
       - DMA Operations:
         - 0xDA-0xDF
       - Precompiles:
-        - 0xE1-0xE9
+        - 0xE1-0xEA
         - 0xF0-0xF5
         - 0xF9-0xFE
       - Misc:
@@ -99,6 +99,8 @@ const int OP_COMPLEX_MUL_BLS12_381 = 0xE7;
 
 const int OP_EC_ADD_SECP256R1 = 0xE8;
 const int OP_EC_DBL_SECP256R1 = 0xE9;
+
+const int OP_BLAKE2BR = 0xEA;
 
 const int OP_ADD256 = 0xF0;
 const int OP_KECCAKF = 0xF1;
