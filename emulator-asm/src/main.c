@@ -761,20 +761,34 @@ int main(int argc, char *argv[])
             if (bytes_read < 0)
             {
                 printf("%s ERROR: Failed calling recv() bytes_read=%ld errno=%d=%s\n", log_name, bytes_read, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
                 break;
             }
             if (bytes_read != sizeof(request))
             {
                 if ((errno != 0) && (errno != 2))
                 {
-                    printf("%s ERROR: Failed calling recv() invalid bytes_read=%ld errno=%d=%s\n", log_name, bytes_read, errno, strerror(errno));
+                    printf("%s WARNING: Failed calling recv() invalid bytes_read=%ld errno=%d=%s\n", log_name, bytes_read, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
                 }
                 break;
             }
 #ifdef DEBUG
-            if (verbose) printf("%s recv() returned: %ld\n", log_name, bytes_read);
+            if (verbose)
+            {
+                printf("%s recv() returned: %ld\n", log_name, bytes_read);
+                fflush(stdout);
+                fflush(stderr);
+            }
 #endif
-            if (verbose) printf("%s recv()'d request=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", log_name, request[0], request[1], request[2], request[3], request[4]);
+            if (verbose)
+            {
+                printf("%s recv()'d request=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", log_name, request[0], request[1], request[2], request[3], request[4]);
+                fflush(stdout);
+                fflush(stderr);
+            }
 
             uint64_t response[5];
             bReset = false;
@@ -1074,17 +1088,29 @@ int main(int argc, char *argv[])
                 }
             }
 
-            if (verbose) printf("%s send()'ing response=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", log_name, response[0], response[1], response[2], response[3], response[4]);
+            if (verbose)
+            {
+                printf("%s send()'ing response=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", log_name, response[0], response[1], response[2], response[3], response[4]);
+                fflush(stdout);
+                fflush(stderr);
+            }
 
             ssize_t bytes_sent = send(client_fd, response, sizeof(response), MSG_WAITALL);
             if (bytes_sent != sizeof(response))
             {
                 printf("%s ERROR: Failed calling send() invalid bytes_sent=%ld errno=%d=%s\n", log_name, bytes_sent, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
                 break;
             }
-#ifdef DEBUG
-            else if (verbose) printf("Response sent to client\n");
-#endif
+//#ifdef DEBUG
+            else if (verbose)
+            {
+                printf("Response sent to client\n");
+                fflush(stdout);
+                fflush(stderr);
+            }
+//#endif
             if (bReset)
             {
                 server_reset_slow();
@@ -4200,11 +4226,15 @@ void server_run (void)
         if (gen_method == RomHistogram)
         {
             printf("Rom histogram size=%lu\n", histogram_size);
+            fflush(stdout);
+            fflush(stderr);
         }
     }
     if (MEM_ERROR)
     {
         printf("Emulation ended with error code %lu\n", MEM_ERROR);
+        fflush(stdout);
+        fflush(stderr);
     }
 
     // Log output
@@ -4213,7 +4243,12 @@ void server_run (void)
         unsigned int * pOutput = (unsigned int *)OUTPUT_ADDR;
         unsigned int output_size = 64;
 #ifdef DEBUG
-        if (verbose) printf("Output size=%d\n", output_size);
+        if (verbose)
+        {
+            printf("Output size=%d\n", output_size);
+            fflush(stdout);
+            fflush(stderr);
+        }
 #endif
 
         for (unsigned int i = 0; i < output_size; i++)
@@ -4221,6 +4256,8 @@ void server_run (void)
             printf("%08x\n", *pOutput);
             pOutput++;
         }
+        fflush(stdout);
+        fflush(stderr);
     }
 
     // Log output for riscof tests
@@ -4229,7 +4266,12 @@ void server_run (void)
         unsigned int * pOutput = (unsigned int *)OUTPUT_ADDR;
         unsigned int output_size = *pOutput;
 #ifdef DEBUG
-        if (verbose) printf("Output size=%d\n", output_size);
+        if (verbose)
+        {
+            printf("Output size=%d\n", output_size);
+            fflush(stdout);
+            fflush(stderr);
+        }
 #endif
 
         for (unsigned int i = 0; i < output_size; i++)
@@ -4237,6 +4279,8 @@ void server_run (void)
             pOutput++;
             printf("%08x\n", *pOutput);
         }
+        fflush(stdout);
+        fflush(stderr);
     }
 
     // Complete output header data
