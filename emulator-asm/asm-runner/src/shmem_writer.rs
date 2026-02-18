@@ -203,11 +203,11 @@ impl SharedMemoryWriter {
         debug_assert_eq!(offset % 8, 0, "Offset must be 8-byte aligned");
 
         unsafe {
-            (self.ptr.add(offset) as mut u64).write(value);
+            (self.ptr.add(offset) as *mut u64).write(value);
 
             // Force changes to be flushed to the shared memory
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            if msync(self.ptr asmut _, self.size, MS_SYNC) != 0 {
+            if msync(self.ptr as *mut _, self.size, MS_SYNC) != 0 {
                 panic!("msync failed in write_u64_at: {:?}", io::Error::last_os_error());
             }
         }
