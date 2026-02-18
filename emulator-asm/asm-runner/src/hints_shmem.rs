@@ -9,7 +9,10 @@ use crate::{
 };
 use anyhow::Result;
 use named_sem::NamedSemaphore;
-use std::{cell::RefCell, sync::atomic::AtomicBool};
+use std::{
+    cell::RefCell,
+    sync::atomic::{fence, AtomicBool, Ordering},
+};
 use tracing::debug;
 use zisk_common::io::StreamSink;
 
@@ -215,6 +218,9 @@ impl StreamSink for HintsShmem {
         // Flow control: wait until all consumers have advanced enough
         // We need to wait for the slowest consumer (minimum read position)
         loop {
+            // Ensure we observe the latest read positions
+            fence(Ordering::Acquire);
+
             // Find the slowest consumer (minimum read position) and its index
             let (slowest_idx, min_read_pos) = separate
                 .iter()
@@ -254,8 +260,12 @@ impl StreamSink for HintsShmem {
         // Write data ONCE to the unified shared memory buffer
         unified.data_writer.write_ring_buffer(&processed)?;
 
+        fence(Ordering::Release);
+
         // Update write position ONCE in control memory
         unified.control_writer.write_u64_at(0, write_pos + data_size);
+
+        fence(Ordering::Release);
 
         // Notify ALL consumers that new data is available
         for res in separate.iter_mut() {

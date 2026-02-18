@@ -642,10 +642,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 hints_processor.reset();
             }
 
-            println!(
-                "Stream START received for job {}, initialized buffer and reset hints processor",
-                job_id
-            );
             return Ok(());
         } else if stream_type == StreamMessageKind::End {
             // Ensure buffer exists
@@ -660,13 +656,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             // Clean up the stream buffer for this job
             self.stream_buffers.remove(&job_id);
 
-            println!("Stream END received for job {}, cleaned up buffer", job_id);
             return Ok(());
         }
-        // println!(
-        //     "Received stream data for job {}, stream type {:?}, processing...",
-        //     job_id, stream_type
-        // );
+
         let element = self.stream_buffers.get_mut(&job_id).ok_or_else(|| {
             anyhow::anyhow!(
                 "Received stream data without START for job {} stream type {:?}",
