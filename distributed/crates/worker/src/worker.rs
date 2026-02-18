@@ -663,10 +663,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             println!("Stream END received for job {}, cleaned up buffer", job_id);
             return Ok(());
         }
-        println!(
-            "Received stream data for job {}, stream type {:?}, processing...",
-            job_id, stream_type
-        );
+        // println!(
+        //     "Received stream data for job {}, stream type {:?}, processing...",
+        //     job_id, stream_type
+        // );
         let element = self.stream_buffers.get_mut(&job_id).ok_or_else(|| {
             anyhow::anyhow!(
                 "Received stream data without START for job {} stream type {:?}",

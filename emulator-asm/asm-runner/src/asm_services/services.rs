@@ -300,16 +300,21 @@ impl AsmServices {
             out_buffer.extend_from_slice(&word.to_le_bytes());
         }
 
+        tracing::info!("Sending request to service {} on {}: {:?}", service, addr, request);
         let mut stream =
             TcpStream::connect(&addr).with_context(|| format!("Failed to connect to {addr}"))?;
 
+        tracing::info!("Connected to service {} on {}", service, addr);
         // Set a read timeout to avoid indefinite blocking
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
             .context("Failed to set read timeout")?;
 
+        tracing::info!("Sending request payload to service {} on {}", service, addr);
+
         // Send request payload
         if let Err(e) = stream.write_all(&out_buffer) {
+            tracing::error!("Failed to write request payload to service {} on {}: {}", service, addr, e);
             return Err(anyhow::anyhow!(
                 "Failed to write request payload to service {} on {}: {}",
                 service,
@@ -317,6 +322,8 @@ impl AsmServices {
                 e
             ));
         }
+
+        tracing::info!("Request payload sent to service {} on {}", service, addr);
 
         let total_timeout = Duration::from_secs(120);
         let start = Instant::now();
@@ -338,6 +345,7 @@ impl AsmServices {
                     continue;
                 }
                 Err(e) => {
+                    tracing::error!("Failed to read response payload from service {} on {}: {}", service, addr, e);
                     return Err(e.into());
                 }
             }
@@ -348,6 +356,8 @@ impl AsmServices {
         for (i, chunk) in in_buffer.chunks_exact(8).enumerate() {
             response[i] = u64::from_le_bytes(chunk.try_into()?);
         }
+
+        tracing::info!("Decoded response from service {} on {}: {:?}", service, addr, response);
 
         Ok(Res::from_response_payload(response))
     }
