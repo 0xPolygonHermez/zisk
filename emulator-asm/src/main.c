@@ -634,12 +634,25 @@ int main(int argc, char *argv[])
         snprintf(redirect_output_file, sizeof(redirect_output_file), "/tmp/%s_%s_output.txt", shm_prefix, gen_method_achronym(gen_method));
 
         // Redirect stdout to file
-        freopen(redirect_output_file, "w", stdout);
+        FILE * file_pointer = freopen(redirect_output_file, "w", stdout);
+        if (file_pointer == NULL)
+        {
+            printf("ERROR: Failed to redirect stdout to file %s\n", redirect_output_file);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
         
         // Redirect stderr to the same file
-        freopen(redirect_output_file, "a", stderr);
+        file_pointer = freopen(redirect_output_file, "a", stderr);
+        if (file_pointer == NULL)
+        {
+            printf("ERROR: Failed to redirect stderr to file %s\n", redirect_output_file);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
     }
-
     // Configure based on parguments
     configure();
 
