@@ -16,7 +16,7 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client with SNARK support...");
-    let client = ProverClient::builder().asm().base_port(54321).snark().verbose(2).build().unwrap();
+    let client = ProverClient::builder().asm().base_port(54321).snark().build().unwrap();
 
     println!("Setting up program and generating verification key...");
     let vkey = client.setup(&ELF)?;
