@@ -18,9 +18,6 @@ pub struct ZiskBuild {
     #[clap(long)]
     no_default_features: bool,
 
-    #[clap(short = 'z', long)]
-    zisk_path: Option<String>,
-
     #[clap(long)]
     hints: bool,
 }
@@ -45,11 +42,6 @@ impl ZiskBuild {
         }
 
         command.args(["--target", ZISK_TARGET]);
-
-        // Pass zisk_path to build scripts via environment variable
-        if let Some(zisk_path) = &self.zisk_path {
-            command.env("ZISK_PATH", zisk_path);
-        }
 
         // Set up the command to inherit the parent's stdout and stderr
         command.stdout(Stdio::inherit());

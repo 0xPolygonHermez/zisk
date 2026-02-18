@@ -225,11 +225,6 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
     cp -R build/provingKey $HOME/.zisk
     ```
 
-8. Generate constant tree files:
-    ```bash
-    cargo-zisk check-setup -a
-    ```
-
 ## Uninstall Zisk
 
 1. Uninstall ZisK toolchain:

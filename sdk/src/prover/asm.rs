@@ -12,7 +12,7 @@ use executor::{get_packed_info, init_executor_asm, AsmResources};
 use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo, VerboseMode};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use rom_setup::DEFAULT_CACHE_PATH;
+use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -47,6 +47,7 @@ impl AsmProver {
         shared_tables: bool,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
+        force_rom_setup: bool,
         gpu_params: ParamsGPU,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
@@ -60,6 +61,7 @@ impl AsmProver {
             shared_tables,
             base_port,
             unlock_mapped_memory,
+            force_rom_setup,
             gpu_params,
             logging_config,
         )?;
@@ -134,8 +136,30 @@ impl ProverEngine for AsmProver {
         let asm_mt_path = default_cache_path.join(asm_mt_filename);
         let asm_rh_path = default_cache_path.join(asm_rh_filename);
 
-        check_paths_exist(&asm_mt_path)?;
-        check_paths_exist(&asm_rh_path)?;
+        if check_paths_exist(&asm_mt_path).is_err() || check_paths_exist(&asm_rh_path).is_err() {
+            if self.core_prover.force_rom_setup {
+                return Err(anyhow::anyhow!(
+                    "Assembly files not found for ELF {}. Force ROM setup is enabled, but assembly files are still missing. Please ensure that the assembly generation process has been completed successfully.",
+                    elf.name()
+                ));
+            }
+
+            tracing::info!(
+                ">>> ROM SETUP (one time only) - Generating assembly files for ELF: {}",
+                elf.name()
+            );
+            timer_start_info!(ROM_SETUP);
+            let output_path = get_output_path(&None)?;
+            generate_assembly(
+                elf.elf(),
+                elf.name(),
+                &output_path,
+                elf.with_hints(),
+                self.core_prover.verbose != VerboseMode::Info,
+            )?;
+            timer_stop_and_log_info!(ROM_SETUP);
+            tracing::info!("<<< ROM SETUP complete - Assembly files cached for future use");
+        }
 
         timer_start_info!(STARTING_ASM_MICROSERVICES);
         let asm_services = AsmServices::new(world_rank, local_rank, base_port);
@@ -305,6 +329,7 @@ pub struct AsmCoreProver {
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
     verbose: VerboseMode,
+    force_rom_setup: bool,
 }
 
 impl AsmCoreProver {
@@ -319,6 +344,7 @@ impl AsmCoreProver {
         shared_tables: bool,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
+        force_rom_setup: bool,
         gpu_params: ParamsGPU,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
@@ -377,6 +403,7 @@ impl AsmCoreProver {
             base_port,
             unlock_mapped_memory,
             verbose: verbose.into(),
+            force_rom_setup,
         })
     }
 
@@ -390,6 +417,7 @@ impl AsmCoreProver {
             base_port: None,
             unlock_mapped_memory: false,
             verbose: VerboseMode::Info,
+            force_rom_setup: false,
         })
     }
 }

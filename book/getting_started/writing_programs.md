@@ -298,11 +298,6 @@ Follow these steps to enable GPU support:
     cargo build --release --features gpu
     ```
 
-4. Regenerate constant tree files:
-    ```bash
-    cargo-zisk check-setup -a
-    ```
-
 You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the **Concurrent Proof Generation** section.
 
 > **Note:** GPU memory is typically more limited than CPU memory. When combining GPU execution with concurrent proof generation, ensure that each process has sufficient memory available on the GPU to avoid out-of-memory errors.

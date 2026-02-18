@@ -44,9 +44,6 @@ pub struct BuildArgs {
     #[clap(long, value_name = "ELF_NAME")]
     elf_name: Option<String>,
 
-    #[clap(short = 'z', long, value_name = "ZISK_PATH")]
-    zisk_path: Option<String>,
-
     #[clap(long, value_name = "HINTS")]
     pub hints: Option<bool>,
 }

@@ -25,3 +25,4 @@ state-machines/binary/src/binary_basic_frops_fixed.bin
 state-machines/binary/src/binary_extension_frops_fixed.bin
 reth-inputs/
 /hints
+/benchmark

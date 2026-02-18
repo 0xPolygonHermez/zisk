@@ -25,12 +25,6 @@ pub fn get_default_zisk_path() -> PathBuf {
     PathBuf::from(zisk_path)
 }
 
-/// Gets the zisk folder.
-/// Uses the default one if not specified by user.
-pub fn get_zisk_path(zisk_path: Option<&PathBuf>) -> PathBuf {
-    zisk_path.cloned().unwrap_or_else(get_default_zisk_path)
-}
-
 pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
     let output_path = if output_dir.is_none() {
         let cache_path = std::env::var("HOME")

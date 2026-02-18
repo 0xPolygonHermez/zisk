@@ -24,10 +24,6 @@ pub struct ZiskRomSetup {
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
-    /// Setup folder path
-    #[clap(short = 'z', long)]
-    pub zisk_path: Option<PathBuf>,
-
     /// Output dir path
     #[clap(short = 'o', long)]
     pub output_dir: Option<PathBuf>,
@@ -78,7 +74,7 @@ impl ZiskRomSetup {
         let elf = ElfBinaryFromFile::new(&self.elf, self.hints)?;
         rom_merkle_setup::<Goldilocks>(&pctx, &elf, &self.output_dir)?;
 
-        gen_assembly(&self.elf, &self.zisk_path, &self.output_dir, self.hints, self.verbose > 0)?;
+        gen_assembly(&self.elf, &self.output_dir, self.hints, self.verbose > 0)?;
 
         println!();
         tracing::info!("{}", "ROM setup successfully completed".bright_green().bold());

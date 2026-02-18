@@ -109,6 +109,9 @@ pub struct ZiskProve {
     #[clap(short = 'r', long, default_value_t = false)]
     pub rma: bool,
 
+    #[clap(short = 'f', long, default_value_t = false)]
+    pub force_rom_setup: bool,
+
     #[clap(long, default_value_t = false)]
     pub snark: bool,
 }
@@ -267,6 +270,7 @@ impl ZiskProve {
             .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
             .base_port_opt(self.port)
+            .force_rom_setup(self.force_rom_setup)
             .unlock_mapped_memory(self.unlock_mapped_memory)
             .gpu(gpu_params)
             .print_command_info()
