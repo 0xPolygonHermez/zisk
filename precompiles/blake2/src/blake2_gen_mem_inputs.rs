@@ -5,7 +5,7 @@ use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 use zisk_core::blake2br;
 
 use crate::blake2_constants::{
-    DIRECT_READ_PARAMS, DIRECT_READ_PARAM_POS, PARAMS, PARAM_CHUNKS, READ_PARAMS, START_READ_PARAMS,
+    DIRECT_READ_PARAMS, PARAMS, PARAM_CHUNKS, READ_PARAMS, START_READ_PARAMS,
 };
 
 #[derive(Debug)]
@@ -38,7 +38,8 @@ pub fn generate_blake2_mem_inputs<P: MemProcessor>(
 
     // Generate memory load params
     for iparam in 0..READ_PARAMS {
-        let param_idx = if iparam >= DIRECT_READ_PARAM_POS { iparam + 1 } else { iparam };
+        // let param_idx = if iparam >= DIRECT_READ_PARAM_POS { iparam + 1 } else { iparam };
+        let param_idx = iparam + 1;
 
         let param_addr = data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_idx] as u32;
         for ichunk in 0..PARAM_CHUNKS {

@@ -118,7 +118,7 @@ airgroup Zisk {
 
     Poseidon2(N: 2**17);
 
-    Blake2br(N: 2**20);
+    Blake2br(N: 2**18);
 
     // Public Inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {
