@@ -188,9 +188,11 @@ impl StreamSink for HintsShmem {
     #[inline]
     fn submit(&self, processed: Vec<u64>) -> anyhow::Result<()> {
         let data_size = processed.len() as u64;
+        debug!("[SHMEM] submit() called with {} u64 elements", data_size);
 
         // Early return for empty data
         if data_size == 0 {
+            debug!("[SHMEM] submit() early return - empty data");
             return Ok(());
         }
 
@@ -214,6 +216,7 @@ impl StreamSink for HintsShmem {
 
         // Read current write position once
         let write_pos = unified.control_writer.read_u64_at(0);
+        debug!("[SHMEM] Current write_pos={}, attempting to submit {} u64s", write_pos, data_size);
 
         // Flow control: wait until all consumers have advanced enough
         // We need to wait for the slowest consumer (minimum read position)
@@ -247,30 +250,39 @@ impl StreamSink for HintsShmem {
 
             // Flow control based on buffer occupancy
             if available_space >= data_size {
+                debug!("[SHMEM] Sufficient space available ({}), breaking flow control loop", available_space);
                 break;
             }
 
             // Not enough space - wait for the SLOWEST consumer to signal progress
+            debug!("[SHMEM] Insufficient space: available={}, needed={}, waiting on consumer {} (read_pos={})", 
+                   available_space, data_size, slowest_idx, min_read_pos);
             // Retry on interrupt (EINTR)
             if separate[slowest_idx].sem_read.wait().is_err() {
+                debug!("[SHMEM] sem_read.wait() returned error, retrying");
                 continue;
             }
+            debug!("[SHMEM] sem_read.wait() succeeded, retrying space check");
         }
 
         // Write data ONCE to the unified shared memory buffer
+        debug!("[SHMEM] Writing {} u64s to ring buffer at pos {}", data_size, write_pos);
         unified.data_writer.write_ring_buffer(&processed)?;
 
         fence(Ordering::Release);
 
         // Update write position ONCE in control memory
         unified.control_writer.write_u64_at(0, write_pos + data_size);
+        debug!("[SHMEM] Updated write_pos to {}", write_pos + data_size);
 
         fence(Ordering::Release);
 
         // Notify ALL consumers that new data is available
+        debug!("[SHMEM] Posting to {} consumer semaphores", separate.len());
         for res in separate.iter_mut() {
             res.sem_available.post()?;
         }
+        debug!("[SHMEM] submit() completed successfully");
 
         Ok(())
     }

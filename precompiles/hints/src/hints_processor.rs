@@ -531,11 +531,16 @@ impl HintsProcessor {
 
     /// Drainer thread that waits for hints to complete and drains ready results from queue.
     fn drainer_thread(state: Arc<HintProcessorState>, hints_sink: Arc<dyn StreamSink>) {
+        debug!("[DRAINER] Thread started");
         loop {
+            debug!("[DRAINER] Attempting to acquire queue lock");
             let mut queue = state.queue.lock().unwrap();
+            debug!("[DRAINER] Acquired queue lock, buffer_len={}, next_drain_seq={}", 
+                   queue.buffer.len(), queue.next_drain_seq);
 
             // Check for shutdown
             if state.shutdown.load(Ordering::Acquire) {
+                debug!("[DRAINER] Shutdown signal received, exiting");
                 break;
             }
 
@@ -543,25 +548,31 @@ impl HintsProcessor {
             let mut drained_any = false;
             while let Some(Some(res)) = queue.buffer.front() {
                 drained_any = true;
+                let current_seq = queue.next_drain_seq;
                 match res {
                     Ok(data) => {
                         // Clone data before dropping lock
+                        debug!("[DRAINER] Found ready result seq={}, size={} u64s, cloning", current_seq, data.len());
                         let data_to_submit = data.clone();
                         queue.buffer.pop_front();
                         queue.next_drain_seq += 1;
 
                         // Drop lock before submitting to avoid blocking workers
+                        debug!("[DRAINER] Dropping lock before submit seq={}", current_seq);
                         drop(queue);
 
                         // Submit to sink
+                        debug!("[DRAINER] Calling hints_sink.submit() for seq={}", current_seq);
                         if let Err(e) = hints_sink.submit(data_to_submit) {
                             eprintln!("Error submitting to sink: {}", e);
                             state.error_flag.store(true, Ordering::Release);
                             state.drain_signal.notify_all();
                             return;
                         }
+                        debug!("[DRAINER] Completed submit seq={}", current_seq);
 
                         // Re-acquire lock for next iteration
+                        debug!("[DRAINER] Re-acquiring lock after seq={}", current_seq);
                         queue = state.queue.lock().unwrap();
                     }
                     Err(e) => {
@@ -578,20 +589,25 @@ impl HintsProcessor {
 
             // If we drained any results, notify wait_for_completion that buffer changed
             if drained_any {
+                debug!("[DRAINER] Notifying wait_for_completion");
                 state.drain_signal.notify_all();
             }
 
             // Check for shutdown again before waiting
             if state.shutdown.load(Ordering::Acquire) {
+                debug!("[DRAINER] Shutdown signal received before wait, exiting");
                 break;
             }
 
             // Wait for notification that a hint completed
+            debug!("[DRAINER] Waiting on drain_signal condvar");
             #[allow(unused_assignments)]
             {
                 queue = state.drain_signal.wait(queue).unwrap();
             }
+            debug!("[DRAINER] Woke up from condvar wait");
         }
+        debug!("[DRAINER] Thread exiting");
     }
 
     /// Waits for all pending hints to be processed and drained.
