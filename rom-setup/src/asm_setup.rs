@@ -1,4 +1,3 @@
-#[cfg(not(target_os = "macos"))]
 use anyhow::Context;
 use anyhow::Result;
 use std::{
