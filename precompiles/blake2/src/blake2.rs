@@ -36,6 +36,8 @@ pub struct Blake2SM<F: PrimeField64> {
     pub num_available_blake2s: usize,
 
     num_non_usable_rows: usize,
+
+    range_id: usize,
 }
 
 impl<F: PrimeField64> Blake2SM<F> {
@@ -49,7 +51,9 @@ impl<F: PrimeField64> Blake2SM<F> {
         let num_available_blake2s =
             Blake2TraceType::<F>::NUM_ROWS / CLOCKS - (num_non_usable_rows != 0) as usize;
 
-        Arc::new(Self { std, num_available_blake2s, num_non_usable_rows })
+        let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
+
+        Arc::new(Self { std, num_available_blake2s, num_non_usable_rows, range_id })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.
@@ -60,7 +64,13 @@ impl<F: PrimeField64> Blake2SM<F> {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_input(&self, input: &Blake2Input, trace: &mut [Blake2TraceRowType<F>]) {
+    pub fn process_input(
+        &self,
+        input: &Blake2Input,
+        trace: &mut [Blake2TraceRowType<F>],
+    ) -> [u32; 65536] {
+        let mut range_checks = [0u32; 65536]; // 2^16 range checks for the 16-bit limbs
+
         let step_main = input.step_main;
         let addr_main = input.addr_main;
         let state_addr = input.state_addr;
@@ -84,19 +94,28 @@ impl<F: PrimeField64> Blake2SM<F> {
             row.set_in_use(true);
 
             // Set idx
-            row.set_idx(index);
+            row.set_round_idx(index);
 
             // Set idx_sel
-            row.set_idx_sel(idx_usize, true);
+            row.set_round_idx_sel(idx_usize, true);
         }
 
         // Set m columns
         let mut m_idx = 0;
         for (i, &inp) in input.iter().enumerate() {
-            trace[m_idx].set_m(0, inp as u32);
-            trace[m_idx].set_m(1, (inp >> 32) as u32);
+            let low_inp = [inp as u16, (inp >> 16) as u16];
+            let high_inp = [(inp >> 32) as u16, (inp >> 48) as u16];
+            for j in 0..2 {
+                trace[m_idx].set_m_limbs(0, j, low_inp[j]);
+                trace[m_idx].set_m_limbs(1, j, high_inp[j]);
+            }
+            range_checks[low_inp[0] as usize] += 1;
+            range_checks[low_inp[1] as usize] += 1;
+            range_checks[high_inp[0] as usize] += 1;
+            range_checks[high_inp[1] as usize] += 1;
+
             m_idx += 1;
-            if i % CLOCKS_PER_G == (CLOCKS_PER_G - 1) {
+            if (i + 1) % (CLOCKS_PER_G - 1) == 0 {
                 m_idx += 1;
             }
         }
@@ -106,27 +125,42 @@ impl<F: PrimeField64> Blake2SM<F> {
         let mut ms: [u64; 16] = [0u64; 16];
         m_idx = 0;
         for i in 0..input.len() {
-            ms[i] = input[s[i]];
+            let inp = input[s[i]];
+            ms[i] = inp;
 
-            trace[m_idx].set_ms(0, trace[m_idx].get_m(0));
-            trace[m_idx].set_ms(1, trace[m_idx].get_m(1));
+            trace[m_idx].set_ms(0, inp as u32);
+            trace[m_idx].set_ms(1, (inp >> 32) as u32);
             m_idx += 1;
-            if i % CLOCKS_PER_G == (CLOCKS_PER_G - 1) {
+            if (i + 1) % (CLOCKS_PER_G - 1) == 0 {
                 m_idx += 1;
             }
         }
 
         // Column mixing
-        compute_g_and_set_vs(trace, 0, &[state[0], state[4], state[8], state[12]], &[ms[0], ms[1]]);
-        compute_g_and_set_vs(trace, 1, &[state[1], state[5], state[9], state[13]], &[ms[2], ms[3]]);
-        compute_g_and_set_vs(
+        let (state0, state4, state8, state12) = compute_g_and_set_vs(
             trace,
+            &mut range_checks,
+            0,
+            &[state[0], state[4], state[8], state[12]],
+            &[ms[0], ms[1]],
+        );
+        let (state1, state5, state9, state13) = compute_g_and_set_vs(
+            trace,
+            &mut range_checks,
+            1,
+            &[state[1], state[5], state[9], state[13]],
+            &[ms[2], ms[3]],
+        );
+        let (state2, state6, state10, state14) = compute_g_and_set_vs(
+            trace,
+            &mut range_checks,
             2,
             &[state[2], state[6], state[10], state[14]],
             &[ms[4], ms[5]],
         );
-        compute_g_and_set_vs(
+        let (state3, state7, state11, state15) = compute_g_and_set_vs(
             trace,
+            &mut range_checks,
             3,
             &[state[3], state[7], state[11], state[15]],
             &[ms[6], ms[7]],
@@ -135,44 +169,53 @@ impl<F: PrimeField64> Blake2SM<F> {
         // Diagonal mixing
         compute_g_and_set_vs(
             trace,
+            &mut range_checks,
             4,
-            &[state[0], state[5], state[10], state[15]],
+            &[state0, state5, state10, state15],
             &[ms[8], ms[9]],
         );
         compute_g_and_set_vs(
             trace,
+            &mut range_checks,
             5,
-            &[state[1], state[6], state[11], state[12]],
+            &[state1, state6, state11, state12],
             &[ms[10], ms[11]],
         );
         compute_g_and_set_vs(
             trace,
+            &mut range_checks,
             6,
-            &[state[2], state[7], state[8], state[13]],
+            &[state2, state7, state8, state13],
             &[ms[12], ms[13]],
         );
         compute_g_and_set_vs(
             trace,
+            &mut range_checks,
             7,
-            &[state[3], state[4], state[9], state[14]],
+            &[state3, state4, state9, state14],
             &[ms[14], ms[15]],
         );
 
+        return range_checks;
+
         fn compute_g_and_set_vs<F: PrimeField64>(
             trace: &mut [Blake2TraceRowType<F>],
+            range_checks: &mut [u32; 65536],
             i: usize,
             v: &[u64; 4],
             m: &[u64; 2],
-        ) {
+        ) -> (u64, u64, u64, u64) {
             // Compute the g function
             let (va, vb, vc, vd) = (v[0], v[1], v[2], v[3]);
             let (va_i, vb_i, vc_i, vd_i) = compute_half_g(va, vb, vc, vd, m[0], R1_G, R2_G);
             let (va_o, vb_o, vc_o, vd_o) = compute_half_g(va_i, vb_i, vc_i, vd_i, m[1], R3_G, R4_G);
 
             // Set va, vb, vc, vd columns
-            set_vs(&mut trace[3 * i], va, vb, vc, vd);
-            set_vs(&mut trace[3 * i + 1], va_i, vb_i, vc_i, vd_i);
-            set_vs(&mut trace[3 * i + 2], va_o, vb_o, vc_o, vd_o);
+            set_vs(&mut trace[3 * i], range_checks, va, vb, vc, vd);
+            set_vs(&mut trace[3 * i + 1], range_checks, va_i, vb_i, vc_i, vd_i);
+            set_vs(&mut trace[3 * i + 2], range_checks, va_o, vb_o, vc_o, vd_o);
+
+            (va_o, vb_o, vc_o, vd_o)
         }
 
         fn compute_half_g(
@@ -193,15 +236,22 @@ impl<F: PrimeField64> Blake2SM<F> {
 
         fn set_vs<F: PrimeField64>(
             row: &mut Blake2TraceRowType<F>,
+            range_checks: &mut [u32; 65536],
             va: u64,
             vb: u64,
             vc: u64,
             vd: u64,
         ) {
-            let low_va = va as u32;
-            let high_va = (va >> 32) as u32;
-            row.set_va(0, low_va);
-            row.set_va(1, high_va);
+            let low_va = [va as u16, (va >> 16) as u16];
+            let high_va = [(va >> 32) as u16, (va >> 48) as u16];
+            for j in 0..2 {
+                row.set_va_limbs(0, j, low_va[j]);
+                row.set_va_limbs(1, j, high_va[j]);
+            }
+            range_checks[low_va[0] as usize] += 1;
+            range_checks[low_va[1] as usize] += 1;
+            range_checks[high_va[0] as usize] += 1;
+            range_checks[high_va[1] as usize] += 1;
 
             let low_vb = vb as u32;
             let low_vb = u32_to_le_bits(low_vb);
@@ -212,10 +262,16 @@ impl<F: PrimeField64> Blake2SM<F> {
                 row.set_vb(1, j, high_vb[j]);
             }
 
-            let low_vc = vc as u32;
-            let high_vc = (vc >> 32) as u32;
-            row.set_vc(0, low_vc);
-            row.set_vc(1, high_vc);
+            let low_vc = [vc as u16, (vc >> 16) as u16];
+            let high_vc = [(vc >> 32) as u16, (vc >> 48) as u16];
+            for j in 0..2 {
+                row.set_vc_limbs(0, j, low_vc[j]);
+                row.set_vc_limbs(1, j, high_vc[j]);
+            }
+            range_checks[low_vc[0] as usize] += 1;
+            range_checks[low_vc[1] as usize] += 1;
+            range_checks[high_vc[0] as usize] += 1;
+            range_checks[high_vc[1] as usize] += 1;
 
             let low_vd = vd as u32;
             let low_vd = u32_to_le_bits(low_vd);
@@ -229,9 +285,9 @@ impl<F: PrimeField64> Blake2SM<F> {
 
         fn u32_to_le_bits(x: u32) -> [bool; 32] {
             let mut bits = [false; 32];
-            for i in 0..32 {
+            for (i, bit) in bits.iter_mut().enumerate() {
                 if ((x >> i) & 1) != 0 {
-                    bits[i] = true;
+                    *bit = true;
                 }
             }
             bits
@@ -251,16 +307,17 @@ impl<F: PrimeField64> Blake2SM<F> {
         inputs: &[Vec<Blake2Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut blake2_trace = Blake2TraceType::new_from_vec_zeroes(trace_buffer)?;
-        let num_rows = blake2_trace.num_rows();
+        let mut trace = Blake2TraceType::new_from_vec_zeroes(trace_buffer)?;
+        let num_rows = trace.num_rows();
         let num_available_blake2s = self.num_available_blake2s;
 
         // Check that we can fit all the blake2s in the trace
         let num_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
+        let all_ops_used = num_inputs == num_available_blake2s;
         let num_rows_filled = num_inputs * CLOCKS;
         let num_rows_needed = if num_inputs < num_available_blake2s {
             num_inputs * CLOCKS
-        } else if num_inputs == num_available_blake2s {
+        } else if all_ops_used {
             num_rows
         } else {
             panic!(
@@ -279,7 +336,7 @@ impl<F: PrimeField64> Blake2SM<F> {
         timer_start_trace!(BLAKE2_TRACE);
 
         // Split trace into chunks for parallel processing
-        let mut trace_rows = blake2_trace.buffer.as_mut_slice();
+        let mut trace_rows = trace.buffer.as_mut_slice();
         let mut par_traces = Vec::new();
         let mut inputs_indexes = Vec::new();
         for (i, inputs) in inputs.iter().enumerate() {
@@ -291,32 +348,51 @@ impl<F: PrimeField64> Blake2SM<F> {
             }
         }
 
-        // Fill the trace
-        par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
-            let input_index = inputs_indexes[index];
-            let input = &inputs[input_index.0][input_index.1];
-            self.process_input(input, trace)
-        });
+        // Fill the trace and collect range checks
+        let range_checks_vec: Vec<[u32; 65536]> = par_traces
+            .into_par_iter()
+            .enumerate()
+            .map(|(index, trace)| {
+                let input_index = inputs_indexes[index];
+                let input = &inputs[input_index.0][input_index.1];
+                self.process_input(input, trace)
+            })
+            .collect();
+
+        // Aggregate all range checks
+        let mut range_checks = vec![0; 65536];
+        for rc in range_checks_vec {
+            for i in 0..65536 {
+                range_checks[i] += rc[i];
+            }
+        }
 
         timer_stop_and_log_trace!(BLAKE2_TRACE);
 
-        timer_start_trace!(BLAKE2_PADDING);
-        // // Set a = e = w = 0 for the state and input rows
-        // let zero_row = Blake2TraceRowType::<F>::default();
+        let mut padding_row = Blake2TraceRowType::default();
+        // In the no-op rows, the `idx` should be the same as the previous one until the end
+        // to make the constraint `(1 - CLK_0) * (idx - 'idx) === 0;` be satisfied
+        // As a consequence, one should also set idx_sel
+        if all_ops_used {
+            let prev_idx = trace.buffer[num_rows_filled - 1].get_round_idx();
+            padding_row.set_round_idx(prev_idx);
+            padding_row.set_round_idx_sel(prev_idx as usize, true);
+        }
 
-        // let padding_start = num_rows_filled;
-        // let padding_end = num_rows - self.num_non_usable_rows - CLOCKS;
+        trace.buffer[num_rows_filled..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 
-        // if padding_start < padding_end {
-        //     blake2_trace.buffer[padding_start..padding_end]
-        //         .par_iter_mut()
-        //         .for_each(|row| {
-        //             *row = zero_row;
-        //         });
-        // }
+        // Perform the zero range checks
+        let mut count_zeros = ((num_available_blake2s - num_inputs
+            + (self.num_non_usable_rows != 0) as usize)
+            * CLOCKS
+            + self.num_non_usable_rows)
+            * 12; // 12 range checked columns, 8 from va and vc, and 4 from m16
+        count_zeros += 8 * num_inputs * 4; // m16 columns have one padding row per g function
+                                           // and there are 8 g functions per blake2
+        range_checks[0] += count_zeros as u32;
 
-        timer_stop_and_log_trace!(BLAKE2_PADDING);
+        self.std.range_checks(self.range_id, range_checks);
 
-        Ok(AirInstance::new_from_trace(FromTrace::new(&mut blake2_trace)))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }
 }

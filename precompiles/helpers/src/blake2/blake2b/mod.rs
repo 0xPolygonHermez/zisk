@@ -36,9 +36,7 @@ pub fn blake2b_compress(rounds: u32, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 
     }
 
     for r in 0..rounds {
-        println!("Blake2b_round with v = {:x?}, m = {:x?}", v, m);
         blake2b_round(&mut v, m, r);
-        panic!("Blake2b_round with v = {:x?}, m = {:x?}", v, m);
     }
 
     for i in 0..8 {

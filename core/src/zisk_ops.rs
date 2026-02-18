@@ -362,7 +362,7 @@ const FCALL_COST: u64 = INTERNAL_COST;
 const ARITH_EQ_384_COST: u64 = 79 * 24;
 const ADD256_COST: u64 = 104;
 const DMA_COST: u64 = 42;
-const BLAKE2_COST: u64 = 1; //TODO: TBD
+const BLAKE2_COST: u64 = 24 * 205;
 
 const DMA_64_ALIGNED_COST: u64 = 40;
 const DMA_UNALIGNED_COST: u64 = 42;
