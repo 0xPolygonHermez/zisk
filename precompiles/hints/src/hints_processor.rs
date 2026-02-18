@@ -392,11 +392,12 @@ impl HintsProcessor {
                 // Handle pass-through hints immediately
                 if hint.is_passthrough {
                     queue.buffer.push_back(Some(Ok(hint.data.clone())));
-                    // Notify immediately while holding the lock to ensure drainer sees the result
-                    // Release lock after this block, avoiding duplicate notification
-                    drop(queue);
-                    // Use notify_all since wait_for_completion also waits on this condvar
+                    // Notify BEFORE releasing lock to prevent race condition where drainer
+                    // checks buffer, finds it empty, then we notify, then drainer waits
+                    // (missing our notification). Notifying while holding lock ensures
+                    // drainer will see the buffer change when it wakes.
                     self.state.drain_signal.notify_all();
+                    drop(queue);
                     // Continue to next hint without spawning worker
                     idx += length;
                     continue;
@@ -522,20 +523,21 @@ impl HintsProcessor {
         // Fill the slot to allow drainer to proceed (critical for ordering)
         queue.buffer[offset] = Some(result);
 
-        // Release lock before notifying
-        drop(queue);
-
-        // Notify drainer thread (use notify_all to wake any waiting threads)
+        // Notify BEFORE releasing lock to prevent race condition where drainer
+        // checks buffer, finds no ready result, then we notify, then drainer waits
+        // (missing our notification). Notifying while holding lock ensures
+        // drainer will see the buffer change when it wakes.
         state.drain_signal.notify_all();
+        drop(queue);
     }
 
     /// Drainer thread that waits for hints to complete and drains ready results from queue.
     fn drainer_thread(state: Arc<HintProcessorState>, hints_sink: Arc<dyn StreamSink>) {
         debug!("[DRAINER] Thread started");
+        let mut queue = state.queue.lock().unwrap();
+
         loop {
-            debug!("[DRAINER] Attempting to acquire queue lock");
-            let mut queue = state.queue.lock().unwrap();
-            debug!("[DRAINER] Acquired queue lock, buffer_len={}, next_drain_seq={}", 
+            debug!("[DRAINER] Acquired queue lock, buffer_len={}, next_drain_seq={}",
                    queue.buffer.len(), queue.next_drain_seq);
 
             // Check for shutdown
@@ -544,68 +546,61 @@ impl HintsProcessor {
                 break;
             }
 
-            // Drain all consecutive ready results from the front
-            let mut drained_any = false;
-            while let Some(Some(res)) = queue.buffer.front() {
-                drained_any = true;
-                let current_seq = queue.next_drain_seq;
-                match res {
-                    Ok(data) => {
-                        // Clone data before dropping lock
-                        debug!("[DRAINER] Found ready result seq={}, size={} u64s, cloning", current_seq, data.len());
-                        let data_to_submit = data.clone();
-                        queue.buffer.pop_front();
-                        queue.next_drain_seq += 1;
+            // Check if front slot has a ready result
+            match queue.buffer.front() {
+                Some(Some(res)) => {
+                    // Ready result found - process it
+                    let current_seq = queue.next_drain_seq;
+                    match res {
+                        Ok(data) => {
+                            debug!("[DRAINER] Found ready result seq={}, size={} u64s, cloning", current_seq, data.len());
+                            let data_to_submit = data.clone();
+                            queue.buffer.pop_front();
+                            queue.next_drain_seq += 1;
 
-                        // Drop lock before submitting to avoid blocking workers
-                        debug!("[DRAINER] Dropping lock before submit seq={}", current_seq);
-                        drop(queue);
+                            // Notify wait_for_completion that buffer changed
+                            state.drain_signal.notify_all();
 
-                        // Submit to sink
-                        debug!("[DRAINER] Calling hints_sink.submit() for seq={}", current_seq);
-                        if let Err(e) = hints_sink.submit(data_to_submit) {
-                            eprintln!("Error submitting to sink: {}", e);
+                            // Drop lock before submitting to avoid blocking workers
+                            debug!("[DRAINER] Dropping lock before submit seq={}", current_seq);
+                            drop(queue);
+
+                            // Submit to sink
+                            debug!("[DRAINER] Calling hints_sink.submit() for seq={}", current_seq);
+                            if let Err(e) = hints_sink.submit(data_to_submit) {
+                                eprintln!("Error submitting to sink: {}", e);
+                                state.error_flag.store(true, Ordering::Release);
+                                // Re-acquire lock to notify while holding it
+                                let _queue = state.queue.lock().unwrap();
+                                state.drain_signal.notify_all();
+                                return;
+                            }
+                            debug!("[DRAINER] Completed submit seq={}", current_seq);
+
+                            // Re-acquire lock for next iteration
+                            debug!("[DRAINER] Re-acquiring lock after seq={}", current_seq);
+                            queue = state.queue.lock().unwrap();
+                        }
+                        Err(e) => {
+                            // Error found - signal to stop
                             state.error_flag.store(true, Ordering::Release);
+                            eprintln!("[seq={}] Error: {}", queue.next_drain_seq, e);
+                            queue.buffer.pop_front();
+                            queue.next_drain_seq += 1;
                             state.drain_signal.notify_all();
                             return;
                         }
-                        debug!("[DRAINER] Completed submit seq={}", current_seq);
-
-                        // Re-acquire lock for next iteration
-                        debug!("[DRAINER] Re-acquiring lock after seq={}", current_seq);
-                        queue = state.queue.lock().unwrap();
-                    }
-                    Err(e) => {
-                        // Error found - signal to stop
-                        state.error_flag.store(true, Ordering::Release);
-                        eprintln!("[seq={}] Error: {}", queue.next_drain_seq, e);
-                        queue.buffer.pop_front();
-                        queue.next_drain_seq += 1;
-                        state.drain_signal.notify_all();
-                        return;
                     }
                 }
+                Some(None) | None => {
+                    // No ready result at front (pending or empty buffer)
+                    // CRITICAL: Must wait IMMEDIATELY after this check with NO code in between
+                    // to prevent race condition where worker notifies after we check but before we wait.
+                    debug!("[DRAINER] No ready result, waiting on drain_signal condvar");
+                    queue = state.drain_signal.wait(queue).unwrap();
+                    debug!("[DRAINER] Woke up from condvar wait");
+                }
             }
-
-            // If we drained any results, notify wait_for_completion that buffer changed
-            if drained_any {
-                debug!("[DRAINER] Notifying wait_for_completion");
-                state.drain_signal.notify_all();
-            }
-
-            // Check for shutdown again before waiting
-            if state.shutdown.load(Ordering::Acquire) {
-                debug!("[DRAINER] Shutdown signal received before wait, exiting");
-                break;
-            }
-
-            // Wait for notification that a hint completed
-            debug!("[DRAINER] Waiting on drain_signal condvar");
-            #[allow(unused_assignments)]
-            {
-                queue = state.drain_signal.wait(queue).unwrap();
-            }
-            debug!("[DRAINER] Woke up from condvar wait");
         }
         debug!("[DRAINER] Thread exiting");
     }
@@ -1674,5 +1669,130 @@ mod tests {
         for i in 0..num_hints {
             assert_eq!(results[i][0], i as u64 + 1000, "Result {} out of order", i);
         }
+    }
+
+    /// Regression test for race condition where drainer thread misses notifications.
+    ///
+    /// This test attempts to trigger a race between workers completing hints and
+    /// the drainer thread waiting on the condvar. The race occurs when:
+    /// 1. Drainer checks buffer.front() and finds no ready result
+    /// 2. Worker completes and calls notify_all()
+    /// 3. Drainer enters wait() - MISSED the notification!
+    ///
+    /// With the fix (notify before drop), this race is eliminated because the
+    /// notification happens while holding the lock, ensuring the drainer either:
+    /// - Sees the result before checking (doesn't wait)
+    /// - Is already waiting when notified (wakes up)
+    #[test]
+    fn test_race_condition_drainer_notification_lost() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        struct RecordingSink {
+            received_count: Arc<AtomicUsize>,
+        }
+
+        impl StreamSink for RecordingSink {
+            fn submit(&self, _processed: Vec<u64>) -> Result<()> {
+                self.received_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        // Custom hint code for testing (0x7FFF_0200 to avoid conflicts)
+        const RACE_HINT: u32 = 0x7FFF_0200;
+
+        // Test parameters designed to maximize race window hits
+        const NUM_THREADS: usize = 32;
+        const HINTS_PER_BATCH: usize = 100;
+        const ITERATIONS: usize = 100;
+        const TIMEOUT_MS: u64 = 500;
+
+        for iteration in 0..ITERATIONS {
+            let received_count = Arc::new(AtomicUsize::new(0));
+            let sink = RecordingSink { received_count: Arc::clone(&received_count) };
+
+            let p = HintsProcessor::builder(sink)
+                .num_threads(NUM_THREADS)
+                .custom_hint(RACE_HINT, |data| {
+                    // Tiny random delay (0-1000ns) to desynchronize worker completions
+                    // This maximizes the chance of workers completing just as
+                    // drainer is between checking buffer and entering wait
+                    let hash = data[0].wrapping_mul(2654435761);
+                    let delay_ns = hash % 1000;
+                    if delay_ns > 0 {
+                        std::hint::spin_loop();
+                        // Tiny busy-wait (more precise than sleep for nanoseconds)
+                        let start = Instant::now();
+                        while start.elapsed().as_nanos() < delay_ns as u128 {
+                            std::hint::spin_loop();
+                        }
+                    }
+                    Ok(vec![data[0] + 1])
+                })
+                .build()
+                .unwrap();
+
+            // Build batch of hints
+            let mut data = Vec::with_capacity(HINTS_PER_BATCH * 2);
+            for i in 0..HINTS_PER_BATCH {
+                data.push(make_header(RACE_HINT, 1));
+                data.push(i as u64);
+            }
+
+            // Process hints
+            p.process_hints(&data, false).unwrap();
+
+            // Use watchdog to detect hang
+            let completed = Arc::new(AtomicBool::new(false));
+            let completed_clone = Arc::clone(&completed);
+
+            let watchdog = thread::spawn(move || {
+                let start = Instant::now();
+                while !completed_clone.load(Ordering::Acquire) {
+                    if start.elapsed() > Duration::from_millis(TIMEOUT_MS) {
+                        return false; // Timeout - race condition triggered!
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+                true // Completed in time
+            });
+
+            // Wait for completion
+            let result = p.wait_for_completion();
+            completed.store(true, Ordering::Release);
+
+            let watchdog_ok = watchdog.join().unwrap();
+            assert!(
+                watchdog_ok,
+                "RACE CONDITION DETECTED: Iteration {} hung for >{}ms. \
+                 Drainer missed worker notifications.",
+                iteration,
+                TIMEOUT_MS
+            );
+
+            assert!(result.is_ok(), "Iteration {} failed: {:?}", iteration, result);
+
+            // Verify all hints were processed
+            let count = received_count.load(Ordering::SeqCst);
+            assert_eq!(
+                count, HINTS_PER_BATCH,
+                "Iteration {}: Expected {} results, got {}",
+                iteration, HINTS_PER_BATCH, count
+            );
+        }
+
+        println!(
+            "\n========================================\n\
+             Race Condition Regression Test PASSED\n\
+             Iterations: {}\n\
+             Hints per iteration: {}\n\
+             Worker threads: {}\n\
+             No hangs detected!\n\
+             ========================================\n",
+            ITERATIONS, HINTS_PER_BATCH, NUM_THREADS
+        );
     }
 }
