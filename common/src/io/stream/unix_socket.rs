@@ -344,12 +344,33 @@ impl UnixSocketStreamWriter {
         self.listener_fd = Some(sock_fd);
         Ok(())
     }
+
+    /// Check if a client is currently connected.
+    ///
+    /// Returns `true` if a client is connected and ready to receive data.
+    pub fn is_client_connected(&mut self) -> bool {
+        // Already have a connection
+        if self.socket.is_some() {
+            return true;
+        }
+
+        // Try to receive socket from accept thread (non-blocking)
+        if let Some(rx) = &self.socket_receiver {
+            if let Ok(stream) = rx.try_recv() {
+                self.socket = Some(stream);
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 impl StreamWrite for UnixSocketStreamWriter {
     /// Open/initialize the stream for writing
     ///
-    /// Creates a listening socket and waits for a client to connect (blocking).
+    /// Creates a listening socket and spawns a background thread to accept connections.
+    /// This is non-blocking - the actual client connection happens lazily on first write.
     fn open(&mut self) -> Result<()> {
         // If we already have a connected socket, we're done
         if self.socket.is_some() {
@@ -361,54 +382,39 @@ impl StreamWrite for UnixSocketStreamWriter {
             self.create_listener()?;
         }
 
-        // If we don't have a socket yet, either spawn accept thread or wait for it
-        if self.socket.is_none() {
-            // Spawn accept thread if not already running
-            if self.accept_thread.is_none() {
-                let listener_fd = self.listener_fd.unwrap();
-                let (tx, rx) = mpsc::channel();
-                self.socket_receiver = Some(rx);
+        // Spawn accept thread if not already running
+        if self.accept_thread.is_none() {
+            let listener_fd = self.listener_fd.unwrap();
+            let (tx, rx) = mpsc::channel();
+            self.socket_receiver = Some(rx);
 
-                let handle = thread::spawn(move || {
-                    // Retry accept on EINTR
-                    let conn_fd = loop {
-                        let fd = unsafe {
-                            libc::accept(listener_fd, std::ptr::null_mut(), std::ptr::null_mut())
-                        };
-
-                        if fd < 0 {
-                            let err = std::io::Error::last_os_error();
-                            if err.kind() == std::io::ErrorKind::Interrupted {
-                                continue; // Retry on EINTR
-                            }
-                            eprintln!("Accept failed: {}", err);
-                            return;
-                        }
-
-                        break fd;
+            let handle = thread::spawn(move || {
+                // Retry accept on EINTR
+                let conn_fd = loop {
+                    let fd = unsafe {
+                        libc::accept(listener_fd, std::ptr::null_mut(), std::ptr::null_mut())
                     };
 
-                    // Convert to UnixStream
-                    let stream = unsafe { UnixStream::from_raw_fd(conn_fd) };
-
-                    // Send socket through channel
-                    let _ = tx.send(stream);
-                });
-
-                self.accept_thread = Some(handle);
-            }
-
-            // Block waiting for the client connection
-            if let Some(rx) = &self.socket_receiver {
-                match rx.recv() {
-                    Ok(stream) => {
-                        self.socket = Some(stream);
+                    if fd < 0 {
+                        let err = std::io::Error::last_os_error();
+                        if err.kind() == std::io::ErrorKind::Interrupted {
+                            continue; // Retry on EINTR
+                        }
+                        eprintln!("Accept failed: {}", err);
+                        return;
                     }
-                    Err(e) => {
-                        return Err(anyhow::anyhow!("Failed to receive client connection: {}", e));
-                    }
-                }
-            }
+
+                    break fd;
+                };
+
+                // Convert to UnixStream
+                let stream = unsafe { UnixStream::from_raw_fd(conn_fd) };
+
+                // Send socket through channel
+                let _ = tx.send(stream);
+            });
+
+            self.accept_thread = Some(handle);
         }
 
         Ok(())
@@ -419,7 +425,8 @@ impl StreamWrite for UnixSocketStreamWriter {
     /// With SOCK_SEQPACKET, each write() sends exactly one complete message,
     /// providing natural message boundaries.
     ///
-    /// Returns an error if no client is connected yet.
+    /// Returns `NoClientConnected` error if no client has connected yet.
+    /// The caller can retry the write until a client connects.
     fn write(&mut self, item: &[u8]) -> Result<usize> {
         self.open()?;
 
@@ -431,8 +438,13 @@ impl StreamWrite for UnixSocketStreamWriter {
                     Ok(stream) => {
                         self.socket = Some(stream);
                     }
-                    Err(_) => {
+                    Err(mpsc::TryRecvError::Empty) => {
+                        // Accept thread is running but client hasn't connected yet
                         return Err(UnixSocketError::NoClientConnected.into());
+                    }
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        // Accept thread died unexpectedly
+                        return Err(anyhow::anyhow!("Accept thread terminated unexpectedly"));
                     }
                 }
             }
@@ -486,83 +498,133 @@ impl Drop for UnixSocketStreamWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
     use std::thread;
     use std::time::Duration;
 
-    #[test]
-    fn test_single_message() {
-        let socket_path = "/tmp/test_unix_socket_single.sock";
-        let _ = std::fs::remove_file(socket_path); // Clean up if exists
+    /// Serialize all unix socket tests to prevent fd reuse races.
+    ///
+    /// When tests run in parallel and one panics, its Drop closes the listener fd
+    /// while the accept thread may still be blocked on it. Due to Linux fd reuse,
+    /// this can cause other tests' accept() calls to operate on the wrong fd (EINVAL).
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
-        let socket_path_clone = socket_path.to_string();
+    /// Generate a unique socket path per test.
+    fn unique_socket_path(test_name: &str) -> String {
+        format!("/tmp/test_unix_socket_{}_pid{}.sock", test_name, std::process::id(),)
+    }
 
-        // Spawn writer (server) thread
-        let writer_thread = thread::spawn(move || {
-            let mut writer = UnixSocketStreamWriter::new(&socket_path_clone).unwrap();
-
-            // Retry write until client connects
-            loop {
-                if let Err(e) = writer.write(b"Hello, World!") {
-                    if let Some(UnixSocketError::NoClientConnected) =
-                        e.downcast_ref::<UnixSocketError>()
+    /// Helper: writer retries write until a client connects, panicking on unexpected errors.
+    fn write_with_retry(writer: &mut UnixSocketStreamWriter, data: &[u8]) {
+        loop {
+            match writer.write(data) {
+                Ok(_) => break,
+                Err(e) => {
+                    if e.downcast_ref::<UnixSocketError>()
+                        .is_some_and(|ue| matches!(ue, UnixSocketError::NoClientConnected))
                     {
-                        thread::sleep(Duration::from_millis(10));
+                        thread::sleep(Duration::from_millis(5));
                         continue;
                     }
-                    panic!("Unexpected error: {}", e);
+                    panic!("Unexpected write error: {}", e);
                 }
-                break;
             }
+        }
+    }
 
+    /// Synchronization state shared between the writer thread and the main (reader) thread.
+    struct WriterSync {
+        /// Signaled by the writer after open() completes (bound + listening + accept spawned).
+        ready: AtomicBool,
+        /// Signaled by the reader when it has finished reading. The writer waits for this
+        /// before closing, to prevent the socket from being torn down while the reader
+        /// still has buffered messages to read.
+        reader_done: AtomicBool,
+    }
+
+    /// Helper: spawn writer in a thread with proper synchronization.
+    ///
+    /// Returns (join_handle, sync_state). The caller must:
+    /// 1. Wait for `sync.ready` before connecting the reader.
+    /// 2. Set `sync.reader_done` after the reader has finished reading.
+    fn spawn_writer_thread(
+        socket_path: &str,
+        write_fn: impl FnOnce(&mut UnixSocketStreamWriter) + Send + 'static,
+    ) -> (JoinHandle<()>, Arc<WriterSync>) {
+        let sp = socket_path.to_string();
+        let sync = Arc::new(WriterSync {
+            ready: AtomicBool::new(false),
+            reader_done: AtomicBool::new(false),
+        });
+        let sync_clone = sync.clone();
+
+        let handle = thread::spawn(move || {
+            let mut writer = UnixSocketStreamWriter::new(&sp).unwrap();
+            writer.open().unwrap();
+            sync_clone.ready.store(true, Ordering::Release);
+            write_fn(&mut writer);
+            // Wait for reader to finish before closing, to avoid ECONNRESET
+            let start = std::time::Instant::now();
+            while !sync_clone.reader_done.load(Ordering::Acquire) {
+                if start.elapsed() > Duration::from_secs(5) {
+                    panic!("Timed out waiting for reader to finish");
+                }
+                thread::sleep(Duration::from_millis(1));
+            }
             writer.close().unwrap();
         });
 
-        // Give writer time to start listening
-        thread::sleep(Duration::from_millis(100));
+        (handle, sync)
+    }
 
-        // Reader connects and reads message
-        let mut reader = UnixSocketStreamReader::new(socket_path).unwrap();
+    /// Wait until the writer signals it has finished open() (bound + listening + accept spawned).
+    fn wait_for_writer(sync: &WriterSync) {
+        let start = std::time::Instant::now();
+        while !sync.ready.load(Ordering::Acquire) {
+            if start.elapsed() > Duration::from_secs(5) {
+                panic!("Timed out waiting for writer to become ready");
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn test_single_message() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let socket_path = unique_socket_path("single");
+        let _ = std::fs::remove_file(&socket_path);
+
+        let (writer_thread, sync) = spawn_writer_thread(&socket_path, |writer| {
+            write_with_retry(writer, b"Hello, World!");
+        });
+
+        wait_for_writer(&sync);
+
+        let mut reader = UnixSocketStreamReader::new(&socket_path).unwrap();
         let message = reader.next().unwrap().unwrap();
         assert_eq!(message, b"Hello, World!");
         reader.close().unwrap();
 
+        sync.reader_done.store(true, Ordering::Release);
         writer_thread.join().unwrap();
     }
 
     #[test]
     fn test_multiple_messages() {
-        let socket_path = "/tmp/test_unix_socket_multi.sock";
-        let _ = std::fs::remove_file(socket_path);
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let socket_path = unique_socket_path("multi");
+        let _ = std::fs::remove_file(&socket_path);
 
-        let socket_path_clone = socket_path.to_string();
-
-        // Spawn writer (server) thread
-        let writer_thread = thread::spawn(move || {
-            let mut writer = UnixSocketStreamWriter::new(&socket_path_clone).unwrap();
-
-            // Retry until client connects for first message
-            loop {
-                if let Err(e) = writer.write(b"First") {
-                    if let Some(UnixSocketError::NoClientConnected) =
-                        e.downcast_ref::<UnixSocketError>()
-                    {
-                        thread::sleep(Duration::from_millis(10));
-                        continue;
-                    }
-                    panic!("Unexpected error: {}", e);
-                }
-                break;
-            }
-
+        let (writer_thread, sync) = spawn_writer_thread(&socket_path, |writer| {
+            write_with_retry(writer, b"First");
             writer.write(b"Second message").unwrap();
             writer.write(b"Third message with more data!").unwrap();
-            writer.close().unwrap();
         });
 
-        thread::sleep(Duration::from_millis(100));
+        wait_for_writer(&sync);
 
-        // Reader connects and reads messages
-        let mut reader = UnixSocketStreamReader::new(socket_path).unwrap();
+        let mut reader = UnixSocketStreamReader::new(&socket_path).unwrap();
         let msg1 = reader.next().unwrap().unwrap();
         assert_eq!(msg1, b"First");
         let msg2 = reader.next().unwrap().unwrap();
@@ -571,42 +633,25 @@ mod tests {
         assert_eq!(msg3, b"Third message with more data!");
         reader.close().unwrap();
 
+        sync.reader_done.store(true, Ordering::Release);
         writer_thread.join().unwrap();
     }
 
     #[test]
     fn test_message_boundaries() {
-        let socket_path = "/tmp/test_unix_socket_boundaries.sock";
-        let _ = std::fs::remove_file(socket_path);
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let socket_path = unique_socket_path("boundaries");
+        let _ = std::fs::remove_file(&socket_path);
 
-        let socket_path_clone = socket_path.to_string();
-
-        // Spawn writer (server) thread
-        let writer_thread = thread::spawn(move || {
-            let mut writer = UnixSocketStreamWriter::new(&socket_path_clone).unwrap();
-
-            // Retry until client connects for first message
-            loop {
-                if let Err(e) = writer.write(b"ABC") {
-                    if let Some(UnixSocketError::NoClientConnected) =
-                        e.downcast_ref::<UnixSocketError>()
-                    {
-                        thread::sleep(Duration::from_millis(10));
-                        continue;
-                    }
-                    panic!("Unexpected error: {}", e);
-                }
-                break;
-            }
-
+        let (writer_thread, sync) = spawn_writer_thread(&socket_path, |writer| {
+            write_with_retry(writer, b"ABC");
             writer.write(b"DEF").unwrap();
-            writer.close().unwrap();
         });
 
-        thread::sleep(Duration::from_millis(100));
+        wait_for_writer(&sync);
 
         // Reader should receive each message as discrete unit
-        let mut reader = UnixSocketStreamReader::new(socket_path).unwrap();
+        let mut reader = UnixSocketStreamReader::new(&socket_path).unwrap();
         let msg1 = reader.next().unwrap().unwrap();
         assert_eq!(msg1, b"ABC");
         let msg2 = reader.next().unwrap().unwrap();
@@ -614,84 +659,82 @@ mod tests {
         // Should NOT be concatenated like "ABCDEF"
         reader.close().unwrap();
 
+        sync.reader_done.store(true, Ordering::Release);
         writer_thread.join().unwrap();
     }
 
     #[test]
     fn test_large_message() {
-        let socket_path = "/tmp/test_unix_socket_large.sock";
-        let _ = std::fs::remove_file(socket_path);
-
-        let socket_path_clone = socket_path.to_string();
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let socket_path = unique_socket_path("large");
+        let _ = std::fs::remove_file(&socket_path);
 
         // Create a large message (64KB - within SOCK_SEQPACKET limits)
         let large_data: Vec<u8> = (0..64 * 1024).map(|i| (i % 256) as u8).collect();
         let large_data_clone = large_data.clone();
 
-        // Spawn writer (server) thread
-        let writer_thread = thread::spawn(move || {
-            let mut writer = UnixSocketStreamWriter::new(&socket_path_clone).unwrap();
-
-            // Retry until client connects for first message
-            loop {
-                if let Err(e) = writer.write(&large_data) {
-                    if let Some(UnixSocketError::NoClientConnected) =
-                        e.downcast_ref::<UnixSocketError>()
-                    {
-                        thread::sleep(Duration::from_millis(10));
-                        continue;
-                    }
-                    panic!("Unexpected error: {}", e);
-                }
-                break;
-            }
-
-            writer.close().unwrap();
+        let (writer_thread, sync) = spawn_writer_thread(&socket_path, move |writer| {
+            write_with_retry(writer, &large_data);
         });
 
-        thread::sleep(Duration::from_millis(100));
+        wait_for_writer(&sync);
 
-        // Reader receives large message
-        let mut reader = UnixSocketStreamReader::new(socket_path).unwrap();
+        let mut reader = UnixSocketStreamReader::new(&socket_path).unwrap();
         let message = reader.next().unwrap().unwrap();
         assert_eq!(message, large_data_clone);
         reader.close().unwrap();
 
+        sync.reader_done.store(true, Ordering::Release);
         writer_thread.join().unwrap();
     }
 
     #[test]
     fn test_connection_close() {
-        let socket_path = "/tmp/test_unix_socket_close.sock";
-        let _ = std::fs::remove_file(socket_path);
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let socket_path = unique_socket_path("close");
+        let _ = std::fs::remove_file(&socket_path);
 
-        let socket_path_clone = socket_path.to_string();
+        let sp = socket_path.clone();
 
-        // Spawn writer (server) thread
+        let writer_ready = Arc::new(AtomicBool::new(false));
+        let writer_ready_clone = writer_ready.clone();
+        let reader_connected = Arc::new(AtomicBool::new(false));
+        let reader_connected_clone = reader_connected.clone();
+
+        // This test intentionally lets the writer close to verify the reader sees EOF,
+        // so we don't use spawn_writer_thread (which defers close).
         let writer_thread = thread::spawn(move || {
-            let mut writer = UnixSocketStreamWriter::new(&socket_path_clone).unwrap();
+            let mut writer = UnixSocketStreamWriter::new(&sp).unwrap();
+            writer.open().unwrap();
+            writer_ready_clone.store(true, Ordering::Release);
 
-            // Retry until client connects for first message
-            loop {
-                if let Err(e) = writer.write(b"Message") {
-                    if let Some(UnixSocketError::NoClientConnected) =
-                        e.downcast_ref::<UnixSocketError>()
-                    {
-                        thread::sleep(Duration::from_millis(10));
-                        continue;
-                    }
-                    panic!("Unexpected error: {}", e);
+            // Wait for the reader to connect before writing + closing
+            let start = std::time::Instant::now();
+            while !reader_connected_clone.load(Ordering::Acquire) {
+                if start.elapsed() > Duration::from_secs(5) {
+                    panic!("Timed out waiting for reader to connect");
                 }
-                break;
+                thread::sleep(Duration::from_millis(1));
             }
 
+            write_with_retry(&mut writer, b"Message");
             writer.close().unwrap();
         });
 
-        thread::sleep(Duration::from_millis(100));
+        // Wait for writer to be listening
+        let start = std::time::Instant::now();
+        while !writer_ready.load(Ordering::Acquire) {
+            if start.elapsed() > Duration::from_secs(5) {
+                panic!("Timed out waiting for writer");
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
 
-        // Reader receives message
-        let mut reader = UnixSocketStreamReader::new(socket_path).unwrap();
+        // Connect reader and signal writer
+        let mut reader = UnixSocketStreamReader::new(&socket_path).unwrap();
+        reader.open().unwrap();
+        reader_connected.store(true, Ordering::Release);
+
         let msg1 = reader.next().unwrap().unwrap();
         assert_eq!(msg1, b"Message");
 
@@ -705,62 +748,220 @@ mod tests {
 
     #[test]
     fn test_stress_many_messages() {
-        let socket_path = "/tmp/test_unix_socket_stress.sock";
-        let _ = std::fs::remove_file(socket_path);
-
-        let socket_path_clone = socket_path.to_string();
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let socket_path = unique_socket_path("stress");
+        let _ = std::fs::remove_file(&socket_path);
 
         const NUM_MESSAGES: usize = 1000;
 
-        // Spawn writer (server) thread
-        let writer_thread = thread::spawn(move || {
-            let mut writer = UnixSocketStreamWriter::new(&socket_path_clone).unwrap();
+        let (writer_thread, sync) = spawn_writer_thread(&socket_path, |writer| {
+            write_with_retry(writer, b"START");
 
-            // Wait for client to connect with first message
-            loop {
-                if let Err(e) = writer.write(b"START") {
-                    if let Some(UnixSocketError::NoClientConnected) =
-                        e.downcast_ref::<UnixSocketError>()
-                    {
-                        thread::sleep(Duration::from_millis(10));
-                        continue;
-                    }
-                    panic!("Unexpected error: {}", e);
-                }
-                break;
-            }
-
-            // Send many messages rapidly
             for i in 0..NUM_MESSAGES {
                 let msg = format!("Message {}", i);
                 writer.write(msg.as_bytes()).unwrap();
             }
 
             writer.write(b"END").unwrap();
-            writer.close().unwrap();
         });
 
-        thread::sleep(Duration::from_millis(100));
+        wait_for_writer(&sync);
 
-        // Reader receives all messages
-        let mut reader = UnixSocketStreamReader::new(socket_path).unwrap();
+        let mut reader = UnixSocketStreamReader::new(&socket_path).unwrap();
 
-        // Read START marker
         let start = reader.next().unwrap().unwrap();
         assert_eq!(start, b"START");
 
-        // Read all messages and verify order
         for i in 0..NUM_MESSAGES {
             let expected = format!("Message {}", i);
             let msg = reader.next().unwrap().unwrap();
             assert_eq!(msg, expected.as_bytes(), "Message {} mismatch", i);
         }
 
-        // Read END marker
         let end = reader.next().unwrap().unwrap();
         assert_eq!(end, b"END");
 
         reader.close().unwrap();
+        sync.reader_done.store(true, Ordering::Release);
         writer_thread.join().unwrap();
+    }
+
+    #[test]
+    fn test_non_blocking_open() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let socket_path = unique_socket_path("nonblocking");
+        let _ = std::fs::remove_file(&socket_path);
+
+        let mut writer = UnixSocketStreamWriter::new(&socket_path).unwrap();
+
+        let start = std::time::Instant::now();
+        writer.open().unwrap();
+        let elapsed = start.elapsed();
+
+        // open() should return almost immediately (definitely under 100ms)
+        assert!(
+            elapsed.as_millis() < 100,
+            "open() took too long: {:?} - should be non-blocking",
+            elapsed
+        );
+
+        // But we shouldn't have a client connected yet
+        assert!(!writer.is_client_connected());
+
+        // Connect a dummy reader to unblock the accept thread before closing,
+        // preventing fd reuse races with the detached accept thread.
+        let mut dummy = UnixSocketStreamReader::new(&socket_path).unwrap();
+        dummy.open().unwrap();
+
+        writer.close().unwrap();
+        // Allow accept thread to fully terminate after fd is closed
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    #[test]
+    fn test_is_client_connected() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let socket_path = unique_socket_path("is_connected");
+        let _ = std::fs::remove_file(&socket_path);
+
+        let sp = socket_path.clone();
+
+        let sync = Arc::new(WriterSync {
+            ready: AtomicBool::new(false),
+            reader_done: AtomicBool::new(false),
+        });
+        let sync_clone = sync.clone();
+
+        let writer_thread = thread::spawn(move || {
+            let mut writer = UnixSocketStreamWriter::new(&sp).unwrap();
+            writer.open().unwrap();
+            sync_clone.ready.store(true, Ordering::Release);
+
+            // Initially, no client should be connected
+            assert!(!writer.is_client_connected());
+
+            // Wait for client to connect
+            let mut connected = false;
+            for _ in 0..200 {
+                if writer.is_client_connected() {
+                    connected = true;
+                    break;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+
+            assert!(connected, "Client should have connected");
+
+            // After connection, should remain true
+            assert!(writer.is_client_connected());
+
+            // Write should now succeed immediately
+            writer.write(b"Connected!").unwrap();
+
+            // Wait for reader to finish before closing
+            let start = std::time::Instant::now();
+            while !sync_clone.reader_done.load(Ordering::Acquire) {
+                if start.elapsed() > Duration::from_secs(5) {
+                    panic!("Timed out waiting for reader to finish");
+                }
+                thread::sleep(Duration::from_millis(1));
+            }
+            writer.close().unwrap();
+        });
+
+        wait_for_writer(&sync);
+
+        let mut reader = UnixSocketStreamReader::new(&socket_path).unwrap();
+        let message = reader.next().unwrap().unwrap();
+        assert_eq!(message, b"Connected!");
+        reader.close().unwrap();
+
+        sync.reader_done.store(true, Ordering::Release);
+        writer_thread.join().unwrap();
+    }
+
+    #[test]
+    fn test_wait_for_client_with_is_connected() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let socket_path = unique_socket_path("wait_client");
+        let _ = std::fs::remove_file(&socket_path);
+
+        let sp = socket_path.clone();
+
+        let sync = Arc::new(WriterSync {
+            ready: AtomicBool::new(false),
+            reader_done: AtomicBool::new(false),
+        });
+        let sync_clone = sync.clone();
+
+        let writer_thread = thread::spawn(move || {
+            let mut writer = UnixSocketStreamWriter::new(&sp).unwrap();
+            writer.open().unwrap();
+            sync_clone.ready.store(true, Ordering::Release);
+
+            // Use is_client_connected() to wait for client
+            while !writer.is_client_connected() {
+                thread::sleep(Duration::from_millis(10));
+            }
+
+            // Now write will succeed without retries
+            writer.write(b"Message 1").unwrap();
+            writer.write(b"Message 2").unwrap();
+            writer.write(b"Message 3").unwrap();
+
+            // Wait for reader to finish before closing
+            let start = std::time::Instant::now();
+            while !sync_clone.reader_done.load(Ordering::Acquire) {
+                if start.elapsed() > Duration::from_secs(5) {
+                    panic!("Timed out waiting for reader to finish");
+                }
+                thread::sleep(Duration::from_millis(1));
+            }
+            writer.close().unwrap();
+        });
+
+        wait_for_writer(&sync);
+
+        let mut reader = UnixSocketStreamReader::new(&socket_path).unwrap();
+        let msg1 = reader.next().unwrap().unwrap();
+        assert_eq!(msg1, b"Message 1");
+        let msg2 = reader.next().unwrap().unwrap();
+        assert_eq!(msg2, b"Message 2");
+        let msg3 = reader.next().unwrap().unwrap();
+        assert_eq!(msg3, b"Message 3");
+        reader.close().unwrap();
+
+        sync.reader_done.store(true, Ordering::Release);
+        writer_thread.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_client_connected_error() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let socket_path = unique_socket_path("no_client");
+        let _ = std::fs::remove_file(&socket_path);
+
+        let mut writer = UnixSocketStreamWriter::new(&socket_path).unwrap();
+        writer.open().unwrap();
+
+        // Try to write without any client connected
+        let result = writer.write(b"Data");
+
+        // Should get NoClientConnected error
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.downcast_ref::<UnixSocketError>().is_some(),
+            "Expected UnixSocketError::NoClientConnected"
+        );
+
+        // Connect a dummy reader to unblock the accept thread before closing,
+        // preventing fd reuse races with the detached accept thread.
+        let mut dummy = UnixSocketStreamReader::new(&socket_path).unwrap();
+        dummy.open().unwrap();
+
+        writer.close().unwrap();
+        // Allow accept thread to fully terminate after fd is closed
+        thread::sleep(Duration::from_millis(10));
     }
 }

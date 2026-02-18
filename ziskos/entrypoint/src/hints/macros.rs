@@ -9,29 +9,29 @@ macro_rules! define_hint {
         paste::paste! {
             #[no_mangle]
             pub unsafe extern "C" fn [<hint_ $name>]($( $arg: *const u8 ),+) {
-                if !crate::hints::HINT_BUFFER.is_enabled() {
+                if !$crate::hints::HINT_BUFFER.is_enabled() {
                     return;
                 }
 
                 #[cfg(zisk_hints_single_thread)]
-                crate::hints::check_main_thread();
+                if !$crate::hints::check_main_thread() { return; }
 
-                let mut total_len = 0;
+                let mut total_len = 0usize;
                 $(
                     total_len += $len;
                 )+
 
-                crate::hints::HINT_BUFFER.write_hint_header(
+                let mut w = $crate::hints::HINT_BUFFER.begin_hint(
                     $hint_id,
                     total_len,
                     $is_result,
                 );
 
                 $(
-                    $crate::hints::HINT_BUFFER.write_hint_data($arg, $len);
+                    w.write_hint_data_ptr($arg, $len);
                 )+
 
-                $crate::hints::HINT_BUFFER.commit();
+                w.commit();
             }
 
             $crate::hints::macros::register_hint_meta!($name, $hint_id);
@@ -49,26 +49,28 @@ macro_rules! define_hint_pairs {
     ) => {
         paste::paste! {
             #[no_mangle]
-            pub unsafe extern "C" fn [<hint_ $name>]( pairs: *const u8, num_pairs: usize) {
-                if !crate::hints::HINT_BUFFER.is_enabled() {
+            pub unsafe extern "C" fn [<hint_ $name>](pairs: *const u8, num_pairs: usize) {
+                if !$crate::hints::HINT_BUFFER.is_enabled() {
                     return;
                 }
 
                 #[cfg(zisk_hints_single_thread)]
-                crate::hints::check_main_thread();
+                if !$crate::hints::check_main_thread() { return; }
 
-                crate::hints::HINT_BUFFER.write_hint_header(
+                let total_len = 8 + (num_pairs * ($pair_len as usize));
+
+                let mut w = $crate::hints::HINT_BUFFER.begin_hint(
                     $hint_id,
-                    8 + (num_pairs * $pair_len),
-                    false,
+                    total_len,
+                    $is_result,
                 );
 
                 let num_pairs_bytes: [u8; 8] = (num_pairs as u64).to_le_bytes();
-                crate::hints::HINT_BUFFER.write_hint_data(num_pairs_bytes.as_ptr(), num_pairs_bytes.len());
+                w.write_hint_data_slice(&num_pairs_bytes);
 
-                crate::hints::HINT_BUFFER.write_hint_data(pairs, num_pairs * $pair_len);
+                w.write_hint_data_ptr(pairs, num_pairs * ($pair_len as usize));
 
-                $crate::hints::HINT_BUFFER.commit();
+                w.commit();
             }
 
             $crate::hints::macros::register_hint_meta!($name, $hint_id);
@@ -87,28 +89,29 @@ macro_rules! define_hint_ptr {
         paste::paste! {
             #[no_mangle]
             pub unsafe extern "C" fn [<hint_ $name>]([<$arg _ptr>]: *const u8, [<$arg _len>]: usize) {
-                if !crate::hints::HINT_BUFFER.is_enabled() {
+                if !$crate::hints::HINT_BUFFER.is_enabled() {
                     return;
                 }
 
                 #[cfg(zisk_hints_single_thread)]
-                crate::hints::check_main_thread();
+                if !$crate::hints::check_main_thread() { return; }
 
                 let pad = (8 - ([<$arg _len>] & 7)) & 7;
 
-                crate::hints::HINT_BUFFER.write_hint_header(
+                let mut w = $crate::hints::HINT_BUFFER.begin_hint(
                     $hint_id,
                     [<$arg _len>],
                     $is_result,
                 );
 
-                crate::hints::HINT_BUFFER.write_hint_data([<$arg _ptr>], [<$arg _len>]);
+                w.write_hint_data_ptr([<$arg _ptr>], [<$arg _len>]);
+
                 if pad > 0 {
                     const ZERO_PAD: [u8; 8] = [0; 8];
-                    crate::hints::HINT_BUFFER.write_hint_data(ZERO_PAD.as_ptr(), pad);
+                    w.write_hint_data_slice(&ZERO_PAD[..pad]);
                 }
 
-                $crate::hints::HINT_BUFFER.commit();
+                w.commit();
             }
 
             $crate::hints::macros::register_hint_meta!($name, $hint_id);
@@ -123,23 +126,24 @@ macro_rules! define_hint_ptr {
     ) => {
         paste::paste! {
             #[no_mangle]
-            pub unsafe extern "C" fn [<hint_ $name>]($( [<$arg _ptr>]: *const u8, [<$arg _len>]: usize ),+
+            pub unsafe extern "C" fn [<hint_ $name>](
+                $( [<$arg _ptr>]: *const u8, [<$arg _len>]: usize ),+
             ) {
-                if !crate::hints::HINT_BUFFER.is_enabled() {
+                if !$crate::hints::HINT_BUFFER.is_enabled() {
                     return;
                 }
 
                 #[cfg(zisk_hints_single_thread)]
-                crate::hints::check_main_thread();
+                if !$crate::hints::check_main_thread() { return; }
 
-                let mut total_len = 0;
+                let mut total_len = 0usize;
                 $(
                     total_len += 8 + [<$arg _len>];
                 )+
 
                 let pad = (8 - (total_len & 7)) & 7;
 
-                crate::hints::HINT_BUFFER.write_hint_header(
+                let mut w = $crate::hints::HINT_BUFFER.begin_hint(
                     $hint_id,
                     total_len,
                     $is_result,
@@ -148,17 +152,18 @@ macro_rules! define_hint_ptr {
                 $(
                     {
                         let len_bytes: [u8; 8] = ([<$arg _len>] as u64).to_le_bytes();
-                        crate::hints::HINT_BUFFER.write_hint_data(len_bytes.as_ptr(), len_bytes.len());
-                        crate::hints::HINT_BUFFER.write_hint_data([<$arg _ptr>], [<$arg _len>]);
+                        w.write_hint_data_slice(&len_bytes);
+
+                        w.write_hint_data_ptr([<$arg _ptr>], [<$arg _len>]);
                     }
                 )+
 
                 if pad > 0 {
                     const ZERO_PAD: [u8; 8] = [0; 8];
-                    crate::hints::HINT_BUFFER.write_hint_data(ZERO_PAD.as_ptr(), pad);
+                    w.write_hint_data_slice(&ZERO_PAD[..pad]);
                 }
 
-                $crate::hints::HINT_BUFFER.commit();
+                w.commit();
             }
 
             $crate::hints::macros::register_hint_meta!($name, $hint_id);

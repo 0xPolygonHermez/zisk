@@ -116,15 +116,11 @@ main() {
     ensure cargo clean || return 1
     ensure cargo update || return 1
 
+    # We build features in that way to be ready to support more feature in the future
     FEATURES=()
     if [[ "${BUILD_GPU}" == "1" ]]; then
         FEATURES+=("gpu")
         warn "Building with GPU support..."
-    fi
-
-    if [[ "${BUILD_HINTS}" == "1" ]]; then
-        FEATURES+=("hints")
-        warn "Building with hints support..."
     fi
 
     BUILD_FEATURES=""

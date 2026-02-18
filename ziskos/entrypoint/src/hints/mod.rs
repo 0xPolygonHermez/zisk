@@ -13,11 +13,12 @@ mod sha256f;
 mod metrics;
 
 use crate::hints::hint_buffer::{build_hint_buffer, HintBuffer};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use once_cell::sync::Lazy;
 use std::cell::UnsafeCell;
 use std::path::PathBuf;
 use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 use std::{ffi::CStr, os::raw::c_char};
 use std::{
     io::{self, BufWriter, Write},
@@ -29,9 +30,6 @@ use zisk_common::io::{StreamWrite, UnixSocketStreamWriter};
 #[cfg(zisk_hints_single_thread)]
 use std::thread::ThreadId;
 
-#[cfg(zisk_hints_single_thread)]
-use once_cell::sync::OnceCell;
-
 pub use bls12_381::*;
 pub use bn254::*;
 pub use keccak256::*;
@@ -41,8 +39,8 @@ pub use secp256k1::*;
 pub use secp256r1::*;
 pub use sha256f::*;
 
-pub const HINT_START: u32 = 0;
-pub const HINT_END: u32 = 1;
+pub const CLIENT_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+pub const WAIT_FOR_CLIENT_RETRY_DELAY: Duration = Duration::from_millis(5);
 
 static HINT_BUFFER: Lazy<Arc<HintBuffer>> = Lazy::new(|| build_hint_buffer());
 static HINT_WRITER_HANDLE: Lazy<HintFileWriterHandleCell> =
@@ -71,26 +69,32 @@ impl HintFileWriterHandleCell {
     }
 }
 
-pub fn init_hints() -> io::Result<()> {
-    // Initialize the main thread ID for single-threaded assert (if enabled)
-    #[cfg(zisk_hints_single_thread)]
-    let _ = MAIN_TID.set(None); // Placeholder value to mark uninitialized
-
+fn wait_for_hints_writer() -> Result<()> {
     if let Some(handle) = HINT_WRITER_HANDLE.take() {
         HINT_BUFFER.close();
         match handle.join() {
             Ok(result) => {
                 if let Err(err) = result {
-                    return Err(err);
+                    return Err(anyhow!(
+                        "Failed previous hints writer thread result, error: {}",
+                        err
+                    ));
                 }
             }
             Err(e) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Failed hints writer thread, error: {:?}", e),
-                ))
+                return Err(anyhow!("Failed previous hints writer thread, error: {:?}", e));
             }
         }
+    }
+
+    Ok(())
+}
+pub fn init_hints() {
+    // Initialize the main thread ID for single-threaded assert (if enabled)
+    #[cfg(zisk_hints_single_thread)]
+    {
+        let tid = std::thread::current().id();
+        *MAIN_TID.lock().unwrap() = Some(tid);
     }
 
     #[cfg(zisk_hints_metrics)]
@@ -98,18 +102,18 @@ pub fn init_hints() -> io::Result<()> {
 
     HINT_BUFFER.reset();
 
-    Ok(())
+    // Write HINT_START
+    HINT_BUFFER.write_hint_start();
 }
 
-pub fn init_hints_file(
-    hints_file_path: PathBuf,
-    ready: Option<oneshot::Sender<()>>,
-) -> io::Result<()> {
-    init_hints()?;
+pub fn init_hints_file(hints_file_path: PathBuf, ready: Option<oneshot::Sender<()>>) -> Result<()> {
+    wait_for_hints_writer()?;
 
     if let Some(tx) = ready {
         let _ = tx.send(());
     }
+
+    init_hints();
 
     let handle = thread::spawn(move || write_hints_to_file(hints_file_path));
     HINT_WRITER_HANDLE.store(handle);
@@ -119,68 +123,68 @@ pub fn init_hints_file(
 
 pub fn init_hints_socket(
     socket_path: PathBuf,
+    debug_file: Option<PathBuf>,
     ready: Option<oneshot::Sender<()>>,
-) -> io::Result<()> {
-    init_hints()?;
+) -> Result<()> {
+    wait_for_hints_writer()?;
 
     // Create the Unix socket writer (server)
-    let mut socket_writer = UnixSocketWriter::new(&socket_path).map_err(io::Error::other)?;
+    let mut socket_writer = UnixSocketWriter::new(&socket_path)?;
 
-    // Notify that socket is ready after client connects
+    // Open the connection
+    socket_writer.open()?;
+
+    // Notify that socket is ready
     if let Some(tx) = ready {
         let _ = tx.send(());
     }
 
-    // Open the connection (waits for client to connect)
-    // TODO: Implement open timeout
-    socket_writer.open().map_err(io::Error::other)?;
+    // Wait for client to connect with a timeout
+    if let Err(e) = socket_writer.wait_for_client(CLIENT_CONNECT_TIMEOUT) {
+        return Err(anyhow!("Failed to wait for client to connect to hints socket, error: {}", e));
+    }
 
-    let handle = thread::spawn(move || write_hints_to_socket(socket_writer));
+    init_hints();
+
+    let handle = thread::spawn(move || write_hints_to_socket(socket_writer, debug_file));
     HINT_WRITER_HANDLE.store(handle);
 
     Ok(())
 }
-pub fn close_hints() -> io::Result<()> {
+
+pub fn close_hints() -> Result<()> {
+    #[cfg(zisk_hints_single_thread)]
+    {
+        *MAIN_TID.lock().unwrap() = None;
+    }
+
+    // Write HINT_END
+    HINT_BUFFER.write_hint_end();
+
+    // Close the hint buffer to signal the writer thread to finish
     HINT_BUFFER.close();
 
+    // Wait for the writer thread to finish and check for errors
     let handle = HINT_WRITER_HANDLE.take();
     if let Some(handle) = handle {
         match handle.join() {
             Ok(result) => match result {
                 Ok(()) => Ok(()),
-                Err(e) => return Err(e),
+                Err(e) => return Err(anyhow!("Failed hints writer thread result, error: {}", e)),
             },
-            Err(e) => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed hints writer thread, error: {:?}", e),
-            )),
+            Err(e) => Err(anyhow!("Failed hints writer thread, error: {:?}", e)),
         }
     } else {
         Ok(())
     }
 }
 
-pub fn write_hints<W: Write>(writer: &mut W) -> io::Result<()> {
-    let disable_prefix = std::env::var("HINTS_DISABLE_PREFIX").unwrap_or_default() == "1";
-
-    // Write HINT_START
-    if !disable_prefix {
-        let start_header: u64 = ((HINT_START as u64) << 32) | 0u64;
-        let start_bytes = start_header.to_le_bytes();
-        writer.write_all(&start_bytes)?;
-    }
-
+pub fn write_hints<W: Write + ?Sized>(
+    writer: &mut W,
+    debug_writer: Option<&mut dyn Write>,
+) -> io::Result<()> {
     // Write hints from the buffer
-    HINT_BUFFER.drain_to_writer(writer)?;
-
-    // Write HINT_END
-    if !disable_prefix {
-        let end_header: u64 = ((HINT_END as u64) << 32) | 0u64;
-        let end_bytes = end_header.to_le_bytes();
-        writer.write_all(&end_bytes)?;
-    }
-
-    writer.flush()?;
+    HINT_BUFFER.drain_to_writer(writer, debug_writer)?;
 
     #[cfg(zisk_hints_metrics)]
     crate::hints::metrics::print_metrics();
@@ -194,7 +198,7 @@ fn write_hints_to_file(path: PathBuf) -> io::Result<()> {
     let file = std::fs::File::create(path)?;
     let mut file_writer = BufWriter::with_capacity(1 << 20, file);
 
-    write_hints(&mut file_writer)?;
+    write_hints(&mut file_writer, None)?;
 
     Ok(())
 }
@@ -213,6 +217,18 @@ impl UnixSocketWriter {
         self.inner.open()
     }
 
+    pub fn wait_for_client(&mut self, timeout: Duration) -> Result<()> {
+        let start = Instant::now();
+        while !self.inner.is_client_connected() {
+            if start.elapsed() >= timeout {
+                return Err(anyhow!("Timeout waiting for client to connect to socket"));
+            }
+            thread::sleep(WAIT_FOR_CLIENT_RETRY_DELAY);
+        }
+
+        Ok(())
+    }
+
     pub fn close(&mut self) -> Result<()> {
         self.inner.close()
     }
@@ -228,10 +244,19 @@ impl Write for UnixSocketWriter {
     }
 }
 
-fn write_hints_to_socket(mut socket_writer: UnixSocketWriter) -> io::Result<()> {
+fn write_hints_to_socket(
+    mut socket_writer: UnixSocketWriter,
+    debug_file: Option<PathBuf>,
+) -> io::Result<()> {
     debug_assert!(cfg!(target_endian = "little"));
 
-    write_hints(&mut socket_writer)?;
+    if let Some(path) = debug_file {
+        let file = std::fs::File::create(path)?;
+        let mut debug_writer = BufWriter::with_capacity(1 << 20, file); // 1 MiB buffer
+        write_hints(&mut socket_writer, Some(&mut debug_writer as &mut dyn Write))?;
+    } else {
+        write_hints(&mut socket_writer, None)?;
+    }
 
     socket_writer.close().map_err(io::Error::other)?;
 
@@ -239,33 +264,25 @@ fn write_hints_to_socket(mut socket_writer: UnixSocketWriter) -> io::Result<()> 
 }
 
 #[cfg(zisk_hints_single_thread)]
-static MAIN_TID: OnceCell<Option<ThreadId>> = OnceCell::new();
+static MAIN_TID: Mutex<Option<ThreadId>> = Mutex::new(None);
 
 #[cfg(zisk_hints_single_thread)]
 #[inline(always)]
-pub(crate) fn check_main_thread() {
-    // Panic on calls from a different thread
+pub(crate) fn check_main_thread() -> bool {
     let tid = std::thread::current().id();
-    match MAIN_TID.get() {
-        Some(main) => {
-            match main {
-                Some(main) => {
-                    if *main != tid {
-                        panic!(
-                            "Precompile hint function called from non-main thread, main={:?}, current={:?}",
-                            main, tid
-                        );
-                    }
-                }
-                None => {
-                    // If not initialized yet, record the first caller thread as main
-                    let _ = MAIN_TID.set(Some(tid));
-                }
+    let guard = MAIN_TID.lock().unwrap();
+
+    match *guard {
+        Some(main_tid) => {
+            if main_tid != tid {
+                println!("Warning: trying to write hint from thread {:?} but MAIN_TID is {:?}. Ignoring...", tid, main_tid);
+                return false;
             }
+            true
         }
         None => {
-            // If not initialized yet, record the first caller thread as main
-            let _ = MAIN_TID.set(Some(tid));
+            println!("Warning: trying to write hint from thread {:?} before MAIN_TID is initialized. Ignoring...", tid);
+            false
         }
     }
 }

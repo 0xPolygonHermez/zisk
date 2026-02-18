@@ -1,6 +1,7 @@
 use bytes::{Bytes, BytesMut};
 use std::io::{self, Write};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use zisk_common::{CTRL_END, CTRL_START};
 
 pub const DEFAULT_BUFFER_LEN: usize = 1 << 20; // 1 MiB
                                                // TODO: Set MAX_WRITE_LEN based on writer type (file or socket)
@@ -18,6 +19,11 @@ struct HintBufferInner {
     closed: bool,
     paused: bool,
     // counter: u64,
+}
+
+pub struct HintWrite<'a> {
+    hb: &'a HintBuffer,
+    g: MutexGuard<'a, HintBufferInner>,
 }
 
 pub fn build_hint_buffer() -> Arc<HintBuffer> {
@@ -85,49 +91,65 @@ impl HintBuffer {
     }
 
     #[inline(always)]
-    pub fn write_hint_header(&self, hint_id: u32, len: usize, is_result: bool) {
+    pub fn begin_hint(&self, hint_id: u32, len: usize, is_result: bool) -> HintWrite<'_> {
         let header = ((((if is_result { 0x8000_0000u64 } else { 0 }) | hint_id as u64) << 32)
             | (len as u64))
             .to_le_bytes();
 
         let mut g = self.inner.lock().unwrap();
-
         g.write_bytes(&header);
 
-        // g.counter += 1;
-
-        // if g.counter ==  32672 {
-        //     panic!("Hint counter reached");
-        // }
+        HintWrite { hb: self, g }
     }
 
     #[inline(always)]
-    pub fn write_hint_data(&self, data: *const u8, len: usize) {
-        let payload = unsafe { std::slice::from_raw_parts(data, len) };
-        self.inner.lock().unwrap().write_bytes(payload);
+    pub fn write_hint_start(&self) {
+        let w = self.begin_hint(CTRL_START, 0, false);
+        w.commit();
     }
 
     #[inline(always)]
-    pub fn commit(&self) {
-        let mut g = self.inner.lock().unwrap();
-        g.commit();
-        self.not_empty.notify_one();
+    pub fn write_hint_end(&self) {
+        let w = self.begin_hint(CTRL_END, 0, false);
+        w.commit();
     }
 
-    pub fn drain_to_writer<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        loop {
-            // Get chunk of hints to write from HintBuffer(under lock)
+    pub fn drain_to_writer<W, D>(
+        &self,
+        writer: &mut W,
+        mut debug_writer: Option<&mut D>,
+    ) -> io::Result<()>
+    where
+        W: Write + ?Sized,
+        D: Write + ?Sized,
+    {
+        // Write hints from the buffer to the writer and optionally to a debug writer
+        let mut write_all = |buf: &[u8]| -> io::Result<()> {
+            writer.write_all(buf)?;
+
+            if let Some(debug_writer) = debug_writer.as_deref_mut() {
+                debug_writer.write_all(buf)?;
+            }
+
+            Ok(())
+        };
+
+        'drain: loop {
+            // Get chunk of hints to write from HintBuffer (under lock)
             let chunk: Bytes = {
                 let mut g = self.inner.lock().unwrap();
 
+                // Wait until there's data to write or buffer is closed
                 while g.commit_pos == 0 && !g.closed {
                     g = self.not_empty.wait(g).unwrap();
                 }
 
+                // If buffer is empty and closed, we're done, we can exit the drain loop
                 if g.commit_pos == 0 && g.closed {
-                    return Ok(());
+                    break 'drain;
                 }
 
+                // Take the committed chunk of hints to write
                 let n = g.commit_pos;
                 g.commit_pos = 0;
                 g.buf.split_to(n).freeze()
@@ -163,7 +185,7 @@ impl HintBuffer {
                     let buf: &[u8] = unsafe {
                         core::slice::from_raw_parts(chunk_base.add(buf_start), buf_end - buf_start)
                     };
-                    writer.write_all(buf)?;
+                    write_all(buf)?;
 
                     // Reset write buffer
                     buf_start = chunk_pos;
@@ -182,7 +204,7 @@ impl HintBuffer {
                             )
                         };
 
-                        writer.write_all(hint_bytes)?;
+                        write_all(hint_bytes)?;
 
                         hint_pos += chunk_size;
                     }
@@ -199,13 +221,49 @@ impl HintBuffer {
                 }
             }
 
-            // Flush any remaining data in write buffer
+            // Write any remaining data in write buffer
             if buf_end > buf_start {
                 let buf: &[u8] = unsafe {
                     core::slice::from_raw_parts(chunk_base.add(buf_start), buf_end - buf_start)
                 };
-                writer.write_all(buf)?;
+                write_all(buf)?;
             }
         }
+
+        // Flush the writer and debug writer at the end
+        writer.flush()?;
+        if let Some(debug_writer) = debug_writer.as_deref_mut() {
+            debug_writer.flush()?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> HintWrite<'a> {
+    #[inline(always)]
+    pub fn write_hint_data_ptr(&mut self, data: *const u8, len: usize) {
+        if len == 0 {
+            return;
+        }
+        debug_assert!(!data.is_null(), "write_hint_data_ptr called with null data pointer");
+        let payload = unsafe { std::slice::from_raw_parts(data, len) };
+        self.g.write_bytes(payload);
+    }
+
+    #[inline(always)]
+    pub fn write_hint_data_slice(&mut self, payload: &[u8]) {
+        if payload.is_empty() {
+            return;
+        }
+        self.g.write_bytes(payload);
+    }
+
+    #[inline(always)]
+    pub fn commit(mut self) {
+        self.g.commit();
+
+        drop(self.g);
+        self.hb.not_empty.notify_one();
     }
 }
