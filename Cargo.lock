@@ -1479,7 +1479,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#8f129b767a75551348d1492bac5e32f05186a66b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#28ec794c611b5c53c7096c565da80bd0639f2fe9"
 dependencies = [
  "cfg-if",
  "num-bigint",
