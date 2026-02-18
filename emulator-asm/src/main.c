@@ -4154,7 +4154,8 @@ void server_run (void)
     server_reset_trace();
 
     // Sync input shared memory
-    if (msync((void *)INPUT_ADDR, MAX_INPUT_SIZE, MS_SYNC) != 0) {
+    if (msync((void *)INPUT_ADDR, MAX_INPUT_SIZE, MS_SYNC) != 0) 
+    {
         printf("ERROR: msync failed for shmem_input_address errno=%d=%s\n", errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
@@ -4183,9 +4184,19 @@ void server_run (void)
 
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
-    if (verbose) printf("Before calling emulator_start() trace_address=%lx\n", trace_address);
+    if (verbose)
+    {
+        printf("Before calling emulator_start() trace_address=%lx\n", trace_address);
+        fflush(stdout);
+        fflush(stderr);
+    }
     emulator_start();
-    if (verbose) printf("After calling emulator_start() trace_address=%lx\n", trace_address);
+    if (verbose)
+    {
+        printf("After calling emulator_start() trace_address=%lx\n", trace_address);
+        fflush(stdout);
+        fflush(stderr);
+    }
     gettimeofday(&stop_time,NULL);
     assembly_duration = TimeDiff(start_time, stop_time);
 
