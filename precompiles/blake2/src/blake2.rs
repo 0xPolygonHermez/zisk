@@ -8,14 +8,14 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 #[cfg(feature = "packed")]
-use zisk_pil::{Blake2TracePacked, Blake2TraceRowPacked};
+use zisk_pil::{Blake2brTracePacked, Blake2brTraceRowPacked};
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{Blake2brTrace, Blake2brTraceRow};
 
 #[cfg(feature = "packed")]
-type Blake2TraceRowType<F> = Blake2TraceRowPacked<F>;
+type Blake2TraceRowType<F> = Blake2brTraceRowPacked<F>;
 #[cfg(feature = "packed")]
-type Blake2TraceType<F> = Blake2TracePacked<F>;
+type Blake2TraceType<F> = Blake2brTracePacked<F>;
 
 #[cfg(not(feature = "packed"))]
 type Blake2TraceRowType<F> = Blake2brTraceRow<F>;
