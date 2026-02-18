@@ -303,10 +303,10 @@ void file_lock(void);
 bool output = false;
 bool output_riscof = false;
 bool silent = false;
-bool metrics = true;
+bool metrics = false;
 bool trace = false;
 bool trace_trace = false;
-bool verbose = true;
+bool verbose = false;
 bool save_to_file = false;
 bool share_input_shm = false; // Shares input shared memories: input, precompile results and control input, using a common name
 bool open_input_shm = false; // Opens existing input shared memories, without creating them.  They must be previously created by another process (assembly emulator or witness computation)
@@ -601,7 +601,7 @@ void trace_map_initialize (void)
     pOutputTrace = (uint64_t *)TRACE_ADDR;
 }
 
-bool redirect_output_to_file = true;
+bool redirect_output_to_file = false;
 
 int main(int argc, char *argv[])
 {
