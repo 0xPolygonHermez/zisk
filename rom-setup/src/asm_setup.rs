@@ -95,25 +95,36 @@ pub fn generate_assembly(
 
     let installed_path = crate::get_default_zisk_path().join("emulator-asm");
 
-    let workspace_path =
+    // Only check workspace if we're running via `cargo run` or `cargo build`
+    // Check if the current executable is in the target directory (development mode)
+    let is_development = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.to_str().map(|s| s.contains("/target/")))
+        .unwrap_or(false);
+
+    let workspace_path = if is_development {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().and_then(|workspace_root| {
             let cargo_toml = workspace_root.join("Cargo.toml");
-            if workspace_root.join("emulator-asm").exists() && cargo_toml.exists() {
-                Some(workspace_root.join("emulator-asm"))
+            let emulator_path = workspace_root.join("emulator-asm");
+            if emulator_path.exists() && cargo_toml.exists() {
+                Some(emulator_path)
             } else {
                 None
             }
-        });
+        })
+    } else {
+        None
+    };
 
-    let (emulator_asm_path, source) = if installed_path.exists() {
-        (installed_path, "installed")
-    } else if let Some(ws_path) = workspace_path {
+    let (emulator_asm_path, source) = if let Some(ws_path) = workspace_path {
         (ws_path, "workspace")
+    } else if installed_path.exists() {
+        (installed_path, "installed")
     } else {
         (installed_path, "installed (not found)")
     };
 
-    tracing::info!("Looking for emulator-asm at: {} ({})", emulator_asm_path.display(), source);
+    println!("Looking for emulator-asm at: {} ({})", emulator_asm_path.display(), source);
 
     if !emulator_asm_path.exists() {
         anyhow::bail!(
