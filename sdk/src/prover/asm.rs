@@ -47,7 +47,7 @@ impl AsmProver {
         shared_tables: bool,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
-        force_rom_setup: bool,
+        no_auto_setup: bool,
         gpu_params: ParamsGPU,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
@@ -61,7 +61,7 @@ impl AsmProver {
             shared_tables,
             base_port,
             unlock_mapped_memory,
-            force_rom_setup,
+            no_auto_setup,
             gpu_params,
             logging_config,
         )?;
@@ -137,7 +137,7 @@ impl ProverEngine for AsmProver {
         let asm_rh_path = default_cache_path.join(asm_rh_filename);
 
         if check_paths_exist(&asm_mt_path).is_err() || check_paths_exist(&asm_rh_path).is_err() {
-            if self.core_prover.force_rom_setup {
+            if self.core_prover.no_auto_setup {
                 return Err(anyhow::anyhow!(
                     "Assembly files not found for ELF {}. Force ROM setup is enabled, but assembly files are still missing. Please ensure that the assembly generation process has been completed successfully.",
                     elf.name()
@@ -329,7 +329,7 @@ pub struct AsmCoreProver {
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
     verbose: VerboseMode,
-    force_rom_setup: bool,
+    no_auto_setup: bool,
 }
 
 impl AsmCoreProver {
@@ -344,7 +344,7 @@ impl AsmCoreProver {
         shared_tables: bool,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
-        force_rom_setup: bool,
+        no_auto_setup: bool,
         gpu_params: ParamsGPU,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
@@ -403,7 +403,7 @@ impl AsmCoreProver {
             base_port,
             unlock_mapped_memory,
             verbose: verbose.into(),
-            force_rom_setup,
+            no_auto_setup,
         })
     }
 
@@ -417,7 +417,7 @@ impl AsmCoreProver {
             base_port: None,
             unlock_mapped_memory: false,
             verbose: VerboseMode::Info,
-            force_rom_setup: false,
+            no_auto_setup: false,
         })
     }
 }

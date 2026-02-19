@@ -44,8 +44,8 @@ pub struct ZiskExecute {
     pub hints: Option<String>,
 
     /// Force ROM setup
-    #[clap(short = 'f', long, default_value_t = false)]
-    pub force_rom_setup: bool,
+    #[clap(short = 'n', long, default_value_t = false)]
+    pub no_auto_setup: bool,
 
     /// Setup folder path
     #[clap(short = 'k', long)]
@@ -149,7 +149,7 @@ impl ZiskExecute {
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
-            .force_rom_setup(self.force_rom_setup)
+            .no_auto_setup(self.no_auto_setup)
             .base_port_opt(self.port)
             .unlock_mapped_memory(self.unlock_mapped_memory)
             .print_command_info()

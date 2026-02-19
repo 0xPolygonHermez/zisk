@@ -63,8 +63,8 @@ pub struct ZiskVerifyConstraints {
     #[clap(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
-    #[clap(short = 'f', long, default_value_t = false)]
-    pub force_rom_setup: bool,
+    #[clap(short = 'n', long, default_value_t = false)]
+    pub no_auto_setup: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
@@ -162,7 +162,7 @@ impl ZiskVerifyConstraints {
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
-            .force_rom_setup(self.force_rom_setup)
+            .no_auto_setup(self.no_auto_setup)
             .base_port_opt(self.port)
             .unlock_mapped_memory(self.unlock_mapped_memory)
             .print_command_info()

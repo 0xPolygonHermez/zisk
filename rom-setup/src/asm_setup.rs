@@ -93,23 +93,17 @@ pub fn generate_assembly(
     let bin_mo_file = format!("{file_stem}-mo.bin");
     let bin_mo_file = base_path.with_file_name(bin_mo_file);
 
-    // Find emulator-asm directory: check workspace root first (development), then installed location
-    let workspace_root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = workspace_root_path
+    let emulator_asm_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .context("Failed to get workspace root from CARGO_MANIFEST_DIR")?;
-    let workspace_path = workspace_root.join("emulator-asm");
+        .map(|p| p.join("emulator-asm"))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| crate::get_default_zisk_path().join("emulator-asm"));
 
-    let emulator_asm_path = if workspace_path.exists() {
-        workspace_path.clone()
-    } else {
-        // Fall back to installed location
-        crate::get_default_zisk_path().join("emulator-asm")
-    };
+    tracing::info!("Looking for emulator-asm at: {}", emulator_asm_path.display());
 
     if !emulator_asm_path.exists() {
         anyhow::bail!(
-            "emulator-asm directory not found in either workspace root or installed location ({})",
+            "emulator-asm directory not found. Expected at: {}",
             emulator_asm_path.display()
         );
     }

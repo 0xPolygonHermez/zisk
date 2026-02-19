@@ -70,7 +70,7 @@ pub struct ZiskStats {
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    #[clap(short = 'n', long)]
+    #[clap(short = 'h', long)]
     pub number_threads_witness: Option<usize>,
 
     #[clap(short = 'x', long)]
@@ -89,8 +89,8 @@ pub struct ZiskStats {
     #[clap(short = 'j', long, default_value_t = false)]
     pub shared_tables: bool,
 
-    #[clap(short = 'f', long, default_value_t = false)]
-    pub force_rom_setup: bool,
+    #[clap(short = 'n', long, default_value_t = false)]
+    pub no_auto_setup: bool,
 }
 
 impl ZiskStats {
@@ -187,7 +187,7 @@ impl ZiskStats {
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
-            .force_rom_setup(self.force_rom_setup)
+            .no_auto_setup(self.no_auto_setup)
             .base_port_opt(self.port)
             .unlock_mapped_memory(self.unlock_mapped_memory)
             .print_command_info()

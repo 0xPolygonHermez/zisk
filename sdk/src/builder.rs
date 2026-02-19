@@ -59,7 +59,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     asm_path: Option<PathBuf>,
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
-    force_rom_setup: bool,
+    no_auto_setup: bool,
 
     // Prove-specific fields (only available when Operation = Prove)
     gpu_params: ParamsGPU,
@@ -213,8 +213,8 @@ impl<Operation> ProverClientBuilder<AsmB, Operation> {
     }
 
     #[must_use]
-    pub fn force_rom_setup(mut self, force_rom_setup: bool) -> Self {
-        self.force_rom_setup = force_rom_setup;
+    pub fn no_auto_setup(mut self, no_auto_setup: bool) -> Self {
+        self.no_auto_setup = no_auto_setup;
         self
     }
 
@@ -436,7 +436,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
                 self.shared_tables,
                 self.base_port,
                 self.unlock_mapped_memory,
-                self.force_rom_setup,
+                self.no_auto_setup,
                 self.gpu_params,
                 self.logging_config,
             )?
@@ -489,7 +489,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             asm_path: None,
             base_port: None,
             unlock_mapped_memory: false,
-            force_rom_setup: false,
+            no_auto_setup: false,
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -518,7 +518,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             asm_path: builder.asm_path,
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
-            force_rom_setup: builder.force_rom_setup,
+            no_auto_setup: builder.no_auto_setup,
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -549,7 +549,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             asm_path: builder.asm_path,
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
-            force_rom_setup: builder.force_rom_setup,
+            no_auto_setup: builder.no_auto_setup,
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -578,7 +578,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             asm_path: builder.asm_path,
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
-            force_rom_setup: builder.force_rom_setup,
+            no_auto_setup: builder.no_auto_setup,
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
