@@ -109,13 +109,8 @@ pub fn generate_assembly(
 
     if !emulator_asm_path.exists() {
         anyhow::bail!(
-            "emulator-asm directory not found. \n\
-             Searched in: \n\
-             1. {} (workspace root)\n\
-             2. {} (installed location)\n\
-             Please ensure emulator-asm is installed.",
-            workspace_path.display(),
-            crate::get_default_zisk_path().join("emulator-asm").display()
+            "emulator-asm directory not found in either workspace root or installed location ({})",
+            emulator_asm_path.display()
         );
     }
 
@@ -149,8 +144,6 @@ pub fn generate_assembly(
             anyhow::bail!("'make clean' failed with exit code: {:?}", status.code());
         }
 
-        let asm_file_str =
-            asm_file.to_str().context("Failed to convert asm_file path to string")?;
         let out_file_str = file.to_str().context("Failed to convert output file path to string")?;
 
         let status = Command::new("make")
