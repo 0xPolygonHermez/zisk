@@ -93,13 +93,27 @@ pub fn generate_assembly(
     let bin_mo_file = format!("{file_stem}-mo.bin");
     let bin_mo_file = base_path.with_file_name(bin_mo_file);
 
-    let emulator_asm_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .map(|p| p.join("emulator-asm"))
-        .filter(|p| p.exists())
-        .unwrap_or_else(|| crate::get_default_zisk_path().join("emulator-asm"));
+    let installed_path = crate::get_default_zisk_path().join("emulator-asm");
 
-    tracing::info!("Looking for emulator-asm at: {}", emulator_asm_path.display());
+    let workspace_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().and_then(|workspace_root| {
+            let cargo_toml = workspace_root.join("Cargo.toml");
+            if workspace_root.join("emulator-asm").exists() && cargo_toml.exists() {
+                Some(workspace_root.join("emulator-asm"))
+            } else {
+                None
+            }
+        });
+
+    let (emulator_asm_path, source) = if installed_path.exists() {
+        (installed_path, "installed")
+    } else if let Some(ws_path) = workspace_path {
+        (ws_path, "workspace")
+    } else {
+        (installed_path, "installed (not found)")
+    };
+
+    tracing::info!("Looking for emulator-asm at: {} ({})", emulator_asm_path.display(), source);
 
     if !emulator_asm_path.exists() {
         anyhow::bail!(
