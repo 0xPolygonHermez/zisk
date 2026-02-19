@@ -27,6 +27,9 @@ typedef struct {
     uint64_t sha256_counter;
     uint64_t sha256_duration;
 
+    uint64_t blake2_counter;
+    uint64_t blake2_duration;
+
     uint64_t poseidon2_counter;
     uint64_t poseidon2_duration;
 

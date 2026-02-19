@@ -6,6 +6,9 @@ use core::arch::asm;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use crate::ziskos_syscall;
 
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+use precompiles_helpers::blake2b_round;
+
 #[derive(Debug)]
 #[repr(C)]
 pub struct SyscallBlake2bRoundParams<'a> {
@@ -26,6 +29,11 @@ pub extern "C" fn syscall_blake2b_round(
 
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
-        unimplemented!();
+        blake2b_round(params.state, params.input, params.index as u32);
+
+        #[cfg(feature = "hints")]
+        {
+            hints.extend_from_slice(params.state);
+        }
     }
 }

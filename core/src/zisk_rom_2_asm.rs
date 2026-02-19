@@ -5346,6 +5346,94 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::Blake2 => {
+                // Use the memory address as the first and unique parameter
+                *code += &ctx.full_line_comment("Blake2: rdi = b".to_string());
+
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    // Use the memory address as the first and unique parameter
+                    *code += &format!(
+                        "\tmov rdi, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("rdi = b = address")
+                    );
+
+                    // Save data into mem_reads
+                    if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
+                        // If zip, check if chunk is active
+                        if ctx.zip() {
+                            *code += &format!(
+                                "\ttest {}, 1 {}\n",
+                                REG_ACTIVE_CHUNK,
+                                ctx.comment_str("active_chunk == 1 ?")
+                            );
+                            *code += &format!("\tjnz pc_{:x}_blake2_active_chunk\n", ctx.pc);
+                            *code += &format!("\tjmp pc_{:x}_blake2_active_chunk_done\n", ctx.pc);
+                            *code += &format!("pc_{:x}_blake2_active_chunk:\n", ctx.pc);
+                        }
+                        Self::precompiled_save_mem_reads(ctx, code, 3, &[0, 16, 16]);
+                        if ctx.zip() {
+                            *code += &format!("pc_{:x}_blake2_active_chunk_done:\n", ctx.pc);
+                        }
+                    }
+
+                    // Save memory operations into mem_reads
+                    if ctx.mem_op() {
+                        Self::mem_op_precompiled_read_and_write(
+                            ctx,
+                            code,
+                            3,
+                            &[0, 16, 16],
+                            1,
+                            1,
+                            16,
+                        );
+                    }
+
+                    // Get result from precompile results data
+                    if ctx.precompile_results_blake2() {
+                        *code += "\tmov rdi, [rdi+8]\n";
+                        Self::precompile_results_array(ctx, code, unusual_code, "rdi", 16);
+                    } else {
+                        // Call the Blake2 function
+                        Self::push_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                        *code += "\tcall _opcode_blake2\n";
+                        Self::pop_internal_registers(ctx, code, false);
+                        //Self::assert_rsp_is_aligned(ctx, code);
+                    }
+                }
+
+                // Consume mem reads
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tadd {}, 35*8 {}\n",
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("chunk_address += 35*8")
+                    );
+                }
+
+                // Set result
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake2: c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
             ZiskOp::Poseidon2 => {
                 // Use the memory address as the first and unique parameter
                 *code += &ctx.full_line_comment("Poseidon2: rdi = A0".to_string());
@@ -5452,9 +5540,6 @@ impl ZiskRom2Asm {
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
-            }
-            ZiskOp::Blake2 => {
-                unimplemented!();
             }
             ZiskOp::PubOut => {
                 assert!(ctx.store_b_in_c);
