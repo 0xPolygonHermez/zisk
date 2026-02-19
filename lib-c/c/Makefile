@@ -47,7 +47,8 @@ CPP_OBJS = $(BUILD_DIR)/fecc.o \
            $(BUILD_DIR)/add256.o \
            $(BUILD_DIR)/globals.o \
            $(BUILD_DIR)/goldilocks_base_field.o \
-           $(BUILD_DIR)/poseidon2_goldilocks.o
+           $(BUILD_DIR)/poseidon2_goldilocks.o \
+		   $(BUILD_DIR)/blake2.o
 
 ALL_OBJS = $(ASM_OBJS) $(CPP_OBJS)
 
@@ -165,6 +166,9 @@ $(BUILD_DIR)/goldilocks_base_field.o: $(SRC_DIR)/poseidon2/goldilocks_base_field
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/poseidon2_goldilocks.o: $(SRC_DIR)/poseidon2/poseidon2_goldilocks.cpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks.hpp $(SRC_DIR)/poseidon2/poseidon2_goldilocks_constants.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/blake2.o: $(SRC_DIR)/blake2/blake2.cpp $(SRC_DIR)/blake2/blake2.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
