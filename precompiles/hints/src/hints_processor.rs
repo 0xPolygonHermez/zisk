@@ -4,13 +4,12 @@
 //! that are received as a stream of `u64` values. Hints are used to provide preprocessed
 //! data to precompile operations in the ZisK zkVM.
 
-use crate::ordered_result_buffer::{BufferStatus, OrderedResultBuffer};
 use anyhow::Result;
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 use tracing::{debug, info};
 use zisk_common::io::{StreamProcessor, StreamSink};
@@ -34,6 +33,55 @@ use ziskos_hints::handlers::secp256k1::{
 };
 use ziskos_hints::handlers::secp256r1::secp256r1_ecdsa_verify_hint;
 use ziskos_hints::handlers::sha256::sha256_hint;
+
+/// Ordered result buffer with drain state.
+///
+/// This structure maintains a VecDeque that holds processed results in order,
+/// allowing out-of-order completion while ensuring in-order output.
+struct ResultQueue {
+    /// The result buffer: None = pending, Some(Ok(...)) = ready, Some(Err(...)) = error
+    buffer: VecDeque<Option<Result<Vec<u64>>>>,
+    /// Sequence ID of the next result to drain from buffer[0]
+    next_drain_seq: usize,
+}
+
+/// Thread-safe shared state for parallel hint processing.
+struct HintProcessorState {
+    /// Ordered results ready for draining
+    queue: Mutex<ResultQueue>,
+    /// Notifies drainer thread when a hint completes
+    drain_signal: Condvar,
+    /// Next sequence ID to assign to incoming hints
+    next_seq: AtomicUsize,
+    /// Signals processing should stop
+    error_flag: AtomicBool,
+    /// Signals drainer thread to shut down
+    shutdown: AtomicBool,
+    /// Invalidates stale workers after reset
+    generation: AtomicUsize,
+}
+
+impl HintProcessorState {
+    fn new() -> Self {
+        Self {
+            queue: Mutex::new(ResultQueue { buffer: VecDeque::new(), next_drain_seq: 0 }),
+            drain_signal: Condvar::new(),
+            next_seq: AtomicUsize::new(0),
+            error_flag: AtomicBool::new(false),
+            shutdown: AtomicBool::new(false),
+            generation: AtomicUsize::new(0),
+        }
+    }
+
+    fn reset(&self) {
+        self.error_flag.store(false, Ordering::Release);
+        self.next_seq.store(0, Ordering::Relaxed);
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        let mut queue = self.queue.lock().unwrap();
+        queue.buffer.clear();
+        queue.next_drain_seq = 0;
+    }
+}
 
 /// Type alias for custom hint handler functions.
 pub type CustomHintHandler = Arc<dyn Fn(&[u64]) -> Result<Vec<u64>> + Send + Sync>;
@@ -96,20 +144,20 @@ impl HintsProcessorBuilder {
             .build()
             .map_err(|e| anyhow::anyhow!("Failed to create thread pool: {}", e))?;
 
-        let buffer = Arc::new(OrderedResultBuffer::new());
+        let state = Arc::new(HintProcessorState::new());
         let hints_sink = self.hints_sink;
 
         // Spawn drainer thread
-        let drainer_buffer = Arc::clone(&buffer);
+        let drainer_state = Arc::clone(&state);
         let drainer_sink = Arc::clone(&hints_sink);
         let drainer_thread = std::thread::spawn(move || {
-            HintsProcessor::drainer_thread(drainer_buffer, drainer_sink);
+            HintsProcessor::drainer_thread(drainer_state, drainer_sink);
         });
 
         Ok(HintsProcessor {
             pool,
             num_hint: AtomicUsize::new(0),
-            buffer,
+            state,
             stats: if self.enable_stats { Some(Mutex::new(HashMap::new())) } else { None },
             hints_sink,
             drainer_thread: ManuallyDrop::new(drainer_thread),
@@ -132,8 +180,8 @@ pub struct HintsProcessor {
 
     num_hint: AtomicUsize,
 
-    /// Ordered result buffer for parallel processing with in-order output
-    buffer: Arc<OrderedResultBuffer<Result<Vec<u64>>>>,
+    /// Shared state for parallel hint processing
+    state: Arc<HintProcessorState>,
 
     /// Optional statistics collected during hint processing (for debugging).
     stats: Option<Mutex<HashMap<HintCode, usize>>>,
@@ -213,6 +261,7 @@ impl HintsProcessor {
     /// * `Ok(false)` - Batch processed successfully, no CTRL_END
     /// * `Err` - If a previous error occurred or hints are malformed
     pub fn process_hints(&self, hints: &[u64], first_batch: bool) -> Result<bool> {
+        debug!("[PROCESS] process_hints called with {} u64s, first_batch={}", hints.len(), first_batch);
         let mut has_ctrl_end = false;
 
         // Take any pending partial hint from previous batch
@@ -222,7 +271,7 @@ impl HintsProcessor {
         let mut idx = 0;
         while idx < hints.len() {
             // Check for error before processing each hint
-            if self.buffer.status() == BufferStatus::Error {
+            if self.state.error_flag.load(Ordering::Acquire) {
                 return Err(anyhow::anyhow!("Processing stopped due to previous error"));
             }
             let (parsed_hint, consumed) =
@@ -319,32 +368,53 @@ impl HintsProcessor {
                     break;
                 }
                 HintCode::Ctrl(CtrlHint::Cancel) => {
-                    // Cancel current stream: set error
-                    self.buffer.set_error();
+                    // Cancel current stream: set error and notify
+                    self.state.error_flag.store(true, Ordering::Release);
+                    self.state.drain_signal.notify_all();
                     return Err(anyhow::anyhow!("Stream cancelled"));
                 }
                 HintCode::Ctrl(CtrlHint::Error) => {
                     // External error signal
-                    self.buffer.set_error();
+                    self.state.error_flag.store(true, Ordering::Release);
+                    self.state.drain_signal.notify_all();
                     return Err(anyhow::anyhow!("Stream error signalled"));
                 }
                 _ => {} // Built-in data hint or custom hint; continue processing
             }
 
-            // Handle pass-through hints immediately (no worker needed)
-            if hint.is_passthrough {
-                self.buffer.reserve_and_fill(Ok(hint.data.clone()));
-                idx += length;
-                continue;
-            }
+            // Capture generation outside mutex - SeqCst provides sufficient ordering
+            let generation = self.state.generation.load(Ordering::SeqCst);
 
-            // Reserve slot and spawn worker for async processing
-            let seq_id = self.buffer.reserve();
-            let buffer = Arc::clone(&self.buffer);
+            // Atomically reserve slot - use Relaxed for seq since mutex provides ordering
+            let seq_id = {
+                let mut queue = self.state.queue.lock().unwrap();
+                let seq = self.state.next_seq.fetch_add(1, Ordering::Relaxed);
+
+                // Handle pass-through hints immediately
+                if hint.is_passthrough {
+                    queue.buffer.push_back(Some(Ok(hint.data.clone())));
+                    // Notify immediately while holding the lock to ensure drainer sees the result
+                    // Release lock after this block, avoiding duplicate notification
+                    drop(queue);
+                    // Use notify_all since wait_for_completion also waits on this condvar
+                    self.state.drain_signal.notify_all();
+                    // Continue to next hint without spawning worker
+                    idx += length;
+                    continue;
+                } else {
+                    queue.buffer.push_back(None);
+                }
+
+                seq
+            };
+
+            // Spawn processing task for async hints (Noop already handled above)
+            let state = Arc::clone(&self.state);
             let custom_handlers = Arc::clone(&self.custom_handlers);
             self.pool.spawn(move || {
-                let result = Self::dispatch_hint(hint, custom_handlers);
-                buffer.fill(seq_id, result);
+                debug!("[WORKER] seq={} dispatched", seq_id);
+                Self::worker_thread(state, hint, generation, seq_id, custom_handlers);
+                debug!("[WORKER] seq={} done", seq_id);
             });
 
             idx += length;
@@ -387,31 +457,165 @@ impl HintsProcessor {
         }
     }
 
-    /// Drainer thread that takes results in order and submits to sink.
-    fn drainer_thread(
-        buffer: Arc<OrderedResultBuffer<Result<Vec<u64>>>>,
-        hints_sink: Arc<dyn StreamSink>,
+    /// Worker thread that processes a single hint and stores the result.
+    ///
+    /// # Arguments
+    ///
+    /// * `state` - Shared processor state
+    /// * `hint` - The hint to process
+    /// * `generation` - Generation number for detecting stale workers
+    /// * `seq_id` - Sequence ID for ordering results
+    /// * `custom_handlers` - Custom hint handlers
+    fn worker_thread(
+        state: Arc<HintProcessorState>,
+        hint: PrecompileHint,
+        generation: usize,
+        seq_id: usize,
+        custom_handlers: Arc<HashMap<u32, CustomHintHandler>>,
     ) {
-        debug!("[DRAINER] Thread started");
+        // Check generation first to detect stale workers (before processing)
+        let current_gen = state.generation.load(Ordering::SeqCst);
+        if generation != current_gen {
+            debug!("[WORKER] seq={} early return: generation mismatch (worker={}, current={})", seq_id, generation, current_gen);
+            return;
+        }
 
-        while let Some(result) = buffer.take_next() {
-            match result {
-                Ok(data) => {
-                    debug!("[DRAINER] Submitting {} u64s", data.len());
-                    if let Err(e) = hints_sink.submit(data) {
-                        eprintln!("Error submitting to sink: {}", e);
-                        buffer.set_error();
+        // Catch panics to prevent permanently-stuck None slots in the buffer.
+        // If dispatch_hint panics, Rayon catches it silently but the slot would
+        // stay None forever, blocking the drainer from making progress.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if state.error_flag.load(Ordering::Acquire) {
+                Err(anyhow::anyhow!("Processing stopped due to error"))
+            } else {
+                Self::dispatch_hint(hint, custom_handlers)
+            }
+        }))
+        .unwrap_or_else(|panic_info| {
+            let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "unknown panic".to_string()
+            };
+            Err(anyhow::anyhow!("Worker panicked processing hint: {}", msg))
+        });
+
+        debug!("[WORKER] seq={} processed, acquiring lock", seq_id);
+
+        // Store result - MUST fill slot even if error occurred
+        let mut queue = state.queue.lock().unwrap();
+
+        // Check generation again in case reset happened during processing
+        let current_gen = state.generation.load(Ordering::SeqCst);
+        if generation != current_gen {
+            debug!("[WORKER] seq={} early return: generation mismatch after processing", seq_id);
+            return;
+        }
+
+        // Calculate offset in buffer; handle drained slots
+        if seq_id < queue.next_drain_seq {
+            debug!("[WORKER] seq={} early return: seq_id < next_drain_seq ({})", seq_id, queue.next_drain_seq);
+            return;
+        }
+        let offset = seq_id - queue.next_drain_seq;
+
+        // Check if slot exists - if not, drainer already processed and removed it
+        if offset >= queue.buffer.len() {
+            debug!("[WORKER] seq={} early return: offset {} >= buffer.len() {}", seq_id, offset, queue.buffer.len());
+            return;
+        }
+
+        // Fill the slot to allow drainer to proceed (critical for ordering)
+        queue.buffer[offset] = Some(result);
+        debug!("[WORKER] seq={} filled slot at offset {}, buffer_len={}", seq_id, offset, queue.buffer.len());
+
+        // Release lock before notifying
+        drop(queue);
+
+        // Notify drainer thread (use notify_all to wake any waiting threads)
+        debug!("[WORKER] seq={} calling notify_all", seq_id);
+        state.drain_signal.notify_all();
+    }
+
+    /// Drainer thread that waits for hints to complete and drains ready results from queue.
+    fn drainer_thread(state: Arc<HintProcessorState>, hints_sink: Arc<dyn StreamSink>) {
+        debug!("[DRAINER] Thread started");
+        loop {
+            debug!("[DRAINER] Attempting to acquire queue lock");
+            let mut queue = state.queue.lock().unwrap();
+            debug!("[DRAINER] Acquired queue lock, buffer_len={}, next_drain_seq={}", 
+                   queue.buffer.len(), queue.next_drain_seq);
+
+            // Check for shutdown
+            if state.shutdown.load(Ordering::Acquire) {
+                debug!("[DRAINER] Shutdown signal received, exiting");
+                break;
+            }
+
+            // Drain all consecutive ready results from the front
+            let mut drained_any = false;
+            while let Some(Some(res)) = queue.buffer.front() {
+                drained_any = true;
+                let current_seq = queue.next_drain_seq;
+                match res {
+                    Ok(data) => {
+                        // Clone data before dropping lock
+                        debug!("[DRAINER] Found ready result seq={}, size={} u64s, cloning", current_seq, data.len());
+                        let data_to_submit = data.clone();
+                        queue.buffer.pop_front();
+                        queue.next_drain_seq += 1;
+
+                        // Drop lock before submitting to avoid blocking workers
+                        debug!("[DRAINER] Dropping lock before submit seq={}", current_seq);
+                        drop(queue);
+
+                        // Submit to sink
+                        debug!("[DRAINER] Calling hints_sink.submit() for seq={}", current_seq);
+                        if let Err(e) = hints_sink.submit(data_to_submit) {
+                            eprintln!("Error submitting to sink: {}", e);
+                            state.error_flag.store(true, Ordering::Release);
+                            state.drain_signal.notify_all();
+                            return;
+                        }
+                        debug!("[DRAINER] Completed submit seq={}", current_seq);
+
+                        // Re-acquire lock for next iteration
+                        debug!("[DRAINER] Re-acquiring lock after seq={}", current_seq);
+                        queue = state.queue.lock().unwrap();
+                    }
+                    Err(e) => {
+                        // Error found - signal to stop
+                        state.error_flag.store(true, Ordering::Release);
+                        eprintln!("[seq={}] Error: {}", queue.next_drain_seq, e);
+                        queue.buffer.pop_front();
+                        queue.next_drain_seq += 1;
+                        state.drain_signal.notify_all();
                         return;
                     }
                 }
-                Err(e) => {
-                    eprintln!("Hint processing error: {}", e);
-                    buffer.set_error();
-                    return;
-                }
             }
-        }
 
+            // If we drained any results, notify wait_for_completion that buffer changed
+            if drained_any {
+                debug!("[DRAINER] Notifying wait_for_completion");
+                state.drain_signal.notify_all();
+            }
+
+            // Check for shutdown again before waiting
+            if state.shutdown.load(Ordering::Acquire) {
+                debug!("[DRAINER] Shutdown signal received before wait, exiting");
+                break;
+            }
+
+            // Wait for notification that a hint completed
+            debug!("[DRAINER] Waiting on drain_signal condvar");
+            #[allow(unused_assignments)]
+            {
+                queue = state.drain_signal.wait(queue).unwrap();
+            }
+            debug!("[DRAINER] Woke up from condvar wait");
+        }
         debug!("[DRAINER] Thread exiting");
     }
 
@@ -425,10 +629,20 @@ impl HintsProcessor {
     /// * `Ok(())` - All hints processed successfully
     /// * `Err` - If an error occurred during processing
     pub fn wait_for_completion(&self) -> Result<()> {
-        let status = self.buffer.wait_until_drained();
-        if status == BufferStatus::Error {
+        let mut queue = self.state.queue.lock().unwrap();
+
+        while !queue.buffer.is_empty() {
+            if self.state.error_flag.load(Ordering::Acquire) {
+                return Err(anyhow::anyhow!("Processing stopped due to error"));
+            }
+            // Wait for notification that buffer state changed
+            queue = self.state.drain_signal.wait(queue).unwrap();
+        }
+
+        if self.state.error_flag.load(Ordering::Acquire) {
             return Err(anyhow::anyhow!("Processing stopped due to error"));
         }
+
         Ok(())
     }
 
@@ -509,7 +723,7 @@ impl HintsProcessor {
 
     fn reset(&self) {
         self.num_hint.store(0, Ordering::Relaxed);
-        self.buffer.reset();
+        self.state.reset();
         if let Some(stats) = self.stats.as_ref() {
             stats.lock().unwrap().clear();
         }
@@ -527,7 +741,8 @@ impl HintsProcessor {
 impl Drop for HintsProcessor {
     fn drop(&mut self) {
         // Signal drainer thread to shut down
-        self.buffer.shutdown();
+        self.state.shutdown.store(true, Ordering::Release);
+        self.state.drain_signal.notify_all();
 
         // Join the drainer thread to ensure clean shutdown
         // Safety: We only take the value once in drop
@@ -599,7 +814,9 @@ mod tests {
         assert!(p.wait_for_completion().is_ok());
 
         // Buffer should be empty after completion
-        assert!(p.buffer.is_empty());
+        let queue = p.state.queue.lock().unwrap();
+        assert!(queue.buffer.is_empty());
+        assert_eq!(queue.next_drain_seq, 1);
     }
 
     #[test]
@@ -617,8 +834,10 @@ mod tests {
         assert!(p.process_hints(&data, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
-        // Verify all hints were processed (buffer empty)
-        assert!(p.buffer.is_empty());
+        // Verify all hints were processed (buffer empty, next_drain_seq advanced)
+        let queue = p.state.queue.lock().unwrap();
+        assert!(queue.buffer.is_empty());
+        assert_eq!(queue.next_drain_seq, 3);
     }
 
     #[test]
@@ -632,8 +851,10 @@ mod tests {
         assert!(p.process_hints(&data2, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
-        // Verify all hints were processed
-        assert!(p.buffer.is_empty());
+        // Verify sequence continued across calls
+        let queue = p.state.queue.lock().unwrap();
+        assert_eq!(queue.next_drain_seq, 2);
+        assert!(queue.buffer.is_empty());
     }
 
     #[test]
@@ -644,7 +865,8 @@ mod tests {
         assert!(p.wait_for_completion().is_ok());
 
         // No hints processed
-        assert!(p.buffer.is_empty());
+        let queue = p.state.queue.lock().unwrap();
+        assert_eq!(queue.next_drain_seq, 0);
     }
 
     // Negative tests
@@ -684,14 +906,15 @@ mod tests {
 
         // Reset should clear any error state
         p.reset();
-        assert_eq!(p.buffer.status(), BufferStatus::Active);
+        assert!(!p.state.error_flag.load(Ordering::Acquire));
 
         // Should be able to process new hints after reset (8 bytes = 1 u64)
         let good = vec![make_header(TEST_PASSTHROUGH_HINT, 8), 0x42];
         assert!(p.process_hints(&good, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
-        assert!(p.buffer.is_empty());
+        let queue = p.state.queue.lock().unwrap();
+        assert_eq!(queue.next_drain_seq, 1);
     }
 
     #[test]
@@ -716,7 +939,11 @@ mod tests {
         p.process_hints(&end, false).unwrap();
 
         // Buffer should already be empty
-        assert!(p.buffer.is_empty());
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert!(queue.buffer.is_empty());
+            assert_eq!(queue.next_drain_seq, 2);
+        }
 
         // Explicit wait should be instant
         assert!(p.wait_for_completion().is_ok());
@@ -732,7 +959,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("cancelled"));
 
         // Error flag should be set
-        assert_eq!(p.buffer.status(), BufferStatus::Error);
+        assert!(p.state.error_flag.load(Ordering::Acquire));
     }
 
     #[test]
@@ -745,7 +972,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("error"));
 
         // Error flag should be set
-        assert_eq!(p.buffer.status(), BufferStatus::Error);
+        assert!(p.state.error_flag.load(Ordering::Acquire));
     }
 
     #[test]
@@ -874,7 +1101,7 @@ mod tests {
 
         // Wait should detect the error from drainer thread
         std::thread::sleep(std::time::Duration::from_millis(100));
-        assert_eq!(p.buffer.status(), BufferStatus::Error);
+        assert!(p.state.error_flag.load(Ordering::Acquire));
     }
 
     // Builder tests
@@ -1114,14 +1341,22 @@ mod tests {
         assert!(p.wait_for_completion().is_ok());
 
         // Verify no results yet (hint is partial)
-        assert!(p.buffer.is_empty());
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 0);
+            assert!(queue.buffer.is_empty());
+        }
 
         // Second batch completes the hint
         assert!(p.process_hints(&batch2, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
-        // Now we should have the complete result (buffer drained)
-        assert!(p.buffer.is_empty());
+        // Now we should have the complete result
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 1);
+            assert!(queue.buffer.is_empty());
+        }
     }
 
     #[test]
@@ -1138,14 +1373,21 @@ mod tests {
         assert!(p.wait_for_completion().is_ok());
 
         // Verify no results yet
-        assert!(p.buffer.is_empty());
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 0);
+        }
 
         // Second batch completes the hint
         assert!(p.process_hints(&batch2, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
-        // Now we should have the complete result (buffer drained)
-        assert!(p.buffer.is_empty());
+        // Now we should have the complete result
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 1);
+            assert!(queue.buffer.is_empty());
+        }
     }
 
     #[test]
@@ -1167,14 +1409,21 @@ mod tests {
         assert!(p.wait_for_completion().is_ok());
 
         // Still no complete results
-        assert!(p.buffer.is_empty());
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 0);
+        }
 
         // Third batch completes the hint
         assert!(p.process_hints(&batch3, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
-        // Now we should have the complete result (buffer drained)
-        assert!(p.buffer.is_empty());
+        // Now we should have the complete result
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 1);
+            assert!(queue.buffer.is_empty());
+        }
     }
 
     #[test]
@@ -1198,18 +1447,31 @@ mod tests {
         assert!(p.wait_for_completion().is_ok());
 
         // No results yet
-        assert!(p.buffer.is_empty());
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 0);
+        }
 
         // Complete first hint
         assert!(p.process_hints(&batch2, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
+        // Should have first result now
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 1);
+        }
+
         // Complete second hint
         assert!(p.process_hints(&batch3, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
-        // Should have both results (buffer drained)
-        assert!(p.buffer.is_empty());
+        // Should have both results
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 2);
+            assert!(queue.buffer.is_empty());
+        }
     }
 
     #[test]
@@ -1229,12 +1491,22 @@ mod tests {
         assert!(p.process_hints(&batch1, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
+        // Should have result for complete hint
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 1);
+        }
+
         // Complete the partial hint
         assert!(p.process_hints(&batch2, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
-        // Should have both results (buffer drained)
-        assert!(p.buffer.is_empty());
+        // Should have both results
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 2);
+            assert!(queue.buffer.is_empty());
+        }
     }
 
     #[test]
@@ -1248,8 +1520,12 @@ mod tests {
         assert!(p.process_hints(&batch1, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
-        // Should have result (buffer drained)
-        assert!(p.buffer.is_empty());
+        // Should have result
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 1);
+            assert!(queue.buffer.is_empty());
+        }
     }
 
     #[test]
@@ -1276,8 +1552,12 @@ mod tests {
         // End stream should wait for all hints to complete
         assert!(p.process_hints(&end, false).is_ok());
 
-        // Everything should be processed (buffer drained)
-        assert!(p.buffer.is_empty());
+        // Everything should be processed
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 1);
+            assert!(queue.buffer.is_empty());
+        }
     }
 
     #[test]
@@ -1309,8 +1589,10 @@ mod tests {
         assert!(p.process_hints(&batch2, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
-        // Buffer should be drained
-        assert!(p.buffer.is_empty());
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 1);
+        }
     }
 
     #[test]
@@ -1334,8 +1616,12 @@ mod tests {
         assert!(p.process_hints(&batch3, false).is_ok());
         assert!(p.wait_for_completion().is_ok());
 
-        // Should have complete result (buffer drained)
-        assert!(p.buffer.is_empty());
+        // Should have complete result
+        {
+            let queue = p.state.queue.lock().unwrap();
+            assert_eq!(queue.next_drain_seq, 1);
+            assert!(queue.buffer.is_empty());
+        }
     }
 
     #[test]
