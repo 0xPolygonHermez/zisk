@@ -10,7 +10,7 @@ use std::collections::{HashMap, VecDeque};
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tracing::{debug, info};
 use zisk_common::io::{StreamProcessor, StreamSink};
 use zisk_common::{
@@ -261,7 +261,11 @@ impl HintsProcessor {
     /// * `Ok(false)` - Batch processed successfully, no CTRL_END
     /// * `Err` - If a previous error occurred or hints are malformed
     pub fn process_hints(&self, hints: &[u64], first_batch: bool) -> Result<bool> {
-        debug!("[PROCESS] process_hints called with {} u64s, first_batch={}", hints.len(), first_batch);
+        debug!(
+            "[PROCESS] process_hints called with {} u64s, first_batch={}",
+            hints.len(),
+            first_batch
+        );
         let mut has_ctrl_end = false;
 
         // Take any pending partial hint from previous batch
@@ -476,7 +480,10 @@ impl HintsProcessor {
         // Check generation first to detect stale workers (before processing)
         let current_gen = state.generation.load(Ordering::SeqCst);
         if generation != current_gen {
-            debug!("[WORKER] seq={} early return: generation mismatch (worker={}, current={})", seq_id, generation, current_gen);
+            debug!(
+                "[WORKER] seq={} early return: generation mismatch (worker={}, current={})",
+                seq_id, generation, current_gen
+            );
             return;
         }
 
@@ -515,30 +522,48 @@ impl HintsProcessor {
 
         // Calculate offset in buffer; handle drained slots
         if seq_id < queue.next_drain_seq {
-            debug!("[WORKER] seq={} early return: seq_id < next_drain_seq ({})", seq_id, queue.next_drain_seq);
+            debug!(
+                "[WORKER] seq={} early return: seq_id < next_drain_seq ({})",
+                seq_id, queue.next_drain_seq
+            );
             return;
         }
         let offset = seq_id - queue.next_drain_seq;
 
         // Check if slot exists - if not, drainer already processed and removed it
         if offset >= queue.buffer.len() {
-            debug!("[WORKER] seq={} early return: offset {} >= buffer.len() {}", seq_id, offset, queue.buffer.len());
+            debug!(
+                "[WORKER] seq={} early return: offset {} >= buffer.len() {}",
+                seq_id,
+                offset,
+                queue.buffer.len()
+            );
             return;
         }
 
         // Fill the slot to allow drainer to proceed (critical for ordering)
         queue.buffer[offset] = Some(result);
-        debug!("[WORKER] seq={} filled slot at offset {}, buffer_len={}", seq_id, offset, queue.buffer.len());
-
-        // Notify WHILE holding the lock to prevent a missed-wakeup race.
-        // If we drop the lock first and notify after, the drainer can acquire the lock,
-        // drain this slot, and call condvar::wait() before our notify_all fires —
-        // losing the signal permanently and leaving the drainer stuck.
-        debug!("[WORKER] seq={} calling notify_all", seq_id);
-        state.drain_signal.notify_all();
+        debug!(
+            "[WORKER] seq={} filled slot at offset {}, buffer_len={}",
+            seq_id,
+            offset,
+            queue.buffer.len()
+        );
 
         // Release lock after notifying
         drop(queue);
+
+        // Only wake the drainer when we filled the FRONT slot (offset == 0).
+        // The drainer can only make progress when buffer[0] is ready; waking it
+        // for any other slot causes it to re-check, find nothing drainable, and
+        // go back to sleep — pure overhead (O(N) context switches for N hints).
+        // When offset > 0, the drainer will reach this slot naturally during its
+        // current drain cycle after the front slots are consumed.
+        // Notify WHILE holding the lock to prevent a missed-wakeup race.
+        if offset == 0 {
+            debug!("[WORKER] seq={} calling notify_all (front slot)", seq_id);
+            state.drain_signal.notify_all();
+        }
     }
 
     /// Drainer thread that waits for hints to complete and drains ready results from queue.
@@ -547,8 +572,11 @@ impl HintsProcessor {
         loop {
             debug!("[DRAINER] Attempting to acquire queue lock");
             let mut queue = state.queue.lock().unwrap();
-            debug!("[DRAINER] Acquired queue lock, buffer_len={}, next_drain_seq={}", 
-                   queue.buffer.len(), queue.next_drain_seq);
+            debug!(
+                "[DRAINER] Acquired queue lock, buffer_len={}, next_drain_seq={}",
+                queue.buffer.len(),
+                queue.next_drain_seq
+            );
 
             // Check for shutdown
             if state.shutdown.load(Ordering::Acquire) {
@@ -564,7 +592,11 @@ impl HintsProcessor {
                 match res {
                     Ok(data) => {
                         // Clone data before dropping lock
-                        debug!("[DRAINER] Found ready result seq={}, size={} u64s, cloning", current_seq, data.len());
+                        debug!(
+                            "[DRAINER] Found ready result seq={}, size={} u64s, cloning",
+                            current_seq,
+                            data.len()
+                        );
                         let data_to_submit = data.clone();
                         queue.buffer.pop_front();
                         queue.next_drain_seq += 1;

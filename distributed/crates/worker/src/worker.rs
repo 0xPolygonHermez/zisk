@@ -406,27 +406,27 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     pub async fn partial_contribution_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
-        let job = job.lock().await;
-        let job_id = job.job_id.clone();
+        let mut serialized = {
+            let job = job.lock().await;
+            let proof_info = ProofInfo::new(
+                None,
+                job.total_compute_units as usize,
+                job.allocation.clone(),
+                job.rank_id as usize,
+            );
+            let phase_inputs = ProvePhaseInputs::Contributions(proof_info);
 
-        let proof_info = ProofInfo::new(
-            None,
-            job.total_compute_units as usize,
-            job.allocation.clone(),
-            job.rank_id as usize,
-        );
-        let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
+            let options = self.get_proof_options(false);
 
-        let options = self.get_proof_options(false);
-
-        let mut serialized = borsh::to_vec(&(
-            JobPhase::Contributions,
-            job_id,
-            phase_inputs,
-            options,
-            job.data_ctx.input_source.clone(),
-        ))
-        .unwrap();
+            borsh::to_vec(&(
+                JobPhase::Contributions,
+                job.job_id.clone(),
+                phase_inputs,
+                options,
+                job.data_ctx.input_source.clone(),
+            ))
+            .unwrap()
+        };
 
         self.prover.mpi_broadcast(&mut serialized)?;
         Ok(())
@@ -447,15 +447,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         job: &Mutex<JobContext>,
         challenges: Vec<ContributionsInfo>,
     ) -> Result<()> {
-        let job = job.lock().await;
-        let job_id = job.job_id.clone();
+        let mut serialized = {
+            let job = job.lock().await;
+            let job_id = job.job_id.clone();
 
-        let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
+            let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
 
-        let options = self.get_proof_options(false);
+            let options = self.get_proof_options(false);
 
-        let mut serialized =
-            borsh::to_vec(&(JobPhase::Prove, job_id, phase_inputs, options)).unwrap();
+            borsh::to_vec(&(JobPhase::Prove, job_id, phase_inputs, options)).unwrap()
+        };
 
         self.prover.mpi_broadcast(&mut serialized)?;
         Ok(())
