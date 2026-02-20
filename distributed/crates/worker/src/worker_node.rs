@@ -1,5 +1,6 @@
 use crate::{worker::ComputationResult, ProverConfig, Worker};
 use anyhow::{anyhow, Result};
+use asm_runner::GRPC_METRICS;
 use proofman::{AggProofs, ContributionsInfo, ExecutionInfo};
 use std::path::Path;
 use std::{path::PathBuf, time::Duration};
@@ -17,6 +18,11 @@ use zisk_distributed_grpc_api::contribution_params::InputSource;
 use zisk_distributed_grpc_api::execute_task_response::ResultData;
 use zisk_distributed_grpc_api::*;
 use zisk_sdk::{Asm, Emu, ZiskBackend};
+
+/// Tokio scheduler latency above which we count a starvation event.
+const STARVATION_THRESHOLD: Duration = Duration::from_millis(100);
+/// How often the canary task wakes up to check scheduler latency.
+const CANARY_INTERVAL: Duration = Duration::from_millis(10);
 
 use crate::config::WorkerServiceConfig;
 
@@ -187,6 +193,24 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // Create channels for computation results
         let (computation_tx, mut computation_rx) = mpsc::unbounded_channel::<ComputationResult>();
         let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
+
+        // Spawn a canary task that measures tokio scheduler latency.
+        // If the runtime is starved (e.g. a blocking call is occupying all threads),
+        // this task wakes up late and increments the starvation counter visible to
+        // AsmRunnerMT's semaphore-timeout diagnostic.
+        let _canary = tokio::spawn(async {
+            let mut interval = tokio::time::interval(CANARY_INTERVAL);
+            loop {
+                let before = std::time::Instant::now();
+                interval.tick().await;
+                let latency = before.elapsed();
+                if latency > STARVATION_THRESHOLD {
+                    GRPC_METRICS
+                        .thread_starvation_count
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+        });
 
         // Main non-blocking event loop
         loop {

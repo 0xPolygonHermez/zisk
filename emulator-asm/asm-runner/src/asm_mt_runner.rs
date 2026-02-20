@@ -162,6 +162,16 @@ impl AsmRunnerMT {
                     continue
                 }
                 Err(e) => {
+                    // Print gRPC health snapshot to correlate the stall with stream activity.
+                    let thread = std::thread::current();
+                    let thread_name = thread.name().unwrap_or("<unnamed>");
+                    tracing::warn!(
+                        "[MT_RUNNER] Semaphore timeout on thread {:?} (name={:?}, on_tokio={})",
+                        thread.id(),
+                        thread_name,
+                        thread_name.contains("tokio"),
+                    );
+                    crate::GRPC_METRICS.diagnose_grpc_health();
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
                     if chunk_id.0 == 0 {

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use asm_runner::HintsShmem;
+use asm_runner::{HintsShmem, GRPC_METRICS};
 use cargo_zisk::commands::get_proving_key;
 use precompiles_hints::HintsProcessor;
 use proofman::{AggProofs, ContributionsInfo};
@@ -622,13 +622,29 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
                 // Replace any existing actor (handles reconnect / job restart)
                 self.stream_actor = Some(StreamOrderingActor::new(hints_processor, job_id));
+                GRPC_METRICS.active_streams.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
-            StreamMessageKind::Data | StreamMessageKind::End => match &self.stream_actor {
-                Some(actor) => actor.send(stream_data)?,
+            StreamMessageKind::Data => match &self.stream_actor {
+                Some(actor) => {
+                    GRPC_METRICS.callbacks_invoked.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    actor.send(stream_data)?;
+                }
                 None => {
                     return Err(anyhow::anyhow!(
                         "Received stream {:?} without a prior Start for job {}",
                         stream_data.stream_type,
+                        stream_data.job_id
+                    ));
+                }
+            },
+            StreamMessageKind::End => match &self.stream_actor {
+                Some(actor) => {
+                    actor.send(stream_data)?;
+                    GRPC_METRICS.active_streams.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                }
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "Received stream End without a prior Start for job {}",
                         stream_data.job_id
                     ));
                 }
