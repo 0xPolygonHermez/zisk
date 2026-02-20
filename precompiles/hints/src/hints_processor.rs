@@ -550,20 +550,22 @@ impl HintsProcessor {
             queue.buffer.len()
         );
 
-        // Release lock after notifying
-        drop(queue);
-
         // Only wake the drainer when we filled the FRONT slot (offset == 0).
         // The drainer can only make progress when buffer[0] is ready; waking it
         // for any other slot causes it to re-check, find nothing drainable, and
         // go back to sleep — pure overhead (O(N) context switches for N hints).
         // When offset > 0, the drainer will reach this slot naturally during its
         // current drain cycle after the front slots are consumed.
-        // Notify WHILE holding the lock to prevent a missed-wakeup race.
+        // Notify WHILE holding the lock to prevent a missed-wakeup race: the
+        // drainer cannot enter condvar.wait() while we hold the lock, so this
+        // notification cannot be lost.
         if offset == 0 {
             debug!("[WORKER] seq={} calling notify_all (front slot)", seq_id);
             state.drain_signal.notify_all();
         }
+
+        // Release lock after notifying
+        drop(queue);
     }
 
     /// Drainer thread that waits for hints to complete and drains ready results from queue.
@@ -643,11 +645,14 @@ impl HintsProcessor {
                 break;
             }
 
-            // Wait for notification that a hint completed
-            debug!("[DRAINER] Waiting on drain_signal condvar");
+            debug!("[DRAINER] Waiting on drain_signal condvar (timeout=50ms)");
             #[allow(unused_assignments)]
             {
-                queue = state.drain_signal.wait(queue).unwrap();
+                let (q, _) = state
+                    .drain_signal
+                    .wait_timeout(queue, Duration::from_millis(50))
+                    .unwrap();
+                queue = q;
             }
             debug!("[DRAINER] Woke up from condvar wait");
         }
