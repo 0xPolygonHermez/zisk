@@ -8,6 +8,84 @@ use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
 use crate::get_elf_data_hash_from_path;
 
+fn find_workspace_root(start: &Path) -> Option<PathBuf> {
+    let mut current = Some(start);
+
+    while let Some(dir) = current {
+        let cargo_toml = dir.join("Cargo.toml");
+
+        if cargo_toml.exists() {
+            if let Ok(contents) = std::fs::read_to_string(&cargo_toml) {
+                if contents.contains("[workspace]") {
+                    return Some(dir.to_path_buf());
+                }
+            }
+        }
+
+        current = dir.parent();
+    }
+
+    None
+}
+
+pub fn resolve_emulator_asm(installed_path: PathBuf, verbose: bool) -> Result<PathBuf> {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    let workspace_root =
+        if manifest_dir.exists() { find_workspace_root(&manifest_dir) } else { None };
+
+    let emulator_asm_path = if let Some(ref root) = workspace_root {
+        let candidate = root.join("emulator-asm");
+        if candidate.exists() {
+            if verbose {
+                println!("Using emulator-asm from workspace: {}", candidate.display());
+            }
+            candidate
+        } else {
+            if verbose {
+                println!("Workspace found but emulator-asm not present, using installed path");
+            }
+            installed_path
+        }
+    } else {
+        if verbose {
+            println!("No workspace found, using installed path: {}", installed_path.display());
+        }
+        installed_path
+    };
+
+    println!("Looking for emulator-asm at: {}", emulator_asm_path.display());
+
+    if !emulator_asm_path.exists() {
+        anyhow::bail!("emulator-asm directory not found at: {}", emulator_asm_path.display());
+    }
+
+    // Build ziskclib if needed (runtime build is fine - this is not during cargo build)
+    if manifest_dir.exists() {
+        if let Some(workspace_root) = workspace_root {
+            let ziskclib_path = workspace_root.join("ziskclib");
+            if ziskclib_path.exists() {
+                if verbose {
+                    println!("Building ziskclib...");
+                }
+                let status = Command::new("cargo")
+                    .args(["build", "--release", "-p", "ziskclib"])
+                    .current_dir(&workspace_root)
+                    .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+                    .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+                    .status()
+                    .context("Failed to build ziskclib")?;
+
+                if !status.success() {
+                    anyhow::bail!("Failed to build ziskclib");
+                }
+            }
+        }
+    }
+
+    Ok(emulator_asm_path)
+}
+
 /// Check if all assembly binary files exist for a given ELF and output path
 pub fn assembly_files_exist(elf: &Path, output_path: &Path, hints: bool) -> Result<bool> {
     let elf_hash = get_elf_data_hash_from_path(elf)?;
@@ -94,44 +172,7 @@ pub fn generate_assembly(
     let bin_mo_file = base_path.with_file_name(bin_mo_file);
 
     let installed_path = crate::get_default_zisk_path().join("emulator-asm");
-
-    // Only check workspace if we're running via `cargo run` or `cargo build`
-    // Check if the current executable is in the target directory (development mode)
-    let is_development = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.to_str().map(|s| s.contains("/target/")))
-        .unwrap_or(false);
-
-    let workspace_path = if is_development {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().and_then(|workspace_root| {
-            let cargo_toml = workspace_root.join("Cargo.toml");
-            let emulator_path = workspace_root.join("emulator-asm");
-            if emulator_path.exists() && cargo_toml.exists() {
-                Some(emulator_path)
-            } else {
-                None
-            }
-        })
-    } else {
-        None
-    };
-
-    let (emulator_asm_path, source) = if let Some(ws_path) = workspace_path {
-        (ws_path, "workspace")
-    } else if installed_path.exists() {
-        (installed_path, "installed")
-    } else {
-        (installed_path, "installed (not found)")
-    };
-
-    println!("Looking for emulator-asm at: {} ({})", emulator_asm_path.display(), source);
-
-    if !emulator_asm_path.exists() {
-        anyhow::bail!(
-            "emulator-asm directory not found. Expected at: {}",
-            emulator_asm_path.display()
-        );
-    }
+    let emulator_asm_path = resolve_emulator_asm(installed_path, verbose)?;
 
     let emulator_asm_path =
         emulator_asm_path.to_str().context("Failed to convert emulator-asm path to string")?;
