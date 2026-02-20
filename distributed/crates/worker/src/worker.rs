@@ -4,19 +4,18 @@ use cargo_zisk::commands::get_proving_key;
 use precompiles_hints::HintsProcessor;
 use proofman::{AggProofs, ContributionsInfo};
 use rom_setup::{get_elf_data_hash, DEFAULT_CACHE_PATH};
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
 use std::fs;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_common::io::{StreamProcessor, StreamSource, ZiskStdin};
-use zisk_common::reinterpret_vec;
 use zisk_common::ElfBinaryFromFile;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
-use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind, StreamPayloadDto};
+use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProgramPK, ZiskProver};
+
+use crate::stream_ordering::StreamOrderingActor;
 
 use proofman::ExecutionInfo;
 use proofman::ProofInfo;
@@ -246,10 +245,9 @@ pub struct Worker<T: ZiskBackend + 'static> {
     prover: Arc<ZiskProver<T>>,
     prover_config: ProverConfig,
 
-    stream_buffers: HashMap<JobId, (u32, HashMap<u32, Vec<u8>>)>, // (job_id, (next_seq, (seq_number, data)))
-    hints_processor: Option<HintsProcessor>,
-
+    stream_actor: Option<StreamOrderingActor>,
     pk: ZiskProgramPK,
+    hints_processor: Option<Arc<HintsProcessor>>,
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
@@ -282,7 +280,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover,
             prover_config,
             pk,
-            stream_buffers: HashMap::new(),
+            stream_actor: None,
             hints_processor: None,
         })
     }
@@ -319,7 +317,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover,
             prover_config,
             pk,
-            stream_buffers: HashMap::new(),
+            stream_actor: None,
             hints_processor: None,
         })
     }
@@ -368,6 +366,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         if let Some(handle) = self.current_computation.take() {
             handle.abort();
         }
+        // Drop the actor: closes the channel, which signals the ordering thread to exit
+        self.stream_actor = None;
     }
 
     pub fn new_job(
@@ -561,8 +561,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 stdin.set_hints_stream(hints_stream);
             }
             HintsSourceDto::HintsStream(_hints_uri) => {
-                // For HintsStream, the worker will receive hint data via stream_data messages
-                // The hints will be processed by the hints_processor in process_stream_data
+                // For HintsStream, the worker will receive hint data via StreamData gRPC messages
+                // routed through the stream ordering actor into the hints processor.
                 // No need to set hints_stream on prover for this case
             }
             HintsSourceDto::HintsNull => {
@@ -594,116 +594,72 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(challenge)
     }
 
-    pub async fn process_stream_data(&mut self, stream_data: StreamDataDto) -> Result<()> {
-        let job_id = stream_data.job_id;
-        let stream_type = stream_data.stream_type;
+    /// Routes an incoming `StreamData` message to the per-job ordering actor.
+    ///
+    /// - `Start`: initialises the `HintsProcessor` (if needed), resets it, and spawns the actor.
+    /// - `Data` / `End`: enqueues the message into the actor's channel — O(1), non-blocking.
+    ///
+    /// The actor thread owns the reorder buffer and calls `process_hints` in sequence order.
+    pub async fn route_stream_data(&mut self, stream_data: StreamDataDto) -> Result<()> {
+        match &stream_data.stream_type {
+            StreamMessageKind::Start => {
+                let job_id = stream_data.job_id.clone();
 
-        if self.hints_processor.is_none() {
-            let base_port = self.prover_config.asm_port;
-            let local_rank = self.prover.local_rank();
-            let unlock_mapped_memory = self.prover_config.unlock_mapped_memory;
-            let hints_shmem = HintsShmem::new(base_port, local_rank, unlock_mapped_memory)?;
-            let processor = HintsProcessor::builder(hints_shmem)
-                .build()
-                .map_err(|e| anyhow::anyhow!("Failed to initialize hints processor: {}", e))?;
+                self.ensure_hints_processor(&job_id).await?;
 
-            let worker_idx = self
-                .current_job
-                .as_ref()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Received stream data for job {}, but no current job is set",
-                        job_id
-                    )
-                })?
-                .lock()
-                .await
-                .rank_id as usize;
+                let hints_processor = self.hints_processor.as_ref().unwrap();
 
-            processor.set_has_rom_sm(worker_idx == 0);
-            self.hints_processor = Some(processor);
-        }
-
-        // Check the existence of stream buffer based on stream type
-        if stream_type == StreamMessageKind::Start {
-            // Check if buffer already exists
-            match self.stream_buffers.entry(job_id.clone()) {
-                Entry::Occupied(_) => {
-                    return Err(anyhow::anyhow!("Received duplicate START for job {}", job_id));
-                }
-                Entry::Vacant(entry) => {
-                    entry.insert((1, HashMap::new()));
-                }
-            }
-
-            // Reset hints processor state for the new stream/job
-            // This is crucial for consecutive proofs to work correctly
-            if let Some(ref mut hints_processor) = self.hints_processor {
                 hints_processor.reset();
+
+                let hints_processor = Arc::clone(hints_processor);
+
+                // Replace any existing actor (handles reconnect / job restart)
+                self.stream_actor = Some(StreamOrderingActor::new(hints_processor, job_id));
             }
+            StreamMessageKind::Data | StreamMessageKind::End => match &self.stream_actor {
+                Some(actor) => actor.send(stream_data)?,
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "Received stream {:?} without a prior Start for job {}",
+                        stream_data.stream_type,
+                        stream_data.job_id
+                    ));
+                }
+            },
+        }
+        Ok(())
+    }
 
-            return Ok(());
-        } else if stream_type == StreamMessageKind::End {
-            // Ensure buffer exists
-            if !self.stream_buffers.contains_key(&job_id) {
-                return Err(anyhow::anyhow!(
-                    "Received {:?} without START for job {}",
-                    stream_type,
-                    job_id,
-                ));
-            }
-
-            // Clean up the stream buffer for this job
-            self.stream_buffers.remove(&job_id);
-
+    /// Lazily initialises the `HintsProcessor` using configuration from the current job.
+    async fn ensure_hints_processor(&mut self, job_id: &JobId) -> Result<()> {
+        if self.hints_processor.is_some() {
             return Ok(());
         }
 
-        let element = self.stream_buffers.get_mut(&job_id).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Received stream data without START for job {} stream type {:?}",
-                job_id,
-                stream_type
-            )
-        })?;
+        let base_port = self.prover_config.asm_port;
+        let local_rank = self.prover.local_rank();
+        let unlock_mapped_memory = self.prover_config.unlock_mapped_memory;
+        let hints_shmem = HintsShmem::new(base_port, local_rank, unlock_mapped_memory)?;
+        let processor = HintsProcessor::builder(hints_shmem)
+            .build()
+            .map_err(|e| anyhow::anyhow!("Failed to initialize hints processor: {}", e))?;
 
-        let next_seq = &mut element.0;
-        let stream_buffer = &mut element.1;
-
-        let StreamPayloadDto { sequence_number: current_seq, mut payload } =
-            stream_data.stream_payload.ok_or_else(|| {
+        let worker_idx = self
+            .current_job
+            .as_ref()
+            .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "Missing stream payload for job {} stream type {:?}",
-                    job_id,
-                    stream_type
+                    "Received stream data for job {}, but no current job is set",
+                    job_id
                 )
-            })?;
+            })?
+            .lock()
+            .await
+            .rank_id as usize;
 
-        // Check if this is the expected sequence number
-        // If not, buffer it for later processing
-        if current_seq != *next_seq {
-            println!(
-                "Received out-of-order stream data for job {}, expected seq {}, got seq {}, buffering",
-                job_id, *next_seq, current_seq
-            );
-            stream_buffer.insert(current_seq, payload);
-            return Ok(());
-        }
+        processor.set_has_rom_sm(worker_idx == 0);
 
-        // Process the current payload (which has the expected sequence number)
-        // and increment next_seq to expect the following sequence
-        *next_seq += 1;
-
-        // Check if we have any buffered subsequent payloads waiting
-        // If so, append them to the current payload in order
-        while let Some(buffered_data) = stream_buffer.remove(next_seq) {
-            payload.extend(buffered_data);
-            *next_seq += 1;
-        }
-
-        // Process the hints
-        let payload = reinterpret_vec(payload)?;
-        self.hints_processor.as_mut().unwrap().process_hints(&payload, current_seq == 1)?;
+        self.hints_processor = Some(Arc::new(processor));
 
         Ok(())
     }

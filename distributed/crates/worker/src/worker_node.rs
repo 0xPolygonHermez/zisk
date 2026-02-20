@@ -744,22 +744,19 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             return Err(anyhow!("Stream data received without current job context"));
         }
 
-        let job = self.worker.current_job().clone().unwrap().clone();
+        let job = self.worker.current_job().unwrap();
         let current_job_id = job.lock().await.job_id.clone();
 
         let stream_data_dto: StreamDataDto = stream_data.into();
-        let job_id = stream_data_dto.job_id.clone();
 
-        if current_job_id != job_id {
+        if current_job_id != stream_data_dto.job_id {
             return Err(anyhow!(
                 "Job ID mismatch in StreamData: expected {}, got {}",
                 current_job_id.as_string(),
-                job_id
+                stream_data_dto.job_id
             ));
         }
 
-        self.worker.process_stream_data(stream_data_dto).await?;
-
-        Ok(())
+        self.worker.route_stream_data(stream_data_dto).await
     }
 }

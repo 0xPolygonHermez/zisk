@@ -530,12 +530,15 @@ impl HintsProcessor {
         queue.buffer[offset] = Some(result);
         debug!("[WORKER] seq={} filled slot at offset {}, buffer_len={}", seq_id, offset, queue.buffer.len());
 
-        // Release lock before notifying
-        drop(queue);
-
-        // Notify drainer thread (use notify_all to wake any waiting threads)
+        // Notify WHILE holding the lock to prevent a missed-wakeup race.
+        // If we drop the lock first and notify after, the drainer can acquire the lock,
+        // drain this slot, and call condvar::wait() before our notify_all fires —
+        // losing the signal permanently and leaving the drainer stuck.
         debug!("[WORKER] seq={} calling notify_all", seq_id);
         state.drain_signal.notify_all();
+
+        // Release lock after notifying
+        drop(queue);
     }
 
     /// Drainer thread that waits for hints to complete and drains ready results from queue.
