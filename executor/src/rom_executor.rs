@@ -7,15 +7,11 @@ use crate::{
     AsmResources, DeviceMetricsList, Emulator, EmulatorKind, NestedDeviceMetricsList,
     StaticSMBundle,
 };
-use anyhow::Result;
 use asm_runner::AsmRunnerMO;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::{sync::Mutex, thread::JoinHandle};
-use zisk_common::{
-    io::{StreamSource, ZiskStdin},
-    EmuTrace, ExecutorStatsHandle, StatsScope,
-};
+use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
 
 /// Output from ROM execution.
@@ -57,11 +53,6 @@ impl RomExecutor {
 
     pub fn set_asm_resources(&self, asm_resources: AsmResources) {
         self.emulator.set_asm_resources(asm_resources);
-    }
-
-    /// Sets the hints stream source.
-    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
-        self.emulator.set_hints_stream_src(stream)
     }
 
     /// Resets the hints stream if configured.

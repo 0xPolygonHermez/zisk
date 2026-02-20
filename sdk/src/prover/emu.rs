@@ -11,7 +11,7 @@ use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs,
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo};
 use std::path::PathBuf;
 use std::sync::Arc;
-use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::io::ZiskStdin;
 use zisk_common::ElfBinaryLike;
 use zisk_common::ExecutorStatsHandle;
 use zisk_core::Riscv2zisk;
@@ -79,10 +79,6 @@ impl ProverEngine for EmuProver {
 
     fn register_program(&self, pk: &ZiskProgramPK) -> Result<()> {
         self.core_prover.backend.register_program(pk)
-    }
-
-    fn set_hints_stream(&self, _: StreamSource) -> Result<()> {
-        unreachable!("EMU prover does not support precompile hints");
     }
 
     fn setup(&self, elf: &impl ElfBinaryLike) -> Result<(ZiskProgramPK, ZiskProgramVK)> {

@@ -256,7 +256,7 @@ impl ZiskProve {
 
     pub fn run_asm(
         &mut self,
-        stdin: ZiskStdin,
+        mut stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
         gpu_params: Option<ParamsGPU>,
     ) -> Result<(ZiskProveResult, i32)> {
@@ -289,7 +289,7 @@ impl ZiskProve {
         };
 
         if let Some(hints_stream) = hints_stream {
-            prover.set_hints_stream(hints_stream)?;
+            stdin.set_hints_stream(hints_stream);
         }
 
         let world_rank = prover.world_rank();

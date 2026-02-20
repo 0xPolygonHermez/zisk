@@ -177,7 +177,7 @@ impl ZiskStats {
 
     pub fn run_asm(
         &mut self,
-        stdin: ZiskStdin,
+        mut stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let prover = ProverClient::builder()
@@ -197,7 +197,7 @@ impl ZiskStats {
         let (pk, _) = prover.setup(&elf)?;
 
         if let Some(hints_stream) = hints_stream {
-            prover.set_hints_stream(hints_stream)?;
+            stdin.set_hints_stream(hints_stream);
         }
         let mpi_node = self.mpi_node.map(|n| n as u32);
         prover.stats(&pk, stdin, self.debug.clone(), self.minimal_memory, mpi_node)

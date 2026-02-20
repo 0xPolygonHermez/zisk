@@ -8,7 +8,6 @@ use crate::AsmResources;
 use crate::{
     DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
 };
-use anyhow::Result;
 use asm_runner::{
     shmem_input_name, write_input, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmService, AsmServices,
     SharedMemoryWriter,
@@ -17,7 +16,6 @@ use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use sm_rom::RomSM;
-use zisk_common::io::StreamSource;
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, ChunkId, EmuTrace, ExecutorStatsHandle, StatsScope,
 };
@@ -73,10 +71,6 @@ impl EmulatorAsm {
         *self.asm_resources.lock().unwrap() = Some(asm_resources);
     }
 
-    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
-        self.asm_resources.lock().unwrap().as_ref().unwrap().set_hints_stream_src(stream)
-    }
-
     pub fn reset_hints_stream(&self) {
         self.asm_resources.lock().unwrap().as_ref().unwrap().reset();
     }
@@ -119,6 +113,11 @@ impl EmulatorAsm {
         let asm_resources = asm_resources_guard.as_ref().expect("AsmResources not initialized");
 
         if use_hints {
+            let hints_stream =
+                stdin.lock().unwrap().take_hints_stream().expect("Hints stream not set");
+            asm_resources
+                .set_hints_stream_src(hints_stream)
+                .expect("Failed to set hints stream source");
             asm_resources.start_stream().expect("Failed to start hints stream");
         }
 

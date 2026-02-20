@@ -1,4 +1,4 @@
-use crate::io::{ZiskFileStdin, ZiskMemoryStdin, ZiskNullStdin};
+use crate::io::{StreamSource, ZiskFileStdin, ZiskMemoryStdin, ZiskNullStdin};
 use anyhow::Result;
 use serde::{de::DeserializeOwned, Serialize};
 use std::path::Path;
@@ -93,6 +93,7 @@ impl ZiskIO for ZiskIOVariant {
 #[derive(Clone)]
 pub struct ZiskStdin {
     io: Arc<ZiskIOVariant>,
+    hints_stream: Option<Arc<StreamSource>>,
 }
 
 impl ZiskIO for ZiskStdin {
@@ -134,21 +135,27 @@ impl Default for ZiskStdin {
 impl ZiskStdin {
     /// Create new memory-based stdin
     pub fn new() -> Self {
-        Self { io: Arc::new(ZiskIOVariant::Memory(ZiskMemoryStdin::new(Vec::new()))) }
+        Self {
+            io: Arc::new(ZiskIOVariant::Memory(ZiskMemoryStdin::new(Vec::new()))),
+            hints_stream: None,
+        }
     }
 
     /// Create a null stdin (no input)
     pub fn null() -> Self {
-        Self { io: Arc::new(ZiskIOVariant::Null(ZiskNullStdin)) }
+        Self { io: Arc::new(ZiskIOVariant::Null(ZiskNullStdin)), hints_stream: None }
     }
 
     /// Create a file-based stdin
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        Ok(Self { io: Arc::new(ZiskIOVariant::File(ZiskFileStdin::new(path)?)) })
+        Ok(Self {
+            io: Arc::new(ZiskIOVariant::File(ZiskFileStdin::new(path)?)),
+            hints_stream: None,
+        })
     }
 
     pub fn from_vec(data: Vec<u8>) -> Self {
-        Self { io: Arc::new(ZiskIOVariant::Memory(ZiskMemoryStdin::new(data))) }
+        Self { io: Arc::new(ZiskIOVariant::Memory(ZiskMemoryStdin::new(data))), hints_stream: None }
     }
 
     /// Create a ZiskStdin from a URI string
@@ -176,5 +183,13 @@ impl ZiskStdin {
             // No "://" found - fallback as a file path
             ZiskStdin::from_file(uri.as_str())
         }
+    }
+
+    pub fn set_hints_stream(&mut self, stream: StreamSource) {
+        self.hints_stream = Some(Arc::new(stream));
+    }
+
+    pub fn take_hints_stream(&mut self) -> Option<Arc<StreamSource>> {
+        self.hints_stream.take()
     }
 }

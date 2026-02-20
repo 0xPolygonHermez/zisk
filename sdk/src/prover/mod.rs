@@ -25,10 +25,7 @@ use std::{
 };
 use tracing::info;
 use zisk_common::ElfBinaryLike;
-use zisk_common::{
-    io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, StatsCostPerType, ZiskExecutionResult,
-};
+use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, StatsCostPerType, ZiskExecutionResult};
 use zisk_core::ZiskRom;
 
 pub struct ZiskExecuteResult {
@@ -720,8 +717,6 @@ pub trait ProverEngine {
 
     fn register_program(&self, pk: &ZiskProgramPK) -> Result<()>;
 
-    fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()>;
-
     fn executed_steps(&self) -> u64;
 
     fn get_execution_info(&self) -> Result<ExecutionInfo>;
@@ -842,10 +837,6 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     pub fn register_program(&self, pk: &ZiskProgramPK) -> Result<()> {
         self.prover.register_program(pk)
-    }
-
-    pub fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()> {
-        self.prover.set_hints_stream(hints_stream)
     }
 
     /// Get the world rank of the prover. The world rank is the rank of the prover in the global MPI context.

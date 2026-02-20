@@ -16,7 +16,7 @@ use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::io::ZiskStdin;
 use zisk_common::ElfBinaryLike;
 use zisk_common::ExecutorStatsHandle;
 use zisk_core::Riscv2zisk;
@@ -91,10 +91,6 @@ impl ProverEngine for AsmProver {
 
     fn register_program(&self, pk: &ZiskProgramPK) -> Result<()> {
         self.core_prover.backend.register_program(pk)
-    }
-
-    fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()> {
-        self.core_prover.backend.set_hints_stream(hints_stream)
     }
 
     fn executed_steps(&self) -> u64 {

@@ -33,17 +33,14 @@ use std::{
 };
 use witness::WitnessComponent;
 use zisk_common::{
-    io::{StreamSource, ZiskStdin},
-    stats_begin, stats_end, BusDeviceMetrics, ChunkId, ExecutorStatsHandle, StatsCostPerType,
-    StatsType, ZiskExecutionResult,
+    io::ZiskStdin, stats_begin, stats_end, BusDeviceMetrics, ChunkId, ExecutorStatsHandle,
+    StatsCostPerType, StatsType, ZiskExecutionResult,
 };
 use zisk_core::ZiskRom;
 use zisk_pil::ZiskPublicValues;
 use zisk_pil::{
     SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS, ZISK_AIRGROUP_ID,
 };
-
-use anyhow::Result;
 
 pub type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
 
@@ -111,11 +108,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// Sets ASM resources for execution (only applicable for ASM emulator).
     pub fn set_asm_resources(&self, asm_resources: AsmResources) {
         self.rom_executor.set_asm_resources(asm_resources);
-    }
-
-    /// Sets the hints stream source.
-    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
-        self.rom_executor.set_hints_stream_src(stream)
     }
 
     /// Gets the execution result and stats.

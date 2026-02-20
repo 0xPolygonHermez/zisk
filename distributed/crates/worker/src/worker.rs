@@ -549,26 +549,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> Result<Vec<ContributionsInfo>> {
         let phase = proofman::ProvePhase::Contributions;
 
-        match input_source {
-            InputSourceDto::InputPath(inputs_uri) => {
-                let stdin = ZiskStdin::from_file(inputs_uri)?;
-
-                prover.set_stdin(stdin)?;
-            }
-            InputSourceDto::InputData(input_data) => {
-                let stdin = ZiskStdin::from_vec(input_data);
-                prover.set_stdin(stdin)?;
-            }
-            InputSourceDto::InputNull => {
-                let stdin = ZiskStdin::null();
-                prover.set_stdin(stdin)?;
-            }
-        }
+        let mut stdin = match input_source {
+            InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
+            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
+            InputSourceDto::InputNull => ZiskStdin::null(),
+        };
 
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
                 let hints_stream = StreamSource::from_uri(hints_uri)?;
-                prover.set_hints_stream(hints_stream)?;
+                stdin.set_hints_stream(hints_stream);
             }
             HintsSourceDto::HintsStream(_hints_uri) => {
                 // For HintsStream, the worker will receive hint data via stream_data messages
@@ -579,6 +569,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 // No hints to set
             }
         }
+
+        prover.set_stdin(stdin)?;
 
         prover.register_program(pk)?;
 

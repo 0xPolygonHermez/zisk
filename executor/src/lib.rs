@@ -17,7 +17,6 @@ mod static_data_bus;
 mod static_data_bus_collect;
 mod utils;
 
-use anyhow::Result;
 mod witness_generator;
 mod witness_orchestrator;
 
@@ -41,7 +40,6 @@ pub use static_data_bus_collect::*;
 pub use utils::*;
 use witness_generator::*;
 use witness_orchestrator::*;
-use zisk_common::io::StreamSource;
 use zisk_core::ZiskRom;
 
 pub type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
@@ -99,13 +97,6 @@ impl EmulatorKind {
             Self::Asm(e) => e.set_asm_resources(asm_resources),
             Self::Rust(_) => (), // No ASM resources in Rust emulator
         };
-    }
-
-    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
-        match self {
-            Self::Asm(e) => e.set_hints_stream_src(stream),
-            Self::Rust(_) => Err(anyhow::anyhow!("Hints stream not supported in Rust emulator")),
-        }
     }
 
     pub fn reset_hints_stream(&self) {

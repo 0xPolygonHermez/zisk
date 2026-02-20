@@ -24,10 +24,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use zisk_common::stats_mark;
-use zisk_common::{
-    io::{StreamSource, ZiskStdin},
-    ElfBinaryLike, ExecutorStatsHandle, ZiskExecutionResult,
-};
+use zisk_common::{io::ZiskStdin, ElfBinaryLike, ExecutorStatsHandle, ZiskExecutionResult};
 
 pub(crate) struct ProverBackend {
     proofman: Option<ProofMan<Goldilocks>>,
@@ -102,13 +99,6 @@ impl ProverBackend {
         })?;
         executor.set_stdin(stdin);
         Ok(())
-    }
-
-    pub fn set_hints_stream(&self, hints_stream: StreamSource) -> Result<()> {
-        let executor = self.executor.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
-        })?;
-        executor.set_hints_stream_src(hints_stream)
     }
 
     pub fn execution_result(&self) -> Result<(ZiskExecutionResult, ExecutorStatsHandle)> {
