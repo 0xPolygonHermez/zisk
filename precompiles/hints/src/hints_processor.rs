@@ -645,12 +645,11 @@ impl HintsProcessor {
                 break;
             }
 
-            debug!("[DRAINER] Waiting on drain_signal condvar (timeout=50ms)");
+            // Wait for notification that a hint completed
+            debug!("[DRAINER] Waiting on drain_signal condvar");
             #[allow(unused_assignments)]
             {
-                let (q, _) =
-                    state.drain_signal.wait_timeout(queue, Duration::from_millis(50)).unwrap();
-                queue = q;
+                queue = state.drain_signal.wait(queue).unwrap();
             }
             debug!("[DRAINER] Woke up from condvar wait");
         }
