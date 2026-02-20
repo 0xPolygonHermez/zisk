@@ -648,10 +648,8 @@ impl HintsProcessor {
             debug!("[DRAINER] Waiting on drain_signal condvar (timeout=50ms)");
             #[allow(unused_assignments)]
             {
-                let (q, _) = state
-                    .drain_signal
-                    .wait_timeout(queue, Duration::from_millis(50))
-                    .unwrap();
+                let (q, _) =
+                    state.drain_signal.wait_timeout(queue, Duration::from_millis(50)).unwrap();
                 queue = q;
             }
             debug!("[DRAINER] Woke up from condvar wait");

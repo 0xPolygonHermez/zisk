@@ -194,24 +194,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let (computation_tx, mut computation_rx) = mpsc::unbounded_channel::<ComputationResult>();
         let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
 
-        // Spawn a canary task that measures tokio scheduler latency.
-        // If the runtime is starved (e.g. a blocking call is occupying all threads),
-        // this task wakes up late and increments the starvation counter visible to
-        // AsmRunnerMT's semaphore-timeout diagnostic.
-        let _canary = tokio::spawn(async {
-            let mut interval = tokio::time::interval(CANARY_INTERVAL);
-            loop {
-                let before = std::time::Instant::now();
-                interval.tick().await;
-                let latency = before.elapsed();
-                if latency > STARVATION_THRESHOLD {
-                    GRPC_METRICS
-                        .thread_starvation_count
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                }
-            }
-        });
-
         // Main non-blocking event loop
         loop {
             tokio::select! {
@@ -507,7 +489,21 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
             }
             coordinator_message::Payload::StreamData(stream_data) => {
+                GRPC_METRICS.active_streams.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                GRPC_METRICS.callbacks_invoked.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let before = std::time::Instant::now();
+
                 self.handle_stream_data(stream_data).await?;
+
+                let elapsed = before.elapsed();
+                if elapsed > Duration::from_millis(100) {
+                    println!("WARNING: Callback took {:?} - possible starvation", elapsed);
+                    GRPC_METRICS
+                        .thread_starvation_count
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+
+                GRPC_METRICS.active_streams.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
             }
             coordinator_message::Payload::JobCancelled(cancelled) => {
                 info!("Job {} cancelled: {}", cancelled.job_id, cancelled.reason);

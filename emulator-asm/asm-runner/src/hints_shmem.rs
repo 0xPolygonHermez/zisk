@@ -250,7 +250,10 @@ impl StreamSink for HintsShmem {
 
             // Flow control based on buffer occupancy
             if available_space >= data_size {
-                debug!("[SHMEM] Sufficient space available ({}), breaking flow control loop", available_space);
+                debug!(
+                    "[SHMEM] Sufficient space available ({}), breaking flow control loop",
+                    available_space
+                );
                 break;
             }
 
