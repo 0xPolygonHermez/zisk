@@ -769,6 +769,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let stream_data_dto: StreamDataDto = stream_data.into();
 
+        info!(
+            "Received stream data for job {}: stream type {:?}, payload size {} bytes",
+            stream_data_dto.job_id,
+            stream_data_dto.stream_type,
+            stream_data_dto.stream_payload.as_ref().map_or(0, |p| p.payload.len())
+        );
+
         if current_job_id != stream_data_dto.job_id {
             return Err(anyhow!(
                 "Job ID mismatch in StreamData: expected {}, got {}",
