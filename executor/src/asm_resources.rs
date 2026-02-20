@@ -113,7 +113,7 @@ impl AsmResources {
         }
     }
 
-    pub fn set_hints_stream_src(&self, stream: Arc<StreamSource>) -> Result<()> {
+    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
         if let Some(hints_stream) = &self.hints_stream {
             hints_stream.lock().unwrap().set_hints_stream_src(stream)
         } else {

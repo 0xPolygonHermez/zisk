@@ -785,12 +785,12 @@ impl Coordinator {
             };
         let hints_relay = PrecompileHintsRelay::new(dispatcher);
         let mut stream = ZiskStream::new(hints_relay);
-        let stream_reader = Arc::new(StreamSource::from_uri(hints_uri).map_err(|e| {
+        let stream_reader = StreamSource::from_uri(hints_uri).map_err(|e| {
             CoordinatorError::Internal(format!(
                 "Failed to create hints stream reader for job {}: {}",
                 job.job_id, e
             ))
-        })?);
+        })?;
         stream.set_hints_stream_src(stream_reader).map_err(|e| {
             CoordinatorError::Internal(format!(
                 "Failed to set hints stream for job {}: {}",

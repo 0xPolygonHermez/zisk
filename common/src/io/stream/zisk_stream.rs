@@ -88,10 +88,7 @@ impl ZiskStream {
     ///
     /// # Arguments
     /// * `stream` - The new StreamSource source for reading hints.
-    pub fn set_hints_stream_src(&mut self, stream: Arc<StreamSource>) -> Result<()> {
-        let mut stream = Arc::try_unwrap(stream).map_err(|_| {
-            anyhow::anyhow!("Cannot take ownership of StreamSource: multiple references exist")
-        })?;
+    pub fn set_hints_stream_src(&mut self, mut stream: StreamSource) -> Result<()> {
         if !stream.is_active() {
             // Stop the existing thread if running
             self.stop_thread();
