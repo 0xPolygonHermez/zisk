@@ -112,7 +112,8 @@ impl EmulatorAsm {
         let asm_resources_guard = self.asm_resources.lock().unwrap();
         let asm_resources = asm_resources_guard.as_ref().expect("AsmResources not initialized");
 
-        if use_hints {
+        let has_hints_stream = stdin.lock().unwrap().has_hints_stream();
+        if use_hints && has_hints_stream {
             let hints_stream =
                 stdin.lock().unwrap().take_hints_stream().expect("Hints stream not set");
             asm_resources

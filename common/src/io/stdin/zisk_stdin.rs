@@ -196,4 +196,8 @@ impl ZiskStdin {
             })
         })
     }
+
+    pub fn has_hints_stream(&self) -> bool {
+        self.hints_stream.is_some()
+    }
 }
