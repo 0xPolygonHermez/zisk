@@ -1567,7 +1567,6 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
         let (a, rest) = rest.split_at(4);
         let (b, rest) = rest.split_at(4);
         let (c, module) = rest.split_at(4);
-        let mut d = [0u64; 4];
 
         let a: &[u64; 4] = a.try_into().expect("opc_arith256_mod: a.len != 4");
         let b: &[u64; 4] = b.try_into().expect("opc_arith256_mod: b.len != 4");
@@ -1880,7 +1879,6 @@ pub fn opc_arith384_mod(ctx: &mut InstContext) {
         let (a, rest) = rest.split_at(6);
         let (b, rest) = rest.split_at(6);
         let (c, module) = rest.split_at(6);
-        let mut d = [0u64; 6];
 
         let a: &[u64; 6] = a.try_into().expect("opc_arith384_mod: a.len != 6");
         let b: &[u64; 6] = b.try_into().expect("opc_arith384_mod: b.len != 6");
