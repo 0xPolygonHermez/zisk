@@ -402,7 +402,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> Result<JoinHandle<()>> {
         self.partial_contribution_mpi_broadcast(&job).await?;
-        Ok(self.partial_contribution(job, tx).await)
+        Ok(self.partial_contribution(job, tx))
     }
 
     pub async fn partial_contribution_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
@@ -439,7 +439,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> Result<JoinHandle<()>> {
         self.prove_mpi_broadcast(&job, challenges.clone()).await?;
-        Ok(self.prove(job, challenges, tx).await)
+        Ok(self.prove(job, challenges, tx))
     }
 
     pub async fn prove_mpi_broadcast(
@@ -462,27 +462,26 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(())
     }
 
-    pub async fn handle_aggregate(
+    pub fn handle_aggregate(
         &self,
         job: Arc<Mutex<JobContext>>,
         agg_params: AggregationParams,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
-        self.aggregate(job, agg_params, tx).await
+        self.aggregate(job, agg_params, tx)
     }
 
-    pub async fn partial_contribution(
+    pub fn partial_contribution(
         &self,
         job: Arc<Mutex<JobContext>>,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let pk = self.pk.clone();
-
         let options = self.get_proof_options(false);
 
-        tokio::spawn(async move {
-            let guard = job.lock().await;
+        tokio::task::spawn_blocking(move || {
+            let guard = job.blocking_lock();
             let job_id = guard.job_id.clone();
 
             info!("Computing Contribution for {job_id}");
@@ -495,26 +494,23 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             );
 
             let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
-
             let inputs_source = guard.data_ctx.input_source.clone();
             let hints_source = guard.data_ctx.hints_source.clone();
-
             drop(guard);
 
             let result = Self::execute_contribution_task(
                 job_id.clone(),
-                prover.as_ref(),
+                &prover,
                 phase_inputs,
                 inputs_source,
                 hints_source,
                 &pk,
                 options,
-            )
-            .await;
+            );
 
-            let mut guard = job.lock().await;
-
+            let mut guard = job.blocking_lock();
             guard.executed_steps = prover.executed_steps();
+            drop(guard);
 
             let execution_info =
                 prover.get_execution_info().unwrap_or_else(|_| ExecutionInfo::default());
@@ -539,7 +535,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
-    pub async fn execute_contribution_task(
+    pub fn execute_contribution_task(
         job_id: JobId,
         prover: &ZiskProver<T>,
         phase_inputs: ProvePhaseInputs,
@@ -646,10 +642,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let base_port = self.prover_config.asm_port;
         let local_rank = self.prover.local_rank();
         let unlock_mapped_memory = self.prover_config.unlock_mapped_memory;
-        let hints_shmem = HintsShmem::new(base_port, local_rank, unlock_mapped_memory)?;
-        let processor = HintsProcessor::builder(hints_shmem)
-            .build()
-            .map_err(|e| anyhow::anyhow!("Failed to initialize hints processor: {}", e))?;
+
+        // HintsShmem::new and HintsProcessor::build perform OS-level shared-memory operations;
+        // run them on the blocking thread pool to avoid stalling Tokio workers.
+        let processor = tokio::task::spawn_blocking(move || -> Result<HintsProcessor> {
+            let hints_shmem = HintsShmem::new(base_port, local_rank, unlock_mapped_memory)?;
+            HintsProcessor::builder(hints_shmem)
+                .build()
+                .map_err(|e| anyhow::anyhow!("Failed to initialize hints processor: {}", e))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("hints processor init panicked: {e}"))??;
 
         let worker_idx = self
             .current_job
@@ -671,27 +674,23 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(())
     }
 
-    pub async fn prove(
+    pub fn prove(
         &self,
         job: Arc<Mutex<JobContext>>,
         challenges: Vec<ContributionsInfo>,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-
         let options = self.get_proof_options(false);
 
-        tokio::spawn(async move {
-            let job = job.lock().await;
-            let job_id = job.job_id.clone();
+        tokio::task::spawn_blocking(move || {
+            let job_id = job.blocking_lock().job_id.clone();
 
             info!("Computing Prove for {job_id}");
 
             let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
+            let result = Self::execute_prove_task(job_id.clone(), &prover, phase_inputs, options);
 
-            let result =
-                Self::execute_prove_task(job_id.clone(), prover.as_ref(), phase_inputs, options)
-                    .await;
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Proofs {
@@ -712,7 +711,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
-    pub async fn execute_prove_task(
+    pub fn execute_prove_task(
         job_id: JobId,
         prover: &ZiskProver<T>,
         phase_inputs: ProvePhaseInputs,
@@ -741,19 +740,20 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(proof)
     }
 
-    pub async fn aggregate(
+    pub fn aggregate(
         &self,
         job: Arc<Mutex<JobContext>>,
         agg_params: AggregationParams,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-
         let options = self.get_proof_options(agg_params.compressed);
 
-        tokio::spawn(async move {
-            let job = job.lock().await;
-            let job_id = job.job_id.clone();
+        tokio::task::spawn_blocking(move || {
+            let (job_id, executed_steps) = {
+                let guard = job.blocking_lock();
+                (guard.job_id.clone(), guard.executed_steps)
+            };
 
             info!("Starting aggregation step for {job_id}");
 
@@ -783,7 +783,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         job_id,
                         success: true,
                         result: Ok(Some(proof)),
-                        executed_steps: job.executed_steps,
+                        executed_steps,
                     });
                 }
                 Err(error) => {
@@ -792,7 +792,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         job_id,
                         success: false,
                         result: Err(error),
-                        executed_steps: job.executed_steps,
+                        executed_steps,
                     });
                 }
             }
@@ -837,14 +837,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
                 let result = Self::execute_contribution_task(
                     job_id,
-                    self.prover.as_ref(),
+                    &self.prover,
                     phase_inputs,
                     input_source_dto,
                     hints_source_dto,
                     &self.pk,
                     options,
-                )
-                .await;
+                );
                 if let Err(e) = result {
                     error!("Error during Contributions MPI broadcast execution: {}. Waiting for new job...", e);
                 }
@@ -853,9 +852,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 let (job_id, phase_inputs, options): (JobId, ProvePhaseInputs, ProofOptions) =
                     borsh::from_slice(&bytes[1..]).unwrap();
 
-                let result =
-                    Self::execute_prove_task(job_id, self.prover.as_ref(), phase_inputs, options)
-                        .await;
+                let result = Self::execute_prove_task(job_id, &self.prover, phase_inputs, options);
                 if let Err(e) = result {
                     error!(
                         "Error during Prove MPI broadcast execution: {}. Waiting for new job...",

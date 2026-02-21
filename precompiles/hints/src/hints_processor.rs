@@ -10,7 +10,7 @@ use std::collections::{HashMap, VecDeque};
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tracing::{debug, info};
 use zisk_common::io::{StreamProcessor, StreamSink};
 use zisk_common::{

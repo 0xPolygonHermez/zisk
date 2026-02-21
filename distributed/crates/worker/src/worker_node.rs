@@ -19,11 +19,6 @@ use zisk_distributed_grpc_api::execute_task_response::ResultData;
 use zisk_distributed_grpc_api::*;
 use zisk_sdk::{Asm, Emu, ZiskBackend};
 
-/// Tokio scheduler latency above which we count a starvation event.
-const STARVATION_THRESHOLD: Duration = Duration::from_millis(100);
-/// How often the canary task wakes up to check scheduler latency.
-const CANARY_INTERVAL: Duration = Duration::from_millis(10);
-
 use crate::config::WorkerServiceConfig;
 
 pub enum WorkerNode<T: ZiskBackend + 'static> {
@@ -756,9 +751,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             final_proof: agg_params.final_proof,
             compressed: agg_params.compressed,
         };
-        self.worker.set_current_computation(
-            self.worker.handle_aggregate(job, agg_params, computation_tx.clone()).await,
-        );
+        self.worker.set_current_computation(self.worker.handle_aggregate(
+            job,
+            agg_params,
+            computation_tx.clone(),
+        ));
 
         Ok(())
     }
