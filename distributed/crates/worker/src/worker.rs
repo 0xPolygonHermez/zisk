@@ -246,7 +246,7 @@ pub struct Worker<T: ZiskBackend + 'static> {
     prover_config: ProverConfig,
 
     stream_actor: Option<StreamOrderingActor>,
-    pk: ZiskProgramPK,
+    pk: Arc<ZiskProgramPK>,
     hints_processor: Option<Arc<HintsProcessor>>,
 }
 
@@ -279,7 +279,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_computation: None,
             prover,
             prover_config,
-            pk,
+            pk: Arc::new(pk),
             stream_actor: None,
             hints_processor: None,
         })
@@ -316,7 +316,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_computation: None,
             prover,
             prover_config,
-            pk,
+            pk: Arc::new(pk),
             stream_actor: None,
             hints_processor: None,
         })
