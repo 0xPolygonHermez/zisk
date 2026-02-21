@@ -196,14 +196,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 Some(result) = response_stream.next() => {
                     match result {
                         Ok(message) => {
-                            let uuid = uuid::Uuid::new_v4();
-
-                            info!("0: START {}", uuid);
                             if let Err(e) = self.handle_coordinator_message(message, &message_sender, &computation_tx).await {
                                 error!("Error handling coordinator message: {}", e);
                                 break;
                             }
-                            info!("1: END {}", uuid);
                         }
                         Err(e) => {
                             error!("Error receiving message from coordinator: {}", e);
