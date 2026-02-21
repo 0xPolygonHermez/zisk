@@ -598,12 +598,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ///
     /// The actor thread owns the reorder buffer and calls `process_hints` in sequence order.
     pub async fn route_stream_data(&mut self, stream_data: StreamDataDto) -> Result<()> {
-        if matches!(stream_data.stream_type, StreamMessageKind::End) {
-            info!(
-                "Received End stream message for job {}. Routing to stream actor and shutting it down.",
-                stream_data.job_id
-            );
-        }
         match &stream_data.stream_type {
             StreamMessageKind::Start => {
                 let job_id = stream_data.job_id.clone();
