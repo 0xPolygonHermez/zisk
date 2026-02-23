@@ -60,19 +60,17 @@ pub fn resolve_emulator_asm(installed_path: PathBuf, verbose: bool) -> Result<Pa
         anyhow::bail!("emulator-asm directory not found at: {}", emulator_asm_path.display());
     }
 
-    // Build ziskclib - the Makefile needs libziskclib.a in ../target/release relative to emulator-asm
-    // Try to find and build ziskclib
-    let emulator_parent = emulator_asm_path.parent()
-        .context("Failed to get parent directory of emulator-asm")?;
+    let emulator_parent =
+        emulator_asm_path.parent().context("Failed to get parent directory of emulator-asm")?;
     let ziskclib_path = emulator_parent.join("ziskclib");
     let target_lib_path = emulator_parent.join("target/release/libziskclib.a");
-    
+
     if ziskclib_path.exists() {
         if verbose {
             println!("Found ziskclib at: {}", ziskclib_path.display());
             println!("Building ziskclib...");
         }
-        
+
         let output = Command::new("cargo")
             .args(["build", "--release", "-p", "ziskclib"])
             .current_dir(emulator_parent)
@@ -82,11 +80,7 @@ pub fn resolve_emulator_asm(installed_path: PathBuf, verbose: bool) -> Result<Pa
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            anyhow::bail!(
-                "Failed to build ziskclib:\nstdout: {}\nstderr: {}",
-                stdout,
-                stderr
-            );
+            anyhow::bail!("Failed to build ziskclib:\nstdout: {}\nstderr: {}", stdout, stderr);
         }
 
         if !target_lib_path.exists() {
