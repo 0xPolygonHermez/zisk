@@ -261,11 +261,6 @@ impl HintsProcessor {
     /// * `Ok(false)` - Batch processed successfully, no CTRL_END
     /// * `Err` - If a previous error occurred or hints are malformed
     pub fn process_hints(&self, hints: &[u64], first_batch: bool) -> Result<bool> {
-        debug!(
-            "[PROCESS] process_hints called with {} u64s, first_batch={}",
-            hints.len(),
-            first_batch
-        );
         let mut has_ctrl_end = false;
 
         // Take any pending partial hint from previous batch
@@ -416,9 +411,7 @@ impl HintsProcessor {
             let state = Arc::clone(&self.state);
             let custom_handlers = Arc::clone(&self.custom_handlers);
             self.pool.spawn(move || {
-                debug!("[WORKER] seq={} dispatched", seq_id);
                 Self::worker_thread(state, hint, generation, seq_id, custom_handlers);
-                debug!("[WORKER] seq={} done", seq_id);
             });
 
             idx += length;
@@ -480,10 +473,6 @@ impl HintsProcessor {
         // Check generation first to detect stale workers (before processing)
         let current_gen = state.generation.load(Ordering::SeqCst);
         if generation != current_gen {
-            debug!(
-                "[WORKER] seq={} early return: generation mismatch (worker={}, current={})",
-                seq_id, generation, current_gen
-            );
             return;
         }
 
@@ -508,47 +497,28 @@ impl HintsProcessor {
             Err(anyhow::anyhow!("Worker panicked processing hint: {}", msg))
         });
 
-        debug!("[WORKER] seq={} processed, acquiring lock", seq_id);
-
         // Store result - MUST fill slot even if error occurred
         let mut queue = state.queue.lock().unwrap();
 
         // Check generation again in case reset happened during processing
         let current_gen = state.generation.load(Ordering::SeqCst);
         if generation != current_gen {
-            debug!("[WORKER] seq={} early return: generation mismatch after processing", seq_id);
             return;
         }
 
         // Calculate offset in buffer; handle drained slots
         if seq_id < queue.next_drain_seq {
-            debug!(
-                "[WORKER] seq={} early return: seq_id < next_drain_seq ({})",
-                seq_id, queue.next_drain_seq
-            );
             return;
         }
         let offset = seq_id - queue.next_drain_seq;
 
         // Check if slot exists - if not, drainer already processed and removed it
         if offset >= queue.buffer.len() {
-            debug!(
-                "[WORKER] seq={} early return: offset {} >= buffer.len() {}",
-                seq_id,
-                offset,
-                queue.buffer.len()
-            );
             return;
         }
 
         // Fill the slot to allow drainer to proceed (critical for ordering)
         queue.buffer[offset] = Some(result);
-        debug!(
-            "[WORKER] seq={} filled slot at offset {}, buffer_len={}",
-            seq_id,
-            offset,
-            queue.buffer.len()
-        );
 
         // Only wake the drainer when we filled the FRONT slot (offset == 0).
         // The drainer can only make progress when buffer[0] is ready; waking it
@@ -560,7 +530,6 @@ impl HintsProcessor {
         // drainer cannot enter condvar.wait() while we hold the lock, so this
         // notification cannot be lost.
         if offset == 0 {
-            debug!("[WORKER] seq={} calling notify_all (front slot)", seq_id);
             state.drain_signal.notify_all();
         }
 
@@ -570,19 +539,11 @@ impl HintsProcessor {
 
     /// Drainer thread that waits for hints to complete and drains ready results from queue.
     fn drainer_thread(state: Arc<HintProcessorState>, hints_sink: Arc<dyn StreamSink>) {
-        debug!("[DRAINER] Thread started");
         loop {
-            debug!("[DRAINER] Attempting to acquire queue lock");
             let mut queue = state.queue.lock().unwrap();
-            debug!(
-                "[DRAINER] Acquired queue lock, buffer_len={}, next_drain_seq={}",
-                queue.buffer.len(),
-                queue.next_drain_seq
-            );
 
             // Check for shutdown
             if state.shutdown.load(Ordering::Acquire) {
-                debug!("[DRAINER] Shutdown signal received, exiting");
                 break;
             }
 
@@ -590,35 +551,25 @@ impl HintsProcessor {
             let mut drained_any = false;
             while let Some(Some(res)) = queue.buffer.front() {
                 drained_any = true;
-                let current_seq = queue.next_drain_seq;
                 match res {
                     Ok(data) => {
                         // Clone data before dropping lock
-                        debug!(
-                            "[DRAINER] Found ready result seq={}, size={} u64s, cloning",
-                            current_seq,
-                            data.len()
-                        );
                         let data_to_submit = data.clone();
                         queue.buffer.pop_front();
                         queue.next_drain_seq += 1;
 
                         // Drop lock before submitting to avoid blocking workers
-                        debug!("[DRAINER] Dropping lock before submit seq={}", current_seq);
                         drop(queue);
 
                         // Submit to sink
-                        debug!("[DRAINER] Calling hints_sink.submit() for seq={}", current_seq);
                         if let Err(e) = hints_sink.submit(data_to_submit) {
                             eprintln!("Error submitting to sink: {}", e);
                             state.error_flag.store(true, Ordering::Release);
                             state.drain_signal.notify_all();
                             return;
                         }
-                        debug!("[DRAINER] Completed submit seq={}", current_seq);
 
                         // Re-acquire lock for next iteration
-                        debug!("[DRAINER] Re-acquiring lock after seq={}", current_seq);
                         queue = state.queue.lock().unwrap();
                     }
                     Err(e) => {
@@ -635,25 +586,20 @@ impl HintsProcessor {
 
             // If we drained any results, notify wait_for_completion that buffer changed
             if drained_any {
-                debug!("[DRAINER] Notifying wait_for_completion");
                 state.drain_signal.notify_all();
             }
 
             // Check for shutdown again before waiting
             if state.shutdown.load(Ordering::Acquire) {
-                debug!("[DRAINER] Shutdown signal received before wait, exiting");
                 break;
             }
 
             // Wait for notification that a hint completed
-            debug!("[DRAINER] Waiting on drain_signal condvar");
             #[allow(unused_assignments)]
             {
                 queue = state.drain_signal.wait(queue).unwrap();
             }
-            debug!("[DRAINER] Woke up from condvar wait");
         }
-        debug!("[DRAINER] Thread exiting");
     }
 
     /// Waits for all pending hints to be processed and drained.
