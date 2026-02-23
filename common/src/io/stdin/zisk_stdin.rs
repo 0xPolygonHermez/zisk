@@ -191,9 +191,7 @@ impl ZiskStdin {
 
     pub fn take_hints_stream(&mut self) -> Option<StreamSource> {
         self.hints_stream.take().map(|arc| {
-            Arc::try_unwrap(arc).unwrap_or_else(|_| {
-                panic!("StreamSource has multiple references")
-            })
+            Arc::try_unwrap(arc).unwrap_or_else(|_| panic!("StreamSource has multiple references"))
         })
     }
 

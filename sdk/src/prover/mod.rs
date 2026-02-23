@@ -801,6 +801,13 @@ pub trait ProverEngine {
         phase: ProvePhase,
     ) -> Result<ZiskPhaseResult>;
 
+    fn set_partition(
+        &self,
+        total_compute_units: usize,
+        allocation: Vec<u32>,
+        rank_id: usize,
+    ) -> Result<()>;
+
     fn aggregate_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
@@ -973,6 +980,15 @@ impl<C: ZiskBackend> ZiskProver<C> {
         phase: ProvePhase,
     ) -> Result<ZiskPhaseResult> {
         self.prover.prove_phase(phase_inputs, options, phase)
+    }
+
+    pub fn set_partition(
+        &self,
+        total_compute_units: usize,
+        allocation: Vec<u32>,
+        rank_id: usize,
+    ) -> Result<()> {
+        self.prover.set_partition(total_compute_units, allocation, rank_id)
     }
 
     pub fn aggregate_proofs(

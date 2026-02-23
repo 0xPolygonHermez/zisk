@@ -603,7 +603,7 @@ dependencies = [
  "colored",
  "dirs",
  "executor",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "futures",
  "indicatif",
  "mpi",
@@ -1115,9 +1115,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#0aea9d80193cf14edf1cb1c92f045a58afb23ebe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "num-bigint",
  "num-traits",
 ]
@@ -1216,9 +1216,9 @@ dependencies = [
 
 [[package]]
 name = "deranged"
-version = "0.5.6"
+version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc3dc5ad92c2e2d1c193bbbbdf2ea477cb81331de4f3103f267ca18368b988c4"
+checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
 dependencies = [
  "powerfmt",
 ]
@@ -1414,7 +1414,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "itertools 0.14.0",
  "mem-common",
  "mem-planner-cpp",
@@ -1464,6 +1464,17 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+
+[[package]]
+name = "fields"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "serde",
+]
 
 [[package]]
 name = "fields"
@@ -2163,9 +2174,9 @@ dependencies = [
 
 [[package]]
 name = "js-sys"
-version = "0.3.86"
+version = "0.3.88"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d36139f1c97c42c0c86a411910b04e48d4939a0376e6e0f989420cbdee0120e5"
+checksum = "c7e709f3e3d22866f9c25b3aff01af289b18422cc8b4262fb19103ee80fe513d"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
@@ -2285,9 +2296,9 @@ dependencies = [
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.11.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df1d3c3b53da64cf5760482273a98e575c651a67eec7f77df96b5b642de8f039"
+checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "litemap"
@@ -2336,7 +2347,7 @@ name = "mem-common"
 version = "0.16.0"
 dependencies = [
  "clap",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -2772,10 +2783,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#0aea9d80193cf14edf1cb1c92f045a58afb23ebe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
 dependencies = [
  "colored",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -2894,7 +2905,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -2930,7 +2941,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -2961,7 +2972,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -2982,7 +2993,7 @@ dependencies = [
 name = "precomp-dma"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3005,7 +3016,7 @@ name = "precomp-keccakf"
 version = "0.16.0"
 dependencies = [
  "circuit",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -3025,7 +3036,7 @@ dependencies = [
 name = "precomp-poseidon2"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3045,7 +3056,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3064,7 +3075,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -3134,7 +3145,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#0aea9d80193cf14edf1cb1c92f045a58afb23ebe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
 dependencies = [
  "bincode",
  "blake3",
@@ -3145,7 +3156,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "libloading",
  "mpi",
  "num-bigint",
@@ -3170,7 +3181,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#0aea9d80193cf14edf1cb1c92f045a58afb23ebe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
 dependencies = [
  "bincode",
  "borsh",
@@ -3180,7 +3191,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "lazy_static",
  "libloading",
  "mpi",
@@ -3202,9 +3213,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#0aea9d80193cf14edf1cb1c92f045a58afb23ebe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -3215,7 +3226,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#0aea9d80193cf14edf1cb1c92f045a58afb23ebe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3225,7 +3236,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#0aea9d80193cf14edf1cb1c92f045a58afb23ebe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3234,7 +3245,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#0aea9d80193cf14edf1cb1c92f045a58afb23ebe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3246,10 +3257,10 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#0aea9d80193cf14edf1cb1c92f045a58afb23ebe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
 dependencies = [
  "bytemuck",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -3310,9 +3321,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e8bbe1a966bd2f362681a44f6edce3c2310ac21e4d5067a6e7ec396297a6ea0"
+checksum = "83c41efbf8f90ac44de7f3a868f0867851d261b56291732d0cbf7cceaaeb55a6"
 dependencies = [
  "bitflags",
  "memchr",
@@ -3608,7 +3619,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "colored",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -3683,9 +3694,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.1.3"
+version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "146c9e247ccc180c1f61615433868c99f3de3ae256a30a43b49f67c2d9171f34"
+checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
 dependencies = [
  "bitflags",
  "errno",
@@ -4030,7 +4041,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sm-arith"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -4050,7 +4061,7 @@ dependencies = [
 name = "sm-binary"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -4070,7 +4081,7 @@ name = "sm-frequent-ops"
 version = "0.16.0"
 dependencies = [
  "clap",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "num-bigint",
  "proofman-common",
  "proofman-util",
@@ -4084,7 +4095,7 @@ dependencies = [
 name = "sm-main"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "mem-common",
  "num-bigint",
  "pil-std-lib",
@@ -4103,7 +4114,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "mem-common",
  "num-bigint",
  "num-traits",
@@ -4124,7 +4135,7 @@ name = "sm-rom"
 version = "0.16.0"
 dependencies = [
  "asm-runner",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "itertools 0.14.0",
  "proofman-common",
  "proofman-macros",
@@ -5018,9 +5029,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.109"
+version = "0.2.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ff9c7baef35ac3c0e17d8bfc9ad75eb62f85a2f02bccc906699dadb0aa9c622"
+checksum = "ec1adf1535672f5b7824f817792b1afd731d7e843d2d04ec8f27e8cb51edd8ac"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -5031,9 +5042,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.59"
+version = "0.4.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d24699cd39db9966cf6e2ef10d2f72779c961ad905911f395ea201c3ec9f545d"
+checksum = "fe88540d1c934c4ec8e6db0afa536876c5441289d7f9f9123d4f065ac1250a6b"
 dependencies = [
  "cfg-if",
  "futures-util",
@@ -5045,9 +5056,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.109"
+version = "0.2.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39455e84ad887a0bbc93c116d72403f1bb0a39e37dd6f235a43e2128a0c7f1fd"
+checksum = "19e638317c08b21663aed4d2b9a2091450548954695ff4efa75bff5fa546b3b1"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -5055,9 +5066,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.109"
+version = "0.2.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dff4761f60b0b51fd13fec8764167b7bbcc34498ce3e52805fe1db6f2d56b6d6"
+checksum = "2c64760850114d03d5f65457e96fc988f11f01d38fbaa51b254e4ab5809102af"
 dependencies = [
  "bumpalo",
  "proc-macro2",
@@ -5068,9 +5079,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.109"
+version = "0.2.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc6a171c53d98021a93a474c4a4579d76ba97f9517d871bc12e27640f218b6dd"
+checksum = "60eecd4fe26177cfa3339eb00b4a36445889ba3ad37080c2429879718e20ca41"
 dependencies = [
  "unicode-ident",
 ]
@@ -5124,9 +5135,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.86"
+version = "0.3.88"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "668fa5d00434e890a452ab060d24e3904d1be93f7bb01b70e5603baa2b8ab23b"
+checksum = "9d6bb20ed2d9572df8584f6dc81d68a41a625cadc6f15999d649a70ce7e3597a"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -5721,10 +5732,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#0aea9d80193cf14edf1cb1c92f045a58afb23ebe"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
 dependencies = [
  "colored",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -5917,7 +5928,7 @@ version = "0.16.0"
 dependencies = [
  "anyhow",
  "bincode",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "libc",
  "mpi",
  "proofman",
@@ -5940,7 +5951,7 @@ name = "zisk-core"
 version = "0.16.0"
 dependencies = [
  "elf",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "lib-c",
  "lib-float",
  "paste",
@@ -6036,7 +6047,7 @@ dependencies = [
  "clap",
  "colored",
  "config",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -6062,7 +6073,7 @@ dependencies = [
 name = "zisk-pil"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "proofman-common",
  "proofman-macros",
  "rayon",
@@ -6079,7 +6090,7 @@ dependencies = [
  "bincode",
  "colored",
  "executor",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "proofman",
  "proofman-common",
  "proofman-util",
@@ -6119,7 +6130,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "mem-common",
  "memmap2",
  "num-format",
@@ -6147,7 +6158,7 @@ dependencies = [
  "bytes",
  "cfg-if",
  "ctor",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -6172,7 +6183,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",

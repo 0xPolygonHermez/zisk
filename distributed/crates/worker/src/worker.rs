@@ -18,7 +18,6 @@ use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProgramPK, ZiskProver};
 use crate::stream_ordering::StreamOrderingActor;
 
 use proofman::ExecutionInfo;
-use proofman::ProofInfo;
 use proofman::ProvePhaseInputs;
 use proofman_common::ParamsGPU;
 use proofman_common::ProofOptions;
@@ -408,13 +407,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub async fn partial_contribution_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
         let mut serialized = {
             let job = job.lock().await;
-            let proof_info = ProofInfo::new(
-                None,
-                job.total_compute_units as usize,
-                job.allocation.clone(),
-                job.rank_id as usize,
-            );
-            let phase_inputs = ProvePhaseInputs::Contributions(proof_info);
+
+            let phase_inputs = ProvePhaseInputs::Contributions();
 
             let options = self.get_proof_options(false);
 
@@ -486,14 +480,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             info!("Computing Contribution for {job_id}");
 
-            let proof_info = ProofInfo::new(
-                None,
-                guard.total_compute_units as usize,
-                guard.allocation.clone(),
-                guard.rank_id as usize,
-            );
-
-            let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
+            let phase_inputs = proofman::ProvePhaseInputs::Contributions();
             let inputs_source = guard.data_ctx.input_source.clone();
             let hints_source = guard.data_ctx.hints_source.clone();
             drop(guard);
@@ -625,6 +612,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             },
         }
         Ok(())
+    }
+
+    pub fn set_partition(
+        &self,
+        total_compute_units: usize,
+        allocation: Vec<u32>,
+        worker_idx: usize,
+    ) -> Result<()> {
+        self.prover.set_partition(total_compute_units, allocation, worker_idx)
     }
 
     /// Lazily initialises the `HintsProcessor` using configuration from the current job.

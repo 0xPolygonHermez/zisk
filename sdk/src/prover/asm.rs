@@ -304,6 +304,15 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.prove_phase(phase_inputs, options, phase)
     }
 
+    fn set_partition(
+        &self,
+        total_compute_units: usize,
+        allocation: Vec<u32>,
+        rank_id: usize,
+    ) -> Result<()> {
+        self.core_prover.backend.set_partition(total_compute_units, allocation, rank_id)
+    }
+
     fn aggregate_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
