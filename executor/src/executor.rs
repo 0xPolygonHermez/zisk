@@ -146,7 +146,6 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             .map_err(|e| proofman_common::ProofmanError::InvalidSetup(e.to_string()))?;
         let output = self.rom_executor.execute(
             &zisk_rom,
-            &pctx,
             self.registry.sm_bundle(),
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
@@ -232,6 +231,12 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 
         // Configure instance checkpoints using registry method
         self.registry.configure_checkpoints(&pctx, &self.state, &secn_global_ids);
+
+        // // Wait until the ROM histogram thread finishes and set the handler for the ASM emulator if applicable
+        // if handle_rh.is_some() {
+        //     handle_rh.join().expect("Error during Assembly ROM Histogram thread execution");
+        // }
+        // TODO! Afegir al hints_shmem en el reset que els resets estan posats a zero
 
         // Reset hints stream
         self.rom_executor.reset_hints_stream();

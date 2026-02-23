@@ -313,6 +313,10 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.set_partition(total_compute_units, allocation, rank_id)
     }
 
+    fn is_first_partition(&self) -> Result<bool> {
+        self.core_prover.backend.is_first_partition()
+    }
+
     fn aggregate_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,

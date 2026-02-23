@@ -589,7 +589,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             StreamMessageKind::Start => {
                 let job_id = stream_data.job_id.clone();
 
-                self.ensure_hints_processor(&job_id).await?;
+                self.ensure_hints_processor().await?;
 
                 let hints_processor = self.hints_processor.as_ref().unwrap();
 
@@ -614,6 +614,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(())
     }
 
+    pub fn is_first_partition(&self) -> Result<bool> {
+        self.prover.is_first_partition()
+    }
+
     pub fn set_partition(
         &self,
         total_compute_units: usize,
@@ -624,7 +628,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     /// Lazily initialises the `HintsProcessor` using configuration from the current job.
-    async fn ensure_hints_processor(&mut self, job_id: &JobId) -> Result<()> {
+    async fn ensure_hints_processor(&mut self) -> Result<()> {
         if self.hints_processor.is_some() {
             return Ok(());
         }
@@ -644,20 +648,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         .await
         .map_err(|e| anyhow::anyhow!("hints processor init panicked: {e}"))??;
 
-        let worker_idx = self
-            .current_job
-            .as_ref()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Received stream data for job {}, but no current job is set",
-                    job_id
-                )
-            })?
-            .lock()
-            .await
-            .rank_id as usize;
-
-        processor.set_has_rom_sm(worker_idx == 0);
+        processor.set_has_rom_sm(self.prover.is_first_partition()?);
 
         self.hints_processor = Some(Arc::new(processor));
 

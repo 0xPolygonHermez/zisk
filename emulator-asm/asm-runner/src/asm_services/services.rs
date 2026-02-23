@@ -208,7 +208,7 @@ impl AsmServices {
 
             unsafe {
                 command.pre_exec(|| {
-                    // Ignore failure silently (matches nice behavior)
+                    // Ignore failure silently
                     libc::setpriority(libc::PRIO_PROCESS, 0, -5);
                     Ok(())
                 });

@@ -540,6 +540,15 @@ impl ProverBackend {
         Ok(proofman.set_partition(total_compute_units, allocation, rank_id)?)
     }
 
+    pub(crate) fn is_first_partition(&self) -> Result<bool> {
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot set partition in verifier mode"))?;
+
+        Ok(proofman.is_first_partition())
+    }
+
     pub(crate) fn get_execution_info(&self) -> Result<ExecutionInfo> {
         let proofman = self
             .proofman
