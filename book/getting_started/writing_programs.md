@@ -1,54 +1,112 @@
 # Writing Programs
 
-This document explains how to write or modify a Rust program for execution in ZisK.
+This page explains how to write a guest program for ZisK. The guest defines the computation to be proven; the host orchestrates execution and proof generation. A guest program runs inside the zkVM — it reads input, does computation, and commits public output.
 
 ## Setup
 
-### Code changes
+Writing a ZisK guest program is standard Rust with two additions:
 
-Writing a Rust program for ZisK is similar to writing a standard Rust program, with a few minor modifications. Follow these steps:
-
-1. Modify `main.rs` file:
-
-    Add the following code to mark the main function as the entry point for ZisK:
+1. Add `#![no_main]` and the `entrypoint!` macro to `main.rs`:
 
     ```rust
     #![no_main]
     ziskos::entrypoint!(main);
+
+    fn main() {
+        // your program here
+    }
     ```
 
-2. Modify `Cargo.toml` file:
+    `#![no_main]` tells the compiler not to emit the standard `main` entry point. The `entrypoint!` macro generates a `main()` that calls your function — the ZisK runtime invokes it after setting up the stack and heap.
 
-    Add the `ziskos` crate as a dependency:
+2. Add `ziskos` as a dependency in `Cargo.toml`:
 
     ```toml
     [dependencies]
     ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
     ```
 
-Let's show these changes using the example program from the [Quickstart](./quickstart.md) section.
+That's it. Everything else is normal Rust — you can use `std`, `println!`, third-party crates, custom types, etc.
 
-### Example program
+## Inputs and Outputs
 
-`main.rs`:
+### Reading Input
+
+The host writes data with `ZiskStdin::write(&value)` (see [Proving Workflow](./proving_workflow.md)). The guest reads it with `ziskos::io::read()`. Both sides use **bincode** serialization, so the types must match.
+
 ```rust
-// This example program takes a number `n` as input and computes the SHA-256 hash `n` times sequentially.
+// Read a single value
+let n: u32 = ziskos::io::read();
 
-// Mark the main function as the entry point for ZisK
+// Read a struct (must implement serde::Deserialize)
+let config: MyConfig = ziskos::io::read();
+```
+
+Read calls are sequential — the first `read()` in the guest gets the first `write()` from the host, the second gets the second, and so on.
+
+For raw bytes without serde overhead, use `read_vec()`:
+
+```rust
+// Read raw bytes (faster, no deserialization)
+let bytes: Vec<u8> = ziskos::io::read_vec();
+```
+
+Input data is **private** — it is not visible to the verifier. Only committed output is public.
+
+### Committing Public Output
+
+Public output is what the verifier sees. The guest writes it with `ziskos::io::commit()`:
+
+```rust
+// Commit a single value
+ziskos::io::commit(&result);
+
+// Commit a struct (must implement serde::Serialize)
+ziskos::io::commit(&output);
+```
+
+The host reads committed output with `result.get_public_values::<T>()` using the same type.
+
+ZisK supports up to **64 public output slots** (each 32-bit). The committed data is bincode-serialized and written to these slots. If your output exceeds 256 bytes (64 x 4 bytes), the commit will panic.
+
+### Custom Types
+
+Any type that implements `Serialize` and `Deserialize` works with `read()` and `commit()`:
+
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+struct Output {
+    hash: [u8; 32],
+    iterations: u32,
+}
+```
+
+### Example
+
+Here is the [sha-hasher example](https://github.com/0xPolygonHermez/zisk/tree/main/examples/sha-hasher) — the guest reads `n`, computes SHA-256 `n` times, and commits the result:
+
+**`guest/src/main.rs`:**
+```rust
 #![no_main]
 ziskos::entrypoint!(main);
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::convert::TryInto;
-use ziskos::{read_input_slice, set_output};
-use byteorder::ByteOrder;
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Output {
+    hash: [u8; 32],
+    iterations: u32,
+    magic_number: u32,
+}
 
 fn main() {
     let n: u32 = ziskos::io::read();
 
     let mut hash = [0u8; 32];
 
-    // Compute SHA-256 hashing 'n' times
     for _ in 0..n {
         let mut hasher = Sha256::new();
         hasher.update(hash);
@@ -56,85 +114,60 @@ fn main() {
         hash = Into::<[u8; 32]>::into(*digest);
     }
 
+    let output = Output { hash, iterations: n, magic_number: 0xDEADBEEF };
+
+    println!("Computed hash: {:02x?}", output.hash);
+    println!("Iterations: {}", output.iterations);
+
     ziskos::io::commit(&output);
 }
 ```
 
-`Cargo.toml`:
+**`guest/Cargo.toml`:**
 ```toml
 [package]
-name = "guest"
+name = "sha-hasher-guest"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-byteorder = "1.5.0"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
 sha2 = "0.10.8"
 ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
 ```
 
-### Input/Output Data
-
-To read input data in your ZisK program, use the `ziskos::io::read()` function, which deserializes data from the input:
-
-```rust
-// Read a u32 value from input
-let n: u32 = ziskos::io::read();
-```
-
-You can also read custom types that implement the `Deserialize` trait:
-
-```rust
-// Read a custom struct from input
-let my_data: MyStruct = ziskos::io::read();
-```
-
-To write public output data, use the `ziskos::io::commit()` function, which serializes and commits the output:
-
-```rust
-// Commit the hash as public output
-let hash: [u8; 32] = compute_hash();
-ziskos::io::commit(&hash);
-```
-
-The output can be any type that implements the `Serialize` trait. The data will be serialized and made available as public outputs that can be verified by anyone checking the proof.
+Note: `println!` works in guest programs — output goes to UART during emulation, which is useful for debugging. It has no effect on the proof.
 
 ## Build
 
-Before compiling your program for ZisK, you can test it on the native architecture just like any regular Rust program using the `cargo` command.
+Before compiling for ZisK, you can test on your native architecture like any Rust program using `cargo`.
 
-Once your program is ready to run on ZisK, compile it into an ELF file (RISC-V architecture), using the `cargo-zisk` CLI tool:
+Once ready, compile into an ELF file for the ZisK target:
 
 ```bash
 cargo-zisk build
 ```
 
-This command compiles the program using the `zisk` target. The resulting `guest` ELF file (without extension) is generated in the `./target/riscv64ima-zisk-zkvm-elf/debug` directory.
+The resulting ELF file is generated in `./target/riscv64ima-zisk-zkvm-elf/debug`.
 
-For production, compile the ELF file with the `--release` flag, similar to how you compile Rust projects:
+For deployment:
 
 ```bash
 cargo-zisk build --release
 ```
 
-In this case, the `guest` ELF file will be generated in the `./target/elf/riscv64ima-zisk-zkvm-elf/release` directory.
+The release ELF is generated in `./target/elf/riscv64ima-zisk-zkvm-elf/release`.
 
 ## Execute
 
-You can test your compiled program using the ZisK emulator (`ziskemu`) before generating a proof. Use the `-e` (`--elf`) flag to specify the location of the ELF file and the `-i` (`--inputs`) flag to specify the location of the input file:
+Test your program with the ZisK emulator before generating a proof:
 
 ```bash
-cargo-zisk build --release
 ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin
 ```
 
-If the program requires a large number of ZisK steps, you might encounter the following error:
-```
-Error during emulation: EmulationNoCompleted
-Error: Error executing Run command
-```
+If execution exceeds the default step limit, you'll see `EmulationNoCompleted`. Increase it with `-n`:
 
-To resolve this, you can increase the number of execution steps using the `-n` (`--max-steps`) flag. For example:
 ```bash
 ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -n 10000000000
 ```
@@ -142,175 +175,78 @@ ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.b
 ## Metrics and Statistics
 
 ### Performance Metrics
-You can get performance metrics related to the program execution in ZisK using the `-m` (`--log-metrics`) flag in the `cargo-zisk run` command or in `ziskemu` tool:
 
+Get execution metrics with the `-m` flag:
 
 ```bash
 ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -m
 ```
 
-The output will include details such as execution time, throughput, and clock cycles per step:
-```
-process_rom() steps=85309 duration=0.0009 tp=89.8565 Msteps/s freq=3051.0000 33.9542 clocks/step
-...
-```
+Output includes execution time, throughput (Msteps/s), and cycles per step.
 
 ### Execution Statistics
-You can get statistics related to the program execution in Zisk using the `-X` (`--stats`) flag in `ziskemu` tool:
 
+Get cost breakdown with the `-X` flag:
 
 ```bash
 ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -X
 ```
 
-The output will include details such as cost definitions, total cost, register reads/writes, opcode statistics, etc:
-```
-Cost definitions:
-    AREA_PER_SEC: 1000000 steps
-    COST_MEMA_R1: 0.00002 sec
-    COST_MEMA_R2: 0.00004 sec
-    COST_MEMA_W1: 0.00004 sec
-    COST_MEMA_W2: 0.00008 sec
-    COST_USUAL: 0.000008 sec
-    COST_STEP: 0.00005 sec
-
-Total Cost: 12.81 sec
-    Main Cost: 4.27 sec 85308 steps
-    Mem Cost: 2.22 sec 222052 steps
-    Mem Align: 0.05 sec 2701 steps
-    Opcodes: 6.24 sec 1270 steps (81182 ops)
-    Usual: 0.03 sec 4127 steps
-    Memory: 135563 a reads + 1625 na1 reads + 10 na2 reads + 84328 a writes + 524 na1 writes + 2 na2 writes = 137198 reads + 84854 writes = 222052 r/w
-
-Opcodes:
-    flag: 0.00 sec (0 steps/op) (89 ops)
-    copyb: 0.00 sec (0 steps/op) (10568 ops)
-    add: 1.12 sec (77 steps/op) (14569 ops)
-    ltu: 0.01 sec (77 steps/op) (101 ops)
-    ...
-    xor: 1.06 sec (77 steps/op) (13774 ops)
-    signextend_b: 0.03 sec (109 steps/op) (320 ops)
-    signextend_w: 0.03 sec (109 steps/op) (320 ops)
-...
-```
+Output includes total cost, cost per type (main, memory, opcodes), register access patterns, and per-opcode statistics.
 
 ## Prove
 
 ### Program Setup
 
-Before generating a proof (or verifying the constraints), you need to generate the program setup files. This must be done the first time after building the program ELF file, or any time it changes:
+Generate program setup files (required once after building, or when the ELF changes):
 
 ```bash
-cargo-zisk rom-setup -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -k $HOME/.zisk/provingKey
+cargo-zisk rom-setup -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest
 ```
-In this command:
 
-* `-e` (`--elf`) specifies the ELF file location.
-* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
-
-The program setup files will be generated in the `cache` directory located at `$HOME/.zisk`.
-
-To clean the `cache` directory content, use the following command:
-```bash
-cargo-zisk clean
-```
+The `-k` flag sets a custom proving key path (default: `$HOME/.zisk/provingKey`). Setup files go to `$HOME/.zisk/cache`. Clean them with `cargo-zisk clean`.
 
 ### Verify Constraints
 
-Before generating a proof (which can take some time), you can verify that all constraints are satisfied:
+Check all constraints are satisfied without generating a proof:
 
 ```bash
-cargo-zisk verify-constraints -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -k $HOME/.zisk/provingKey
-```
-In this command:
-
-* `-e` (`--elf`) specifies the ELF file location.
-* `-i` (`--input`) specifies the input file location.
-* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
-
-If everything is correct, you will see an output similar to:
-
-```
-[INFO ] GlCstVfy: --> Checking global constraints
-[INFO ] CstrVrfy: ··· ✓ All global constraints were successfully verified
-[INFO ] CstrVrfy: ··· ✓ All constraints were verified
+cargo-zisk verify-constraints -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin
 ```
 
 ### Generate Proof
 
-To generate a proof, run the following command:
-
 ```bash
-cargo-zisk prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -k $HOME/.zisk/provingKey -o proof -a -y
+cargo-zisk prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -o proof -a -y
 ```
-In this command:
 
-* `-e` (`--elf`) specifies the ELF file location.
-* `-i` (`--input`) specifies the input file location.
-* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
-* `-o` (`--output`) determines the output directory (in this example `proof`).
-* `-a` (`--aggregation`) indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.
-* `-y` (`--verify-proofs`) instructs the tool to verify the proof immediately after it is generated (verification can also be performed later using the `cargo-zisk verify` command).
-
-If the process is successful, you should see a message similar to:
-
-```
-...
-[INFO ] ProofMan:     ✓ Vadcop Final proof was verified
-[INFO ]      stop <<< GENERATING_VADCOP_PROOF 91706ms
-[INFO ] ProofMan: Proofs generated successfully
-```
+Flags: `-o` output directory, `-a` enable aggregation, `-y` verify after generation.
 
 ### Concurrent Proof Generation
 
-Zisk proofs can be generated using multiple processes concurrently to improve performance and scalability. The standard MPI (Message Passing Interface) approach is used to launch these processes, which can run either on the same server or across multiple servers.
-
-To execute a Zisk proof using multiple processes, use the following command:
+Use MPI for multi-process proving:
 
 ```bash
-mpirun --bind-to none -np <num_processes> -x OMP_NUM_THREADS=<num_threads_per_process> -x RAYON_NUM_THREADS=<num_threads_per_process> target/release/cargo-zisk <zisk arguments>
+mpirun --bind-to none -np <num_processes> \
+  -x OMP_NUM_THREADS=<threads_per_process> \
+  -x RAYON_NUM_THREADS=<threads_per_process> \
+  target/release/cargo-zisk prove <args>
 ```
-In this command:
 
-* `<num_processes>` specifies the number of processes to launch.
-* `<num_threads_per_process>` sets the number of threads used by each process via the `OMP_NUM_THREADS` and `RAYON_NUM_THREADS` environment variables.
-* `--bind-to none` prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.
-
-Running a Zisk proof with multiple processes enables efficient workload distribution across multiple servers. **On a single server with many cores, splitting execution into smaller subsets of cores generally improves performance by increasing concurrency**. As a general rule, `<num_processes>` * `<num_threads_per_process>` should match the number of available CPU cores or double that if hyperthreading is enabled.
-
-The total memory requirement increases proportionally with the number of processes. If each process requires approximately 25GB of memory, running P processes will require roughly (25 * P)GB of memory. Ensure that the system has sufficient available memory to accommodate all running processes.
+Rule of thumb: `num_processes * threads_per_process` should match available CPU cores. Each process needs ~25GB of RAM.
 
 ### GPU Proof Generation
 
-Zisk proofs can also be generated using GPUs to significantly improve performance and scalability.
-Follow these steps to enable GPU support:
+1. Requires NVIDIA GPU with [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
+2. Build with GPU support: `cargo build --release --features gpu`
+3. Regenerate constant trees: `cargo-zisk check-setup -a`
 
-1. GPU support is only available for NVIDIA GPUs.
-
-2. Make sure the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) is installed.
-
-3. Build Zisk with GPU support enabled.
-
-    **Note:** It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.
-
-    GPU support must be enabled at compile time. Follow the instructions in the **Build ZisK** section under **Option 2: Building from source** in the [Installation](./installation.md) guide, but replace the build command with:
-    ```bash
-    cargo build --release --features gpu
-    ```
-
-You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the **Concurrent Proof Generation** section.
-
-> **Note:** GPU memory is typically more limited than CPU memory. When combining GPU execution with concurrent proof generation, ensure that each process has sufficient memory available on the GPU to avoid out-of-memory errors.
+Can be combined with MPI. Ensure sufficient GPU memory per process.
 
 ### Verify Proof
 
-To verify a generated proof, use the following command:
-
 ```bash
-cargo-zisk verify -p ./proof/vadcop_final_proof.bin -k $HOME/.zisk/provingKey
+cargo-zisk verify -p ./proof/vadcop_final_proof.bin
 ```
 
-In this command:
-
-* `-p` (`--proof`) specifies the final proof file generated with cargo-zisk prove.
-* The remaining flags specify the files required for verification; they are optional, set by default to the files found in the `$HOME/.zisk` directory.
+The `-k` flag sets a custom proving key path (default: `$HOME/.zisk/provingKey`).
