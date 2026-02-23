@@ -60,26 +60,55 @@ pub fn resolve_emulator_asm(installed_path: PathBuf, verbose: bool) -> Result<Pa
         anyhow::bail!("emulator-asm directory not found at: {}", emulator_asm_path.display());
     }
 
-    // Build ziskclib if needed (runtime build is fine - this is not during cargo build)
-    if manifest_dir.exists() {
-        if let Some(workspace_root) = workspace_root {
-            let ziskclib_path = workspace_root.join("ziskclib");
-            if ziskclib_path.exists() {
-                if verbose {
-                    println!("Building ziskclib...");
-                }
-                let status = Command::new("cargo")
-                    .args(["build", "--release", "-p", "ziskclib"])
-                    .current_dir(&workspace_root)
-                    .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-                    .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-                    .status()
-                    .context("Failed to build ziskclib")?;
+    // Build ziskclib - the Makefile needs libziskclib.a in ../target/release relative to emulator-asm
+    // Try to find and build ziskclib
+    let emulator_parent = emulator_asm_path.parent()
+        .context("Failed to get parent directory of emulator-asm")?;
+    let ziskclib_path = emulator_parent.join("ziskclib");
+    let target_lib_path = emulator_parent.join("target/release/libziskclib.a");
+    
+    if ziskclib_path.exists() {
+        if verbose {
+            println!("Found ziskclib at: {}", ziskclib_path.display());
+            println!("Building ziskclib...");
+        }
+        
+        let output = Command::new("cargo")
+            .args(["build", "--release", "-p", "ziskclib"])
+            .current_dir(emulator_parent)
+            .output()
+            .context("Failed to execute cargo build for ziskclib")?;
 
-                if !status.success() {
-                    anyhow::bail!("Failed to build ziskclib");
-                }
-            }
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            anyhow::bail!(
+                "Failed to build ziskclib:\nstdout: {}\nstderr: {}",
+                stdout,
+                stderr
+            );
+        }
+
+        if !target_lib_path.exists() {
+            anyhow::bail!(
+                "ziskclib build succeeded but library not found at: {}",
+                target_lib_path.display()
+            );
+        }
+
+        if verbose {
+            println!("ziskclib built successfully at: {}", target_lib_path.display());
+        }
+    } else {
+        if !target_lib_path.exists() {
+            anyhow::bail!(
+                "libziskclib.a not found at: {}\nziskclib directory not found at: {}\nCannot build or locate ziskclib library",
+                target_lib_path.display(),
+                ziskclib_path.display()
+            );
+        }
+        if verbose {
+            println!("Using existing ziskclib at: {}", target_lib_path.display());
         }
     }
 
