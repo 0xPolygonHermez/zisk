@@ -1896,7 +1896,7 @@ impl Riscv2ZiskContext<'_> {
                 //  addi  x0, reg(dst), size    addi  x0, reg(dst), size (no-executed) │
                 // ..........                   ..........    <────────────────────────┘
 
-                let rs1 = i.rs1; // dst
+                let rs1 = next_instructions[0].rs1; // dst
                 let rs2 = next_instructions[1].imm; // count
                 let rd = next_instructions[0].rd;
                 let fill_byte = next_instructions[0].imm; // fill_byte
@@ -1923,9 +1923,9 @@ impl Riscv2ZiskContext<'_> {
             if !next_instructions.is_empty() && next_instructions[0].inst == "addi" {
                 // xmemset transpilation pattern:
                 //
-                //  csrs  0x816, reg(count)      ===>  xmemset [x0|a0], a0, reg(count), byte ─┐
-                //  addi  x0, reg(dst), byte    addi  x0, reg(dst), byte (no-executed)        │ jmp+8
-                // ..........                   ..........    <───────────────────────────────┘
+                //  csrs  0x816, reg(dst)          ===>  xmemset [x0|a0], a0, reg(count), byte ─┐
+                //  addi  x0, reg(count), byte    addi  x0, reg(dst), byte (no-executed)        │ jmp+8
+                // ..........                   ..........      <───────────────────────────────┘
 
                 let rs1 = i.rs1; // dst
                 let rs2 = next_instructions[0].rs1; // count
