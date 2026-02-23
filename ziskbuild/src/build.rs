@@ -3,7 +3,7 @@ use crate::{
     ZISK_TARGET,
 };
 use cargo_metadata::camino::Utf8PathBuf;
-use rom_setup::{assembly_files_exist, gen_assembly, get_output_path};
+use rom_setup::{assembly_files_exist, gen_assembly, get_assembly_file_paths, get_output_path};
 use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
@@ -116,6 +116,12 @@ pub fn execute_build_program(
         if !assembly_exists || hints_changed {
             gen_assembly(elf_path_std, &None, hints, true)?;
             std::fs::write(&hints_marker, new_value)?;
+        }
+
+        // Tell cargo to rerun if any assembly file is deleted
+        let assembly_files = get_assembly_file_paths(elf_path_std, &output_path, hints)?;
+        for asm_file in assembly_files {
+            println!("cargo:rerun-if-changed={}", asm_file.display());
         }
     }
 

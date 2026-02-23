@@ -86,8 +86,12 @@ pub fn resolve_emulator_asm(installed_path: PathBuf, verbose: bool) -> Result<Pa
     Ok(emulator_asm_path)
 }
 
-/// Check if all assembly binary files exist for a given ELF and output path
-pub fn assembly_files_exist(elf: &Path, output_path: &Path, hints: bool) -> Result<bool> {
+/// Get the paths to all assembly binary files for a given ELF and output path
+pub fn get_assembly_file_paths(
+    elf: &Path,
+    output_path: &Path,
+    hints: bool,
+) -> Result<Vec<PathBuf>> {
     let elf_hash = get_elf_data_hash_from_path(elf)?;
 
     let stem = elf
@@ -113,7 +117,13 @@ pub fn assembly_files_exist(elf: &Path, output_path: &Path, hints: bool) -> Resu
     let bin_mo_file = format!("{file_stem}-mo.bin");
     let bin_mo_file = base_path.with_file_name(bin_mo_file);
 
-    Ok(bin_mt_file.exists() && bin_rh_file.exists() && bin_mo_file.exists())
+    Ok(vec![bin_mt_file, bin_rh_file, bin_mo_file])
+}
+
+/// Check if all assembly binary files exist for a given ELF and output path
+pub fn assembly_files_exist(elf: &Path, output_path: &Path, hints: bool) -> Result<bool> {
+    let files = get_assembly_file_paths(elf, output_path, hints)?;
+    Ok(files.iter().all(|f| f.exists()))
 }
 
 pub fn gen_assembly(
