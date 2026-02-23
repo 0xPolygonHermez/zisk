@@ -8,7 +8,6 @@ mod secp256r1;
 mod sha256;
 mod utils;
 
-// For public consumption
 pub use array_lib::*;
 pub use bls12_381::*;
 pub use bn254::*;

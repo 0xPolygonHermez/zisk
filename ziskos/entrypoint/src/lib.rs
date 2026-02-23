@@ -3,18 +3,24 @@
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use core::arch::asm;
+
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod dma;
+
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod fcall;
-
-mod profile;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub use fcall::*;
-pub mod io;
+
+mod profile;
 pub use profile::*;
+
+pub mod io;
+
 pub mod syscalls;
+
 pub mod zisklib;
+
 pub mod ziskos_definitions;
 
 #[cfg(all(

@@ -1,13 +1,32 @@
-// TODO: It can be speed up by using Montgomery multiplication but knowning that divisions are "free"
-// For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
+/*
+    TODO: The implementation can be speeded up by using different algorithms depending on the properties of the modulus:
+                         ┌─────────────────────────┐
+                         │      modpow(exp, mod)   │
+                         └───────────┬─────────────┘
+                                     │
+                    ┌────────────────┼────────────────┐
+                    ▼               ▼               ▼
+            mod is power        mod is odd       mod is even
+              of two?                            (but not 2^k)
+                    │                │                │
+                    ▼               ▼              ▼
+        modpow_with_power     modpow_montgomery   Chinese Remainder
+            _of_two()              ()              Theorem (CRT)
+
+    For example, in the case of odd modulus, Montgomery multiplication can be used, knowing that divisions are "free"
+    For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
+*/
 
 use std::vec;
+
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::{ziskos_memcpy, ziskos_memset};
 
 use crate::zisklib::fcall_bin_decomp;
 
 use super::{
-    mul_and_reduce_long, mul_and_reduce_short, rem_long_init, rem_short_init,
-    square_and_reduce_long, square_and_reduce_short, LongScratch, ShortScratch, U256,
+    mul_and_reduce_long, mul_and_reduce_short, rem_long, rem_short, square_and_reduce_long,
+    square_and_reduce_short, LongScratch, ShortScratch, U256,
 };
 
 /// Modular exponentiation of three large numbers
@@ -57,18 +76,16 @@ pub fn modexp(
     }
 
     if len_b == 1 {
-        // If base == 0, then 0^exp (mod modulus) is 0
         if base[0].is_zero() {
+            // If base == 0, then 0^exp (mod modulus) is 0
             return vec![U256::ZERO];
-        }
-
-        // If base == 1, then 1^exp (mod modulus) is 1
-        if base[0].is_one() {
+        } else if base[0].is_one() {
+            // If base == 1, then 1^exp (mod modulus) is 1
             return vec![U256::ONE];
         }
     }
-
     // We can assume from now on that base,modulus > 1 and exp > 0
+
     if len_m == 1 {
         modexp_short(
             base,
@@ -97,13 +114,21 @@ fn modexp_short(
 ) -> Vec<U256> {
     let len_e = exp.len();
 
+    // Scratch space
+    let mut scratch = ShortScratch::new();
+
     // Compute base = base (mod modulus)
-    let base = rem_short_init(
+    let base = rem_short(
         base,
         modulus,
+        &mut scratch,
         #[cfg(feature = "hints")]
         hints,
     );
+
+    if base.is_zero() {
+        return vec![U256::ZERO];
+    }
 
     // Hint exponent bits
     let (len, bits) = fcall_bin_decomp(
@@ -121,16 +146,9 @@ fn modexp_short(
     let bit_in_limb = bits_pos % 64;
     rec_exp[limb_idx] = 1u64 << bit_in_limb;
 
-    // Scratch space
-    let mut scratch = ShortScratch::new();
-
     // Initialize out = base
     let mut out = base;
     for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
-        if out.is_zero() {
-            return vec![U256::ZERO];
-        }
-
         // Compute out = out² (mod modulus)
         out = square_and_reduce_short(
             &out,
@@ -157,6 +175,10 @@ fn modexp_short(
             let bit_in_limb = bits_pos % 64;
             rec_exp[limb_idx] |= 1u64 << bit_in_limb;
         }
+
+        if out.is_zero() {
+            return vec![U256::ZERO];
+        }
     }
 
     assert_eq!(rec_exp[..], *exp, "Exponent decomposition mismatch");
@@ -174,10 +196,14 @@ fn modexp_long(
     let len_e = exp.len();
     let len_m = modulus.len();
 
+    // Scratch space
+    let mut scratch = LongScratch::new(len_m);
+
     // Compute base = base (mod modulus)
-    let base = rem_long_init(
+    let base = rem_long(
         base,
         modulus,
+        &mut scratch.rem,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -197,9 +223,6 @@ fn modexp_long(
     let limb_idx = bits_pos / 64;
     let bit_in_limb = bits_pos % 64;
     rec_exp[limb_idx] = 1u64 << bit_in_limb;
-
-    // Scratch space
-    let mut scratch = LongScratch::new(len_m);
 
     // Initialize out = base
     let mut out = base.clone();

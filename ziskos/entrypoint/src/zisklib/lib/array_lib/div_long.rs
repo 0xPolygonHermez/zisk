@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use crate::zisklib::fcall_division;
 
 use super::{add_agtb, mul_long, U256};
@@ -35,9 +33,9 @@ pub fn div_long(
 
     // Check if a = b, a < b or a > b
     let comp = U256::compare_slices(a, b);
-    if comp == Ordering::Less {
+    if comp == -1 {
         return (vec![U256::ZERO], a.to_vec());
-    } else if comp == Ordering::Equal {
+    } else if comp == 0 {
         return (vec![U256::ONE], vec![U256::ZERO]);
     }
     // We can assume a > b from here on

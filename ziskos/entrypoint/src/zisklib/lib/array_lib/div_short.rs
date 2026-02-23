@@ -28,10 +28,11 @@ pub fn div_short(
 
     // Check if a = b, a < b or a > b
     if len_a == 1 {
-        let a = a[0];
-        if a.is_zero() || a.lt(b) {
-            return (vec![U256::ZERO], a);
-        } else if a.eq(b) {
+        let a0 = &a[0];
+        let cmp = a0.compare(b);
+        if cmp == -1 {
+            return (vec![U256::ZERO], *a0);
+        } else if cmp == 0 {
             return (vec![U256::ONE], U256::ZERO);
         }
     }
