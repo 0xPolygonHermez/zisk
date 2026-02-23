@@ -1115,7 +1115,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#3fa9da9315b4f1dedd0faa7bae7139b0ba8d7482"
 dependencies = [
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "num-bigint",
@@ -1468,7 +1468,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fields"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#3fa9da9315b4f1dedd0faa7bae7139b0ba8d7482"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2783,7 +2783,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#3fa9da9315b4f1dedd0faa7bae7139b0ba8d7482"
 dependencies = [
  "colored",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
@@ -3145,7 +3145,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#3fa9da9315b4f1dedd0faa7bae7139b0ba8d7482"
 dependencies = [
  "bincode",
  "blake3",
@@ -3181,7 +3181,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#3fa9da9315b4f1dedd0faa7bae7139b0ba8d7482"
 dependencies = [
  "bincode",
  "borsh",
@@ -3213,7 +3213,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#3fa9da9315b4f1dedd0faa7bae7139b0ba8d7482"
 dependencies = [
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
  "itoa",
@@ -3226,7 +3226,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#3fa9da9315b4f1dedd0faa7bae7139b0ba8d7482"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3236,7 +3236,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#3fa9da9315b4f1dedd0faa7bae7139b0ba8d7482"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3245,7 +3245,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#3fa9da9315b4f1dedd0faa7bae7139b0ba8d7482"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3257,7 +3257,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#3fa9da9315b4f1dedd0faa7bae7139b0ba8d7482"
 dependencies = [
  "bytemuck",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
@@ -5732,7 +5732,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#0da9c107ec1d84ddf992077d8dab4ff3f21b1567"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition#3fa9da9315b4f1dedd0faa7bae7139b0ba8d7482"
 dependencies = [
  "colored",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fset-partition)",
