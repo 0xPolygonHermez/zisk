@@ -22,6 +22,9 @@ impl ZiskIO for ZiskNullStdin {
     fn write_slice(&self, _data: &[u8]) {
         warn!("NullStdin does not support writing");
     }
+    fn write_proof(&self, _proof: &[u8], _vk: &[u8]) {
+        warn!("NullStdin does not support writing");
+    }
     fn save(&self, _path: &Path) -> Result<()> {
         warn!("NullStdin does not support saving");
         Ok(())

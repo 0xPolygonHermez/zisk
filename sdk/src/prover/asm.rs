@@ -342,6 +342,15 @@ impl ProverEngine for AsmProver {
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
         self.core_prover.backend.mpi_broadcast(data)
     }
+
+    fn prepare_send_proof(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        program_vk: &ZiskProgramVK,
+    ) -> Result<(Vec<u8>, Vec<u8>)> {
+        self.core_prover.backend.prepare_send_proof(proof, publics, program_vk)
+    }
 }
 
 pub struct AsmCoreProver {

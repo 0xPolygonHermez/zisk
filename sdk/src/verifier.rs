@@ -4,11 +4,11 @@ use crate::{
 use anyhow::{anyhow, Ok, Result};
 use proofman::{get_vadcop_final_proof_vkey, verify_snark_proof, SnarkProof, SnarkProtocol};
 use proofman_util::VadcopFinalProof;
+use proofman_verifier::{verify_vadcop_final, verify_vadcop_final_compressed};
 use rom_setup::rom_merkle_setup_verkey;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use zisk_common::ElfBinaryLike;
-use zisk_verifier::verify_vadcop_final_proof;
 
 pub fn verify_zisk_snark_proof(
     proof: &ZiskProof,
@@ -101,7 +101,17 @@ pub fn verify_zisk_proof_with_proving_key(
             let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.clone(), pubs, compressed);
 
             let vk = get_vadcop_final_proof_vkey(&proving_key, compressed)?;
-            verify_vadcop_final_proof(&vadcop_final_proof, &vk)
+            let is_valid = if compressed {
+                verify_vadcop_final_compressed(&vadcop_final_proof, &vk)
+            } else {
+                verify_vadcop_final(&vadcop_final_proof, &vk)
+            };
+
+            if !is_valid {
+                Err(anyhow!("Zisk Proof was not verified"))
+            } else {
+                Ok(())
+            }
         }
         _ => Err(anyhow!("Not a Vadcop final proof.")),
     }

@@ -288,3 +288,7 @@ mod ziskos {
     //core::arch::global_asm!(include_str!("dma/inputcpy.s"));
     core::arch::global_asm!(include_str!("dma/memset.s"));
 }
+
+pub fn verify_zisk_proof(zisk_proof: &[u8], vk: &[u8]) -> bool {
+    zisk_verifier::verify_vadcop_final_proof(zisk_proof, vk)
+}

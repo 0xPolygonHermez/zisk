@@ -34,6 +34,38 @@ pub fn read_vec() -> Vec<u8> {
     read_input()
 }
 
+/// Read proof data prepared by prepare_send_proof and written with write_proof
+/// Format: [proof_len(4)][compressed(8)][pubs_len(8)][pubs][proof_bytes][vk(32)]
+pub fn read_proof(input: &[u8], offset: &mut usize) -> (Vec<u8>, Vec<u8>) {
+    let start = *offset;
+
+    // Read proof length (8 bytes, u64 little-endian)
+    let proof_len = u64::from_le_bytes([
+        input[start],
+        input[start + 1],
+        input[start + 2],
+        input[start + 3],
+        input[start + 4],
+        input[start + 5],
+        input[start + 6],
+        input[start + 7],
+    ]) as usize;
+
+    let data_start = start + 8;
+    let proof_end = data_start + proof_len;
+    let vk_end = proof_end + 32;
+
+    // Extract the proof portion [compressed][pubs_len][pubs][proof_bytes]
+    let proof_data = input[data_start..proof_end].to_vec();
+
+    // VK is exactly 32 bytes after the proof
+    let vk = input[proof_end..vk_end].to_vec();
+
+    *offset = vk_end;
+
+    (proof_data, vk)
+}
+
 /// Commit a serializable value to public outputs.
 /// The value is serialized with bincode and written as 32-bit chunks.
 pub fn commit<T: Serialize>(value: &T) {

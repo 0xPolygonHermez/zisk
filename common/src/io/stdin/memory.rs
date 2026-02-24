@@ -66,6 +66,13 @@ impl ZiskIO for ZiskMemoryStdin {
         cursor.get_mut().extend_from_slice(data);
     }
 
+    fn write_proof(&self, proof: &[u8], vk: &[u8]) {
+        let proof_len = proof.len() as u64;
+        self.write_slice(&proof_len.to_le_bytes());
+        self.write_slice(proof);
+        self.write_slice(vk);
+    }
+
     fn save(&self, path: &Path) -> Result<()> {
         std::fs::write(path, self.data.lock().unwrap().as_slice())?;
         Ok(())
