@@ -56,7 +56,7 @@ extern uint64_t MEM_CHUNK_START_STEP; // Step at which the current chunk started
 #define ROM_ADDR (uint64_t)0x80000000
 #define ROM_SIZE (uint64_t)0x08000000 // 128MB
 #define INPUT_ADDR (uint64_t)0x90000000
-#define MAX_INPUT_SIZE (uint64_t)0x08000000 // 128MB
+#define MAX_INPUT_SIZE (uint64_t)0x10000000 // 256MB
 #define RAM_ADDR (uint64_t)0xa0000000
 #define RAM_SIZE (uint64_t)0x20000000 // 512MB
 #define SYS_ADDR RAM_ADDR

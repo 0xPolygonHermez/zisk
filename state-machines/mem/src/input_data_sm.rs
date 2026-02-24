@@ -30,8 +30,8 @@ const _: () = {
         "INPUT_DATA memory exceeds the 32-bit addressable range"
     );
     assert!(
-        (MAX_INPUT_SIZE - 1) <= (128 << 20),
-        "INPUT_DATA is too large. Input size must be <= 128MB"
+        (MAX_INPUT_SIZE - 1) <= (256 << 20),
+        "INPUT_DATA is too large. Input size must be <= 256MB"
     );
 };
 
