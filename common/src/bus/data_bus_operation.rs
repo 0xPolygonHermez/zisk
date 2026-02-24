@@ -387,7 +387,8 @@ impl OperationBusData<u64> {
             ZiskOperationType::Poseidon2 => {
                 let mut data =
                     unsafe { uninit_array::<OPERATION_BUS_POSEIDON2_DATA_SIZE>().assume_init() };
-                data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b, step]);
+                data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
+                    .copy_from_slice(&[op, op_type, a, b, step]);
                 data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
                     .copy_from_slice(&ctx.precompiled.input_data);
                 ExtOperationData::OperationPoseidon2Data(data)
