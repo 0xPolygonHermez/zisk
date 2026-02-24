@@ -200,6 +200,8 @@ impl AsmRunnerMO {
         };
 
         if exit_code != 0 {
+            mem_planner.set_completed();
+
             return Err(AsmRunError::ExitCode(exit_code as u32))
                 .context("Child process returned error");
         }

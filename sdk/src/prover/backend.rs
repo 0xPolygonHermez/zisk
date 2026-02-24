@@ -35,6 +35,14 @@ pub(crate) struct ProverBackend {
     proving_key_snark_path: Option<PathBuf>,
 }
 
+impl Drop for ProverBackend {
+    fn drop(&mut self) {
+        if let Some(ref proofman) = self.proofman {
+            let _ = proofman.reset();
+        }
+    }
+}
+
 impl ProverBackend {
     pub fn new(
         proofman: ProofMan<Goldilocks>,
