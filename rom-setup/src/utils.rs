@@ -21,7 +21,7 @@ pub fn get_home_dir() -> String {
 
 /// Gets the default zisk folder location in the home installation directory.
 pub fn get_default_zisk_path() -> PathBuf {
-    let zisk_path = format!("{}/.zisk/zisk", get_home_dir());
+    let zisk_path = format!("{}/.zisk", get_home_dir());
     PathBuf::from(zisk_path)
 }
 

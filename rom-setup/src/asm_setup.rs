@@ -28,13 +28,17 @@ fn find_workspace_root(start: &Path) -> Option<PathBuf> {
     None
 }
 
-pub fn resolve_emulator_asm(installed_path: PathBuf, verbose: bool) -> Result<PathBuf> {
+pub fn resolve_emulator_asm() -> Result<PathBuf> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     let workspace_root =
         if manifest_dir.exists() { find_workspace_root(&manifest_dir) } else { None };
 
-    let cargo_available = Command::new("cargo").arg("--version").output().is_ok();
+    let cargo_available = Command::new("cargo")
+        .arg("--version")
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false);
 
     // Check if we can build from workspace (need both cargo and workspace with ziskclib)
     let can_build_from_workspace = cargo_available
@@ -46,29 +50,35 @@ pub fn resolve_emulator_asm(installed_path: PathBuf, verbose: bool) -> Result<Pa
             false
         };
 
+    let installed_path = crate::get_default_zisk_path();
+    let installed_asm_path = installed_path.join("zisk/emulator-asm");
+
     let emulator_asm_path = if can_build_from_workspace {
         let candidate = workspace_root.unwrap().join("emulator-asm");
-        if verbose {
-            println!("Using emulator-asm from workspace: {}", candidate.display());
-        }
+        tracing::debug!("Using emulator-asm from workspace: {}", candidate.display());
         candidate
     } else {
-        if verbose {
-            if !cargo_available {
-                println!("Cargo not available, using installed path: {}", installed_path.display());
-            } else if workspace_root.is_none() {
-                println!("No workspace found, using installed path: {}", installed_path.display());
-            } else {
-                println!(
-                    "Workspace missing ziskclib source, using installed path: {}",
-                    installed_path.display()
-                );
-            }
+        if !cargo_available {
+            tracing::debug!(
+                "Cargo not available, using installed path: {}",
+                installed_asm_path.display()
+            );
+        } else if workspace_root.is_none() {
+            tracing::debug!(
+                "No workspace found, using installed path: {}",
+                installed_asm_path.display()
+            );
+        } else {
+            tracing::debug!(
+                "Workspace missing ziskclib source, using installed path: {}",
+                installed_asm_path.display()
+            );
         }
-        installed_path.clone()
+
+        installed_asm_path.clone()
     };
 
-    println!("Looking for emulator-asm at: {}", emulator_asm_path.display());
+    tracing::info!("Looking for emulator-asm at: {}", emulator_asm_path.display());
 
     if !emulator_asm_path.exists() {
         anyhow::bail!("emulator-asm directory not found at: {}", emulator_asm_path.display());
@@ -78,20 +88,20 @@ pub fn resolve_emulator_asm(installed_path: PathBuf, verbose: bool) -> Result<Pa
         emulator_asm_path.parent().context("Failed to get parent directory of emulator-asm")?;
     let ziskclib_path = emulator_parent.join("ziskclib");
 
-    let target_lib_path = if emulator_asm_path == installed_path {
+    let target_lib_path = if emulator_asm_path == installed_asm_path {
         // For installed path, look in .zisk/bin/
-        emulator_parent.join("bin").join("libziskclib.a")
+        installed_path.join("bin").join("libziskclib.a")
     } else {
         // For workspace builds, look in target/release/
         emulator_parent.join("target/release/libziskclib.a")
     };
 
+    tracing::info!("Looking for ziskclib at: {}", target_lib_path.display());
+
     // Only try to build if cargo is available and ziskclib source exists
     if cargo_available && ziskclib_path.exists() {
-        if verbose {
-            println!("Found ziskclib at: {}", ziskclib_path.display());
-            println!("Building ziskclib...");
-        }
+        tracing::debug!("Found ziskclib at: {}", ziskclib_path.display());
+        tracing::debug!("Building ziskclib...");
 
         let output = Command::new("cargo")
             .args(["build", "--release", "-p", "ziskclib"])
@@ -112,9 +122,7 @@ pub fn resolve_emulator_asm(installed_path: PathBuf, verbose: bool) -> Result<Pa
             );
         }
 
-        if verbose {
-            println!("ziskclib built successfully at: {}", target_lib_path.display());
-        }
+        tracing::debug!("ziskclib built successfully at: {}", target_lib_path.display());
     } else {
         if !target_lib_path.exists() {
             if emulator_asm_path == installed_path {
@@ -135,9 +143,7 @@ pub fn resolve_emulator_asm(installed_path: PathBuf, verbose: bool) -> Result<Pa
                 );
             }
         }
-        if verbose {
-            println!("Using existing ziskclib at: {}", target_lib_path.display());
-        }
+        tracing::debug!("Using existing ziskclib at: {}", target_lib_path.display());
     }
 
     Ok(emulator_asm_path)
@@ -238,8 +244,7 @@ pub fn generate_assembly(
     let bin_mo_file = format!("{file_stem}-mo.bin");
     let bin_mo_file = base_path.with_file_name(bin_mo_file);
 
-    let installed_path = crate::get_default_zisk_path().join("emulator-asm");
-    let emulator_asm_path = resolve_emulator_asm(installed_path, verbose)?;
+    let emulator_asm_path = resolve_emulator_asm()?;
 
     let emulator_asm_path =
         emulator_asm_path.to_str().context("Failed to convert emulator-asm path to string")?;
