@@ -387,8 +387,9 @@ impl OperationBusData<u64> {
             ZiskOperationType::Poseidon2 => {
                 let mut data =
                     unsafe { uninit_array::<OPERATION_BUS_POSEIDON2_DATA_SIZE>().assume_init() };
-                data[0..OPERATION_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b]);
-                data[OPERATION_BUS_DATA_SIZE..].copy_from_slice(&ctx.precompiled.input_data);
+                data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b, step]);
+                data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
+                    .copy_from_slice(&ctx.precompiled.input_data);
                 ExtOperationData::OperationPoseidon2Data(data)
             }
 
@@ -646,8 +647,9 @@ impl OperationBusData<u64> {
 
             ZiskOperationType::Poseidon2 => {
                 debug_assert_eq!(ctx.precompiled.input_data.len(), 16);
-                buffer[0..OPERATION_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b]);
-                buffer[OPERATION_BUS_DATA_SIZE..OPERATION_BUS_POSEIDON2_DATA_SIZE]
+                buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
+                    .copy_from_slice(&[op, op_type, a, b, step]);
+                buffer[OPERATION_PRECOMPILED_BUS_DATA_SIZE..OPERATION_BUS_POSEIDON2_DATA_SIZE]
                     .copy_from_slice(&ctx.precompiled.input_data);
                 &buffer[..OPERATION_BUS_POSEIDON2_DATA_SIZE]
             }

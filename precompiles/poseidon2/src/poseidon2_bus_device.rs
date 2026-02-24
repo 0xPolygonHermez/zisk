@@ -7,7 +7,7 @@ use std::ops::Add;
 use precompiles_common::MemProcessor;
 
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, B, OPERATION_BUS_ID, OP_TYPE, STEP,
 };
 use zisk_core::ZiskOperationType;
 
@@ -73,7 +73,7 @@ impl Poseidon2CounterInputGen {
             return true;
         }
 
-        let step_main = data[A];
+        let step_main = data[STEP];
         let addr_main = data[B] as u32;
 
         match self.mode {

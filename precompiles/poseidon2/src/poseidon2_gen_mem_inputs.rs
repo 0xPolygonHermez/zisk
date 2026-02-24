@@ -2,7 +2,7 @@ use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
 use precompiles_common::MemBusHelpers;
 use precompiles_common::MemProcessor;
 
-use zisk_common::OPERATION_BUS_DATA_SIZE;
+use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
 #[derive(Debug)]
 pub struct Poseidon2MemInputConfig {
@@ -21,7 +21,7 @@ pub fn generate_poseidon2_mem_inputs<P: MemProcessor>(
 ) {
     // Get the basic data from the input
     // op,op_type,a,b,...
-    let state: &mut [u64; 16] = &mut data[4..20].try_into().unwrap();
+    let state: &mut [u64; 16] = &mut data[5..21].try_into().unwrap();
 
     // Apply the poseidon2 hash function
     let state_gl = state.map(Goldilocks::new);
@@ -34,7 +34,7 @@ pub fn generate_poseidon2_mem_inputs<P: MemProcessor>(
     let write_params = 1;
     let chunks_per_param = 16;
     let params_count = read_params + write_params;
-    let params_offset = OPERATION_BUS_DATA_SIZE;
+    let params_offset = OPERATION_PRECOMPILED_BUS_DATA_SIZE;
     for iparam in 0..params_count {
         let is_write = iparam >= read_params;
         let param_index = if is_write { iparam - read_params } else { iparam };

@@ -10,9 +10,9 @@ pub struct Poseidon2Input {
 impl Poseidon2Input {
     pub fn from(values: &OperationPoseidon2Data<u64>) -> Self {
         Self {
-            step_main: values[2],
+            step_main: values[4],
             addr_main: values[3] as u32,
-            state: values[4..20].try_into().unwrap(),
+            state: values[5..21].try_into().unwrap(),
         }
     }
 }
