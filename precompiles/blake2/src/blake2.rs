@@ -347,35 +347,24 @@ impl<F: PrimeField64> Blake2SM<F> {
             }
         }
 
-        // Fill the trace and aggregate range checks in parallel without
-        // materializing one large Vec<[u32; 65536]>.
-        let range_checks_array: [u32; 65536] = par_traces
+        // Fill the trace and collect range checks
+        let range_checks_vec: Vec<[u32; 65536]> = par_traces
             .into_par_iter()
             .enumerate()
-            .fold(
-                || [0u32; 65536],
-                |mut acc, (index, trace)| {
-                    let input_index = inputs_indexes[index];
-                    let input = &inputs[input_index.0][input_index.1];
-                    let rc = self.process_input(input, trace);
-                    for i in 0..65536 {
-                        acc[i] += rc[i];
-                    }
-                    acc
-                },
-            )
-            .reduce(
-                || [0u32; 65536],
-                |mut a, b| {
-                    for i in 0..65536 {
-                        a[i] += b[i];
-                    }
-                    a
-                },
-            );
+            .map(|(index, trace)| {
+                let input_index = inputs_indexes[index];
+                let input = &inputs[input_index.0][input_index.1];
+                self.process_input(input, trace)
+            })
+            .collect();
 
-        // Convert aggregated array into Vec<u32> for downstream use.
-        let mut range_checks = Vec::from(range_checks_array);
+        // Aggregate all range checks
+        let mut range_checks = vec![0; 65536];
+        for rc in range_checks_vec {
+            for i in 0..65536 {
+                range_checks[i] += rc[i];
+            }
+        }
 
         timer_stop_and_log_trace!(BLAKE2_TRACE);
 
