@@ -1261,6 +1261,7 @@ impl Coordinator {
                         worker_index: challenge.worker_index,
                         airgroup_id: challenge.airgroup_id as usize,
                         challenge: challenge.challenge,
+                        aggregated: false,
                     })
                     .collect();
 
