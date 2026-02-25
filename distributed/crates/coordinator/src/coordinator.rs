@@ -1583,6 +1583,8 @@ impl Coordinator {
 
         drop(job); // Release jobs lock early
 
+        self.send_aggregation_task(&job_id, &agg_worker_id, proofs.clone(), false).await?;
+
         self.send_aggregation_task(&job_id, &agg_worker_id, proofs, all_done).await?;
 
         Ok(())
