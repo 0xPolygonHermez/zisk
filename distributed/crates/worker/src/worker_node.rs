@@ -687,6 +687,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 worker_index: ch.worker_index,
                 airgroup_id: ch.airgroup_id as usize,
                 challenge: ch.challenge,
+                aggregated: false,
             })
             .collect();
 
