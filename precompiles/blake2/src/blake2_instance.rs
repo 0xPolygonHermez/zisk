@@ -181,7 +181,7 @@ impl Blake2Collector {
         if let ExtOperationData::OperationBlake2Data(data) = data {
             self.inputs.push(Blake2Input::from(&data));
         } else {
-            panic!("Expected ExtOperationData::OperationData");
+            panic!("Expected ExtOperationData::OperationBlake2Data");
         }
 
         self.inputs.len() < self.num_operations as usize

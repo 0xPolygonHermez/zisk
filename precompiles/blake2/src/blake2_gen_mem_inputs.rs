@@ -78,29 +78,34 @@ pub fn skip_blake2_mem_inputs<P: MemProcessor>(
     data: &[u64],
     mem_processors: &mut P,
 ) -> bool {
-    let indirect_params = 2;
-    let read_params = 3;
-    let write_params = 1;
-    let chunks_per_param = [1usize, 16, 16, 16];
-
-    for iparam in 0..indirect_params {
+    // Check all PARAMS words at addr_main (index, addr_state, addr_input)
+    for iparam in 0..PARAMS {
         let addr = addr_main + iparam as u32 * 8;
         if !mem_processors.skip_addr(addr) {
             return false;
         }
     }
 
-    for (iparam, &chunks) in chunks_per_param.iter().enumerate().take(read_params + write_params) {
-        let is_write = iparam >= read_params;
-        let param_index = if is_write { iparam - read_params } else { iparam };
-        let param_addr = data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_index] as u32;
-
-        for ichunk in 0..chunks {
+    // Check READ_PARAMS arrays (state and input, each PARAM_CHUNKS u64s)
+    for iparam in 0..READ_PARAMS {
+        let param_idx = iparam + 1;
+        let param_addr = data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_idx] as u32;
+        for ichunk in 0..PARAM_CHUNKS {
             let addr = param_addr + ichunk as u32 * 8;
             if !mem_processors.skip_addr(addr) {
                 return false;
             }
         }
     }
+
+    // Check write address (output state array)
+    let write_addr = data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + DIRECT_READ_PARAMS] as u32;
+    for ichunk in 0..PARAM_CHUNKS {
+        let addr = write_addr + ichunk as u32 * 8;
+        if !mem_processors.skip_addr(addr) {
+            return false;
+        }
+    }
+
     true
 }

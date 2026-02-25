@@ -73,7 +73,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for Blake2Manager<F> {
                 Box::new(Blake2Instance::new(self.blake2_sm.clone(), ictx))
             }
             _ => {
-                panic!("Blake2Builder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)
+                panic!("Blake2Manager::build_instance() Unsupported air_id: {:?}", ictx.plan.air_id)
             }
         }
     }
