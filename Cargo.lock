@@ -2995,7 +2995,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tmp-0.16.0)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
