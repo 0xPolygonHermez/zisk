@@ -9,7 +9,10 @@ use crate::{
 use crate::{ProofMode, ProofOpts};
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use executor::{get_packed_info, init_executor_asm, AsmResources};
-use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
+use proofman::{
+    AggProofs, AggProofsRegister, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs,
+    SnarkWrapper,
+};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo, VerboseMode};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
@@ -315,6 +318,10 @@ impl ProverEngine for AsmProver {
 
     fn is_first_partition(&self) -> Result<bool> {
         self.core_prover.backend.is_first_partition()
+    }
+
+    fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
+        self.core_prover.backend.register_aggregated_proofs(agg_proofs)
     }
 
     fn aggregate_proofs(

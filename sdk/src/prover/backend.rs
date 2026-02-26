@@ -15,8 +15,8 @@ use colored::Colorize;
 use executor::ZiskExecutor;
 use fields::Goldilocks;
 use proofman::{
-    AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
-    SnarkProtocol, SnarkWrapper,
+    AggProofs, AggProofsRegister, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs,
+    ProvePhaseResult, SnarkProtocol, SnarkWrapper,
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_util::VadcopFinalProof;
@@ -555,6 +555,20 @@ impl ProverBackend {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Cannot get execution info in verifier mode"))?;
         Ok(proofman.get_execution_info())
+    }
+
+    pub(crate) fn register_aggregated_proofs(
+        &self,
+        agg_proofs: Vec<AggProofsRegister>,
+    ) -> Result<()> {
+        let proofman = self
+            .proofman
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Cannot aggregate proofs in verifier mode"))?;
+
+        proofman
+            .register_aggregated_proofs(agg_proofs)
+            .map_err(|e| anyhow::anyhow!("Error registering aggregate proof: {}", e))
     }
 
     pub(crate) fn aggregate_proofs(

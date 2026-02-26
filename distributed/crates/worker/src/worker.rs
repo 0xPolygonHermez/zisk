@@ -2,7 +2,7 @@ use anyhow::Result;
 use asm_runner::HintsShmem;
 use cargo_zisk::commands::get_proving_key;
 use precompiles_hints::HintsProcessor;
-use proofman::{AggProofs, ContributionsInfo};
+use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
 use rom_setup::{get_elf_data_hash, DEFAULT_CACHE_PATH};
 use std::fs;
 use std::sync::Arc;
@@ -735,6 +735,30 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let options = self.get_proof_options(agg_params.compressed);
+
+        let agg_proofs_register: Vec<AggProofsRegister> = agg_params
+            .agg_proofs
+            .iter()
+            .map(|v| AggProofsRegister {
+                airgroup_id: v.airgroup_id,
+                worker_indexes: vec![v.worker_idx as usize],
+            })
+            .collect();
+
+        if let Err(error) = prover.register_aggregated_proofs(agg_proofs_register) {
+            let job_guard = job.blocking_lock();
+            let job_id = job_guard.job_id.clone();
+            let executed_steps = job_guard.executed_steps;
+
+            let _ = tx.send(ComputationResult::AggProof {
+                job_id,
+                success: false,
+                result: Err(error),
+                executed_steps,
+            });
+
+            return tokio::spawn(async {});
+        }
 
         tokio::task::spawn_blocking(move || {
             let (job_id, executed_steps) = {

@@ -5,7 +5,8 @@ pub use asm::*;
 use backend::*;
 pub use emu::*;
 use proofman::{
-    AggProofs, ExecutionInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkProtocol,
+    AggProofs, AggProofsRegister, ExecutionInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
+    SnarkProtocol,
 };
 use proofman_common::{ProofOptions, RankInfo, RowInfo};
 use proofman_util::VadcopFinalProof;
@@ -832,6 +833,8 @@ pub trait ProverEngine {
 
     fn is_first_partition(&self) -> Result<bool>;
 
+    fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()>;
+
     fn aggregate_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
@@ -1017,6 +1020,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     pub fn is_first_partition(&self) -> Result<bool> {
         self.prover.is_first_partition()
+    }
+
+    pub fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
+        self.prover.register_aggregated_proofs(agg_proofs)
     }
 
     pub fn aggregate_proofs(

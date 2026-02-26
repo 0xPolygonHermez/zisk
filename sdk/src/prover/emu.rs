@@ -7,7 +7,10 @@ use crate::{
 };
 use crate::{ensure_custom_commits, ProofMode, ProofOpts};
 use executor::{get_packed_info, init_executor_emu};
-use proofman::{AggProofs, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper};
+use proofman::{
+    AggProofs, AggProofsRegister, ExecutionInfo, ProofMan, ProvePhase, ProvePhaseInputs,
+    SnarkWrapper,
+};
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -233,6 +236,10 @@ impl ProverEngine for EmuProver {
 
     fn is_first_partition(&self) -> Result<bool> {
         self.core_prover.backend.is_first_partition()
+    }
+
+    fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
+        self.core_prover.backend.register_aggregated_proofs(agg_proofs)
     }
 
     fn aggregate_proofs(
