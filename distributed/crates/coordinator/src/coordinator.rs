@@ -1828,7 +1828,8 @@ impl Coordinator {
 
         // Update Phase3 start time when all workers complete Phase2
         // This gives accurate timing for the actual aggregation phase
-        let job_entry = self.jobs.get(&job.job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry =
+            self.jobs.get(&job.job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let mut job = job_entry.write().await;
         job.start_times.insert(JobPhase::Aggregate, Utc::now());
         drop(job);
