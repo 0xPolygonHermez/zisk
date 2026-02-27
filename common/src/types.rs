@@ -316,3 +316,15 @@ impl ElfBinaryLike for ElfBinary {
         self.with_hints
     }
 }
+
+#[derive(Default, Debug, Clone)]
+pub struct AsmExecutionInfo {
+    pub time: f32,
+    pub mhz: f32,
+}
+
+impl fmt::Display for AsmExecutionInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:.3}s ({:.0} MHz)", self.time, self.mhz)
+    }
+}

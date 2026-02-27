@@ -212,6 +212,12 @@ pub struct ExecutionInfoDto {
 }
 
 #[derive(Clone)]
+pub struct AsmExecutionInfoDto {
+    pub time: f32,
+    pub mhz: f32,
+}
+
+#[derive(Clone)]
 pub struct ChallengesDto {
     pub worker_index: u32,
     pub airgroup_id: u32,
@@ -247,6 +253,7 @@ pub struct ExecuteTaskResponseDto {
 pub struct ContributionsResultDataDto {
     pub challenges: Vec<ChallengesDto>,
     pub execution_info: ExecutionInfoDto,
+    pub asm_execution_info: Option<AsmExecutionInfoDto>,
 }
 
 pub enum ExecuteTaskResponseResultDataDto {

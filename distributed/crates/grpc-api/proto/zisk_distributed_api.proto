@@ -303,9 +303,15 @@ message ExecuteInfo {
   string summary_info = 4;
 }
 
+message AsmExecuteInfo {
+  float time = 1;
+  float mhz = 2;
+}
+
 message ChallengesList {
   repeated Challenges challenges = 1;
   ExecuteInfo execution_info = 2;
+  optional AsmExecuteInfo asm_execution_info = 3;
 }
 
 message Challenges {

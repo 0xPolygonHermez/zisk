@@ -1,5 +1,5 @@
 use named_sem::NamedSemaphore;
-use zisk_common::{stats_begin, stats_end, stats_mark};
+use zisk_common::{stats_begin, stats_end, stats_mark, AsmExecutionInfo};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
 
@@ -64,7 +64,7 @@ impl AsmRunnerMT {
         local_rank: i32,
         base_port: Option<u16>,
         _stats: ExecutorStatsHandle,
-    ) -> Result<Vec<Arc<EmuTrace>>> {
+    ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)> {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
 
         let port = AsmServices::port_base_for(base_port, local_rank);
@@ -190,6 +190,8 @@ impl AsmRunnerMT {
 
         let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / elapsed.as_secs_f64()) / 1_000_000.0;
+        let asm_execution_info =
+            AsmExecutionInfo { time: elapsed.as_secs_f64() as f32, mhz: mhz as f32 };
         info!("··· Assembly execution speed: {}MHz ({:2?})", mhz.round(), elapsed);
 
         let response = handle.map_err(AsmRunError::ServiceError)?;
@@ -199,6 +201,6 @@ impl AsmRunnerMT {
         assert!(response.trace_len <= response.allocated_len);
 
         stats_end!(_stats, &_runner_scope);
-        Ok(emu_traces)
+        Ok((emu_traces, asm_execution_info))
     }
 }

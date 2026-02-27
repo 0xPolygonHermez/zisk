@@ -11,7 +11,7 @@ use asm_runner::AsmRunnerMO;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::{sync::Mutex, thread::JoinHandle};
-use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
+use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
 
 /// Output from ROM execution.
@@ -58,6 +58,10 @@ impl RomExecutor {
     /// Resets the hints stream if configured.
     pub fn reset_hints_stream(&self) {
         self.emulator.reset_hints_stream()
+    }
+
+    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
+        self.emulator.get_asm_execution_info()
     }
 
     /// Executes the ROM program and collects minimal traces.

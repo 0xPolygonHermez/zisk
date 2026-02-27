@@ -20,6 +20,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use zisk_common::io::ZiskStdin;
+use zisk_common::AsmExecutionInfo;
 use zisk_common::ElfBinaryLike;
 use zisk_common::ExecutorStatsHandle;
 use zisk_core::Riscv2zisk;
@@ -197,7 +198,7 @@ impl ProverEngine for AsmProver {
         ))
     }
 
-    fn get_execution_info(&self) -> Result<ExecutionInfo> {
+    fn get_execution_info(&self) -> Result<(ExecutionInfo, Option<AsmExecutionInfo>)> {
         self.core_prover.backend.get_execution_info()
     }
 

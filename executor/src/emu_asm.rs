@@ -17,7 +17,8 @@ use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use sm_rom::RomSM;
 use zisk_common::{
-    io::ZiskStdin, stats_begin, stats_end, ChunkId, EmuTrace, ExecutorStatsHandle, StatsScope,
+    io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
+    ExecutorStatsHandle, StatsScope,
 };
 use zisk_core::{ZiskRom, MAX_INPUT_SIZE};
 use ziskemu::ZiskEmulator;
@@ -41,6 +42,8 @@ pub struct EmulatorAsm {
 
     /// Assembly resources including shared memory and hints stream.
     asm_resources: Mutex<Option<AsmResources>>,
+
+    asm_execution_info: Mutex<Option<AsmExecutionInfo>>,
 }
 
 impl EmulatorAsm {
@@ -60,11 +63,16 @@ impl EmulatorAsm {
             chunk_size,
             rom_sm,
             asm_resources: Mutex::new(None),
+            asm_execution_info: Mutex::new(None),
         }
     }
 
     pub fn get_chunk_size(&self) -> u64 {
         self.chunk_size
+    }
+
+    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
+        self.asm_execution_info.lock().unwrap().clone()
     }
 
     pub fn set_asm_resources(&self, asm_resources: AsmResources) {
@@ -226,7 +234,7 @@ impl EmulatorAsm {
         #[allow(unused_variables)]
         let mt_scope_id = _mt_scope.id();
 
-        let emu_traces = rayon::in_place_scope(|scope| {
+        let (emu_traces, asm_execution_info) = rayon::in_place_scope(|scope| {
             let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
                 let chunk_id = ChunkId(idx);
                 let results_ref = &results_mu;
@@ -266,6 +274,8 @@ impl EmulatorAsm {
             drop(asm_resources_guard);
             result
         });
+
+        self.asm_execution_info.lock().unwrap().replace(asm_execution_info);
 
         // Unwrap the Arc pointers now that all rayon tasks have completed
         let emu_traces = emu_traces
