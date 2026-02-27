@@ -2537,9 +2537,6 @@ impl<'a> Emu<'a> {
             ((reg_trace.store_reg_prev_value >> 32) & 0xFFFFFFFF) as u32,
         ];
 
-        let addr1 = (inst.b_offset_imm0 as i64
-            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u32;
-
         let jmp_offset1 = if inst.jmp_offset1 >= 0 {
             inst.jmp_offset1 as u64
         } else {
@@ -2629,7 +2626,6 @@ impl<'a> Emu<'a> {
         trace.set_jmp_offset1(jmp_offset1);
         trace.set_jmp_offset2(jmp_offset2);
         trace.set_m32(inst.m32);
-        trace.set_addr1(addr1);
         trace.set_a_reg_prev_mem_step(reg_trace.reg_prev_steps[0]);
         trace.set_b_reg_prev_mem_step(reg_trace.reg_prev_steps[1]);
         trace.set_store_reg_prev_mem_step(reg_trace.reg_prev_steps[2]);

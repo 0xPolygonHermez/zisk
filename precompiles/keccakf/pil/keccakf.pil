@@ -45,24 +45,21 @@ airtemplate Keccakf(const int N = 2**17, const int mem_ops_in_parallel = 25) {
 
     col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_KECCAKF, 0...];
 
+    // Clock selectors for each row in the cycle
     const expr CLK[CLOCKS];
     for (int i = 0; i < CLOCKS; i++) {
         CLK[i] = (i)'CLK_0;
     }
 
     // Define the clock selectors
-    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Keccak-f operation, 0 otherwise
     col witness bits(1) in_use;       // 1 when the Keccak-f operation is in use, 0 otherwise
+    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Blake2br operation, 0 otherwise
+    in_use_clk_0 <== CLK_0 * in_use;
 
-    in_use_clk_0 * (1 - in_use_clk_0) === 0;
     in_use * (1 - in_use) === 0;
 
-    in_use_clk_0 - CLK_0 * in_use === 0; // This constraint is two-fold:
-                                         //   · in_use_clk_0 can only be active when CLK_0 is active
-                                         //   · if in_use is active then so is in_use_clk_0
-
     const expr in_use_active = clock_set(start: 1, end: CLOCKS);
-    in_use_active * (in_use - 'in_use) === 0; // selector latching
+    in_use_active * (in_use - 'in_use) === 0;
 
     // --> Constraints to assert the Keccak-f[1600] permutation
 
@@ -389,6 +386,7 @@ airtemplate Keccakf(const int N = 2**17, const int mem_ops_in_parallel = 25) {
         for (int j = 0; j < num_bits; j++) {
             acc_val += expr_val[bit_offset + j] * (KECCAKF_BASE ** j);
         }
+        // TODO: Use an <== to avoid the witness computation
         expr_acc === acc_val;
 
         const expr table_lookup_values[KECCAKF_LOOKUP_CHUNK_SIZE + 1];

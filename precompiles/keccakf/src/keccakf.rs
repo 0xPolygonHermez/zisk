@@ -134,9 +134,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
         trace[0].set_step_addr(step.unwrap_or(0));
         trace[1].set_step_addr(addr.unwrap_or(0) as u64);
 
-        // Fill in_use_clk_0
-        trace[0].set_in_use_clk_0(true);
-
         // Fill in_use
         for i in 0..ROWS_BY_KECCAKF {
             trace[i].set_in_use(true);

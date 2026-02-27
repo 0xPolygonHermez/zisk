@@ -364,7 +364,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
             col witness bits(40) air.previous_step;
             const expr previous_row_step = 'sel_dual * ('step_dual - 'step) + 'step;
-            previous_step === SEGMENT_L1 * (previous_segment_step - previous_row_step) + previous_row_step;
+            previous_step <== SEGMENT_L1 * (previous_segment_step - previous_row_step) + previous_row_step;
         } else {
             const expr air.previous_step = SEGMENT_L1 * (previous_segment_step - 'step) + 'step;
         }
@@ -387,7 +387,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         // to avoid intermediate column
         col witness bits(1) air.read_same_addr;
 
-        read_same_addr === (1 - addr_changes) * (1 - wr);
+        read_same_addr <== (1 - addr_changes) * (1 - wr);
 
         if (dual_mem) {
             // Range check to validate that `step_dual` > `step` if the row is dual. In case of operations

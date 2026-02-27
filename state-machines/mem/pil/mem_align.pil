@@ -139,7 +139,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     expr delta_pc;
     col witness bits(64, signed) delta_addr;
     delta_pc = pc' - pc;
-    delta_addr === (addr - 'addr) * (1 - reset);
+    delta_addr <== (addr - 'addr) * (1 - reset);
     lookup_assumes(MEMORY_ALIGN_ROM_ID, [pc, delta_pc, delta_addr, offset, width, flags]);
 
     // 2] Assume aligned memory accesses against the Memory component
@@ -184,7 +184,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     // We prove and assume with the same permutation check but with disjoint and different sign selectors
     col witness bits(32) value[RC];
     for (int i = 0; i < RC; i++) {
-        value[i] === sel_prove * prove_val[i] + sel_assume * assume_val[i];
+        value[i] <== sel_prove * prove_val[i] + sel_assume * assume_val[i];
     } 
     permutation(MEMORY_ID, expressions: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * CHUNK_NUM + offset, step, width, ...value], sel: sel_prove - sel_assume);
 }

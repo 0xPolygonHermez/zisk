@@ -24,12 +24,8 @@ type MemAlignTraceRowType<F> = MemAlignTraceRow<F>;
 #[cfg(not(feature = "packed"))]
 type MemAlignTraceType<F> = MemAlignTrace<F>;
 
-const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
-const CHUNKS_BY_RC: usize = CHUNK_NUM / RC;
 const CHUNK_BITS: usize = 8;
-const RC_BITS: u64 = (CHUNKS_BY_RC * CHUNK_BITS) as u64;
-const RC_MASK: u64 = (1 << RC_BITS) - 1;
 const OFFSET_MASK: u32 = 0x07;
 const OFFSET_BITS: u32 = 3;
 const CHUNK_BITS_MASK: u64 = (1 << CHUNK_BITS) - 1;
@@ -173,12 +169,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
                 let mut _value_read = value_read;
                 let mut _value = value;
-                for i in 0..RC {
-                    read_row.set_value(i, (_value_read & RC_MASK) as u32);
-                    value_row.set_value(i, (_value & RC_MASK) as u32);
-                    _value_read >>= RC_BITS;
-                    _value >>= RC_BITS;
-                }
 
                 #[rustfmt::skip]
                 debug_info!(
@@ -311,18 +301,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     }
                 }
 
-                let mut _value_read = value_read;
-                let mut _value_write = value_write;
-                let mut _value = value;
-                for i in 0..RC {
-                    read_row.set_value(i, (_value_read & RC_MASK) as u32);
-                    write_row.set_value(i, (_value_write & RC_MASK) as u32);
-                    value_row.set_value(i, (_value & RC_MASK) as u32);
-                    _value_read >>= RC_BITS;
-                    _value_write >>= RC_BITS;
-                    _value >>= RC_BITS;
-                }
-
                 #[rustfmt::skip]
                 debug_info!(
                     "\nOne Word Write\n\
@@ -421,7 +399,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let mut second_read_row = MemAlignTraceRowType::default();
                 second_read_row.set_step(step);
                 second_read_row.set_addr(addr_second_read);
-                second_read_row.set_delta_addr(1);
                 second_read_row.set_offset(DEFAULT_OFFSET);
                 second_read_row.set_width(DEFAULT_WIDTH);
                 second_read_row.set_pc(next_pc as u8 + 1);
@@ -443,18 +420,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     if i < rem_bytes {
                         second_read_row.set_sel(i, true);
                     }
-                }
-
-                let mut _value_first_read = value_first_read;
-                let mut _value = value;
-                let mut _value_second_read = value_second_read;
-                for i in 0..RC {
-                    first_read_row.set_value(i, (_value_first_read & RC_MASK) as u32);
-                    value_row.set_value(i, (_value & RC_MASK) as u32);
-                    second_read_row.set_value(i, (_value_second_read & RC_MASK) as u32);
-                    _value_first_read >>= RC_BITS;
-                    _value >>= RC_BITS;
-                    _value_second_read >>= RC_BITS;
                 }
 
                 #[rustfmt::skip]
@@ -607,7 +572,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let mut second_write_row = MemAlignTraceRowType::default();
                 second_write_row.set_step(step + 1);
                 second_write_row.set_addr(addr_second_read_write);
-                second_write_row.set_delta_addr(1);
                 second_write_row.set_offset(DEFAULT_OFFSET);
                 second_write_row.set_width(DEFAULT_WIDTH);
                 second_write_row.set_wr(true);
@@ -656,24 +620,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     if i >= rem_bytes {
                         second_read_row.set_sel(i, true);
                     }
-                }
-
-                let mut _value_first_read = value_first_read;
-                let mut _value_first_write = value_first_write;
-                let mut _value = value;
-                let mut _value_second_write = value_second_write;
-                let mut _value_second_read = value_second_read;
-                for i in 0..RC {
-                    first_read_row.set_value(i, (_value_first_read & RC_MASK) as u32);
-                    first_write_row.set_value(i, (_value_first_write & RC_MASK) as u32);
-                    value_row.set_value(i, (_value & RC_MASK) as u32);
-                    second_write_row.set_value(i, (_value_second_write & RC_MASK) as u32);
-                    second_read_row.set_value(i, (_value_second_read & RC_MASK) as u32);
-                    _value_first_read >>= RC_BITS;
-                    _value_first_write >>= RC_BITS;
-                    _value >>= RC_BITS;
-                    _value_second_write >>= RC_BITS;
-                    _value_second_read >>= RC_BITS;
                 }
 
                 #[rustfmt::skip]

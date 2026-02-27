@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "b86dab0c9c7c324ad5667e56c7eb399b53ddd1f86efae71242f5be294cfdb812";
+pub const PILOUT_HASH: &str = "eb4db689f175d40c362e32528fd61550190e9a79e5367b1d844b64351934d927";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -533,7 +533,7 @@ trace_row!(KeccakfFixedRow<F> {
 pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 131072, 0, 28>;
 
 trace_row!(KeccakfTraceRow<F> {
- in_use_clk_0:bit, in_use:bit, state:[bit; 1600], chunk_acc:[ubit(22); 533], rem_acc:u8, step_addr:ubit(40),
+ in_use:bit, in_use_clk_0:bit, state:[bit; 1600], chunk_acc:[ubit(22); 533], rem_acc:u8, step_addr:ubit(40),
 });
 pub type KeccakfTrace<F> = GenericTrace<KeccakfTraceRow<F>, 131072, 0, 28>;
 
@@ -547,7 +547,7 @@ trace_row!(Sha256fFixedRow<F> {
 pub type Sha256fFixed<F> = GenericTrace<Sha256fFixedRow<F>, 262144, 0, 29>;
 
 trace_row!(Sha256fTraceRow<F> {
- a:[bit; 32], e:[bit; 32], w:[bit; 32], new_a_carry_bits:u8, new_e_carry_bits:u8, new_w_carry_bits:ubit(4), step_addr:ubit(40), in_use_clk_0:bit, in_use:bit,
+ a:[bit; 32], e:[bit; 32], w:[bit; 32], new_a_carry_bits:u8, new_e_carry_bits:u8, new_w_carry_bits:ubit(4), step_addr:ubit(40), in_use:bit, in_use_clk_0:bit,
 });
 pub type Sha256fTrace<F> = GenericTrace<Sha256fTraceRow<F>, 262144, 0, 29>;
 
@@ -561,7 +561,7 @@ trace_row!(Poseidon2FixedRow<F> {
 pub type Poseidon2Fixed<F> = GenericTrace<Poseidon2FixedRow<F>, 131072, 0, 30>;
 
 trace_row!(Poseidon2TraceRow<F> {
- in_use_clk_0:bit, in_use:bit, chunks:[[u32; 2]; 16], step_addr:ubit(40),
+ in_use:bit, in_use_clk_0:bit, chunks:[[u32; 2]; 16], step_addr:ubit(40),
 });
 pub type Poseidon2Trace<F> = GenericTrace<Poseidon2TraceRow<F>, 131072, 0, 30>;
 

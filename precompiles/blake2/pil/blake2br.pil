@@ -160,7 +160,7 @@ airtemplate Blake2br(const int N = 2**20) {
         sum_weighted_sel += round_idx_sel[i] * i;
     }
     sum_sel * (sum_sel - 1) === 0;  // At most one of the round_idx_sel is active
-    round_idx === sum_weighted_sel; // Check that round_idx is the index of the active round_idx_sel
+    round_idx <== sum_weighted_sel; // Check that round_idx is the index of the active round_idx_sel
                                     // Moreover, this ensures that round_idx is in [0,10)
                                     // Since round_idx is fixed within the cycle, all round_idx_sel are fixed as well
 
