@@ -14,6 +14,7 @@ use std::{
     ops::Range,
 };
 use tracing::error;
+use zisk_common::AsmExecutionInfo;
 
 use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto};
 
@@ -390,6 +391,7 @@ pub struct AggProofData {
 pub struct ContributionsResult {
     pub challenges: Vec<ContributionsInfo>,
     pub execution_info: ExecutionInfo,
+    pub asm_execution_info: Option<AsmExecutionInfo>,
 }
 
 #[derive(Debug, Clone)]

@@ -26,6 +26,7 @@ use std::{
 };
 use tracing::info;
 use zisk_common::io::StreamSource;
+use zisk_common::AsmExecutionInfo;
 use zisk_common::ElfBinaryLike;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, StatsCostPerType, ZiskExecutorSummary};
 use zisk_core::ZiskRom;
@@ -146,6 +147,10 @@ impl ZiskProgramPK {
             ));
         }
         Ok(())
+    }
+
+    pub fn is_asm(&self) -> bool {
+        self.asm_services.is_some()
     }
 }
 
@@ -742,7 +747,7 @@ pub trait ProverEngine {
 
     fn executed_steps(&self) -> u64;
 
-    fn get_execution_info(&self) -> Result<ExecutionInfo>;
+    fn get_execution_info(&self) -> Result<(ExecutionInfo, Option<AsmExecutionInfo>)>;
 
     fn get_instance_trace(
         &self,
@@ -890,7 +895,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.executed_steps()
     }
 
-    pub fn get_execution_info(&self) -> Result<ExecutionInfo> {
+    pub fn get_execution_info(&self) -> Result<(ExecutionInfo, Option<AsmExecutionInfo>)> {
         self.prover.get_execution_info()
     }
 

@@ -24,6 +24,7 @@ use proofman_common::ProofOptions;
 use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use std::path::PathBuf;
 use tracing::{error, info};
+use zisk_common::AsmExecutionInfo;
 
 use crate::config::ProverServiceConfigDto;
 
@@ -33,7 +34,7 @@ pub enum ComputationResult {
     Challenge {
         job_id: JobId,
         success: bool,
-        result: Result<(ExecutionInfo, Vec<ContributionsInfo>)>,
+        result: Result<(ExecutionInfo, Option<AsmExecutionInfo>, Vec<ContributionsInfo>)>,
     },
     Proofs {
         job_id: JobId,
@@ -505,15 +506,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             guard.executed_steps = prover.executed_steps();
             drop(guard);
 
-            let execution_info =
-                prover.get_execution_info().unwrap_or_else(|_| ExecutionInfo::default());
+            let (execution_info, asm_execution_info) =
+                prover.get_execution_info().unwrap_or_else(|_| (ExecutionInfo::default(), None));
 
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Challenge {
                         job_id,
                         success: true,
-                        result: Ok((execution_info, data)),
+                        result: Ok((execution_info, asm_execution_info, data)),
                     });
                 }
                 Err(error) => {

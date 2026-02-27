@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use zisk_common::stats_mark;
+use zisk_common::AsmExecutionInfo;
 use zisk_common::{io::ZiskStdin, ElfBinaryLike, ExecutorStatsHandle, ZiskExecutorSummary};
 
 pub(crate) struct ProverBackend {
@@ -549,12 +550,21 @@ impl ProverBackend {
         Ok(proofman.is_first_partition())
     }
 
-    pub(crate) fn get_execution_info(&self) -> Result<ExecutionInfo> {
+    pub(crate) fn get_execution_info(&self) -> Result<(ExecutionInfo, Option<AsmExecutionInfo>)> {
         let proofman = self
             .proofman
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Cannot get execution info in verifier mode"))?;
-        Ok(proofman.get_execution_info())
+
+        let execution_info = proofman.get_execution_info();
+
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
+        })?;
+
+        let asm_execution_info = executor.get_asm_execution_info();
+
+        Ok((execution_info, asm_execution_info))
     }
 
     pub(crate) fn register_aggregated_proofs(

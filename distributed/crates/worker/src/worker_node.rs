@@ -8,6 +8,7 @@ use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info};
+use zisk_common::AsmExecutionInfo;
 use zisk_distributed_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, StreamDataDto,
     WorkerState,
@@ -254,7 +255,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<(ExecutionInfo, Vec<ContributionsInfo>)>,
+        result: Result<(ExecutionInfo, Option<AsmExecutionInfo>, Vec<ContributionsInfo>)>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
@@ -276,12 +277,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         "Inconsistent state: operation reported success but returned Err result"
                     ));
                 }
-                ((ExecutionInfo::default(), vec![]), e.to_string())
+                ((ExecutionInfo::default(), None, vec![]), e.to_string())
             }
         };
 
         let challenges: Vec<Challenges> = result_data
-            .1
+            .2
             .into_iter()
             .map(|cont| Challenges {
                 worker_index: cont.worker_index,
@@ -297,6 +298,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             summary_info: result_data.0.summary_info,
         };
 
+        let asm_execution_info =
+            result_data.1.map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz });
+
         let message = WorkerMessage {
             payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
                 worker_id: self.worker_config.worker.worker_id.as_string(),
@@ -306,6 +310,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data: Some(ResultData::Challenges(ChallengesList {
                     challenges,
                     execution_info: Some(execution_info),
+                    asm_execution_info,
                 })),
                 error_message,
             })),

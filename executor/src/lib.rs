@@ -49,7 +49,7 @@ use asm_runner::AsmRunnerMO;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::{collections::HashMap, sync::Mutex, thread::JoinHandle};
-use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
+use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
 
 /// Trait for unified execution across different emulator backends
 #[allow(clippy::too_many_arguments)]
@@ -99,6 +99,12 @@ impl EmulatorKind {
         };
     }
 
+    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
+        match self {
+            Self::Asm(e) => e.get_asm_execution_info(),
+            Self::Rust(_) => None, // No ASM execution info in Rust emulator
+        }
+    }
     pub fn reset_hints_stream(&self) {
         match self {
             Self::Asm(e) => e.reset_hints_stream(),

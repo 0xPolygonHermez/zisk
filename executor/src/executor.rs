@@ -33,8 +33,8 @@ use std::{
 };
 use witness::WitnessComponent;
 use zisk_common::{
-    io::ZiskStdin, stats_begin, stats_end, BusDeviceMetrics, ChunkId, ExecutorStatsHandle,
-    StatsCostPerType, StatsType, ZiskExecutorSummary, ZiskExecutorTime,
+    io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, BusDeviceMetrics, ChunkId,
+    ExecutorStatsHandle, StatsCostPerType, StatsType, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 use zisk_pil::ZiskPublicValues;
@@ -114,6 +114,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     #[allow(clippy::type_complexity)]
     pub fn get_execution_result(&self) -> (ZiskExecutorSummary, ExecutorStatsHandle) {
         (self.state.get_execution_result(), self.state.get_stats())
+    }
+
+    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
+        self.rom_executor.get_asm_execution_info()
     }
 
     /// Stores statistics to persistent storage.

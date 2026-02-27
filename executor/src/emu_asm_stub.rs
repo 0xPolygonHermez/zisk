@@ -10,7 +10,7 @@ use crate::AsmResources;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use sm_rom::RomSM;
-use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
+use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
 
 pub struct EmulatorAsm {}
@@ -58,6 +58,10 @@ impl EmulatorAsm {
     }
 
     pub fn reset_hints_stream(&self) {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
+    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 }

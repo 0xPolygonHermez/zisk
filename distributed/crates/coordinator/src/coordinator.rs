@@ -52,6 +52,7 @@ use std::{
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use zisk_common::io::{StreamSource, ZiskStream};
+use zisk_common::AsmExecutionInfo;
 use zisk_distributed_common::{
     AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
     ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
@@ -1272,9 +1273,14 @@ impl Coordinator {
                     execution_time: ch_list.execution_info.execution_time,
                 };
 
+                let asm_execution_info = ch_list
+                    .asm_execution_info
+                    .map(|asm_info| AsmExecutionInfo { time: asm_info.time, mhz: asm_info.mhz });
+
                 Ok(JobResultData::Challenges(ContributionsResult {
                     execution_info,
                     challenges: contributions,
+                    asm_execution_info,
                 }))
             }
             _ => Err(CoordinatorError::InvalidRequest(
@@ -1323,27 +1329,29 @@ impl Coordinator {
         );
         let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
-        // Get execution time from the worker's result
-        let exec_time_info = job
+        // Get execution info from the worker's result
+        let asm_exec_info = job
             .results
             .get(&JobPhase::Contributions)
             .and_then(|results| results.get(worker_id))
             .and_then(|job_result| match &job_result.data {
                 JobResultData::Challenges(contributions_result) => {
-                    Some(contributions_result.execution_info.execution_time)
+                    contributions_result.asm_execution_info.clone()
                 }
                 _ => None,
-            })
-            .unwrap_or(0.0);
+            });
+
+        let asm_info_str =
+            asm_exec_info.map(|info| format!(", Asm Execution: {}", info)).unwrap_or_default();
 
         info!(
-            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, {:.3}s (execution {:.3}s))",
+            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, {:.3}s{})",
             worker_id,
             job.job_id,
             phase1_results_len,
             job.workers.len(),
             duration_ms.as_secs_f32(),
-            exec_time_info
+            asm_info_str
         );
 
         // Ensure we have results from all assigned workers before proceeding.
@@ -1988,21 +1996,6 @@ impl Coordinator {
 
         let duration = Duration::from_millis(job.duration_ms.unwrap_or(0));
 
-        // Extract execution time from Phase 1 results to split phase1 into execution + contributions
-        let phase1_execution_time = job
-            .results
-            .get(&JobPhase::Contributions)
-            .and_then(|results| results.values().next())
-            .and_then(|job_result| match &job_result.data {
-                JobResultData::Challenges(contributions_result) => {
-                    Some(contributions_result.execution_info.execution_time)
-                }
-                _ => None,
-            })
-            .unwrap_or(0.0);
-
-        let phase1_contributions_time = phase1_duration.as_seconds_f32() - phase1_execution_time;
-
         let header = format!("[Job] Finished {} successfully ✔", job_id).green();
         let duration_str = format!("Duration: {:.3}s", duration.as_secs_f32()).bold();
         let steps_str = if let Some(executed_steps) = job.executed_steps {
@@ -2011,11 +2004,10 @@ impl Coordinator {
             "Steps: N/A".to_string().red().bold()
         };
         info!(
-            "{} {} ({:.3}s+{:.3}s+{:.3}s+{:.3}s) {} Inputs: {:?}, Capacity: {} ",
+            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} Inputs: {:?}, Capacity: {} ",
             header,
             duration_str,
-            phase1_execution_time,
-            phase1_contributions_time,
+            phase1_duration.as_seconds_f32(),
             phase2_duration.as_seconds_f32(),
             phase3_duration.as_seconds_f32(),
             steps_str,

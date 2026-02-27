@@ -426,9 +426,14 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                     proof_values: exec_info.proof_values,
                     summary_info: exec_info.summary_info,
                 };
+                let asm_execution_info = challenges_list
+                    .asm_execution_info
+                    .map(|asm_info| AsmExecutionInfoDto { time: asm_info.time, mhz: asm_info.mhz });
+
                 Some(ExecuteTaskResponseResultDataDto::Challenges(ContributionsResultDataDto {
                     execution_info,
                     challenges,
+                    asm_execution_info,
                 }))
             }
             Some(execute_task_response::ResultData::Proofs(proof_list)) => {
