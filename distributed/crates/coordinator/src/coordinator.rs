@@ -2023,10 +2023,55 @@ impl Coordinator {
             job.compute_capacity,
         );
 
+        let workers = job.workers.clone();
+
+        if workers.len() > 1 {
+            for phase in [JobPhase::Contributions, JobPhase::Prove] {
+                if let Some(results) = job.results.get(&phase) {
+                    if let Some(start_time) = job.start_times.get(&phase) {
+                        let mut durations_ms: Vec<(WorkerId, i64)> = results
+                            .iter()
+                            .map(|(worker_id, result)| {
+                                let duration = result.end_time.signed_duration_since(start_time);
+                                (worker_id.clone(), duration.num_milliseconds())
+                            })
+                            .collect();
+
+                        if durations_ms.len() > 1 {
+                            durations_ms.sort_by_key(|(_, duration)| *duration);
+
+                            let (best_worker, best_duration) = &durations_ms[0];
+                            let (worst_worker, worst_duration) = durations_ms.last().unwrap();
+
+                            let avg_duration = durations_ms.iter().map(|(_, d)| d).sum::<i64>()
+                                as f64
+                                / durations_ms.len() as f64;
+
+                            let diff_percentage = if *best_duration > 0 {
+                                ((*worst_duration - *best_duration) as f64 / *best_duration as f64)
+                                    * 100.0
+                            } else {
+                                0.0
+                            };
+
+                            info!(
+                                "[Job] {:?} Performance - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                                phase,
+                                avg_duration / 1000.0,
+                                best_worker,
+                                *best_duration as f64 / 1000.0,
+                                worst_worker,
+                                *worst_duration as f64 / 1000.0,
+                                diff_percentage
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         // Print summary of the job
         let job_phases = vec![JobPhase::Contributions, JobPhase::Prove, JobPhase::Aggregate];
-
-        let workers = job.workers.clone();
 
         info!("[Job] Summary for {}", job_id);
         for phase in job_phases {
