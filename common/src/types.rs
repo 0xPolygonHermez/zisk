@@ -145,6 +145,8 @@ impl fmt::Display for StatsCostPerType {
 
 #[derive(Debug, Default, Clone)]
 pub struct ZiskExecutorTime {
+    /// Start time of the execution process, represented as a duration since the UNIX epoch.
+    pub start_time: Duration,
     /// Total executor duration of the entire execution process.
     pub total_duration: Duration,
     /// Duration of the execution phase.
@@ -153,6 +155,8 @@ pub struct ZiskExecutorTime {
     pub count_and_plan_duration: Duration,
     /// Duration of the counting and planning phase for memory operations from ASM runner.
     pub count_and_plan_mo_duration: Duration,
+    /// Execution duration of the ASM runner.
+    pub asm_execution_duration: Option<AsmExecutionInfo>,
 }
 
 #[derive(Debug, Default, Clone)]

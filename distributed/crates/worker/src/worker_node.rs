@@ -1,6 +1,6 @@
 use crate::{worker::ComputationResult, ProverConfig, Worker};
 use anyhow::{anyhow, Result};
-use proofman::{AggProofs, ContributionsInfo, ExecutionInfo};
+use proofman::{AggProofs, ContributionsInfo, WitnessInfo};
 use std::path::Path;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
@@ -8,7 +8,7 @@ use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info};
-use zisk_common::AsmExecutionInfo;
+use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, StreamDataDto,
     WorkerState,
@@ -255,7 +255,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<(ExecutionInfo, Option<AsmExecutionInfo>, Vec<ContributionsInfo>)>,
+        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>)>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
@@ -277,7 +277,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         "Inconsistent state: operation reported success but returned Err result"
                     ));
                 }
-                ((ExecutionInfo::default(), None, vec![]), e.to_string())
+                ((WitnessInfo::default(), ZiskExecutorTime::default(), vec![]), e.to_string())
             }
         };
 
@@ -291,15 +291,24 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             })
             .collect();
 
-        let execution_info: ExecuteInfo = ExecuteInfo {
-            execution_time: result_data.0.execution_time,
+        let witness_info = WitnessExecInfo {
+            witness_time: result_data.0.witness_time,
             publics: result_data.0.publics,
             proof_values: result_data.0.proof_values,
             summary_info: result_data.0.summary_info,
         };
 
-        let asm_execution_info =
-            result_data.1.map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz });
+        let zisk_execution_time = ZiskExecuteTime {
+            start_time: result_data.1.start_time.as_millis() as f32,
+            total_duration: result_data.1.total_duration.as_millis() as f32,
+            execution_duration: result_data.1.execution_duration.as_millis() as f32,
+            count_and_plan_duration: result_data.1.count_and_plan_duration.as_millis() as f32,
+            count_and_plan_mo_duration: result_data.1.count_and_plan_mo_duration.as_millis() as f32,
+            asm_execution_duration: result_data
+                .1
+                .asm_execution_duration
+                .map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz }),
+        };
 
         let message = WorkerMessage {
             payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
@@ -309,8 +318,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 success,
                 result_data: Some(ResultData::Challenges(ChallengesList {
                     challenges,
-                    execution_info: Some(execution_info),
-                    asm_execution_info,
+                    witness_info: Some(witness_info),
+                    zisk_execution_time: Some(zisk_execution_time),
                 })),
                 error_message,
             })),

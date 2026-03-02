@@ -29,12 +29,12 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use sm_main::MainSM;
 use std::{
     sync::{Arc, RwLock},
-    time::Instant,
+    time::{Instant, SystemTime},
 };
 use witness::WitnessComponent;
 use zisk_common::{
-    io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, BusDeviceMetrics, ChunkId,
-    ExecutorStatsHandle, StatsCostPerType, StatsType, ZiskExecutorSummary, ZiskExecutorTime,
+    io::ZiskStdin, stats_begin, stats_end, BusDeviceMetrics, ChunkId, ExecutorStatsHandle,
+    StatsCostPerType, StatsType, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 use zisk_pil::ZiskPublicValues;
@@ -116,10 +116,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         (self.state.get_execution_result(), self.state.get_stats())
     }
 
-    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
-        self.rom_executor.get_asm_execution_info()
-    }
-
     /// Stores statistics to persistent storage.
     pub fn store_stats(&self) {
         self.state.stats.store_stats();
@@ -135,6 +131,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         global_ids: &RwLock<Vec<usize>>,
     ) -> ProofmanResult<()> {
         let start_total = Instant::now();
+        let start_system_time = SystemTime::now();
         self.state.reset();
 
         stats_begin!(self.state.stats, 0, _exec_scope, "EXECUTE", 0);
@@ -268,10 +265,14 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         }
 
         let zisk_execution_time = ZiskExecutorTime {
+            start_time: start_system_time
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default(),
             execution_duration,
             count_and_plan_duration,
             count_and_plan_mo_duration,
             total_duration: start_total.elapsed(),
+            asm_execution_duration: self.rom_executor.get_asm_execution_info(),
         };
         // Store the execution result
         let execution_result =

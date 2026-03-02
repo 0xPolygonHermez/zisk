@@ -296,8 +296,8 @@ message ExecuteTaskResponse {
   }
 }
 
-message ExecuteInfo {
-  float execution_time = 1;
+message WitnessExecInfo {
+  float witness_time = 1;
   repeated uint64 publics = 2;
   repeated uint64 proof_values = 3;
   string summary_info = 4;
@@ -308,10 +308,19 @@ message AsmExecuteInfo {
   float mhz = 2;
 }
 
+message ZiskExecuteTime {
+  float start_time = 1;
+  float total_duration = 2;
+  float execution_duration = 3;
+  float count_and_plan_duration = 4;
+  float count_and_plan_mo_duration = 5;
+  optional AsmExecuteInfo asm_execution_duration = 6;
+}
+
 message ChallengesList {
   repeated Challenges challenges = 1;
-  ExecuteInfo execution_info = 2;
-  optional AsmExecuteInfo asm_execution_info = 3;
+  WitnessExecInfo witness_info = 2;
+  ZiskExecuteTime zisk_execution_time = 3;
 }
 
 message Challenges {

@@ -10,6 +10,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_common::io::{StreamProcessor, StreamSource, ZiskStdin};
 use zisk_common::ElfBinaryFromFile;
+use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
@@ -17,14 +18,13 @@ use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProgramPK, ZiskProver};
 
 use crate::stream_ordering::StreamOrderingActor;
 
-use proofman::ExecutionInfo;
 use proofman::ProvePhaseInputs;
+use proofman::WitnessInfo;
 use proofman_common::ParamsGPU;
 use proofman_common::ProofOptions;
 use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use std::path::PathBuf;
 use tracing::{error, info};
-use zisk_common::AsmExecutionInfo;
 
 use crate::config::ProverServiceConfigDto;
 
@@ -34,7 +34,7 @@ pub enum ComputationResult {
     Challenge {
         job_id: JobId,
         success: bool,
-        result: Result<(ExecutionInfo, Option<AsmExecutionInfo>, Vec<ContributionsInfo>)>,
+        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>)>,
     },
     Proofs {
         job_id: JobId,
@@ -506,15 +506,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             guard.executed_steps = prover.executed_steps();
             drop(guard);
 
-            let (execution_info, asm_execution_info) =
-                prover.get_execution_info().unwrap_or_else(|_| (ExecutionInfo::default(), None));
+            let (witness_info, zisk_execution_time) = prover
+                .get_execution_info()
+                .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Challenge {
                         job_id,
                         success: true,
-                        result: Ok((execution_info, asm_execution_info, data)),
+                        result: Ok((witness_info, zisk_execution_time, data)),
                     });
                 }
                 Err(error) => {

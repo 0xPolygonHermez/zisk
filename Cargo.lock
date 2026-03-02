@@ -604,7 +604,7 @@ dependencies = [
  "colored",
  "dirs",
  "executor",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "futures",
  "indicatif",
  "mpi",
@@ -1116,9 +1116,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#73479fc2b507b5c833d69a753a8be104e1818f3a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#104ec38235fc136fe27249866f01fae5c7e2e1cc"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "num-bigint",
  "num-traits",
 ]
@@ -1415,7 +1415,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "itertools 0.14.0",
  "mem-common",
  "mem-planner-cpp",
@@ -1466,6 +1466,17 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+
+[[package]]
+name = "fields"
+version = "0.16.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#104ec38235fc136fe27249866f01fae5c7e2e1cc"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "serde",
+]
 
 [[package]]
 name = "fields"
@@ -2265,11 +2276,10 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "libredox"
-version = "0.1.12"
+version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d0b95e02c851351f877147b7deea7b1afb1df71b63aa5f8270716e0c5720616"
+checksum = "1744e39d1d6a9948f4f388969627434e31128196de472883b39f148769bfe30a"
 dependencies = [
- "bitflags",
  "libc",
 ]
 
@@ -2338,7 +2348,7 @@ name = "mem-common"
 version = "0.16.0"
 dependencies = [
  "clap",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -2765,10 +2775,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#73479fc2b507b5c833d69a753a8be104e1818f3a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#104ec38235fc136fe27249866f01fae5c7e2e1cc"
 dependencies = [
  "colored",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -2887,7 +2897,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -2923,7 +2933,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -2954,7 +2964,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -2975,7 +2985,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -2994,7 +3004,7 @@ dependencies = [
 name = "precomp-dma"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3018,7 +3028,7 @@ name = "precomp-keccakf"
 version = "0.16.0"
 dependencies = [
  "circuit",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -3038,7 +3048,7 @@ dependencies = [
 name = "precomp-poseidon2"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3058,7 +3068,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3077,7 +3087,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -3147,7 +3157,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#73479fc2b507b5c833d69a753a8be104e1818f3a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#104ec38235fc136fe27249866f01fae5c7e2e1cc"
 dependencies = [
  "bincode",
  "blake3",
@@ -3158,7 +3168,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "libloading",
  "mpi",
  "num-bigint",
@@ -3183,7 +3193,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#73479fc2b507b5c833d69a753a8be104e1818f3a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#104ec38235fc136fe27249866f01fae5c7e2e1cc"
 dependencies = [
  "bincode",
  "borsh",
@@ -3193,7 +3203,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "lazy_static",
  "libloading",
  "mpi",
@@ -3214,9 +3224,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#73479fc2b507b5c833d69a753a8be104e1818f3a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#104ec38235fc136fe27249866f01fae5c7e2e1cc"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -3227,7 +3237,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#73479fc2b507b5c833d69a753a8be104e1818f3a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#104ec38235fc136fe27249866f01fae5c7e2e1cc"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3237,7 +3247,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#73479fc2b507b5c833d69a753a8be104e1818f3a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#104ec38235fc136fe27249866f01fae5c7e2e1cc"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3246,7 +3256,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#73479fc2b507b5c833d69a753a8be104e1818f3a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#104ec38235fc136fe27249866f01fae5c7e2e1cc"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3258,10 +3268,10 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#73479fc2b507b5c833d69a753a8be104e1818f3a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#104ec38235fc136fe27249866f01fae5c7e2e1cc"
 dependencies = [
  "bytemuck",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -3620,7 +3630,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "colored",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -4042,7 +4052,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sm-arith"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -4062,7 +4072,7 @@ dependencies = [
 name = "sm-binary"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -4082,7 +4092,7 @@ name = "sm-frequent-ops"
 version = "0.16.0"
 dependencies = [
  "clap",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "num-bigint",
  "proofman-common",
  "proofman-util",
@@ -4096,7 +4106,7 @@ dependencies = [
 name = "sm-main"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "mem-common",
  "num-bigint",
  "pil-std-lib",
@@ -4115,7 +4125,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "mem-common",
  "num-bigint",
  "num-traits",
@@ -4136,7 +4146,7 @@ name = "sm-rom"
 version = "0.16.0"
 dependencies = [
  "asm-runner",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "itertools 0.14.0",
  "proofman-common",
  "proofman-macros",
@@ -5695,10 +5705,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0#73479fc2b507b5c833d69a753a8be104e1818f3a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#104ec38235fc136fe27249866f01fae5c7e2e1cc"
 dependencies = [
  "colored",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -5891,7 +5901,7 @@ version = "0.16.0"
 dependencies = [
  "anyhow",
  "bincode",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "libc",
  "mpi",
  "proofman",
@@ -5914,7 +5924,7 @@ name = "zisk-core"
 version = "0.16.0"
 dependencies = [
  "elf",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "lib-c",
  "lib-float",
  "paste",
@@ -6016,7 +6026,7 @@ dependencies = [
  "clap",
  "colored",
  "config",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -6042,7 +6052,7 @@ dependencies = [
 name = "zisk-pil"
 version = "0.16.0"
 dependencies = [
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "proofman-common",
  "proofman-macros",
  "rayon",
@@ -6059,7 +6069,7 @@ dependencies = [
  "bincode",
  "colored",
  "executor",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "proofman",
  "proofman-common",
  "proofman-util",
@@ -6099,7 +6109,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "mem-common",
  "memmap2",
  "num-format",
@@ -6128,7 +6138,7 @@ dependencies = [
  "bytes",
  "cfg-if",
  "ctor",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.16.0)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -6154,7 +6164,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields",
+ "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
