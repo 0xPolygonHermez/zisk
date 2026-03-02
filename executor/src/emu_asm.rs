@@ -83,6 +83,10 @@ impl EmulatorAsm {
         self.asm_resources.lock().unwrap().as_ref().unwrap().reset();
     }
 
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
+        self.rom_sm.as_ref().unwrap().set_rh_data(rh_data);
+    }
+
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
     ///
     /// # Arguments
@@ -115,6 +119,7 @@ impl EmulatorAsm {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
+        Option<JoinHandle<AsmRunnerRH>>,
         u64,
     ) {
         let asm_resources_guard = self.asm_resources.lock().unwrap();
@@ -201,23 +206,12 @@ impl EmulatorAsm {
         drop(asm_resources_guard);
 
         let (min_traces, main_count, secn_count) = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
-
         // Store execute steps
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
 
-        // If the world rank is 0, wait for the ROM Histogram thread to finish and collect the result
-        if has_rom_sm {
-            let rh_data = handle_rh
-                .expect("ROM Histogram thread was not spawned")
-                .join()
-                .expect("Error during ROM Histogram thread execution");
-
-            self.rom_sm.as_ref().unwrap().set_rh_data(rh_data);
-        }
-
         stats_end!(stats, &_exec_scope);
 
-        (min_traces, main_count, secn_count, Some(handle_mo), steps)
+        (min_traces, main_count, secn_count, Some(handle_mo), handle_rh, steps)
     }
 
     fn run_mt_assembly<F: PrimeField64>(
@@ -328,6 +322,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
+        Option<JoinHandle<AsmRunnerRH>>,
         u64,
     ) {
         self.execute(zisk_rom, stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)

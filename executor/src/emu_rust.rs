@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Mutex, thread::JoinHandle};
 
-use asm_runner::AsmRunnerMO;
+use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
@@ -50,6 +50,7 @@ impl EmulatorRust {
     /// * `NestedDeviceMetricsList` - Metrics for secondary/nested devices.
     /// * `None`.
     /// * `u64` - Total number of steps.
+    #[allow(clippy::type_complexity)]
     pub fn execute<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
@@ -60,6 +61,7 @@ impl EmulatorRust {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
+        Option<JoinHandle<AsmRunnerRH>>,
         u64,
     ) {
         let min_traces = self.run_emulator(zisk_rom, Self::NUM_THREADS, &stdin.lock().unwrap());
@@ -71,7 +73,7 @@ impl EmulatorRust {
         let (main_count, secn_count) = self.count(zisk_rom, &min_traces, sm_bundle);
         timer_stop_and_log_info!(COUNT);
 
-        (min_traces, main_count, secn_count, None, steps)
+        (min_traces, main_count, secn_count, None, None, steps)
     }
 
     fn run_emulator(
@@ -175,6 +177,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
+        Option<JoinHandle<AsmRunnerRH>>,
         u64,
     ) {
         self.execute(zisk_rom, stdin, sm_bundle)

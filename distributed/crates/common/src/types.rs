@@ -240,6 +240,7 @@ impl Debug for JobStats {
 pub struct Job {
     pub job_id: JobId,
     pub start_times: HashMap<JobPhase, DateTime<Utc>>,
+    pub task_received_time: Option<DateTime<Utc>>,
     pub duration_ms: Option<u64>,
     pub state: JobState,
     pub data_id: DataId,
@@ -286,6 +287,7 @@ impl Job {
             partitions,
             results: HashMap::new(),
             stats: HashMap::new(),
+            task_received_time: None,
             challenges: None,
             witness_info: None,
             execution_mode,
@@ -392,6 +394,7 @@ pub struct ContributionsResult {
     pub challenges: Vec<ContributionsInfo>,
     pub witness_info: WitnessInfo,
     pub zisk_executor_time: ZiskExecutorTime,
+    pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone)]

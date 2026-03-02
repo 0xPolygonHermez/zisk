@@ -45,7 +45,7 @@ use zisk_core::ZiskRom;
 pub type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
 pub type NestedDeviceMetricsList = HashMap<usize, DeviceMetricsList>;
 
-use asm_runner::AsmRunnerMO;
+use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::{collections::HashMap, sync::Mutex, thread::JoinHandle};
@@ -53,6 +53,7 @@ use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle
 
 /// Trait for unified execution across different emulator backends
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 pub trait Emulator<F: PrimeField64>: Send + Sync {
     /// Execute the emulator
     fn execute(
@@ -69,6 +70,7 @@ pub trait Emulator<F: PrimeField64>: Send + Sync {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
+        Option<JoinHandle<AsmRunnerRH>>,
         u64,
     );
 }
@@ -111,6 +113,13 @@ impl EmulatorKind {
             Self::Rust(_) => (), // No hints stream in Rust emulator
         }
     }
+
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
+        match self {
+            Self::Asm(e) => e.set_rh_data(rh_data),
+            Self::Rust(_) => (),
+        }
+    }
 }
 
 impl<F: PrimeField64> Emulator<F> for EmulatorKind {
@@ -128,6 +137,7 @@ impl<F: PrimeField64> Emulator<F> for EmulatorKind {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
+        Option<JoinHandle<AsmRunnerRH>>,
         u64,
     ) {
         match self {
