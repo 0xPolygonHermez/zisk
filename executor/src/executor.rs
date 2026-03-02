@@ -131,6 +131,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         global_ids: &RwLock<Vec<usize>>,
     ) -> ProofmanResult<()> {
         let start_total = Instant::now();
+        self.state.reset();
 
         stats_begin!(self.state.stats, 0, _exec_scope, "EXECUTE", 0);
 
