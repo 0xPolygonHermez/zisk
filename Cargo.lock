@@ -1116,7 +1116,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#36a4f97988f285938bd390654f0334918b6bd6b3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#895f696191bc6b3ba624f32c5d964b4b2cb34c73"
 dependencies = [
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "num-bigint",
@@ -1470,7 +1470,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fields"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#36a4f97988f285938bd390654f0334918b6bd6b3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#895f696191bc6b3ba624f32c5d964b4b2cb34c73"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2775,7 +2775,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#36a4f97988f285938bd390654f0334918b6bd6b3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#895f696191bc6b3ba624f32c5d964b4b2cb34c73"
 dependencies = [
  "colored",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
@@ -3157,7 +3157,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#36a4f97988f285938bd390654f0334918b6bd6b3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#895f696191bc6b3ba624f32c5d964b4b2cb34c73"
 dependencies = [
  "bincode",
  "blake3",
@@ -3193,7 +3193,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#36a4f97988f285938bd390654f0334918b6bd6b3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#895f696191bc6b3ba624f32c5d964b4b2cb34c73"
 dependencies = [
  "bincode",
  "borsh",
@@ -3224,7 +3224,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#36a4f97988f285938bd390654f0334918b6bd6b3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#895f696191bc6b3ba624f32c5d964b4b2cb34c73"
 dependencies = [
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
  "itoa",
@@ -3237,7 +3237,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#36a4f97988f285938bd390654f0334918b6bd6b3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#895f696191bc6b3ba624f32c5d964b4b2cb34c73"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3247,7 +3247,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#36a4f97988f285938bd390654f0334918b6bd6b3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#895f696191bc6b3ba624f32c5d964b4b2cb34c73"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3256,7 +3256,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#36a4f97988f285938bd390654f0334918b6bd6b3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#895f696191bc6b3ba624f32c5d964b4b2cb34c73"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3268,7 +3268,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#36a4f97988f285938bd390654f0334918b6bd6b3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#895f696191bc6b3ba624f32c5d964b4b2cb34c73"
 dependencies = [
  "bytemuck",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",
@@ -5705,7 +5705,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#36a4f97988f285938bd390654f0334918b6bd6b3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator#895f696191bc6b3ba624f32c5d964b4b2cb34c73"
 dependencies = [
  "colored",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Flogs-coordinator)",

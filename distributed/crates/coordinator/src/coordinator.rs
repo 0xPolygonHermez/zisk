@@ -731,6 +731,10 @@ impl Coordinator {
         }
 
         timer_stop_and_log_info!(SENDING_CONTRIBUTION_PARAMS);
+        
+        // Yield to allow gRPC stream to flush ExecuteTask messages before stream initialization
+        tokio::task::yield_now().await;
+        
         timer_start_info!(HINTS_STREAM_INITIALIZATION);
 
         if matches!(hints_source, HintsSourceDto::HintsStream(_)) {
@@ -755,7 +759,7 @@ impl Coordinator {
         let job_id_clone = job.job_id.clone();
         let workers_clone = Arc::new(cloned_active_workers.clone());
         let workers_pool = Arc::clone(&self.workers_pool);
-
+        
         // Async dispatcher - no blocking, pure async flow for maximum performance
         let dispatcher =
             move |sequence_number: u32, stream_type: StreamMessageKind, payload: Vec<u8>| {
