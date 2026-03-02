@@ -224,8 +224,8 @@ pub struct ZiskExecutorTimeDto {
     pub count_and_plan_mo_duration: f32,
     /// ASM execution info (time in milliseconds)
     pub asm_execution_duration: Option<AsmExecutionInfoDto>,
-    /// Time when task was received by worker (in milliseconds since UNIX epoch)
-    pub task_received_time: f32,
+    /// Time when task was received by worker (milliseconds since UNIX epoch, f64 for precision)
+    pub task_received_time: f64,
 }
 
 #[derive(Clone)]

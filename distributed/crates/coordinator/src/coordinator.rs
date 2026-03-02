@@ -2141,13 +2141,21 @@ impl Coordinator {
                                     as f64
                                     / delays_ms.len() as f64;
 
+                                let delay_diff_percentage = if *best_delay > 0 {
+                                    ((*worst_delay - *best_delay) as f64 / *best_delay as f64)
+                                        * 100.0
+                                } else {
+                                    0.0
+                                };
+
                                 info!(
-                                    "[Job] Contributions Delay - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s)",
+                                    "[Job] Contributions Delay - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
                                     avg_delay / 1000.0,
                                     best_delay_worker,
                                     *best_delay as f64 / 1000.0,
                                     worst_delay_worker,
-                                    *worst_delay as f64 / 1000.0
+                                    *worst_delay as f64 / 1000.0,
+                                    delay_diff_percentage
                                 );
                             }
 
@@ -2174,13 +2182,21 @@ impl Coordinator {
                                     witness_times.iter().map(|(_, t)| *t as f64).sum::<f64>()
                                         / witness_times.len() as f64;
 
+                                let witness_diff_percentage = if *best_witness > 0.0 {
+                                    ((*worst_witness - *best_witness) as f64 / *best_witness as f64)
+                                        * 100.0
+                                } else {
+                                    0.0
+                                };
+
                                 info!(
-                                    "[Job] Contributions Witness - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s)",
+                                    "[Job] Contributions Witness - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
                                     avg_witness / 1000.0,
                                     best_witness_worker,
                                     *best_witness as f64 / 1000.0,
                                     worst_witness_worker,
-                                    *worst_witness as f64 / 1000.0
+                                    *worst_witness as f64 / 1000.0,
+                                    witness_diff_percentage
                                 );
                             }
 
@@ -2211,15 +2227,22 @@ impl Coordinator {
                                     asm_times.iter().map(|(_, t, _)| *t as f64).sum::<f64>()
                                         / asm_times.len() as f64;
 
+                                let asm_diff_percentage = if *best_asm > 0.0 {
+                                    ((*worst_asm - *best_asm) as f64 / *best_asm as f64) * 100.0
+                                } else {
+                                    0.0
+                                };
+
                                 info!(
-                                    "[Job] Contributions ASM - Avg: {:.0}ms, Best: {} ({:.0}ms @ {:.1}MHz), Worst: {} ({:.0}ms @ {:.1}MHz)",
+                                    "[Job] Contributions ASM - Avg: {:.3}s, Best: {} ({:.3}s @ {:.1}MHz), Worst: {} ({:.3}s @ {:.1}MHz), Diff: {:.1}%",
                                     avg_asm,
                                     best_asm_worker,
                                     *best_asm,
                                     *best_mhz,
                                     worst_asm_worker,
                                     *worst_asm,
-                                    *worst_mhz
+                                    *worst_mhz,
+                                    asm_diff_percentage
                                 );
                             }
                         }
