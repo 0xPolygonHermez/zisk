@@ -314,7 +314,7 @@ message ZiskExecuteTime {
   float count_and_plan_duration = 3;
   float count_and_plan_mo_duration = 4;
   optional AsmExecuteInfo asm_execution_duration = 5;
-  float task_received_time = 6; // Time when task was received by worker (in milliseconds since UNIX epoch)
+  double task_received_time = 6; // Time when task was received by worker (in milliseconds since UNIX epoch)
 }
 
 message ChallengesList {

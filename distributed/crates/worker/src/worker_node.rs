@@ -315,7 +315,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 .1
                 .asm_execution_duration
                 .map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz }),
-            task_received_time: task_received_time.unwrap().timestamp_millis() as f32,
+            task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
         };
 
         let message = WorkerMessage {
