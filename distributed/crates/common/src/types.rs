@@ -6,7 +6,7 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
-use proofman::{ContributionsInfo, ExecutionInfo};
+use proofman::{ContributionsInfo, WitnessInfo};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -14,7 +14,7 @@ use std::{
     ops::Range,
 };
 use tracing::error;
-use zisk_common::AsmExecutionInfo;
+use zisk_common::ZiskExecutorTime;
 
 use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto};
 
@@ -253,7 +253,7 @@ pub struct Job {
     pub results: HashMap<JobPhase, HashMap<WorkerId, JobResult>>,
     pub stats: HashMap<JobPhase, JobStats>,
     pub challenges: Option<Vec<ContributionsInfo>>,
-    pub execution_info: Option<ExecutionInfo>,
+    pub witness_info: Option<WitnessInfo>,
     pub execution_mode: JobExecutionMode,
     pub final_proof: Option<Vec<u64>>,
     pub executed_steps: Option<u64>,
@@ -287,7 +287,7 @@ impl Job {
             results: HashMap::new(),
             stats: HashMap::new(),
             challenges: None,
-            execution_info: None,
+            witness_info: None,
             execution_mode,
             final_proof: None,
             executed_steps: None,
@@ -390,8 +390,8 @@ pub struct AggProofData {
 #[derive(Debug, Clone)]
 pub struct ContributionsResult {
     pub challenges: Vec<ContributionsInfo>,
-    pub execution_info: ExecutionInfo,
-    pub asm_execution_info: Option<AsmExecutionInfo>,
+    pub witness_info: WitnessInfo,
+    pub zisk_executor_time: ZiskExecutorTime,
 }
 
 #[derive(Debug, Clone)]

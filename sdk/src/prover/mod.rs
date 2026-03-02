@@ -5,8 +5,8 @@ pub use asm::*;
 use backend::*;
 pub use emu::*;
 use proofman::{
-    AggProofs, AggProofsRegister, ExecutionInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
-    SnarkProtocol,
+    AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkProtocol,
+    WitnessInfo,
 };
 use proofman_common::{ProofOptions, RankInfo, RowInfo};
 use proofman_util::VadcopFinalProof;
@@ -26,8 +26,8 @@ use std::{
 };
 use tracing::info;
 use zisk_common::io::StreamSource;
-use zisk_common::AsmExecutionInfo;
 use zisk_common::ElfBinaryLike;
+use zisk_common::ZiskExecutorTime;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, StatsCostPerType, ZiskExecutorSummary};
 use zisk_core::ZiskRom;
 
@@ -747,7 +747,7 @@ pub trait ProverEngine {
 
     fn executed_steps(&self) -> u64;
 
-    fn get_execution_info(&self) -> Result<(ExecutionInfo, Option<AsmExecutionInfo>)>;
+    fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)>;
 
     fn get_instance_trace(
         &self,
@@ -895,7 +895,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.executed_steps()
     }
 
-    pub fn get_execution_info(&self) -> Result<(ExecutionInfo, Option<AsmExecutionInfo>)> {
+    pub fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
         self.prover.get_execution_info()
     }
 
