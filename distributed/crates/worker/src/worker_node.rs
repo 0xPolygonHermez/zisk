@@ -555,6 +555,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             Some(InputSource::InputData(data)) => InputSourceDto::InputData(data),
             None => InputSourceDto::InputNull,
         };
+        info!("Set input source for job {}: {:?}", job_id, input_source);
 
         let hints_source = if let Some(hints_path) = &params.hints_path {
             if params.hints_stream {
@@ -573,12 +574,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         } else {
             HintsSourceDto::HintsNull
         };
+        info!("Set hints source for job {}: {:?}", job_id, hints_source);
 
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
 
         let job = self.worker.new_job(
-            job_id,
+            job_id.clone(),
             data_ctx,
             params.rank_id,
             params.total_workers,
@@ -590,6 +592,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         self.worker.set_current_computation(
             self.worker.handle_partial_contribution(job.clone(), computation_tx.clone()).await?,
         );
+
+        info!("Partial Contribution started for {}", job_id);
 
         Ok(())
     }
@@ -758,6 +762,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             return Err(anyhow!("Stream data received without current job context"));
         }
 
+        info!("Received stream data for job {}", stream_data.job_id,);
         let job = self.worker.current_job().unwrap();
         let current_job_id = job.lock().await.job_id.clone();
 
@@ -771,6 +776,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ));
         }
 
-        self.worker.route_stream_data(stream_data_dto).await
+        let result = self.worker.route_stream_data(stream_data_dto).await;
+        info!("Stream data processed for job {}", current_job_id);
+
+        result
     }
 }

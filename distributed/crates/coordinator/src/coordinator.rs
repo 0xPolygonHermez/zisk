@@ -40,6 +40,7 @@ use chrono::{DateTime, Utc};
 use colored::Colorize;
 use dashmap::DashMap;
 use proofman::{ContributionsInfo, ExecutionInfo};
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use std::{
     collections::HashMap,
     fs,
@@ -666,9 +667,6 @@ impl Coordinator {
         let active_workers = active_workers.to_vec();
         let total_workers = active_workers.len() as u32;
 
-        use futures::stream::{self, StreamExt};
-
-        // TODO!!!!! Can we avoid this clone ????
         let cloned_active_workers = active_workers.clone();
         let tasks = active_workers.into_iter().enumerate().map(|(rank_id, worker_id)| {
             let job_id = job.job_id.clone();
@@ -707,8 +705,12 @@ impl Coordinator {
             }
         });
 
+        timer_start_info!(SENDING_CONTRIBUTION_PARAMS);
+
         // Process tasks with a concurrency limit
-        let results: Vec<_> = stream::iter(tasks).buffer_unordered(16).collect().await;
+        use futures::stream::StreamExt;
+
+        let results: Vec<_> = futures::stream::iter(tasks).buffer_unordered(16).collect().await;
 
         // Check for any errors
         for (worker_id, send_result, state_result) in results {
@@ -727,9 +729,15 @@ impl Coordinator {
             })?;
         }
 
+        timer_stop_and_log_info!(SENDING_CONTRIBUTION_PARAMS);
+        timer_start_info!(HINTS_STREAM_INITIALIZATION);
+
         if matches!(hints_source, HintsSourceDto::HintsStream(_)) {
             self.initialize_stream(job, cloned_active_workers)?;
         }
+
+        info!("Finished hints stream initialization for job {}", job.job_id);
+        timer_stop_and_log_info!(HINTS_STREAM_INITIALIZATION);
 
         Ok(())
     }
