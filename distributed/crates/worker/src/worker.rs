@@ -35,6 +35,7 @@ pub enum ComputationResult {
         job_id: JobId,
         success: bool,
         result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>)>,
+        task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     },
     Proofs {
         job_id: JobId,
@@ -233,6 +234,7 @@ pub struct JobContext {
     pub total_compute_units: u32, // Total compute units for the whole job
     pub phase: JobPhase,
     pub executed_steps: u64,
+    pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub struct Worker<T: ZiskBackend + 'static> {
@@ -376,6 +378,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }
     }
 
+    #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     pub fn new_job(
         &mut self,
         job_id: JobId,
@@ -384,6 +388,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         total_workers: u32,
         allocation: Vec<u32>,
         total_compute_units: u32,
+        task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id: job_id.clone(),
@@ -394,6 +399,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             total_compute_units,
             phase: JobPhase::Contributions,
             executed_steps: 0,
+            task_received_time,
         }));
         self.current_job = Some(current_job.clone());
 
@@ -504,6 +510,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let mut guard = job.blocking_lock();
             guard.executed_steps = prover.executed_steps();
+            let task_received_time = guard.task_received_time;
             drop(guard);
 
             let (witness_info, zisk_execution_time) = prover
@@ -516,6 +523,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         job_id,
                         success: true,
                         result: Ok((witness_info, zisk_execution_time, data)),
+                        task_received_time,
                     });
                 }
                 Err(error) => {
@@ -524,6 +532,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         job_id,
                         success: false,
                         result: Err(error),
+                        task_received_time,
                     });
                 }
             }

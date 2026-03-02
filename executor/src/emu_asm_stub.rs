@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{DeviceMetricsList, NestedDeviceMetricsList, StaticSMBundle};
-use asm_runner::AsmRunnerMO;
+use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 
 use crate::AsmResources;
 use fields::PrimeField64;
@@ -44,6 +44,7 @@ impl EmulatorAsm {
         DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<AsmRunnerMO>>,
+        Option<JoinHandle<AsmRunnerRH>>,
         u64,
     ) {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");

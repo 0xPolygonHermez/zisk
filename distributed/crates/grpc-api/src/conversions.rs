@@ -428,7 +428,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                 };
                 let exec_time = challenges_list.zisk_execution_time.unwrap();
                 let zisk_executor_time = ZiskExecutorTimeDto {
-                    start_time: exec_time.start_time,
+                    task_received_time: exec_time.task_received_time,
                     total_duration: exec_time.total_duration,
                     execution_duration: exec_time.execution_duration,
                     count_and_plan_duration: exec_time.count_and_plan_duration,

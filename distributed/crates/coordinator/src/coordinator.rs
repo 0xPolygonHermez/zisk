@@ -1283,9 +1283,6 @@ impl Coordinator {
                 };
 
                 let zisk_executor_time = ZiskExecutorTime {
-                    start_time: Duration::from_secs_f32(
-                        ch_list.zisk_executor_time.start_time / 1000.0,
-                    ),
                     total_duration: Duration::from_secs_f32(
                         ch_list.zisk_executor_time.total_duration / 1000.0,
                     ),
@@ -1307,6 +1304,11 @@ impl Coordinator {
                     witness_info,
                     challenges: contributions,
                     zisk_executor_time,
+                    task_received_time: chrono::DateTime::<Utc>::from_timestamp(
+                        (ch_list.zisk_executor_time.task_received_time / 1000.0) as i64,
+                        ((ch_list.zisk_executor_time.task_received_time % 1000.0) * 1_000_000.0)
+                            as u32,
+                    ),
                 }))
             }
             _ => Err(CoordinatorError::InvalidRequest(
@@ -1360,14 +1362,11 @@ impl Coordinator {
         {
             match &job_result.data {
                 JobResultData::Challenges(contributions_result) => {
-                    // Calculate delay: time from coordinator sending job to worker actually starting
-                    let worker_start_time = chrono::DateTime::<Utc>::from_timestamp(
-                        contributions_result.zisk_executor_time.start_time.as_secs() as i64,
-                        contributions_result.zisk_executor_time.start_time.subsec_nanos(),
-                    )
-                    .unwrap_or(*phase_start_time);
-
-                    let delay_duration = worker_start_time.signed_duration_since(*phase_start_time);
+                    // Calculate delay: time from coordinator sending job to worker receiving task
+                    let delay_duration = contributions_result
+                        .task_received_time
+                        .map(|task_received| task_received.signed_duration_since(*phase_start_time))
+                        .unwrap_or_else(chrono::Duration::zero);
                     let delay_ms = delay_duration.num_milliseconds().max(0) as f32;
                     let delay_str = format!(", Delay: {:.3}s", delay_ms / 1000.0);
 
@@ -2123,12 +2122,11 @@ impl Coordinator {
                                 .iter()
                                 .filter_map(|(worker_id, result)| {
                                     if let JobResultData::Challenges(contrib) = &result.data {
-                                        let worker_start = chrono::DateTime::<Utc>::from_timestamp(
-                                            contrib.zisk_executor_time.start_time.as_secs() as i64,
-                                            contrib.zisk_executor_time.start_time.subsec_nanos(),
-                                        )?;
-                                        let delay = worker_start.signed_duration_since(start_time);
-                                        Some((worker_id.clone(), delay.num_milliseconds()))
+                                        contrib.task_received_time.map(|task_received| {
+                                            let delay =
+                                                task_received.signed_duration_since(start_time);
+                                            (worker_id.clone(), delay.num_milliseconds().max(0))
+                                        })
                                     } else {
                                         None
                                     }

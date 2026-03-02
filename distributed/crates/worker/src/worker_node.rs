@@ -239,8 +239,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         match result {
-            ComputationResult::Challenge { job_id, success, result } => {
-                self.send_partial_contribution(job_id, success, result, message_sender).await
+            ComputationResult::Challenge { job_id, success, result, task_received_time } => {
+                self.send_partial_contribution(
+                    job_id,
+                    success,
+                    result,
+                    message_sender,
+                    task_received_time,
+                )
+                .await
             }
             ComputationResult::Proofs { job_id, success, result } => {
                 self.send_proof(job_id, success, result, message_sender).await
@@ -257,6 +264,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         success: bool,
         result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>)>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
@@ -299,7 +307,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let zisk_execution_time = ZiskExecuteTime {
-            start_time: result_data.1.start_time.as_millis() as f32,
             total_duration: result_data.1.total_duration.as_millis() as f32,
             execution_duration: result_data.1.execution_duration.as_millis() as f32,
             count_and_plan_duration: result_data.1.count_and_plan_duration.as_millis() as f32,
@@ -308,6 +315,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 .1
                 .asm_execution_duration
                 .map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz }),
+            task_received_time: task_received_time.unwrap().timestamp_millis() as f32,
         };
 
         let message = WorkerMessage {
@@ -533,6 +541,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         request: ExecuteTaskRequest,
         computation_tx: &mpsc::UnboundedSender<ComputationResult>,
     ) -> Result<()> {
+        let task_received_time = chrono::Utc::now();
         info!("Starting Partial Contribution for {}", request.job_id);
 
         // Cancel any existing computation
@@ -595,6 +604,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.total_workers,
             params.worker_allocation,
             params.job_compute_units,
+            Some(task_received_time),
         );
 
         // Start computation in background task
