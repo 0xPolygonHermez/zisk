@@ -154,7 +154,7 @@ impl ZiskStream {
 
     pub fn reset(&mut self) {
         self.hints_processor.reset();
-        self.hints_stream_initialized.store(false, Ordering::SeqCst);
+        // self.hints_stream_initialized.store(false, Ordering::SeqCst);
     }
 
     /// Trigger the background thread to process hints asynchronously.
