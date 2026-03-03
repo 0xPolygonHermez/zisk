@@ -142,6 +142,7 @@ impl ZiskStream {
     ) -> Result<()> {
         let mut first_batch = true;
 
+        info!("**!! Background thread starting to read hints from stream");
         while let Some(hints) = stream.next()? {
             info!("**!! Background thread read a batch of hints ({} bytes)", hints.len());
             let hints = crate::reinterpret_vec(hints)?;
@@ -156,6 +157,8 @@ impl ZiskStream {
             }
             info!("**!! Background thread continuing to next batch of hints");
         }
+
+        info!("**!! Background thread finished processing hints from stream");
 
         Ok(())
     }

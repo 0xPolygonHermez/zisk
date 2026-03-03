@@ -174,7 +174,8 @@ impl StreamRead for UnixSocketStreamReader {
                     continue; // Retry on EINTR
                 }
                 if err.kind() == std::io::ErrorKind::ConnectionReset {
-                    return Ok(None);
+                    tracing::info!("**!! Connection reset by peer, treating as end of stream");
+                    return Ok(Some(Vec::new()));
                 }
                 return Err(anyhow::anyhow!("Failed to read from socket: {}", err));
             }
