@@ -143,15 +143,18 @@ impl ZiskStream {
         let mut first_batch = true;
 
         while let Some(hints) = stream.next()? {
+            info!("**!! Background thread read a batch of hints ({} bytes)", hints.len());
             let hints = crate::reinterpret_vec(hints)?;
             let has_ctrl_end = hints_processor.process(&hints, first_batch)?;
 
+            info!("**!! Background thread processed a batch of hints (CTRL_END: {})", has_ctrl_end);
             first_batch = false;
 
             // Break if CTRL_END was encountered
             if has_ctrl_end {
                 break;
             }
+            info!("**!! Background thread continuing to next batch of hints");
         }
 
         Ok(())
