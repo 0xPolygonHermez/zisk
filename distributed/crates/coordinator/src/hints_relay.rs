@@ -5,7 +5,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use tracing::info;
 use zisk_common::{
     io::StreamProcessor, CtrlHint, HintCode, PartialPrecompileHint, PrecompileHint,
     PrecompileHintParseResult,
@@ -132,14 +131,7 @@ impl PrecompileHintsRelay {
         }
         .to_vec();
 
-        info!(
-            "Dispatching hints for sequence number: {} data: {} bytes ({} hints)",
-            seq_num,
-            payload.len(),
-            hints.len()
-        );
         self.runtime_handle.block_on((self.dispatcher)(seq_num, StreamMessageKind::Data, payload));
-        info!("Finished dispatching hints data for sequence number {}", seq_num);
     }
 
     fn send_hints_end(&self) {
