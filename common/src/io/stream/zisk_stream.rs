@@ -1,6 +1,7 @@
 //! ZiskStream is responsible for reading precompile hints from a stream source and sent to a hints processor.
 
 use anyhow::Result;
+use tracing::info;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
@@ -120,11 +121,15 @@ impl ZiskStream {
         hints_processor: Arc<dyn StreamProcessor>,
         rx: Receiver<ThreadCommand>,
     ) {
+        info!("**!! Background thread started for hints stream processing");
         while let Ok(ThreadCommand::Process) = rx.recv() {
+            info!("**!! Background thread received process command");
             if let Err(e) = Self::process_stream(&mut stream, &*hints_processor) {
+                info!("**!! Error processing hints in background thread: {:?}", e);
                 panic!("Error processing hints in background thread: {:?}", e);
             }
         }
+        info!("**!! Background thread exiting for hints stream processing");
         // Loop exits when Shutdown is received or channel is closed
     }
 
@@ -167,6 +172,7 @@ impl ZiskStream {
     /// * `Ok(())` - If the command was successfully sent
     /// * `Err` - If there's no active thread or the channel is closed
     pub fn start_stream(&mut self) -> Result<()> {
+        info!("**!! Starting hints stream processing");
         if !self.hints_stream_initialized.load(Ordering::SeqCst) {
             return Err(anyhow::anyhow!(
                 "Hints stream is not initialized. Call set_hints_stream_src first."
@@ -174,9 +180,12 @@ impl ZiskStream {
         }
 
         if let Some(tx) = &self.tx {
+            info!("**!! Trying to send process command to background thread");
             tx.send(ThreadCommand::Process).map_err(|e| {
                 anyhow::anyhow!("Failed to send process command to background thread: {}", e)
             })?;
+            info!("**!! Send process command to background thread successfully");
+
             Ok(())
         } else {
             Err(anyhow::anyhow!("No background thread running. Call set_hints_stream first."))

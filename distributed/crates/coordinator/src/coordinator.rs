@@ -776,10 +776,13 @@ impl Coordinator {
         };
 
         if self.try_reuse_stream(hints_uri, &job.job_id, &active_workers) {
+            info!("!!** Resuing stream");
             // Routing updated in-place; just reset the sequence and replay the source.
             let mut guard = self.hints_stream.lock().unwrap();
             let stream = guard.as_mut().unwrap();
+            info!("!!** Resetting existing hints stream for job {}", job.job_id);
             stream.reset();
+            info!("!!** Resetted existing hints stream for job {}", job.job_id);
             return stream.start_stream().map_err(|e| {
                 CoordinatorError::Internal(format!(
                     "Failed to restart hints stream for job {}: {}",
@@ -787,6 +790,7 @@ impl Coordinator {
                 ))
             });
         }
+        info!("!!** Stream non reused");
 
         // Different URI: build a new relay and stream from scratch.
         let relay_state = Arc::new(Mutex::new(HintsRelayState {
