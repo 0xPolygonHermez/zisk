@@ -44,9 +44,10 @@ use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use std::{
     collections::HashMap,
     fs,
+    pin::Pin,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Duration,
 };
@@ -80,6 +81,13 @@ pub trait MessageSender {
     ///
     /// * `msg` - The message to send, containing task assignments or control commands
     fn send(&self, msg: CoordinatorMessageDto) -> CoordinatorResult<()>;
+}
+
+/// Shared routing state captured by the hints relay dispatcher.
+struct HintsRelayState {
+    uri: String,
+    job_id: JobId,
+    workers: Vec<WorkerId>,
 }
 
 /// The main coordination service for managing distributed proof generation.
@@ -123,6 +131,14 @@ pub struct Coordinator {
 
     /// Number of reconnections accumulated.
     reconnections: AtomicU64,
+
+    /// Reusable hints stream instance (created lazily on first use).
+    hints_stream: Mutex<Option<ZiskStream>>,
+
+    /// Shared routing state for the active hints relay dispatcher.
+    /// Holds the URI, job_id, and workers the dispatcher reads on each dispatch call,
+    /// allowing subsequent jobs to update routing without recreating the stream.
+    hints_relay_state: Mutex<Option<Arc<Mutex<HintsRelayState>>>>,
 }
 
 impl Coordinator {
@@ -141,6 +157,8 @@ impl Coordinator {
             jobs: DashMap::new(),
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
+            hints_stream: Mutex::new(None),
+            hints_relay_state: Mutex::new(None),
         }
     }
 
@@ -731,10 +749,10 @@ impl Coordinator {
         }
 
         timer_stop_and_log_info!(SENDING_CONTRIBUTION_PARAMS);
-        
+
         // Yield to allow gRPC stream to flush ExecuteTask messages before stream initialization
         tokio::task::yield_now().await;
-        
+
         timer_start_info!(HINTS_STREAM_INITIALIZATION);
 
         if matches!(hints_source, HintsSourceDto::HintsStream(_)) {
@@ -750,74 +768,131 @@ impl Coordinator {
     fn initialize_stream(
         &self,
         job: &Job,
-        cloned_active_workers: Vec<WorkerId>,
+        active_workers: Vec<WorkerId>,
     ) -> Result<(), CoordinatorError> {
         let hints_uri = match &job.hints_mode {
             HintsModeDto::HintsStream(uri) => uri,
             _ => unreachable!(),
         };
-        let job_id_clone = job.job_id.clone();
-        let workers_clone = Arc::new(cloned_active_workers.clone());
-        let workers_pool = Arc::clone(&self.workers_pool);
-        
-        // Async dispatcher - no blocking, pure async flow for maximum performance
-        let dispatcher =
-            move |sequence_number: u32, stream_type: StreamMessageKind, payload: Vec<u8>| {
-                use futures::future::join_all;
-                use zisk_distributed_common::{StreamDataDto, StreamPayloadDto};
 
-                let job_id = job_id_clone.clone();
-                let workers = Arc::clone(&workers_clone);
-                let pool = Arc::clone(&workers_pool);
+        if self.try_reuse_stream(hints_uri, &job.job_id, &active_workers) {
+            // Routing updated in-place; just reset the sequence and replay the source.
+            let mut guard = self.hints_stream.lock().unwrap();
+            let stream = guard.as_mut().unwrap();
+            stream.reset();
+            return stream.start_stream().map_err(|e| {
+                CoordinatorError::Internal(format!(
+                    "Failed to restart hints stream for job {}: {}",
+                    job.job_id, e
+                ))
+            });
+        }
 
-                Box::pin(async move {
-                    let sends = workers.iter().map(|worker_id| {
-                        let job_id = job_id.clone();
-                        let worker_id = worker_id.clone();
-                        let payload = payload.clone();
-                        let pool = Arc::clone(&pool);
-                        let stream_type = stream_type.clone();
+        // Different URI: build a new relay and stream from scratch.
+        let relay_state = Arc::new(Mutex::new(HintsRelayState {
+            uri: hints_uri.clone(),
+            job_id: job.job_id.clone(),
+            workers: active_workers,
+        }));
+        *self.hints_relay_state.lock().unwrap() = Some(relay_state.clone());
 
-                        async move {
-                            let msg = CoordinatorMessageDto::StreamData(StreamDataDto {
-                                job_id: job_id.clone(),
-                                stream_type,
-                                stream_payload: Some(StreamPayloadDto { sequence_number, payload }),
-                            });
+        let stream = Self::build_stream(
+            hints_uri,
+            relay_state,
+            Arc::clone(&self.workers_pool),
+            &job.job_id,
+        )?;
+        *self.hints_stream.lock().unwrap() = Some(stream);
 
-                            if let Err(e) = pool.send_message(&worker_id, msg).await {
-                                error!(
-                                    "Failed to send hints to worker {} for job {}: {}",
-                                    worker_id, job_id, e
-                                );
-                            }
-                        }
-                    });
+        Ok(())
+    }
 
-                    join_all(sends).await;
-                })
-            };
-        let hints_relay = PrecompileHintsRelay::new(dispatcher);
-        let mut stream = ZiskStream::new(hints_relay);
-        let stream_reader = StreamSource::from_uri(hints_uri).map_err(|e| {
+    /// Checks if the existing stream is already open on `hints_uri`.
+    fn try_reuse_stream(&self, hints_uri: &str, job_id: &JobId, workers: &[WorkerId]) -> bool {
+        let guard = self.hints_relay_state.lock().unwrap();
+        let Some(relay_state) = &*guard else { return false };
+        let mut state = relay_state.lock().unwrap();
+        if state.uri != hints_uri {
+            return false;
+        }
+        state.job_id = job_id.clone();
+        state.workers = workers.to_vec();
+        true
+    }
+
+    /// Creates a relay, wires it to the given hints URI, and starts the background reader.
+    fn build_stream(
+        hints_uri: &str,
+        relay_state: Arc<Mutex<HintsRelayState>>,
+        workers_pool: Arc<WorkersPool>,
+        job_id: &JobId,
+    ) -> Result<ZiskStream, CoordinatorError> {
+        let dispatcher = Self::make_hints_dispatcher(relay_state, workers_pool);
+        let relay = PrecompileHintsRelay::new(dispatcher);
+        let mut stream = ZiskStream::new(relay);
+
+        let reader = StreamSource::from_uri(hints_uri).map_err(|e| {
             CoordinatorError::Internal(format!(
-                "Failed to create hints stream reader for job {}: {}",
-                job.job_id, e
+                "Failed to open hints stream source for job {}: {}",
+                job_id, e
             ))
         })?;
-        stream.set_hints_stream_src(stream_reader).map_err(|e| {
+        stream.set_hints_stream_src(reader).map_err(|e| {
             CoordinatorError::Internal(format!(
-                "Failed to set hints stream for job {}: {}",
-                job.job_id, e
+                "Failed to attach hints source for job {}: {}",
+                job_id, e
             ))
         })?;
         stream.start_stream().map_err(|e| {
             CoordinatorError::Internal(format!(
                 "Failed to start hints stream for job {}: {}",
-                job.job_id, e
+                job_id, e
             ))
         })?;
-        Ok(())
+
+        Ok(stream)
+    }
+
+    /// Returns an async dispatcher that fans each hints packet out to all workers in `relay_state`.
+    fn make_hints_dispatcher(
+        relay_state: Arc<Mutex<HintsRelayState>>,
+        workers_pool: Arc<WorkersPool>,
+    ) -> impl Fn(u32, StreamMessageKind, Vec<u8>) -> Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+    {
+        move |sequence_number, stream_type, payload| {
+            use futures::future::join_all;
+            use zisk_distributed_common::{StreamDataDto, StreamPayloadDto};
+
+            let (job_id, workers) = {
+                let state = relay_state.lock().unwrap();
+                (state.job_id.clone(), state.workers.clone())
+            };
+            let pool = Arc::clone(&workers_pool);
+
+            Box::pin(async move {
+                let sends = workers.into_iter().map(|worker_id| {
+                    let job_id = job_id.clone();
+                    let payload = payload.clone();
+                    let pool = Arc::clone(&pool);
+                    let stream_type = stream_type.clone();
+
+                    async move {
+                        let msg = CoordinatorMessageDto::StreamData(StreamDataDto {
+                            job_id: job_id.clone(),
+                            stream_type,
+                            stream_payload: Some(StreamPayloadDto { sequence_number, payload }),
+                        });
+                        if let Err(e) = pool.send_message(&worker_id, msg).await {
+                            error!(
+                                "Failed to send hints to worker {} for job {}: {}",
+                                worker_id, job_id, e
+                            );
+                        }
+                    }
+                });
+                join_all(sends).await;
+            })
+        }
     }
 
     /// Marks a job as failed and performs and cleans up all associated resources
