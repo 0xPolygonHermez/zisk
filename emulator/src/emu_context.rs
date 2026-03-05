@@ -43,10 +43,7 @@ impl EmuContext {
 
         // Add the length and input data read sections
         ctx.inst_ctx.input_len = input.len() as u64;
-        let free_input = 0u64;
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &free_input.to_le_bytes());
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &ctx.inst_ctx.input_len.to_le_bytes());
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 16, &input);
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &input);
 
         // Add the write section
         ctx.inst_ctx.mem.add_write_section(RAM_ADDR, RAM_SIZE);

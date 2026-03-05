@@ -55,15 +55,53 @@ impl ZiskIO for ZiskMemoryStdin {
     fn write<T: Serialize>(&self, data: &T) {
         let mut tmp = Vec::new();
         bincode::serialize_into(&mut tmp, data).expect("Failed to serialize data into memory");
+        
+        // Calculate padding for 8-byte alignment
+        let data_len = tmp.len();
+        let total_len = 8 + data_len; // header + data
+        let padding = (8 - (total_len % 8)) % 8;
+
+        // Write 8-byte length header (includes padding)
+        let len = (data_len + padding) as u64;
+        let len_bytes = len.to_le_bytes();
+
+        self.data.lock().unwrap().extend_from_slice(&len_bytes);
         self.data.lock().unwrap().extend_from_slice(&tmp);
+
+        // Add padding
+        if padding > 0 {
+            self.data.lock().unwrap().extend_from_slice(&vec![0u8; padding]);
+        }
+
         let mut cursor = self.cursor.lock().unwrap();
+        cursor.get_mut().extend_from_slice(&len_bytes);
         cursor.get_mut().extend_from_slice(&tmp);
+        if padding > 0 {
+            cursor.get_mut().extend_from_slice(&vec![0u8; padding]);
+        }
     }
 
     fn write_slice(&self, data: &[u8]) {
-        let mut cursor = self.cursor.lock().unwrap();
+        let data_len = data.len();
+        let total_len = 8 + data_len;
+        let padding = (8 - (total_len % 8)) % 8;
+
+        let len = (data_len + padding) as u64;
+        let len_bytes = len.to_le_bytes();
+
+        self.data.lock().unwrap().extend_from_slice(&len_bytes);
         self.data.lock().unwrap().extend_from_slice(data);
+
+        if padding > 0 {
+            self.data.lock().unwrap().extend_from_slice(&vec![0u8; padding]);
+        }
+
+        let mut cursor = self.cursor.lock().unwrap();
+        cursor.get_mut().extend_from_slice(&len_bytes);
         cursor.get_mut().extend_from_slice(data);
+        if padding > 0 {
+            cursor.get_mut().extend_from_slice(&vec![0u8; padding]);
+        }
     }
 
     fn save(&self, path: &Path) -> Result<()> {

@@ -39,6 +39,7 @@ pub use big_int_div::*;
 pub use bin_decomp::*;
 pub use bls12_381::*;
 pub use bn254::*;
+pub use input::*;
 pub use msb_pos_256::*;
 pub use msb_pos_384::*;
 pub use secp256k1::*;
