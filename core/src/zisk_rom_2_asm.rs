@@ -146,7 +146,7 @@ pub struct ZiskAsmContext {
     mem_chunk_id: String,                   // 0, 1, 2, 3, 4...
     mem_chunk_mask: String,                 // Module 8 of the chunks we want to activate, e.g. 0x03
     mem_rsp: String,                        // Backup of rsp register value from caller
-    mem_free_input: String, // Free input address (0x90000000) used in free call operations, but stored in memory to allow sharing the input shared memory
+    mem_free_input: String, // Free input address (0x40000000) used in free call operations, but stored in memory to allow sharing the input shared memory
     mem_precompile_results_address: String, // Address where precompile results are read from
     mem_precompile_written_address: String, // Address where precompile written counter is stored
     mem_precompile_read_address: String, // Address where precompile read counter is stored

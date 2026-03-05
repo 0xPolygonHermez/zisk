@@ -124,8 +124,8 @@ impl ZiskRun {
             qemu-system-riscv64 \
             -cpu rv64 \
             -machine virt \
-            -device loader,file=./{},addr=0x90000000 \
-            -device loader,file=./{},addr=0x90000008 \
+            -device loader,file=./{},addr=0x40000000 \
+            -device loader,file=./{},addr=0x40000008 \
             -m 1G \
             -s \
             {}  \

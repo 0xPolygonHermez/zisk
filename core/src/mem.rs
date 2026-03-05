@@ -14,6 +14,10 @@
 //! `|`
 //! `|---------------`
 //! `      ...`
+//! `|--------------- INPUT_ADDR                          (0x40000000)`
+//! `|`
+//! `| Contains program input data.`
+//! `|`
 //! `|--------------- ROM_ADDR: first program instruction (0x80000000)`
 //! `|`
 //! `| Contains program instructions.`
@@ -26,10 +30,6 @@
 //! `|------------- FLOAT_LIB_SP: float lib stack pointer (0xaffffff0)`
 //! `|`
 //! `| Initial value of the float library stack pointer.`
-//! `|`
-//! `|--------------- INPUT_ADDR                          (0x90000000)`
-//! `|`
-//! `| Contains program input data.`
 //! `|`
 //! `|--------------- SYS_ADDR (= RAM_ADDR = REG_FIRST)   (0xa0000000)`
 //! `|`
@@ -102,9 +102,9 @@ use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
 
 /// Fist input data memory address
-pub const INPUT_ADDR: u64 = 0x90000000;
+pub const INPUT_ADDR: u64 = 0x4000_0000;
 /// Maximum size of the input data
-pub const MAX_INPUT_SIZE: u64 = 0x08000000; // 128M,
+pub const MAX_INPUT_SIZE: u64 = 0x4000_0000; // 128M,
 /// Free input data memory address = first input address
 pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 /// First global RW memory address

@@ -221,18 +221,32 @@ uint32_t MemCounter::addr_to_offset(uint32_t addr, uint32_t chunk_id) {
         // ROM: 128 MB 
         case (ROM_ADDR_MASK + 0x00): return ((addr - (ROM_ADDR + 0x00000000)) >> (ADDR_LOW_BITS));
         case (ROM_ADDR_MASK + 0x04): return ((addr - (ROM_ADDR + 0x04000000)) >> (ADDR_LOW_BITS)) + ADDR_PAGE_SIZE;
-        // INPUT: 128 MB 
+        // INPUT: 1024 MB 
         case (INPUT_ADDR_MASK + 0x00): return ((addr - (INPUT_ADDR + 0x00000000)) >> (ADDR_LOW_BITS)) + 2 * ADDR_PAGE_SIZE;
         case (INPUT_ADDR_MASK + 0x04): return ((addr - (INPUT_ADDR + 0x04000000)) >> (ADDR_LOW_BITS)) + 3 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x08): return ((addr - (INPUT_ADDR + 0x08000000)) >> (ADDR_LOW_BITS)) + 4 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x0C): return ((addr - (INPUT_ADDR + 0x0C000000)) >> (ADDR_LOW_BITS)) + 5 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x10): return ((addr - (INPUT_ADDR + 0x10000000)) >> (ADDR_LOW_BITS)) + 6 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x14): return ((addr - (INPUT_ADDR + 0x14000000)) >> (ADDR_LOW_BITS)) + 7 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x18): return ((addr - (INPUT_ADDR + 0x18000000)) >> (ADDR_LOW_BITS)) + 8 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x1C): return ((addr - (INPUT_ADDR + 0x1C000000)) >> (ADDR_LOW_BITS)) + 9 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x20): return ((addr - (INPUT_ADDR + 0x20000000)) >> (ADDR_LOW_BITS)) + 10 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x24): return ((addr - (INPUT_ADDR + 0x24000000)) >> (ADDR_LOW_BITS)) + 11 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x28): return ((addr - (INPUT_ADDR + 0x28000000)) >> (ADDR_LOW_BITS)) + 12 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x2C): return ((addr - (INPUT_ADDR + 0x2C000000)) >> (ADDR_LOW_BITS)) + 13 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x30): return ((addr - (INPUT_ADDR + 0x30000000)) >> (ADDR_LOW_BITS)) + 14 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x34): return ((addr - (INPUT_ADDR + 0x34000000)) >> (ADDR_LOW_BITS)) + 15 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x38): return ((addr - (INPUT_ADDR + 0x38000000)) >> (ADDR_LOW_BITS)) + 16 * ADDR_PAGE_SIZE;
+        case (INPUT_ADDR_MASK + 0x3C): return ((addr - (INPUT_ADDR + 0x3C000000)) >> (ADDR_LOW_BITS)) + 17 * ADDR_PAGE_SIZE;
         // RAM: 512 MB 
-        case (RAM_ADDR_MASK + 0x00): return ((addr - (RAM_ADDR + 0x00000000)) >> (ADDR_LOW_BITS)) + 4 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x04): return ((addr - (RAM_ADDR + 0x04000000)) >> (ADDR_LOW_BITS)) + 5 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x08): return ((addr - (RAM_ADDR + 0x08000000)) >> (ADDR_LOW_BITS)) + 6 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x0C): return ((addr - (RAM_ADDR + 0x0C000000)) >> (ADDR_LOW_BITS)) + 7 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x10): return ((addr - (RAM_ADDR + 0x10000000)) >> (ADDR_LOW_BITS)) + 8 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x14): return ((addr - (RAM_ADDR + 0x14000000)) >> (ADDR_LOW_BITS)) + 9 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x18): return ((addr - (RAM_ADDR + 0x18000000)) >> (ADDR_LOW_BITS)) + 10 * ADDR_PAGE_SIZE;
-        case (RAM_ADDR_MASK + 0x1C): return ((addr - (RAM_ADDR + 0x1C000000)) >> (ADDR_LOW_BITS)) + 11 * ADDR_PAGE_SIZE;
+        case (RAM_ADDR_MASK + 0x00): return ((addr - (RAM_ADDR + 0x00000000)) >> (ADDR_LOW_BITS)) + 18 * ADDR_PAGE_SIZE;
+        case (RAM_ADDR_MASK + 0x04): return ((addr - (RAM_ADDR + 0x04000000)) >> (ADDR_LOW_BITS)) + 19 * ADDR_PAGE_SIZE;
+        case (RAM_ADDR_MASK + 0x08): return ((addr - (RAM_ADDR + 0x08000000)) >> (ADDR_LOW_BITS)) + 20 * ADDR_PAGE_SIZE;
+        case (RAM_ADDR_MASK + 0x0C): return ((addr - (RAM_ADDR + 0x0C000000)) >> (ADDR_LOW_BITS)) + 21 * ADDR_PAGE_SIZE;
+        case (RAM_ADDR_MASK + 0x10): return ((addr - (RAM_ADDR + 0x10000000)) >> (ADDR_LOW_BITS)) + 22 * ADDR_PAGE_SIZE;
+        case (RAM_ADDR_MASK + 0x14): return ((addr - (RAM_ADDR + 0x14000000)) >> (ADDR_LOW_BITS)) + 23 * ADDR_PAGE_SIZE;
+        case (RAM_ADDR_MASK + 0x18): return ((addr - (RAM_ADDR + 0x18000000)) >> (ADDR_LOW_BITS)) + 24 * ADDR_PAGE_SIZE;
+        case (RAM_ADDR_MASK + 0x1C): return ((addr - (RAM_ADDR + 0x1C000000)) >> (ADDR_LOW_BITS)) + 25 * ADDR_PAGE_SIZE;
     }
     std::ostringstream msg;
     msg << "ERROR: addr_to_offset: 0x" << std::hex << addr << " (" << std::dec << chunk_id << ")";
@@ -244,18 +258,32 @@ uint32_t MemCounter::addr_to_page(uint32_t addr, uint32_t chunk_id) {
         // ROM: 128 MB 
         case (ROM_ADDR_MASK + 0x00): return 0;
         case (ROM_ADDR_MASK + 0x04): return 1;
-        // INPUT: 128 MB 
+        // INPUT: 1024 MB 
         case (INPUT_ADDR_MASK + 0x00): return 2;
         case (INPUT_ADDR_MASK + 0x04): return 3;
+        case (INPUT_ADDR_MASK + 0x08): return 4;
+        case (INPUT_ADDR_MASK + 0x0C): return 5;
+        case (INPUT_ADDR_MASK + 0x10): return 6;
+        case (INPUT_ADDR_MASK + 0x14): return 7;
+        case (INPUT_ADDR_MASK + 0x18): return 8;
+        case (INPUT_ADDR_MASK + 0x1C): return 9;
+        case (INPUT_ADDR_MASK + 0x20): return 10;
+        case (INPUT_ADDR_MASK + 0x24): return 11;
+        case (INPUT_ADDR_MASK + 0x28): return 12;
+        case (INPUT_ADDR_MASK + 0x2C): return 13;
+        case (INPUT_ADDR_MASK + 0x30): return 14;
+        case (INPUT_ADDR_MASK + 0x34): return 15;
+        case (INPUT_ADDR_MASK + 0x38): return 16;
+        case (INPUT_ADDR_MASK + 0x3C): return 17;
         // RAM: 512 MB 
-        case (RAM_ADDR_MASK + 0x00): return 4;
-        case (RAM_ADDR_MASK + 0x04): return 5;
-        case (RAM_ADDR_MASK + 0x08): return 6;
-        case (RAM_ADDR_MASK + 0x0C): return 7;
-        case (RAM_ADDR_MASK + 0x10): return 8;
-        case (RAM_ADDR_MASK + 0x14): return 9;
-        case (RAM_ADDR_MASK + 0x18): return 10;
-        case (RAM_ADDR_MASK + 0x1C): return 11;
+        case (RAM_ADDR_MASK + 0x00): return 18;
+        case (RAM_ADDR_MASK + 0x04): return 19;
+        case (RAM_ADDR_MASK + 0x08): return 20;
+        case (RAM_ADDR_MASK + 0x0C): return 21;
+        case (RAM_ADDR_MASK + 0x10): return 22;
+        case (RAM_ADDR_MASK + 0x14): return 23;
+        case (RAM_ADDR_MASK + 0x18): return 24;
+        case (RAM_ADDR_MASK + 0x1C): return 25;
     }
     std::ostringstream msg;
     msg << "ERROR: addr_to_page: 0x" << std::hex << addr << " (" << std::dec << chunk_id << ")";
@@ -267,18 +295,32 @@ uint32_t MemCounter::page_to_addr(uint8_t page) {
         // ROM: 128 MB
         case 0: return (ROM_ADDR + 0x00000000);
         case 1: return (ROM_ADDR + 0x04000000);
-        // INPUT: 128 MB
+        // INPUT: 1024 MB
         case 2: return (INPUT_ADDR + 0x00000000);
         case 3: return (INPUT_ADDR + 0x04000000);
+        case 4: return (INPUT_ADDR + 0x08000000);
+        case 5: return (INPUT_ADDR + 0x0C000000);
+        case 6: return (INPUT_ADDR + 0x10000000);
+        case 7: return (INPUT_ADDR + 0x14000000);
+        case 8: return (INPUT_ADDR + 0x18000000);
+        case 9: return (INPUT_ADDR + 0x1C000000);
+        case 10: return (INPUT_ADDR + 0x20000000);
+        case 11: return (INPUT_ADDR + 0x24000000);
+        case 12: return (INPUT_ADDR + 0x28000000);
+        case 13: return (INPUT_ADDR + 0x2C000000);
+        case 14: return (INPUT_ADDR + 0x30000000);
+        case 15: return (INPUT_ADDR + 0x34000000);
+        case 16: return (INPUT_ADDR + 0x38000000);
+        case 17: return (INPUT_ADDR + 0x3C000000);
         // RAM: 512 MB 
-        case 4: return (RAM_ADDR + 0x00000000);
-        case 5: return (RAM_ADDR + 0x04000000);
-        case 6: return (RAM_ADDR + 0x08000000);
-        case 7: return (RAM_ADDR + 0x0C000000);
-        case 8: return (RAM_ADDR + 0x10000000);
-        case 9: return (RAM_ADDR + 0x14000000);
-        case 10: return (RAM_ADDR + 0x18000000);
-        case 11: return (RAM_ADDR + 0x1C000000);
+        case 18: return (RAM_ADDR + 0x00000000);
+        case 19: return (RAM_ADDR + 0x04000000);
+        case 20: return (RAM_ADDR + 0x08000000);
+        case 21: return (RAM_ADDR + 0x0C000000);
+        case 22: return (RAM_ADDR + 0x10000000);
+        case 23: return (RAM_ADDR + 0x14000000);
+        case 24: return (RAM_ADDR + 0x18000000);
+        case 25: return (RAM_ADDR + 0x1C000000);
         case 0xFF: return 0xFFFFFFFF;
     }
     std::ostringstream msg;

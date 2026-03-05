@@ -30,8 +30,8 @@ const _: () = {
         "INPUT_DATA memory exceeds the 32-bit addressable range"
     );
     assert!(
-        (MAX_INPUT_SIZE - 1) <= (128 << 20),
-        "INPUT_DATA is too large. Input size must be <= 128MB"
+        (MAX_INPUT_SIZE - 1) <= (1024 << 20),
+        "INPUT_DATA is too large. Input size must be <= 1024MB"
     );
 };
 
@@ -43,7 +43,7 @@ pub struct InputDataSM<F: PrimeField64> {
     range_id: usize,
 
     /// Range check ID for the 16-bit chunks of the input values
-    range_chunks_id: usize,
+    range_16bits_id: usize,
 }
 
 #[allow(unused, unused_variables)]
@@ -55,7 +55,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         let range_chunks_id =
             std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
-        Arc::new(Self { range_chunks_id, std: std.clone(), range_id })
+        Arc::new(Self { range_16bits_id: range_chunks_id, std: std.clone(), range_id })
     }
     fn get_u16_values(&self, value: u64) -> [u16; 4] {
         [value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
@@ -105,17 +105,11 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             num_rows
         );
 
-        let mut range_check_data: Vec<u32> = vec![0; 1 << 16];
-
-        // range of instance
-        self.std.range_check(
-            self.range_id,
-            (previous_segment.addr - INPUT_DATA_W_ADDR_INIT) as i64,
-            1,
-        );
+        let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
 
         let mut max_range_distance_count = 0;
 
+        let distance_base = previous_segment.addr - INPUT_DATA_W_ADDR_INIT;
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
@@ -161,7 +155,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
 
                     i += 1;
                 }
-                range_check_data[0] += 4 * internal_reads;
+                range_16bits[0] += 4 * internal_reads;
                 if incomplete {
                     break;
                 }
@@ -175,7 +169,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             let value = mem_op.value;
             let value_words = self.get_u16_values(value);
             for j in 0..4 {
-                range_check_data[value_words[j] as usize] += 1;
+                range_16bits[value_words[j] as usize] += 1;
                 trace[i].set_value_word(j, value_words[j]);
             }
 
@@ -218,19 +212,19 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             // address doesn't change in padding rows, no range check is required
         }
 
+        let distance_end = INPUT_DATA_W_ADDR_END - last_addr;
+
         self.std.range_check(
             self.range_id,
             SEGMENT_ADDR_MAX_RANGE as i64,
             max_range_distance_count,
         );
-        self.std.range_check(self.range_id, (INPUT_DATA_W_ADDR_END - last_addr) as i64, 1);
 
         // range of chunks
         for j in 0..4 {
             let value = trace[last_row_idx].get_value_word(j);
-            range_check_data[value as usize] += padding_size as u32;
+            range_16bits[value as usize] += padding_size as u32;
         }
-        self.std.range_checks(self.range_chunks_id, range_check_data);
 
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());
@@ -246,6 +240,22 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
 
         air_values.segment_last_value[0] = F::from_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);
+
+        let distance_base = [distance_base as u16, (distance_base >> 16) as u16];
+        let distance_end = [distance_end as u16, (distance_end >> 16) as u16];
+
+        air_values.distance_base[0] = F::from_u16(distance_base[0]);
+        air_values.distance_base[1] = F::from_u16(distance_base[1]);
+
+        air_values.distance_end[0] = F::from_u16(distance_end[0]);
+        air_values.distance_end[1] = F::from_u16(distance_end[1]);
+
+        range_16bits[distance_base[0] as usize] += 1;
+        range_16bits[distance_base[1] as usize] += 1;
+        range_16bits[distance_end[0] as usize] += 1;
+        range_16bits[distance_end[1] as usize] += 1;
+
+        self.std.range_checks(self.range_16bits_id, range_16bits);
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }

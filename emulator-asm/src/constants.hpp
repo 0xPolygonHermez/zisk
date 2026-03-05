@@ -12,8 +12,8 @@
 // assembly code, and that are used by the assembly code to access memory and generate the trace
 #define ROM_ADDR (uint64_t)0x80000000
 #define ROM_SIZE (uint64_t)0x08000000 // 128MB
-#define INPUT_ADDR (uint64_t)0x90000000
-#define MAX_INPUT_SIZE (uint64_t)0x08000000 // 128MB
+#define INPUT_ADDR (uint64_t)0x40000000
+#define MAX_INPUT_SIZE (uint64_t)0x40000000 // 1024MB
 
 #define RAM_ADDR (uint64_t)0xA0000000
 #define RAM_SIZE (uint64_t)0x20000000 // 512MB

@@ -167,7 +167,7 @@ impl Default for EmuOptions {
             no_thousands_sep: false,
             top_roi_filter: false,
             disasm: None,
-            max_input_mem: MAX_INPUT_SIZE, // 128 MiB
+            max_input_mem: MAX_INPUT_SIZE,
         }
     }
 }
