@@ -138,27 +138,32 @@ impl ProverEngine for AsmProver {
         if check_paths_exist(&asm_mt_path).is_err() || check_paths_exist(&asm_rh_path).is_err() {
             if self.core_prover.no_auto_setup {
                 return Err(anyhow::anyhow!(
-                    "Assembly files not found for ELF {}. Force ROM setup is enabled, but assembly files are still missing. Please ensure that the assembly generation process has been completed successfully.",
-                    elf.name()
-                ));
+                        "Assembly files not found for ELF {}. Force ROM setup is enabled, but assembly files are still missing. Please ensure that the assembly generation process has been completed successfully.",
+                        elf.name()
+                    ));
             }
 
-            tracing::info!(
-                ">>> ROM SETUP (one time only) - Generating assembly files for ELF: {}",
-                elf.name()
-            );
-            timer_start_info!(ROM_SETUP);
-            let output_path = get_output_path(&None)?;
-            generate_assembly(
-                elf.elf(),
-                elf.name(),
-                &output_path,
-                elf.with_hints(),
-                self.core_prover.verbose != VerboseMode::Info,
-            )?;
-            timer_stop_and_log_info!(ROM_SETUP);
-            tracing::info!("<<< ROM SETUP complete - Assembly files cached for future use");
+            if pctx.mpi_ctx.rank == 0 {
+                tracing::info!(
+                    ">>> ROM SETUP (one time only) - Generating assembly files for ELF: {}",
+                    elf.name()
+                );
+                timer_start_info!(ROM_SETUP);
+                let output_path = get_output_path(&None)?;
+                generate_assembly(
+                    elf.elf(),
+                    elf.name(),
+                    &output_path,
+                    elf.with_hints(),
+                    self.core_prover.verbose != VerboseMode::Info,
+                )?;
+                timer_stop_and_log_info!(ROM_SETUP);
+                tracing::info!("<<< ROM SETUP complete - Assembly files cached for future use");
+            }
+            pctx.mpi_ctx.barrier();
         }
+
+        pctx.mpi_ctx.barrier();
 
         timer_start_info!(STARTING_ASM_MICROSERVICES);
         let asm_services = AsmServices::new(world_rank, local_rank, base_port);

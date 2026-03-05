@@ -198,6 +198,7 @@ impl ZiskProve {
                 };
                 result.save_proof_with_publics(output_dir)?;
                 info!("Proof ID: {}", proof_id);
+                info!("Proof Time: {:.3} seconds", result.duration.as_secs_f64());
             }
             print_execution_summary(
                 &result.executor_summary.executor_time,
