@@ -28,6 +28,23 @@ use tracing::{error, info};
 
 use crate::config::ProverServiceConfigDto;
 
+/// Message structures for MPI broadcast to ensure type safety
+#[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
+struct ContributionsMessage {
+    job_id: JobId,
+    phase_inputs: ProvePhaseInputs,
+    options: ProofOptions,
+    input_source: InputSourceDto,
+    hints_source: HintsSourceDto,
+}
+
+#[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
+struct ProveMessage {
+    job_id: JobId,
+    phase_inputs: ProvePhaseInputs,
+    options: ProofOptions,
+}
+
 /// Result from computation tasks
 #[derive(Debug)]
 pub enum ComputationResult {
@@ -425,14 +442,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let options = self.get_proof_options(false);
 
-            borsh::to_vec(&(
-                JobPhase::Contributions,
-                job.job_id.clone(),
+            let message = ContributionsMessage {
+                job_id: job.job_id.clone(),
                 phase_inputs,
                 options,
-                job.data_ctx.input_source.clone(),
-            ))
-            .unwrap()
+                input_source: job.data_ctx.input_source.clone(),
+                hints_source: job.data_ctx.hints_source.clone(),
+            };
+
+            borsh::to_vec(&(JobPhase::Contributions, message)).unwrap()
         };
 
         self.prover.mpi_broadcast(&mut serialized)?;
@@ -456,13 +474,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> Result<()> {
         let mut serialized = {
             let job = job.lock().await;
-            let job_id = job.job_id.clone();
 
             let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
 
             let options = self.get_proof_options(false);
 
-            borsh::to_vec(&(JobPhase::Prove, job_id, phase_inputs, options)).unwrap()
+            let message = ProveMessage { job_id: job.job_id.clone(), phase_inputs, options };
+
+            borsh::to_vec(&(JobPhase::Prove, message)).unwrap()
         };
 
         self.prover.mpi_broadcast(&mut serialized)?;
@@ -849,32 +868,30 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         match phase {
             JobPhase::Contributions => {
-                let (job_id, phase_inputs, options, input_source_dto, hints_source_dto): (
-                    JobId,
-                    ProvePhaseInputs,
-                    ProofOptions,
-                    InputSourceDto,
-                    HintsSourceDto,
-                ) = borsh::from_slice(&bytes[1..]).unwrap();
+                let message: ContributionsMessage = borsh::from_slice(&bytes[1..]).unwrap();
 
                 let result = Self::execute_contribution_task(
-                    job_id,
+                    message.job_id,
                     &self.prover,
-                    phase_inputs,
-                    input_source_dto,
-                    hints_source_dto,
+                    message.phase_inputs,
+                    message.input_source,
+                    message.hints_source,
                     &self.pk,
-                    options,
+                    message.options,
                 );
                 if let Err(e) = result {
                     error!("Error during Contributions MPI broadcast execution: {}. Waiting for new job...", e);
                 }
             }
             JobPhase::Prove => {
-                let (job_id, phase_inputs, options): (JobId, ProvePhaseInputs, ProofOptions) =
-                    borsh::from_slice(&bytes[1..]).unwrap();
+                let message: ProveMessage = borsh::from_slice(&bytes[1..]).unwrap();
 
-                let result = Self::execute_prove_task(job_id, &self.prover, phase_inputs, options);
+                let result = Self::execute_prove_task(
+                    message.job_id,
+                    &self.prover,
+                    message.phase_inputs,
+                    message.options,
+                );
                 if let Err(e) = result {
                     error!(
                         "Error during Prove MPI broadcast execution: {}. Waiting for new job...",
