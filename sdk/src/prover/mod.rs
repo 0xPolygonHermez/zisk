@@ -855,7 +855,7 @@ pub trait ProverEngine {
         proof: &ZiskProof,
         publics: &ZiskPublics,
         program_vk: &ZiskProgramVK,
-    ) -> Result<(Vec<u8>, Vec<u8>)>;
+    ) -> Result<Vec<u8>>;
 }
 
 pub trait ZiskBackend: Send + Sync {
@@ -1058,7 +1058,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         proof: &ZiskProof,
         publics: &ZiskPublics,
         program_vk: &ZiskProgramVK,
-    ) -> Result<(Vec<u8>, Vec<u8>)> {
+    ) -> Result<Vec<u8>> {
         self.prover.prepare_send_proof(proof, publics, program_vk)
     }
 }

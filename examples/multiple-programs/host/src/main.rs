@@ -27,7 +27,8 @@ fn main() -> Result<()> {
 
     println!(
         "Program executed successfully: {} cycles in {:.2?}",
-        result.get_execution_steps(), result.get_duration()
+        result.get_execution_steps(),
+        result.get_duration()
     );
 
     println!("Generating proof for first program...");
@@ -49,7 +50,8 @@ fn main() -> Result<()> {
 
     println!(
         "Program executed successfully: {} cycles in {:.2?}",
-        result2.get_execution_steps(), result2.get_duration()
+        result2.get_execution_steps(),
+        result2.get_duration()
     );
 
     println!("Generating proof for second program...");

@@ -348,7 +348,7 @@ impl ProverEngine for AsmProver {
         proof: &ZiskProof,
         publics: &ZiskPublics,
         program_vk: &ZiskProgramVK,
-    ) -> Result<(Vec<u8>, Vec<u8>)> {
+    ) -> Result<Vec<u8>> {
         self.core_prover.backend.prepare_send_proof(proof, publics, program_vk)
     }
 }

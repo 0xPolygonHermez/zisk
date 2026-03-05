@@ -615,7 +615,7 @@ impl ProverBackend {
         proof: &ZiskProof,
         publics: &ZiskPublics,
         program_vk: &ZiskProgramVK,
-    ) -> Result<(Vec<u8>, Vec<u8>)> {
+    ) -> Result<Vec<u8>> {
         match &proof {
             ZiskProof::Null() |  ZiskProof::Plonk(_) | ZiskProof::Fflonk(_) => Err(anyhow::anyhow!("Proof not suitable for preparing to send. Only VadcopFinal and VadcopFinalCompressed proofs can be prepared for sending.")),
             ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalCompressed(proof_bytes) => {
@@ -626,14 +626,15 @@ impl ProverBackend {
                 let mut pubs = program_vk.vk.clone();
                 pubs.extend(publics.public_bytes());
 
-                // Format: [compressed(8)][pubs_len(8)][pubs][proof_bytes]
+                // Format: [compressed(8)][pubs_len(8)][pubs][proof_bytes][zisk_vk]
                 let mut proof = Vec::new();
                 proof.extend_from_slice(&(compressed as u64).to_le_bytes());
                 proof.extend_from_slice(&(ZISK_PUBLICS + 4).to_le_bytes());
                 proof.extend_from_slice(&pubs);
                 proof.extend_from_slice(proof_bytes);
+                proof.extend_from_slice(&vk);
 
-                Ok((proof, vk))
+                Ok(proof)
             }
         }
     }

@@ -24,7 +24,7 @@ pub trait ZiskIO: Send + Sync {
     fn write_slice(&self, data: &[u8]);
 
     /// Write proof
-    fn write_proof(&self, proof: &[u8], vk: &[u8]);
+    fn write_proof(&self, proof: &[u8]);
 
     fn save(&self, path: &Path) -> Result<()>;
 }
@@ -84,11 +84,11 @@ impl ZiskIO for ZiskIOVariant {
         }
     }
 
-    fn write_proof(&self, proof: &[u8], vk: &[u8]) {
+    fn write_proof(&self, proof: &[u8]) {
         match self {
-            ZiskIOVariant::File(file_stdin) => file_stdin.write_proof(proof, vk),
-            ZiskIOVariant::Null(null_stdin) => null_stdin.write_proof(proof, vk),
-            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.write_proof(proof, vk),
+            ZiskIOVariant::File(file_stdin) => file_stdin.write_proof(proof),
+            ZiskIOVariant::Null(null_stdin) => null_stdin.write_proof(proof),
+            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.write_proof(proof),
         }
     }
 
@@ -131,8 +131,8 @@ impl ZiskIO for ZiskStdin {
         self.io.write_slice(data)
     }
 
-    fn write_proof(&self, proof: &[u8], vk: &[u8]) {
-        self.io.write_proof(proof, vk)
+    fn write_proof(&self, proof: &[u8]) {
+        self.io.write_proof(proof)
     }
 
     fn save(&self, path: &Path) -> Result<()> {

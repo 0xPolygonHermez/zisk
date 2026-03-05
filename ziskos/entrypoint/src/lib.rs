@@ -104,17 +104,6 @@ pub(crate) fn read_input() -> Vec<u8> {
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-pub fn read_input_slice<'a>() -> &'a [u8] {
-    read_slice_zerocopy()
-}
-
-#[allow(unused)]
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-pub fn read_input_slice() -> Box<[u8]> {
-    read_input().into_boxed_slice()
-}
-
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub(crate) fn set_output(id: usize, value: u32) {
     use std::arch::asm;
     let addr_v: *mut u32;
@@ -323,6 +312,7 @@ mod ziskos {
     core::arch::global_asm!(include_str!("dma/memset.s"));
 }
 
-pub fn verify_zisk_proof(zisk_proof: &[u8], vk: &[u8]) -> bool {
-    zisk_verifier::verify_vadcop_final_proof(zisk_proof, vk)
+pub fn verify_zisk_proof(zisk_proof: &[u8]) -> bool {    
+    let (proof, vk) = zisk_proof.split_at(zisk_proof.len() - 32);
+    zisk_verifier::verify_vadcop_final_proof(proof, vk)
 }

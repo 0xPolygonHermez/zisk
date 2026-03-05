@@ -102,10 +102,8 @@ impl ZiskIO for ZiskMemoryStdin {
         }
     }
 
-    fn write_proof(&self, proof: &[u8], vk: &[u8]) {
-        let proof_len = proof.len() as u64;
+    fn write_proof(&self, proof: &[u8]) {
         self.write_slice(proof);
-        self.write_slice(vk);
     }
 
     fn save(&self, path: &Path) -> Result<()> {

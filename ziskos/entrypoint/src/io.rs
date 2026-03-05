@@ -2,7 +2,7 @@
 //!
 //! This module provides a high-level API for reading inputs and committing public outputs.
 
-use crate::{read_input, read_input_slice, set_output};
+use crate::{read_input, set_output};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Read a deserializable object from the input stream.
@@ -36,13 +36,26 @@ pub fn read_vec() -> Vec<u8> {
     read_input()
 }
 
-/// Read proof data prepared by prepare_send_proof and written with write_proof
-/// Format: [proof_len(4)][compressed(8)][pubs_len(8)][pubs][proof_bytes][vk(32)]
-pub fn read_proof() -> (Vec<u8>, Vec<u8>) {
-    let proof_data = read_vec();
-    let vk = read_vec();
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+pub fn read_input_slice<'a>() -> &'a [u8] {
+    crate::read_slice_zerocopy()
+}
 
-    (proof_data, vk)
+#[allow(unused)]
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+pub fn read_input_slice() -> Box<[u8]> {
+    read_input().into_boxed_slice()
+}
+
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+pub fn read_proof<'a>() -> &'a [u8] {
+    crate::read_slice_zerocopy()
+}
+
+#[allow(unused)]
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+pub fn read_proof() -> Box<[u8]> {
+    read_input().into_boxed_slice()
 }
 
 /// Commit a serializable value to public outputs.

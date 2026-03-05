@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{include_elf, ziskemu, EmuOptions, ElfBinary, ProofOpts, ProverClient, ZiskIO, ZiskStdin};
+use zisk_sdk::{include_elf, ElfBinary, ProofOpts, ProverClient, ZiskIO, ZiskStdin};
 
 pub const ELF: ElfBinary = include_elf!("guest");
 pub const ELF2: ElfBinary = include_elf!("guest-agg");
@@ -27,7 +27,8 @@ fn main() -> Result<()> {
 
     println!(
         "Program executed successfully: {} cycles in {:.2?}",
-        result.execution.steps, result.duration
+        result.get_execution_steps(),
+        result.get_duration()
     );
 
     println!("Generating first proof for program...");
@@ -45,15 +46,22 @@ fn main() -> Result<()> {
     // Write the proofs, publics, and verification keys to be verified by the guest
     let stdin_aggregation = ZiskStdin::new();
 
-    let (proof1, zisk_vk1) = client.prepare_send_proof(&vadcop_result1.get_proof(), &vadcop_result1.get_publics(), &vkey)?;
-    let (proof2, zisk_vk2) = client.prepare_send_proof(&vadcop_result2.get_proof(), &vadcop_result2.get_publics(), &vkey)?;
+    let proof1 = client.prepare_send_proof(
+        &vadcop_result1.get_proof(),
+        &vadcop_result1.get_publics(),
+        &vkey,
+    )?;
+    let proof2 = client.prepare_send_proof(
+        &vadcop_result2.get_proof(),
+        &vadcop_result2.get_publics(),
+        &vkey,
+    )?;
 
-    stdin_aggregation.write_proof(&proof1, &zisk_vk1);
-    stdin_aggregation.write_proof(&proof2, &zisk_vk2);
+    stdin_aggregation.write_proof(&proof1);
+    stdin_aggregation.write_proof(&proof2);
 
     let proof_opts = ProofOpts::default().minimal_memory();
-    let emu_options = EmuOptions { stats: true, read_symbols: true, top_roi_detail: true, elf: Some("/home/roger/zisk/examples/target/elf/riscv64ima-zisk-zkvm-elf/release/guest-agg".to_string()),..EmuOptions::default() };
-    ziskemu(&ELF2, stdin_aggregation.clone(), &emu_options)?;
+
     let result_aggregation =
         client.prove(&pk2, stdin_aggregation).with_proof_options(proof_opts).run()?;
 
