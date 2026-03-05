@@ -62,8 +62,7 @@ impl ZiskIO for ZiskMemoryStdin {
         let padding = (8 - (total_len % 8)) % 8;
 
         // Write 8-byte length header (includes padding)
-        let len = (data_len + padding) as u64;
-        let len_bytes = len.to_le_bytes();
+        let len_bytes = data_len.to_le_bytes();
 
         self.data.lock().unwrap().extend_from_slice(&len_bytes);
         self.data.lock().unwrap().extend_from_slice(&tmp);
@@ -86,8 +85,7 @@ impl ZiskIO for ZiskMemoryStdin {
         let total_len = 8 + data_len;
         let padding = (8 - (total_len % 8)) % 8;
 
-        let len = (data_len + padding) as u64;
-        let len_bytes = len.to_le_bytes();
+        let len_bytes = data_len.to_le_bytes();
 
         self.data.lock().unwrap().extend_from_slice(&len_bytes);
         self.data.lock().unwrap().extend_from_slice(data);

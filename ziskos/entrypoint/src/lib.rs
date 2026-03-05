@@ -81,7 +81,7 @@ pub fn read_slice_zerocopy<'a>() -> &'a [u8] {
     crate::zisklib::fcall_input_ready(&((data_addr + len + 7) as u64));
     
     // Update input position: move past length (8 bytes) + data
-    unsafe { INPUT_POS = input_pos + 8 + len };
+    unsafe { INPUT_POS = input_pos + 8 + (len + 7) & !0x7 };
     
     // Return slice pointing directly to the input data (zero-copy)
     unsafe { core::slice::from_raw_parts(data_addr as *const u8, len) }
