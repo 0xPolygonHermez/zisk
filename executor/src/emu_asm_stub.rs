@@ -54,7 +54,7 @@ impl EmulatorAsm {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
+    pub fn set_rh_data(&self, _rh_data: AsmRunnerRH) {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
