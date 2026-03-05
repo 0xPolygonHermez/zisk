@@ -17,7 +17,7 @@ pub fn fcall_input_ready(address: &u64) {
     }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
-        ziskos_fcall_param!(address, 1); // Highest input address required to be ready to read
+        ziskos_fcall_param!(*address, 1); // Number of inputs
         ziskos_fcall!(FCALL_INPUT_READY_ID);
     }
 }

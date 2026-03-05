@@ -48,9 +48,48 @@ macro_rules! entrypoint {
 #[allow(unused_imports)]
 use crate::ziskos_definitions::ziskos_config::*;
 
+/// Pointer to the current position in the input buffer.
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+static mut INPUT_POS: usize = 0;
+
+/// Reset the input position to the beginning.
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+pub fn read_reset() {
+    unsafe { INPUT_POS = 0 };
+}
+
+/// Read a slice directly from INPUT_ADDR without copying (zero-copy).
+///
+/// This returns a slice pointing directly to the input memory region.
+/// Use this when you want to deserialize directly without an intermediate copy.
+/// The INPUT_POS is advanced after this call.
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+pub fn read_slice_zerocopy<'a>() -> &'a [u8] {
+    // SAFETY: Single threaded, so nothing else can touch INPUT_POS while we're working.
+    let input_pos = unsafe { INPUT_POS };
+    let addr = (INPUT_ADDR as usize) + input_pos;
+    
+    // Ensure the 8-byte length prefix is ready and read it
+    crate::zisklib::fcall_input_ready(&((addr + 7) as u64));
+    let len = unsafe {
+        let bytes = core::slice::from_raw_parts(addr as *const u8, 8);
+        u64::from_le_bytes(bytes.try_into().unwrap()) as usize
+    };
+    
+    // Ensure the data is ready
+    let data_addr = addr + 8;
+    crate::zisklib::fcall_input_ready(&((data_addr + len + 7) as u64));
+    
+    // Update input position: move past length (8 bytes) + data
+    unsafe { INPUT_POS = input_pos + 8 + len };
+    
+    // Return slice pointing directly to the input data (zero-copy)
+    unsafe { core::slice::from_raw_parts(data_addr as *const u8, len) }
+}
+
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub(crate) fn read_input() -> Vec<u8> {
-    read_input_slice().to_vec()
+    read_slice_zerocopy().to_vec()
 }
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
@@ -66,12 +105,7 @@ pub(crate) fn read_input() -> Vec<u8> {
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub fn read_input_slice<'a>() -> &'a [u8] {
-    // Create a slice of the first 8 bytes to get the size
-    let bytes = unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), 8) };
-    // Convert the slice to a u64 (little-endian)
-    let size: u64 = u64::from_le_bytes(bytes.try_into().unwrap());
-
-    unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(16), size as usize) }
+    read_slice_zerocopy()
 }
 
 #[allow(unused)]

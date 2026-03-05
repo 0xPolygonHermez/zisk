@@ -19,6 +19,8 @@ use serde::{de::DeserializeOwned, Serialize};
 ///
 /// let data: MyStruct = ziskos::io::read();
 /// ```
+/// 
+/// Note: This uses zero-copy deserialization on zkvm to avoid unnecessary data copies.
 pub fn read<T: DeserializeOwned>() -> T {
     let bytes = read_input_slice();
     bincode::deserialize(&bytes).expect("Deserialization failed")
