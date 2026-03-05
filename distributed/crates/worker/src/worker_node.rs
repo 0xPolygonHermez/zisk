@@ -552,12 +552,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             return Err(anyhow!("Expected ContributionParams for Partial Contribution task"));
         };
 
-        self.worker.set_partition(
-            params.job_compute_units as usize,
-            params.worker_allocation.clone(),
-            params.rank_id as usize,
-        )?;
-
         let job_id = JobId::from(request.job_id);
         let input_source = match params.input_source {
             Some(InputSource::InputPath(ref inputs_uris)) => {

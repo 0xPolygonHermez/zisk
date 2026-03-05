@@ -460,3 +460,10 @@ pub struct AggregationParams {
     pub final_proof: bool,
     pub compressed: bool,
 }
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct PartitionInfo {
+    pub total_compute_units: usize,
+    pub allocation: Vec<u32>,
+    pub worker_idx: usize,
+}

@@ -12,7 +12,7 @@ use zisk_common::io::{StreamProcessor, StreamSource, ZiskStdin};
 use zisk_common::ElfBinaryFromFile;
 use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
-use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
+use zisk_distributed_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProgramPK, ZiskProver};
 
@@ -36,6 +36,7 @@ struct ContributionsMessage {
     options: ProofOptions,
     input_source: InputSourceDto,
     hints_source: HintsSourceDto,
+    partition_info: PartitionInfo,
 }
 
 #[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
@@ -448,6 +449,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 options,
                 input_source: job.data_ctx.input_source.clone(),
                 hints_source: job.data_ctx.hints_source.clone(),
+                partition_info: PartitionInfo {
+                    total_compute_units: job.total_compute_units as usize,
+                    allocation: job.allocation.clone(),
+                    worker_idx: job.rank_id as usize,
+                },
             };
 
             borsh::to_vec(&(JobPhase::Contributions, message)).unwrap()
@@ -515,14 +521,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let phase_inputs = proofman::ProvePhaseInputs::Contributions();
             let inputs_source = guard.data_ctx.input_source.clone();
             let hints_source = guard.data_ctx.hints_source.clone();
+            let partition_info = PartitionInfo {
+                total_compute_units: guard.total_compute_units as usize,
+                allocation: guard.allocation.clone(),
+                worker_idx: guard.rank_id as usize,
+            };
             drop(guard);
-
             let result = Self::execute_contribution_task(
                 job_id.clone(),
                 &prover,
                 phase_inputs,
                 inputs_source,
                 hints_source,
+                partition_info,
                 &pk,
                 options,
             );
@@ -558,12 +569,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn execute_contribution_task(
         job_id: JobId,
         prover: &ZiskProver<T>,
         phase_inputs: ProvePhaseInputs,
         input_source: InputSourceDto,
         hints_source: HintsSourceDto,
+        partition_info: PartitionInfo,
         pk: &ZiskProgramPK,
         options: ProofOptions,
     ) -> Result<Vec<ContributionsInfo>> {
@@ -593,6 +606,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         prover.set_stdin(stdin)?;
 
         prover.register_program(pk)?;
+
+        if matches!(phase_inputs, ProvePhaseInputs::Contributions()) {
+            prover.set_partition(
+                partition_info.total_compute_units,
+                partition_info.allocation.clone(),
+                partition_info.worker_idx,
+            )?;
+        }
 
         let challenge = match prover.prove_phase(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Contributions(challenge)) => {
@@ -876,6 +897,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     message.phase_inputs,
                     message.input_source,
                     message.hints_source,
+                    message.partition_info,
                     &self.pk,
                     message.options,
                 );
