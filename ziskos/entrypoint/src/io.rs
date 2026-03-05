@@ -19,7 +19,7 @@ use serde::{de::DeserializeOwned, Serialize};
 ///
 /// let data: MyStruct = ziskos::io::read();
 /// ```
-/// 
+///
 /// Note: This uses zero-copy deserialization on zkvm to avoid unnecessary data copies.
 pub fn read<T: DeserializeOwned>() -> T {
     let bytes = read_input_slice();
@@ -34,6 +34,15 @@ pub fn read<T: DeserializeOwned>() -> T {
 /// ```
 pub fn read_vec() -> Vec<u8> {
     read_input()
+}
+
+/// Read proof data prepared by prepare_send_proof and written with write_proof
+/// Format: [proof_len(4)][compressed(8)][pubs_len(8)][pubs][proof_bytes][vk(32)]
+pub fn read_proof() -> (Vec<u8>, Vec<u8>) {
+    let proof_data = read_vec();
+    let vk = read_vec();
+
+    (proof_data, vk)
 }
 
 /// Commit a serializable value to public outputs.

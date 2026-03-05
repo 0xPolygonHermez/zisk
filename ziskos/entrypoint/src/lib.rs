@@ -68,21 +68,21 @@ pub fn read_slice_zerocopy<'a>() -> &'a [u8] {
     // SAFETY: Single threaded, so nothing else can touch INPUT_POS while we're working.
     let input_pos = unsafe { INPUT_POS };
     let addr = (INPUT_ADDR as usize) + input_pos;
-    
+
     // Ensure the 8-byte length prefix is ready and read it
     crate::zisklib::fcall_input_ready(&((addr + 7) as u64));
     let len = unsafe {
         let bytes = core::slice::from_raw_parts(addr as *const u8, 8);
         u64::from_le_bytes(bytes.try_into().unwrap()) as usize
     };
-    
+
     // Ensure the data is ready
     let data_addr = addr + 8;
     crate::zisklib::fcall_input_ready(&((data_addr + len + 7) as u64));
-    
+
     // Update input position: move past length (8 bytes) + data
     unsafe { INPUT_POS = input_pos + 8 + (len + 7) & !0x7 };
-    
+
     // Return slice pointing directly to the input data (zero-copy)
     unsafe { core::slice::from_raw_parts(data_addr as *const u8, len) }
 }
@@ -321,4 +321,8 @@ mod ziskos {
     core::arch::global_asm!(include_str!("dma/memcmp.s"));
     //core::arch::global_asm!(include_str!("dma/inputcpy.s"));
     core::arch::global_asm!(include_str!("dma/memset.s"));
+}
+
+pub fn verify_zisk_proof(zisk_proof: &[u8], vk: &[u8]) -> bool {
+    zisk_verifier::verify_vadcop_final_proof(zisk_proof, vk)
 }

@@ -849,6 +849,13 @@ pub trait ProverEngine {
     ) -> Result<Option<ZiskAggPhaseResult>>;
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()>;
+
+    fn prepare_send_proof(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        program_vk: &ZiskProgramVK,
+    ) -> Result<(Vec<u8>, Vec<u8>)>;
 }
 
 pub trait ZiskBackend: Send + Sync {
@@ -1044,6 +1051,15 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Broadcast data to all MPI processes.
     pub fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
         self.prover.mpi_broadcast(data)
+    }
+
+    pub fn prepare_send_proof(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        program_vk: &ZiskProgramVK,
+    ) -> Result<(Vec<u8>, Vec<u8>)> {
+        self.prover.prepare_send_proof(proof, publics, program_vk)
     }
 }
 

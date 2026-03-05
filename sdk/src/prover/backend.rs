@@ -3,7 +3,7 @@ use crate::ZiskProofWithPublicValues;
 use crate::ZiskPublics;
 use crate::{
     get_program_vk_with_proving_key, verify_zisk_proof_with_proving_key,
-    verify_zisk_snark_proof_with_proving_key,
+    verify_zisk_snark_proof_with_proving_key, ZISK_PUBLICS,
 };
 use crate::{ProofMode, ProofOpts};
 use crate::{
@@ -15,8 +15,8 @@ use colored::Colorize;
 use executor::ZiskExecutor;
 use fields::Goldilocks;
 use proofman::{
-    AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
-    SnarkProtocol, SnarkWrapper, WitnessInfo,
+    get_vadcop_final_proof_vkey, AggProofs, AggProofsRegister, ProofMan, ProvePhase,
+    ProvePhaseInputs, ProvePhaseResult, SnarkProtocol, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_util::VadcopFinalProof;
@@ -608,6 +608,34 @@ impl ProverBackend {
 
         proofman.mpi_broadcast(data);
         Ok(())
+    }
+
+    pub(crate) fn prepare_send_proof(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        program_vk: &ZiskProgramVK,
+    ) -> Result<(Vec<u8>, Vec<u8>)> {
+        match &proof {
+            ZiskProof::Null() |  ZiskProof::Plonk(_) | ZiskProof::Fflonk(_) => Err(anyhow::anyhow!("Proof not suitable for preparing to send. Only VadcopFinal and VadcopFinalCompressed proofs can be prepared for sending.")),
+            ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalCompressed(proof_bytes) => {
+                let compressed = matches!(proof, ZiskProof::VadcopFinalCompressed(_));
+
+                let vk = get_vadcop_final_proof_vkey(&self.proving_key_path, compressed)?;
+
+                let mut pubs = program_vk.vk.clone();
+                pubs.extend(publics.public_bytes());
+
+                // Format: [compressed(8)][pubs_len(8)][pubs][proof_bytes]
+                let mut proof = Vec::new();
+                proof.extend_from_slice(&(compressed as u64).to_le_bytes());
+                proof.extend_from_slice(&(ZISK_PUBLICS + 4).to_le_bytes());
+                proof.extend_from_slice(&pubs);
+                proof.extend_from_slice(proof_bytes);
+
+                Ok((proof, vk))
+            }
+        }
     }
 
     pub(crate) fn verify(

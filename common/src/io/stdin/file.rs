@@ -68,6 +68,12 @@ impl ZiskIO for ZiskFileStdin {
         panic!("Write operations are not supported for FileStdin");
     }
 
+    fn write_proof(&self, _proof: &[u8], _vk: &[u8]) {
+        // This is a read-only stdin implementation
+        // Writing is not supported for file-based stdin
+        panic!("Write operations are not supported for FileStdin");
+    }
+
     fn save(&self, _path: &Path) -> Result<()> {
         // This is a read-only stdin implementation
         // Saving is not supported for file-based stdin

@@ -9,8 +9,6 @@ categories = { workspace = true }
 
 [dependencies]
 proofman-verifier = { workspace = true, features = ["verify"] }
-proofman-util = { workspace = true }
-anyhow = { workspace = true }
 
 [features]
 default = []

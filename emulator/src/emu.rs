@@ -1537,6 +1537,7 @@ impl<'a> Emu<'a> {
         self.ctx = self.create_emu_context(inputs.clone(), options);
 
         let mut elf = ElfSymbolReader::new();
+        println!("READ SYMBOLS={}", options.read_symbols);
         if options.read_symbols {
             if let Some(elf_file) = &options.elf {
                 println!("Loading symbols from ELF file: {elf_file}");

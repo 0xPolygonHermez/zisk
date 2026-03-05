@@ -55,7 +55,7 @@ impl ZiskIO for ZiskMemoryStdin {
     fn write<T: Serialize>(&self, data: &T) {
         let mut tmp = Vec::new();
         bincode::serialize_into(&mut tmp, data).expect("Failed to serialize data into memory");
-        
+
         // Calculate padding for 8-byte alignment
         let data_len = tmp.len();
         let total_len = 8 + data_len; // header + data
@@ -100,6 +100,12 @@ impl ZiskIO for ZiskMemoryStdin {
         if padding > 0 {
             cursor.get_mut().extend_from_slice(&vec![0u8; padding]);
         }
+    }
+
+    fn write_proof(&self, proof: &[u8], vk: &[u8]) {
+        let proof_len = proof.len() as u64;
+        self.write_slice(proof);
+        self.write_slice(vk);
     }
 
     fn save(&self, path: &Path) -> Result<()> {

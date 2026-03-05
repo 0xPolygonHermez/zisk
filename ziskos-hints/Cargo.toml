@@ -35,6 +35,7 @@ sha2 = { workspace = true }
 fields = { workspace = true }
 
 anyhow = { workspace = true }
+zisk-verifier = { workspace = true }
 
 [features]
 default = ["hints"]
