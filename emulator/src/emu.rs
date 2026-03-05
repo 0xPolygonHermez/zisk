@@ -2045,7 +2045,7 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn par_step_my_block(&mut self, emu_full_trace_vec: &mut EmuTrace) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        println!("TRACE PC:0x{:0X} {}", self.ctx.inst_ctx.pc, instruction.verbose);
+        // println!("TRACE PC:0x{:0X} {}", self.ctx.inst_ctx.pc, instruction.verbose);
 
         // Extract the Vec once for all mem_reads operations
         let mem_reads = emu_full_trace_vec.mem_reads.to_mut();
@@ -2248,7 +2248,7 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.step, mem_reads_index
         );
 
-        println!("TRACE PC:0x{:0X} {}", self.ctx.inst_ctx.pc, instruction.verbose);
+        // println!("TRACE PC:0x{:0X} {}", self.ctx.inst_ctx.pc, instruction.verbose);
         self.source_a_mem_reads_consume_no_mem_ops(instruction, mem_reads, mem_reads_index);
         self.source_b_mem_reads_consume_no_mem_ops(instruction, mem_reads, mem_reads_index);
         // If this is a precompiled, get the required input data from mem_reads
