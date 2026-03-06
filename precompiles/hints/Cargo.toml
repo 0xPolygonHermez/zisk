@@ -28,6 +28,8 @@ rayon = { workspace = true }
 tracing = { workspace = true }
 zisk-common = { workspace = true }
 rustls = { version = "0.23", features = ["ring"] }
+borsh = { workspace = true }
+zisk-distributed-common = { workspace = true }
 
 [dev-dependencies]
 criterion = "0.8"

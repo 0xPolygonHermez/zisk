@@ -23,13 +23,13 @@ pub trait StreamProcessor: Send + Sync + 'static {
 /// Trait for submitting processed hints to a sink.
 ///
 /// # Arguments
-/// * `processed` - A vector of processed hints as u64 values.
+/// * `processed` - A slice of processed hints as u64 values.
 ///
 /// # Returns
 /// * `Ok(())` - If hints were successfully submitted
 /// * `Err` - If submission fails
 pub trait StreamSink: Send + Sync + 'static {
-    fn submit(&self, processed: Vec<u64>) -> anyhow::Result<()>;
+    fn submit(&self, processed: &[u64]) -> anyhow::Result<()>;
 
     fn reset(&self) {}
 

@@ -6,7 +6,8 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
-use proofman::{ContributionsInfo, WitnessInfo};
+use proofman::{ContributionsInfo, ProvePhaseInputs, WitnessInfo};
+use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -423,6 +424,7 @@ pub enum JobPhase {
     Contributions,
     Prove,
     Aggregate,
+    ContributionsHintsStream,
 }
 
 impl TryFrom<u8> for JobPhase {
@@ -433,6 +435,7 @@ impl TryFrom<u8> for JobPhase {
             0 => Ok(JobPhase::Contributions),
             1 => Ok(JobPhase::Prove),
             2 => Ok(JobPhase::Aggregate),
+            3 => Ok(JobPhase::ContributionsHintsStream),
             _ => Err(anyhow::anyhow!("Invalid JobPhase byte: {}", value)),
         }
     }
@@ -444,6 +447,7 @@ impl fmt::Display for JobPhase {
             JobPhase::Contributions => write!(f, "Contributions"),
             JobPhase::Prove => write!(f, "Prove"),
             JobPhase::Aggregate => write!(f, "Aggregate"),
+            JobPhase::ContributionsHintsStream => write!(f, "ContributionsHintsStream"),
         }
     }
 }
@@ -466,4 +470,27 @@ pub struct PartitionInfo {
     pub total_compute_units: usize,
     pub allocation: Vec<u32>,
     pub worker_idx: usize,
+}
+
+/// Message structures for MPI broadcast to ensure type safety
+#[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
+pub struct ContributionsMessage {
+    pub job_id: JobId,
+    pub phase_inputs: ProvePhaseInputs,
+    pub options: ProofOptions,
+    pub input_source: InputSourceDto,
+    pub hints_source: HintsSourceDto,
+    pub partition_info: PartitionInfo,
+}
+
+#[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
+pub struct ProveMessage {
+    pub job_id: JobId,
+    pub phase_inputs: ProvePhaseInputs,
+    pub options: ProofOptions,
+}
+
+#[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
+pub struct StreamMessage {
+    pub data: Vec<u64>,
 }

@@ -13,8 +13,9 @@ use zisk_common::ElfBinaryFromFile;
 use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
+use zisk_distributed_common::{ContributionsMessage, ProveMessage, StreamMessage};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
-use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProgramPK, ZiskProver};
+use zisk_sdk::{Asm, Emu, ProverClient, StreamSink, ZiskBackend, ZiskProgramPK, ZiskProver};
 
 use crate::stream_ordering::StreamOrderingActor;
 
@@ -27,24 +28,6 @@ use std::path::PathBuf;
 use tracing::{error, info};
 
 use crate::config::ProverServiceConfigDto;
-
-/// Message structures for MPI broadcast to ensure type safety
-#[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
-struct ContributionsMessage {
-    job_id: JobId,
-    phase_inputs: ProvePhaseInputs,
-    options: ProofOptions,
-    input_source: InputSourceDto,
-    hints_source: HintsSourceDto,
-    partition_info: PartitionInfo,
-}
-
-#[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
-struct ProveMessage {
-    job_id: JobId,
-    phase_inputs: ProvePhaseInputs,
-    options: ProofOptions,
-}
 
 /// Result from computation tasks
 #[derive(Debug)]
@@ -396,6 +379,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }
     }
 
+    pub fn pk(&self) -> Arc<ZiskProgramPK> {
+        Arc::clone(&self.pk)
+    }
+
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub fn new_job(
@@ -694,11 +681,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let local_rank = self.prover.local_rank();
         let unlock_mapped_memory = self.prover_config.unlock_mapped_memory;
 
+        let prover = self.prover.clone();
+
         // HintsShmem::new and HintsProcessor::build perform OS-level shared-memory operations;
         // run them on the blocking thread pool to avoid stalling Tokio workers.
         let processor = tokio::task::spawn_blocking(move || -> Result<HintsProcessor> {
-            let hints_shmem = HintsShmem::new(base_port, local_rank, unlock_mapped_memory)?;
+            let hints_shmem =
+                Arc::new(HintsShmem::new(base_port, local_rank, unlock_mapped_memory)?);
             HintsProcessor::builder(hints_shmem)
+                .with_mpi_broadcast(move |data| prover.mpi_broadcast(data))
                 .build()
                 .map_err(|e| anyhow::anyhow!("Failed to initialize hints processor: {}", e))
         })
@@ -879,7 +870,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     // MPI Broadcast handlers for receiving and executing tasks
     // --------------------------------------------------------------------------
 
-    pub async fn handle_mpi_broadcast_request(&self) -> Result<()> {
+    pub async fn handle_mpi_broadcast_request(
+        &self,
+        hints_sink: Option<Arc<dyn StreamSink>>,
+    ) -> Result<()> {
         let mut bytes: Vec<u8> = Vec::new();
 
         self.prover.mpi_broadcast(&mut bytes)?;
@@ -923,6 +917,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
             JobPhase::Aggregate => {
                 unreachable!("Aggregate phase is not supported in MPI broadcast");
+            }
+            JobPhase::ContributionsHintsStream => {
+                if let Some(hints_sink) = hints_sink {
+                    let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
+                    hints_sink.submit(&message.data)?;
+                } else {
+                    unimplemented!("Hints sink is not configured for ContributionsHintsStream");
+                }
             }
         }
         Ok(())

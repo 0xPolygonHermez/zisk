@@ -17,6 +17,7 @@ use zisk_common::{
     BuiltInHint, CtrlHint, HintCode, PartialPrecompileHint, PrecompileHint,
     PrecompileHintParseResult,
 };
+use zisk_distributed_common::{JobPhase, StreamMessage};
 use ziskos_hints::handlers::blake2b::blake2b_compress_hint;
 use ziskos_hints::handlers::bls381::{
     bls12_381_fp2_to_g2_hint, bls12_381_fp_to_g1_hint, bls12_381_g1_add_hint,
@@ -87,12 +88,16 @@ impl HintProcessorState {
 /// Type alias for custom hint handler functions.
 pub type CustomHintHandler = Arc<dyn Fn(&[u64]) -> Result<Vec<u64>> + Send + Sync>;
 
+/// Type alias for MPI broadcast callback function.
+pub type MpiBroadcastFn = Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>;
+
 /// Builder for configuring and constructing a [`HintsProcessor`].
 pub struct HintsProcessorBuilder {
     hints_sink: Arc<dyn StreamSink>,
     num_threads: usize,
     enable_stats: bool,
     custom_handlers: HashMap<u32, CustomHintHandler>,
+    mpi_broadcast_fn: Option<MpiBroadcastFn>,
 }
 
 impl HintsProcessorBuilder {
@@ -133,6 +138,17 @@ impl HintsProcessorBuilder {
         self
     }
 
+    /// Sets an MPI broadcast function to be called during initialization.
+    ///
+    /// This allows synchronization of initialization data across MPI ranks.
+    pub fn with_mpi_broadcast<F>(mut self, broadcast_fn: F) -> Self
+    where
+        F: Fn(&mut Vec<u8>) -> Result<()> + Send + Sync + 'static,
+    {
+        self.mpi_broadcast_fn = Some(Arc::new(broadcast_fn));
+        self
+    }
+
     /// Builds the [`HintsProcessor`] with the configured settings.
     ///
     /// # Returns
@@ -151,8 +167,9 @@ impl HintsProcessorBuilder {
         // Spawn drainer thread
         let drainer_state = Arc::clone(&state);
         let drainer_sink = Arc::clone(&hints_sink);
+        let drainer_broadcast = self.mpi_broadcast_fn.clone();
         let drainer_thread = std::thread::spawn(move || {
-            HintsProcessor::drainer_thread(drainer_state, drainer_sink);
+            HintsProcessor::drainer_thread(drainer_state, drainer_sink, drainer_broadcast);
         });
 
         Ok(HintsProcessor {
@@ -166,6 +183,7 @@ impl HintsProcessorBuilder {
             stream_active: AtomicBool::new(false),
             instant: Mutex::new(None),
             pending_partial: Mutex::new(None),
+            mpi_broadcast_fn: self.mpi_broadcast_fn,
         })
     }
 }
@@ -205,6 +223,9 @@ pub struct HintsProcessor {
 
     /// Buffer for incomplete hint data between batches
     pending_partial: Mutex<Option<PartialPrecompileHint>>,
+
+    /// Optional MPI broadcast function for initialization synchronization
+    mpi_broadcast_fn: Option<MpiBroadcastFn>,
 }
 
 impl HintsProcessor {
@@ -225,13 +246,29 @@ impl HintsProcessor {
     ///     .enable_stats(false)
     ///     .build()?;
     /// ```
-    pub fn builder(hints_sink: impl StreamSink) -> HintsProcessorBuilder {
+    pub fn builder(hints_sink: Arc<impl StreamSink>) -> HintsProcessorBuilder {
         HintsProcessorBuilder {
-            hints_sink: Arc::new(hints_sink),
+            hints_sink,
             num_threads: Self::DEFAULT_NUM_THREADS,
             enable_stats: false,
             custom_handlers: HashMap::new(),
+            mpi_broadcast_fn: None,
         }
+    }
+
+    /// Executes the MPI broadcast callback if one was configured.
+    ///
+    /// This allows manual control over when MPI synchronization occurs.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Broadcast completed successfully or no callback configured
+    /// * `Err` - If the broadcast callback returns an error
+    pub fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
+        if let Some(broadcast_fn) = &self.mpi_broadcast_fn {
+            broadcast_fn(data)?;
+        }
+        Ok(())
     }
 
     /// Processes hints in parallel with non-blocking, ordered output.
@@ -539,7 +576,11 @@ impl HintsProcessor {
     }
 
     /// Drainer thread that waits for hints to complete and drains ready results from queue.
-    fn drainer_thread(state: Arc<HintProcessorState>, hints_sink: Arc<dyn StreamSink>) {
+    fn drainer_thread(
+        state: Arc<HintProcessorState>,
+        hints_sink: Arc<dyn StreamSink>,
+        mpi_broadcast_fn: Option<MpiBroadcastFn>,
+    ) {
         loop {
             let mut queue = state.queue.lock().unwrap();
 
@@ -563,11 +604,22 @@ impl HintsProcessor {
                         drop(queue);
 
                         // Submit to sink
-                        if let Err(e) = hints_sink.submit(data_to_submit) {
+                        if let Err(e) = hints_sink.submit(&data_to_submit) {
                             eprintln!("Error submitting to sink: {}", e);
                             state.error_flag.store(true, Ordering::Release);
                             state.drain_signal.notify_all();
                             return;
+                        }
+
+                        if let Some(broadcast_fn) = &mpi_broadcast_fn {
+                            let mut serialized = borsh::to_vec(&(
+                                JobPhase::ContributionsHintsStream,
+                                StreamMessage { data: data_to_submit.clone() },
+                            ))
+                            .unwrap();
+
+                            broadcast_fn(&mut serialized)
+                                .expect("MPI broadcast failed in drainer thread");
                         }
 
                         // Re-acquire lock for next iteration
@@ -759,7 +811,7 @@ mod tests {
     struct NullHints;
 
     impl StreamSink for NullHints {
-        fn submit(&self, _processed: Vec<u64>) -> Result<()> {
+        fn submit(&self, _processed: &[u64]) -> Result<()> {
             Ok(())
         }
     }
@@ -1022,8 +1074,8 @@ mod tests {
         }
 
         impl StreamSink for RecordingSink {
-            fn submit(&self, processed: Vec<u64>) -> Result<()> {
-                self.received.lock().unwrap().push(processed);
+            fn submit(&self, processed: &[u64]) -> Result<()> {
+                self.received.lock().unwrap().push(processed.to_vec());
                 Ok(())
             }
         }
@@ -1061,7 +1113,7 @@ mod tests {
         }
 
         impl StreamSink for FailingSink {
-            fn submit(&self, _processed: Vec<u64>) -> Result<()> {
+            fn submit(&self, _processed: &[u64]) -> Result<()> {
                 if self.should_fail.load(Ordering::Acquire) {
                     Err(anyhow::anyhow!("Sink error"))
                 } else {
@@ -1251,8 +1303,8 @@ mod tests {
         }
 
         impl StreamSink for RecordingSink {
-            fn submit(&self, processed: Vec<u64>) -> Result<()> {
-                self.received.lock().unwrap().push(processed);
+            fn submit(&self, processed: &[u64]) -> Result<()> {
+                self.received.lock().unwrap().push(processed.to_vec());
                 Ok(())
             }
         }
@@ -1622,8 +1674,8 @@ mod tests {
         }
 
         impl StreamSink for RecordingSink {
-            fn submit(&self, processed: Vec<u64>) -> Result<()> {
-                self.received.lock().unwrap().push(processed);
+            fn submit(&self, processed: &[u64]) -> Result<()> {
+                self.received.lock().unwrap().push(processed.to_vec());
                 Ok(())
             }
         }
@@ -1633,7 +1685,7 @@ mod tests {
 
         const VARIABLE_HINT: u32 = 0x7FFF_0100;
 
-        let p = HintsProcessor::builder(sink)
+        let p = HintsProcessor::builder(Arc::new(sink), None::<Arc<RecordingSink>>)
             .num_threads(16)
             .custom_hint(VARIABLE_HINT, |data| {
                 // Pseudo-random delay based on hash of input value (0-15ms range)

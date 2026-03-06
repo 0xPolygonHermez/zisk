@@ -186,7 +186,7 @@ impl StreamSink for HintsShmem {
     /// * `Ok(())` - If hints were successfully written to shared memory
     /// * `Err` - If writing to shared memory fails
     #[inline]
-    fn submit(&self, processed: Vec<u64>) -> anyhow::Result<()> {
+    fn submit(&self, processed: &[u64]) -> anyhow::Result<()> {
         let data_size = processed.len() as u64;
 
         // Early return for empty data
@@ -258,7 +258,7 @@ impl StreamSink for HintsShmem {
         }
 
         // Write data ONCE to the unified shared memory buffer
-        unified.data_writer.write_ring_buffer(&processed)?;
+        unified.data_writer.write_ring_buffer(processed)?;
 
         fence(Ordering::Release);
 

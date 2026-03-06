@@ -7,6 +7,7 @@ use asm_runner::HintsShmem;
 use asm_runner::{MOOutputShmem, MTOutputShmem, RHOutputShmem, SharedMemoryWriter};
 use precompiles_hints::HintsProcessor;
 use std::sync::atomic::{AtomicBool, Ordering};
+use zisk_common::io::StreamSink;
 use zisk_common::io::{StreamSource, ZiskStream};
 
 /// Encapsulates assembly-related resources including shared memory and hints stream.
@@ -30,6 +31,8 @@ pub struct AsmResources {
     /// Shared memory writers for each assembly service.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub shmem_input_writer: Arc<Mutex<Option<SharedMemoryWriter>>>,
+
+    pub hints_sink: Option<Arc<dyn StreamSink>>,
 
     /// Pipeline for handling precompile hints.
     pub hints_stream: Option<Arc<Mutex<ZiskStream>>>,
@@ -68,28 +71,39 @@ impl AsmResources {
 
         const USE_SHARED_MEMORY_HINTS: bool = true;
 
-        let hints_stream = if with_hints {
-            let hints_processor = if USE_SHARED_MEMORY_HINTS {
-                let hints_shmem = HintsShmem::new(base_port, local_rank, unlock_mapped_memory)
-                    .expect("asm_resources: Failed to create HintsShmem");
+        let (hints_stream, hints_sink) = if with_hints {
+            let (hints_processor, hints_sink): (HintsProcessor, Arc<dyn StreamSink>) =
+                if USE_SHARED_MEMORY_HINTS {
+                    let hints_shmem = Arc::new(
+                        HintsShmem::new(base_port, local_rank, unlock_mapped_memory)
+                            .expect("Failed to create HintsShmem"),
+                    );
 
-                HintsProcessor::builder(hints_shmem)
-                    .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
-                    .build()
-                    .expect("asm_resources: Failed to create PrecompileHintsProcessor")
-            } else {
-                let hints_file = HintsFile::new(format!("hints_results_{}.bin", local_rank))
-                    .expect("asm_resources: Failed to create HintsFile");
+                    (
+                        HintsProcessor::builder(hints_shmem.clone())
+                            .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
+                            .build()
+                            .expect("Failed to build HintsProcessor"),
+                        hints_shmem,
+                    )
+                } else {
+                    let hints_file = Arc::new(
+                        HintsFile::new(format!("hints_results_{}.bin", local_rank))
+                            .expect("Failed to create HintsFile"),
+                    );
 
-                HintsProcessor::builder(hints_file)
-                    .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
-                    .build()
-                    .expect("asm_resources: Failed to create PrecompileHintsProcessor")
-            };
+                    (
+                        HintsProcessor::builder(hints_file.clone())
+                            .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
+                            .build()
+                            .expect("Failed to build HintsProcessor"),
+                        hints_file,
+                    )
+                };
 
-            Some(Arc::new(Mutex::new(ZiskStream::new(hints_processor))))
+            (Some(Arc::new(Mutex::new(ZiskStream::new(hints_processor)))), Some(hints_sink))
         } else {
-            None
+            (None, None)
         };
 
         Self {
@@ -106,6 +120,7 @@ impl AsmResources {
             base_port,
             local_rank,
             unlock_mapped_memory,
+            hints_sink,
         }
     }
 

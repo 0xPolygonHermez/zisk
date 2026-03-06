@@ -40,7 +40,7 @@ impl StreamSink for HintsFile {
     /// * `Ok(())` - If hints were successfully written to the file
     /// * `Err` - If writing to the file fails
     #[inline]
-    fn submit(&self, processed: Vec<u64>) -> anyhow::Result<()> {
+    fn submit(&self, processed: &[u64]) -> anyhow::Result<()> {
         let mut file = self.file.lock().unwrap();
 
         // Write each u64 as 8 bytes (little-endian)
