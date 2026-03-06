@@ -772,7 +772,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         let job = self.worker.current_job().unwrap();
-        let current_job_id = job.lock().await.job_id.clone();
+        let (current_job_id, is_first_partition) = {
+            let job_guard = job.lock().await;
+            (job_guard.job_id.clone(), job_guard.allocation.contains(&0))
+        };
 
         let stream_data_dto: StreamDataDto = stream_data.into();
 
@@ -784,6 +787,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ));
         }
 
-        self.worker.route_stream_data(stream_data_dto).await
+        self.worker.route_stream_data(stream_data_dto, is_first_partition).await
     }
 }

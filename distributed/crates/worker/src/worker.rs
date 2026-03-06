@@ -641,12 +641,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// - `Data` / `End`: enqueues the message into the actor's channel — O(1), non-blocking.
     ///
     /// The actor thread owns the reorder buffer and calls `process_hints` in sequence order.
-    pub async fn route_stream_data(&mut self, stream_data: StreamDataDto) -> Result<()> {
+    pub async fn route_stream_data(
+        &mut self,
+        stream_data: StreamDataDto,
+        is_first_partition: bool,
+    ) -> Result<()> {
         match &stream_data.stream_type {
             StreamMessageKind::Start => {
                 let job_id = stream_data.job_id.clone();
 
-                self.ensure_hints_processor().await?;
+                self.ensure_hints_processor(is_first_partition).await?;
 
                 let hints_processor = self.hints_processor.as_ref().unwrap();
 
@@ -671,10 +675,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(())
     }
 
-    pub fn is_first_partition(&self) -> Result<bool> {
-        self.prover.is_first_partition()
-    }
-
     pub fn set_partition(
         &self,
         total_compute_units: usize,
@@ -685,7 +685,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     /// Lazily initialises the `HintsProcessor` using configuration from the current job.
-    async fn ensure_hints_processor(&mut self) -> Result<()> {
+    async fn ensure_hints_processor(&mut self, is_first_partition: bool) -> Result<()> {
         if self.hints_processor.is_some() {
             return Ok(());
         }
@@ -705,7 +705,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         .await
         .map_err(|e| anyhow::anyhow!("hints processor init panicked: {e}"))??;
 
-        processor.set_has_rom_sm(self.prover.is_first_partition()?);
+        processor.set_has_rom_sm(is_first_partition);
 
         self.hints_processor = Some(Arc::new(processor));
 

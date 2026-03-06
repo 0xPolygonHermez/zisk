@@ -135,7 +135,7 @@ impl AsmServices {
             self.start_asm_service(service, trimmed_path, &options, &shm_prefix);
         }
 
-        for service in &Self::SERVICES {
+        for service in &Self::SERVICES[1..] {
             Self::wait_for_service_ready(
                 service,
                 Self::port_for(service, self.base_port, self.local_rank),

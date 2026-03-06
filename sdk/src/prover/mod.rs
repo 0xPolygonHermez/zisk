@@ -836,8 +836,6 @@ pub trait ProverEngine {
         rank_id: usize,
     ) -> Result<()>;
 
-    fn is_first_partition(&self) -> Result<bool>;
-
     fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()>;
 
     fn aggregate_proofs(
@@ -1021,10 +1019,6 @@ impl<C: ZiskBackend> ZiskProver<C> {
         rank_id: usize,
     ) -> Result<()> {
         self.prover.set_partition(total_compute_units, allocation, rank_id)
-    }
-
-    pub fn is_first_partition(&self) -> Result<bool> {
-        self.prover.is_first_partition()
     }
 
     pub fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
