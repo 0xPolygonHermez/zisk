@@ -112,27 +112,26 @@ pub fn read_slice_zerocopy<'a>() -> &'a [u8] {
     // Update input position: move past length (8 bytes) + data (8-byte aligned)
     unsafe { INPUT_POS = input_pos + 8 + aligned_len };
 
-    // Return slice pointing directly to the input data (zero-copy)
-    unsafe { core::slice::from_raw_parts(data_addr as *const u8, len) }
-}
-
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-pub(crate) fn read_input() -> Vec<u8> {
-    let vec = read_slice_zerocopy().to_vec();
+    let data_slice = unsafe { core::slice::from_raw_parts(data_addr as *const u8, len) };
 
     #[cfg(zisk_hints_debug)]
     {
-        let start_bytes = &vec[..vec.len().min(64)];
-        let ellipsis = if vec.len() > 64 { "..." } else { "" };
+        let start_bytes = &data_slice[..data_slice.len().min(64)];
+        let ellipsis = if data_slice.len() > 64 { "..." } else { "" };
         hint_log(format!(
             "hint_input_data (input_data: {:x?}{} , input_data_len: {}",
             start_bytes,
             ellipsis,
-            vec.len()
+            data_slice.len()
         ));
     }
 
-    vec
+    data_slice
+}
+
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+pub(crate) fn read_input() -> Vec<u8> {
+    read_slice_zerocopy().to_vec()
 }
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
