@@ -28,7 +28,9 @@ use tracing::info;
 use zisk_common::io::StreamSource;
 use zisk_common::ElfBinaryLike;
 use zisk_common::ZiskExecutorTime;
-use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, StatsCostPerType, ZiskExecutorSummary};
+use zisk_common::{
+    io::StreamProcessor, io::ZiskStdin, ExecutorStatsHandle, StatsCostPerType, ZiskExecutorSummary,
+};
 use zisk_core::ZiskRom;
 
 pub struct ZiskExecuteResult {
@@ -151,6 +153,20 @@ impl ZiskProgramPK {
 
     pub fn is_asm(&self) -> bool {
         self.asm_services.is_some()
+    }
+
+    pub fn get_hints_processor(&self) -> Option<Arc<dyn StreamProcessor>> {
+        if let Some(asm_resources) = &self.asm_resources {
+            asm_resources.get_hints_processor()
+        } else {
+            None
+        }
+    }
+
+    pub fn reset(&self) {
+        if let Some(asm_resources) = &self.asm_resources {
+            asm_resources.reset();
+        }
     }
 }
 

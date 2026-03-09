@@ -5,10 +5,10 @@ use asm_runner::HintsFile;
 use asm_runner::HintsShmem;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use asm_runner::{MOOutputShmem, MTOutputShmem, RHOutputShmem, SharedMemoryWriter};
-use precompiles_hints::HintsProcessor;
+use precompiles_hints::{HintsProcessor, MpiBroadcastFn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use zisk_common::io::StreamSink;
-use zisk_common::io::{StreamSource, ZiskStream};
+use zisk_common::io::{StreamProcessor, StreamSource, ZiskStream};
 
 /// Encapsulates assembly-related resources including shared memory and hints stream.
 #[derive(Clone)]
@@ -57,6 +57,7 @@ impl AsmResources {
         unlock_mapped_memory: bool,
         verbose_mode: proofman_common::VerboseMode,
         with_hints: bool,
+        mpi_broadcast_fn: Option<MpiBroadcastFn>,
     ) -> Self {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         let asm_shmem_mt = MTOutputShmem::new(local_rank, base_port, unlock_mapped_memory)
@@ -79,26 +80,28 @@ impl AsmResources {
                             .expect("Failed to create HintsShmem"),
                     );
 
-                    (
-                        HintsProcessor::builder(hints_shmem.clone())
-                            .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
-                            .build()
-                            .expect("Failed to build HintsProcessor"),
-                        hints_shmem,
-                    )
+                    let mut builder = HintsProcessor::builder(hints_shmem.clone())
+                        .enable_stats(verbose_mode != proofman_common::VerboseMode::Info);
+
+                    if let Some(broadcast_fn) = mpi_broadcast_fn.clone() {
+                        builder = builder.with_mpi_broadcast(move |data| broadcast_fn(data));
+                    }
+
+                    (builder.build().expect("Failed to build HintsProcessor"), hints_shmem)
                 } else {
                     let hints_file = Arc::new(
                         HintsFile::new(format!("hints_results_{}.bin", local_rank))
                             .expect("Failed to create HintsFile"),
                     );
 
-                    (
-                        HintsProcessor::builder(hints_file.clone())
-                            .enable_stats(verbose_mode != proofman_common::VerboseMode::Info)
-                            .build()
-                            .expect("Failed to build HintsProcessor"),
-                        hints_file,
-                    )
+                    let mut builder = HintsProcessor::builder(hints_file.clone())
+                        .enable_stats(verbose_mode != proofman_common::VerboseMode::Info);
+
+                    if let Some(broadcast_fn) = mpi_broadcast_fn.clone() {
+                        builder = builder.with_mpi_broadcast(move |data| broadcast_fn(data));
+                    }
+
+                    (builder.build().expect("Failed to build HintsProcessor"), hints_file)
                 };
 
             (Some(Arc::new(Mutex::new(ZiskStream::new(hints_processor)))), Some(hints_sink))
@@ -144,6 +147,10 @@ impl AsmResources {
 
     pub fn is_hints_stream_initialized(&self) -> bool {
         self.hints_stream_initialized.load(Ordering::SeqCst)
+    }
+
+    pub fn get_hints_processor(&self) -> Option<Arc<dyn StreamProcessor>> {
+        self.hints_stream.as_ref().map(|stream| stream.lock().unwrap().get_processor())
     }
 
     pub fn reset(&self) {

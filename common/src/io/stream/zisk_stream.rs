@@ -1,6 +1,7 @@
 //! ZiskStream is responsible for reading precompile hints from a stream source and sent to a hints processor.
 
 use anyhow::Result;
+use std::any::Any;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
@@ -8,7 +9,7 @@ use std::thread::{self, JoinHandle};
 
 use crate::io::{StreamRead, StreamSource};
 
-pub trait StreamProcessor: Send + Sync + 'static {
+pub trait StreamProcessor: Any + Send + Sync + 'static {
     /// Process data and return the processed result along with a flag indicating if CTRL_END was encountered.
     ///
     /// # Returns
@@ -18,6 +19,9 @@ pub trait StreamProcessor: Send + Sync + 'static {
     fn process(&self, data: &[u64], first_batch: bool) -> anyhow::Result<bool>;
 
     fn reset(&self) {}
+
+    /// Convert Arc<Self> to Arc<dyn Any + Send + Sync> for downcasting
+    fn as_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync>;
 }
 
 /// Trait for submitting processed hints to a sink.
@@ -181,6 +185,10 @@ impl ZiskStream {
         } else {
             Err(anyhow::anyhow!("No background thread running. Call set_hints_stream first."))
         }
+    }
+
+    pub fn get_processor(&self) -> Arc<dyn StreamProcessor> {
+        self.hints_processor.clone()
     }
 }
 

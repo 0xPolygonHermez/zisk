@@ -155,4 +155,8 @@ impl StreamProcessor for PrecompileHintsRelay {
     fn reset(&self) {
         self.reset_state();
     }
+
+    fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync> {
+        self
+    }
 }

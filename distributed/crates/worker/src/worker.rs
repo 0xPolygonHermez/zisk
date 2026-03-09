@@ -1,5 +1,4 @@
 use anyhow::Result;
-use asm_runner::HintsShmem;
 use cargo_zisk::commands::get_proving_key;
 use precompiles_hints::HintsProcessor;
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
@@ -8,14 +7,14 @@ use std::fs;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
-use zisk_common::io::{StreamProcessor, StreamSource, ZiskStdin};
+use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::ElfBinaryFromFile;
 use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
 use zisk_distributed_common::{ContributionsMessage, ProveMessage, StreamMessage};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
-use zisk_sdk::{Asm, Emu, ProverClient, StreamSink, ZiskBackend, ZiskProgramPK, ZiskProver};
+use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProgramPK, ZiskProver};
 
 use crate::stream_ordering::StreamOrderingActor;
 
@@ -250,7 +249,6 @@ pub struct Worker<T: ZiskBackend + 'static> {
 
     stream_actor: Option<StreamOrderingActor>,
     pk: Arc<ZiskProgramPK>,
-    hints_processor: Option<Arc<HintsProcessor>>,
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
@@ -284,7 +282,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover_config,
             pk: Arc::new(pk),
             stream_actor: None,
-            hints_processor: None,
         })
     }
 
@@ -305,6 +302,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .base_port_opt(prover_config.asm_port)
                 .unlock_mapped_memory(prover_config.unlock_mapped_memory)
                 .gpu(prover_config.gpu_params.clone())
+                .is_distributed(true)
                 .build()?,
         );
 
@@ -321,7 +319,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover_config,
             pk: Arc::new(pk),
             stream_actor: None,
-            hints_processor: None,
         })
     }
 
@@ -377,10 +374,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 drop(stream_actor);
             });
         }
-    }
-
-    pub fn pk(&self) -> Arc<ZiskProgramPK> {
-        Arc::clone(&self.pk)
     }
 
     #[allow(clippy::type_complexity)]
@@ -637,13 +630,22 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             StreamMessageKind::Start => {
                 let job_id = stream_data.job_id.clone();
 
-                self.ensure_hints_processor(is_first_partition).await?;
+                self.pk.reset();
 
-                let hints_processor = self.hints_processor.as_ref().unwrap();
+                let processor_trait = self.pk.get_hints_processor().ok_or_else(|| {
+                    anyhow::anyhow!("HintsProcessor not found for job {}", job_id)
+                })?;
 
-                hints_processor.reset();
+                // Downcast Arc<dyn StreamProcessor> to Arc<HintsProcessor>
+                let hints_processor =
+                    processor_trait.as_any().downcast::<HintsProcessor>().map_err(|_| {
+                        anyhow::anyhow!(
+                            "Failed to downcast StreamProcessor to HintsProcessor for job {}",
+                            job_id
+                        )
+                    })?;
 
-                let hints_processor = Arc::clone(hints_processor);
+                hints_processor.set_has_rom_sm(is_first_partition);
 
                 // Replace any existing actor (handles reconnect / job restart)
                 self.stream_actor = Some(StreamOrderingActor::new(hints_processor, job_id));
@@ -669,38 +671,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         worker_idx: usize,
     ) -> Result<()> {
         self.prover.set_partition(total_compute_units, allocation, worker_idx)
-    }
-
-    /// Lazily initialises the `HintsProcessor` using configuration from the current job.
-    async fn ensure_hints_processor(&mut self, is_first_partition: bool) -> Result<()> {
-        if self.hints_processor.is_some() {
-            return Ok(());
-        }
-
-        let base_port = self.prover_config.asm_port;
-        let local_rank = self.prover.local_rank();
-        let unlock_mapped_memory = self.prover_config.unlock_mapped_memory;
-
-        let prover = self.prover.clone();
-
-        // HintsShmem::new and HintsProcessor::build perform OS-level shared-memory operations;
-        // run them on the blocking thread pool to avoid stalling Tokio workers.
-        let processor = tokio::task::spawn_blocking(move || -> Result<HintsProcessor> {
-            let hints_shmem =
-                Arc::new(HintsShmem::new(base_port, local_rank, unlock_mapped_memory)?);
-            HintsProcessor::builder(hints_shmem)
-                .with_mpi_broadcast(move |data| prover.mpi_broadcast(data))
-                .build()
-                .map_err(|e| anyhow::anyhow!("Failed to initialize hints processor: {}", e))
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("hints processor init panicked: {e}"))??;
-
-        processor.set_has_rom_sm(is_first_partition);
-
-        self.hints_processor = Some(Arc::new(processor));
-
-        Ok(())
     }
 
     pub fn prove(
@@ -870,62 +840,72 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     // MPI Broadcast handlers for receiving and executing tasks
     // --------------------------------------------------------------------------
 
-    pub async fn handle_mpi_broadcast_request(
-        &self,
-        hints_sink: Option<Arc<dyn StreamSink>>,
-    ) -> Result<()> {
+    pub async fn handle_mpi_broadcast_request(&self) -> Result<()> {
         let mut bytes: Vec<u8> = Vec::new();
 
         self.prover.mpi_broadcast(&mut bytes)?;
 
         // extract byte 0 to decide the option
-        let phase = borsh::from_slice(&bytes[0..1]).unwrap();
+        let phase: JobPhase = borsh::from_slice(&bytes[0..1]).unwrap();
 
-        match phase {
-            JobPhase::Contributions => {
-                let message: ContributionsMessage = borsh::from_slice(&bytes[1..]).unwrap();
+        let prover = self.prover.clone();
+        let pk = self.pk.clone();
+        let options = self.get_proof_options(false);
 
-                let result = Self::execute_contribution_task(
-                    message.job_id,
-                    &self.prover,
-                    message.phase_inputs,
-                    message.input_source,
-                    message.hints_source,
-                    message.partition_info,
-                    &self.pk,
-                    message.options,
-                );
-                if let Err(e) = result {
-                    error!("Error during Contributions MPI broadcast execution: {}. Waiting for new job...", e);
+        if phase == JobPhase::ContributionsHintsStream {
+            if let Some(hints_sink) = pk.asm_resources.as_ref().and_then(|r| r.hints_sink.clone()) {
+                let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
+                if let Err(e) = hints_sink.submit(&message.data) {
+                    tracing::error!("Failed to submit hints: {}", e);
                 }
+            } else {
+                tracing::error!("Hints sink is not configured for ContributionsHintsStream");
             }
-            JobPhase::Prove => {
-                let message: ProveMessage = borsh::from_slice(&bytes[1..]).unwrap();
+        } else {
+            tokio::task::spawn_blocking(move || {
+                match phase {
+                JobPhase::Contributions => {
+                    let message: ContributionsMessage = borsh::from_slice(&bytes[1..]).unwrap();
 
-                let result = Self::execute_prove_task(
-                    message.job_id,
-                    &self.prover,
-                    message.phase_inputs,
-                    message.options,
-                );
-                if let Err(e) = result {
-                    error!(
+                    let result = Self::execute_contribution_task(
+                        message.job_id,
+                        &prover,
+                        message.phase_inputs,
+                        message.input_source,
+                        message.hints_source,
+                        message.partition_info,
+                        &pk,
+                        message.options,
+                    );
+                    if let Err(e) = result {
+                        tracing::error!(
+                            "Error during Contributions MPI broadcast execution: {}. Waiting for new job...",
+                            e
+                        );
+                    }
+                }
+                JobPhase::Prove => {
+                    let message: ProveMessage = borsh::from_slice(&bytes[1..]).unwrap();
+
+                    let result = Self::execute_prove_task(
+                        message.job_id,
+                        &prover,
+                        message.phase_inputs,
+                        options,
+                    );
+                    if let Err(e) = result {
+                        error!(
                         "Error during Prove MPI broadcast execution: {}. Waiting for new job...",
                         e
                     );
+                    }
                 }
-            }
-            JobPhase::Aggregate => {
-                unreachable!("Aggregate phase is not supported in MPI broadcast");
-            }
-            JobPhase::ContributionsHintsStream => {
-                if let Some(hints_sink) = hints_sink {
-                    let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
-                    hints_sink.submit(&message.data)?;
-                } else {
-                    unimplemented!("Hints sink is not configured for ContributionsHintsStream");
+                JobPhase::Aggregate => {
+                    unreachable!("Aggregate phase is not supported in MPI broadcast");
                 }
+                JobPhase::ContributionsHintsStream => unreachable!("ContributionsHintsStream is handled separately and should not reach this point"),
             }
+            });
         }
         Ok(())
     }

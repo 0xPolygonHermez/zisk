@@ -12,8 +12,8 @@ struct BenchSink {
 }
 
 impl StreamSink for BenchSink {
-    fn submit(&self, processed: Vec<u64>) -> Result<()> {
-        self.received.lock().unwrap().push(processed);
+    fn submit(&self, processed: &[u64]) -> Result<()> {
+        self.received.lock().unwrap().push(processed.to_vec());
         Ok(())
     }
 }
@@ -46,7 +46,7 @@ fn parallel_speedup_benchmark(c: &mut Criterion) {
                 b.iter(|| {
                     let received = Arc::new(Mutex::new(Vec::new()));
                     let received_clone = received.clone();
-                    let sink = BenchSink { received: received_clone };
+                    let sink = Arc::new(BenchSink { received: received_clone });
 
                     let p = HintsProcessor::builder(sink)
                         .num_threads(threads)
@@ -119,7 +119,7 @@ fn microsecond_hints_benchmark(c: &mut Criterion) {
             b.iter(|| {
                 let received = Arc::new(Mutex::new(Vec::new()));
                 let received_clone = received.clone();
-                let sink = BenchSink { received: received_clone };
+                let sink = Arc::new(BenchSink { received: received_clone });
 
                 let p = HintsProcessor::builder(sink)
                     .num_threads(16)
@@ -171,7 +171,7 @@ fn workload_patterns_benchmark(c: &mut Criterion) {
             b.iter(|| {
                 let received = Arc::new(Mutex::new(Vec::new()));
                 let received_clone = received.clone();
-                let sink = BenchSink { received: received_clone };
+                let sink = Arc::new(BenchSink { received: received_clone });
 
                 let p = HintsProcessor::builder(sink)
                     .num_threads(8)
@@ -225,7 +225,7 @@ fn noop_throughput_benchmark(c: &mut Criterion) {
     struct NullSink;
 
     impl StreamSink for NullSink {
-        fn submit(&self, _processed: Vec<u64>) -> Result<()> {
+        fn submit(&self, _processed: &[u64]) -> Result<()> {
             Ok(())
         }
     }
@@ -241,7 +241,7 @@ fn noop_throughput_benchmark(c: &mut Criterion) {
     for &count in &hint_counts {
         group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &num_hints| {
             b.iter(|| {
-                let p = HintsProcessor::builder(NullSink).num_threads(32).build().unwrap();
+                let p = HintsProcessor::builder(Arc::new(NullSink)).num_threads(32).build().unwrap();
 
                 let mut data = Vec::with_capacity(num_hints * 2);
                 for i in 0..num_hints {

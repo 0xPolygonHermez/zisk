@@ -60,6 +60,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
     no_auto_setup: bool,
+    is_distributed: bool,
 
     // Prove-specific fields (only available when Operation = Prove)
     gpu_params: ParamsGPU,
@@ -215,6 +216,12 @@ impl<Operation> ProverClientBuilder<AsmB, Operation> {
     #[must_use]
     pub fn no_auto_setup(mut self, no_auto_setup: bool) -> Self {
         self.no_auto_setup = no_auto_setup;
+        self
+    }
+
+    #[must_use]
+    pub fn is_distributed(mut self, is_distributed: bool) -> Self {
+        self.is_distributed = is_distributed;
         self
     }
 
@@ -415,6 +422,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
                 self.unlock_mapped_memory,
                 self.no_auto_setup,
                 self.gpu_params,
+                self.is_distributed,
                 self.logging_config,
             )?
         };
@@ -454,6 +462,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
             base_port: None,
             unlock_mapped_memory: false,
             no_auto_setup: false,
+            is_distributed: false,
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -483,6 +492,7 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
             no_auto_setup: builder.no_auto_setup,
+            is_distributed: builder.is_distributed,
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -514,6 +524,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
             no_auto_setup: builder.no_auto_setup,
+            is_distributed: builder.is_distributed,
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
@@ -543,6 +554,7 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
             base_port: builder.base_port,
             unlock_mapped_memory: builder.unlock_mapped_memory,
             no_auto_setup: builder.no_auto_setup,
+            is_distributed: builder.is_distributed,
 
             _backend: std::marker::PhantomData,
             _operation: std::marker::PhantomData,
