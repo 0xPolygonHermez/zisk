@@ -776,6 +776,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             let job_guard = job.lock().await;
             (job_guard.job_id.clone(), job_guard.allocation.contains(&0))
         };
+        tracing::info!("Received stream data for job {}, stream type: {}", stream_data.job_id, stream_data.stream_type);
 
         let stream_data_dto: StreamDataDto = stream_data.into();
 
