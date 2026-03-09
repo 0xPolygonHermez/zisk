@@ -110,7 +110,7 @@ impl HintsShmem {
         Ok(Self {
             unified: RefCell::new(unified),
             separate: RefCell::new(separate),
-            has_rom_sm: AtomicBool::new(true),
+            has_rom_sm: AtomicBool::new(false),
         })
     }
 
@@ -209,7 +209,7 @@ impl StreamSink for HintsShmem {
         let separate = if self.has_rom_sm.load(std::sync::atomic::Ordering::SeqCst) {
             &mut separate
         } else {
-            &mut separate[1..2]
+            &mut separate[0..2]
         };
 
         // Read current write position once
