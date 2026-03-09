@@ -209,7 +209,7 @@ impl StreamSink for HintsShmem {
         let separate = if self.has_rom_sm.load(std::sync::atomic::Ordering::SeqCst) {
             &mut separate
         } else {
-            &mut separate[0..2]
+            &mut separate[1..2]
         };
 
         // Read current write position once
