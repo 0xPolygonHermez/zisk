@@ -11,9 +11,9 @@ use std::{
     net::TcpStream,
     path::Path,
     process::Command,
-    thread::sleep,
     time::{Duration, Instant},
 };
+use tracing::debug;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmService {
@@ -72,7 +72,6 @@ impl AsmServices {
         ziskemuasm_path: &Path,
         mut options: AsmRunnerOptions,
     ) -> Result<()> {
-        // ! TODO Remove this when we have a proper way to find the path
         let path_str = ziskemuasm_path.to_string_lossy();
         let trimmed_path = &path_str[..path_str.len().saturating_sub(7)];
 
@@ -97,55 +96,33 @@ impl AsmServices {
             self.local_rank,
         );
 
-        let service = &Self::SERVICES[0];
-        tracing::debug!(
-            ">>> [{}] Starting ASM service: {} on port {}",
-            self.world_rank,
-            service,
-            Self::port_for(service, self.base_port, self.local_rank)
-        );
+        let mut pending_wait = Vec::new();
 
-        // First service has to create the shared memory, the rest can use it
         options.share_input_shmem = true;
-        options.open_input_shmem = false;
-        self.start_asm_service(service, trimmed_path, &options, &shm_prefix);
 
-        Self::wait_for_service_ready(
-            service,
-            Self::port_for(service, self.base_port, self.local_rank),
-        );
-        tracing::debug!(
-            ">>> [{}] ASM service {} is ready on port {}",
-            self.world_rank,
-            service,
-            Self::port_for(service, self.base_port, self.local_rank)
-        );
+        for (i, service) in Self::SERVICES.iter().enumerate() {
+            let port = Self::port_for(service, self.base_port, self.local_rank);
+            let wr = self.world_rank;
 
-        for service in &Self::SERVICES[1..] {
-            tracing::debug!(
-                ">>> [{}] Starting ASM service: {} on port {}",
-                self.world_rank,
-                service,
-                Self::port_for(service, self.base_port, self.local_rank)
-            );
+            debug!(">>> [{}] Starting ASM service: {} on port {}", wr, service, port);
 
-            options.share_input_shmem = true;
-            options.open_input_shmem = true;
+            options.open_input_shmem = i != 0;
 
             self.start_asm_service(service, trimmed_path, &options, &shm_prefix);
+
+            if i == 0 {
+                // For the first service, wait until it is ready before starting the others,
+                // since it may initialize the shared memory used by the rest.
+                Self::wait_for_service_ready(self.world_rank, service, port)?;
+            } else {
+                // For the other services, we can start them in parallel and wait for them after
+                pending_wait.push((service, port));
+            }
         }
 
-        for service in &Self::SERVICES[1..] {
-            Self::wait_for_service_ready(
-                service,
-                Self::port_for(service, self.base_port, self.local_rank),
-            );
-            tracing::debug!(
-                ">>> [{}] ASM service {} is ready on port {}",
-                self.world_rank,
-                service,
-                Self::port_for(service, self.base_port, self.local_rank)
-            );
+        // Wait for the remaining services to be ready
+        for (service, port) in pending_wait {
+            Self::wait_for_service_ready(self.world_rank, service, port)?;
         }
 
         // Ping status for all services
@@ -173,22 +150,47 @@ impl AsmServices {
         Ok(())
     }
 
-    fn wait_for_service_ready(service: &AsmService, port: u16) {
-        let addr = format!("127.0.0.1:{port}");
-        let timeout = Duration::from_secs(60);
-        let retry_delay = Duration::from_millis(100);
-        let start = Instant::now();
+    fn wait_for_service_ready(world_rank: i32, service: &AsmService, port: u16) -> Result<()> {
+        const TIMEOUT: Duration = Duration::from_secs(60);
+        const CONNECT_TIMEOUT: Duration = Duration::from_millis(100);
+        const LOG_INTERVAL: Duration = Duration::from_secs(5);
 
-        while start.elapsed() < timeout {
-            match TcpStream::connect(&addr) {
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+
+        let start = Instant::now();
+        let mut last_log = start;
+        while start.elapsed() < TIMEOUT {
+            match TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) {
                 Ok(_) => {
-                    return;
+                    debug!(
+                        ">>> [{}] ASM service {} is ready on port {}",
+                        world_rank, service, port
+                    );
+                    return Ok(());
                 }
-                Err(_) => sleep(retry_delay),
+                Err(_) => {
+                    if last_log.elapsed() >= LOG_INTERVAL {
+                        debug!(
+                            ">>> [{}] Waiting for ASM service {} on port {} ({:.0}s elapsed), retrying...",
+                            world_rank,
+                            service,
+                            port,
+                            start.elapsed().as_secs_f32()
+                        );
+                        last_log = Instant::now();
+                    }
+                }
             }
         }
 
-        panic!("Timeout: service `{service}` not ready on {addr}");
+        tracing::error!(
+            ">>> [{}] Timeout waiting for ASM service {} to be ready on port {} after {:?}",
+            world_rank,
+            service,
+            port,
+            start.elapsed()
+        );
+        Err(anyhow::anyhow!("Timeout: service `{service}` not ready on {addr}"))
     }
 
     fn start_asm_service(
