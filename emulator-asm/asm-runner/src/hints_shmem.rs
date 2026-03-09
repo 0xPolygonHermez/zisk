@@ -110,7 +110,7 @@ impl HintsShmem {
         Ok(Self {
             unified: RefCell::new(unified),
             separate: RefCell::new(separate),
-            has_rom_sm: AtomicBool::new(true),
+            has_rom_sm: AtomicBool::new(false),
         })
     }
 
@@ -292,6 +292,8 @@ impl StreamSink for HintsShmem {
                 "Control reader position should be reset to 0"
             );
         }
+
+        self.has_rom_sm.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     fn set_has_rom_sm(&self, has_rom_sm: bool) {

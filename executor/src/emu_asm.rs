@@ -182,7 +182,7 @@ impl EmulatorAsm {
         });
 
         // Run the ROM histogram only on partition 0 as it is always computed by this partition
-        let has_rom_sm = pctx.dctx_is_first_partition();
+        let has_rom_sm = pctx.dctx_is_first_process();
 
         let _stats = stats.clone();
 
