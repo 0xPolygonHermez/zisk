@@ -134,33 +134,79 @@ pub(crate) fn read_input() -> Vec<u8> {
     read_slice_zerocopy().to_vec()
 }
 
+
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+struct InputState {
+    buffer: Vec<u8>,
+    pos: usize,
+}
+
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+static HOST_INPUT_STATE: OnceLock<Mutex<InputState>> = OnceLock::new();
+
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+fn get_input_state() -> &'static Mutex<InputState> {
+    HOST_INPUT_STATE.get_or_init(|| {
+        let mut file =
+            File::open("build/input.bin").expect("Error opening input file at: build/input.bin");
+        let mut buffer = Vec::new();
+        file
+            .read_to_end(&mut buffer)
+            .expect("Failed reading input file at: build/input.bin");
+
+        Mutex::new(InputState { buffer, pos: 0 })
+    })
+}
+
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub(crate) fn read_input() -> Vec<u8> {
-    use std::{fs::File, io::Read};
+    let state = get_input_state();
+    let mut state = state.lock().unwrap();
 
-    let mut file =
-        File::open("build/input.bin").expect("Error opening input file at: build/input.bin");
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).unwrap();
+    let len_prefix_end = state.pos + 8;
+    if len_prefix_end > state.buffer.len() {
+        panic!("Input header overflows available data in build/input.bin");
+    }
+
+    let len_bytes = &state.buffer[state.pos..len_prefix_end];
+    let chunk_len = usize::try_from(u64::from_le_bytes(len_bytes.try_into().unwrap()))
+        .expect("Input length exceeds host usize range");
+
+    let data_start = len_prefix_end;
+    let data_end = data_start + chunk_len;
+    if data_end > state.buffer.len() {
+        panic!("Input data overflows available data in build/input.bin");
+    }
+
+    let aligned_len = (8 - (chunk_len & 7)) & 7;
+    let next_pos = data_start + aligned_len;
+
+    if next_pos > state.buffer.len() {
+        panic!("Input padding overflows available data in build/input.bin");
+    }
+
+    let data = state.buffer[data_start..data_end].to_vec();
+    state.pos = next_pos;
+    drop(state);
 
     #[cfg(zisk_hints)]
     unsafe {
-        hint_input_data(buffer.as_ptr(), buffer.len());
+        hint_input_data(data.as_ptr(), data.len());
     }
 
     #[cfg(zisk_hints_debug)]
     {
-        let start_bytes = &buffer[..buffer.len().min(64)];
-        let ellipsis = if buffer.len() > 64 { "..." } else { "" };
+        let start_bytes = &data[..data.len().min(64)];
+        let ellipsis = if data.len() > 64 { "..." } else { "" };
         hint_log(format!(
             "hint_input_data (input_data: {:x?}{} , input_data_len: {}",
             start_bytes,
             ellipsis,
-            buffer.len()
+            data.len()
         ));
     }
 
-    buffer
+    data
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
