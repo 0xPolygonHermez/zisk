@@ -588,7 +588,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         prover.register_program(pk)?;
 
         if matches!(phase_inputs, ProvePhaseInputs::Contributions()) {
-            tracing::info!("Partition_info: {:?}", partition_info);
             prover.set_partition(
                 partition_info.total_compute_units,
                 partition_info.allocation.clone(),

@@ -241,7 +241,8 @@ fn noop_throughput_benchmark(c: &mut Criterion) {
     for &count in &hint_counts {
         group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &num_hints| {
             b.iter(|| {
-                let p = HintsProcessor::builder(Arc::new(NullSink)).num_threads(32).build().unwrap();
+                let p =
+                    HintsProcessor::builder(Arc::new(NullSink)).num_threads(32).build().unwrap();
 
                 let mut data = Vec::with_capacity(num_hints * 2);
                 for i in 0..num_hints {

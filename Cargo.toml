@@ -112,14 +112,14 @@ zisk-distributed-grpc-api = { path = "distributed/crates/grpc-api" }
 zisk-distributed-prover = { path = "distributed/crates/worker" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/mpi-hints-rom" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/mpi-hints-rom" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/mpi-hints-rom" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/mpi-hints-rom" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/mpi-hints-rom" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/mpi-hints-rom" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/mpi-hints-rom" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/mpi-hints-rom" }
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }

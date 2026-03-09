@@ -1150,8 +1150,11 @@ mod tests {
         assert!(p4.wait_for_completion().is_ok());
 
         // Chaining multiple options
-        let p5 =
-            HintsProcessor::builder(Arc::new(NullHints)).num_threads(8).enable_stats(true).build().unwrap();
+        let p5 = HintsProcessor::builder(Arc::new(NullHints))
+            .num_threads(8)
+            .enable_stats(true)
+            .build()
+            .unwrap();
         assert!(p5.stats.is_some());
     }
 
