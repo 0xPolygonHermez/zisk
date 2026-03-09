@@ -16,22 +16,6 @@
 #include "globals.hpp"
 #include "emu.hpp"
 
-/********************/
-/* TRACE ALLOCATION */
-/********************/
-
-void trace_virtual_alloc (void)
-{
-    void * addr = mmap((void *)TRACE_ADDR, TRACE_MAX_SIZE, PROT_NONE, MAP_NORESERVE | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (addr != (void *)TRACE_ADDR)
-    {
-        printf("ERROR: trace_virtual_alloc() failed to reserve trace memory at address 0x%lx\n", TRACE_ADDR);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-}
-
 uint64_t next_chunk_id = 0; // Next trace chunk id to be mapped, starting from 0
 int trace_chunk_fd[TRACE_NUMBER_OF_CHUNKS]; // File descriptors for each chunk
 uint64_t trace_total_mapped_size = 0; // Total mapped trace size
@@ -225,9 +209,6 @@ void trace_map_initialize (void)
 {
     // Perform preventive cleanup of any leftover shared memory chunks
     trace_preventive_cleanup();
-
-    // Reserve the full virtual trace address space
-    trace_virtual_alloc();
 
     // Map the first chunk, i.e. chunk 0
     trace_map_next_chunk();

@@ -111,12 +111,12 @@ impl AsmServices {
             self.start_asm_service(service, trimmed_path, &options, &shm_prefix);
 
             // if i == 0 {
-                // For the first service, wait until it is ready before starting the others,
-                // since it may initialize the shared memory used by the rest.
-                Self::wait_for_service_ready(self.world_rank, service, port)?;
+            // For the first service, wait until it is ready before starting the others,
+            // since it may initialize the shared memory used by the rest.
+            Self::wait_for_service_ready(self.world_rank, service, port)?;
             // } else {
-                // For the other services, we can start them in parallel and wait for them after
-                // pending_wait.push((service, port));
+            // For the other services, we can start them in parallel and wait for them after
+            // pending_wait.push((service, port));
             // }
         }
 
