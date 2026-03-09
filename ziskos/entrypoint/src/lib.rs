@@ -76,14 +76,20 @@ macro_rules! entrypoint {
 #[allow(unused_imports)]
 use crate::ziskos_definitions::ziskos_config::*;
 
-/// Pointer to the current position in the input buffer.
+/// Initial offset for input reading.
+/// zkvm: 8 bytes offset due to INPUT_ADDR memory layout
+/// native: 0 bytes offset (file starts at position 0)
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-static mut INPUT_POS: usize = 8;
+const INPUT_INITIAL_OFFSET: usize = 8;
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+const INPUT_INITIAL_OFFSET: usize = 0;
+
+/// Pointer to the current position in the input buffer/file.
+static mut INPUT_POS: usize = INPUT_INITIAL_OFFSET;
 
 /// Reset the input position to the beginning.
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub fn read_reset() {
-    unsafe { INPUT_POS = 8 };
+    unsafe { INPUT_POS = INPUT_INITIAL_OFFSET };
 }
 
 /// Read a slice directly from INPUT_ADDR without copying (zero-copy).
@@ -160,34 +166,32 @@ fn get_input_state() -> &'static Mutex<InputState> {
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub(crate) fn read_input() -> Vec<u8> {
-    let state = get_input_state();
-    let mut state = state.lock().unwrap();
+    use std::{fs::File, io::{Read, Seek, SeekFrom}};
 
-    let len_prefix_end = state.pos + 8;
-    if len_prefix_end > state.buffer.len() {
-        panic!("Input header overflows available data in build/input.bin");
-    }
+    // SAFETY: Single threaded, so nothing else can touch INPUT_POS while we're working.
+    let input_pos = unsafe { INPUT_POS };
 
-    let len_bytes = &state.buffer[state.pos..len_prefix_end];
-    let chunk_len = usize::try_from(u64::from_le_bytes(len_bytes.try_into().unwrap()))
-        .expect("Input length exceeds host usize range");
+    let mut file = File::open("build/input.bin")
+        .expect("Error opening input file at: build/input.bin");
+    
+    // Seek to the current position
+    file.seek(SeekFrom::Start(input_pos as u64))
+        .expect("Failed to seek in input file");
 
-    let data_start = len_prefix_end;
-    let data_end = data_start + chunk_len;
-    if data_end > state.buffer.len() {
-        panic!("Input data overflows available data in build/input.bin");
-    }
+    // Read the 8-byte length prefix
+    let mut len_bytes = [0u8; 8];
+    file.read_exact(&mut len_bytes)
+        .expect("Failed to read length prefix from input file");
+    let len = u64::from_le_bytes(len_bytes) as usize;
 
-    let aligned_len = (8 - (chunk_len & 7)) & 7;
-    let next_pos = data_start + aligned_len;
+    // Read the actual data
+    let mut buffer = vec![0u8; len];
+    file.read_exact(&mut buffer)
+        .expect("Failed to read data from input file");
 
-    if next_pos > state.buffer.len() {
-        panic!("Input padding overflows available data in build/input.bin");
-    }
-
-    let data = state.buffer[data_start..data_end].to_vec();
-    state.pos = next_pos;
-    drop(state);
+    // Advance INPUT_POS: move past length (8 bytes) + data (8-byte aligned)
+    let aligned_len = (len + 7) & !0x7;
+    unsafe { INPUT_POS = input_pos + 8 + aligned_len };
 
     #[cfg(zisk_hints)]
     unsafe {
