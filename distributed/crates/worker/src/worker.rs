@@ -588,6 +588,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         prover.register_program(pk)?;
 
         if matches!(phase_inputs, ProvePhaseInputs::Contributions()) {
+            tracing::info!("Partition_info: {:?}", partition_info);
             prover.set_partition(
                 partition_info.total_compute_units,
                 partition_info.allocation.clone(),
@@ -645,7 +646,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         )
                     })?;
 
-                tracing::info!("Initialized HintsProcessor for job {} -> Is first partition {}", job_id, is_first_partition);
                 hints_processor.set_has_rom_sm(is_first_partition);
 
                 // Replace any existing actor (handles reconnect / job restart)
@@ -854,7 +854,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let options = self.get_proof_options(false);
 
         if phase == JobPhase::ContributionsHintsStream {
-            tracing::info!(" ***** Received ContributionsHintsStream message via MPI broadcast ****** ");
             if let Some(hints_sink) = pk.asm_resources.as_ref().and_then(|r| r.hints_sink.clone()) {
                 let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
                 if let Err(e) = hints_sink.submit(&message.data) {
