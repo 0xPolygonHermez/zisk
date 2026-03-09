@@ -292,6 +292,8 @@ impl StreamSink for HintsShmem {
                 "Control reader position should be reset to 0"
             );
         }
+
+        self.has_rom_sm.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     fn set_has_rom_sm(&self, has_rom_sm: bool) {
