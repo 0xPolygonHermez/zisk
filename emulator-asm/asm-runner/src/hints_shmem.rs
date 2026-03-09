@@ -206,11 +206,11 @@ impl StreamSink for HintsShmem {
         let mut unified = self.unified.borrow_mut();
         let mut separate = self.separate.borrow_mut();
 
-        let separate = if self.has_rom_sm.load(std::sync::atomic::Ordering::SeqCst) {
-            &mut separate
-        } else {
-            &mut separate[0..2]
-        };
+        // let separate = if self.has_rom_sm.load(std::sync::atomic::Ordering::SeqCst) {
+        //     &mut separate
+        // } else {
+        //     &mut separate[0..2]
+        // };
 
         // Read current write position once
         let write_pos = unified.control_writer.read_u64_at(0);
