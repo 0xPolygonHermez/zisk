@@ -1927,7 +1927,6 @@ impl<'a> Emu<'a> {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         let pc = self.ctx.inst_ctx.pc;
-        println!("PCLOG={}", instruction.to_text());
 
         // Build the 'a' register value  based on the source specified by the current instruction
         self.source_a(instruction);
