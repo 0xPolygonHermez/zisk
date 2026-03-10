@@ -17,7 +17,7 @@ impl HintsShmem {
 }
 
 impl StreamSink for HintsShmem {
-    fn submit(&self, _processed: Vec<u64>) -> anyhow::Result<()> {
+    fn submit(&self, _processed: &[u64]) -> anyhow::Result<()> {
         unreachable!(
             "HintsShmem::submit() is not supported on this platform. Only Linux x86_64 is supported."
         );
