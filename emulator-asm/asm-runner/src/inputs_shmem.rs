@@ -1,5 +1,4 @@
-use std::cell::RefCell;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use named_sem::NamedSemaphore;
 use zisk_common::{io::StreamSink, reinterpret_vec};
@@ -12,9 +11,9 @@ use crate::{
 use anyhow::Result;
 
 pub struct InputsShmemWriter {
-    writer: RefCell<SharedMemoryWriter>,
+    writer: Mutex<SharedMemoryWriter>,
     control_writer: Arc<ControlShmem>,
-    sem_avails: RefCell<Vec<NamedSemaphore>>,
+    sem_avails: Mutex<Vec<NamedSemaphore>>,
 }
 
 unsafe impl Send for InputsShmemWriter {}
@@ -49,14 +48,14 @@ impl InputsShmemWriter {
             .collect::<Result<Vec<_>>>()?;
 
         Ok(Self {
-            writer: RefCell::new(writer),
+            writer: Mutex::new(writer),
             control_writer,
-            sem_avails: RefCell::new(sem_avails),
+            sem_avails: Mutex::new(sem_avails),
         })
     }
 
     pub fn write_input(&self, inputs: &[u8]) -> Result<()> {
-        self.writer.borrow_mut().write_at(8, inputs)?;
+        self.writer.lock().unwrap().write_at(8, inputs)?;
         self.control_writer.inc_inputs_size(inputs.len());
         self.notify_all_services()?;
 
@@ -64,7 +63,7 @@ impl InputsShmemWriter {
     }
 
     pub fn append_input(&self, inputs: &[u8]) -> Result<()> {
-        self.writer.borrow_mut().append_input(inputs)?;
+        self.writer.lock().unwrap().append_input(inputs)?;
         self.control_writer.inc_inputs_size(inputs.len());
         self.notify_all_services()?;
 
@@ -73,14 +72,14 @@ impl InputsShmemWriter {
 
     /// Notify all ASM services that new input data is available
     fn notify_all_services(&self) -> Result<()> {
-        for sem in self.sem_avails.borrow_mut().iter_mut() {
+        for sem in self.sem_avails.lock().unwrap().iter_mut() {
             sem.post()?;
         }
         Ok(())
     }
 
     pub fn reset(&self) {
-        let mut writer = self.writer.borrow_mut();
+        let mut writer = self.writer.lock().unwrap();
         writer.reset();
         writer
             .append_input(&0u64.to_le_bytes())
@@ -88,7 +87,7 @@ impl InputsShmemWriter {
 
         self.control_writer.reset();
         // Drain all the semaphore signals from all services
-        for sem in self.sem_avails.borrow_mut().iter_mut() {
+        for sem in self.sem_avails.lock().unwrap().iter_mut() {
             while sem.try_wait().is_ok() {}
         }
     }
