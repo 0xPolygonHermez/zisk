@@ -1,7 +1,6 @@
 //! ZiskStream is responsible for reading precompile hints from a stream source and sent to a hints processor.
 
 use anyhow::Result;
-use std::any::Any;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
@@ -9,19 +8,14 @@ use std::thread::{self, JoinHandle};
 
 use crate::io::{StreamRead, StreamSource};
 
-pub trait StreamProcessor: Any + Send + Sync + 'static {
-    /// Process data and return the processed result along with a flag indicating if CTRL_END was encountered.
+pub trait StreamProcessor: Send + Sync + 'static {
+    /// Process a batch of hint data.
     ///
     /// # Returns
-    /// A tuple of (processed_data, has_ctrl_end) where:
-    /// - processed_data: Vec<u64> - The processed data
-    /// - has_ctrl_end: bool - True if CTRL_END was found (signals end of batch)
-    fn process(&self, data: &[u64], first_batch: bool) -> anyhow::Result<bool>;
+    /// `true` if CTRL_END was encountered (signals end of stream), `false` otherwise.
+    fn process_hints(&self, data: &[u64], first_batch: bool) -> anyhow::Result<bool>;
 
     fn reset(&self) {}
-
-    /// Convert Arc<Self> to Arc<dyn Any + Send + Sync> for downcasting
-    fn as_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync>;
 }
 
 /// Trait for submitting processed hints to a sink.
@@ -36,8 +30,6 @@ pub trait StreamSink: Send + Sync + 'static {
     fn submit(&self, processed: &[u64]) -> anyhow::Result<()>;
 
     fn reset(&self) {}
-
-    fn set_has_rom_sm(&self, _has_rom_sm: bool) {}
 }
 
 enum ThreadCommand {
@@ -46,9 +38,9 @@ enum ThreadCommand {
 }
 
 /// ZiskStream struct manages the processing of precompile hints and writing them to shared memory.
-pub struct ZiskStream {
+pub struct ZiskStream<P: StreamProcessor> {
     /// The hints processor used to process hints before writing.
-    hints_processor: Arc<dyn StreamProcessor>,
+    hints_processor: Arc<P>,
 
     /// Channel sender to communicate with the background thread.
     tx: Option<Sender<ThreadCommand>>,
@@ -56,10 +48,10 @@ pub struct ZiskStream {
     /// Join handle for the background thread.
     thread_handle: Option<JoinHandle<()>>,
 
-    hints_stream_initialized: AtomicBool,
+    initialized: AtomicBool,
 }
 
-impl ZiskStream {
+impl<P: StreamProcessor> ZiskStream<P> {
     /// Create a new ZiskStream with the given processor.
     ///
     /// # Arguments
@@ -67,12 +59,12 @@ impl ZiskStream {
     ///
     /// # Returns
     /// A new `ZiskStream` instance without a running thread.
-    pub fn new(hints_processor: impl StreamProcessor) -> Self {
+    pub fn new(hints_processor: P) -> Self {
         Self {
             hints_processor: Arc::new(hints_processor),
             tx: None,
             thread_handle: None,
-            hints_stream_initialized: AtomicBool::new(false),
+            initialized: AtomicBool::new(false),
         }
     }
 
@@ -113,7 +105,7 @@ impl ZiskStream {
 
         self.thread_handle = Some(thread_handle);
 
-        self.hints_stream_initialized.store(true, Ordering::SeqCst);
+        self.initialized.store(true, Ordering::SeqCst);
 
         Ok(())
     }
@@ -121,7 +113,7 @@ impl ZiskStream {
     /// Background thread function that processes hints when requested.
     fn background_thread(
         mut stream: StreamSource,
-        hints_processor: Arc<dyn StreamProcessor>,
+        hints_processor: Arc<P>,
         rx: Receiver<ThreadCommand>,
     ) {
         while let Ok(ThreadCommand::Process) = rx.recv() {
@@ -135,15 +127,12 @@ impl ZiskStream {
     /// Process all hints from the stream.
     ///
     /// Processes hints in batches until CTRL_END is encountered or the stream ends.
-    fn process_stream(
-        stream: &mut StreamSource,
-        hints_processor: &dyn StreamProcessor,
-    ) -> Result<()> {
+    fn process_stream(stream: &mut StreamSource, hints_processor: &P) -> Result<()> {
         let mut first_batch = true;
 
         while let Some(hints) = stream.next()? {
             let hints = crate::reinterpret_vec(hints)?;
-            let has_ctrl_end = hints_processor.process(&hints, first_batch)?;
+            let has_ctrl_end = hints_processor.process_hints(&hints, first_batch)?;
 
             first_batch = false;
 
@@ -158,7 +147,7 @@ impl ZiskStream {
 
     pub fn reset(&mut self) {
         self.hints_processor.reset();
-        self.hints_stream_initialized.store(false, Ordering::SeqCst);
+        self.initialized.store(false, Ordering::SeqCst);
     }
 
     /// Trigger the background thread to process hints asynchronously.
@@ -171,7 +160,7 @@ impl ZiskStream {
     /// * `Ok(())` - If the command was successfully sent
     /// * `Err` - If there's no active thread or the channel is closed
     pub fn start_stream(&mut self) -> Result<()> {
-        if !self.hints_stream_initialized.load(Ordering::SeqCst) {
+        if !self.initialized.load(Ordering::SeqCst) {
             return Err(anyhow::anyhow!(
                 "Hints stream is not initialized. Call set_hints_stream_src first."
             ));
@@ -187,12 +176,16 @@ impl ZiskStream {
         }
     }
 
-    pub fn get_processor(&self) -> Arc<dyn StreamProcessor> {
-        self.hints_processor.clone()
+    pub fn is_initialized(&self) -> bool {
+        self.initialized.load(Ordering::SeqCst)
+    }
+
+    pub fn get_processor(&self) -> Arc<P> {
+        Arc::clone(&self.hints_processor)
     }
 }
 
-impl Drop for ZiskStream {
+impl<P: StreamProcessor> Drop for ZiskStream<P> {
     fn drop(&mut self) {
         self.stop_thread();
     }

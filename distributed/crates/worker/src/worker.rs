@@ -1,6 +1,5 @@
 use anyhow::Result;
 use cargo_zisk::commands::get_proving_key;
-use precompiles_hints::HintsProcessor;
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
 use rom_setup::{get_elf_data_hash, DEFAULT_CACHE_PATH};
 use std::fs;
@@ -637,23 +636,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
                 self.pk.reset();
 
-                let processor_trait = self.pk.get_hints_processor().ok_or_else(|| {
+                let processor = self.pk.get_hints_processor().ok_or_else(|| {
                     anyhow::anyhow!("HintsProcessor not found for job {}", job_id)
                 })?;
 
-                // Downcast Arc<dyn StreamProcessor> to Arc<HintsProcessor>
-                let hints_processor =
-                    processor_trait.as_any().downcast::<HintsProcessor>().map_err(|_| {
-                        anyhow::anyhow!(
-                            "Failed to downcast StreamProcessor to HintsProcessor for job {}",
-                            job_id
-                        )
-                    })?;
-
-                hints_processor.set_has_rom_sm(is_first_partition);
+                if let Some(r) = self.pk.asm_resources.as_ref() {
+                    r.set_active_services(is_first_partition)?;
+                }
 
                 // Replace any existing actor (handles reconnect / job restart)
-                self.stream_actor = Some(StreamOrderingActor::new(hints_processor, job_id));
+                self.stream_actor = Some(StreamOrderingActor::new(processor, job_id));
             }
             StreamMessageKind::Data | StreamMessageKind::End => match &self.stream_actor {
                 Some(actor) => actor.send(stream_data)?,
@@ -858,9 +850,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let options = self.get_proof_options(false);
 
         if phase == JobPhase::ContributionsHintsStream {
-            if let Some(hints_sink) = pk.asm_resources.as_ref().and_then(|r| r.hints_sink.clone()) {
+            if let Some(r) = pk.asm_resources.as_ref() {
                 let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
-                if let Err(e) = hints_sink.submit(&message.data) {
+                if let Err(e) = r.submit_hint_direct(&message.data) {
                     tracing::error!("Failed to submit hints: {}", e);
                 }
             } else {

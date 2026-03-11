@@ -148,15 +148,11 @@ impl PrecompileHintsRelay {
 }
 
 impl StreamProcessor for PrecompileHintsRelay {
-    fn process(&self, data: &[u64], first_batch: bool) -> Result<bool> {
+    fn process_hints(&self, data: &[u64], first_batch: bool) -> Result<bool> {
         self.process_hints(data, first_batch)
     }
 
     fn reset(&self) {
         self.reset_state();
-    }
-
-    fn as_any(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync> {
-        self
     }
 }

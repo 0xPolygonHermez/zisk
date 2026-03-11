@@ -12,7 +12,7 @@ use named_sem::NamedSemaphore;
 use std::{
     cell::RefCell,
     sync::{
-        atomic::{fence, AtomicBool, Ordering},
+        atomic::{fence, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -56,7 +56,8 @@ struct UnifiedResources {
 
 /// HintsShmem struct manages the writing of processed precompile hints to shared memory.
 pub struct HintsShmem {
-    has_rom_sm: AtomicBool,
+    /// Number of active ASM services to notify on submit
+    active_count: AtomicUsize,
     /// Unified resources (single data buffer and control writer)
     unified: RefCell<UnifiedResources>,
     /// Separate resources (control_reader and semaphores for each service)
@@ -85,6 +86,7 @@ impl HintsShmem {
         local_rank: i32,
         unlock_mapped_memory: bool,
         control_writer: Arc<ControlShmem>,
+        active_services: &[AsmService],
     ) -> Result<Self> {
         // Use the first service's port for shared resources naming
         let first_service = &AsmServices::SERVICES[0];
@@ -118,8 +120,24 @@ impl HintsShmem {
         Ok(Self {
             unified: RefCell::new(unified),
             separate: RefCell::new(separate),
-            has_rom_sm: AtomicBool::new(false),
+            active_count: AtomicUsize::new(active_services.len()),
         })
+    }
+
+    /// Update the number of active ASM services notified on each submit.
+    ///
+    /// This is a deployment-time configuration — call once per job partition,
+    /// not on every stream reset. `services.len()` must not exceed `AsmServices::SERVICES.len()`.
+    pub fn set_active_services(&self, services: &[AsmService]) -> Result<()> {
+        if services.len() > AsmServices::SERVICES.len() {
+            return Err(anyhow::anyhow!(
+                "active_services count {} exceeds allocated separate resources {}",
+                services.len(),
+                AsmServices::SERVICES.len()
+            ));
+        }
+        self.active_count.store(services.len(), Ordering::SeqCst);
+        Ok(())
     }
 
     /// Create the unified resources (single data buffer and control writer).
@@ -210,11 +228,8 @@ impl StreamSink for HintsShmem {
         let mut unified = self.unified.borrow_mut();
         let mut separate = self.separate.borrow_mut();
 
-        let separate = if self.has_rom_sm.load(std::sync::atomic::Ordering::SeqCst) {
-            &mut separate
-        } else {
-            &mut separate[0..2]
-        };
+        let active = self.active_count.load(Ordering::SeqCst);
+        let separate = &mut separate[0..active];
 
         // Read current write position once
         let write_pos = unified.control_writer.prec_hints_size();
@@ -296,11 +311,5 @@ impl StreamSink for HintsShmem {
                 "Control reader position should be reset to 0"
             );
         }
-
-        self.has_rom_sm.store(false, std::sync::atomic::Ordering::SeqCst);
-    }
-
-    fn set_has_rom_sm(&self, has_rom_sm: bool) {
-        self.has_rom_sm.store(has_rom_sm, std::sync::atomic::Ordering::SeqCst);
     }
 }

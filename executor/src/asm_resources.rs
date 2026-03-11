@@ -1,17 +1,11 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use asm_runner::ControlShmem;
-use asm_runner::HintsFile;
-use asm_runner::HintsShmem;
-use asm_runner::InputsShmemWriter;
+use asm_runner::{AsmServices, ControlShmem, HintsShmem, InputsShmemWriter};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use asm_runner::{MOShMemReader, MTShMemReader, RHShMemReader};
 use precompiles_hints::{HintsProcessor, MpiBroadcastFn};
-use std::sync::atomic::{AtomicBool, Ordering};
-use zisk_common::io::StreamSink;
-use zisk_common::io::ZiskStdin;
-use zisk_common::io::{StreamProcessor, StreamSource, ZiskStream};
+use zisk_common::io::{StreamSink, StreamSource, ZiskStdin, ZiskStream};
 
 /// Configuration for assembly resources.
 #[derive(Clone)]
@@ -39,7 +33,14 @@ impl std::fmt::Debug for AsmResourcesConfig {
 /// Encapsulates assembly-related resources including shared memory and hints stream.
 #[derive(Clone)]
 pub struct AsmResources {
+    /// Configuration for assembly resources.
     config: AsmResourcesConfig,
+
+    /// Shared memory for writing inputs to the assembly microservices.
+    pub inputs_shmem_writer: Arc<InputsShmemWriter>,
+
+    /// Pipeline for handling precompile hints.
+    hints_stream: Option<Arc<Mutex<ZiskStream<HintsProcessor<HintsShmem>>>>>,
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub mt_shmem_reader: Arc<Mutex<MTShMemReader>>,
@@ -47,22 +48,13 @@ pub struct AsmResources {
     pub mo_shmem_reader: Arc<Mutex<MOShMemReader>>,
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub rh_shmem_reader: Arc<Mutex<Option<RHShMemReader>>>,
-
-    pub inputs_shmem_writer: Arc<InputsShmemWriter>,
-
-    pub hints_sink: Option<Arc<dyn StreamSink>>,
-
-    /// Pipeline for handling precompile hints.
-    pub hints_stream: Option<Arc<Mutex<ZiskStream>>>,
-
-    hints_stream_initialized: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for AsmResources {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AsmResources")
             .field("config", &self.config)
-            .field("hints_stream_initialized", &self.hints_stream_initialized)
+            .field("hints_stream", &self.hints_stream.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -95,61 +87,36 @@ impl AsmResources {
             control_writer.clone(),
         )?);
 
-        // Create hints pipeline with null hints stream initially.
-        // Debug flag: true = HintsShmem (shared memory), false = HintsFile (file output)
-        const USE_SHARED_MEMORY_HINTS: bool = true;
+        let hints_stream = if with_hints {
+            let active_services =
+                if init_rom { &AsmServices::SERVICES[..] } else { &AsmServices::SERVICES[..2] };
 
-        let (hints_stream, hints_sink) = if with_hints {
-            let (hints_processor, hints_sink): (HintsProcessor, Arc<dyn StreamSink>) =
-                if USE_SHARED_MEMORY_HINTS {
-                    let hints_shmem = Arc::new(HintsShmem::new(
-                        base_port,
-                        local_rank,
-                        unlock_mapped_memory,
-                        control_writer,
-                    )?);
+            let hints_shmem = Arc::new(HintsShmem::new(
+                base_port,
+                local_rank,
+                unlock_mapped_memory,
+                control_writer,
+                active_services,
+            )?);
 
-                    let mut builder = HintsProcessor::builder(
-                        hints_shmem.clone(),
-                        Some(inputs_shmem_writer.clone()),
-                    )
+            let mut builder =
+                HintsProcessor::builder(hints_shmem, Some(inputs_shmem_writer.clone()))
                     .enable_stats(verbose_mode != proofman_common::VerboseMode::Info);
 
-                    if let Some(broadcast_fn) = mpi_broadcast_fn.clone() {
-                        builder = builder.with_mpi_broadcast(move |data| broadcast_fn(data));
-                    }
-
-                    (builder.build().expect("Failed to build HintsProcessor"), hints_shmem)
-                } else {
-                    let hints_file =
-                        Arc::new(HintsFile::new(format!("hints_results_{}.bin", local_rank))?);
-
-                    let mut builder = HintsProcessor::builder(
-                        hints_file.clone(),
-                        Some(inputs_shmem_writer.clone()),
-                    )
-                    .enable_stats(verbose_mode != proofman_common::VerboseMode::Info);
-
-                    if let Some(broadcast_fn) = mpi_broadcast_fn.clone() {
-                        builder = builder.with_mpi_broadcast(move |data| broadcast_fn(data));
-                    }
-
-                    (builder.build().expect("Failed to build HintsProcessor"), hints_file)
-                };
-
-            if init_rom {
-                hints_processor.set_has_rom_sm(true);
+            if let Some(broadcast_fn) = mpi_broadcast_fn {
+                builder = builder.with_mpi_broadcast(move |data| broadcast_fn(data));
             }
 
-            (Some(Arc::new(Mutex::new(ZiskStream::new(hints_processor)))), Some(hints_sink))
+            let hints_processor = builder.build()?;
+
+            Some(Arc::new(Mutex::new(ZiskStream::new(hints_processor))))
         } else {
-            (None, None)
+            None
         };
 
         Ok(Self {
             config,
             hints_stream,
-            hints_stream_initialized: Arc::new(AtomicBool::new(false)),
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             mt_shmem_reader: Arc::new(Mutex::new(asm_shmem_mt)),
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -158,8 +125,42 @@ impl AsmResources {
             rh_shmem_reader: Arc::new(Mutex::new(None)),
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             inputs_shmem_writer,
-            hints_sink,
         })
+    }
+
+    /// Returns the concrete hints processor for passing to `StreamOrderingActor`.
+    pub fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
+        self.hints_stream.as_ref().map(|stream| stream.lock().unwrap().get_processor())
+    }
+
+    /// Update the active ASM services for this partition.
+    ///
+    /// Call once per partition start (not per stream reset).
+    /// `is_first_partition` controls whether the ROM histogram service (RH) is active.
+    pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
+        if let Some(stream) = &self.hints_stream {
+            let processor = stream.lock().unwrap().get_processor();
+            let sink = processor.hints_sink();
+            let services = if is_first_partition {
+                &AsmServices::SERVICES[..]
+            } else {
+                &AsmServices::SERVICES[..2]
+            };
+            sink.set_active_services(services)?;
+        }
+        Ok(())
+    }
+
+    /// Submit hint data directly to the shmem sink, bypassing the processing pipeline.
+    ///
+    /// Used in the gRPC streaming path where hints arrive pre-processed.
+    pub fn submit_hint_direct(&self, data: &[u64]) -> Result<()> {
+        if let Some(stream) = &self.hints_stream {
+            let processor = stream.lock().unwrap().get_processor();
+            processor.hints_sink().submit(data)
+        } else {
+            Err(anyhow::anyhow!("Hints stream not configured"))
+        }
     }
 
     pub fn start_stream(&self) -> Result<()> {
@@ -172,26 +173,19 @@ impl AsmResources {
 
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
         if let Some(hints_stream) = &self.hints_stream {
-            hints_stream.lock().unwrap().set_hints_stream_src(stream)?;
+            hints_stream.lock().unwrap().set_hints_stream_src(stream)
         } else {
-            return Err(anyhow::anyhow!("Hints stream not initialized"));
+            Err(anyhow::anyhow!("Hints stream not initialized"))
         }
-        self.hints_stream_initialized.store(true, Ordering::SeqCst);
-        Ok(())
     }
 
     pub fn is_hints_stream_initialized(&self) -> bool {
-        self.hints_stream_initialized.load(Ordering::SeqCst)
-    }
-
-    pub fn get_hints_processor(&self) -> Option<Arc<dyn StreamProcessor>> {
-        self.hints_stream.as_ref().map(|stream| stream.lock().unwrap().get_processor())
+        self.hints_stream.as_ref().map(|s| s.lock().unwrap().is_initialized()).unwrap_or(false)
     }
 
     pub fn reset(&self) {
         if let Some(hints_stream) = &self.hints_stream {
             hints_stream.lock().unwrap().reset();
-            self.hints_stream_initialized.store(false, Ordering::SeqCst);
         }
         self.inputs_shmem_writer.reset();
     }
@@ -202,7 +196,6 @@ impl AsmResources {
 
     pub fn write_input(&self, stdin: &ZiskStdin) -> Result<()> {
         let inputs = stdin.read_bytes();
-
         self.inputs_shmem_writer.write_input(&inputs)
     }
 }

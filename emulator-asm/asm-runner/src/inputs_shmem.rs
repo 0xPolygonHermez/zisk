@@ -47,11 +47,7 @@ impl InputsShmemWriter {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(Self {
-            writer: Mutex::new(writer),
-            control_writer,
-            sem_avails: Mutex::new(sem_avails),
-        })
+        Ok(Self { writer: Mutex::new(writer), control_writer, sem_avails: Mutex::new(sem_avails) })
     }
 
     pub fn write_input(&self, inputs: &[u8]) -> Result<()> {

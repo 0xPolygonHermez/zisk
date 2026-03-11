@@ -6086,6 +6086,7 @@ dependencies = [
  "colored",
  "executor",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof)",
+ "precompiles-hints",
  "proofman",
  "proofman-common",
  "proofman-util",

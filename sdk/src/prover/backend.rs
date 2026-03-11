@@ -85,7 +85,7 @@ impl ProverBackend {
             executor.set_asm_resources(asm_resources.clone());
         }
 
-        executor.set_rom(program_pk.zisk_rom.clone(), program_pk.use_hints);
+        executor.set_rom(program_pk.zisk_rom.clone(), program_pk.use_hints());
 
         let custom_commits_map =
             HashMap::from([("rom".to_string(), program_pk.elf_bin_path.clone())]);

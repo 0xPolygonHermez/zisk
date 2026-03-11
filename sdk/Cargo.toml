@@ -27,6 +27,7 @@ sha2 = { workspace = true }
 executor = { workspace = true }
 bincode = { workspace = true }
 serde = { workspace = true }
+precompiles-hints = { workspace = true }
 
 [features]
 default = []
@@ -36,7 +37,7 @@ gpu = [
     "rom-setup/gpu",
     "executor/gpu",
     "ziskemu/gpu",
-    "packed"
+    "packed",
 ]
 packed = ["proofman-common/packed", "executor/packed"]
 stats = []

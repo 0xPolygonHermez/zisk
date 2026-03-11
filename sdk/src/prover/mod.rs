@@ -4,6 +4,7 @@ mod emu;
 pub use asm::*;
 use backend::*;
 pub use emu::*;
+use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, SnarkProtocol,
     WitnessInfo,
@@ -13,7 +14,7 @@ use proofman_util::VadcopFinalProof;
 use sha2::{Digest, Sha256};
 
 use anyhow::{Context, Result};
-use asm_runner::AsmServices;
+use asm_runner::{AsmServices, HintsShmem};
 use executor::AsmResources;
 use proofman::PlanningInfo;
 use serde::{Deserialize, Serialize};
@@ -25,11 +26,9 @@ use std::{
     time::Duration,
 };
 use tracing::info;
-use zisk_common::io::StreamSource;
-use zisk_common::ElfBinaryLike;
-use zisk_common::ZiskExecutorTime;
 use zisk_common::{
-    io::StreamProcessor, io::ZiskStdin, ExecutorStatsHandle, StatsCostPerType, ZiskExecutorSummary,
+    io::StreamSource, io::ZiskStdin, ElfBinaryLike, ExecutorStatsHandle, StatsCostPerType,
+    ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 
@@ -128,12 +127,16 @@ pub struct ZiskProgramPK {
     pub asm_resources: Option<AsmResources>,
     pub asm_services: Option<AsmServices>,
     pub rank_info: RankInfo,
-    pub use_hints: bool,
+    use_hints: bool,
 }
 
 impl ZiskProgramPK {
+    pub fn use_hints(&self) -> bool {
+        self.use_hints
+    }
+
     pub fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
-        if self.use_hints {
+        if self.use_hints() {
             if let Some(asm_resources) = &self.asm_resources {
                 asm_resources
                     .set_hints_stream_src(stream)
@@ -155,12 +158,8 @@ impl ZiskProgramPK {
         self.asm_services.is_some()
     }
 
-    pub fn get_hints_processor(&self) -> Option<Arc<dyn StreamProcessor>> {
-        if let Some(asm_resources) = &self.asm_resources {
-            asm_resources.get_hints_processor()
-        } else {
-            None
-        }
+    pub fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
+        self.asm_resources.as_ref().and_then(|r| r.get_hints_processor())
     }
 
     pub fn reset(&self) {
