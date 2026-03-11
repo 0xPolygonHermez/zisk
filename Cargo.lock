@@ -1115,7 +1115,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#f352400887bc87929df4b143671e6abd78cfd072"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#ed06d7825cfa7f2cf09da804da1f8bd0a84187c8"
 dependencies = [
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof)",
  "num-bigint",
@@ -1469,7 +1469,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fields"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#f352400887bc87929df4b143671e6abd78cfd072"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#ed06d7825cfa7f2cf09da804da1f8bd0a84187c8"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2774,7 +2774,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#f352400887bc87929df4b143671e6abd78cfd072"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#ed06d7825cfa7f2cf09da804da1f8bd0a84187c8"
 dependencies = [
  "colored",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof)",
@@ -3158,7 +3158,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#f352400887bc87929df4b143671e6abd78cfd072"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#ed06d7825cfa7f2cf09da804da1f8bd0a84187c8"
 dependencies = [
  "bincode",
  "blake3",
@@ -3193,7 +3193,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#f352400887bc87929df4b143671e6abd78cfd072"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#ed06d7825cfa7f2cf09da804da1f8bd0a84187c8"
 dependencies = [
  "bincode",
  "borsh",
@@ -3224,7 +3224,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#f352400887bc87929df4b143671e6abd78cfd072"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#ed06d7825cfa7f2cf09da804da1f8bd0a84187c8"
 dependencies = [
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof)",
  "itoa",
@@ -3237,7 +3237,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#f352400887bc87929df4b143671e6abd78cfd072"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#ed06d7825cfa7f2cf09da804da1f8bd0a84187c8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3247,7 +3247,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#f352400887bc87929df4b143671e6abd78cfd072"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#ed06d7825cfa7f2cf09da804da1f8bd0a84187c8"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3256,7 +3256,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#f352400887bc87929df4b143671e6abd78cfd072"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#ed06d7825cfa7f2cf09da804da1f8bd0a84187c8"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3268,7 +3268,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#f352400887bc87929df4b143671e6abd78cfd072"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#ed06d7825cfa7f2cf09da804da1f8bd0a84187c8"
 dependencies = [
  "bytemuck",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof)",
@@ -3831,9 +3831,9 @@ dependencies = [
 
 [[package]]
 name = "schannel"
-version = "0.1.28"
+version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "891d81b926048e76efe18581bf793546b4c0eaf8448d72be8de2bbee5fd166e1"
+checksum = "91c1b7e4904c873ef0710c1f407dde2e6287de2bebc1bbbf7d430bb7cbffd939"
 dependencies = [
  "windows-sys 0.61.2",
 ]
@@ -4296,9 +4296,9 @@ checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 
 [[package]]
 name = "tempfile"
-version = "3.26.0"
+version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82a72c767771b47409d2345987fda8628641887d5466101319899796367354a0"
+checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
  "getrandom 0.4.2",
@@ -5720,7 +5720,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.16.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#f352400887bc87929df4b143671e6abd78cfd072"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof#ed06d7825cfa7f2cf09da804da1f8bd0a84187c8"
 dependencies = [
  "colored",
  "fields 0.16.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwrite-proof)",
