@@ -1454,8 +1454,14 @@ impl<'a> Emu<'a> {
     /// Run the whole program, fast
     #[inline(always)]
     pub fn run_fast(&mut self, options: &EmuOptions) {
-        while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
-            self.step_fast();
+        if options.with_progress {
+            while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
+                self.step_fast_with_progress();
+            }
+        } else {
+            while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
+                self.step_fast();
+            }
         }
 
         // Detect and report error
@@ -1465,6 +1471,35 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
             );
         }
+    }
+
+    #[inline(always)]
+    pub fn step_fast_with_progress(&mut self) {
+        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+        if self.ctx.inst_ctx.step & 0xFF_FFFF == 0 {
+            let pc = self.ctx.inst_ctx.pc;
+            println!(
+                "running 0x{pc:08x} MS:{} {}",
+                self.ctx.inst_ctx.step >> 20,
+                instruction.verbose
+            );
+        }
+        self.source_a(instruction);
+        self.source_b(instruction);
+        if instruction.input_size > 0 {
+            self.ctx.inst_ctx.extended_arg = instruction.jmp_offset1;
+        } else {
+            self.ctx.inst_ctx.extended_arg = 0;
+        }
+        (instruction.func)(&mut self.ctx.inst_ctx);
+        self.store_c(instruction);
+
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
+
+        self.set_pc(instruction);
+        self.ctx.inst_ctx.end = instruction.end;
+        self.ctx.inst_ctx.step += 1;
     }
 
     /// Performs one single step of the emulation
@@ -1663,7 +1698,10 @@ impl<'a> Emu<'a> {
 
         // Call run_fast if only essential work is needed
         if options.is_fast() {
-            return self.run_fast(options);
+            self.run_fast(options);
+            if options.steps {
+                println!("STEPS: {}", self.ctx.inst_ctx.step);
+            }
         }
         if options.generate_minimal_traces {
             let par_emu_options =
@@ -1929,7 +1967,13 @@ impl<'a> Emu<'a> {
         let pc = self.ctx.inst_ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
-        let pc = self.ctx.inst_ctx.pc;
+        if options.with_progress && self.ctx.inst_ctx.step & 0xF_FFFF == 0 {
+            println!(
+                "running 0x{pc:08x} MS:{} {}",
+                self.ctx.inst_ctx.step >> 20,
+                instruction.verbose
+            );
+        }
         // println!("PCLOG={}", instruction.to_text());
 
         // Build the 'a' register value  based on the source specified by the current instruction

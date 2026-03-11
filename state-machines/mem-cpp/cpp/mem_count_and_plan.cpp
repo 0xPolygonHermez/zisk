@@ -45,8 +45,9 @@ void MemCountAndPlan::clear() {
     context->clear();
 }
 void MemCountAndPlan::prepare() {
+#ifdef MEM_STATS_ACTIVE
     uint64_t init = get_usec();
-    
+#endif    
     // Clear existing workers to avoid memory leaks if prepare() called multiple times
     for (auto* worker : count_workers) {
         delete worker;
@@ -70,7 +71,9 @@ void MemCountAndPlan::prepare() {
     for (int i = 0; i < MAX_MEM_PLANNERS; ++i) {
         plan_workers.emplace_back(i+1, RAM_ROWS, RAM_ADDR, RAM_SIZE_MB);
     }
+#ifdef MEM_STATS_ACTIVE    
     t_prepare_us = get_usec() - init;
+#endif
 }
 
 void MemCountAndPlan::add_chunk(MemCountersBusData *chunk_data, uint32_t chunk_size) {
@@ -92,7 +95,9 @@ void MemCountAndPlan::count_phase() {
     clock_gettime(CLOCK_REALTIME, &start_time);
 #endif // MEM_STATS_ACTIVE
 
+#ifdef MEM_STATS_ACTIVE
     uint64_t init = t_init_us = get_usec();
+#endif
     std::vector<std::thread> threads;
     context->init();
 
@@ -124,9 +129,9 @@ void MemCountAndPlan::count_phase() {
 
     wait_mem_align_counters();
 
+#ifdef MEM_STATS_ACTIVE
     t_count_us = (uint32_t) (get_usec() - init);
 
-#ifdef MEM_STATS_ACTIVE
     // Add stats for count phase
     struct timespec end_time;
     clock_gettime(CLOCK_REALTIME, &end_time);
@@ -145,9 +150,9 @@ void MemCountAndPlan::plan_phase() {
     // Get start time for stats
     struct timespec start_time;
     clock_gettime(CLOCK_REALTIME, &start_time);
-#endif // MEM_STATS_ACTIVE
 
     uint64_t init = get_usec();
+#endif // MEM_STATS_ACTIVE
     std::vector<std::thread> threads;
 
     plan_threads.emplace_back([this](){ quick_mem_planner->generate_locators(count_workers, context->locators);});
@@ -163,8 +168,9 @@ void MemCountAndPlan::plan_phase() {
     for (auto& t : plan_threads) {
         t.join();
     }
+#ifdef MEM_STATS_ACTIVE
     t_plan_us = (uint32_t) (get_usec() - init);
-
+#endif
     segments[ROM_ID].clear();
     rom_data_planner->collect_segments(segments[ROM_ID]);
 
@@ -332,7 +338,7 @@ void MemCountAndPlan::wait() {
 void MemCountAndPlan::detach_execute() {
     count_phase();
     plan_phase();
-    //stats();
+    // stats();
     // printf("MemCountAndPlan count(ms):%ld plan(ms):%ld tot(ms):%ld\n", 
     //        t_count_us / 1000, t_plan_us / 1000, (t_count_us + t_plan_us) / 1000);
 }

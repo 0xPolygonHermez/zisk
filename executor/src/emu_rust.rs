@@ -75,7 +75,7 @@ impl EmulatorRust {
         stdin: &ZiskStdin,
     ) -> Vec<EmuTrace> {
         // Call emulate with these options
-        let input_data = stdin.read_bytes();
+        let input_data = stdin.read_raw_bytes();
 
         // Settings for the emulator
         let emu_options = EmuOptions {

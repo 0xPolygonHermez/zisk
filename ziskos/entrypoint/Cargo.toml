@@ -26,6 +26,10 @@ serde = { workspace = true, features = ["derive"] }
 zisk-verifier = { workspace = true }
 bincode = { workspace = true }
 zisk-definitions = { path = "../../definitions" }
+critical-section = { version = "1.2.0", optional = true }
+embedded-alloc = { version = "0.6.0", optional = true }
+talc = { version = "4.4.3", features = ["lock_api"], optional = true }
+dlmalloc = { version = "0.2", default-features = false, optional = true }
 
 sha2 = { workspace = true }
 fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0", features = [
@@ -47,6 +51,11 @@ ctor = { version = "0.2", optional = true }
 default = ["user-hints", "inputcpy"]
 user-hints = ["dep:zisk-common", "dep:bytes", "dep:paste", "dep:once_cell", "dep:ctor", "dep:anyhow", "dep:tokio"]
 inputcpy = []
+zisk-custom-alloc = []
+zisk-embedded-alloc = ["zisk-embedded-dlmalloc-alloc"]
+zisk-embedded-dlmalloc-alloc = ["dep:embedded-alloc", "dep:critical-section", "dep:dlmalloc"]
+zisk-embedded-talc-alloc = ["dep:embedded-alloc", "dep:critical-section", "dep:talc"]
+zisk-embedded-tlfs-alloc = ["dep:embedded-alloc", "dep:critical-section"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

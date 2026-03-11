@@ -8,6 +8,9 @@ mod dma;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod fcall;
 
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+mod alloc;
+
 mod profile;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub use fcall::*;
@@ -220,7 +223,7 @@ pub(crate) fn set_output(id: usize, value: u32) {
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-mod ziskos {
+pub mod ziskos {
     use crate::ziskos_definitions::ziskos_config::*;
     use core::arch::asm;
 
@@ -280,12 +283,27 @@ mod ziskos {
             extern "C" {
                 fn main();
             }
+            #[cfg(any(
+                feature = "zisk-embedded-alloc",
+                feature = "zisk-embedded-dlmalloc-alloc",
+                feature = "zisk-embedded-talc-alloc",
+                feature = "zisk-embedded-tlfs-alloc"
+            ))]
+            crate::alloc::embedded::init();
+            #[cfg(all(
+                not(feature = "zisk-embedded-alloc"),
+                not(feature = "zisk-embedded-dlmalloc-alloc"),
+                not(feature = "zisk-embedded-talc-alloc"),
+                not(feature = "zisk-embedded-tlfs-alloc")
+            ))]
+            crate::alloc::init_sys_alloc();
+
             main()
         }
     }
 
     #[no_mangle]
-    extern "C" fn sys_write(_fd: u32, write_ptr: *const u8, nbytes: usize) {
+    pub extern "C" fn sys_write(_fd: u32, write_ptr: *const u8, nbytes: usize) {
         let arch_id_zisk: usize;
         let mut addr: *mut u8 = 0x1000_0000 as *mut u8;
 
@@ -350,48 +368,23 @@ mod ziskos {
         unimplemented!("sys_argv");
     }
 
-    #[no_mangle]
-    pub unsafe extern "C" fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u8 {
-        use core::arch::asm;
-        let heap_bottom: usize;
-        // UNSAFE: This is fine, just loading some constants.
-        unsafe {
-            // using inline assembly is easier to access linker constants
-            asm!(
-              "la {heap_bottom}, _kernel_heap_bottom",
-              heap_bottom = out(reg) heap_bottom,
-              options(nomem)
-            )
-        };
-
-        // Pointer to next heap address to use, or 0 if the heap has not yet been
-        // initialized.
-        static mut HEAP_POS: usize = 0;
-
-        // SAFETY: Single threaded, so nothing else can touch this while we're working.
-        let mut heap_pos = unsafe { HEAP_POS };
-
-        if heap_pos == 0 {
-            heap_pos = heap_bottom;
+    pub extern "C" fn sys_print_hex(val: usize, ln: bool) {
+        let mut buf = [0u8; 19]; // "0x" + 16 hex + \n — stack, no heap
+        buf[0] = b'0';
+        buf[1] = b'x';
+        let mut v = val;
+        for i in (2..18).rev() {
+            buf[i] = b"0123456789abcdef"[v & 0xF];
+            v >>= 4;
         }
-
-        let offset = heap_pos & (align - 1);
-        if offset != 0 {
-            heap_pos += align - offset;
+        if ln {
+            buf[18] = b'\n';
+            sys_write(1, buf.as_ptr(), buf.len());
+        } else {
+            sys_write(1, buf.as_ptr(), buf.len() - 1);
         }
-
-        let ptr = heap_pos as *mut u8;
-        heap_pos += bytes;
-
-        // Check to make sure heap doesn't collide with SYSTEM memory.
-        //if SYSTEM_START < heap_pos {
-        //    panic!();
-        // }
-
-        unsafe { HEAP_POS = heap_pos };
-
-        ptr
     }
+
     core::arch::global_asm!(include_str!("dma/memcpy.s"));
     core::arch::global_asm!(include_str!("dma/memmove.s"));
     core::arch::global_asm!(include_str!("dma/memcmp.s"));

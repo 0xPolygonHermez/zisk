@@ -168,40 +168,35 @@ impl HintBuffer {
         let mut write_buf = Vec::with_capacity(flush_threshold);
         'drain: loop {
             // Get chunk of hints to write from HintBuffer (under lock)
-            let chunk: Bytes = {
+            let chunk: Bytes = loop {
                 let mut g = self.precompiles.lock().unwrap();
                 let mut i = self.input_data.lock().unwrap();
                 let closed = *self.closed.lock().unwrap();
 
                 if g.commit_pos == 0 && i.commit_pos == 0 && !closed {
-                    // Wait until there's data to write or buffer is closed
+                    drop(i); // Release input_data lock before waiting
                     g = self.not_empty.wait(g).unwrap();
+                    continue; // Re-acquire both locks in the next iteration
                 }
 
-                // If buffer is empty and closed, we're done, we can exit the drain loop
                 if g.commit_pos == 0 && i.commit_pos == 0 && closed {
                     break 'drain;
                 }
 
-                // Take the committed chunk of hints to write
-                if g.commit_pos > 0 {
+                break if g.commit_pos > 0 {
                     let n = g.commit_pos;
                     g.commit_pos = 0;
                     g.buf.split_to(n).freeze()
                 } else {
                     let n = i.commit_pos.min(MAX_INPUT_DATA_CHUNK);
-                    i.commit_pos = i.commit_pos.saturating_sub(n);
-
+                    i.commit_pos -= n;
                     let input_chunk = i.buf.split_to(n);
-
-                    let hint_input_header: [u8; 8] =
-                        (((HINT_INPUT as u64) << 32) | (input_chunk.len() as u64)).to_le_bytes();
-
-                    let mut chunk = BytesMut::with_capacity(HEADER_LEN + input_chunk.len());
-                    chunk.extend_from_slice(&hint_input_header);
+                    let header = (((HINT_INPUT as u64) << 32) | n as u64).to_le_bytes();
+                    let mut chunk = BytesMut::with_capacity(HEADER_LEN + n);
+                    chunk.extend_from_slice(&header);
                     chunk.unsplit(input_chunk);
                     chunk.freeze()
-                }
+                };
             };
 
             // Write hints from chunk without holding the lock

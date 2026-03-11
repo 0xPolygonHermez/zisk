@@ -135,6 +135,9 @@ impl InstancePlanner {
             let global_id = if AirClassifier::is_rom_instance(plan.airgroup_id, plan.air_id) {
                 pctx.add_instance_assign_first_process(plan.airgroup_id, plan.air_id)
                     .expect("Failed to add ROM instance")
+            } else if AirClassifier::is_keccakf_instance(plan.airgroup_id, plan.air_id) {
+                pctx.add_instance_assign(plan.airgroup_id, plan.air_id)
+                    .expect("Failed to add KeccakF instance")
             } else {
                 match plan.instance_type {
                     InstanceType::Instance => pctx

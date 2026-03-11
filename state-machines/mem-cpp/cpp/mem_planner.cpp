@@ -67,7 +67,9 @@ const MemLocator *MemPlanner::get_next_locator(MemLocators &locators, uint32_t &
 }
 
 void MemPlanner::execute_from_locators(const std::vector<MemCounter *> &workers, MemLocators &locators, MemSegments &segments) {
+    #ifdef MEM_PLANNER_STATS
     uint64_t init = get_usec();
+    #endif
     const MemLocator *locator;
     uint32_t segment_id = 0;
     while (true) {
@@ -78,7 +80,9 @@ void MemPlanner::execute_from_locators(const std::vector<MemCounter *> &workers,
         segments.set(segment_id, current_segment);
         current_segment = nullptr;
     }
+    #ifdef MEM_PLANNER_STATS
     elapsed = get_usec() - init;
+    #endif
 }
 
 void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, uint32_t segment_id, const MemLocator *locator) {
@@ -153,7 +157,9 @@ void MemPlanner::update_segment_stats(uint32_t addr_count, uint32_t offset_count
 #endif
 
 void MemPlanner::generate_locators(const std::vector<MemCounter *> &workers, MemLocators &locators) {
+    #ifdef MEM_PLANNER_STATS
     uint64_t init = get_usec();
+    #endif
     rows_available = rows;
     uint32_t count;
     uint32_t offset, max_offset;
@@ -203,7 +209,9 @@ void MemPlanner::generate_locators(const std::vector<MemCounter *> &workers, Mem
         }
     }
     locators.set_completed();
+    #ifdef MEM_PLANNER_STATS
     elapsed = get_usec() - init;
+    #endif
 }
 
 void MemPlanner::get_offset_limits(const std::vector<MemCounter *> &workers, uint32_t page, uint32_t &first_offset, uint32_t &last_offset) {

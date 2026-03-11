@@ -18,9 +18,9 @@ pub fn ziskemu(
 
     let callback = None::<Box<dyn Fn(zisk_common::EmuTrace)>>;
 
-    let inputs = stdin.read_bytes();
+    let inputs = stdin.read_raw_bytes();
 
-    let options = EmuOptions { log_output: true, ..options.clone() };
+    let options = EmuOptions { elf: elf.path(), ..options.clone() };
     let result = ZiskEmulator::process_rom(&zisk_rom, &inputs, &options, callback);
     match result {
         Ok(result) => {

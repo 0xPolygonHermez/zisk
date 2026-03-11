@@ -269,12 +269,14 @@ pub trait ElfBinaryLike {
     fn elf(&self) -> &[u8];
     fn name(&self) -> &str;
     fn with_hints(&self) -> bool;
+    fn path(&self) -> Option<String>;
 }
 
 pub struct ElfBinaryFromFile {
     pub elf: Vec<u8>,
     pub name: String,
     pub with_hints: bool,
+    pub path: Option<String>,
 }
 
 impl ElfBinaryFromFile {
@@ -285,6 +287,7 @@ impl ElfBinaryFromFile {
             elf: elf_bin,
             name: elf.file_stem().unwrap().to_str().unwrap().to_string(),
             with_hints,
+            path: Some(elf.to_str().unwrap().to_string()),
         })
     }
 }
@@ -299,12 +302,16 @@ impl ElfBinaryLike for ElfBinaryFromFile {
     fn with_hints(&self) -> bool {
         self.with_hints
     }
+    fn path(&self) -> Option<String> {
+        self.path.clone()
+    }
 }
 
 pub struct ElfBinary {
     pub elf: &'static [u8],
     pub name: &'static str,
     pub with_hints: bool,
+    pub path: Option<&'static str>,
 }
 
 impl ElfBinaryLike for ElfBinary {
@@ -316,6 +323,9 @@ impl ElfBinaryLike for ElfBinary {
     }
     fn with_hints(&self) -> bool {
         self.with_hints
+    }
+    fn path(&self) -> Option<String> {
+        self.path.map(|s| s.to_string())
     }
 }
 

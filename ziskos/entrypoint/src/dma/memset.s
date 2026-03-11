@@ -10,6 +10,12 @@
 # a1 = fill value (c) 
 # a2 = byte count (n)
 memset:
+        bnez    a1, .L_memset_non_zero
+        csrs    0x816, a0
+        addi    x0, a2, 0
+        ret
+
+.L_memset_non_zero: 
         andi    a1, a1, 0xff            # Mask to byte value
         slli    a1, a1, 4
         la      t0, .Ljump_table

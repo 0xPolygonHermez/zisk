@@ -40,15 +40,24 @@ MemCounter::~MemCounter() {
 }
 
 void MemCounter::execute() {
+#ifdef COUNT_CHUNK_STATS
     uint64_t init_us = get_usec();
     
     int64_t elapsed_us = 0;
-
+#endif
     const MemChunk *chunk =
 #ifdef MEM_CONTEXT_SEM
+#ifdef CHUNK_STATS
         context->get_chunk(id, 0, elapsed_us);
 #else
-        context->get_chunk(0, elapsed_us);
+    context->get_chunk(id, 0);
+#endif
+#else
+#ifdef CHUNK_STATS
+    context->get_chunk(0, elapsed_us);
+#else
+    context->get_chunk(0);
+#endif
 #endif
     #ifdef COUNT_CHUNK_STATS
     wait_chunks_us[0] = elapsed_us;
@@ -60,15 +69,27 @@ void MemCounter::execute() {
         chunks_us[0] = get_usec() - start_execute_us;
         tot_wait_us += elapsed_us > 0 ? elapsed_us : 0;
         #else
+        #ifdef CHUNK_STATS
         tot_wait_us += elapsed_us;
         #endif
+        #endif
+        #ifdef CHUNK_STATS
         first_chunk_us = get_usec() - init_us;
+        #endif
 
         uint32_t chunk_id = 1;
 #ifdef MEM_CONTEXT_SEM
+#ifdef CHUNK_STATS
         while ((chunk = context->get_chunk(id, chunk_id, elapsed_us)) != nullptr)
 #else
+        while ((chunk = context->get_chunk(id, chunk_id)) != nullptr)
+#endif
+#else
+#ifdef CHUNK_STATS
         while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr)
+#else
+        while ((chunk = context->get_chunk(chunk_id)) != nullptr)
+#endif
 #endif
         {
             #ifdef COUNT_CHUNK_STATS
@@ -80,7 +101,9 @@ void MemCounter::execute() {
             chunks_us[chunk_id] = get_usec() - start_execute_us;
             tot_wait_us += elapsed_us > 0 ? elapsed_us : 0;
             #else
+            #ifdef CHUNK_STATS            
             tot_wait_us += elapsed_us;
+            #endif
             #endif
             ++chunk_id;
         }
@@ -88,7 +111,9 @@ void MemCounter::execute() {
         wait_chunks_us[chunk_id] = elapsed_us;
         #endif
     }
+    #ifdef CHUNK_STATS
     elapsed_ms = ((get_usec() - init_us) / 1000);
+    #endif
 }
 
 void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chunk_data, uint32_t chunk_size) {

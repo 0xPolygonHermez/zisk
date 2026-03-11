@@ -82,6 +82,19 @@ macro_rules! ziskos_memcpy {
             );
         }
     }};
+    (ptr: $dst:expr, $src:expr, $size:expr) => {{
+        unsafe {
+            core::arch::asm!(
+                "csrs {port}, {src}",
+                "add x0, {dst}, {size}",
+                port = const zisk_definitions::SYSCALL_DMA_MEMCPY_ID,
+                size = in(reg) $size,
+                dst = in(reg) $dst,      // ya es *mut u8, sin as_mut_ptr()
+                src = in(reg) $src,      // ya es *mut u8, sin as_ptr()
+                options(nostack, preserves_flags),
+            );
+        }
+    }};
 }
 
 /// Compares two memory regions for equality using DMA operations.
@@ -173,6 +186,19 @@ macro_rules! ziskos_memset {
                 size = in(reg) $size,
                 value = const $value,
                 dst = in(reg) $dst.as_mut_ptr(),
+                options(nostack, preserves_flags),
+            );
+        }
+    }};
+    (ptr: $dst:expr, $value: literal, $size:expr) => {{
+        unsafe {
+            core::arch::asm!(
+                "csrs {port}, {dst}",
+                "addi x0, {size}, {value}",
+                port = const zisk_definitions::SYSCALL_DMA_MEMSET_ID,
+                size = in(reg) $size,
+                value = const $value,
+                dst = in(reg) $dst,
                 options(nostack, preserves_flags),
             );
         }

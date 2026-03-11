@@ -59,7 +59,7 @@ build/zisk.ld:
 	mkdir -p build
 	ld --verbose 2>/dev/null | \
 	    awk '/^=+$$/{found++; next} found==1{print}' | \
-	    sed '/\/DISCARD\//i\  .my_region 0x40000000 (NOLOAD) : { . = . + 0x890000000; }' \
+	    sed '/\/DISCARD\//i\  .zisk_region 0x40000000 (NOLOAD) : { . = . + 0x890000000; }' \
 	    > build/zisk.ld
 
 # Compile the final executable

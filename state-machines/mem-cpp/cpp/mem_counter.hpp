@@ -190,7 +190,7 @@ uint32_t MemCounter::get_count_table(uint32_t index) const {
 uint32_t MemCounter::get_next_slot_pos() {
     if (free_slot >= ADDR_SLOTS) {
         std::ostringstream msg;
-        msg << "ERROR: MemCounter no more free slots on thread" << id;
+        msg << "ERROR: MemCounter: no free slots left for this thread(" << id << "). Increase MAX_SLOT_GB in state-machines/mem-cpp/cpp/mem_config.hpp and recompile zisk.";
         throw std::runtime_error(msg.str());
     }
     return (free_slot++) * ADDR_SLOT_SIZE;

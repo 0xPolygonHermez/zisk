@@ -129,6 +129,12 @@ pub struct EmuOptions {
     pub disasm: Option<String>,
     #[clap(long, value_name = "MAX_INPUT_MEM", default_value = "134217728")] // 128 MiB
     pub max_input_mem: u64,
+    /// In mode fast, without stats, show coverage steps consumed without stats.
+    #[clap(long, default_value = "false")]
+    pub steps: bool,
+    /// In mode fast, without stats, show executing lines each 16Msteps.
+    #[clap(long, default_value = "false")]
+    pub with_progress: bool,
 }
 
 impl Default for EmuOptions {
@@ -168,6 +174,8 @@ impl Default for EmuOptions {
             top_roi_filter: false,
             disasm: None,
             max_input_mem: MAX_INPUT_SIZE,
+            steps: false,
+            with_progress: false,
         }
     }
 }
@@ -205,6 +213,8 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "TOP_ROI_FILTER: {:?}", self.top_roi_filter)?;
         writeln!(f, "DISASM: {:?}", self.disasm)?;
         writeln!(f, "MAX_INPUT_MEM: {:?}", self.max_input_mem)?;
+        writeln!(f, "STEPS: {:?}", self.steps)?;
+        writeln!(f, "WITH_PROGRESS: {:?}", self.with_progress)?;
         Ok(())
     }
 }
