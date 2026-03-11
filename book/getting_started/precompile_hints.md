@@ -218,7 +218,7 @@ Each worker receives the stream of hints, buffers them if they arrive out of ord
 When starting a worker, if the `--hints` option is provided, the worker prepares to receive hints from the coordinator.
 When launching a proof generation job where hints will be provided, the workers must be started to receive and process hints.
 A hints stream system can be configured in two ways:
-* **Streaming mode**: Workers receive hints from the coordinator via gRPC. This is the default and recommended mode for production, as it allows real-time processing of hints as they are generated.
+* **Streaming mode**: Workers receive hints from the coordinator via gRPC. This is the default and recommended mode for distributed setups, as it allows real-time processing of hints as they are generated.
 * **Path mode**: Workers load hints from a local path/URI. This is useful for debugging or when hints are pre-generated and stored in a file. In this mode, the coordinator does not send hints to workers; instead, each worker reads the hints directly from the specified path.
 
 #### 3.2.1 Coordinator Hints Streaming Mode

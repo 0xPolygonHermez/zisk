@@ -148,7 +148,7 @@ The table below lists the available configuration options for the Coordinator:
 | TOML Key              | CLI Argument     | Environment Variable| Type | Default | Description |
 |-----------------------|--------------|---------------------|------|---------|-------------|
 | `service.name` | - | - | String | ZisK Distributed Coordinator | Service name |
-| `service.environment` | - | - | String | development | Service environment (development, staging, production) |
+| `service.environment` | - | - | String | development | Service environment (development, staging, deployment) |
 | `server.host` | - | - | String | 0.0.0.0 | Server host |
 | `server.port` | `--port` | - | Number | 50051 | Server port |
 | `server.proofs_dir` | `--proofs-dir` | - | String | proofs | Directory to save generated proofs (conflicts with `--no-save-proofs`) |
@@ -179,12 +179,12 @@ level = "debug"
 format = "pretty"
 ```
 
-Example production configuration file:
+Example deployment configuration file:
 
 ```toml
 [service]
 name = "ZisK Distributed Coordinator"  
-environment = "production"
+environment = "deployment"
 
 [server]
 host = "0.0.0.0"
@@ -313,7 +313,7 @@ cargo run --release --bin zisk-coordinator -- --help
 cargo run --release --bin zisk-coordinator -- --port 50051
 
 # Run with specific configuration
-cargo run --release --bin zisk-coordinator -- --config production.toml
+cargo run --release --bin zisk-coordinator -- --config deploy.toml
 
 # Run with webhook URL  
 cargo run --release --bin zisk-coordinator -- --webhook-url http://webhook.example.com/notify --port 50051
@@ -368,7 +368,7 @@ The table below lists the available configuration options for the Worker:
 |-----------------------|--------------|---------------------|------|---------|-------------|
 | `worker.worker_id` | `--worker-id` | - | String | Auto-generated UUID | Unique worker identifier |
 | `worker.compute_capacity.compute_units` | `--compute-capacity` | - | Number | 10 | Worker compute capacity (in compute units) |
-| `worker.environment` | - | - | String | development | Service environment (development, staging, production) |
+| `worker.environment` | - | - | String | development | Service environment (development, staging, deployment) |
 | `worker.inputs_folder` | `--inputs-folder` | - | String | . | Path to folder containing input files |
 | `coordinator.url` | `--coordinator-url` | - | String | http://127.0.0.1:50051 | Coordinator server URL |
 | `connection.reconnect_interval_seconds` | - | - | Number | 5 | Reconnection interval in seconds |
@@ -408,13 +408,13 @@ level = "debug"
 format = "pretty"
 ```
 
-Example production configuration file:
+Example deployment configuration file:
 
 ```toml
 [worker]
 worker_id = "my-worker-001"
 compute_capacity.compute_units = 10
-environment = "production"
+environment = "deployment"
 inputs_folder = "/app/inputs"
 
 [coordinator]
