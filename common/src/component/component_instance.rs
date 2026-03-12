@@ -2,7 +2,7 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
-use crate::{BusDevice, CheckPoint, ChunkId, PayloadType};
+use crate::{BusDevice, CheckPoint, ChunkId, PayloadType, StatsType};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::any::Any;
@@ -80,6 +80,10 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
     /// A reference to self as `&dyn Any`.
     fn as_any(&self) -> &dyn Any;
 
+    fn stats_type(&self) -> StatsType {
+        StatsType::Other
+    }
+
     fn reset(&self) {}
 }
 
@@ -128,6 +132,10 @@ macro_rules! table_instance {
             /// * `ictx` - The instance context for the computation.
             pub fn new(table_sm: Arc<$TableSM>, ictx: InstanceCtx, bus_id: BusId) -> Self {
                 Self { table_sm, ictx, bus_id }
+            }
+
+            pub fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> bool {
+                true
             }
         }
 
@@ -180,19 +188,6 @@ macro_rules! table_instance {
         }
 
         impl BusDevice<u64> for $InstanceName {
-            fn process_data(
-                &mut self,
-                bus_id: &BusId,
-                data: &[u64],
-                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-                _mem_collector_info: Option<&[MemCollectorInfo]>,
-            ) -> bool {
-                true
-            }
-            fn bus_id(&self) -> Vec<BusId> {
-                vec![self.bus_id]
-            }
-
             /// Provides a dynamic reference for downcasting purposes.
             fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
                 self
@@ -246,6 +241,10 @@ macro_rules! table_instance_array {
             /// * `ictx` - The instance context for the computation.
             pub fn new(table_sm: Arc<$TableSM>, ictx: InstanceCtx, bus_id: BusId) -> Self {
                 Self { table_sm, ictx, bus_id }
+            }
+
+            pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
+                true
             }
         }
 
@@ -307,20 +306,6 @@ macro_rules! table_instance_array {
         }
 
         impl BusDevice<u64> for $InstanceName {
-            fn process_data(
-                &mut self,
-                bus_id: &BusId,
-                data: &[u64],
-                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-                _mem_collector_info: Option<&[MemCollectorInfo]>,
-            ) -> bool {
-                true
-            }
-
-            fn bus_id(&self) -> Vec<BusId> {
-                vec![self.bus_id]
-            }
-
             /// Provides a dynamic reference for downcasting purposes.
             fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
                 self

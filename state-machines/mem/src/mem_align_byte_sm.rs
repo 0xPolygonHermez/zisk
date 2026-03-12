@@ -9,7 +9,10 @@ use rayon::prelude::*;
 
 use crate::MemAlignInput;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
-use zisk_pil::{MemAlignByteAirValues, MemAlignReadByteAirValues, MemAlignWriteByteAirValues};
+use zisk_pil::{
+    MemAlignByteAirValues, MemAlignReadByteAirValues, MemAlignWriteByteAirValues,
+    DUAL_RANGE_BYTE_ID,
+};
 
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{
@@ -356,7 +359,6 @@ impl<F: PrimeField64> MemAlignByteRow<F, MemAlignWriteByteTraceType<F>>
 
 const OFFSET_MASK: u32 = 0x07;
 const OFFSET_BITS: u32 = 3;
-const DUAL_BYTE_TABLE_ID: usize = 88;
 
 pub struct MemAlignByteSM<F: PrimeField64> {
     /// PIL2 standard library
@@ -378,7 +380,7 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         Arc::new(Self {
             std: std.clone(),
             table_dual_byte_id: std
-                .get_virtual_table_id(DUAL_BYTE_TABLE_ID)
+                .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
                 .expect("Failed to get dual byte table ID"),
             table_16b_id: std.get_range_id(0, 0xFFFF, None).expect("Failed to get 16b table ID"),
             table_8b_id: std.get_range_id(0, 0xFF, None).expect("Failed to get 8b table ID"),

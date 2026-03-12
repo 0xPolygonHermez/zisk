@@ -5,12 +5,13 @@ use elf::{
     endian::AnyEndian,
     ElfBytes,
 };
-use std::{error::Error, fs, path::Path};
+use std::{collections::HashMap, error::Error, fs, path::Path};
 
 use crate::{is_elf_file, RAM_ADDR, RAM_SIZE};
 
 const RAM_START_ADDR: u64 = RAM_ADDR;
 const RAM_END_ADDR: u64 = RAM_ADDR + RAM_SIZE;
+const MAX_ELF_SECTION_SIZE: usize = 1024 * 1024 * 1024; // 1 GiB, arbitrary limit to prevent OOM from malformed ELFs
 
 /// Raw bytes of `data` that will live at `addr` once the ROM has booted.
 #[derive(Debug, Clone)]
@@ -30,15 +31,6 @@ pub struct ElfPayload {
     pub rw: Vec<DataSection>,
     /// `SHF_ALLOC` but not `SHF_WRITE` - read-only data
     pub ro: Vec<DataSection>,
-}
-
-/// Extracts the relevant sections from the ELF file for `ZiskRom`
-pub fn collect_elf_payload(elf_path: &Path) -> Result<ElfPayload, Box<dyn Error>> {
-    // Read the ELF file
-    let file_data =
-        fs::read(elf_path).map_err(|_| format!("Error reading ELF file={}", elf_path.display()))?;
-
-    collect_elf_payload_from_bytes(&file_data)
 }
 
 /// Extracts the relevant sections from ELF file bytes for `ZiskRom`
@@ -90,6 +82,12 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
                 // BSS sections - uninitialized data, should be zero-filled
                 // Create a zero-filled vector of the appropriate size
                 let size = sh.sh_size as usize;
+                if size > MAX_ELF_SECTION_SIZE {
+                    return Err(format!(
+                        "ELF section at 0x{:08x} has size {} which exceeds the maximum allowed size of {} bytes.",
+                        sh.sh_addr, size, MAX_ELF_SECTION_SIZE
+                    ).into());
+                }
                 // Align size to 4 bytes
                 let aligned_size = (size + 3) & !3;
                 vec![0u8; aligned_size]
@@ -165,6 +163,37 @@ pub fn merge_adjacent_ro_sections(sections: &[DataSection]) -> Vec<DataSection> 
     merged.push(current);
 
     merged
+}
+
+/// Get addresses for a list of symbols from an ELF file
+pub fn get_symbol_addresses(
+    elf_path: &Path,
+    symbol_names: &[&str],
+) -> Result<HashMap<String, u64>, Box<dyn Error>> {
+    let file_data = fs::read(elf_path)?;
+    get_symbol_addresses_from_bytes(&file_data, symbol_names)
+}
+
+/// Get addresses for a list of symbols from ELF bytes
+pub fn get_symbol_addresses_from_bytes(
+    file_data: &[u8],
+    symbol_names: &[&str],
+) -> Result<HashMap<String, u64>, Box<dyn Error>> {
+    let elf = ElfBytes::<AnyEndian>::minimal_parse(file_data)?;
+    let mut result = HashMap::new();
+    let names_set: std::collections::HashSet<&str> = symbol_names.iter().copied().collect();
+
+    if let Some((symtab, strtab)) = elf.symbol_table()? {
+        for sym in symtab {
+            if let Ok(name) = strtab.get(sym.st_name as usize) {
+                if names_set.contains(name) {
+                    result.insert(name.to_string(), sym.st_value);
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 #[cfg(test)]

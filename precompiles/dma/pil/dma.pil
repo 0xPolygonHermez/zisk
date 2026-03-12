@@ -1,0 +1,553 @@
+const int DMA_MEM_CPY = 1;
+const int DMA_MEM_PRE_POST = 2;
+const int DMA_MEM_EQ = 3;
+
+const int E_DMA_MEMCPY = 0x01;
+const int E_DMA_MEMCMP = 0x02;
+const int E_DMA_INPUTCPY = 0x04;
+const int E_DMA_MEMSET = 0x08;
+
+const int E_DMA_ALL = E_DMA_MEMCPY | E_DMA_MEMCMP | E_DMA_INPUTCPY | E_DMA_MEMSET;
+
+const int DMA_64_ALIGNED_CONT_ID = 8200;
+const int DMA_UNALIGNED_CONT_ID = 8201;
+
+const int OP_DMA_PRE_XMEMCPY = 1;
+const int OP_DMA_PRE_INPUTCPY = 2;
+const int OP_DMA_PRE_XMEMEQ = 3;
+const int OP_DMA_PRE_XMEMCMP = 4;
+const int OP_DMA_PRE_XMEMSET = 5;
+
+const int OP_DMA_POST_OFFSET = 10;
+
+const int OP_DMA_POST_XMEMCPY = OP_DMA_PRE_XMEMCPY + OP_DMA_POST_OFFSET;
+const int OP_DMA_POST_INPUTCPY = OP_DMA_PRE_INPUTCPY + OP_DMA_POST_OFFSET;
+const int OP_DMA_POST_XMEMEQ = OP_DMA_PRE_XMEMEQ + OP_DMA_POST_OFFSET;
+const int OP_DMA_POST_XMEMCMP = OP_DMA_PRE_XMEMCMP + OP_DMA_POST_OFFSET;
+const int OP_DMA_POST_XMEMSET = OP_DMA_PRE_XMEMSET + OP_DMA_POST_OFFSET;
+
+airtemplate Dma(int N = 2**21, 
+                const int RC = 2, 
+                const int enable = E_DMA_ALL,
+                const int enable_extended = 1) {
+    
+    const int enable_memcpy = (enable & E_DMA_MEMCPY) ? 1 : 0;
+    const int enable_memcmp = (enable & E_DMA_MEMCMP) ? 1 : 0; 
+    const int enable_inputcpy = (enable & E_DMA_INPUTCPY) ? 1 : 0;
+    const int enable_memset = (enable & E_DMA_MEMSET) ? 1 : 0;
+
+    assert(enable_extended == 0 || enable_extended == 1);
+    assert((enable_memcpy + enable_memcmp + enable_inputcpy + enable_memset) > 0);
+    assert(RC == 2);
+
+    const int has_src = (enable_memcpy || enable_memcmp);
+
+    // DMA: MEMCPY
+    //
+    // Unlike a CPU memcpy, the DMA memcpy is instantaneous from a temporal point of view all reads 
+    // occur in the same step and all writes in the next step. In the case of reads there are no 
+    // problems in performing the same read several times in the same step because the result is 
+    // always the same in this moment. In the case of writes, this is not the case, because it would 
+    // create an ambiguity to know the written value. Therefore, we must guarantee that each 64-bit 
+    // value is written only once.
+    //
+    // The strategy that DMA follows in the case of memcpy is to divide the operation into 3 phases:
+    //
+    // 1. Pre-copy: initial bytes are copied to achieve at least destination alignment, to avoid
+    //    double writes.
+    //
+    // 2. Fully or partially aligned copy. It's a loop where 64-bit values are copied. There are 
+    //    two variants:
+    //    a) Aligned 64-bit copy: both source and destination addresses are aligned to 8 bytes.
+    //    b) Unaligned 64-bit copy: the source address is not aligned to 8 bytes, but it's read in
+    //       bytes and 64-bit values are reassembled.
+    // 
+    // 3. Post-copy: final bytes that don't complete a 64-bit word are copied.
+    // 
+    // Not all phases are necessary, they depend on the copy parameters.
+    //
+    // Example of fully aligned memcpy operation:
+    //             
+    //                PRE                 MEMCPY                 POST       
+    //           ┌──────────┐ ┌──────────────────────────────┐ ┌──────────┐ 
+    //
+    //               ┌──────┐ ┌────────┬────────┐   ┌────────┐ ┌────┐
+    //    src        │  0   │ │    1   │    2   │...│    n   │ │ n+1│  
+    //               └──────┘ └────────┴────────┘   └────────┘ └────┘
+    //                  ↓          ↓        ↓            ↓        ↓
+    //           ┌───┬──────┐ ┌────────┬────────┐   ┌────────┐ ┌────┬─────┐
+    //    dst    │      0   │ │    1   │    2   │...│    n   │ │ n+1      │
+    //           └───┴──────┘ └────────┴────────┘   └────────┘ └────┴─────┘
+    //           ^dst64       ^dst64+1 ^dst64+2     ^dst64+n   ^dst64+n+1   <-- each dst64 address is 
+    //                                                                          written only once
+    //
+    // 
+    // Example of partially aligned memcpy operation:
+    //              
+    //                PRE                 MEMCPY                            POST       
+    //           ┌──────────┐ ┌────────────────────────────────────────┐ ┌──────────┐ 
+    //               ┌────┐┌─ ┌────────┬────────┐   ┌────────┐┌─┬──────┐ ┌─┬───┐
+    //    src        │  0 ││1 │    1   │    2   │...│    n   ││   n+1  │ │  n+1│  
+    //               └────┘└─ └────────┴────────┘   └────────┘└─┴──────┘ └─┴───┘
+    //                  ↓   ↓      ↓   ↙   ↓    ↙        ↓    ↙              ↙
+    //           ┌───┬──────┐ ┌────────┬────────┐   ┌────────┐           ┌────┬─────┐
+    //    dst    │      0   │ │    1   │    2   │...│    n   │     ↑     │ n+1      │
+    //           └───┴──────┘ └────────┴────────┘   └────────┘     │     └────┴─────┘
+    //           ^dst64       ^dst64+1 ^dst64+2     ^dst64+n       │      ^dst64+n+1   <-- each dst64 address is 
+    //                                                          without                    written only once
+    //                                                           write
+    //
+
+
+    // main_step        MAIN_STEP_BITS
+    // fill_byte                     8
+    // sel_memcpy                    1
+    // sel_memcmp                    1
+    // sel_memset                    1
+    // sel_extended                  1
+    // sel_inputcpy                  1
+
+    // count_lt_256                  1
+    // h_count                      24
+    // l_count                       9
+    // count_diff_chunks            16 <===
+
+    // h_dst64                      22
+    // l_dst64                       7
+    // dst_offset                    3
+
+    // h_src64                      22
+    // l_src64                       7
+    // src_offset                    3
+    // src_offset_after_pre          3
+    // src64_inc_by_pre              1
+
+    // use_pre                       1
+    // use_loop                      1
+    // use_post                      1
+    // pre_count                     3
+    // l_count64                     9
+
+    // pre_result_nz                 1
+    // post_result_nz                1
+    // bus_pre_result[2]            32
+    // bus_post_result[2]           32
+
+    // INTERMEDIATES
+    // loop_b0                      32
+    // loop_extended_arg            32
+    // static_count                 32
+    // b0                           32
+    // extended_arg                 32
+
+
+    // temporal building expression for selector of any operation
+    expr _sel = 0;      
+
+    // temporal building expressions for operations codes of loop, pre and op_bus
+    expr _bus_op = 0;
+    expr _loop_op = 0;
+    expr _pre_op = 0;
+    if (enable_memcpy) {
+        col witness bits(1) air.sel_memcpy;
+        sel_memcpy * (1 - sel_memcpy) === 0;
+        _sel += sel_memcpy;
+        _bus_op += sel_memcpy * OP_DMA_MEMCPY;
+        _loop_op += sel_memcpy * OP_DMA_XMEMCPY;
+        _pre_op += sel_memcpy * OP_DMA_PRE_XMEMCPY;
+    } else {
+        const expr air.sel_memcpy = 0;
+    }
+
+    if (enable_memcmp) {
+        col witness bits(1) air.sel_memcmp;
+        sel_memcmp * (1 - sel_memcmp) === 0;    
+        _sel += sel_memcmp;
+        _bus_op += sel_memcmp * OP_DMA_MEMCMP;
+        _loop_op += sel_memcmp * OP_DMA_XMEMEQ;
+        _pre_op += sel_memcmp * OP_DMA_PRE_XMEMCMP;
+    } else {
+        const expr air.sel_memcmp = 0;
+    }
+
+    if (enable_memset) {
+        col witness bits(1) air.sel_memset;
+        sel_memset * (1 - sel_memset) === 0;
+
+        // fill_byte is send from main in extended_arg, this argument is static, known in
+        // compilation time, for this reason we don't need to validate its range check.
+
+        col witness bits(8) air.fill_byte;
+
+        _sel += sel_memset;
+        _bus_op += sel_memset * __OP_DMA_MEMSET__;
+        _loop_op += sel_memset * OP_DMA_XMEMSET;
+        _pre_op += sel_memset * OP_DMA_PRE_XMEMSET;
+    } else {
+        const int air.sel_memset = 0;
+        const int air.fill_byte = 0;
+    }
+    
+    if (enable_extended) {
+        col witness bits(1) air.sel_extended;
+        sel_extended * (1 - sel_extended) === 0;
+        _bus_op += sel_extended * OP_DMA_X_OFFSET;
+    } else {
+        const int air.sel_extended = 0;
+    }
+
+    const expr sel_load_count_from_mem = _sel;
+
+    if (enable_inputcpy) {
+        col witness bits(1) air.sel_inputcpy;
+        sel_inputcpy * (1 - sel_inputcpy) === 0;
+
+        _sel += sel_inputcpy;
+        _bus_op += sel_inputcpy * OP_DMA_INPUTCPY;
+        _loop_op += sel_inputcpy * OP_DMA_INPUTCPY;
+        _pre_op += sel_inputcpy * OP_DMA_PRE_INPUTCPY;
+    } else {
+        const expr air.sel_inputcpy = 0;
+    }
+
+    const expr use_src = sel_memcpy + sel_memcmp;
+
+    const expr bus_op = _bus_op;
+    const expr loop_op = _loop_op;
+    const expr pre_op = _pre_op;
+    const expr post_op = _pre_op + OP_DMA_POST_OFFSET;
+    const expr sel = _sel;
+    sel * (1 - sel) === 0;      
+
+    // assuming max memory of 4GB (32 bits)
+    // count: 24 bits RC + 8 bits T
+    col witness bits(24) h_count;
+
+    // What is count_lt_256 used for?
+    // 
+    // If count were split in the traditional way into h_count|l_count there would be a problem 
+    // because the DMA ROM has to check whether the count is small. 
+    //
+    // But what would happen if the bits of l_count were 0 while h_count was not? 
+    // The DMA ROM could not distinguish whether count is 0 or, for example, 1024 = 4|0
+    //
+    // To avoid this, was defined that in such a case one is subtracted from h_count and 256 is added
+    // to l_count so that the overall count value remains the same and so that for any k up to 511,
+    // if l_count > k ==> count > k.
+    //
+    // To ensure this condition a flag count_lt_256 must be enforced to verify that h_count is actually
+    // 0 when l_count < 256, and the ROM verifies the consistency between count_lt_256 and l_count.
+
+    col witness bits(1) count_lt_256;
+    col witness bits(9) l_count;        // 0..255 + 256 = 9 bits
+    const expr count = h_count * 256 + l_count;
+
+    count_lt_256 * (1 - count_lt_256) === 0;
+
+    // constraint (1)
+    count_lt_256 * h_count === 0;
+
+    // count  count            count  cons             Range        h_count * 256
+    // 31..8  7..0   h_count  lt_256  (1)    l_count  Check   Rom  + l_count
+    // -----  -----  -------  ------  ----   -------  -----  ----  -------------
+    //     0      x        0       1    OK         x     OK    OK       0 | x OK
+    //     0      x        0       0    OK         x     OK  FAIL       0 | x OK <== DETECTED
+    //     1      x        0       0    OK   256 + x     OK    OK       1 | x OK 
+    //     1      x        0       1    OK   256 + x     OK  FAIL       1 | x OK <== DETECTED
+    //     1      x        1       1  FAIL         x     OK    OK       1 | x OK <== DETECTED
+    // y > 1      x    y - 1       0    OK   256 + x     OK             y | x OK 
+    //   MAX      x  MAX - 1       0    OK   256 + x     OK           MAX | x OK
+    //     0      x       -1       0    OK   256 + x   FAIL             0 | x OK <== DETECTED
+    //   MAX      x      MAX       0    OK   256 + x   FAIL         MAX+1 | x FAIL <== DETECTED
+    //     -      -        -       -     -     x < 0     -   FAIL       - | - -  <== DETECTED
+    //     -      -        -       -     -   x >=512     -   FAIL       - | - -  <== DETECTED
+
+    range_check(expression: h_count, min: 0, max: 2**24-1, sel: sel);
+
+    // count_bus (well formed)
+    // count (chunks divided)
+    // count_bus - count === count_diff (chunks divided)
+
+    const expr count_bus;
+    const expr count_diff;
+    if (enable_memcmp) {
+        count_bus = count + count_diff;
+        col witness bits(16) air.count_diff_chunks[2];
+        count_diff = count_diff_chunks[0] + count_diff_chunks[1] * P2_16;
+
+        range_check(expression: count_diff_chunks[0], min: 0, max: 0xFFFF, sel: sel_memcmp);
+        range_check(expression: count_diff_chunks[1], min: 0, max: 0xFFFF, sel: sel_memcmp);
+
+        (sel_memcpy + sel_inputcpy + sel_memset) * count_diff === 0;
+    } else {
+        count_bus = count;
+        count_diff = 0;
+    }
+    // src_offset range verified with dma_rom table
+
+
+    // 32 bit address
+    // 22 bits RC +  7 bits RC + 3 bits T
+    col witness bits(22) h_dst64;
+    col witness bits(7) l_dst64;
+    col witness bits(3) dst_offset;
+    const expr dst = h_dst64 * 2**10 + l_dst64 * 2**3 + dst_offset;
+    const expr dst64 = h_dst64 * 2**10 + l_dst64 * 2**3;
+    // dst_offset range verified with dma_rom table
+
+    col witness bits(MAIN_STEP_BITS) main_step;
+
+    range_check(expression: h_dst64, min: 0, max: 2**22-1, sel: sel);
+
+    // 32 bit address
+    // 22 bits RC + 5 bits RC + 3 bits T
+    if (has_src) {
+        col witness bits(22) air.h_src64;
+        col witness bits(7) air.l_src64;
+        col witness bits(3) air.src_offset;
+        col witness bits(3) air.src_offset_after_pre;
+
+        col witness bits(1) air.src64_inc_by_pre;   // src64 increment after apply memcpy_pre operation
+        src64_inc_by_pre * (1 - src64_inc_by_pre) === 0;
+
+        const expr air.src = h_src64 * 2**10 + l_src64 * 2**3 + src_offset;
+        const expr air.src64 = h_src64 * 2**10 + l_src64 * 2**3;
+        if (enable_memset) {
+            (sel_memset + sel_inputcpy) * src_offset_after_pre === 0;
+        }
+
+        range_check(expression: h_src64, min: 0, max: 2**22-1, sel: sel);
+        lookup_assumes(DUAL_RANGE_7_BITS_ID, expressions: [l_src64, l_dst64], sel: sel);
+    } else {    
+        const expr air.src = 0;
+        const expr air.src64 = 0;
+        const expr air.src_offset = 0;
+        const expr air.src64_inc_by_pre = 0;
+        const expr air.src_offset_after_pre = 0;
+        range_check(expression: l_dst64, min: 0, max: 0x7F, sel: sel);
+    }
+
+    col witness bits(1) use_pre;            // use pre operation
+    col witness bits(1) use_loop;           // use loop (aligned, unaligned) operation
+    col witness bits(1) use_post;           // use post operation  
+
+    use_pre * (1 - use_pre) === 0;
+    use_loop * (1 - use_loop) === 0;
+    use_post * (1 - use_post) === 0;
+
+    col witness bits(3) pre_count;  // number of bytes of memcpy_pre operation
+    col witness bits(9) l_count64;  // number of 64 bits words in l_count after substract pre_count and post_count
+    
+    const expr post_count = count - pre_count - h_count * 256 - l_count64 * 8;
+
+    // if operation not selected then other selectors must be 0.
+    (1 - sel) * use_loop === 0;
+    (1 - sel) * use_pre === 0;
+    (1 - sel) * use_post === 0;
+
+    const expr result_nz;
+    const expr bus_result[2];
+
+    if (enable_memcmp) {
+        col witness bits(1) air.pre_result_nz;
+        col witness bits(1) air.post_result_nz;
+
+        pre_result_nz * (1 - pre_result_nz) === 0;
+        post_result_nz * (1 - post_result_nz) === 0;
+
+        pre_result_nz * post_result_nz === 0;
+
+        // previous constraint => result_nz * (1 - result_nz) === 0;
+        result_nz = pre_result_nz + post_result_nz;
+
+        col witness bits(32) air.bus_pre_result[2];
+        col witness bits(32) air.bus_post_result[2];
+
+        bus_result[0] = bus_pre_result[0] + bus_post_result[0] + dst * (1 - sel_memcmp);
+        bus_result[1] = bus_pre_result[1] + bus_post_result[1];
+
+        (bus_pre_result[0] + bus_pre_result[1]) * (bus_post_result[0] + bus_post_result[1]) === 0;
+
+        // if use_pre == 0 the pre result must be zero
+        bus_pre_result[0] * (1 - use_pre) === 0;
+        bus_pre_result[1] * (1 - use_pre) === 0;
+        pre_result_nz * (1 - use_pre) === 0;
+
+        // if use_post == 0 the post result must be zero
+        bus_post_result[0] * (1 - use_post) === 0;
+        bus_post_result[1] * (1 - use_post) === 0;
+        post_result_nz * (1 - use_post) === 0;
+
+        // if use_post == 1 the result must come from post ==> bus_result_pre must be zero
+        bus_pre_result[0] * use_post === 0;
+        bus_pre_result[1] * use_post === 0;
+        pre_result_nz * use_post === 0;
+
+        (1 - sel_memcmp) * pre_result_nz === 0;
+        (1 - sel_memcmp) * post_result_nz === 0;
+        
+        // if memcmp_result_is_zero means that bus_result must be zero
+        (1 - pre_result_nz) * bus_pre_result[0] === 0;
+        (1 - pre_result_nz) * bus_pre_result[1] === 0;
+        (1 - post_result_nz) * bus_post_result[0] === 0;
+        (1 - post_result_nz) * bus_post_result[1] === 0;
+
+        // if memcmp_result_is_zero means count and count_eq are equals
+        (1 - result_nz) * count_diff === 0;
+        result_nz * (1 - sel_memcmp) === 0;
+    } else {
+        result_nz = 0;
+        // return dst address
+        bus_result[0] = dst;
+        bus_result[1] = 0;
+        const int air.post_result_nz = 0;
+        const int air.pre_result_nz = 0;
+        const int air.bus_pre_result[2] = [0, 0];
+        const int air.bus_post_result[2] = [0, 0];
+    }
+
+    const expr flags = use_pre * DMA_ROM_USE_PRE_F + 
+                       use_loop * DMA_ROM_LOOP_F + 
+                       use_post * DMA_ROM_USE_POST_F + 
+                       src64_inc_by_pre * DMA_ROM_SRC64_INC_BY_PRE_F + 
+                       count_lt_256 * DMA_ROM_COUNT_LT_256_F + 
+                       result_nz * DMA_ROM_NEQ_F +
+                       use_src * DMA_ROM_USE_SRC_F;
+
+    lookup_assumes(DMA_ROM_ID, expressions: [dst_offset, src_offset, l_count, flags, pre_count, src_offset_after_pre, l_count64], sel: sel);
+
+    // OP_DMA_MEMSET isn't implemented because usually memset used with static value known
+    // in compilation time, and for this case we could use OP_DMA_XMEMSET. For a OP_DMA_MEMSET
+    // we will need divide two extra columns for garbage in value to send to bus, value bits 8-31 and
+    // bits 32-63, and two additional range checks (8 bits, 24 bits) is too expensive for a few
+    // values.
+
+    // OPCODES
+    // ---------------------------------------------
+    // OP_DMA_MEMCPY     0xD0    OP_DMA_XMEMCPY 0xD6
+    // OP_DMA_MEMCMP     0xD1    OP_DMA_XMEMCMP 0xD7
+    // OP_DMA_INPUTCPY   0xD2
+    //                           OP_DMA_XMEMSET 0xD9
+    //                           OP_DMA_XMEMEQ  0xDA
+                 
+
+    // BUS: DMA ===> DMA_64_ALIGNED (Definitions)
+    // BUS: DMA ===> DMA_UNALIGNED (Definitions)
+
+    const expr loop_count = h_count * 256 + l_count64 * 8;
+    const expr loop_dst = dst64 + use_pre * 8;
+    const expr loop_src = src64 + src64_inc_by_pre * 8;
+
+    expr _loop_b0 = loop_src * (sel_memcpy + sel_memcmp) + 
+                    loop_count * (sel_inputcpy + sel_memset);
+
+    if (degree(_loop_b0) > 1) {
+        col witness bits(32) air.loop_b0;
+        loop_b0 <== _loop_b0;
+    } else {
+        const expr air.loop_b0 = _loop_b0;
+    }
+
+    expr _loop_extended_arg = loop_count * (sel_memcpy + sel_memcmp) + fill_byte * sel_memset;
+
+    if (degree(_loop_extended_arg) > 1) {
+        col witness bits(32) air.loop_extended_arg;
+        loop_extended_arg <== _loop_extended_arg;
+    } else {
+        const expr air.loop_extended_arg = _loop_extended_arg;
+    }
+
+    // DMA ===> DMA_64_ALIGNED
+    // DMA ===> DMA_UNALIGNED
+    // --------------------------------------------------------------------------------
+    // OP_DMA_XMEMCPY            (dst, 0,   src, 0, 0, 0, 0, main_step, count, src_offset_after_pre)
+    // OP_DMA_INPUTCPY           (dst, 0, count, 0, 0, 0, 0, main_step, 0    , src_offset_after_pre)
+    // OP_DMA_XMEMEQ             (dst, 0,   src, 0, 0, 0, 0, main_step, count, src_offset_after_pre)
+    // OP_DMA_XMEMSET            (dst, 0, count, 0, 0, 0, 0, main_step, value, src_offset_after_pre)
+
+    assumes_operation(op: loop_op, a: [loop_dst, 0], 
+                                   b: [loop_b0, 0],  
+                                   c: [loop_dst, 0],
+                                   main_step:,
+                                   extended_arg: loop_extended_arg,
+                                   extra_args: [src_offset_after_pre], 
+                                   sel: use_loop);
+
+    // DMA ===> DMA_PRE_POST (PRE)
+    // --------------------------------------------------------------------------------
+    // OP_DMA_PRE_XMEMCPY   (dst, src, dst_offset, src_offset,  pre_count, main_step)
+    // OP_DMA_PRE_INPUTCPY  (dst, 0,   dst_offset,          0,  pre_count, main_step)
+    // OP_DMA_PRE_XMEMEQ    (dst, src, dst_offset, src_offset,  pre_count, main_step)
+    // OP_DMA_PRE_XMEMCMP   (dst, src, dst_offset, src_offset,  pre_count, main_step, 0, r_nz, R0, R1)
+    // OP_DMA_PRE_XMEMSET   (dst, 0,   dst_offset,          0,  pre_count, main_step, value)
+
+    permutation_assumes(DMA_BUS_ID, [pre_op, 
+                                     dst64, 
+                                     src64, 
+                                     dst_offset, 
+                                     src_offset, 
+                                     pre_count, 
+                                     main_step,
+                                     fill_byte,
+                                     pre_result_nz,
+                                     ...bus_pre_result
+                                    ], sel: use_pre);
+
+    // DMA ===> DMA_PRE_POST (POST)
+    // --------------------------------------------------------------------------------
+    // OP_DMA_POST_XMEMCPY  (dst, src,          0, src_offset, post_count, main_step)
+    // OP_DMA_POST_INPUTCPY (dst, 0,            0,          0, post_count, main_step)
+    // OP_DMA_POST_XMEMEQ   (dst, src,          0, src_offset, post_count, main_step)
+    // OP_DMA_POST_XMEMCMP  (dst, src,          0, src_offset, post_count, main_step, r_nz, R0, R1)
+    // OP_DMA_POST_XMEMSET  (dst, 0,            0,          0, post_count, main_step, value)
+                            
+    const expr post_dst64 = dst64 + use_pre * 8 + l_count64 * 8 + h_count * 256;
+    const expr post_src64 = src64 + src64_inc_by_pre * 8 + l_count64 * 8 + h_count * 256;
+    permutation_assumes(DMA_BUS_ID, [post_op, 
+                                     post_dst64,
+                                     post_src64,
+                                     0, 
+                                     src_offset_after_pre, 
+                                     post_count, 
+                                     main_step,
+                                     fill_byte, 
+                                     post_result_nz,
+                                     ...bus_post_result], sel: use_post);
+
+    // BUS: DMA ===> MAIN (Definitions)
+
+    if (enable_extended) {
+        col witness bits(32) air.static_count;
+        static_count <== count_bus * sel_extended;
+    } else {
+        const expr air.static_count = 0;
+    }
+
+    // BUS: DMA ===> MAIN
+    // --------------------------------------------------------------------------------
+    // OP_DMA_MEMCPY   (dst, 0, src,   0, 0,  0,  0, main_step) + MEM(count)
+    // OP_DMA_XMEMCPY  (dst, 0, src,   0, 0,  0,  0, main_step, count)
+    // OP_DMA_INPUTCPY (dst, 0, count, 0, 0,  0,  0, main_step)
+    // OP_DMA_MEMCMP   (dst, 0, src,   0, 0, R0, R1, main_step) + MEM(count)
+    // OP_DMA_XMEMCMP  (dst, 0, src,   0, 0, R0, R1, main_step, count)
+    // OP_DMA_XMEMSET  (dst, 0, count, 0, 0,  0,  0, main_step, value)
+
+    proves_operation(op: bus_op, 
+                     a: [dst, 0], 
+                     b: [src * (sel_memcpy + sel_memcmp) + count * (sel_inputcpy + sel_memset), 0], 
+                     c: bus_result,
+                     flag: 0, 
+                     main_step:, 
+                     extended_arg: static_count * (sel_memcpy + sel_memcmp) + fill_byte * sel_memset,
+                     mul: sel);
+
+    // BUS: DMA ===> MEM
+    //                     
+    // For OP_DMA_MEMCPY and OP_DMA_MEMCMP we need read the third parameter (count), to do it 
+    // we read a specific position on RAM, EXTRA_PARAM_ADDR.
+    
+    precompiled_mem_load(sel: sel_load_count_from_mem - sel_extended, 
+                         main_step:, 
+                         addr: EXTRA_PARAMS_ADDR, 
+                         value: [count_bus, 0]);
+}

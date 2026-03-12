@@ -47,11 +47,11 @@ jobs:
   test-x86_64:
     name: Test on Ubuntu x86_64
     runs-on: self-hosted
-    timeout-minutes: 120
+    timeout-minutes: 180
     container:
       image: ubuntu:22.04
       options:
-        --shm-size=32g
+        --shm-size=48g
         -v /home/gha/cache-setup:/github/home/output:rw
     defaults:
       run:
@@ -86,6 +86,8 @@ jobs:
           ./build_setup.sh
 
       - name: Test sha_hasher
+        env:
+          ZISK_TEMPLATE_BRANCH: pre-develop-0.16.0
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
@@ -98,7 +100,7 @@ jobs:
       - name: Verify Constraints Ethereum block
         env:
           DISABLE_PROVE: "1"
-          BLOCK_INPUTS: "18885301_210_24_rsp.bin"
+          BLOCK_INPUTS: "mainnet_24626900_221_16_zec_reth.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_eth_block.sh
@@ -106,7 +108,7 @@ jobs:
       - name: Prove Ethereum block
         env:
           DISABLE_ROM_SETUP: "1"
-          BLOCK_INPUTS_DISTRIBUTED: "21429020_5_0_rsp.bin"
+          BLOCK_INPUTS_DISTRIBUTED: "mainnet_24628607_66_7_zec_reth.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_eth_block.sh
@@ -114,7 +116,7 @@ jobs:
   test-macos:
     name: Test on macOS
     runs-on: macos-14
-    timeout-minutes: 15
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -140,6 +142,8 @@ jobs:
           ./build_zisk.sh
 
       - name: Test sha_hasher
+        env:
+          ZISK_TEMPLATE_BRANCH: pre-develop-0.16.0
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh

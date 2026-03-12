@@ -15,7 +15,7 @@ use crate::{
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use zisk_common::{BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, Planner};
+use zisk_common::{ComponentBuilder, Instance, InstanceCtx, Planner};
 use zisk_pil::{BinaryAddTrace, BinaryExtensionTrace, BinaryTrace};
 
 /// The `BinarySM` struct represents the Binary State Machine,
@@ -30,6 +30,8 @@ pub struct BinarySM<F: PrimeField64> {
 
     /// Binary Add state machine (optimal only for addition)
     binary_add_sm: Arc<BinaryAddSM<F>>,
+
+    std: Arc<Std<F>>,
 }
 
 impl<F: PrimeField64> BinarySM<F> {
@@ -45,9 +47,9 @@ impl<F: PrimeField64> BinarySM<F> {
 
         let binary_extension_sm = BinaryExtensionSM::new(std.clone());
 
-        let binary_add_sm = BinaryAddSM::new(std);
+        let binary_add_sm = BinaryAddSM::new(std.clone());
 
-        Arc::new(Self { binary_basic_sm, binary_extension_sm, binary_add_sm })
+        Arc::new(Self { binary_basic_sm, binary_extension_sm, binary_add_sm, std })
     }
 
     pub fn build_binary_counter(&self) -> BinaryCounter {
@@ -56,15 +58,6 @@ impl<F: PrimeField64> BinarySM<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
-    /// Builds and returns a new counter for monitoring binary operations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RegularCounters` configured for binary and extension binary
-    /// operations.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        Some(Box::new(BinaryCounter::new()))
-    }
-
     /// Builds a planner to plan binary-related instances.
     ///
     /// # Returns
@@ -82,14 +75,18 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
     /// A boxed implementation of `Instance` for binary operations.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            BinaryTrace::<F>::AIR_ID => {
-                Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), ictx))
-            }
-            BinaryExtensionTrace::<F>::AIR_ID => {
-                Box::new(BinaryExtensionInstance::new(self.binary_extension_sm.clone(), ictx))
-            }
+            BinaryTrace::<F>::AIR_ID => Box::new(BinaryBasicInstance::new(
+                self.binary_basic_sm.clone(),
+                ictx,
+                self.std.clone(),
+            )),
+            BinaryExtensionTrace::<F>::AIR_ID => Box::new(BinaryExtensionInstance::new(
+                self.binary_extension_sm.clone(),
+                ictx,
+                self.std.clone(),
+            )),
             BinaryAddTrace::<F>::AIR_ID => {
-                Box::new(BinaryAddInstance::new(self.binary_add_sm.clone(), ictx))
+                Box::new(BinaryAddInstance::new(self.binary_add_sm.clone(), ictx, self.std.clone()))
             }
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }

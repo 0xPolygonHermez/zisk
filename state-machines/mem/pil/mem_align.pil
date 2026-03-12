@@ -30,7 +30,7 @@ require "mem_align_rom.pil"
             +---+---+---+---+ +---+===+===+---+
             | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |
             +---+---+---+---+ +---+===+===+---+
-                                    |<- v ->|
+                                  |<- v ->|
 
     [R] In the first clock cycle, we perform an aligned read to w
     [W] In the second clock cycle, we compute an aligned write of v to w
@@ -41,7 +41,7 @@ require "mem_align_rom.pil"
             +---+---+---+---+ +---+===+===+===+   +===+===+===+===+ +===+---+---+---+
             | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |   | 0 | 1 | 2 | 3 | | 4 | 5 | 6 | 7 |
             +---+---+---+---+ +---+===+===+===+   +===+===+===+===+ +===+---+---+---+
-                                    |<---------------- v ---------------->|
+                                  |<---------------- v ---------------->|
 
     [R] In the first clock cycle, we perform an aligned read to w1
     [V] In the second clock cycle, we return the demanded value v from w1 and w2
@@ -89,7 +89,7 @@ require "mem_align_rom.pil"
     Notice that it is enough with 8 combinations.
 */
 
-airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM = 8, const int CHUNK_BITS = 8, const int use_predefined_ranges = 0) {
+airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM = 8, const int CHUNK_BITS = 8) {
     const int CHUNKS_BY_RC = CHUNK_NUM / RC;
 
     col witness bits(29) addr;
@@ -111,7 +111,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     //  - 'reg == reg in transitions V <- W, W <- R,
     // in any case, sel_up_to_down,sel_down_to_up are 0 in [V] steps.
     for (int i = 0; i < CHUNK_NUM; i++) {
-        range_check(reg[i], 0, 2**CHUNK_BITS-1, predefined: use_predefined_ranges);
+        range_check(reg[i], 0, 2**CHUNK_BITS-1);
 
         (reg[i]' - reg[i]) * sel[i] * sel_up_to_down === 0;
         ('reg[i] - reg[i]) * sel[i] * sel_down_to_up === 0;

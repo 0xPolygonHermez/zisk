@@ -9,6 +9,7 @@ pub struct StatsReport {
     pub label_width: usize,
     pub short_label_width: usize,
     pub label_width_stack: Vec<usize>,
+    pub use_thousands_sep: bool,
 }
 impl Default for StatsReport {
     fn default() -> Self {
@@ -26,6 +27,7 @@ impl StatsReport {
             label_width: 24,
             short_label_width: 10,
             label_width_stack: Vec::new(),
+            use_thousands_sep: true,
         }
     }
 
@@ -54,6 +56,14 @@ impl StatsReport {
         }
     }
 
+    fn format_number(&self, num: u64) -> String {
+        if self.use_thousands_sep {
+            num.to_formatted_string(&Locale::en)
+        } else {
+            num.to_string()
+        }
+    }
+
     pub fn add(&mut self, text: &str) {
         self.output += text;
     }
@@ -62,7 +72,7 @@ impl StatsReport {
             "{}{:<label_width$} {:>15}\n",
             self.identation,
             label,
-            cost.to_formatted_string(&Locale::en),
+            self.format_number(cost),
             label_width = self.label_width
         );
     }
@@ -97,7 +107,7 @@ impl StatsReport {
         self.output += &format!(
             "{}{label:<label_width$} {:>15} {:6.2}%\n",
             self.identation,
-            cost.to_formatted_string(&Locale::en),
+            self.format_number(cost),
             (cost as f64 * 100.0) / total as f64,
             label_width = self.label_width,
         );
@@ -107,7 +117,7 @@ impl StatsReport {
         self.output += &format!(
             "{}{label:<label_width$} {:>15} {:6.2}%\n",
             self.identation,
-            cost.to_formatted_string(&Locale::en),
+            self.format_number(cost),
             cost as f64 / self.cost_divisor,
             label_width = self.label_width,
         );
@@ -137,7 +147,7 @@ impl StatsReport {
         self.output += &format!(
             "{}{:>15} {:6.2}% {label}\n",
             self.identation,
-            cost.to_formatted_string(&Locale::en),
+            self.format_number(cost),
             cost as f64 / self.cost_divisor
         );
     }
@@ -147,7 +157,7 @@ impl StatsReport {
             self.output += &format!(
                 "{}{:>15} {:6.2}% {depth:2} {label}\n",
                 self.identation,
-                cost.to_formatted_string(&Locale::en),
+                self.format_number(cost),
                 cost as f64 / self.cost_divisor
             );
             return;
@@ -155,7 +165,7 @@ impl StatsReport {
         self.output += &format!(
             "{}{:>15} {:6.2}%    {label}\n",
             self.identation,
-            cost.to_formatted_string(&Locale::en),
+            self.format_number(cost),
             cost as f64 / self.cost_divisor
         );
     }
@@ -164,9 +174,9 @@ impl StatsReport {
         self.output += &format!(
             "{}{:>15} {:6.2}% {:>10} {label}\n",
             self.identation,
-            cost.to_formatted_string(&Locale::en),
+            self.format_number(cost),
             cost as f64 / self.cost_divisor,
-            calls.to_formatted_string(&Locale::en)
+            self.format_number(calls as u64)
         );
     }
 
@@ -174,9 +184,9 @@ impl StatsReport {
         self.output += &format!(
             "{}{:>15} {:6.2}% {:>10} {label}\n",
             self.identation,
-            steps.to_formatted_string(&Locale::en),
+            self.format_number(steps),
             steps as f64 / self.step_divisor,
-            calls.to_formatted_string(&Locale::en)
+            self.format_number(calls as u64)
         );
     }
 
@@ -184,7 +194,7 @@ impl StatsReport {
         self.output += &format!(
             "{}{:>15} {:6.2}% {label}\n",
             self.identation,
-            cost.to_formatted_string(&Locale::en),
+            self.format_number(cost),
             cost as f64 / self.step_divisor
         );
     }
@@ -194,7 +204,7 @@ impl StatsReport {
             self.output += &format!(
                 "{}{:>15} {:6.2}% {depth:2} {label}\n",
                 self.identation,
-                cost.to_formatted_string(&Locale::en),
+                self.format_number(cost),
                 cost as f64 / self.step_divisor
             );
             return;
@@ -202,7 +212,7 @@ impl StatsReport {
         self.output += &format!(
             "{}{:>15} {:6.2}%    {label}\n",
             self.identation,
-            cost.to_formatted_string(&Locale::en),
+            self.format_number(cost),
             cost as f64 / self.step_divisor
         );
     }
@@ -219,8 +229,8 @@ impl StatsReport {
         self.output += &format!(
             "{}{:>15} {:>15} {:6.2}% {label}\n",
             self.identation,
-            count.to_formatted_string(&Locale::en),
-            step.to_formatted_string(&Locale::en),
+            self.format_number(count),
+            self.format_number(step),
             step as f64 / self.step_divisor
         );
     }
@@ -243,8 +253,34 @@ impl StatsReport {
             "{}{:<label_width$} {:>15} {:>15} {:6.2}%{comment}\n",
             self.identation,
             label,
-            count.to_formatted_string(&Locale::en),
-            cost.to_formatted_string(&Locale::en),
+            self.format_number(count),
+            self.format_number(cost),
+            cost as f64 / self.cost_divisor,
+            label_width = self.label_width,
+        );
+    }
+
+    pub fn title_count_cost_perc2(
+        &mut self,
+        label: &str,
+        count_label: &str,
+        cost_label: &str,
+        comment: &str,
+    ) {
+        self.line_from_title(&format!(
+            "{label:<label_width$} {count_label:>15}       % {cost_label:>15}       %{comment}",
+            label_width = self.label_width,
+        ));
+    }
+
+    pub fn add_count_cost_perc2(&mut self, label: &str, count: u64, cost: u64, comment: &str) {
+        self.output += &format!(
+            "{}{:<label_width$} {:>15} {:6.2}% {:>15} {:6.2}%{comment}\n",
+            self.identation,
+            label,
+            self.format_number(count),
+            count as f64 / self.step_divisor,
+            self.format_number(cost),
             cost as f64 / self.cost_divisor,
             label_width = self.label_width,
         );
@@ -276,9 +312,9 @@ impl StatsReport {
             "{}{:<label_width$} {:>15} {:6.2}% {:>15} {:6.2}%{comment}\n",
             self.identation,
             label,
-            count.to_formatted_string(&Locale::en),
+            self.format_number(count),
             perc,
-            cost.to_formatted_string(&Locale::en),
+            self.format_number(cost),
             cost as f64 / self.cost_divisor,
             label_width = self.label_width,
         );
@@ -320,16 +356,16 @@ impl StatsReport {
             "{}{:<label_width$} {:>10} {:>10} {:>15} {:6.2}% {:>15} {:6.2}% {:>15} {:>15} {:>15} {:>15}{comment}\n",
             self.identation,
             label,
-            index.to_formatted_string(&Locale::en),
-            count.to_formatted_string(&Locale::en),
-            step.to_formatted_string(&Locale::en),
+            self.format_number(index as u64),
+            self.format_number(count),
+            self.format_number(step),
             step as f64 / self.step_divisor,
-            cost.to_formatted_string(&Locale::en),
+            self.format_number(cost),
             cost as f64 / self.cost_divisor,
-            cost_main.to_formatted_string(&Locale::en),
-            cost_ops.to_formatted_string(&Locale::en),
-            cost_precomp.to_formatted_string(&Locale::en),
-            cost_mem.to_formatted_string(&Locale::en),
+            self.format_number(cost_main),
+            self.format_number(cost_ops),
+            self.format_number(cost_precomp),
+            self.format_number(cost_mem),
             label_width = self.label_width,
         );
     }

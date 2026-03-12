@@ -1,13 +1,13 @@
-use crate::{commands::cli_fail_if_gpu_mode, ux::print_banner};
+use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use anyhow::Result;
 
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
+use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::io::ZiskStdin;
-#[cfg(feature = "stats")]
-use zisk_common::ExecutorStatsEvent;
+use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::ElfBinaryFromFile;
 use zisk_sdk::{ProverClient, ZiskVerifyConstraintsResult};
 
 #[derive(Parser)]
@@ -20,10 +20,6 @@ use zisk_sdk::{ProverClient, ZiskVerifyConstraintsResult};
         .required(false)
 ))]
 pub struct ZiskVerifyConstraints {
-    /// Witness computation dynamic library path
-    #[clap(short = 'w', long)]
-    pub witness_lib: Option<PathBuf>,
-
     /// ROM file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
@@ -40,8 +36,12 @@ pub struct ZiskVerifyConstraints {
     pub emulator: bool,
 
     /// Input path
-    #[clap(short = 'i', long)]
-    pub input: Option<PathBuf>,
+    #[clap(short = 'i', long, alias = "input", conflicts_with = "hints")]
+    pub inputs: Option<String>,
+
+    /// Precompiles Hints path
+    #[clap(short = 'H', long, conflicts_with = "inputs")]
+    pub hints: Option<String>,
 
     /// Setup folder path
     #[clap(short = 'k', long)]
@@ -63,6 +63,14 @@ pub struct ZiskVerifyConstraints {
     #[clap(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
+    /// Redirect ASM emulator output to file
+    /// This option is mutually exclusive with `--emulator`
+    #[clap(long, conflicts_with = "emulator", default_value_t = false)]
+    pub asm_out_file: bool,
+
+    #[clap(short = 'n', long, default_value_t = false)]
+    pub no_auto_setup: bool,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
@@ -76,72 +84,114 @@ pub struct ZiskVerifyConstraints {
 
 impl ZiskVerifyConstraints {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_gpu_mode()?;
+        // panic::set_hook(Box::new(|panic_info| {
+        //     eprintln!("\x1B[31mPANIC DETECTED");
+        //     eprintln!("{} at {:?}", panic_info, panic_info.location());
+
+        //     // Backtrace
+        //     let bt = std::backtrace::Backtrace::force_capture();
+        //     eprintln!("Backtrace:\n{}", bt);
+
+        //     std::process::exit(101);
+        // }));
+
+        // Check if the deprecated alias was used
+        if std::env::args().any(|arg| arg == "--input") {
+            eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
+        }
 
         print_banner();
 
-        let stdin = self.create_stdin()?;
+        print_banner_command("Verify Constraints");
 
-        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
-        let result = if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin)? };
+        print_banner_field("Elf", self.elf.display());
 
-        tracing::info!("");
-        tracing::info!(
+        let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
+        print_banner_field("Input", inputs_str);
+
+        if let Some(hints) = &self.hints {
+            print_banner_field("Prec. Hints", hints);
+        }
+
+        let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
+
+        let hints_stream = match self.hints.as_ref() {
+            Some(uri) => {
+                let stream = StreamSource::from_uri(uri)?;
+                if matches!(stream, StreamSource::Quic(_)) {
+                    anyhow::bail!("QUIC hints source is not supported in CLI mode.");
+                }
+                Some(stream)
+            }
+            None => None,
+        };
+
+        let emulator = if cfg!(target_os = "macos") {
+            if !self.emulator {
+                warn!("Emulator mode is forced on macOS due to lack of ASM support.");
+            }
+            true
+        } else {
+            self.emulator
+        };
+
+        let result =
+            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
+
+        info!(
             "{}",
             "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
         );
-        tracing::info!("    ► Statistics");
-        tracing::info!(
-            "      time: {:.2} seconds, steps: {}",
-            result.duration.as_secs_f32(),
-            result.execution.executed_steps
+        print_execution_summary(
+            &result.executor_summary.executor_time,
+            result.duration,
+            result.executor_summary.steps,
         );
 
         Ok(())
-    }
-
-    fn create_stdin(&mut self) -> Result<ZiskStdin> {
-        let stdin = if let Some(input) = &self.input {
-            if !input.exists() {
-                return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
-            }
-            ZiskStdin::from_file(input)?
-        } else {
-            ZiskStdin::null()
-        };
-        Ok(stdin)
     }
 
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
         let prover = ProverClient::builder()
             .emu()
             .verify_constraints()
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .print_command_info()
             .build()?;
 
-        prover.verify_constraints_debug(stdin, self.debug.clone())
+        let elf = ElfBinaryFromFile::new(&self.elf, false)?;
+        let (pk, _) = prover.setup(&elf)?;
+
+        prover.verify_constraints_debug(&pk, stdin, self.debug.clone())
     }
 
-    pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
+    pub fn run_asm(
+        &mut self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<ZiskVerifyConstraintsResult> {
         let prover = ProverClient::builder()
             .asm()
             .verify_constraints()
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
+            .no_auto_setup(self.no_auto_setup)
             .base_port_opt(self.port)
             .unlock_mapped_memory(self.unlock_mapped_memory)
+            .asm_out_file(self.asm_out_file)
             .print_command_info()
             .build()?;
 
-        prover.verify_constraints_debug(stdin, self.debug.clone())
+        let elf = ElfBinaryFromFile::new(&self.elf, hints_stream.is_some())?;
+        let (pk, _) = prover.setup(&elf)?;
+
+        if let Some(hints_stream) = hints_stream {
+            pk.register_hints_stream(hints_stream)?;
+        }
+        prover.verify_constraints_debug(&pk, stdin, self.debug.clone())
     }
 }

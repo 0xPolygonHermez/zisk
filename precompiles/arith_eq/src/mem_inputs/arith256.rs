@@ -1,8 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Arith256;
-use std::collections::VecDeque;
-use zisk_common::BusId;
-use zisk_common::MemCollectorInfo;
+use precompiles_common::MemProcessor;
 
 pub const ARITH_256_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 5,
@@ -12,17 +10,17 @@ pub const ARITH_256_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     chunks_per_param: 4,
 };
 
-pub fn generate_arith256_mem_inputs(
+pub fn generate_arith256_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    mem_processors: &mut P,
 ) {
     // op,op_type,a,b,addr[5],...
-    let a: &[u64; 4] = &data[9..13].try_into().unwrap();
-    let b: &[u64; 4] = &data[13..17].try_into().unwrap();
-    let c: &[u64; 4] = &data[17..21].try_into().unwrap();
+    let a: &[u64; 4] = &data[10..14].try_into().unwrap();
+    let b: &[u64; 4] = &data[14..18].try_into().unwrap();
+    let c: &[u64; 4] = &data[18..22].try_into().unwrap();
     // let mut dh = [0u64; 4];
     // let mut dl = [0u64; 4];
     let mut d: [u64; 8] = [0u64; 8];
@@ -38,15 +36,15 @@ pub fn generate_arith256_mem_inputs(
         data,
         Some(&d),
         only_counters,
-        pending,
+        mem_processors,
         &ARITH_256_MEM_CONFIG,
     );
 }
 
-pub fn skip_arith256_mem_inputs(
+pub fn skip_arith256_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     data: &[u64],
-    mem_collectors_info: &[MemCollectorInfo],
+    mem_processors: &mut P,
 ) -> bool {
-    super::skip_mem_inputs(addr_main, data, &ARITH_256_MEM_CONFIG, mem_collectors_info)
+    super::skip_mem_inputs(addr_main, data, &ARITH_256_MEM_CONFIG, mem_processors)
 }

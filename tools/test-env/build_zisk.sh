@@ -115,11 +115,19 @@ main() {
     step  "Building ZisK tools..."
     ensure cargo clean || return 1
     ensure cargo update || return 1
-    BUILD_FEATURES=""
+
+    # We build features in that way to be ready to support more feature in the future
+    FEATURES=()
     if [[ "${BUILD_GPU}" == "1" ]]; then
-        BUILD_FEATURES="--features gpu"
+        FEATURES+=("gpu")
         warn "Building with GPU support..."
     fi
+
+    BUILD_FEATURES=""
+    if (( ${#FEATURES[@]} > 0 )); then
+        BUILD_FEATURES="--features $(IFS=,; echo "${FEATURES[*]}")"
+    fi
+
     if ! (cargo build --release --target ${TARGET} ${BUILD_FEATURES}); then
         warn "Build failed. Trying to fix missing stddef.h..."
 
@@ -162,7 +170,6 @@ main() {
         LIB_EXT="dylib"
     fi
 
-    ensure cp target/${TARGET}/release/libzisk_witness.${LIB_EXT} "${ZISK_BIN_DIR}" || return 1
     ensure cp ziskup/ziskup "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/libziskclib.a "${ZISK_BIN_DIR}" || return 1
 

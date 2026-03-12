@@ -12,6 +12,7 @@
 //! User configuration -------> EmuOptions /
 //! ```
 
+mod disasm;
 mod elf_symbol_reader;
 mod emu;
 mod emu_context;
@@ -31,6 +32,7 @@ mod stats_costs;
 pub mod stats_coverage_report;
 pub mod stats_report;
 
+pub use disasm::*;
 pub use elf_symbol_reader::*;
 pub use emu::*;
 pub use emu_context::*;

@@ -1,8 +1,7 @@
-require "std_permutation.pil"
-require "std_lookup.pil"
-require "std_range_check.pil"
-require "opids.pil"
-require "dual_byte.pil"
+require "std_permutation.pil";
+require "std_lookup.pil";
+require "std_range_check.pil";
+require "opids.pil";
 
 // Specific low cost machine for specific byte unaligned memory access.
 
@@ -102,7 +101,7 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
     }
 
     range_check(min: 0, max: 0xFFFF, expression: value_16b);
-    lookup_assumes(DUAL_BYTE_TABLE_ID, [byte_value, value_8b]);
+    range_dual_byte(byte_value, value_8b);
 
     airval padding_size;
     direct_update_proves(MEMORY_ID, [MEMORY_LOAD_OP, 0, 0, 8, 0, 0], sel: padding_size);

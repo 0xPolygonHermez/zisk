@@ -1,5 +1,7 @@
 use memmap2::Mmap;
+use object::elf::STT_GNU_IFUNC;
 use object::{elf::STT_FUNC, Object, ObjectSymbol, Symbol, SymbolFlags, SymbolKind};
+use regex::Regex;
 
 use std::fs::File;
 use std::io::Result;
@@ -9,11 +11,13 @@ pub struct SymbolInfo {
     pub name: String,
     pub address: u64,
     pub size: u64,
+    pub is_selected_roi: bool,
 }
 
 pub struct ElfSymbolReader {
     functions: Vec<SymbolInfo>,
     profile_tags: Vec<(u16, String)>,
+    roi_filter: Option<Regex>,
 }
 
 impl Default for ElfSymbolReader {
@@ -23,7 +27,13 @@ impl Default for ElfSymbolReader {
 }
 impl ElfSymbolReader {
     pub fn new() -> Self {
-        Self { functions: Vec::new(), profile_tags: Vec::new() }
+        Self { functions: Vec::new(), profile_tags: Vec::new(), roi_filter: None }
+    }
+
+    /// Sets a regex filter to mark matching symbols as ROI
+    pub fn set_roi_filter(&mut self, pattern: &str) -> std::result::Result<(), regex::Error> {
+        self.roi_filter = Some(Regex::new(pattern)?);
+        Ok(())
     }
 
     pub fn load_from_file(&mut self, path: &str) -> Result<()> {
@@ -48,11 +58,17 @@ impl ElfSymbolReader {
             if let Ok(name) = symbol.name() {
                 if !name.is_empty() {
                     if let SymbolFlags::Elf { st_info, .. } = symbol.flags() {
-                        if (st_info & STT_FUNC) != 0 {
+                        let st_type = st_info & 0x0f;
+                        if st_type == STT_FUNC || st_type == STT_GNU_IFUNC {
                             let name = self.demangle_name(name);
                             let address = symbol.address();
                             let size = symbol.size();
-                            let symbol_info = SymbolInfo { name, address, size };
+                            let is_selected_roi = self
+                                .roi_filter
+                                .as_ref()
+                                .map(|re| re.is_match(&name))
+                                .unwrap_or(false);
+                            let symbol_info = SymbolInfo { name, address, size, is_selected_roi };
                             self.functions.push(symbol_info);
                         }
                     }
@@ -104,5 +120,15 @@ impl ElfSymbolReader {
     /// Returns an iterator over all functions
     pub fn functions(&self) -> impl Iterator<Item = &SymbolInfo> {
         self.functions.iter()
+    }
+
+    /// Returns an iterator over all ROI functions (those matching the filter)
+    pub fn roi_functions(&self) -> impl Iterator<Item = &SymbolInfo> {
+        self.functions.iter().filter(|s| s.is_selected_roi)
+    }
+
+    /// Returns the symbol at the given address, if it exists
+    pub fn get_symbol_at_address(&self, address: u64) -> Option<&SymbolInfo> {
+        self.functions.iter().find(|s| s.address == address)
     }
 }

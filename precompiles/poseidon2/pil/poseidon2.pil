@@ -1,0 +1,263 @@
+require "std_lookup.pil"
+require "operations.pil"
+require "opids.pil"
+require "poseidon2_constants.pil"
+
+// Precompile in charge of performing the Poseidon2 permutation.
+// For reference: https://eprint.iacr.org/2023/323.pdf
+
+
+airtemplate Poseidon2(const int N = 2**17) {
+    const int n = 16;
+
+    // Compute some stats
+    const int CLOCKS = 14;
+
+    const int NUM_NON_USABLE_ROWS = N % CLOCKS;
+    const int NUM_POSEIDON2;
+    if (NUM_NON_USABLE_ROWS == 0) {
+        // N is perfectly divisible by CLOCKS
+        if (N < CLOCKS) {
+            error(`N must be at least ${CLOCKS} to fit the Poseidon2 arithmetization, but received N=${N}`);
+        }
+
+        NUM_POSEIDON2 = N / CLOCKS;
+    } else {
+        // N is not divisible by CLOCKS
+        if (N < 2*CLOCKS) {
+            error(`N must be at least ${2*CLOCKS} to fit the Poseidon2 arithmetization, but received N=${N}`);
+        }
+
+        // Subtract 1 because we can't fit a complete cycle in the remaining rows
+        NUM_POSEIDON2 = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1;
+    }
+
+    col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_POSEIDON2, 0...];
+
+    const expr CLK[CLOCKS];
+    for (int i = 0; i < CLOCKS; i++) {
+        CLK[i] = (i)'CLK_0;
+    }
+
+    const expr r0 = 'CLK_0;
+    const expr r1 = (2)'CLK_0;
+    const expr r2 = (3)'CLK_0;
+    const expr r3 = (4)'CLK_0;
+    const expr r4 = (5)'CLK_0;
+    const expr p1 = (6)'CLK_0;
+    const expr r15 = (7)'CLK_0;
+    const expr p2 = (8)'CLK_0;
+    const expr r26 = (9)'CLK_0;
+    const expr r27 = (10)'CLK_0;
+    const expr r28 = (11)'CLK_0;
+    const expr r29 = (12)'CLK_0;
+
+    const expr full_round = r0 + r1 + r2 + r3 + r26 + r27 + r28 + r29;
+
+    // Define the clock selectors
+    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Poseidon2 operation, 0 otherwise
+    col witness bits(1) in_use;       // 1 when the Poseidon2 operation is in use, 0 otherwise
+
+    in_use_clk_0 * (1 - in_use_clk_0) === 0;
+    in_use * (1 - in_use) === 0;
+
+    in_use_clk_0 - CLK_0 * in_use === 0; // This constraint is two-fold:
+                                         //   · in_use_clk_0 can only be active when CLK_0 is active
+                                         //   · if in_use is active then so is in_use_clk_0
+
+    const expr in_use_active = clock_set(start: 1, end: CLOCKS);
+    in_use_active * (in_use - 'in_use) === 0; // selector latching
+
+    // --> Constraints to assert the Poseidon2 permutation
+
+    // Poseidon2 state represented as a 1D array of elements of 64 bits, represented in two limbs of 32 bits each
+    col witness bits(32) chunks[n][2];
+   
+    const expr prev_state[n];
+    const expr state[n];
+    const expr next_state[n];
+    for (int i = 0; i < n; i++) {
+        prev_state[i] = 'chunks[i][1] * 2**32 + 'chunks[i][0];
+        state[i] = chunks[i][1] * 2**32 + chunks[i][0];
+        next_state[i] = chunks[i][1]' * 2**32 + chunks[i][0]';
+    }
+
+    poseidonFullRound(n, state, next_state, in_use_clk_0);
+
+    const expr state_7[n];
+    const expr rc[n];
+    const expr im_values[11];
+    const expr im_values_7[11];
+    for (int i = 0; i < n; i++) {
+        rc[i] = r0 * RC_16[i] + r1 * RC_16[i + n] + r2 * RC_16[i + 2*n] + r3 * RC_16[i + 3*n] + p1 * RC_16[i + 4*n] + p2 * RC_16[i + 4*n + 11] + r26 * RC_16[i + 4*n + 22] + r27 * RC_16[i + 5*n + 22] + r28 * RC_16[i + 6*n + 22] + r29 * RC_16[i + 7*n + 22];
+        state_7[i] = pow7(state[i] + rc[i]);
+        if (i < 11) {
+            im_values[i] = state[i];
+            im_values_7[i] = state_7[i];
+        }
+    }
+    
+    poseidonFullRound(n, state_7, next_state, full_round);
+
+    poseidonPartialRound(n, 11, prev_state, next_state, im_values, im_values_7, D_16, p1 + p2);
+
+    // --> Constraints to read inputs from memory and write outputs to memory
+    /*
+        MEMORY ACCESS MAP
+        =====================================================================================
+            0    | STEP_MAIN     | R | ADDR_STATE             |  input_state[0] 
+            1    | STEP_MAIN     | R | ADDR_STATE + 8         |  input_state[1]  
+            2    | STEP_MAIN     | R | ADDR_STATE + 16        |  input_state[2]      
+            .    |    ...        | . |    ...                 |     ...     
+          n - 1  | STEP_MAIN     | R | ADDR_STATE + (n - 1)*8 |  input_state[n-1]
+            n    | STEP_MAIN + 1 | W | ADDR_STATE             |  output_state[0]  
+          n + 1  | STEP_MAIN + 1 | W | ADDR_STATE + 8         |  output_state[1]
+          n + 2  | STEP_MAIN + 1 | W | ADDR_STATE + 16        |  output_state[2]    
+            .    |    ...        | . |    ...                 |     ...     
+         2*n - 1 | STEP_MAIN + 1 | . | ADDR_STATE + (n - 1)*8 |  output_state[n-1]
+        =====================================================================================
+    */
+    col witness bits(40) step_addr; 
+
+    const int STEP_MAIN = 0;
+    const int ADDR_STATE = STEP_MAIN + 1;
+
+    const int MEM_OPS = n * 64;
+    const int MEM_OPS_PARALLEL = n / 4;
+
+    const expr mem_sel = clock_set(in_use, start: 0, end: 4) + clock_set(in_use, start: CLOCKS - 4, end: CLOCKS);
+
+    const expr mem_is_write = clock_set(start: CLOCKS - 4, end: CLOCKS);
+
+    const expr main_step = clock_shift(step_addr, STEP_MAIN, start: 0, end: 4) + clock_shift(step_addr, STEP_MAIN, start: CLOCKS - 4, end: CLOCKS);
+
+    for (int i = 0; i < MEM_OPS_PARALLEL; i++) {
+        const expr mem_addr = clock_shift(step_addr, ADDR_STATE, start: 0, end: 4, offset: 8*i, delta: 8 * 4) + clock_shift(step_addr, ADDR_STATE, start: CLOCKS - 4, end: CLOCKS, offset: 8*i, delta: 8 * 4);
+
+        expr mem_value[2];
+        mem_value[0] = 0;
+        mem_value[1] = 0;
+
+        // Reads
+        for(int j = 0; j < 4; j++) {
+            mem_value[0] += (j)'CLK_0 * (j)'chunks[MEM_OPS_PARALLEL*j + i][0];
+            mem_value[1] += (j)'CLK_0 * (j)'chunks[MEM_OPS_PARALLEL*j + i][1];
+        }
+
+        // Writes
+        for(int j = 0; j < 4; j++) {
+            mem_value[0] += (CLOCKS - 4 + j)'CLK_0 * chunks[MEM_OPS_PARALLEL*j + i][0]'(3 - j);
+            mem_value[1] += (CLOCKS - 4 + j)'CLK_0 * chunks[MEM_OPS_PARALLEL*j + i][1]'(3 - j);
+        }
+
+        precompiled_mem_op(
+            sel: mem_sel,
+            is_write: mem_is_write,
+            main_step: main_step,
+            addr: mem_addr,
+            value: mem_value
+        );
+    }
+
+
+    // --> Constraints to make sure that this coprocessor is called from the main processor
+    proves_operation(op: OP_POSEIDON2, b: [step_addr'(ADDR_STATE), 0], main_step: step_addr'(STEP_MAIN), mul: in_use_clk_0);
+
+    function clock_set(const expr mvcol = 1, const int start = 0, int end = -1): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start;
+        }
+        for (int i = start; i < end; i++) {
+            result += air.CLK[i];
+        }
+        return result * mvcol;
+    }
+
+    function clock_shift(const expr mvcol, const int pos, const int start = 0, int end = -1, int offset = 0,  const int delta = 0): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start + 1;
+        }
+        for (int i = start; i < end; i++) {
+            const int iclock = (pos - i) % air.CLOCKS;
+            if (offset != 0) {
+                result += air.CLK[i] * (mvcol'(iclock) + offset);
+            } else {
+                result += air.CLK[i] * mvcol'(iclock);
+            }
+            offset += delta;
+        }
+        return result;
+    }
+
+    function pow7(const expr input): const expr {
+        const expr input3 = input * input * input;
+        const expr input6 = input3 * input3;
+        return input6 * input;
+    }
+
+    function poseidonFullRound(const int n, const expr input[], const expr output[], const expr sel) {
+        const expr mat[n];
+
+        const expr t0[n/4], t1[n/4], t2[n/4], t3[n/4];
+        for (int i = 0; i < n/4; i++) {
+            t0[i] = input[4*i] + input[4*i + 1];
+            t1[i] = input[4*i + 2] + input[4*i + 3];
+            t2[i] = 2*input[4*i + 1] + t1[i];
+            t3[i] = 2*input[4*i + 3] + t0[i];
+            
+            mat[4*i + 3] = 4*t1[i] + t3[i];
+            mat[4*i + 1] = 4*t0[i] + t2[i];
+            mat[4*i] = t3[i] + mat[4*i + 1];
+            mat[4*i + 2] = t2[i] + mat[4*i + 3];
+        
+        }
+
+        expr stored[n/4];
+        for (int i = 0; i < n/4; ++i) {
+            stored[i] = 0;
+        }
+        
+        for (int i = 0; i < n/4; i++) {
+            for (int j = 0; j < 4; j++) {
+                stored[j] += mat[4*i + j];
+            }
+        }
+
+        for (int i = 0; i < n; i++) {
+            sel * (output[i] -  (mat[i] + stored[i%4])) === 0;
+        }
+    }
+
+    function poseidonPartialRound(const int n, const int rounds, const expr input[], const expr output[], const expr st0[], const expr intermediateValues[], const int D[], const expr sel) {
+        const expr sR[rounds + 1][n];
+        const expr sum_partial[rounds];
+        for (int i = 0; i < n; ++i) {
+            sR[0][i] = input[i];
+        }
+
+        for (int i = 0; i < rounds; i++) {
+            sel * (st0[i] - sR[i][0]) === 0;
+            sum_partial[i] = partial_sum(n, sR[i], intermediateValues[i]);
+            
+            sR[i+1][0] = intermediateValues[i] * D[0] + sum_partial[i];
+            for (int j = 1; j < n; j++) {
+                sR[i+1][j] = sR[i][j] * D[j] + sum_partial[i];
+            }
+        }
+
+        for (int i = 0; i < n; i++) {
+            sel * (output[i] - sR[rounds][i]) === 0;
+        }
+    }
+
+    function partial_sum(const int n, const expr sR[], const expr intermediateValue) : const expr {
+        const expr res[n-1];
+        res[0] = intermediateValue + sR[1];
+        for (int i = 2; i < n; i++) {
+            res[i - 1] = res[i - 2] + sR[i];
+        }
+        return res[n-2];
+    }
+}

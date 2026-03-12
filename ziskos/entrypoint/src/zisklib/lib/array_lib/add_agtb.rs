@@ -11,7 +11,12 @@ use super::U256;
 ///
 /// # Returns
 /// The number of limbs in the result
-pub fn add_agtb(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
+pub fn add_agtb(
+    a: &[U256],
+    b: &[U256],
+    out: &mut [U256],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> usize {
     let len_a = a.len();
     let len_b = b.len();
     #[cfg(debug_assertions)]
@@ -33,7 +38,11 @@ pub fn add_agtb(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
         cin: 0,
         c: out[0].as_limbs_mut(),
     };
-    let mut carry = syscall_add256(&mut params);
+    let mut carry = syscall_add256(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
     for i in 1..len_b {
         // Compute a[i] + b[i] + carry
@@ -43,7 +52,11 @@ pub fn add_agtb(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
             cin: carry,
             c: out[i].as_limbs_mut(),
         };
-        carry = syscall_add256(&mut params);
+        carry = syscall_add256(
+            &mut params,
+            #[cfg(feature = "hints")]
+            hints,
+        );
     }
 
     for i in len_b..len_a {
@@ -55,7 +68,11 @@ pub fn add_agtb(a: &[U256], b: &[U256], out: &mut [U256]) -> usize {
                 cin: 1,
                 c: out[i].as_limbs_mut(),
             };
-            carry = syscall_add256(&mut params);
+            carry = syscall_add256(
+                &mut params,
+                #[cfg(feature = "hints")]
+                hints,
+            );
         } else {
             // Directly copy a[i] to out[i]
             out[i] = a[i];

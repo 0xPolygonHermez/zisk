@@ -17,13 +17,33 @@ pub struct ZiskBuild {
 
     #[clap(long)]
     no_default_features: bool,
+
+    #[arg(short, long)]
+    name: Option<String>,
+
+    #[clap(short = 'z', long)]
+    zisk_path: Option<String>,
+
+    #[clap(long)]
+    hints: bool,
 }
 
 impl ZiskBuild {
     pub fn run(&self) -> Result<()> {
         // Construct the cargo run command
+        let toolchain_name = if let Some(name) = self.name.as_deref() {
+            println!("using toolchain_name: {name}");
+            name
+        } else {
+            "zisk"
+        };
         let mut command = Command::new("cargo");
-        command.args(["+zisk", "build"]);
+        command.args([&format!("+{toolchain_name}"), "build"]);
+
+        // Set RUSTFLAGS for target-cpu=zisk, preserving existing flags
+        let flags = std::env::var("RUSTFLAGS").unwrap_or_default();
+        command.env("RUSTFLAGS", flags.trim());
+
         // Add the feature selection flags
         if let Some(features) = &self.features {
             command.arg("--features").arg(features);

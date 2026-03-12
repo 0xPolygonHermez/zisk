@@ -1,0 +1,43 @@
+require "std_lookup.pil"
+
+// this table not includes the equal values
+const int DMA_BYTE_CMP_TABLE_SIZE = P2_8 * (P2_8 - 1);
+
+airtemplate DmaByteCmpTable(int N = DMA_BYTE_CMP_TABLE_SIZE) {
+    col fixed BYTE = [0:255..255:255];
+    col fixed IS_NEG;
+    col fixed BYTE_DIFF;
+
+    int index = 0;
+    #pragma transpile
+    for (int byte = 0; byte < P2_8; ++byte) {
+        for (int byte2 = 0; byte2 < byte; ++byte2) {
+            IS_NEG[index] = 0;
+            BYTE_DIFF[index] = byte - byte2;
+            ++index;
+        }
+        for (int byte2 = byte+1; byte2 < P2_8; ++byte2) {
+            IS_NEG[index] = 1;
+            BYTE_DIFF[index] = byte2 - byte;
+            ++index;
+        }
+    }
+
+    assert_eq(index, N);
+    
+    // for (int byte = 0; byte < P2_8; ++byte) {
+    //     for (int byte2 = 0; byte2 < P2_8; ++byte2) {
+    //         if (byte == byte2) continue;
+    //         const int is_neg = byte2 > byte ? 1 : 0;
+    //         const int row = byte * 255 + byte2 - is_neg;
+    //         const int byte_diff = byte2 > byte ? (byte2 - byte) : (byte - byte2);
+    //         assert(BYTE[row] == byte, `FAIL BYTE[${row}] byte:${byte} byte2:${byte2}`);
+    //         assert_eq(BYTE[row], byte, `FAIL BYTE[${row}] byte:${byte} byte2:${byte2}`);
+    //         assert_eq(IS_NEG[row], is_neg, `FAIL IS_NEG[${row}] byte:${byte} byte2:${byte2}`);
+    //         assert_eq(BYTE_DIFF[row], byte_diff, `FAIL BYTE_DIFF[${row}] byte:${byte} byte2:${byte2}`);
+    //     }
+    // }
+
+    col witness multiplicity;
+    lookup_proves(DMA_BYTE_CMP_TABLE_ID, mul: multiplicity, expressions: [BYTE, IS_NEG, BYTE_DIFF]);
+}

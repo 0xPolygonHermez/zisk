@@ -2,6 +2,9 @@
 #include "../common/utils.hpp"
 #include "../bn254/bn254_fe.hpp"
 #include "../bls12_381/bls12_381_fe.hpp"
+#include "../bls12_381/bls12_381.hpp"
+#include "../ec/ec.hpp"
+#include "../secp256r1/secp256r1.hpp"
 #include <stdint.h>
 #include <assert.h>
 
@@ -96,6 +99,21 @@ int Fcall (
         case FCALL_BIN_DECOMP_ID:
         {
             iresult = BinDecompCtx(ctx);
+            break;
+        }
+        case FCALL_BLS12_381_FP2_SQRT_ID:
+        {
+            iresult = BLS12_381Fp2SqrtCtx(ctx);
+            break;
+        }
+        case FCALL_SECP256K1_ECDSA_VERIFY_ID:
+        {
+            iresult = Secp256k1EcdsaVerifyCtx(ctx);
+            break;
+        }
+        case FCALL_SECP256R1_ECDSA_VERIFY_ID:
+        {
+            iresult = Secp256r1EcdsaVerifyCtx(ctx);
             break;
         }
         default:
@@ -295,19 +313,28 @@ int MsbPos256 (
           uint64_t * r  // 2 x 64 bits
 )
 {
-    const uint64_t * x = a;
-    const uint64_t * y = &a[4];
+    const uint64_t n = a[0]; // number of inputs
+    const uint64_t * params = &a[1];
 
-    for (int i=3; i>=0; i--)
+    for (int limb=3; limb>=0; limb--)
     {
-        if ((x[i] != 0) || (y[i] != 0))
+        // Find max value at this limb position across all inputs
+        uint64_t max_word = 0;
+        for (uint64_t i=0; i<n; i++)
         {
-            uint64_t word = x[i] > y[i] ? x[i] : y[i];
-            r[0] = i;
-            r[1] = msb_pos(word);
+            uint64_t word = params[i * 4 + limb];
+            if (word > max_word) {
+                max_word = word;
+            }
+        }
+        if (max_word != 0)
+        {
+            r[0] = limb;
+            r[1] = msb_pos(max_word);
             return 0;
         }
     }
+
     printf("MsbPos256() error: both x and y are zero\n");
     exit(-1);
 }
@@ -598,7 +625,7 @@ int BLS12_381FpSqrt (
     {
         // To check that a is indeed a non-quadratic residue, we check that
         // a * NQR is a quadratic residue for some fixed known non-quadratic residue NQR
-        mpz_class a_nqr = (a * ScalarNQR) % ScalarP;
+        mpz_class a_nqr = (a * ScalarNQR_FP) % ScalarP;
 
         // Compute the square root of a * NQR
         mpz_powm(r.get_mpz_t(), a_nqr.get_mpz_t(), ScalarP_DIV_4.get_mpz_t(), ScalarP.get_mpz_t());
@@ -915,7 +942,12 @@ int BigIntDivCtx (
         ctx->result[2 + quotient_size + i] = 0;
     }
 
-    return 2 + quotient_size + remainder_size;
+    uint64_t total_size = 2 + quotient_size + remainder_size;
+    assert(total_size < FCALL_RESULT_MAX_SIZE);
+
+    ctx->result_size = total_size;
+
+    return total_size;
 }
 
 /************************/
@@ -963,5 +995,72 @@ int BinDecompCtx (
     ctx->result[0] = ctx->result_size;
     ctx->result_size++;
     
+    return 0;
+}
+
+/**********************/
+/* BLS12 381 FP2 SQRT */
+/**********************/
+
+uint64_t NQR[12] = {1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0};
+
+/// Computes the square root of a non-zero field element in Fp2
+int BLS12_381Fp2SqrtCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int result;
+
+    // Perform the square root
+    result = BLS12_381ComplexSqrtP(
+        &ctx->params[0], // 12 x 64 bits input parameter: real(6) + imaginary(6)
+        &ctx->result[1], // 12 x 64 bits output parameter: real(6) + imaginary(6)
+        &ctx->result[0]  // 1 x 64 bits output parameter: is_quadratic_residue (1)
+    );
+    if (result != 0) return result;
+
+    // Check if a is a quadratic residue
+    if (!ctx->result[0])
+    {
+        // To check that a is indeed a non-quadratic residue, we check that
+        // a * NQR is a quadratic residue for some fixed known non-quadratic residue NQR
+        uint64_t a_nqr[12];
+        result = BLS12_381ComplexMulP(
+            &ctx->params[0], // 12 x 64 bits input parameter: real(6) + imaginary(6)
+            &NQR[0], // 12 x 64 bits input parameter: real(6) + imaginary(6)
+            &a_nqr[0] // 12 x 64 bits output parameter: real(6) + imaginary(6)
+        );
+        if (result != 0) return result;
+
+        // Compute the square root of a * NQR
+        uint64_t aux; // Unused
+        result = BLS12_381ComplexSqrtP(
+            &a_nqr[0], // 12 x 64 bits input parameter: real(6) + imaginary(6)
+            &ctx->result[1], // 12 x 64 bits output parameter: real(6) + imaginary(6)
+            &aux  // 1 x 64 bits output parameter: is_quadratic_residue (1)
+        );
+        if (result != 0) return result;
+    }
+
+    ctx->result_size = 13;
+    
+    return 0;
+}
+
+int Secp256k1EcdsaVerifyCtx(
+    struct FcallContext * ctx  // fcall context
+)
+{
+    secp256k1_ecdsa_verify( &ctx->params[0], &ctx->params[8], &ctx->params[12], &ctx->params[16], &ctx->result[0]);
+    ctx->result_size = 8;
+    return 0;
+}
+
+int Secp256r1EcdsaVerifyCtx(
+    struct FcallContext * ctx  // fcall context
+)
+{
+    secp256r1_ecdsa_verify( &ctx->params[0], &ctx->params[8], &ctx->params[12], &ctx->params[16], &ctx->result[0]);
+    ctx->result_size = 8;
     return 0;
 }

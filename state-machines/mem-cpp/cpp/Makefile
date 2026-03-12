@@ -14,12 +14,16 @@ SRCS := tools.cpp api.cpp mem_count_and_plan.cpp immutable_mem_planner.cpp \
 
 OBJS := $(addprefix $(OUT_DIR)/, $(SRCS:.cpp=.o))
 
+# Find all header files to track dependencies
+HEADERS := $(wildcard *.hpp)
+
 all: $(OUT_DIR)/$(TARGET)
 
 $(OUT_DIR)/$(TARGET): $(OBJS)
 	ar rcs $@ $^
 
-$(OUT_DIR)/%.o: %.cpp
+# Each object file depends on all header files to trigger rebuild when headers change
+$(OUT_DIR)/%.o: %.cpp $(HEADERS)
 	mkdir -p $(OUT_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 

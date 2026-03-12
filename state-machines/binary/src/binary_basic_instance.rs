@@ -6,13 +6,14 @@
 
 use crate::{BinaryBasicCollector, BinaryBasicSM};
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
+use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
     PayloadType,
 };
-
 use zisk_pil::BinaryTrace;
 
 /// The `BinaryBasicInstance` struct represents an instance for binary-related witness computations.
@@ -30,7 +31,10 @@ pub struct BinaryBasicInstance<F: PrimeField64> {
     with_adds: bool,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>,
+    collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
+
+    /// Standard library instance, providing common functionalities.
+    std: Arc<Std<F>>,
 }
 
 impl<F: PrimeField64> BinaryBasicInstance<F> {
@@ -43,7 +47,11 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
     /// # Returns
     /// A new `BinaryBasicInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM<F>>, mut ictx: InstanceCtx) -> Self {
+    pub fn new(
+        binary_basic_sm: Arc<BinaryBasicSM<F>>,
+        mut ictx: InstanceCtx,
+        std: Arc<Std<F>>,
+    ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
             BinaryTrace::<F>::AIR_ID,
@@ -54,21 +62,20 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let (with_adds, collect_info) = *meta
-            .downcast::<(bool, HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>)>()
+            .downcast::<(bool, HashMap<ChunkId, (u64, bool, CollectSkipper)>)>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        Self { binary_basic_sm, ictx, with_adds, collect_info }
+        Self { binary_basic_sm, ictx, with_adds, collect_info, std }
     }
 
-    pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector {
-        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
-            self.collect_info[&chunk_id];
+    pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector<F> {
+        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         BinaryBasicCollector::new(
             num_ops as usize,
-            num_freq_ops as usize,
             collect_skipper,
             self.with_adds,
             force_execute_to_end,
+            self.std.clone(),
         )
     }
 }
@@ -96,8 +103,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| {
-                let _collector = collector.as_any().downcast::<BinaryBasicCollector>().unwrap();
-                self.binary_basic_sm.compute_frops(&_collector.frops_inputs);
+                let _collector = collector.as_any().downcast::<BinaryBasicCollector<F>>().unwrap();
                 _collector.inputs
             })
             .collect();
@@ -121,6 +127,10 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
         InstanceType::Instance
     }
 
+    fn stats_type(&self) -> StatsType {
+        StatsType::Opcodes
+    }
+
     /// Builds an input collector for the instance.
     ///
     /// # Arguments
@@ -129,14 +139,13 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
-            self.collect_info[&chunk_id];
+        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryBasicCollector::new(
             num_ops as usize,
-            num_freq_ops as usize,
             collect_skipper,
             self.with_adds,
             force_execute_to_end,
+            self.std.clone(),
         )))
     }
 

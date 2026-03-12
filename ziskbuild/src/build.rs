@@ -3,6 +3,7 @@ use crate::{
     ZISK_TARGET,
 };
 use cargo_metadata::camino::Utf8PathBuf;
+use rom_setup::{assembly_files_exist, gen_assembly, get_assembly_file_paths, get_output_path};
 use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
@@ -32,8 +33,12 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
     if is_clippy_driver {
         // Still need to set ELF env vars even if build is skipped.
         let target_elf_paths = generate_elf_paths(&metadata, args.as_ref());
-
-        print_elf_paths_cargo_directives(&target_elf_paths);
+        let hints = args
+            .as_ref()
+            .and_then(|a| a.hints)
+            .or_else(|| std::env::var("ZISK_HINTS").ok().and_then(|v| v.parse().ok()))
+            .unwrap_or(false);
+        print_elf_paths_cargo_directives(&target_elf_paths, hints);
 
         println!("cargo:warning=Skipping build due to clippy invocation.");
         return;
@@ -64,21 +69,61 @@ pub fn execute_build_program(
     let program_dir: Utf8PathBuf =
         program_dir.try_into().expect("Failed to convert PathBuf to Utf8PathBuf");
 
+    // Check for ZISK_HINTS environment variables if not set in args
+    let mut args = args.clone();
+    if args.hints.is_none() {
+        if let Ok(env_hints) = std::env::var("ZISK_HINTS") {
+            args.hints = env_hints.parse().ok();
+        }
+    }
+
     // Get the program metadata.
     let program_metadata_file = program_dir.join("Cargo.toml");
     let mut program_metadata_cmd = cargo_metadata::MetadataCommand::new();
     let program_metadata = program_metadata_cmd.manifest_path(program_metadata_file).exec()?;
 
     // Get the command corresponding to Docker or local build.
-    let cmd = create_command(args, &program_dir, &program_metadata);
+    let cmd = create_command(&args, &program_dir, &program_metadata);
 
-    let target_elf_paths = generate_elf_paths(&program_metadata, Some(args));
+    let target_elf_paths = generate_elf_paths(&program_metadata, Some(&args));
 
     if target_elf_paths.len() > 1 && args.elf_name.is_some() {
         anyhow::bail!("--elf-name is not supported when --output-directory is used and multiple ELFs are built.");
     }
 
     execute_command(cmd)?;
+
+    // Generate assembly for all ELF files (only if not already generated)
+    let hints = args.hints.unwrap_or(false);
+    println!("cargo:rerun-if-env-changed=ZISK_HINTS");
+
+    let output_path = get_output_path(&None)?;
+    for (_, elf_path) in target_elf_paths.iter() {
+        let elf_path_std = elf_path.as_std_path();
+
+        let assembly_exists = assembly_files_exist(elf_path_std, &output_path, hints)?;
+        let hints_marker = output_path.join(format!(
+            "{}.assembly_hints",
+            elf_path_std.file_name().unwrap().to_string_lossy()
+        ));
+        let new_value = if hints { "on" } else { "off" };
+
+        let hints_changed = match std::fs::read_to_string(&hints_marker) {
+            Ok(prev) => prev != new_value,
+            Err(_) => true,
+        };
+
+        if !assembly_exists || hints_changed {
+            gen_assembly(elf_path_std, &None, hints, true)?;
+            std::fs::write(&hints_marker, new_value)?;
+        }
+
+        // Tell cargo to rerun if any assembly file is deleted
+        let assembly_files = get_assembly_file_paths(elf_path_std, &output_path, hints)?;
+        for asm_file in assembly_files {
+            println!("cargo:rerun-if-changed={}", asm_file.display());
+        }
+    }
 
     if let Some(output_directory) = &args.output_directory {
         // The path to the output directory, maybe relative or absolute.
@@ -102,7 +147,7 @@ pub fn execute_build_program(
         }
     }
 
-    print_elf_paths_cargo_directives(&target_elf_paths);
+    print_elf_paths_cargo_directives(&target_elf_paths, hints);
 
     Ok(target_elf_paths)
 }
@@ -157,8 +202,13 @@ pub fn generate_elf_paths(
 
     vec![(bin_target.name.to_owned(), target_elf_path)]
 }
-fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)]) {
+fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)], hints: bool) {
+    println!("cargo:rerun-if-env-changed=ZISK_HINTS");
+
     for (target_name, elf_path) in target_elf_paths.iter() {
         println!("cargo:rustc-env=ZISK_ELF_{target_name}={elf_path}");
+        if hints {
+            println!("cargo:rustc-env=ZISK_ELF_{target_name}_WITH_HINTS=1");
+        }
     }
 }

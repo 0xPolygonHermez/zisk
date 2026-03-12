@@ -1,0 +1,77 @@
+require "std_lookup.pil"
+
+// 3+3+9+1 = 16 bits = 2^16 TABLE
+const int DMA_ROM_TABLE_SIZE = 8 * 8 * P2_9 * 3;
+
+const int DMA_ROM_USE_PRE_F = 1;
+const int DMA_ROM_LOOP_F = 2;
+const int DMA_ROM_USE_POST_F = 4;
+const int DMA_ROM_SRC64_INC_BY_PRE_F = 8;
+const int DMA_ROM_COUNT_LT_256_F = 16;
+const int DMA_ROM_NEQ_F = 32;
+const int DMA_ROM_USE_SRC_F = 64;
+
+airtemplate DmaRom(int N = DMA_ROM_TABLE_SIZE) {
+
+    col fixed DST_OFFSET;
+    col fixed SRC_OFFSET;
+    col fixed L_COUNT;
+    col fixed FLAGS;
+    col fixed PRE_COUNT;
+    col fixed SRC_OFFSET_AFTER_PRE;
+    col fixed L_COUNT64;
+
+    int i = 0;
+    for (int icase = 0; icase < 3; ++icase) {
+        const int use_src = icase < 2;
+        const int neq = icase == 1 ? 1 : 0;
+        for (int dst_offset = 0; dst_offset < 8; ++dst_offset) {
+            for (int src_offset = 0; src_offset < 8; ++src_offset) {
+                for (int l_count = 0; l_count < P2_9; ++l_count) {
+                    DST_OFFSET[i] = dst_offset;
+                    SRC_OFFSET[i] = src_offset;
+
+                    if (l_count == 0) {
+                        L_COUNT[i] = 0;
+                        FLAGS[i] = 16 + neq * 32 + use_src * DMA_ROM_USE_SRC_F;
+                        PRE_COUNT[i] = 0;
+                        SRC_OFFSET_AFTER_PRE[i] = src_offset;
+                        L_COUNT64[i] = 0;
+                    } else {
+                        const int use_pre = dst_offset > 0;
+                        const int pre_count = use_pre ? (((8 - dst_offset) < l_count) ? (8 - dst_offset) : l_count) : 0;
+                        int post_count = (l_count - pre_count) % 8;
+                        int loop_count = (l_count - pre_count - post_count) / 8;
+                        if (neq && post_count == 0 && loop_count > 0) {
+                            loop_count -= 1;
+                            post_count = 8;
+                        }
+                        const int use_post = post_count > 0;
+                        const int use_loop = loop_count > 0;
+                        const int src64_inc_by_pre = (use_pre && (src_offset + pre_count) >= 8) ? 1 : 0;
+                        const int count_lt_256 = l_count < 256 ? 1 : 0;
+                
+                        L_COUNT[i] = l_count;
+                        FLAGS[i] = use_pre * DMA_ROM_USE_PRE_F + 
+                                   use_loop * DMA_ROM_LOOP_F + 
+                                   use_post * DMA_ROM_USE_POST_F + 
+                                   src64_inc_by_pre * DMA_ROM_SRC64_INC_BY_PRE_F + 
+                                   count_lt_256 * DMA_ROM_COUNT_LT_256_F + 
+                                   neq * DMA_ROM_NEQ_F + 
+                                   use_src * DMA_ROM_USE_SRC_F;
+
+
+                        PRE_COUNT[i] = pre_count;
+                        SRC_OFFSET_AFTER_PRE[i] = use_src ? (src_offset + pre_count) % 8 : 0;
+                        L_COUNT64[i] = loop_count;
+                    }
+                    i += 1;
+                }
+            }
+        }
+    }
+    println(`${i} rows`);
+
+    col witness multiplicity;
+    lookup_proves(DMA_ROM_ID, [DST_OFFSET, SRC_OFFSET, L_COUNT, FLAGS, PRE_COUNT, SRC_OFFSET_AFTER_PRE, L_COUNT64], multiplicity);
+}

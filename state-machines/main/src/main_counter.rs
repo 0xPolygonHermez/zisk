@@ -2,8 +2,7 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::PubOut` instructions.
 
-use std::collections::VecDeque;
-use zisk_common::{BusDevice, BusId, MemCollectorInfo, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE};
+use zisk_common::{BusDevice, BusId, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
 
 /// The `MainCounter` struct represents a counter that monitors and measures
@@ -33,22 +32,7 @@ impl MainCounter {
     pub fn new() -> Self {
         Self { publics: Vec::new() }
     }
-}
 
-impl Metrics for MainCounter {
-    #[inline(always)]
-    fn measure(&mut self, _data: &[u64]) {}
-
-    /// Provides a dynamic reference for downcasting purposes.
-    ///
-    /// # Returns
-    /// A reference to `self` as `dyn std::any::Any`.
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
-impl BusDevice<u64> for MainCounter {
     /// Processes data received on the bus, updating counters and generating inputs when applicable.
     ///
     /// # Arguments
@@ -60,13 +44,7 @@ impl BusDevice<u64> for MainCounter {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         const PUBOUT: u64 = ZiskOperationType::PubOut as u64;
@@ -83,15 +61,22 @@ impl BusDevice<u64> for MainCounter {
 
         true
     }
+}
 
-    /// Returns the bus IDs associated with this counter.
+impl Metrics for MainCounter {
+    #[inline(always)]
+    fn measure(&mut self, _data: &[u64]) {}
+
+    /// Provides a dynamic reference for downcasting purposes.
     ///
     /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
+    /// A reference to `self` as `dyn std::any::Any`.
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
+}
 
+impl BusDevice<u64> for MainCounter {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

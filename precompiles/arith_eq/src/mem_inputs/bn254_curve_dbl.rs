@@ -1,8 +1,8 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Bn254Curve;
-use std::collections::VecDeque;
-use zisk_common::BusId;
-use zisk_common::MemCollectorInfo;
+use precompiles_common::MemProcessor;
+
+use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 
 pub const BN254_CURVE_DBL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 0,
@@ -12,15 +12,18 @@ pub const BN254_CURVE_DBL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputCon
     chunks_per_param: 8,
 };
 
-pub fn generate_bn254_curve_dbl_mem_inputs(
+pub fn generate_bn254_curve_dbl_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-    pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    mem_processors: &mut P,
 ) {
     // op,op_type,a,b,addr[2],...
-    let p1: &[u64; 8] = &data[4..12].try_into().unwrap();
+    let p1: &[u64; 8] = &data
+        [OPERATION_PRECOMPILED_BUS_DATA_SIZE..OPERATION_PRECOMPILED_BUS_DATA_SIZE + 8]
+        .try_into()
+        .unwrap();
     let mut p3 = [0u64; 8];
 
     Bn254Curve::calculate_dbl(p1, &mut p3);
@@ -30,15 +33,15 @@ pub fn generate_bn254_curve_dbl_mem_inputs(
         data,
         Some(&p3),
         only_counters,
-        pending,
+        mem_processors,
         &BN254_CURVE_DBL_MEM_CONFIG,
     );
 }
 
-pub fn skip_bn254_curve_dbl_mem_inputs(
+pub fn skip_bn254_curve_dbl_mem_inputs<P: MemProcessor>(
     addr_main: u32,
     data: &[u64],
-    mem_collectors_info: &[MemCollectorInfo],
+    mem_processors: &mut P,
 ) -> bool {
-    super::skip_mem_inputs(addr_main, data, &BN254_CURVE_DBL_MEM_CONFIG, mem_collectors_info)
+    super::skip_mem_inputs(addr_main, data, &BN254_CURVE_DBL_MEM_CONFIG, mem_processors)
 }

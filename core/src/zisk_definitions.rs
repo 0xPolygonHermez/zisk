@@ -1,7 +1,7 @@
 //! This module contains constant definitions used by other modules and crates.
 
-pub const DEFAULT_MAX_STEPS: u64 = 0xffffffff;
-pub const DEFAULT_MAX_STEPS_STR: &str = "4294967295"; // 2^32 - 1
+pub const DEFAULT_MAX_STEPS: u64 = 0xF_FFFF_FFFF;
+pub const DEFAULT_MAX_STEPS_STR: &str = "68719476735"; // 2^36 - 1
 
 pub const CHUNK_SIZE_BITS: usize = 18;
 pub const CHUNK_SIZE: u64 = 1 << CHUNK_SIZE_BITS;

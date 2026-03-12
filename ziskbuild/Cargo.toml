@@ -11,10 +11,11 @@ categories.workspace = true
 clap = { workspace = true }
 cargo_metadata = "0.23.0"
 anyhow = { workspace = true }
+tracing = { workspace = true }
+rom-setup = { workspace = true }
 
 [build-dependencies]
-vergen = { version = "8", default-features = false, features = [
-    "build",
-    "git",
-    "git2",
-] }
+vergen-git2.workspace = true
+
+[features]
+disable_distributed = []

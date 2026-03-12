@@ -150,7 +150,7 @@ is_proving_key_installed() {
     if [[ -d "$HOME/.zisk/provingKey" ]]; then
         return 0
     else
-        err "Proving key not installed. Please install it first."
+        err "Proving Key not installed. Please install it first."
         return 1
     fi
 }

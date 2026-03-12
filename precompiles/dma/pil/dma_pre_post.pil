@@ -1,0 +1,478 @@
+// This machine is used for DMA operations performed at the beginning, to align
+// writes and at the end in case aligned writes need to work with less than
+// 8 bytes. The part that handles alignment of writes is known as PRE, while
+// the part that handles the final part is known as POST.
+//
+// This machine needs to read one or two 64-bit words from src to be able to write or compare
+// the destination.
+// 
+// Another feature this machine has is to resolve the last different byte of a memcmp. In
+// reality a mem_cmp(src, dst, count) = mem_eq(src, dst, count_eq) + cmp_byte(src + count_eq, dst + count_eq)
+// where count_eq <= count.
+
+airtemplate DmaPrePost(int N = 2**21,                    // Rows of instance   
+                       const int RC = 2,                 // Number of chunks for native value
+                       const int enable = E_DMA_ALL)     // Enable operations
+{
+    const int enable_memcpy = (enable & E_DMA_MEMCPY) ? 1 : 0;
+    const int enable_memcmp = (enable & E_DMA_MEMCMP) ? 1 : 0; 
+    const int enable_inputcpy = (enable & E_DMA_INPUTCPY) ? 1 : 0;
+    const int enable_memset = (enable & E_DMA_MEMSET) ? 1 : 0;
+
+    const int has_src = (enable_memcpy || enable_memcmp);
+    const int enabled_count = enable_memcpy + enable_memcmp + enable_inputcpy + enable_memset;
+    const int enable_write_mem = enable_memcpy || enable_inputcpy || enable_memset;
+    const int enabled_all = enabled_count == 4;
+
+    col witness bits(MAIN_STEP_BITS) main_step;
+    col witness bits(ADDR_W_BITS) dst64;
+    col witness bits(3) dst_offset;
+    col witness bits(4) count;
+
+    //                                   bytes
+    //                  has  sel    ┌──────────────┐      
+    //                  src  read    rb    rb2   pb   
+    // ─────────────────────────────────────────────
+    // enable_memcpy     ✓     ✓     ✓     ✓     ✓    
+    // enable_memcmp     ✓     ✓     ✓     ✓     ✓ 
+    // enable_inputcpy   x     x     ✓     x     ✓
+    // enable_memset     x     x     x     x     ✓
+
+    col witness bits(1) is_post;    
+    is_post * (1 - is_post) === 0;
+
+    // prepare operation selectors
+
+    expr _sel = 0;
+    expr _sel_write = 0;
+    expr _sel_byte_rc = 0;
+
+    // definition @[sel_memcpy]
+    expr _pre_op = 0;
+    if (enable_memcpy) {
+        col witness bits(1) air.sel_memcpy;
+        sel_memcpy * (1 - sel_memcpy) === 0;
+        _sel += sel_memcpy;
+        _sel_write += sel_memcpy;
+        _sel_byte_rc += sel_memcpy;
+        _pre_op += sel_memcpy * OP_DMA_PRE_XMEMCPY;
+    } else {
+        const int air.sel_memcpy = 0;
+    }
+
+    // definition @[sel_memcmp] and @[memcmp_result_nz]
+
+    if (enable_memcmp) {
+        col witness bits(1) air.sel_memcmp;
+        sel_memcmp * (1 - sel_memcmp) === 0;
+        _sel += sel_memcmp;
+        // @[_sel_write] it's active for sel_memcmp because read the same that preloads before read, 
+        // only need to verify that the value will written and pre read value are the same
+
+        _sel_byte_rc += sel_memcmp;
+        col witness bits(1) air.memcmp_result_nz;
+        memcmp_result_nz * (1 - memcmp_result_nz) === 0;
+        // memcmp_result_nz only could be 1 if it's an memcmp operation
+        memcmp_result_nz * (1 - sel_memcmp) === 0;
+
+        col witness bits(32) air.l_memcmp_result;
+        // memcmp_result_nz is 0 the memcmp_result must be 0
+        (1 - memcmp_result_nz) * l_memcmp_result === 0;
+
+        _pre_op += sel_memcmp * OP_DMA_PRE_XMEMCMP;
+    } else {
+        const int air.sel_memcmp = 0;
+        const int air.memcmp_result[2] = [0, 0];
+    }
+
+    // definition @[sel_inputcpy]
+
+    if (enable_inputcpy) {
+        col witness bits(1) air.sel_inputcpy;
+        sel_inputcpy * (1 - sel_inputcpy) === 0;
+        _sel += sel_inputcpy;
+        _sel_write += sel_inputcpy;
+        _sel_byte_rc += sel_inputcpy;
+        _pre_op += sel_inputcpy * OP_DMA_PRE_INPUTCPY;        
+    } else {
+        const int air.sel_inputcpy = 0;
+    }
+
+    // definition @[sel_memset]
+
+    if (enable_memset) {
+        col witness bits(1) air.sel_memset;
+        sel_memset * (1 - sel_memset) === 0;
+        _sel += sel_memset;
+        _sel_write += sel_memset;
+        _pre_op += sel_memset * OP_DMA_PRE_XMEMSET;        
+    } else {
+        const int air.sel_memset = 0;
+    }
+    
+    // definition @[sel]
+
+    const expr sel = _sel; 
+
+    // sel_write and sel_byte_rc are a subset of sel, how sel is binary sel_write and sel_byte_rc 
+    // are also binary
+    const expr sel_write = _sel_write;
+    const expr sel_byte_rc = _sel_byte_rc;
+
+    if (enabled_count > 1) {
+        sel * (1 - sel) === 0;
+    }
+
+    const expr pre_post_op = _pre_op + is_post * OP_DMA_POST_OFFSET;
+
+    // Prepare source and flags to selected the "row"
+    const int RB;
+    expr rom_flags = 0;
+
+    if (has_src) {
+        col witness bits(1) air.selr[7];
+
+        const expr air.sr[8];
+        expr _sr_0to6 = 0;
+        expr _sr_value = 0;
+        for (int i = 0; i < 7; ++i) {
+            selr[i] * (1 - selr[i]) === 0;
+            sr[i] = selr[i];
+            _sr_0to6 = _sr_0to6 + selr[i];
+            if (i > 0) {
+                _sr_value = _sr_value + i * sr[i];
+            }
+        }
+        const expr air.sr_0to6 = _sr_0to6;
+        _sr_value = _sr_value + 7 * sr[7];
+
+        const expr air.load_src = sel_memcpy + sel_memcmp;
+        const expr sr_value = _sr_value;
+
+        sr_0to6 * (1 - sr_0to6) === 0;
+        sr[7] = (1 - sr_0to6);
+
+        col witness bits(1) air.dst_offset_gt_src_offset;
+        dst_offset_gt_src_offset * (1 - dst_offset_gt_src_offset) === 0;
+
+
+        col witness bits(ADDR_W_BITS) air.src64;
+        col witness bits(3) air.src_offset;
+
+        col witness bits(1) air.enabled_second_read;
+        enabled_second_read * (1 - enabled_second_read) === 0;
+
+        // to force use table with enable when enabled_second_read is 1. If enable is 1, with table
+        // it's verified the correct value of enabled_second_read using offset an count
+        enabled_second_read * (1 - sel) === 0;
+
+        // update rom flags
+        // sr_value is a expression of bits for this reason range check of sr_value is restricted
+        // to range [0, 7]
+
+        rom_flags +=  DMA_PRE_POST_DST_OFFSET_GT_SRC_F * dst_offset_gt_src_offset +  
+                      DMA_PRE_POST_ENABLED_SECOND_READ_F * enabled_second_read +
+                      DMA_PRE_POST_SR_VALUE_F * sr_value +
+                      DMA_PRE_POST_IS_POST * is_post +
+                      DMA_PRE_POST_LOAD_SRC * load_src;
+
+        RB = RC * 4 * 2;
+    } else {
+        const int air.src64 = 0;
+        const int air.src_offset = 0;
+        if (enable_inputcpy) {
+            RB = RC * 4;
+        } else {        
+            RB = 0;
+        }
+    }
+
+    if (enable_memset) {
+        // if memset it's enable, take first rb as fill_free, and define a constraint
+        // to be sure that all are equals (sr must be 0).
+        col witness bits(8) air.fill_byte;
+        (1 - sel_memset) * fill_byte === 0;
+    }
+
+    const int RV = RB / 4;
+
+    if (RB > 0) {
+        col witness bits(8) air.rb[RB];
+        const expr air.r_values[RV];
+        for (int i = 0; i < RB; i+=2) {
+            range_dual_byte(rb[i+1], rb[i], sel_byte_rc);
+            if (enable_memset) {
+                sel_memset * (rb[i] - fill_byte) === 0;
+                sel_memset * (rb[i+1] - fill_byte) === 0;
+            }   
+        }
+
+        for (int i = 0; i < RV; ++i) { 
+            r_values[i] = rb[i*4] + P2_8 * rb[i*4+1]  + P2_16 * rb[i*4+2]  + P2_24 * rb[i*4+3];
+        }
+    }
+
+    const int PRB = RC * 4;        // Pre-write bytes
+    col witness bits(8) pb[PRB];
+
+    const expr p_values[RC];
+    
+    for (int i = 0; i < PRB; i+=2) {
+        range_dual_byte(pb[i+1], pb[i], sel);
+    }
+    for (int i = 0; i < RC; ++i) { 
+        p_values[i] = pb[i*4] + P2_8 * pb[i*4+1]  + P2_16 * pb[i*4+2]  + P2_24 * pb[i*4+3];
+    }
+    
+    col witness bits(1) sb[8];
+    for (int i = 0; i < 8; ++i) {
+        sb[i] * (1 - sb[i]) === 0;
+        rom_flags += sb[i] * (1 << (7-i));
+    }
+    if (enable_memcmp) {
+        // The DMA controller send throw bus, an flag @[memcmp_nz] to indicate that operation
+        // must detect that last byte of count was different. This flag only could be active
+        // if @[sel_memcmp] it's active.
+        //
+        // The count send by DMA controller includes the different bytes, the idea es generate
+        // a value that "compenses" this difference. 
+        // 
+        // To detect it, we detect the byte previous to a falling edge of selector of bytes 
+        // read. See @[last_dst_byte] 
+        // 
+        // Using PrePost Rom verifies the factors associated to this position, PrePost sent to
+        // Rom also if difference is negative @[memcmp_result_is_negative], because if it's 
+        // negative also the factor was negative.
+        //
+        // We need other table to verify @[last_dst_byte] with @[abs_diff_dst_src] and 
+        // @[memcmp_result_is_negative]. This table doesn't include the zero for abs_diff_dst_src.
+        // The lookup to this tables is only active when @[memcmp_result_nz]
+
+        // For byte that's first different byte
+        // write_byte == dst_byte 
+        // write_byte ≠ src_byte 
+        // dst_minus_src = dst_byte - src_byte
+        // write_byte == dst_minus_src + src_byte
+
+        col witness bits(8) air.last_dst_byte;
+        col witness bits(8) air.abs_diff_dst_src;
+        col witness bits(1) air.memcmp_result_is_negative;
+        col witness bits(64, signed) air.diff_factor[2];
+        const expr air.diff_dst_src[2];
+
+        memcmp_result_is_negative * (1 - memcmp_result_is_negative) === 0;
+
+        last_dst_byte <== sb[0] * (1 - sb[1]) * (pb[0] - pb[7]) + 
+                          sb[1] * (1 - sb[2]) * (pb[1] - pb[7]) + 
+                          sb[2] * (1 - sb[3]) * (pb[2] - pb[7]) + 
+                          sb[3] * (1 - sb[4]) * (pb[3] - pb[7]) +
+                          sb[4] * (1 - sb[5]) * (pb[4] - pb[7]) + 
+                          sb[5] * (1 - sb[6]) * (pb[5] - pb[7]) + 
+                          sb[6] * (1 - sb[7]) * (pb[6] - pb[7]) + 
+                          pb[7];
+
+        diff_dst_src[0] = diff_factor[0] * abs_diff_dst_src * memcmp_result_nz;
+        diff_dst_src[1] = diff_factor[1] * abs_diff_dst_src * memcmp_result_nz;
+
+        l_memcmp_result <== 0x1_0000_0000 * memcmp_result_is_negative + (1 - 2 * memcmp_result_is_negative) * abs_diff_dst_src;
+        
+        const expr air.memcmp_result[2];
+        memcmp_result[0] = l_memcmp_result;
+        memcmp_result[1] = 0xFFFF_FFFF * memcmp_result_is_negative;
+        rom_flags += DMA_PRE_POST_MEMCMP_RESULT_IS_NEG_F * memcmp_result_is_negative +
+                     DMA_PRE_POST_MEMCMP_RESULT_NZ_F * memcmp_result_nz;
+        lookup_assumes(DMA_BYTE_CMP_TABLE_ID, [last_dst_byte, 
+                                                memcmp_result_is_negative, 
+                                                abs_diff_dst_src
+                                                ], sel: memcmp_result_nz);
+    } else {
+        const int air.diff_dst_src[2] = [0, 0];
+        const int air.diff_factor[2] = [0, 0];
+        const int air.diff_zero = 0;
+        const int air.memcmp_result[2] = [0, 0];
+        const int air.memcmp_result_nz = 0;
+    }
+    if (!enable_memset) {
+        const int air.fill_byte;
+    }
+
+    col witness bits(32) bus_write_value[2];
+
+    if (has_src) {
+        col witness bits(32) air.write_value[4];
+
+        // byte_0, byte_1, byte_2, byte_3, byte_4, byte_5, byte_6, byte_7, byte_0', byte_1' ...
+    
+        //          	 │ src_offset:	
+        //    selr_value │ 0  1  2  3  4  5  6  7
+        // ──────────────┼───────────────────────	
+        // dst_offset: 0 │ 0  1  2  3  4  5  6  7
+        //         	   1 │ 1  0  1  2  3  4  5  6
+        //         	   2 │ 2  1  0  1  2  3  4  5
+        //         	   3 │ 3  2  1  0  1  2  3  4
+        //         	   4 │ 4  3  2  1  0  1  2  3
+        //         	   5 │ 5  4  3  2  1  0  1  2
+        //         	   6 │ 6  5  4  3  2  1  0  1
+        //         	   7 │ 7  6  5  4  3  2  1  0
+        //
+        // NOTE: selr_value = ABS(src_offset - dst_offset)
+
+        //       R0..R3,R4..R7 = current row read bytes
+        //       R8..R11,R12..R15 = R0'..R3',R4'..R7' bytes of next row
+        //
+        //       ┌────── src_offset - dst_offset
+        //       │	   
+        //       │      0   1   2   3     4   5   6   7  
+        //          ┌─────────────────┬─────────────────┐
+        //       0  │  R0  R1  R2  R3 │  R4  R5  R6  R7 │
+        //       1  │  R1  R2  R3  R4 │  R5  R6  R7  R8 │
+        //       2  │  R2  R3  R4  R5 │  R6  R7  R8  R9 │
+        //       3  │  R3  R4  R5  R6 │  R7  R8  R9 R10 │
+        //       4  │  R4  R5  R6  R7 │  R8  R9 R10 R11 │
+        //       5  │  R5  R6  R7  R8 │  R9 R10 R11 R12 │
+        //       6  │  R6  R7  R8  R9 │ R10 R11 R12 R13 │
+        //       7  │  R7  R8  R9 R10 │ R11 R12 R13 R14 │
+        //          └─────────────────┴─────────────────┘
+        
+        // dst_offset <= src_offset
+
+        expr _wr_0 = 0;
+        expr _wr_1 = 0;
+        for (int j = 0; j < 8; ++j) {
+            expr _sr_wr_0 = 0;
+            expr _sr_wr_1 = 0;
+            for (int i = 0; i < 4; ++i) {
+                const int factor = 1 << (i * 8);
+                _sr_wr_0 += factor * sb[i] * rb[i+j];
+                _sr_wr_1 += factor * sb[i+4] * rb[i+4+j];
+            }
+            _wr_0 += sr[j] * _sr_wr_0;
+            _wr_1 += sr[j] * _sr_wr_1;
+        }
+        for (int i = 0; i < 4; ++i) {
+            const int factor = 1 << (i * 8);
+            _wr_0 += factor * (1 - sb[i]) * pb[i];
+            _wr_1 += factor * (1 - sb[i+4]) * pb[i+4];
+        }
+        write_value[0] <== _wr_0;
+        write_value[1] <== _wr_1;
+
+        
+        // dst_offset > src_offset
+        //       ┌────── src_offset - dst_offset
+        //       │   ┌── abs(src_offset - dst_offset)
+        //       │	 │  
+        //       │	 │      0   1   2   3     4   5   6   7  
+        //              ┌─────────────────┬─────────────────┐
+        //      -7   7  │                 │              R0 │
+        //      -6   6  │                 │          R0  R1 │
+        //      -5   5  │                 │      R0  R1  R2 │
+        //      -4   4  │                 │  R0  R1  R2  R3 │
+        //      -3   3  │              R0 │  R1  R2  R3  R4 │
+        //      -2   2  │          R0  R1 │  R2  R3  R4  R5 │
+        //      -1   1  │      R0  R1  R2 │  R3  R4  R5  R6 │
+        //              └─────────────────┴─────────────────┘
+
+        write_value[2] <== sr[3] * (                                                               sb[3] * P2_24 * rb[0]) +
+                           sr[2] * (                                       sb[2] * P2_16 * rb[0] + sb[3] * P2_24 * rb[1]) +
+                           sr[1] * (                sb[1] * P2_8 * rb[0] + sb[2] * P2_16 * rb[1] + sb[3] * P2_24 * rb[2]) +
+                           (1 - sb[0]) * pb[0] + (1 - sb[1]) * P2_8 * pb[1] + (1 - sb[2]) * P2_16 * pb[2] + (1 - sb[3]) * P2_24 * pb[3];
+
+        write_value[3] <== sr[7] * (                                                             + sb[7] * P2_24 * rb[0]) +
+                           sr[6] * (                                     + sb[6] * P2_16 * rb[0] + sb[7] * P2_24 * rb[1]) +
+                           sr[5] * (              + sb[5] * P2_8 * rb[0] + sb[6] * P2_16 * rb[1] + sb[7] * P2_24 * rb[2]) +
+                           sr[4] * (sb[4] * rb[0] + sb[5] * P2_8 * rb[1] + sb[6] * P2_16 * rb[2] + sb[7] * P2_24 * rb[3]) +
+                           sr[3] * (sb[4] * rb[1] + sb[5] * P2_8 * rb[2] + sb[6] * P2_16 * rb[3] + sb[7] * P2_24 * rb[4]) +
+                           sr[2] * (sb[4] * rb[2] + sb[5] * P2_8 * rb[3] + sb[6] * P2_16 * rb[4] + sb[7] * P2_24 * rb[5]) +
+                           sr[1] * (sb[4] * rb[3] + sb[5] * P2_8 * rb[4] + sb[6] * P2_16 * rb[5] + sb[7] * P2_24 * rb[6]) +
+                           (1 - sb[4]) * pb[4] + (1 - sb[5]) * P2_8 * pb[5] + (1 - sb[6]) * P2_16 * pb[6] + (1 - sb[7]) * P2_24 * pb[7];
+
+        bus_write_value[0] <== dst_offset_gt_src_offset * (write_value[2] - write_value[0]) + write_value[0];
+        bus_write_value[1] <== dst_offset_gt_src_offset * (write_value[3] - write_value[1]) + write_value[1];
+    
+        // MEMORY ACCESS
+        //
+        // Read first 64 bits
+        // Read next 64 bits (optional, only if enabled_second_read)
+        // Read previous value before write
+        // Write final value
+
+        precompiled_mem_load(sel: load_src, main_step:, addr: src64 * 8, value: [r_values[0], r_values[1]]);
+        precompiled_mem_load(sel: enabled_second_read, main_step:, addr: src64 * 8 + 8, value: [r_values[2], r_values[3]]);
+        
+    } else if (enable_inputcpy) {
+        // at this point memcpy, memcmp are disabled, but enable_memset could be enabled
+        expr _write_value_0 = 0;
+        expr _write_value_1 = 0;
+        for (int i = 0; i < 4; ++i) {
+            const int factor = 1 << (i * 8);
+            _write_value_0 += factor * (sb[i] * (rb[i] - pb[i]) + pb[i]);
+            _write_value_1 += factor * (sb[i+4] * (rb[i+4] - pb[i+4]) + pb[i+4]);
+        }
+        bus_write_value[0] <== _write_value_0;                
+        bus_write_value[1] <== _write_value_1;
+    } else {
+        expr _write_value_0 = 0;
+        expr _write_value_1 = 0;
+        for (int i = 0; i < 4; ++i) {
+            const int factor = 1 << (i * 8);
+            _write_value_0 += factor * (sb[i] * (fill_byte - pb[i]) + pb[i]);
+            _write_value_1 += factor * (sb[i+4] * (fill_byte - pb[i+4]) + pb[i+4]);
+        }
+        bus_write_value[0] <== _write_value_0;                
+        bus_write_value[1] <== _write_value_1;
+    }
+
+
+    // MEMORY ACCESS
+    //
+    // Read previous value before write
+    // Write final value
+
+    // this load is always used to read previous value that was partially modified or verified
+    precompiled_mem_load(sel:, main_step:, addr: dst64 * 8, value: p_values);
+
+    if (enable_write_mem) {
+        // when is a memcmp reads, no writes
+        precompiled_mem_store(sel: sel_write, main_step:, addr: dst64 * 8, value: bus_write_value);
+    }
+    if (enable_memcmp) {
+        // for memcmp we need to verify that value read from memory are the same that value generated to write, because this value is the one that "compensate" the difference between src and dst, if this value is different that value read from memory, the memcmp result will be different that expected.
+        sel_memcmp * (p_values[0] - bus_write_value[0] - diff_dst_src[0]) === 0;
+        sel_memcmp * (p_values[1] - bus_write_value[1] - diff_dst_src[1]) === 0;
+    }
+
+    // DMA ===> DMA_PRE_POST (PRE)
+    // --------------------------------------------------------------------------------
+    // OP_DMA_PRE_XMEMCPY   (dst, src, dst_offset, src_offset,  pre_count, main_step)
+    // OP_DMA_PRE_INPUTCPY  (dst, 0,   dst_offset,          0,  pre_count, main_step)
+    // OP_DMA_PRE_XMEMEQ    (dst, src, dst_offset, src_offset,  pre_count, main_step)
+    // OP_DMA_PRE_XMEMCMP   (dst, src, dst_offset, src_offset,  pre_count, main_step, 0, r_nz, R0, R1)
+    // OP_DMA_PRE_XMEMSET   (dst, 0,   dst_offset,          0,  pre_count, main_step, value)
+
+    // Send operation to bus
+    permutation_proves(DMA_BUS_ID, [pre_post_op, 
+                                    dst64 * 8, 
+                                    src64 * 8, 
+                                    dst_offset, 
+                                    src_offset, 
+                                    count, 
+                                    main_step,
+                                    fill_byte,
+                                    memcmp_result_nz,
+                                    ...memcmp_result
+                                    ], sel:);
+
+                                            
+    //                                                   @[selectors_mask] (8 bits)
+    // DMA_PRE_POST_ENABLED_SECOND_READ_F  = P2_8        @[enabled_second_read] (1 bit)      
+    // DMA_PRE_POST_DST_OFFSET_GT_SRC_F    = P2_9        @[dst_offset_gt_src_offset] (1 bit)
+    // DMA_PRE_POST_SR_VALUE_F             = P2_10       @[sr_value] (0-7) (3 bits)
+    // DMA_PRE_POST_MEMCMP_RESULT_IS_NEG_F = P2_13       @[memcmp_result_is_negative] (1 bit)
+    // DMA_PRE_POST_MEMCMP_RESULT_NZ       = P2_14       @[memcmp_result_nz] (1 bit)
+
+    lookup_assumes(DMA_PRE_POST_TABLE_ID, [rom_flags, dst_offset, src_offset, count, ...diff_factor], sel: sel);
+
+    // TBO: For single memcmp operation, we only need two reads, and after generate two values to compare, less
+    // columns.
+}

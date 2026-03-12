@@ -12,14 +12,13 @@ require "opids.pil"
 /// Parameters:
 ///
 /// - N: number of rows by instance
-/// - operation_bus_id: the opid of bus used by precompile
 /// - bits: number of bits of the addition (N_RC * RC * 32)
 /// - RC: number of chunks of 32 bits defined in native architecture
 /// - operation_code: the operation code used to identify the precompile
 ///
 /// Integration:
 ///
-/// - main assumes an operation on operation_bus_id:
+/// - main assumes an operation:
 ///   [ operation_code, a: [step, 0], b: [addr_params, 0], c: [carry_out, 0], flag: carry_out ]
 ///
 /// - precompiles "load" params from memory:
@@ -45,7 +44,7 @@ require "opids.pil"
 ///     addr_c + 8 * (N_RC - 1) <- c[N_RC-1] (c_chunks[N_RC-1][0] + c_chunks[N_RC-1][1] << 16, 
 ///                                           c_chunks[N_RC-1][2] + c_chunks[N_RC-1][3] << 16)
 
-airtemplate BigIntAdd(const int N = 2**21, const int bits = 256, const int operation_code, const int operation_bus_id = OPERATION_BUS_ID) {
+airtemplate BigIntAdd(const int N = 2**21, const int bits = 256, const int operation_code) {
                         
     const int RC = 2; 
     const int N_RC = bits / (RC * 32);
@@ -134,5 +133,6 @@ airtemplate BigIntAdd(const int N = 2**21, const int bits = 256, const int opera
     const expr final_cout = cout[N_RC-1][RC-1];
 
     // proves the operation lauched by main, c = flag = carry_out
-    lookup_proves(operation_bus_id, [operation_code, step, 0, addr_params, 0, final_cout, 0, final_cout], sel);
+    proves_operation(op: operation_code, a:[0, 0], b:[addr_params, 0], c:[final_cout, 0], 
+                     flag:0, main_step: step, mul:sel);
 }

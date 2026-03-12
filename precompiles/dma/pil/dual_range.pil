@@ -1,0 +1,17 @@
+require "std_lookup.pil"
+
+// Template to verify two small ranges of values in the same lookup (typically used for bytes).
+// The lookup table size is limited by (range1_size * range2_size).
+
+airtemplate DualRange(int N = 0, const int id, const int min1, const int max1, const int min2, const int max2 ) {
+    // Number of elements in B
+    const int COUNT_B = (max2 - min2 + 1);
+    N = (max1 - min1 + 1) * COUNT_B;
+
+    // Repeat each A element COUNT_B times so every A value pairs with every B value
+    col fixed A = [min1:COUNT_B..max1:COUNT_B]...;
+    col fixed B = [min2..max2]...;
+
+    col witness multiplicity;
+    lookup_proves(id, mul: multiplicity, expressions: [A, B]);
+}

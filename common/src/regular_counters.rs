@@ -2,9 +2,8 @@
 //! sent over the data bus. It is designed to be reusable across multiple state machines
 //! and collects metrics for specified `ZiskOperationType` instructions.
 
-use crate::MemCollectorInfo;
 use crate::{BusDevice, BusId, Counter, ExtOperationData, Metrics, OperationBusData};
-use std::{collections::VecDeque, ops::Add};
+use std::ops::Add;
 use zisk_core::ZiskOperationType;
 
 /// The `RegularCounters` struct represents a generic counter that monitors and measures
@@ -49,6 +48,24 @@ impl RegularCounters {
             return Some(self.counter[index].inst_count);
         }
         None
+    }
+
+    /// Processes data received on the bus, updating counters.
+    ///
+    /// # Arguments
+    /// * `bus_id` - The ID of the bus sending the data.
+    /// * `data` - The data received from the bus.
+    ///
+    /// # Returns
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
+    #[inline(always)]
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
+        debug_assert!(*bus_id == self.bus_id);
+
+        self.measure(data);
+
+        true
     }
 }
 
@@ -111,39 +128,6 @@ impl Add for RegularCounters {
 }
 
 impl BusDevice<u64> for RegularCounters {
-    /// Processes data received on the bus, updating counters.
-    ///
-    /// # Arguments
-    /// * `bus_id` - The ID of the bus sending the data.
-    /// * `data` - The data received from the bus.
-    /// * `pending` – A queue of pending bus operations used to send derived inputs.
-    ///
-    /// # Returns
-    /// A boolean indicating whether the program should continue execution or terminate.
-    /// Returns `true` to continue execution, `false` to stop.
-    #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
-        debug_assert!(*bus_id == self.bus_id);
-
-        self.measure(data);
-
-        true
-    }
-
-    /// Returns the bus IDs associated with this counter.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
-    }
-
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

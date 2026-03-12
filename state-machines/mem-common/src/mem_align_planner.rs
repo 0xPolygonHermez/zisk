@@ -1,5 +1,11 @@
 use core::panic;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{BufRead, BufReader, BufWriter, Write},
+    path::Path,
+    sync::Arc,
+};
 
 use crate::{MemAlignCheckPoint, MemAlignCounters};
 use crate::{MemAlignInstanceCounter, MemCounters};
@@ -80,6 +86,76 @@ impl<'a> MemAlignPlanner<'a> {
             full,
         }
     }
+
+    /// Saves the counters to a file.
+    ///
+    /// # Parameters
+    /// - `path`: Path to the file where counters will be saved
+    ///
+    /// # Returns
+    /// Result indicating success or an IO error
+    pub fn save_counters_to_file<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+
+        for (chunk_id, mem_counters) in self.counters.as_ref() {
+            let mc = &mem_counters.mem_align_counters;
+            writeln!(
+                writer,
+                "{} {} {} {} {} {}",
+                chunk_id.0, mc.full_5, mc.full_3, mc.full_2, mc.read_byte, mc.write_byte
+            )?;
+        }
+
+        writer.flush()?;
+        Ok(())
+    }
+
+    /// Loads counters from a file and calculates totals for use with align_plan_from_counters.
+    /// Returns the loaded counters and calculated totals (full_rows, read_byte, write_byte).
+    ///
+    /// # Parameters
+    /// - `path`: Path to the file containing saved counters
+    ///
+    /// # Returns
+    /// A tuple with (counters, full_rows, read_byte, write_byte)
+    pub fn load_counters_from_file<P: AsRef<Path>>(
+        path: P,
+    ) -> std::io::Result<(Vec<MemAlignCounters>, u32, u32, u32)> {
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+
+        let mut counters: Vec<MemAlignCounters> = Vec::new();
+        let mut full_rows = 0;
+        let mut read_byte = 0;
+        let mut write_byte = 0;
+
+        for line in reader.lines() {
+            let line = line?;
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() != 6 {
+                continue;
+            }
+
+            let counter = MemAlignCounters {
+                chunk_id: parts[0].parse().unwrap_or(0),
+                full_5: parts[1].parse().unwrap_or(0),
+                full_3: parts[2].parse().unwrap_or(0),
+                full_2: parts[3].parse().unwrap_or(0),
+                read_byte: parts[4].parse().unwrap_or(0),
+                write_byte: parts[5].parse().unwrap_or(0),
+            };
+
+            full_rows += counter.full_2 * 2 + counter.full_3 * 3 + counter.full_5 * 5;
+            read_byte += counter.read_byte;
+            write_byte += counter.write_byte;
+
+            counters.push(counter);
+        }
+
+        Ok((counters, full_rows, read_byte, write_byte))
+    }
+
     fn check_pendings(&self, pendings: &[u32; 5]) {
         if pendings.iter().any(|&x| x > 0) {
             println!(
@@ -115,6 +191,7 @@ impl<'a> MemAlignPlanner<'a> {
                 self.full.get_used()
             );
             println!("[Pending] (F5,F3,F2,RB,WB) {pendings:?}");
+            let _ = self.save_counters_to_file("tmp/mem_align_counters_crash.txt");
             panic!("Some counters are pending");
         }
     }

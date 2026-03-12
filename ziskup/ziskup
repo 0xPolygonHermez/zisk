@@ -16,6 +16,12 @@ mkdir -p "${ZISK_BIN_DIR}"
 main() {
   need_cmd curl
 
+  # Check if this is a setup_snark command
+  if [[ "$1" == "setup_snark" ]]; then
+    setup_snark_command
+    exit 0
+  fi
+
   while [[ -n $1 ]]; do
     case $1 in
     --)
@@ -265,6 +271,9 @@ OPTIONS:
     --provingkey    Install the proving key
     --verifykey     Install the verify key
     --nokey         No proving/verify key installation
+
+COMMANDS:
+    setup_snark     Install SNARK proving key (provingKeySnark)
 EOF
 }
 
@@ -363,6 +372,72 @@ install_setup() {
       ensure_silent "${CARGO_ZISK}" check-setup -a
       say "Constant tree files generated successfully."
     fi
+}
+
+# Install the SNARK proving key
+install_setup_snark() {
+    local KEY_FILE="zisk-provingkey-plonk-inputs-${SETUP_VERSION}.tar.gz"
+
+    step "Downloading SNARK proving key version ${SETUP_VERSION}. This may take a while..."
+    ensure download "${BUCKET_URL}/${KEY_FILE}" "${KEY_FILE}"
+    ensure download "${BUCKET_URL}/${KEY_FILE}.md5" "${KEY_FILE}.md5"
+
+    # Verify the md5 checksum
+    ensure md5sum -c "${KEY_FILE}.md5"
+
+    # Delete old provingKey, verifyKey and cache folders
+    rm -rf "${HOME}/.zisk/provingKeySnark"
+
+    # Extract the key
+    step "Installing SNARK proving key version ${SETUP_VERSION}..."
+    if [ "${PLATFORM}" = "linux" ]; then
+      ensure tar --overwrite -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+    else
+      ensure tar -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+    fi
+
+    rm -f "${KEY_FILE}"
+    rm -f "${KEY_FILE}.md5"
+    say "Installed SNARK proving key version ${SETUP_VERSION}"
+}
+
+# Setup SNARK command handler
+setup_snark_command() {
+  # Print banner
+  banner
+
+  # Detect platform
+  uname_s=$(uname -s)
+  PLATFORM=$(tolower "${uname_s}")
+
+  case "${PLATFORM}" in
+    linux) ;;
+    darwin | mac*) ;;
+    *)
+      err "unsupported platform ${PLATFORM}"
+      exit 1
+      ;;
+  esac
+
+  # Determine version from cargo-zisk
+  if [[ ! -f "${CARGO_ZISK}" ]]; then
+    err "cargo-zisk not found. Please install ZisK first with 'ziskup'"
+    exit 1
+  fi
+  
+  ZISK_VERSION=$("${CARGO_ZISK}" --version | awk '{print $2}')
+
+  # Parse version to get setup version
+  IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
+  SETUP_VERSION="${major}.${minor}.0"
+
+  step "Installing SNARK proving key for ZisK version ${ZISK_VERSION}..."
+
+  # Install the SNARK proving key
+  install_setup_snark
+
+  step "Done! SNARK proving key installation completed."
+  echo
 }
 
 # Banner Function for ZisK

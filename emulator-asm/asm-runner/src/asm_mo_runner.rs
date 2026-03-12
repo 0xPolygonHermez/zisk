@@ -1,47 +1,49 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
-use zisk_common::ExecutorStatsHandle;
-use zisk_common::Plan;
+use zisk_common::{stats_begin, stats_end, stats_mark, ExecutorStatsHandle, Plan};
 
 use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
-use std::time::Duration;
 use tracing::error;
 
-use crate::{AsmMOChunk, AsmMOHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
+use crate::SEM_CHUNK_DONE_WAIT_DURATION;
+use crate::TRACE_DELTA_SIZE;
+use crate::TRACE_INITIAL_SIZE;
+use crate::TRACE_MAX_SIZE;
+use crate::{
+    sem_chunk_done_name, shmem_output_name, AsmMOChunk, AsmMOHeader, AsmMultiSharedMemory,
+    AsmRunError, AsmService, AsmServices,
+};
 use mem_planner_cpp::MemPlanner;
 
 use anyhow::{Context, Result};
 
-#[cfg(feature = "stats")]
-use zisk_common::ExecutorStatsEvent;
-
 #[cfg(feature = "save_mem_plans")]
 use mem_common::save_plans;
 
-pub struct PreloadedMO {
-    pub output_shmem: AsmSharedMemory<AsmMOHeader>,
+pub struct MOShMemReader {
+    pub output_shmem: AsmMultiSharedMemory<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
 }
 
-impl PreloadedMO {
+impl MOShMemReader {
     pub fn new(
         local_rank: i32,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Result<Self> {
-        let port = if let Some(base_port) = base_port {
-            AsmServices::port_for(&AsmService::MO, base_port, local_rank)
-        } else {
-            AsmServices::default_port(&AsmService::MO, local_rank)
-        };
+        let port = AsmServices::port_base_for(base_port, local_rank);
 
-        let output_name =
-            AsmSharedMemory::<AsmMOHeader>::shmem_output_name(port, AsmService::MO, local_rank);
+        let output_name = shmem_output_name(port, AsmService::MO, local_rank, None);
 
-        let output_shared_memory =
-            AsmSharedMemory::<AsmMOHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
+        let output_shared_memory = AsmMultiSharedMemory::<AsmMOHeader>::open_and_map(
+            &output_name,
+            TRACE_INITIAL_SIZE,
+            TRACE_DELTA_SIZE,
+            TRACE_MAX_SIZE,
+            unlock_mapped_memory,
+        )?;
 
         Ok(Self {
             output_shmem: output_shared_memory,
@@ -51,7 +53,7 @@ impl PreloadedMO {
     }
 }
 
-impl Drop for PreloadedMO {
+impl Drop for MOShMemReader {
     fn drop(&mut self) {
         if let Some(handle_mo) = self.handle_mo.take() {
             match handle_mo.join() {
@@ -79,7 +81,7 @@ impl AsmRunnerMO {
 
     #[allow(clippy::too_many_arguments)]
     pub fn run(
-        preloaded: &mut PreloadedMO,
+        preloaded: &mut MOShMemReader,
         max_steps: u64,
         chunk_size: u64,
         world_rank: i32,
@@ -87,37 +89,27 @@ impl AsmRunnerMO {
         base_port: Option<u16>,
         _stats: ExecutorStatsHandle,
     ) -> Result<Self> {
-        #[cfg(feature = "stats")]
-        let parent_stats_id = _stats.next_id();
-        #[cfg(feature = "stats")]
-        _stats.add_stat(0, parent_stats_id, "ASM_MO_RUNNER", 0, ExecutorStatsEvent::Begin);
+        stats_begin!(_stats, 0, _runner_scope, "ASM_MO_RUNNER", 0);
 
-        let port = if let Some(base_port) = base_port {
-            AsmServices::port_for(&AsmService::MO, base_port, local_rank)
-        } else {
-            AsmServices::default_port(&AsmService::MO, local_rank)
-        };
+        let port = AsmServices::port_base_for(base_port, local_rank);
 
-        let sem_chunk_done_name =
-            AsmSharedMemory::<AsmMOHeader>::shmem_chunk_done_name(port, AsmService::MO, local_rank);
+        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::MO, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        let __stats = _stats.clone();
+        // Capture parent id for thread
+        let _parent_id = _runner_scope.id();
+        let _thread_stats = _stats.clone();
 
         let handle = std::thread::spawn(move || {
-            #[cfg(feature = "stats")]
-            let stats_id = __stats.next_id();
-            #[cfg(feature = "stats")]
-            __stats.add_stat(parent_stats_id, stats_id, "ASM_MO", 0, ExecutorStatsEvent::Begin);
+            stats_begin!(_thread_stats, _parent_id, _mo_scope, "ASM_MO", 0);
 
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+            #[allow(clippy::let_and_return)]
             let result = asm_services.send_memory_ops_request(max_steps, chunk_size);
 
-            // Add to executor stats
-            #[cfg(feature = "stats")]
-            __stats.add_stat(parent_stats_id, stats_id, "ASM_MO", 0, ExecutorStatsEvent::End);
+            stats_end!(_thread_stats, &_mo_scope);
 
             result
         });
@@ -133,60 +125,56 @@ impl AsmRunnerMO {
         // Initialize C++ memory operations trace
         mem_planner.execute();
 
-        #[cfg(feature = "stats")]
-        let stats_id = _stats.next_id();
-        #[cfg(feature = "stats")]
-        _stats.add_stat(
-            parent_stats_id,
-            stats_id,
-            "MO_PROCESS_CHUNKS",
-            0,
-            ExecutorStatsEvent::Begin,
-        );
+        stats_begin!(_stats, &_runner_scope, _process_scope, "MO_PROCESS_CHUNKS", 0);
 
-        // Threshold (in bytes) used to detect when the shared memory region size has changed.
-        // Computed to optimize the common case where minor size fluctuations are ignored.
-        // It is based on the worst-case scenario of memory usage.
-        let threshold_bytes = (chunk_size as usize * 200) + (44 * 8) + 32;
+        // Threshold (in bytes) used to detect when we need to check for new shared memory files.
+        // Must match MAX_CHUNK_TRACE_SIZE from main.c to ensure we check before the producer
+        // reallocates. Constants from main.c:
+        //   MAX_MTRACE_REGS_ACCESS_SIZE = (2 + 2 + 3) * 8 = 56
+        //   MAX_BYTES_DIRECT_MTRACE = 256
+        //   MAX_BYTES_MTRACE_STEP = 256 + 56 = 312
+        //   MAX_TRACE_CHUNK_INFO = (44 * 8) + 32 = 384
+        //   MAX_CHUNK_TRACE_SIZE = (chunk_size * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO
+        const MAX_MTRACE_REGS_ACCESS_SIZE: usize = (2 + 2 + 3) * 8;
+        const MAX_BYTES_DIRECT_MTRACE: usize = 256;
+        const MAX_BYTES_MTRACE_STEP: usize = MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE;
+        const MAX_TRACE_CHUNK_INFO: usize = (44 * 8) + 32;
+
+        let threshold_bytes = (chunk_size as usize * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO;
         let mut threshold = unsafe {
-            preloaded.output_shmem.mapped_ptr().add(threshold_bytes) as *const AsmMOChunk
+            preloaded
+                .output_shmem
+                .mapped_ptr()
+                .add(preloaded.output_shmem.total_mapped_size() - threshold_bytes)
+                as *const AsmMOChunk
         };
 
         let exit_code = loop {
-            match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
+            match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
-                    // Check if we need to remap the shared memory
+                    // Check if we need to map additional shared memory files.
                     if data_ptr >= threshold
-                        && preloaded
-                            .output_shmem
-                            .check_size_changed(&mut data_ptr)
-                            .context("Failed to check and remap shared memory for MO trace")?
+                        && preloaded.output_shmem.check_size_changed().context(
+                            "Failed to check and map new shared memory files for MO trace",
+                        )?
                     {
-                        threshold = unsafe {
-                            preloaded.output_shmem.mapped_ptr().add(threshold_bytes)
-                                as *const AsmMOChunk
-                        };
+                        // Update threshold based on new total mapped size
+                        threshold =
+                            unsafe {
+                                preloaded.output_shmem.mapped_ptr().add(
+                                    preloaded.output_shmem.total_mapped_size() - threshold_bytes,
+                                ) as *const AsmMOChunk
+                            };
                     }
 
                     let chunk = unsafe { std::ptr::read(data_ptr) };
 
                     data_ptr = unsafe { data_ptr.add(1) };
 
-                    // Add to executor stats
-                    #[cfg(feature = "stats")]
-                    {
-                        let stats_id = _stats.next_id();
-                        _stats.add_stat(
-                            parent_stats_id,
-                            stats_id,
-                            "MO_CHUNK_DONE",
-                            0,
-                            ExecutorStatsEvent::Mark,
-                        );
-                    }
+                    stats_mark!(_stats, &_runner_scope, "MO_CHUNK_DONE", 0);
 
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
@@ -232,46 +220,22 @@ impl AsmRunnerMO {
         let mut mem_align_plans = mem_planner.wait_mem_align_plans();
         mem_planner.wait();
 
-        // Add to executor stats
-        #[cfg(feature = "stats")]
-        _stats.add_stat(parent_stats_id, stats_id, "MO_PROCESS_CHUNKS", 0, ExecutorStatsEvent::End);
-
-        #[cfg(feature = "stats")]
-        let stats_id = _stats.next_id();
-        #[cfg(feature = "stats")]
-        _stats.add_stat(
-            parent_stats_id,
-            stats_id,
-            "MO_COLLECT_PLANS",
-            0,
-            ExecutorStatsEvent::Begin,
-        );
+        stats_end!(_stats, &_process_scope);
+        stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);
 
         let plans = mem_planner.collect_plans(&mut mem_align_plans);
 
         #[cfg(feature = "save_mem_plans")]
         save_plans(&plans, "mem_plans_cpp.txt");
 
-        // Add to executor stats
-        #[cfg(feature = "stats")]
-        _stats.add_stat(parent_stats_id, stats_id, "MO_COLLECT_PLANS", 0, ExecutorStatsEvent::End);
-
-        // #[cfg(feature = "stats")]
-        // {
-        //     let mem_stats = mem_planner.get_mem_stats();
-        //     for i in mem_stats {
-        //         _stats.add_stat(i);
-        //     }
-        // }
+        stats_end!(_stats, &_collect_scope);
 
         preloaded.handle_mo = Some(std::thread::spawn(move || {
             drop(mem_planner);
             MemPlanner::new()
         }));
 
-        #[cfg(feature = "stats")]
-        _stats.add_stat(0, parent_stats_id, "ASM_MO_RUNNER", 0, ExecutorStatsEvent::End);
-
+        stats_end!(_stats, &_runner_scope);
         Ok(AsmRunnerMO::new(plans))
     }
 }

@@ -19,7 +19,6 @@ sm-binary = { workspace = true }
 sm-frequent-ops = { workspace = true }
 
 fields = { workspace=true }
-proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
@@ -33,9 +32,6 @@ static_assertions = { workspace = true }
 
 [features]
 default = []
-gpu = ["proofman-common/gpu", "packed"]
-packed = ["proofman-common/packed"]
-diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
+gpu = ["packed"]
+packed = []
 generate_code_arith_range_table = []
-no_lib_link = ["proofman-common/no_lib_link"]
-disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

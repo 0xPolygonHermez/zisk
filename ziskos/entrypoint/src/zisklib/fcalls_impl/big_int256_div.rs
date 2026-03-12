@@ -18,7 +18,7 @@ pub fn fcall_big_int256_div(params: &[u64], results: &mut [u64]) -> i64 {
     8
 }
 
-fn big_int256_div(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], [u64; 4]) {
+pub fn big_int256_div(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], [u64; 4]) {
     let a_big = biguint_from_u64_digits(a);
     let b_big = biguint_from_u64_digits(b);
     let (quotient, remainder) = a_big.div_rem(&b_big);

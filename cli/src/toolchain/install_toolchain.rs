@@ -19,7 +19,11 @@ use crate::{get_target, get_toolchain_download_url, is_supported_target};
 #[derive(Parser)]
 #[command(name = "install-toolchain", about = "Install the cargo-zisk toolchain.")]
 pub struct InstallToolchainCmd {
+    #[arg(short, long)]
     version: Option<String>,
+
+    #[arg(short, long)]
+    name: Option<String>,
 }
 
 impl InstallToolchainCmd {
@@ -99,10 +103,12 @@ impl InstallToolchainCmd {
             }
         }
 
+        let rustup_toolchain_name = self.name.as_deref().unwrap_or(RUSTUP_TOOLCHAIN_NAME);
+
         // Remove the existing toolchain from rustup, if it exists.
         let mut child = Command::new("rustup")
             .current_dir(&root_dir)
-            .args(["toolchain", "remove", RUSTUP_TOOLCHAIN_NAME])
+            .args(["toolchain", "remove", rustup_toolchain_name])
             .stdout(std::process::Stdio::piped())
             .spawn()?;
         let res = child.wait();
@@ -139,7 +145,7 @@ impl InstallToolchainCmd {
             .args([
                 "toolchain",
                 "link",
-                RUSTUP_TOOLCHAIN_NAME,
+                rustup_toolchain_name,
                 &new_toolchain_dir.to_string_lossy(),
             ])
             .status()?;

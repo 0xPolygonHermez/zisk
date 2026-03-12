@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::Debug;
 use zisk_common::EmuTrace;
 use zisk_common::EmuTraceStart;
@@ -45,11 +46,16 @@ impl AsmMTChunk {
         let chunk = unsafe { std::ptr::read(*mapped_ptr) };
         *mapped_ptr = unsafe { mapped_ptr.add(1) };
 
-        // Convert mem_reads into a Vec<u64> without copying
-        let mem_reads_ptr = *mapped_ptr as *mut u64;
+        // Zero-copy: borrow mem_reads directly from shared memory
+        // SAFETY: Caller must ensure shared memory outlives EmuTrace usage
+        let mem_reads_ptr = *mapped_ptr as *const u64;
         let mem_reads_len = chunk.mem_reads_size as usize;
-        let mem_reads =
-            unsafe { std::slice::from_raw_parts(mem_reads_ptr, mem_reads_len).to_vec() };
+        let mem_reads: Cow<'static, [u64]> = Cow::Borrowed(unsafe {
+            std::mem::transmute::<&[u64], &[u64]>(std::slice::from_raw_parts(
+                mem_reads_ptr,
+                mem_reads_len,
+            ))
+        });
 
         // Advance the pointer after reading memory reads
         *mapped_ptr = unsafe { (*mapped_ptr as *mut u64).add(mem_reads_len) as *const AsmMTChunk };
@@ -76,32 +82,12 @@ impl AsmMTChunk {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct AsmInputC {
-    pub chunk_size: u64,
-    pub max_steps: u64,
-    pub initial_trace_size: u64,
-    pub input_data_size: u64,
-}
-
-impl AsmInputC {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(32);
-        bytes.extend_from_slice(&self.chunk_size.to_le_bytes());
-        bytes.extend_from_slice(&self.max_steps.to_le_bytes());
-        bytes.extend_from_slice(&self.initial_trace_size.to_le_bytes());
-        bytes.extend_from_slice(&self.input_data_size.to_le_bytes());
-        bytes
-    }
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct AsmInputC2 {
+pub struct AsmInputHeader {
     pub zero: u64, // Not used
     pub input_data_size: u64,
 }
 
-impl AsmInputC2 {
+impl AsmInputHeader {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(32);
         bytes.extend_from_slice(&0u64.to_le_bytes());

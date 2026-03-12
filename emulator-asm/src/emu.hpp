@@ -2,6 +2,9 @@
 #define EMU_ASM_HPP
 
 #include <stdint.h>
+#include <sys/time.h>
+
+uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime);
 
 #ifdef DEBUG
 extern bool emu_verbose;
@@ -26,6 +29,12 @@ typedef struct {
 
     uint64_t sha256_counter;
     uint64_t sha256_duration;
+
+    uint64_t blake2_counter;
+    uint64_t blake2_duration;
+
+    uint64_t poseidon2_counter;
+    uint64_t poseidon2_duration;
 
     uint64_t arith256_counter;
     uint64_t arith256_duration;

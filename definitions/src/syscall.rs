@@ -1,0 +1,30 @@
+// Syscall 0x800 - 0x84F (80 syscalls)
+
+// Important: Syscalls should be contiguous and in the same order as in riscv2zisk_context.rs
+
+pub const SYSCALL_KECCAKF_ID: u16 = 0x800;
+pub const SYSCALL_ARITH256_ID: u16 = 0x801;
+pub const SYSCALL_ARITH256_MOD_ID: u16 = 0x802;
+pub const SYSCALL_SECP256K1_ADD_ID: u16 = 0x803;
+pub const SYSCALL_SECP256K1_DBL_ID: u16 = 0x804;
+pub const SYSCALL_SHA256F_ID: u16 = 0x805;
+pub const SYSCALL_BN254_CURVE_ADD_ID: u16 = 0x806;
+pub const SYSCALL_BN254_CURVE_DBL_ID: u16 = 0x807;
+pub const SYSCALL_BN254_COMPLEX_ADD_ID: u16 = 0x808;
+pub const SYSCALL_BN254_COMPLEX_SUB_ID: u16 = 0x809;
+pub const SYSCALL_BN254_COMPLEX_MUL_ID: u16 = 0x80A;
+pub const SYSCALL_ARITH384_MOD_ID: u16 = 0x80B;
+pub const SYSCALL_BLS12_381_CURVE_ADD_ID: u16 = 0x80C;
+pub const SYSCALL_BLS12_381_CURVE_DBL_ID: u16 = 0x80D;
+pub const SYSCALL_BLS12_381_COMPLEX_ADD_ID: u16 = 0x80E;
+pub const SYSCALL_BLS12_381_COMPLEX_SUB_ID: u16 = 0x80F;
+pub const SYSCALL_BLS12_381_COMPLEX_MUL_ID: u16 = 0x810;
+pub const SYSCALL_ADD256_ID: u16 = 0x811;
+pub const SYSCALL_POSEIDON2_ID: u16 = 0x812;
+pub const SYSCALL_DMA_MEMCPY_ID: u16 = 0x813;
+pub const SYSCALL_DMA_MEMCMP_ID: u16 = 0x814;
+pub const SYSCALL_DMA_INPUTCPY_ID: u16 = 0x815;
+pub const SYSCALL_DMA_MEMSET_ID: u16 = 0x816;
+pub const SYSCALL_SECP256R1_ADD_ID: u16 = 0x817;
+pub const SYSCALL_SECP256R1_DBL_ID: u16 = 0x818;
+pub const SYSCALL_BLAKE2B_ROUND_ID: u16 = 0x819;

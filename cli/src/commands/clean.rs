@@ -4,9 +4,13 @@ use clap::Parser;
 use colored::Colorize;
 
 use anyhow::{Context, Result};
-use proofman_common::initialize_logger;
+use proofman_common::VerboseMode;
+use zisk_sdk::setup_logger;
 
-use crate::{commands::get_home_zisk_path, ux::print_banner};
+use crate::{
+    commands::get_home_zisk_path,
+    ux::{print_banner, print_banner_command},
+};
 
 /// Deletes the default zisk setup folder
 #[derive(Parser, Debug)]
@@ -15,14 +19,10 @@ pub struct ZiskClean;
 
 impl ZiskClean {
     pub fn run(&self) -> Result<()> {
-        initialize_logger(proofman_common::VerboseMode::Info, None);
+        setup_logger(VerboseMode::Info);
 
         print_banner();
-        tracing::info!(
-            "{}",
-            format!("{} Clean", format!("{: >12}", "Command").bright_green().bold())
-        );
-        tracing::info!("");
+        print_banner_command("Clean");
 
         let home_zisk_path = get_home_zisk_path();
         let cache_zisk_path = home_zisk_path.join("cache");

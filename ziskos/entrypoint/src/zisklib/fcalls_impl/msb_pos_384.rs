@@ -9,7 +9,7 @@ pub fn fcall_msb_pos_384(parameters: &[u64], results: &mut [u64]) -> i64 {
     2
 }
 
-fn msb_pos_384(x: &[u64; 6], y: &[u64; 6]) -> (usize, usize) {
+pub fn msb_pos_384(x: &[u64; 6], y: &[u64; 6]) -> (usize, usize) {
     for i in (0..6).rev() {
         if x[i] != 0 || y[i] != 0 {
             let word = if x[i] > y[i] { x[i] } else { y[i] };

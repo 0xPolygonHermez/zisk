@@ -40,7 +40,7 @@ const OP_DATA_BUFFER_DEFAULT_CAPACITY: usize = 128 * 1024 * 1024;
 const REG_RA_IDX: usize = 1;
 
 /// Keeps statistics of the emulator operations
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Stats {
     /// Counter of FROPS (FRequentOPs)
     frops: u64,
@@ -65,6 +65,7 @@ pub struct Stats {
     roi_callers: usize,
     top_rois_detail: bool,
     coverage: bool,
+    top_histogram: usize,
     legacy_stats: bool,
     /// PC histogram, i.e. number of times each PC was executed
     pc_histogram: HashMap<u64, u64>,
@@ -78,6 +79,9 @@ pub struct Stats {
     individual_cost_marks: bool,
     main_name: String,
     profile_tags: HashMap<u16, String>,
+    track_separator: String,
+    use_thousands_sep: bool,
+    top_rois_filter: bool,
     #[cfg(feature = "debug_stats_trace")]
     debug_step_stack: Vec<u64>,
     #[cfg(feature = "debug_stats_trace")]
@@ -116,6 +120,10 @@ impl Default for Stats {
             individual_cost_marks: false,
             main_name: "main".to_string(),
             profile_tags: HashMap::new(),
+            top_histogram: 0,
+            track_separator: ";".to_string(),
+            use_thousands_sep: true,
+            top_rois_filter: false,
             #[cfg(feature = "debug_stats_trace")]
             debug_step_stack: Vec::new(),
             #[cfg(feature = "debug_stats_trace")]
@@ -317,9 +325,12 @@ impl Stats {
             if pc >= self.rois[roi_index].from_pc && pc <= self.rois[roi_index].to_pc {
                 if self.is_call {
                     assert!(!self.is_return);
-                    if let Some(previous_roi_index) = previous_roi_index {
+                    let caller_name = if let Some(previous_roi_index) = previous_roi_index {
                         self.rois[previous_roi_index].caller_call();
-                    }
+                        &self.rois[previous_roi_index].name.clone()
+                    } else {
+                        ""
+                    };
                     #[cfg(feature = "debug_call_stack")]
                     println!(
                         "CALL_STACK_DEBUG: CALL P_PC:0x{:08x} => PC:0x{pc:08x} CALLER_ROI:{} CALLED_ROI:{}",
@@ -338,6 +349,16 @@ impl Stats {
                     self.call_return_reg = 0;
 
                     self.rois[roi_index].call(previous_roi_index, self.call_stack.len());
+
+                    // Track call parameters for selected ROIs
+                    if self.rois[roi_index].is_selected_roi && self.rois[roi_index].track_calls > 0
+                    {
+                        self.rois[roi_index].track_call_parameters(
+                            regs,
+                            &self.track_separator,
+                            caller_name,
+                        );
+                    }
                 } else if !self.is_return {
                     // JMP: This is a tail call. Replace the top of the call stack if it exists
                     if let Some(top) = self.call_stack.last_mut() {
@@ -493,12 +514,12 @@ impl Stats {
         if is_jmp {
             // CALL: set_pc=true, store_ra=true, store_offset=1 (stores PC+4 or PC+2 in ra)
             // self.is_call = instruction.store_ra && instruction.store_offset == 1;
-            self.is_call = instruction.store_ra;
+            self.is_call = instruction.store_pc;
             self.call_return_reg = if self.is_call { instruction.store_offset as u8 } else { 0 };
 
-            // RETURN: set_pc=true, store_ra=false (no stores RA), b_src=SRC_REG, b_offset_imm0=1 (jumps to ra/x1)
+            // RETURN: set_pc=true, store_pc=false (no stores RA), b_src=SRC_REG, b_offset_imm0=1 (jumps to ra/x1)
             // Additionally, verify that the target PC matches the expected return address from the call stack
-            let is_jalr_ra = !instruction.store_ra
+            let is_jalr_ra = !instruction.store_pc
                 && instruction.set_pc
                 && instruction.b_src == SRC_REG
                 && instruction.b_offset_imm0 == 1;
@@ -513,7 +534,7 @@ impl Stats {
                     self.is_return = false;
                 }
             } else if let Some(top) = self.call_stack.last() {
-                self.is_return = !instruction.store_ra
+                self.is_return = !instruction.store_pc
                     && instruction.b_src == SRC_REG
                     && instruction.b_offset_imm0 == top.return_reg as u64;
             } else {
@@ -588,6 +609,7 @@ impl Stats {
             .rois
             .iter()
             .enumerate()
+            .filter(|(_, roi)| !self.top_rois_filter || roi.is_selected_roi)
             .map(|(index, roi)| (index, if by_step { roi.get_steps() } else { roi.get_cost() }))
             .collect();
         top_rois.sort_by(|a, b| b.1.cmp(&a.1));
@@ -612,7 +634,13 @@ impl Stats {
         self.ops_cost = ops_cost;
         self.precompiled_cost = precompiled_cost;
     }
-    pub fn report_opcodes(&self, report: &mut StatsReport, ops: &[u64], title: &str) {
+    pub fn report_opcodes(
+        &self,
+        report: &mut StatsReport,
+        ops: &[u64],
+        title: &str,
+        steps_perc: bool,
+    ) {
         let ranks = get_ops_ranks(ops);
         for (opcode, op_count) in ops.iter().enumerate() {
             if opcode > 1 && *op_count > 0 {
@@ -622,12 +650,21 @@ impl Stats {
                     } else {
                         String::new()
                     };
-                    report.add_count_cost_perc(
-                        &format!("{title} {:}", inst.name()),
-                        *op_count,
-                        *op_count * inst.steps(),
-                        &rank,
-                    );
+                    if steps_perc {
+                        report.add_count_cost_perc2(
+                            &format!("{title} {:}", inst.name()),
+                            *op_count,
+                            *op_count * inst.steps(),
+                            &rank,
+                        );
+                    } else {
+                        report.add_count_cost_perc(
+                            &format!("{title} {:}", inst.name()),
+                            *op_count,
+                            *op_count * inst.steps(),
+                            &rank,
+                        );
+                    }
                 }
             }
         }
@@ -696,6 +733,7 @@ impl Stats {
         let base_cost = BASE_COST as u64;
         let total_cost = base_cost + mem_cost + main_cost + ops_cost + precompiled_cost;
         let mut report = StatsReport::new();
+        report.use_thousands_sep = self.use_thousands_sep;
         report.set_total_cost(total_cost);
         report.set_steps(self.costs.steps);
         report.title_cost("REPORT", "");
@@ -712,8 +750,8 @@ impl Stats {
         report.ln();
         report.add_cost_perc("FROPS", self.frops_cost);
         report.add_perc("RAM USAGE", self.costs.mops.get_max_ram_address() - RAM_ADDR + 1, 1 << 29);
-        report.title_count_cost_perc("COST BY OPCODE", "COUNT", "COST", " RANK");
-        self.report_opcodes(&mut report, &self.costs.ops, "OP");
+        report.title_count_cost_perc2("COST BY OPCODE", "COUNT", "COST", " RANK");
+        self.report_opcodes(&mut report, &self.costs.ops, "OP", true);
 
         report.title_count_perc_cost_perc("FROPS BY OPCODE", "COUNT", "HIT", "COST", " RANK");
         self.report_opcodes_hit(&mut report, &self.costs.frops_ops, &self.costs.ops, "FROP");
@@ -761,6 +799,7 @@ impl Stats {
                 for index in final_top_cost_rois.iter() {
                     let roi = &self.rois[*index];
                     let mut roi_report = StatsReport::new();
+                    roi_report.use_thousands_sep = self.use_thousands_sep;
                     roi_report.set_total_cost(roi.get_cost());
                     roi_report.set_steps(roi.get_steps());
                     roi_report.title(&format!("DETAIL FUNCTION {}", roi.name));
@@ -769,7 +808,7 @@ impl Stats {
 
                     roi_report.set_identation(1);
                     roi_report.title_count_cost_perc("COST BY OPCODE", "COUNT", "COST", " RANK");
-                    self.report_opcodes(&mut roi_report, roi.get_ops_costs(), "OP");
+                    self.report_opcodes(&mut roi_report, roi.get_ops_costs(), "OP", false);
 
                     roi_report.title_top_count_perc("TOP STEP CALLERS (calls, steps)");
                     let mut callers: Vec<_> = roi.get_callers().collect();
@@ -845,6 +884,54 @@ impl Stats {
                 }
             }
         }
+        if self.top_histogram > 0 {
+            report.title_autowidth("TOP PC HISTOGRAM (EXECUTIONS, % EXECUTIONS, PC)");
+
+            // Convert HashMap to Vec and sort by execution count (descending), then by PC (ascending)
+            let mut pc_vec: Vec<_> = self.pc_histogram.iter().collect();
+            pc_vec.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+
+            // Show only top N entries
+            let mut previous_count = 0;
+            let mut initial_address = 0;
+            let mut block_count = 0;
+            let mut block_label = "";
+            let last_index = std::cmp::min(self.top_histogram, pc_vec.len()) - 1;
+            for (index, (pc, count)) in pc_vec.iter().take(self.top_histogram).enumerate() {
+                let is_same_block = previous_count == **count
+                    && **pc > initial_address
+                    && (**pc - initial_address) < 512;
+
+                if is_same_block {
+                    block_count += **count;
+                } else {
+                    if block_count > 0 {
+                        report.add_top_step_perc(
+                            &format!(" -----------   {block_label}\n"),
+                            block_count,
+                        );
+                    }
+                    previous_count = **count;
+                    initial_address = **pc;
+                    block_count = **count;
+                    block_label = if let Some((_, index)) =
+                        self.rois_by_address.range(..=initial_address as u32).next_back()
+                    {
+                        &self.rois[*index as usize].name
+                    } else {
+                        ""
+                    };
+                }
+                let instruction = rom.get_instruction(**pc);
+                let pc_str = format!(" 0x{pc:08x}:   {}", instruction.verbose);
+                report.add_top_step_perc(&pc_str, **count);
+                if index == last_index {
+                    report
+                        .add_top_step_perc(&format!(" -----------   {block_label}\n"), block_count);
+                }
+            }
+        }
+
         report.output
     }
     pub fn add_profile_tag(&mut self, id: u16, name: &str) {
@@ -856,8 +943,50 @@ impl Stats {
         self.rois.push(roi);
         self.rois_by_address.insert(from_pc, index);
     }
+    pub fn mark_roi_as_selected(&mut self, from_pc: u32, track_calls: usize) {
+        if let Some(&index) = self.rois_by_address.get(&from_pc) {
+            if let Some(roi) = self.rois.get_mut(index as usize) {
+                roi.set_selected_roi(track_calls);
+            }
+        }
+    }
+    pub fn init_roi_tracking(&mut self, output_path: &str, separator: &str) -> std::io::Result<()> {
+        self.track_separator = separator.to_string();
+
+        // Track used filenames to detect collisions
+        let mut used_filenames = std::collections::HashSet::new();
+
+        for roi in &mut self.rois {
+            if roi.is_selected_roi && roi.track_calls > 0 {
+                // Clean function name: keep only alphanumeric and underscore
+                let clean_name: String =
+                    roi.name.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
+
+                // Check for collision
+                let filename = if used_filenames.contains(&clean_name) {
+                    // Collision detected, add ROI id
+                    format!("{}_roi_{}", clean_name, roi.id)
+                } else {
+                    clean_name.clone()
+                };
+
+                used_filenames.insert(clean_name);
+                roi.init_tracking(output_path, separator, &filename)?;
+            }
+        }
+        Ok(())
+    }
+    pub fn set_track_separator(&mut self, separator: String) {
+        self.track_separator = separator;
+    }
+    pub fn set_use_thousands_sep(&mut self, value: bool) {
+        self.use_thousands_sep = value;
+    }
     pub fn set_top_rois(&mut self, value: usize) {
         self.top_rois = value;
+    }
+    pub fn set_top_histogram(&mut self, value: usize) {
+        self.top_histogram = value;
     }
     pub fn set_legacy_stats(&mut self, value: bool) {
         self.legacy_stats = value;
@@ -874,6 +1003,31 @@ impl Stats {
     pub fn set_main_name(&mut self, value: String) {
         self.main_name = value;
     }
+    pub fn set_top_rois_filter(&mut self, value: bool) {
+        self.top_rois_filter = value;
+    }
+
+    /// Write disassembly to file with execution counts
+    pub fn write_disassembly(
+        &self,
+        rom: &ZiskRom,
+        path: &str,
+        symbols: Option<crate::ElfSymbolReader>,
+    ) -> std::io::Result<()> {
+        use crate::DisasmWriter;
+
+        let mut disasm_writer = DisasmWriter::new(path)?;
+        disasm_writer.set_pc_histogram(self.pc_histogram.clone());
+        if let Some(syms) = symbols {
+            disasm_writer.set_symbols(syms);
+        }
+        disasm_writer.write_header("ZisK Disassembly")?;
+        disasm_writer.write_disassembly(rom)?;
+        disasm_writer.flush()?;
+
+        Ok(())
+    }
+
     #[cfg(feature = "debug_stats_trace")]
     pub fn debug_stats_trace(&mut self, pc: u64) {
         if self.costs.steps == 1 || self.previous_roi != self.current_roi {
@@ -918,6 +1072,11 @@ impl OpStats for Stats {
     fn mem_align_write(&mut self, addr: u64, count: usize) {
         for index in 0..count {
             self.on_memory_write(addr + 8 * index as u64, 8, 0);
+        }
+    }
+    fn add_extras(&mut self, extras: &[(u8, usize)]) {
+        for (opcode, count) in extras {
+            self.costs.ops[*opcode as usize] += *count as u64;
         }
     }
 }

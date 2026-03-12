@@ -3,19 +3,9 @@ require "opids.pil"
 
 const int MEM_ALIGN_ROM_SIZE = P2_8;
 
-airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int CHUNK_NUM = 8, const int DEFAULT_OFFSET = 0, const int DEFAULT_WIDTH = 8, const int disable_fixed = 0) {
+airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int CHUNK_NUM = 8, const int DEFAULT_OFFSET = 0, const int DEFAULT_WIDTH = 8) {
     if (N < MEM_ALIGN_ROM_SIZE) {
         error(`N must be at least ${MEM_ALIGN_ROM_SIZE}, but N=${N} was provided`);
-    }
-
-    col witness multiplicity;
-
-    if (disable_fixed) {
-        col fixed _K = [0...];
-        multiplicity * _K === 0;
-
-        println("*** DISABLE_FIXED ***");
-        return;
     }
 
     // Define the size of each sub-program: RV, RWV, RVR, RWVWR
@@ -319,5 +309,6 @@ airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int CHUNK_NUM = 
     }
 
     // Ensure the program is being followed by the MemAlign
+    col witness multiplicity;
     lookup_proves(MEMORY_ALIGN_ROM_ID, [PC, DELTA_PC, DELTA_ADDR, OFFSET, WIDTH, FLAGS], multiplicity);
 }

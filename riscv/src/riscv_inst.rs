@@ -33,7 +33,7 @@
 //! See <https://devopedia.org/risc-v-instruction-sets>
 
 /// RISC-V instruction data
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct RiscvInstruction {
     /// Instruction ROM address, i.e. program counter value
     pub rom_address: u64,

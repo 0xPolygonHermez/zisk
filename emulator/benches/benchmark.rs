@@ -81,9 +81,10 @@ fn bench_riscv2zisk(c: &mut Criterion) {
         b.iter(|| {
             // Convert the ELF file to ZisK ROM
             let elf_file = "./benches/data/my.elf".to_string();
+            let elf = std::fs::read(elf_file.clone()).unwrap();
             let _rom: ZiskRom = {
                 // Create an instance of the RISCV -> ZisK program converter
-                let rv2zk = Riscv2zisk::new(elf_file.clone());
+                let rv2zk = Riscv2zisk::new(&elf);
 
                 // Convert program to rom
                 let result = rv2zk.run();
@@ -113,9 +114,10 @@ fn bench_process_rom(c: &mut Criterion) {
     c.bench_function("Process ROM", |b| {
         // Convert the ELF file to ZisK ROM
         let elf_file = "./benches/data/my.elf".to_string();
+        let elf = std::fs::read(elf_file.clone()).unwrap();
         let rom: ZiskRom = {
             // Create an instance of the RISCV -> ZisK program converter
-            let rv2zk = Riscv2zisk::new(elf_file.clone());
+            let rv2zk = Riscv2zisk::new(&elf);
 
             // Convert program to rom
             let result = rv2zk.run();
@@ -166,9 +168,10 @@ fn bench_process_rom_callback(c: &mut Criterion) {
         //let elf_file =
         // "../riscof/riscof_work/rv64i_m/A/src/amoxor.w-01.S/dut/my.elf".to_string();
         let elf_file = "./benches/data/my.elf".to_string();
+        let elf = std::fs::read(elf_file.clone()).unwrap();
         let zisk_rom: ZiskRom = {
             // Create an instance of the RISCV -> ZisK program converter
-            let rv2zk = Riscv2zisk::new(elf_file.clone());
+            let rv2zk = Riscv2zisk::new(&elf);
 
             // Convert program to rom
             let result = rv2zk.run();

@@ -1,7 +1,8 @@
 {
     "nPublics": 68,
     "definitions": [
-        { "name": "rom_root", "initialPos": 0, "chunks": [4, 64] },
-        { "name": "inputs", "initialPos": 4, "chunks": [64, 32] }
-    ]
+        { "name": "rom_root", "initialPos": 0, "nValues": 4, "chunks": [1, 64], "verificationKey": true },
+        { "name": "inputs", "initialPos": 4, "nValues": 64, "chunks": [1, 32] }
+    ],
+    "hasProgramVK": true
 }

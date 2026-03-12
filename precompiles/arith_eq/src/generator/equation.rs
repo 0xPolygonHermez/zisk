@@ -382,7 +382,20 @@ impl Equation {
                 } else {
                     "  "
                 });
-                for (i, term) in addt.terms.iter().enumerate() {
+
+                // Filter out BigInt terms with value 1 when there are other terms
+                let terms_to_output: Vec<_> = if addt.terms.len() > 1 {
+                    addt.terms
+                        .iter()
+                        .filter(|t| {
+                            !matches!(t, ProductTerm::BigInt { value, .. } if *value == BigInt::one())
+                        })
+                        .collect()
+                } else {
+                    addt.terms.iter().collect()
+                };
+
+                for (i, term) in terms_to_output.iter().enumerate() {
                     if i > 0 {
                         line.append(" * ");
                     }

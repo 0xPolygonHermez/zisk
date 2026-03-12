@@ -23,9 +23,14 @@ void MemContext::clear () {
 }
 
 #ifdef MEM_CONTEXT_SEM
+#ifdef CHUNK_STATS
 const MemChunk *MemContext::get_chunk(uint32_t thread_id, uint32_t chunk_id, int64_t &elapsed_us) {
+#else
+const MemChunk *MemContext::get_chunk(uint32_t thread_id, uint32_t chunk_id) {
+#endif
+    #ifdef CHUNK_STATS
     uint64_t t_ini = get_usec();
-
+    #endif
     // semaphore used for synchronization, means that a new chunk data is available
     while (sem_wait(&semaphores[thread_id]) < 0) {
         if (errno != EINTR) {
@@ -37,28 +42,30 @@ const MemChunk *MemContext::get_chunk(uint32_t thread_id, uint32_t chunk_id, int
         #ifdef COUNT_CHUNK_STATS
         #ifdef CHUNK_STATS
         elapsed_us = (int64_t)chunks_us[chunk_id] - (int64_t)get_usec();
-        #else
-        elapsed_us = 0;
         #endif
         #endif
         return &chunks[chunk_id];
     }
 
     if (chunks_completed.load(std::memory_order_acquire)) {                
+        #ifdef CHUNK_STATS
         elapsed_us = get_usec() - t_ini;             
+        #endif
         return nullptr;
     }
 
     assert(false);
 }
 #else
+#ifdef CHUNK_STATS
 const MemChunk *MemContext::get_chunk(uint32_t chunk_id, int64_t &elapsed_us) {
+#else
+const MemChunk *MemContext::get_chunk(uint32_t chunk_id) {
+#endif
     if (chunk_id < chunks_count.load(std::memory_order_acquire)) {
         #ifdef COUNT_CHUNK_STATS
         #ifdef CHUNK_STATS
         elapsed_us = (int64_t)chunks_us[chunk_id] - (int64_t)get_usec();
-        #else
-        elapsed_us = 0;
         #endif
         #endif
         return &chunks[chunk_id];
