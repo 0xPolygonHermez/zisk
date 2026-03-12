@@ -18,11 +18,11 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
   cancel-in-progress: true
-  
+
 jobs:
   riscof-elf-tests-rust:
     name: Riscof ELF tests (rust emulator)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-16core-64ram
     timeout-minutes: 120
     defaults:
       run:
@@ -54,7 +54,7 @@ jobs:
 
   riscof-elf-tests-asm:
     name: Riscof ELF tests (assembly emulator)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-16core-64ram
     timeout-minutes: 240
     defaults:
       run:
