@@ -55,6 +55,7 @@ default = []
 disable_distributed = []
 gpu = ["proofman-common/gpu", "proofman/gpu", "packed"]
 packed = [
+    "proofman/packed",
     "proofman-common/packed",
     "precomp-keccakf/packed",
     "precomp-sha256f/packed",

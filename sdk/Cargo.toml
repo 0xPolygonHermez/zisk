@@ -39,7 +39,7 @@ gpu = [
     "ziskemu/gpu",
     "packed",
 ]
-packed = ["proofman-common/packed", "executor/packed"]
+packed = ["proofman/packed", "proofman-common/packed", "executor/packed"]
 stats = []
 disable_distributed = [
     "proofman/disable_distributed",
