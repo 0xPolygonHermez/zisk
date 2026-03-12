@@ -1,0 +1,152 @@
+require "std_lookup.pil"
+
+const int DMA_PRE_POST_TABLE_SIZE = 288 * 4;
+
+const int DMA_PRE_POST_ENABLED_SECOND_READ_F  = P2_8;
+const int DMA_PRE_POST_DST_OFFSET_GT_SRC_F    = P2_9;
+const int DMA_PRE_POST_SR_VALUE_F             = P2_10;
+const int DMA_PRE_POST_MEMCMP_RESULT_IS_NEG_F = P2_13;
+const int DMA_PRE_POST_MEMCMP_RESULT_NZ_F     = P2_14;
+const int DMA_PRE_POST_IS_POST                = P2_15;
+const int DMA_PRE_POST_LOAD_SRC               = P2_16;
+
+airtemplate DmaPrePostTable(int N = DMA_PRE_POST_TABLE_SIZE) {
+    col fixed FLAGS;
+    col fixed DST_OFFSET;
+    col fixed SRC_OFFSET;
+    col fixed COUNT;
+    col fixed L_FACTOR;
+    col fixed H_FACTOR;
+
+    int index = 0;
+
+    //                                                OUT  @[selectors_mask] (8 bits)
+    // DMA_PRE_POST_ENABLED_SECOND_READ_F  = P2_8     OUT  @[enabled_second_read] (1 bit)      
+    // DMA_PRE_POST_DST_OFFSET_GT_SRC_F    = P2_9     OUT  @[dst_offset_gt_src_offset] (1 bit)
+    // DMA_PRE_POST_SR_VALUE_F             = P2_10    OUT  @[sr_value] (0-7) (3 bits)
+    // DMA_PRE_POST_MEMCMP_RESULT_IS_NEG_F = P2_13    IN   @[memcmp_result_is_negative] (1 bit)
+    // DMA_PRE_POST_MEMCMP_RESULT_NZ_F     = P2_14    IN   @[memcmp_result_nz] (1 bit)
+    // DMA_PRE_POST_IS_POST                = P2_15    IN   @[is_post] (1 bit)
+    // POST OPERATION objective execute the last incomplete "write":
+    //      dst_offset = 0
+    //      count ∈ [1,7]
+
+    int table_offsets[64];
+
+    const int flags_memcmp_result_positive = DMA_PRE_POST_MEMCMP_RESULT_NZ_F;
+    const int flags_memcmp_result_negative = DMA_PRE_POST_MEMCMP_RESULT_NZ_F + DMA_PRE_POST_MEMCMP_RESULT_IS_NEG_F;
+    
+    const int l_factors[8] = [ 1,  P2_8,  P2_16,  P2_24,   0,     0,     0,       0];
+    const int h_factors[8] = [ 0,     0,      0,      0,   1,  P2_8,  P2_16,  P2_24];
+        
+    for (int src_offset = 0; src_offset < 8; ++src_offset) {
+        table_offsets[src_offset] = index;
+        // For the edge case of memcmp when dst_offset = 0 and count is a multiple of 8 that need
+        // to be validate for DmaPrePost, at least if last byte is the first different.
+        for (int count = 1; count < 9; ++ count) {
+            for (int k = 0; k < 4; ++k) {
+                const int lindex = index + k;
+                SRC_OFFSET[lindex] = src_offset;
+                DST_OFFSET[lindex] = 0;
+                COUNT[lindex] = count;
+            }                    
+            const int selectors = (0xFF << (8 - count)) & 0xFF;
+            assert(selectors != 0);
+            assert(selectors <= 0xFF);
+
+            const int enabled_second_read = (src_offset + count) > 8 ? 1:0;
+            // selr_value = src_offset
+            // dst_offset_gt_src_offset = 0
+            expr flags_load_src = selectors + DMA_PRE_POST_ENABLED_SECOND_READ_F * enabled_second_read 
+                                   + DMA_PRE_POST_LOAD_SRC
+                                   + DMA_PRE_POST_SR_VALUE_F * src_offset
+                                   + DMA_PRE_POST_IS_POST; // dst_offset = 0 ==> post operation
+
+            expr flags_no_load_src = selectors + DMA_PRE_POST_SR_VALUE_F * src_offset
+                                   + DMA_PRE_POST_IS_POST; // dst_offset = 0 ==> post operation
+
+            FLAGS[index] = flags_load_src;
+            FLAGS[index + 1] = flags_load_src + flags_memcmp_result_positive;
+            FLAGS[index + 2] = flags_load_src + flags_memcmp_result_negative;
+            FLAGS[index + 3] = flags_no_load_src;
+
+            const int factor_index = count - 1;
+            L_FACTOR[index] = 0;            
+            L_FACTOR[index + 1] = l_factors[factor_index];
+            L_FACTOR[index + 2] = -l_factors[factor_index];
+            L_FACTOR[index + 3] = 0;
+
+            H_FACTOR[index] = 0;
+            H_FACTOR[index + 1] = h_factors[factor_index];
+            H_FACTOR[index + 2] = -h_factors[factor_index];
+            H_FACTOR[index + 3] = 0;
+            index += 4;
+        }
+    }
+
+    // PRE OPERATION objective execute the "first" incomplete "write"
+    //      dst_offset > 0 
+    //      count = 8 - dst_offset
+
+    for (int dst_offset = 1; dst_offset < 8; ++dst_offset) {
+        const int mask = 0xFF >> dst_offset;
+        for (int src_offset = 0; src_offset < 8; ++src_offset) {
+            table_offsets[dst_offset * 8 + src_offset] = index;
+            for (int count = 1; count < (9 - dst_offset); ++ count) {
+                for (int k = 0; k < 4; ++k) {
+                    const int lindex = index + k;
+                    SRC_OFFSET[lindex] = src_offset;
+                    DST_OFFSET[lindex] = dst_offset;
+                    COUNT[lindex] = count;
+                }
+
+                const int selectors = mask & (0xFF << (8 - (dst_offset + count)));
+                assert(selectors != 0);
+                assert(selectors <= 0xFF);
+
+                const int enabled_second_read = (src_offset + count) > 8 ? 1:0;
+                const int dst_offset_gt_src_offset = dst_offset > src_offset ? 1:0;
+                const int selr_value = dst_offset > src_offset ? dst_offset - src_offset: src_offset - dst_offset;
+                // selr_value = src_offset
+                // dst_offset_gt_src_offset = 0
+
+                expr flags_load_src = selectors + DMA_PRE_POST_ENABLED_SECOND_READ_F * enabled_second_read
+                                                + DMA_PRE_POST_DST_OFFSET_GT_SRC_F * dst_offset_gt_src_offset 
+                                                + DMA_PRE_POST_LOAD_SRC
+                                                + DMA_PRE_POST_SR_VALUE_F * selr_value;
+
+                expr flags_no_load_src = selectors + DMA_PRE_POST_DST_OFFSET_GT_SRC_F * dst_offset_gt_src_offset 
+                                                   + DMA_PRE_POST_SR_VALUE_F * selr_value;
+
+                FLAGS[index] = flags_load_src;
+                FLAGS[index + 1] = flags_load_src + flags_memcmp_result_positive;
+                FLAGS[index + 2] = flags_load_src + flags_memcmp_result_negative;
+                FLAGS[index + 3] = flags_no_load_src;
+
+                const int factor_index = dst_offset + count - 1;
+                L_FACTOR[index] = 0;            
+                L_FACTOR[index + 1] = l_factors[factor_index];
+                L_FACTOR[index + 2] = -l_factors[factor_index];
+                L_FACTOR[index + 3] = 0;
+
+                H_FACTOR[index] = 0;
+                H_FACTOR[index + 1] = h_factors[factor_index];
+                H_FACTOR[index + 2] = -h_factors[factor_index];
+                H_FACTOR[index + 3] = 0;
+
+                index += 4;
+            }
+        }
+    }
+    println(`TABLE_OFFSETS[${length(table_offsets)}] = [` ,table_offsets, "]");
+    println(`DMA_PRE_POST_TABLE_SIZE=${DMA_PRE_POST_TABLE_SIZE}`);
+    assert_eq(index, DMA_PRE_POST_TABLE_SIZE);
+
+    col witness multiplicity;
+    lookup_proves(DMA_PRE_POST_TABLE_ID, expressions: [FLAGS, 
+                                                       DST_OFFSET, 
+                                                       SRC_OFFSET, 
+                                                       COUNT, 
+                                                       L_FACTOR,
+                                                       H_FACTOR], mul: multiplicity );
+}

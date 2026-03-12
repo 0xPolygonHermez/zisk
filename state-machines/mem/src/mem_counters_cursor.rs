@@ -81,7 +81,7 @@ impl MemCountersCursor {
             return sorted_boxes.first().cloned().unwrap_or_default();
         }
         let total_size: usize = sorted_boxes.iter().map(|b| b.len()).sum();
-        let target_size: usize = arity * (total_size / sorted_boxes.len());
+        let target_size: usize = std::cmp::max(arity * (total_size / sorted_boxes.len()), 1);
 
         let mut groups: Vec<&[Vec<SortedBox>]> = Vec::new();
         let mut group_weight = 0;

@@ -1,14 +1,23 @@
 use crate::{
-    check_paths_exist, create_debug_info, get_custom_commits_map,
+    check_paths_exist,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    RankInfo, ZiskAggPhaseResult, ZiskExecuteResult, ZiskLibLoader, ZiskPhaseResult,
-    ZiskProveResult, ZiskVerifyConstraintsResult,
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProgramVK,
+    ZiskProof, ZiskProofWithPublicValues, ZiskProveResult, ZiskPublics,
+    ZiskVerifyConstraintsResult,
 };
-use proofman::{AggProofs, ProofMan, ProvePhase, ProvePhaseInputs};
-use proofman_common::{initialize_logger, ParamsGPU, ProofOptions};
+use crate::{ensure_custom_commits, ProofMode, ProofOpts};
+use executor::{get_packed_info, init_executor_emu};
+use proofman::{
+    AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
+};
+use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo};
 use std::path::PathBuf;
+use std::sync::Arc;
 use zisk_common::io::ZiskStdin;
-use zisk_common::ExecutorStats;
+use zisk_common::ElfBinaryLike;
+use zisk_common::ExecutorStatsHandle;
+use zisk_common::ZiskExecutorTime;
+use zisk_core::Riscv2zisk;
 use zisk_distributed_common::LoggingConfig;
 
 use anyhow::Result;
@@ -28,37 +37,31 @@ impl EmuProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
-        rma: bool,
-        final_snark: bool,
-        witness_lib: PathBuf,
+        snark_wrapper: bool,
         proving_key: PathBuf,
-        elf: PathBuf,
+        proving_key_snark: PathBuf,
         verbose: u8,
         shared_tables: bool,
         gpu_params: ParamsGPU,
-        verify_proofs: bool,
-        minimal_memory: bool,
-        save_proofs: bool,
-        output_dir: Option<PathBuf>,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         let core_prover = EmuCoreProver::new(
             verify_constraints,
             aggregation,
-            rma,
-            final_snark,
-            witness_lib,
+            snark_wrapper,
             proving_key,
-            elf,
+            proving_key_snark,
             verbose,
             shared_tables,
             gpu_params,
-            verify_proofs,
-            minimal_memory,
-            save_proofs,
-            output_dir,
             logging_config,
         )?;
+
+        Ok(Self { core_prover })
+    }
+
+    pub fn new_verifier(proving_key: PathBuf, proving_key_snark: PathBuf) -> Result<Self> {
+        let core_prover = EmuCoreProver::new_verifier(proving_key, proving_key_snark)?;
 
         Ok(Self { core_prover })
     }
@@ -73,52 +76,144 @@ impl ProverEngine for EmuProver {
         self.core_prover.rank_info.local_rank
     }
 
-    fn set_stdin(&self, stdin: ZiskStdin) {
-        self.core_prover.backend.witness_lib.set_stdin(stdin);
+    fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
+        self.core_prover.backend.set_stdin(stdin)
+    }
+
+    fn register_program(&self, pk: &ZiskProgramPK) -> Result<()> {
+        self.core_prover.backend.register_program(pk)
+    }
+
+    fn setup(&self, elf: &impl ElfBinaryLike) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+        let pctx = self.core_prover.backend.get_pctx()?;
+
+        let (rom_bin_path, vk) = ensure_custom_commits(&pctx, elf)?;
+
+        let rv2zk = Riscv2zisk::new(elf.elf());
+
+        let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
+        let zisk_rom = Arc::new(zisk_rom);
+
+        Ok((
+            ZiskProgramPK {
+                zisk_rom,
+                elf_bin_path: rom_bin_path,
+                asm_resources: None,
+                asm_services: None,
+                rank_info: self.core_prover.rank_info.clone(),
+                use_hints: false,
+            },
+            ZiskProgramVK { vk },
+        ))
     }
 
     fn executed_steps(&self) -> u64 {
         self.core_prover
             .backend
-            .witness_lib
             .execution_result()
-            .map(|(exec_result, _)| exec_result.executed_steps)
+            .map(|(exec_result, _)| exec_result.steps)
             .unwrap_or(0)
     }
 
-    fn execute(&self, stdin: ZiskStdin, output_path: Option<PathBuf>) -> Result<ZiskExecuteResult> {
-        self.core_prover.backend.execute(stdin, output_path)
+    fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
+        self.core_prover.backend.get_execution_info()
+    }
+
+    fn execute(
+        &self,
+        pk: &ZiskProgramPK,
+        stdin: ZiskStdin,
+        output_path: Option<PathBuf>,
+    ) -> Result<ZiskExecuteResult> {
+        self.core_prover.backend.execute(pk, stdin, output_path)
     }
 
     fn stats(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
+        minimal_memory: bool,
         mpi_node: Option<u32>,
-    ) -> Result<(i32, i32, Option<ExecutorStats>)> {
-        let debug_info =
-            create_debug_info(debug_info, self.core_prover.backend.proving_key.clone())?;
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
+        self.core_prover.backend.stats(pk, stdin, debug_info, minimal_memory, mpi_node)
+    }
 
-        self.core_prover.backend.stats(stdin, debug_info, mpi_node)
+    fn get_instance_trace(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.core_prover.backend.get_instance_trace(instance_id, first_row, num_rows, offset)
+    }
+
+    fn get_instance_air_values(&self, instance_id: usize) -> Result<Vec<u64>> {
+        self.core_prover.backend.get_instance_air_values(instance_id)
+    }
+
+    fn get_instance_fixed(
+        &self,
+        instance_id: usize,
+        first_row: usize,
+        num_rows: usize,
+        offset: Option<usize>,
+    ) -> Result<Vec<RowInfo>> {
+        self.core_prover.backend.get_instance_fixed(instance_id, first_row, num_rows, offset)
     }
 
     fn verify_constraints_debug(
         &self,
+        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        let debug_info =
-            create_debug_info(debug_info, self.core_prover.backend.proving_key.clone())?;
-
-        self.core_prover.backend.verify_constraints_debug(stdin, debug_info)
+        self.core_prover.backend.verify_constraints_debug(pk, stdin, debug_info)
     }
 
-    fn verify_constraints(&self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
-        self.core_prover.backend.verify_constraints(stdin)
+    fn verify_constraints(
+        &self,
+        pk: &ZiskProgramPK,
+        stdin: ZiskStdin,
+    ) -> Result<ZiskVerifyConstraintsResult> {
+        self.core_prover.backend.verify_constraints(pk, stdin)
     }
 
-    fn prove(&self, stdin: ZiskStdin) -> Result<ZiskProveResult> {
-        self.core_prover.backend.prove(stdin)
+    fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
+        self.core_prover.backend.vk(elf)
+    }
+
+    fn verify(&self, proof: &ZiskProof, publics: &ZiskPublics, vk: &ZiskProgramVK) -> Result<()> {
+        self.core_prover.backend.verify(proof, publics, vk)
+    }
+
+    fn prove(
+        &self,
+        pk: &ZiskProgramPK,
+        stdin: ZiskStdin,
+        mode: ProofMode,
+        proof_options: ProofOpts,
+    ) -> Result<ZiskProveResult> {
+        self.core_prover.backend.prove(pk, stdin, mode, proof_options)
+    }
+
+    fn prove_snark(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        vk: &ZiskProgramVK,
+    ) -> Result<ZiskProofWithPublicValues> {
+        self.core_prover.backend.prove_snark(proof, publics, vk)
+    }
+
+    fn compress(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        vk: &ZiskProgramVK,
+    ) -> Result<ZiskProofWithPublicValues> {
+        self.core_prover.backend.compress(proof, publics, vk)
     }
 
     fn prove_phase(
@@ -128,6 +223,19 @@ impl ProverEngine for EmuProver {
         phase: ProvePhase,
     ) -> Result<ZiskPhaseResult> {
         self.core_prover.backend.prove_phase(phase_inputs, options, phase)
+    }
+
+    fn set_partition(
+        &self,
+        total_compute_units: usize,
+        allocation: Vec<u32>,
+        rank_id: usize,
+    ) -> Result<()> {
+        self.core_prover.backend.set_partition(total_compute_units, allocation, rank_id)
+    }
+
+    fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
+        self.core_prover.backend.register_aggregated_proofs(agg_proofs)
     }
 
     fn aggregate_proofs(
@@ -140,8 +248,17 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
-    fn mpi_broadcast(&self, data: &mut Vec<u8>) {
-        self.core_prover.backend.mpi_broadcast(data);
+    fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
+        self.core_prover.backend.mpi_broadcast(data)
+    }
+
+    fn prepare_send_proof(
+        &self,
+        proof: &ZiskProof,
+        publics: &ZiskPublics,
+        program_vk: &ZiskProgramVK,
+    ) -> Result<Vec<u8>> {
+        self.core_prover.backend.prepare_send_proof(proof, publics, program_vk)
     }
 }
 
@@ -155,70 +272,69 @@ impl EmuCoreProver {
     pub fn new(
         verify_constraints: bool,
         aggregation: bool,
-        rma: bool,
-        final_snark: bool,
-        witness_lib: PathBuf,
+        use_snark_wrapper: bool,
         proving_key: PathBuf,
-        elf: PathBuf,
+        proving_key_snark: PathBuf,
         verbose: u8,
         shared_tables: bool,
         gpu_params: ParamsGPU,
-        verify_proofs: bool,
-        minimal_memory: bool,
-        save_proofs: bool,
-        output_dir: Option<PathBuf>,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
-        let custom_commits_map = get_custom_commits_map(&proving_key, &elf)?;
-
-        check_paths_exist(&witness_lib)?;
         check_paths_exist(&proving_key)?;
-        check_paths_exist(&elf)?;
-
-        // Build emulator library
-        let (library, mut witness_lib) =
-            ZiskLibLoader::load_emu(witness_lib, elf, verbose.into(), shared_tables)?;
 
         let proofman = ProofMan::new(
             proving_key.clone(),
-            custom_commits_map,
             verify_constraints,
             aggregation,
-            final_snark,
             gpu_params,
             verbose.into(),
-            witness_lib.get_packed_info(),
+            get_packed_info(),
         )
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
-        let world_rank = proofman.get_world_rank();
-        let local_rank = proofman.get_local_rank();
+        let rank_info = proofman.get_rank_info();
 
         if logging_config.is_some() {
-            zisk_distributed_common::init(logging_config.as_ref(), Some(world_rank))?;
+            zisk_distributed_common::init(logging_config.as_ref(), Some(&rank_info))?;
         } else {
-            initialize_logger(verbose.into(), Some(world_rank));
+            initialize_logger(verbose.into(), Some(&rank_info));
         }
-
-        proofman.register_witness(&mut *witness_lib, library)?;
 
         proofman.set_barrier();
 
-        let core = ProverBackend {
-            verify_constraints,
-            aggregation,
-            rma,
-            final_snark,
-            witness_lib,
-            proving_key: proving_key.clone(),
-            verify_proofs,
-            minimal_memory,
-            save_proofs,
-            output_dir,
-            proofman,
-            rank_info: RankInfo { world_rank, local_rank },
-        };
+        let mut snark_wrapper = None;
+        if use_snark_wrapper {
+            check_paths_exist(&proving_key_snark)?;
+            let (aux_trace, d_buffers, reload_fixed_pols_gpu) = proofman.get_preallocated_buffers();
+            snark_wrapper = Some(SnarkWrapper::new_with_preallocated_buffers(
+                &proving_key_snark,
+                verbose.into(),
+                Some(aux_trace),
+                Some(d_buffers),
+                Some(reload_fixed_pols_gpu),
+            )?);
+        }
 
-        Ok(Self { backend: core, rank_info: RankInfo { world_rank, local_rank } })
+        let executor = init_executor_emu(verbose.into(), shared_tables, &proofman.get_wcm())?;
+
+        let core = ProverBackend::new(
+            proofman,
+            snark_wrapper,
+            executor,
+            proving_key,
+            Some(proving_key_snark),
+        );
+
+        Ok(Self { backend: core, rank_info })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_verifier(proving_key: PathBuf, proving_key_snark: PathBuf) -> Result<Self> {
+        let core_prover = ProverBackend::new_verifier(proving_key, Some(proving_key_snark));
+
+        Ok(Self {
+            backend: core_prover,
+            rank_info: RankInfo { world_rank: 0, local_rank: 0, n_processes: 1 },
+        })
     }
 }

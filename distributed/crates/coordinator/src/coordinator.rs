@@ -33,15 +33,16 @@
 use crate::{
     config::Config,
     coordinator_errors::{CoordinatorError, CoordinatorResult},
-    hooks, WorkersPool,
+    hooks, PrecompileHintsRelay, WorkersPool,
 };
 
 use chrono::{DateTime, Utc};
 use colored::Colorize;
 use dashmap::DashMap;
-use proofman::ContributionsInfo;
+use proofman::{ContributionsInfo, WitnessInfo};
 use std::{
     collections::HashMap,
+    fs,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -50,15 +51,21 @@ use std::{
 };
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
+use zisk_common::io::{StreamSource, ZiskStream};
+use zisk_common::AsmExecutionInfo;
+use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{
     AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
-    CoordinatorMessageDto, DataId, ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto,
-    ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, HeartbeatAckDto, InputModeDto,
-    InputSourceDto, Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState,
-    JobStatusDto, JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
-    ProveParamsDto, StatusInfoDto, SystemStatusDto, WorkerErrorDto, WorkerId,
+    ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
+    ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
+    HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, Job,
+    JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
+    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
+    ProveParamsDto, StatusInfoDto, StreamMessageKind, SystemStatusDto, WorkerErrorDto, WorkerId,
     WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
 };
+
+use zisk_sdk::ZiskProofWithPublicValues;
 
 /// Trait for sending messages to workers through various communication channels.
 ///
@@ -105,7 +112,7 @@ pub struct Coordinator {
     start_time_utc: DateTime<Utc>,
 
     /// Manages the pool of connected workers and their communication channels.
-    workers_pool: WorkersPool,
+    workers_pool: Arc<WorkersPool>,
 
     /// Concurrent storage for active jobs with fine-grained locking.
     jobs: DashMap<JobId, Arc<RwLock<Job>>>,
@@ -129,7 +136,7 @@ impl Coordinator {
         Self {
             config,
             start_time_utc,
-            workers_pool: WorkersPool::new(),
+            workers_pool: Arc::new(WorkersPool::new()),
             jobs: DashMap::new(),
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
@@ -284,6 +291,13 @@ impl Coordinator {
             ));
         }
 
+        if request.minimal_compute_capacity > request.compute_capacity {
+            error!("Invalid requested minimal compute capacity");
+            return Err(CoordinatorError::InvalidArgument(
+                "Minimal compute capacity must not exceed compute capacity".to_string(),
+            ));
+        }
+
         // Check if we have enough capacity to compute the proof is already checked
         // in create_job > partition_and_allocate_by_capacity
 
@@ -328,21 +342,25 @@ impl Coordinator {
         self.pre_launch_proof(&request)?;
 
         let required_compute_capacity = ComputeCapacity::from(request.compute_capacity);
+        let minimal_compute_capacity = ComputeCapacity::from(request.minimal_compute_capacity);
 
         // Create and configure a new job
         let mut job = self
             .create_job(
                 request.data_id.clone(),
                 required_compute_capacity,
-                request.input_mode,
+                minimal_compute_capacity,
+                request.inputs_mode,
+                request.hints_mode,
                 request.simulated_node,
             )
             .await?;
 
         info!(
-            "[Job] Started {} successfully Inputs: {} Capacity: {} Workers: {}",
+            "[Job] Started {} successfully Inputs: {:?} Hints: {:?} Capacity: {} Workers: {}",
             job.job_id,
-            job.input_mode,
+            job.inputs_mode,
+            job.hints_mode,
             job.compute_capacity,
             job.workers.len(),
         );
@@ -402,13 +420,13 @@ impl Coordinator {
 
         // Clone job.final_proof and error if does not exist
         let final_proof = if job.state == JobState::Completed {
-            job.final_proof.clone().ok_or_else(|| {
+            Some(job.final_proof.clone().ok_or_else(|| {
                 CoordinatorError::Internal(
                     "Final proof is missing during post-launch processing".to_string(),
                 )
-            })?
+            })?)
         } else {
-            Vec::new()
+            None
         };
 
         // Check if webhook URL is configured and spawn it in a separate task
@@ -423,11 +441,19 @@ impl Coordinator {
         // Save proof to disk
         if state == JobState::Completed && !self.config.server.no_save_proofs {
             let folder = self.config.server.proofs_dir.clone();
-            zisk_common::save_proof(job_id.as_str(), folder, &final_proof, false).map_err(|e| {
-                error!("Failed to save proof for job {}: {}", job_id, e);
-                job.cleanup();
-                CoordinatorError::Internal(e.to_string())
+
+            let zisk_proof = ZiskProofWithPublicValues::new_from_vadcop_proof(
+                &final_proof.unwrap(),
+                self.config.coordinator.compressed_proofs,
+            )
+            .map_err(|e| CoordinatorError::Internal(format!("Failed to create proof: {}", e)))?;
+            fs::create_dir_all(&folder).map_err(|e| {
+                CoordinatorError::Internal(format!("Failed to create proofs directory: {}", e))
             })?;
+            let raw_path = folder.join(format!("proof_{}.fri", job_id));
+            zisk_proof
+                .save(raw_path)
+                .map_err(|e| CoordinatorError::Internal(format!("Failed to save proof: {}", e)))?;
         }
 
         // Clean up process data for the job
@@ -527,7 +553,9 @@ impl Coordinator {
         &self,
         data_id: DataId,
         required_compute_capacity: ComputeCapacity,
-        input_mode: InputModeDto,
+        minimal_compute_capacity: ComputeCapacity,
+        inputs_mode: InputsModeDto,
+        hints_mode: HintsModeDto,
         simulated_node: Option<u32>,
     ) -> CoordinatorResult<Job> {
         let execution_mode = if let Some(node) = simulated_node {
@@ -538,7 +566,11 @@ impl Coordinator {
 
         let (selected_workers, mut partitions) = self
             .workers_pool
-            .partition_and_allocate_by_capacity(required_compute_capacity, execution_mode)
+            .partition_and_allocate_by_capacity(
+                required_compute_capacity,
+                minimal_compute_capacity,
+                execution_mode,
+            )
             .await?;
 
         if let Some(simulated_node) = simulated_node {
@@ -547,8 +579,10 @@ impl Coordinator {
 
         Ok(Job::new(
             data_id,
-            input_mode,
+            inputs_mode,
+            hints_mode,
             required_compute_capacity,
+            minimal_compute_capacity,
             selected_workers,
             partitions,
             execution_mode,
@@ -604,12 +638,12 @@ impl Coordinator {
         job: &Job,
         active_workers: &[WorkerId],
     ) -> CoordinatorResult<()> {
-        let input_source = match job.input_mode {
-            InputModeDto::InputModePath(ref path) => {
-                InputSourceDto::InputPath(path.display().to_string())
+        let input_source = match job.inputs_mode {
+            InputsModeDto::InputsPath(ref inputs_path) => {
+                InputSourceDto::InputPath(inputs_path.clone())
             }
-            InputModeDto::InputModeData(ref path) => {
-                let inputs = tokio::fs::read(path).await.map_err(|e| {
+            InputsModeDto::InputsData(ref inputs_uri) => {
+                let inputs = tokio::fs::read(inputs_uri).await.map_err(|e| {
                     CoordinatorError::Internal(format!(
                         "Failed to read input data for job {}: {}",
                         job.job_id, e
@@ -617,19 +651,28 @@ impl Coordinator {
                 })?;
                 InputSourceDto::InputData(inputs)
             }
-            InputModeDto::InputModeNone => InputSourceDto::InputNull,
+            InputsModeDto::InputsNone => InputSourceDto::InputNull,
+        };
+
+        let hints_source = match &job.hints_mode {
+            HintsModeDto::HintsPath(ref hints_uri) => HintsSourceDto::HintsPath(hints_uri.clone()),
+            HintsModeDto::HintsStream(hints_uri) => {
+                // Hints will be streamed separately
+                HintsSourceDto::HintsStream(hints_uri.clone())
+            }
+            HintsModeDto::HintsNone => HintsSourceDto::HintsNull,
         };
 
         // Use Arc to avoid expensive clones
         let active_workers = active_workers.to_vec();
         let total_workers = active_workers.len() as u32;
 
-        use futures::stream::{self, StreamExt};
-
+        let cloned_active_workers = active_workers.clone();
         let tasks = active_workers.into_iter().enumerate().map(|(rank_id, worker_id)| {
             let job_id = job.job_id.clone();
             let data_id = job.data_id.clone();
             let input_source = input_source.clone();
+            let hints_source = hints_source.clone();
             let worker_allocation = job.partitions[rank_id].clone();
             let job_compute_capacity = job.compute_capacity;
             let workers_pool = &self.workers_pool;
@@ -641,6 +684,7 @@ impl Coordinator {
                     params: ExecuteTaskRequestTypeDto::ContributionParams(ContributionParamsDto {
                         data_id,
                         input_source,
+                        hints_source,
                         rank_id: rank_id as u32,
                         total_workers,
                         worker_allocation,
@@ -661,7 +705,10 @@ impl Coordinator {
             }
         });
 
-        let results: Vec<_> = stream::iter(tasks).buffer_unordered(10).collect().await;
+        // Process tasks with a concurrency limit
+        use futures::stream::StreamExt;
+
+        let results: Vec<_> = futures::stream::iter(tasks).buffer_unordered(16).collect().await;
 
         // Check for any errors
         for (worker_id, send_result, state_result) in results {
@@ -680,6 +727,83 @@ impl Coordinator {
             })?;
         }
 
+        if matches!(hints_source, HintsSourceDto::HintsStream(_)) {
+            self.initialize_stream(job, cloned_active_workers)?;
+        }
+
+        Ok(())
+    }
+
+    fn initialize_stream(
+        &self,
+        job: &Job,
+        cloned_active_workers: Vec<WorkerId>,
+    ) -> Result<(), CoordinatorError> {
+        let hints_uri = match &job.hints_mode {
+            HintsModeDto::HintsStream(uri) => uri,
+            _ => unreachable!(),
+        };
+        let job_id_clone = job.job_id.clone();
+        let workers_clone = Arc::new(cloned_active_workers.clone());
+        let workers_pool = Arc::clone(&self.workers_pool);
+
+        // Async dispatcher - no blocking, pure async flow for maximum performance
+        let dispatcher =
+            move |sequence_number: u32, stream_type: StreamMessageKind, payload: Vec<u8>| {
+                use futures::future::join_all;
+                use zisk_distributed_common::{StreamDataDto, StreamPayloadDto};
+
+                let job_id = job_id_clone.clone();
+                let workers = Arc::clone(&workers_clone);
+                let pool = Arc::clone(&workers_pool);
+
+                Box::pin(async move {
+                    let sends = workers.iter().map(|worker_id| {
+                        let job_id = job_id.clone();
+                        let worker_id = worker_id.clone();
+                        let payload = payload.clone();
+                        let pool = Arc::clone(&pool);
+                        let stream_type = stream_type.clone();
+
+                        async move {
+                            let msg = CoordinatorMessageDto::StreamData(StreamDataDto {
+                                job_id: job_id.clone(),
+                                stream_type,
+                                stream_payload: Some(StreamPayloadDto { sequence_number, payload }),
+                            });
+
+                            if let Err(e) = pool.send_message(&worker_id, msg).await {
+                                error!(
+                                    "Failed to send hints to worker {} for job {}: {}",
+                                    worker_id, job_id, e
+                                );
+                            }
+                        }
+                    });
+
+                    join_all(sends).await;
+                })
+            };
+        let hints_relay = PrecompileHintsRelay::new(dispatcher);
+        let mut stream = ZiskStream::new(hints_relay);
+        let stream_reader = StreamSource::from_uri(hints_uri).map_err(|e| {
+            CoordinatorError::Internal(format!(
+                "Failed to create hints stream reader for job {}: {}",
+                job.job_id, e
+            ))
+        })?;
+        stream.set_hints_stream_src(stream_reader).map_err(|e| {
+            CoordinatorError::Internal(format!(
+                "Failed to set hints stream for job {}: {}",
+                job.job_id, e
+            ))
+        })?;
+        stream.start_stream().map_err(|e| {
+            CoordinatorError::Internal(format!(
+                "Failed to start hints stream for job {}: {}",
+                job.job_id, e
+            ))
+        })?;
         Ok(())
     }
 
@@ -1053,6 +1177,9 @@ impl Coordinator {
             return Ok(());
         }
 
+        // Print execution summary from Phase 1 completion
+        self.print_execution_summary(&job);
+
         // Validate and extract challenges in a single operation to minimize lock time
         let challenges = self.validate_and_extract_challenges(&job).await?;
 
@@ -1121,27 +1248,82 @@ impl Coordinator {
         result_data: ExecuteTaskResponseResultDataDto,
     ) -> CoordinatorResult<JobResultData> {
         match result_data {
-            ExecuteTaskResponseResultDataDto::Challenges(challenges) => {
-                if challenges.is_empty() {
+            ExecuteTaskResponseResultDataDto::Challenges(ch_list) => {
+                if ch_list.challenges.is_empty() {
                     return Err(CoordinatorError::InvalidRequest(
                         "Received empty Challenges result data".to_string(),
                     ));
                 }
 
-                let contributions: Vec<ContributionsInfo> = challenges
+                let contributions: Vec<ContributionsInfo> = ch_list
+                    .challenges
                     .into_iter()
                     .map(|challenge| ContributionsInfo {
                         worker_index: challenge.worker_index,
                         airgroup_id: challenge.airgroup_id as usize,
                         challenge: challenge.challenge,
+                        aggregated: false,
                     })
                     .collect();
 
-                Ok(JobResultData::Challenges(contributions))
+                let witness_info = WitnessInfo {
+                    summary_info: ch_list.witness_info.summary_info,
+                    publics: ch_list.witness_info.publics,
+                    proof_values: ch_list.witness_info.proof_values,
+                    witness_time: ch_list.witness_info.witness_time,
+                };
+
+                let zisk_executor_time = ZiskExecutorTime {
+                    total_duration: Duration::from_secs_f32(
+                        ch_list.zisk_executor_time.total_duration / 1000.0,
+                    ),
+                    execution_duration: Duration::from_secs_f32(
+                        ch_list.zisk_executor_time.execution_duration / 1000.0,
+                    ),
+                    count_and_plan_duration: Duration::from_secs_f32(
+                        ch_list.zisk_executor_time.count_and_plan_duration / 1000.0,
+                    ),
+                    count_and_plan_mo_duration: Duration::from_secs_f32(
+                        ch_list.zisk_executor_time.count_and_plan_mo_duration / 1000.0,
+                    ),
+                    asm_execution_duration: ch_list.zisk_executor_time.asm_execution_duration.map(
+                        |asm_info| AsmExecutionInfo { time: asm_info.time, mhz: asm_info.mhz },
+                    ),
+                };
+
+                Ok(JobResultData::Challenges(ContributionsResult {
+                    witness_info,
+                    challenges: contributions,
+                    zisk_executor_time,
+                    task_received_time: chrono::DateTime::<Utc>::from_timestamp(
+                        (ch_list.zisk_executor_time.task_received_time / 1000.0) as i64,
+                        ((ch_list.zisk_executor_time.task_received_time % 1000.0) * 1_000_000.0)
+                            as u32,
+                    ),
+                }))
             }
             _ => Err(CoordinatorError::InvalidRequest(
                 "Expected Challenges result data for Phase1".to_string(),
             )),
+        }
+    }
+
+    /// Prints execution summary information from Phase 1 completion.
+    ///
+    /// Extracts and displays execution information from the first completed worker's
+    /// contribution results, including timing, summary info, and key metrics.
+    ///
+    /// # Parameters
+    ///
+    /// * `job` - Reference to the job containing Phase 1 results
+    fn print_execution_summary(&self, job: &Job) {
+        // Find the first completed contribution result to extract WitnessInfo summary
+        if let Some(contributions_results) = job.results.get(&JobPhase::Contributions) {
+            if let Some((_worker_id, job_result)) = contributions_results.iter().next() {
+                if let JobResultData::Challenges(contributions_result) = &job_result.data {
+                    info!("Execution Summary: {}", contributions_result.witness_info.summary_info);
+                }
+            }
         }
     }
 
@@ -1155,21 +1337,65 @@ impl Coordinator {
             job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
 
         let end_time = Utc::now();
-        let duration = end_time.signed_duration_since(
-            job.start_times.get(&JobPhase::Contributions).unwrap_or_else(|| {
-                error!("Missing start time for Phase1 in job {}", job.job_id);
-                &end_time
-            }),
-        );
+        let phase_start_time = job.start_times.get(&JobPhase::Contributions).unwrap_or_else(|| {
+            error!("Missing start time for Phase1 in job {}", job.job_id);
+            &end_time
+        });
+        let duration = end_time.signed_duration_since(phase_start_time);
         let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
+        // Get execution info from the worker's result
+        let worker_result =
+            job.results.get(&JobPhase::Contributions).and_then(|results| results.get(worker_id));
+
+        let (asm_info_str, witness_time_str, delay_time_str) = if let Some(job_result) =
+            worker_result
+        {
+            match &job_result.data {
+                JobResultData::Challenges(contributions_result) => {
+                    // Calculate delay: time from coordinator sending job to worker receiving task
+                    let delay_duration = contributions_result
+                        .task_received_time
+                        .map(|task_received| task_received.signed_duration_since(*phase_start_time))
+                        .unwrap_or_else(chrono::Duration::zero);
+                    let delay_ms = delay_duration.num_milliseconds().max(0) as f32;
+                    let delay_str = format!(", Delay: {:.3}s", delay_ms / 1000.0);
+
+                    let asm_str = contributions_result
+                        .zisk_executor_time
+                        .asm_execution_duration
+                        .as_ref()
+                        .map(|asm_info| {
+                            format!(
+                                ", Asm Execution: {:.3}s at {} MHz",
+                                asm_info.time, asm_info.mhz
+                            )
+                        })
+                        .unwrap_or_default();
+
+                    let witness_str = format!(
+                        ", Witness: {:.3}s",
+                        contributions_result.witness_info.witness_time / 1000.0
+                    );
+
+                    (asm_str, witness_str, delay_str)
+                }
+                _ => (String::new(), String::new(), String::new()),
+            }
+        } else {
+            (String::new(), String::new(), String::new())
+        };
+
         info!(
-            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, {:.3}s)",
+            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, Phase: {:.3}s{}{}{})",
             worker_id,
             job.job_id,
             phase1_results_len,
             job.workers.len(),
-            duration_ms.as_secs_f32()
+            duration_ms.as_secs_f32(),
+            delay_time_str,
+            witness_time_str,
+            asm_info_str,
         );
 
         // Ensure we have results from all assigned workers before proceeding.
@@ -1232,7 +1458,7 @@ impl Coordinator {
             // Simulation mode: replicate single worker's challenges across all expected workers
             // This maintains algorithm correctness while using minimal computational resources
             let first_challenges = match phase1_results.values().next().unwrap().data {
-                JobResultData::Challenges(ref values) => values,
+                JobResultData::Challenges(ref values) => &values.challenges,
                 _ => unreachable!("Expected Challenges data in Phase1 results"),
             };
 
@@ -1241,13 +1467,47 @@ impl Coordinator {
         } else {
             // Standard mode: aggregate challenges from all participating workers
             // Each worker contributes their portion of the overall challenge space
-            let challenges: Vec<Vec<ContributionsInfo>> = phase1_results
-                .values()
-                .map(|results| match &results.data {
-                    JobResultData::Challenges(values) => values.clone(),
-                    _ => unreachable!("Expected Challenges data in Phase1 results"),
-                })
-                .collect();
+            let (challenges, witness_info): (Vec<Vec<ContributionsInfo>>, Vec<WitnessInfo>) =
+                phase1_results
+                    .values()
+                    .map(|results| match &results.data {
+                        JobResultData::Challenges(values) => {
+                            (values.challenges.clone(), values.witness_info.clone())
+                        }
+                        _ => unreachable!("Expected Challenges data in Phase1 results"),
+                    })
+                    .unzip();
+
+            let first = witness_info.first().ok_or_else(|| {
+                CoordinatorError::Internal(format!("No witness info found in job {}", job.job_id))
+            })?;
+
+            let mut mismatched_workers = Vec::new();
+
+            for (worker_idx, info) in witness_info.iter().enumerate() {
+                if info.publics != first.publics || info.proof_values != first.proof_values {
+                    mismatched_workers.push((worker_idx, info));
+                }
+            }
+
+            if !mismatched_workers.is_empty() {
+                // Format detailed mismatch report
+                let mismatch_report: Vec<String> = mismatched_workers
+                    .iter()
+                    .map(|(idx, info)| {
+                        format!(
+                            "Worker {} differs: publics={:?}, proof_values={:?}",
+                            idx, info.publics, info.proof_values
+                        )
+                    })
+                    .collect();
+
+                return Err(CoordinatorError::Internal(format!(
+                    "WitnessInfo mismatch in job {}:\n{}",
+                    job.job_id,
+                    mismatch_report.join("\n")
+                )));
+            }
 
             // Flatten all worker contributions into unified challenge vector
             // Maintains worker indexing and airgroup assignments for proper coordination
@@ -1370,6 +1630,10 @@ impl Coordinator {
         let agg_worker_id = self.resolve_aggregator_assignment(&mut job, &worker_id).await?;
 
         let all_done = self.check_phase2_completion(&job, &worker_id).await?;
+
+        if all_done {
+            job.start_times.insert(JobPhase::Aggregate, Utc::now());
+        }
 
         let proofs = self.collect_worker_proofs(&job, &agg_worker_id, &worker_id)?;
 
@@ -1677,15 +1941,7 @@ impl Coordinator {
                 agg_proofs: proofs,
                 last_proof: all_done,
                 final_proof: all_done,
-                verify_constraints: true,
-                aggregation: true,
-                rma: true,
-                final_snark: false,
-                verify_proofs: true,
-                save_proofs: false,
-                test_mode: false,
-                output_dir_path: "".to_string(),
-                minimal_memory: false,
+                compressed: self.config.coordinator.compressed_proofs,
             }),
         };
 
@@ -1796,21 +2052,198 @@ impl Coordinator {
             "Steps: N/A".to_string().red().bold()
         };
         info!(
-            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} Inputs: {}, Capacity: {} ",
+            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} Inputs: {:?}, Capacity: {} ",
             header,
             duration_str,
             phase1_duration.as_seconds_f32(),
             phase2_duration.as_seconds_f32(),
             phase3_duration.as_seconds_f32(),
             steps_str,
-            job.input_mode,
+            job.inputs_mode,
             job.compute_capacity,
         );
 
+        let workers = job.workers.clone();
+
+        if workers.len() > 1 {
+            for phase in [JobPhase::Contributions, JobPhase::Prove] {
+                if let Some(results) = job.results.get(&phase) {
+                    if let Some(start_time) = job.start_times.get(&phase) {
+                        let mut durations_ms: Vec<(WorkerId, i64)> = results
+                            .iter()
+                            .map(|(worker_id, result)| {
+                                let duration = result.end_time.signed_duration_since(start_time);
+                                (worker_id.clone(), duration.num_milliseconds())
+                            })
+                            .collect();
+
+                        if durations_ms.len() > 1 {
+                            durations_ms.sort_by_key(|(_, duration)| *duration);
+
+                            let (best_worker, best_duration) = &durations_ms[0];
+                            let (worst_worker, worst_duration) = durations_ms.last().unwrap();
+
+                            let avg_duration = durations_ms.iter().map(|(_, d)| d).sum::<i64>()
+                                as f64
+                                / durations_ms.len() as f64;
+
+                            let diff_percentage = if *best_duration > 0 {
+                                ((*worst_duration - *best_duration) as f64 / *best_duration as f64)
+                                    * 100.0
+                            } else {
+                                0.0
+                            };
+
+                            info!(
+                                "[Job] {:?} Performance - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                                phase,
+                                avg_duration / 1000.0,
+                                best_worker,
+                                *best_duration as f64 / 1000.0,
+                                worst_worker,
+                                *worst_duration as f64 / 1000.0,
+                                diff_percentage
+                            );
+                        }
+
+                        // For Phase 1, also show delay, witness, and ASM execution statistics
+                        if phase == JobPhase::Contributions && durations_ms.len() > 1 {
+                            // Extract delay times (coordinator send to worker start)
+                            let mut delays_ms: Vec<(WorkerId, i64)> = results
+                                .iter()
+                                .filter_map(|(worker_id, result)| {
+                                    if let JobResultData::Challenges(contrib) = &result.data {
+                                        contrib.task_received_time.map(|task_received| {
+                                            let delay =
+                                                task_received.signed_duration_since(start_time);
+                                            (worker_id.clone(), delay.num_milliseconds().max(0))
+                                        })
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+
+                            if !delays_ms.is_empty() {
+                                delays_ms.sort_by_key(|(_, delay)| *delay);
+                                let (best_delay_worker, best_delay) = &delays_ms[0];
+                                let (worst_delay_worker, worst_delay) = delays_ms.last().unwrap();
+                                let avg_delay = delays_ms.iter().map(|(_, d)| d).sum::<i64>()
+                                    as f64
+                                    / delays_ms.len() as f64;
+
+                                let delay_diff_percentage = if *best_delay > 0 {
+                                    ((*worst_delay - *best_delay) as f64 / *best_delay as f64)
+                                        * 100.0
+                                } else {
+                                    0.0
+                                };
+
+                                info!(
+                                    "[Job] Contributions Delay - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                                    avg_delay / 1000.0,
+                                    best_delay_worker,
+                                    *best_delay as f64 / 1000.0,
+                                    worst_delay_worker,
+                                    *worst_delay as f64 / 1000.0,
+                                    delay_diff_percentage
+                                );
+                            }
+
+                            // Extract witness times
+                            let mut witness_times: Vec<(WorkerId, f32)> = results
+                                .iter()
+                                .filter_map(|(worker_id, result)| {
+                                    if let JobResultData::Challenges(contrib) = &result.data {
+                                        Some((worker_id.clone(), contrib.witness_info.witness_time))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+
+                            if !witness_times.is_empty() {
+                                witness_times.sort_by(|(_, a), (_, b)| {
+                                    a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+                                });
+                                let (best_witness_worker, best_witness) = &witness_times[0];
+                                let (worst_witness_worker, worst_witness) =
+                                    witness_times.last().unwrap();
+                                let avg_witness =
+                                    witness_times.iter().map(|(_, t)| *t as f64).sum::<f64>()
+                                        / witness_times.len() as f64;
+
+                                let witness_diff_percentage = if *best_witness > 0.0 {
+                                    ((*worst_witness - *best_witness) as f64 / *best_witness as f64)
+                                        * 100.0
+                                } else {
+                                    0.0
+                                };
+
+                                info!(
+                                    "[Job] Contributions Witness - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                                    avg_witness / 1000.0,
+                                    best_witness_worker,
+                                    *best_witness as f64 / 1000.0,
+                                    worst_witness_worker,
+                                    *worst_witness as f64 / 1000.0,
+                                    witness_diff_percentage
+                                );
+                            }
+
+                            // Extract ASM execution times
+                            let mut asm_times: Vec<(WorkerId, f32, f32)> = results
+                                .iter()
+                                .filter_map(|(worker_id, result)| {
+                                    if let JobResultData::Challenges(contrib) = &result.data {
+                                        contrib
+                                            .zisk_executor_time
+                                            .asm_execution_duration
+                                            .as_ref()
+                                            .map(|asm| (worker_id.clone(), asm.time, asm.mhz))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+
+                            if !asm_times.is_empty() {
+                                asm_times.sort_by(|(_, a, _), (_, b, _)| {
+                                    a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+                                });
+                                let (best_asm_worker, best_asm, best_mhz) = &asm_times[0];
+                                let (worst_asm_worker, worst_asm, worst_mhz) =
+                                    asm_times.last().unwrap();
+                                let avg_asm =
+                                    asm_times.iter().map(|(_, t, _)| *t as f64).sum::<f64>()
+                                        / asm_times.len() as f64;
+
+                                let asm_diff_percentage = if *best_asm > 0.0 {
+                                    ((*worst_asm - *best_asm) as f64 / *best_asm as f64) * 100.0
+                                } else {
+                                    0.0
+                                };
+
+                                info!(
+                                    "[Job] Contributions ASM - Avg: {:.3}s, Best: {} ({:.3}s @ {:.1}MHz), Worst: {} ({:.3}s @ {:.1}MHz), Diff: {:.1}%",
+                                    avg_asm,
+                                    best_asm_worker,
+                                    *best_asm,
+                                    *best_mhz,
+                                    worst_asm_worker,
+                                    *worst_asm,
+                                    *worst_mhz,
+                                    asm_diff_percentage
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Print summary of the job
         let job_phases = vec![JobPhase::Contributions, JobPhase::Prove, JobPhase::Aggregate];
-
-        let workers = job.workers.clone();
 
         info!("[Job] Summary for {}", job_id);
         for phase in job_phases {

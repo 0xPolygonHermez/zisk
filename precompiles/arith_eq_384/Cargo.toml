@@ -30,7 +30,6 @@ precomp-arith-eq = { workspace = true }
 zisk-common = { workspace = true }
 lib-c = { workspace = true }
 
-proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
@@ -53,16 +52,12 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 regex = "1.11.1"
 rustfmt-wrapper = "0.2.1"
-k256 = {version = "0.13", features = ["arithmetic"] }
 typenum = "1.16"
 lazy_static = "1.4"
 path-clean = "1.0"
-nom = "7"
 
 [features]
 default = []
-gpu = ["proofman-common/gpu", "packed"]
-packed = ["proofman-common/packed"]
-diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
-no_lib_link = ["proofman-common/no_lib_link"]
+gpu = ["packed"]
+packed = []
 test_data = []

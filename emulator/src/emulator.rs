@@ -76,9 +76,12 @@ impl ZiskEmulator {
             println!("process_elf_file() elf_file={elf_filename}");
         }
 
+        let elf = fs::read(&elf_filename)
+            .map_err(|e| ZiskEmulatorErr::Unknown(format!("Error reading ELF file: {e}")))?;
+
         // Create an instance of the RISC-V -> ZisK program transpiler (Riscv2zisk) with the ELF
         // file name
-        let riscv2zisk = Riscv2zisk::new(elf_filename);
+        let riscv2zisk = Riscv2zisk::new(&elf);
 
         // Convert the ELF file to ZisK ROM calling the transpiler run() method
         let zisk_rom = riscv2zisk.run().map_err(|err| ZiskEmulatorErr::Unknown(err.to_string()))?;
@@ -153,15 +156,25 @@ impl ZiskEmulator {
 
         // OUTPUT:
         // Save output to a file if requested
-        if options.output.is_some() {
-            fs::write(options.output.as_ref().unwrap(), &output)
-                .map_err(|e| ZiskEmulatorErr::Unknown(e.to_string()))?
+        if let Some(output_path) = &options.output {
+            fs::write(output_path, &output).map_err(|e| ZiskEmulatorErr::Unknown(e.to_string()))?
         }
 
         // Log output to console if requested
         if options.log_output {
             // Get the emulation output as a u32 vector
             let output = emu.get_output_32();
+
+            // Log the output to console
+            for o in &output {
+                println!("{o:08x}");
+            }
+        }
+
+        // Log output to console if requested
+        if options.log_output_riscof {
+            // Get the emulation output as a u32 vector
+            let output = emu.get_output_riscof_32();
 
             // Log the output to console
             for o in &output {
@@ -310,6 +323,29 @@ impl Emulator for ZiskEmulator {
             // Read inputs data from the provided inputs path
             let path = PathBuf::from(options.inputs.clone().unwrap());
             inputs = fs::read(path).expect("Could not read inputs file");
+        }
+
+        // Build an input data buffer either from the provided inputs path (if provided), or leave
+        // it empty
+        if options.legacy_inputs.is_some() {
+            if options.inputs.is_some() {
+                return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
+                    "Legacy input file and input file options are incompatible",
+                )));
+            }
+            // Read inputs data from the provided inputs path
+            let path = PathBuf::from(options.legacy_inputs.clone().unwrap());
+            let file_data = fs::read(path).expect("Could not read inputs file");
+
+            // Build legacy format: 8 bytes length (native endianness) + file content + padding to multiple of 8
+            let file_len = file_data.len() as u64;
+            let total_len = 8 + file_data.len();
+            let padding = (8 - (total_len % 8)) % 8;
+
+            inputs = Vec::with_capacity(total_len + padding);
+            inputs.extend_from_slice(&file_len.to_ne_bytes());
+            inputs.extend_from_slice(&file_data);
+            inputs.resize(total_len + padding, 0);
         }
 
         // If a rom file path is provided, load the rom from it

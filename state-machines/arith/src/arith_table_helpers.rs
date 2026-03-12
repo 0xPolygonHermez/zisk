@@ -73,6 +73,7 @@ impl ArithTableHelpers {
     /// Retrieves the row index during testing (optimized for release mode).
     #[cfg(not(debug_assertions))]
     #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
     pub fn get_row(
         op: u8,
         na: bool,

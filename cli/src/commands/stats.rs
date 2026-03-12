@@ -1,14 +1,17 @@
 use anyhow::Result;
 use clap::Parser;
+use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
+use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::io::ZiskStdin;
-use zisk_common::{ExecutorStats, Stats};
+use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::ElfBinaryFromFile;
+use zisk_common::{ExecutorStatsHandle, Stats};
 use zisk_pil::*;
 use zisk_sdk::ProverClient;
 
-use crate::ux::print_banner;
+use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -20,10 +23,6 @@ use crate::ux::print_banner;
         .required(false)
 ))]
 pub struct ZiskStats {
-    /// Witness computation dynamic library path
-    #[clap(short = 'w', long)]
-    pub witness_lib: Option<PathBuf>,
-
     /// ROM file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
@@ -40,8 +39,12 @@ pub struct ZiskStats {
     pub emulator: bool,
 
     /// Input path
-    #[clap(short = 'i', long)]
-    pub input: Option<PathBuf>,
+    #[clap(short = 'i', long, alias = "input", conflicts_with = "hints")]
+    pub inputs: Option<String>,
+
+    /// Precompiles Hints path
+    #[clap(short = 'H', long, conflicts_with = "inputs")]
+    pub hints: Option<String>,
 
     /// Setup folder path
     #[clap(short = 'k', long)]
@@ -63,11 +66,16 @@ pub struct ZiskStats {
     #[clap(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
+    /// Redirect ASM emulator output to file
+    /// This option is mutually exclusive with `--emulator`
+    #[clap(long, conflicts_with = "emulator", default_value_t = false)]
+    pub asm_out_file: bool,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    #[clap(short = 'n', long)]
+    #[clap(short = 'h', long)]
     pub number_threads_witness: Option<usize>,
 
     #[clap(short = 'x', long)]
@@ -85,17 +93,55 @@ pub struct ZiskStats {
 
     #[clap(short = 'j', long, default_value_t = false)]
     pub shared_tables: bool,
+
+    #[clap(short = 'n', long, default_value_t = false)]
+    pub no_auto_setup: bool,
 }
 
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
+        // Check if the deprecated alias was used
+        if std::env::args().any(|arg| arg == "--input") {
+            eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
+        }
+
         print_banner();
 
-        let stdin = self.create_stdin()?;
+        print_banner_command("Stats");
 
-        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+        print_banner_field("Elf", self.elf.display());
+
+        let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
+        print_banner_field("Input", inputs_str);
+
+        if let Some(hints) = &self.hints {
+            print_banner_field("Prec. Hints", hints);
+        }
+
+        let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
+
+        let hints_stream = match self.hints.as_ref() {
+            Some(uri) => {
+                let stream = StreamSource::from_uri(uri)?;
+                if matches!(stream, StreamSource::Quic(_)) {
+                    anyhow::bail!("QUIC hints source is not supported in CLI mode.");
+                }
+                Some(stream)
+            }
+            None => None,
+        };
+
+        let emulator = if cfg!(target_os = "macos") {
+            if !self.emulator {
+                warn!("Emulator mode is forced on macOS due to lack of ASM support.");
+            }
+            true
+        } else {
+            self.emulator
+        };
+
         let (world_rank, n_processes, stats) =
-            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin)? };
+            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
 
         if world_rank % 2 == 1 {
             std::thread::sleep(std::time::Duration::from_millis(2000));
@@ -108,57 +154,62 @@ impl ZiskStats {
         );
 
         if let Some(stats) = &stats {
-            Self::print_stats(&stats.witness_stats);
+            Self::print_stats(&stats.get_inner().lock().unwrap().witness_stats);
             stats.print_stats();
         }
 
         Ok(())
     }
 
-    fn create_stdin(&mut self) -> Result<ZiskStdin> {
-        let stdin = if let Some(input) = &self.input {
-            if !input.exists() {
-                return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
-            }
-            ZiskStdin::from_file(input)?
-        } else {
-            ZiskStdin::null()
-        };
-        Ok(stdin)
-    }
-
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let prover = ProverClient::builder()
             .emu()
             .witness()
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .print_command_info()
             .build()?;
 
-        prover.stats(stdin, self.debug.clone(), self.mpi_node.map(|n| n as u32))
+        let elf = ElfBinaryFromFile::new(&self.elf, false)?;
+        let (pk, _) = prover.setup(&elf)?;
+
+        prover.stats(
+            &pk,
+            stdin,
+            self.debug.clone(),
+            self.minimal_memory,
+            self.mpi_node.map(|n| n as u32),
+        )
     }
 
-    pub fn run_asm(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStats>)> {
+    pub fn run_asm(
+        &mut self,
+        stdin: ZiskStdin,
+        hints_stream: Option<StreamSource>,
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let prover = ProverClient::builder()
             .asm()
             .witness()
-            .witness_lib_path_opt(self.witness_lib.clone())
             .proving_key_path_opt(self.proving_key.clone())
-            .elf_path(self.elf.clone())
             .verbose(self.verbose)
             .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
+            .no_auto_setup(self.no_auto_setup)
             .base_port_opt(self.port)
             .unlock_mapped_memory(self.unlock_mapped_memory)
+            .asm_out_file(self.asm_out_file)
             .print_command_info()
             .build()?;
 
+        let elf = ElfBinaryFromFile::new(&self.elf, hints_stream.is_some())?;
+        let (pk, _) = prover.setup(&elf)?;
+
+        if let Some(hints_stream) = hints_stream {
+            pk.register_hints_stream(hints_stream)?;
+        }
         let mpi_node = self.mpi_node.map(|n| n as u32);
-        prover.stats(stdin, self.debug.clone(), mpi_node)
+        prover.stats(&pk, stdin, self.debug.clone(), self.minimal_memory, mpi_node)
     }
 
     /// Prints stats individually and grouped, with aligned columns.

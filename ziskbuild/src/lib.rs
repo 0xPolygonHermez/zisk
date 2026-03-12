@@ -43,6 +43,9 @@ pub struct BuildArgs {
 
     #[clap(long, value_name = "ELF_NAME")]
     elf_name: Option<String>,
+
+    #[clap(long, value_name = "HINTS")]
+    pub hints: Option<bool>,
 }
 
 pub fn build_program(path: &str) {

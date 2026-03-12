@@ -6,14 +6,11 @@
 use crate::{KeccakfInput, KeccakfSM};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
-use std::{
-    any::Any,
-    collections::{HashMap, VecDeque},
-    sync::Arc,
-};
+use std::{any::Any, collections::HashMap, sync::Arc};
+use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, MemCollectorInfo, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;
@@ -116,6 +113,10 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
         InstanceType::Instance
     }
 
+    fn stats_type(&self) -> StatsType {
+        StatsType::Precompiled
+    }
+
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
@@ -162,9 +163,7 @@ impl KeccakfCollector {
             collect_skipper,
         }
     }
-}
 
-impl BusDevice<PayloadType> for KeccakfCollector {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -177,13 +176,7 @@ impl BusDevice<PayloadType> for KeccakfCollector {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[PayloadType],
-        _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[PayloadType]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
@@ -208,15 +201,9 @@ impl BusDevice<PayloadType> for KeccakfCollector {
 
         self.inputs.len() < self.num_operations as usize
     }
+}
 
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
+impl BusDevice<PayloadType> for KeccakfCollector {
     fn as_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }

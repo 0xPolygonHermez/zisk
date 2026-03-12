@@ -4,7 +4,7 @@ require "operations.pil"
 require "opids.pil"
 require "arith_eq_lt_table.pil"
 
-airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_ID) {
+airtemplate ArithEq384(const int N) {
     /*
         EQ0 : x1 * y1 + x2 - x3 - q1 * y2 * p2_384 - q0 * y2  modular arith  ARITH_384_MOD      x3 = mod(x1*y1+x2, y2)
         EQ1 : s * x2 - s * x1 - y2 + y1 + (q0 * p)            lambda - ADD   EC_ADD_BLS12_381
@@ -567,7 +567,8 @@ airtemplate ArithEq384(const int N, const int operation_bus_id = OPERATION_BUS_I
                         sel_bls12_381_complex_sub * OP_COMPLEX_SUB_BLS12_381 +
                         sel_bls12_381_complex_mul * OP_COMPLEX_MUL_BLS12_381;
 
-    lookup_proves(operation_bus_id, [bus_op, step_addr'(MAIN_STEP), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk0);
+    proves_operation(op: bus_op,  a:[0, 0],  b:[step_addr'(ADDR_OP), 0], c:[0, 0], flag:0, 
+                     main_step: step_addr'(MAIN_STEP), mul: in_use_clk0);
 
     // selclk0 is the clock 0 for dedicated to one operation
     function expr_group_by_cbc(const expr selclk0, const expr chunks[], const int index): const expr {

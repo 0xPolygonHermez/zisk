@@ -1,13 +1,15 @@
 mod test_data;
 use test_data::{
     get_arith256_mod_test_data, get_arith256_test_data, get_bn254_curve_add_test_data,
-    get_secp256k1_add_test_data, get_secp256k1_dbl_test_data,
+    get_secp256k1_add_test_data, get_secp256k1_dbl_test_data, get_secp256r1_add_test_data,
+    get_secp256r1_dbl_test_data,
 };
 
 mod equations;
 mod executors;
 use executors::{
     arith256::Arith256, arith256_mod::Arith256Mod, bn254_curve::Bn254Curve, secp256k1::Secp256k1,
+    secp256r1::Secp256r1,
 };
 
 // cargo run --release --features="test_data" --bin arith_eq_test_bigint
@@ -63,4 +65,23 @@ fn main() {
     //     Bn254Curve::verify_add(&p1, &p2, &p3);
     //     index += 1;
     // }
+
+    index = 0;
+    while let Some((p1, p2, p3)) = get_secp256r1_add_test_data(index) {
+        println!("testing index secp256r1_add #{} ....", index);
+        if verbose {
+            println!("SECP256R1_ADD\n  p1: {:?},\n  p2: {:?},\n  p3: {:?}", p1, p2, p3);
+        }
+        Secp256r1::verify_add(&p1, &p2, &p3);
+        index += 1;
+    }
+    index = 0;
+    while let Some((p1, p3)) = get_secp256r1_dbl_test_data(index) {
+        println!("testing index secp256r1_dbl #{} ....", index);
+        if verbose {
+            println!("SECP256R1_DBL\n  p1: {:?},\n  p3: {:?}", p1, p3);
+        }
+        Secp256r1::verify_dbl(&p1, &p3);
+        index += 1;
+    }
 }

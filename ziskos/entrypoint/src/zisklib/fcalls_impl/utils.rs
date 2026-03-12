@@ -1,6 +1,10 @@
 use num_bigint::BigUint;
 use num_traits::Zero;
 
+pub fn biguint_from_u64(value: u64) -> BigUint {
+    BigUint::from(value)
+}
+
 pub fn biguint_from_u64_digits(limbs: &[u64]) -> BigUint {
     limbs.iter().rev().fold(BigUint::zero(), |acc, &limb| (acc << 64) + BigUint::from(limb))
 }

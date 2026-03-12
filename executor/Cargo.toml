@@ -10,7 +10,6 @@ categories = { workspace = true }
 [dependencies]
 sm-main = { workspace = true }
 sm-rom = { workspace = true }
-rom-setup = { workspace = true }
 zisk-pil = { workspace = true }
 ziskemu = { workspace = true }
 zisk-core = { workspace = true }
@@ -29,22 +28,47 @@ tracing = { workspace = true }
 itertools = { workspace = true }
 rayon = { workspace = true }
 pil-std-lib = { workspace = true }
+precompiles-hints = { workspace = true }
+anyhow = { workspace = true }
 crossbeam = "0.8.4"
 
+precompiles-common = { workspace = true }
 precomp-keccakf = { workspace = true }
 precomp-sha256f = { workspace = true }
+precomp-poseidon2 = { workspace = true }
+precomp-blake2 = { workspace = true }
 precomp-arith-eq = { workspace = true }
 precomp-arith-eq-384 = { workspace = true }
 precomp-big-int = { workspace = true }
+precomp-dma = { workspace = true }
 
 sm-arith = { workspace = true }
 sm-binary = { workspace = true }
 sm-mem = { workspace = true }
 sm-frequent-ops = { workspace = true }
 
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+named-sem = { workspace = true }
+
 [features]
 default = []
-disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
-gpu = ["proofman-common/gpu", "proofman/gpu" ]
-packed = ["proofman-common/packed"]
+disable_distributed = []
+gpu = ["proofman-common/gpu", "proofman/gpu", "packed"]
+packed = [
+    "proofman/packed",
+    "proofman-common/packed",
+    "precomp-keccakf/packed",
+    "precomp-sha256f/packed",
+    "precomp-poseidon2/packed",
+    "precomp-arith-eq/packed",
+    "precomp-arith-eq-384/packed",
+    "precomp-big-int/packed",
+    "precomp-dma/packed",
+    "sm-arith/packed",
+    "sm-binary/packed",
+    "sm-main/packed",
+    "sm-mem/packed",
+    "sm-frequent-ops/packed",
+    "sm-rom/packed",
+]
 stats = []

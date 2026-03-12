@@ -4,17 +4,56 @@
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use core::arch::asm;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+mod dma;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod fcall;
+
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+mod alloc;
+
 mod profile;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub use fcall::*;
+pub mod io;
 pub use profile::*;
-
-pub mod zisklib;
-
 pub mod syscalls;
-
+pub mod zisklib;
 pub mod ziskos_definitions;
+
+#[cfg(all(
+    not(all(target_os = "zkvm", target_vendor = "zisk")),
+    any(zisk_hints, zisk_hints_debug),
+    feature = "user-hints"
+))]
+pub mod hints;
+
+#[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints))]
+extern "C" {
+    fn hint_input_data(input_data_ptr: *const u8, input_data_len: usize);
+}
+
+#[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints_debug))]
+extern "C" {
+    fn hint_log_c(msg: *const std::os::raw::c_char);
+}
+
+#[cfg(zisk_hints_debug)]
+pub fn hint_log<S: AsRef<str>>(msg: S) {
+    // On native we call external C function to log hints, since it controls if hints are paused or not
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    {
+        use std::ffi::CString;
+
+        if let Ok(c) = CString::new(msg.as_ref()) {
+            unsafe { hint_log_c(c.as_ptr()) };
+        }
+    }
+    // On zkvm/zisk, we can just print directly
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    {
+        println!("{}", msg.as_ref());
+    }
+}
 
 #[macro_export]
 macro_rules! entrypoint {
@@ -40,41 +79,123 @@ macro_rules! entrypoint {
 #[allow(unused_imports)]
 use crate::ziskos_definitions::ziskos_config::*;
 
+/// Initial offset for input reading.
+/// zkvm: 8 bytes offset due to INPUT_ADDR memory layout
+/// native: 0 bytes offset (file starts at position 0)
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-pub fn read_input() -> Vec<u8> {
-    read_input_slice().to_vec()
+const INPUT_INITIAL_OFFSET: usize = 8;
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+const INPUT_INITIAL_OFFSET: usize = 0;
+
+/// Pointer to the current position in the input buffer/file.
+static mut INPUT_POS: usize = INPUT_INITIAL_OFFSET;
+
+/// Reset the input position to the beginning.
+pub fn read_reset() {
+    unsafe { INPUT_POS = INPUT_INITIAL_OFFSET };
+}
+
+/// Read a slice directly from INPUT_ADDR without copying (zero-copy).
+///
+/// This returns a slice pointing directly to the input memory region.
+/// Use this when you want to deserialize directly without an intermediate copy.
+/// The INPUT_POS is advanced after this call.
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+pub(crate) fn read_slice_zerocopy<'a>() -> &'a [u8] {
+    // SAFETY: Single threaded, so nothing else can touch INPUT_POS while we're working.
+    let input_pos = unsafe { INPUT_POS };
+    let addr = (INPUT_ADDR as usize) + input_pos;
+
+    // Ensure the 8-byte length prefix is ready and read it
+    crate::zisklib::fcall_input_ready(&((addr + 7) as u64));
+    let len = unsafe {
+        let bytes = core::slice::from_raw_parts(addr as *const u8, 8);
+        u64::from_le_bytes(bytes.try_into().unwrap()) as usize
+    };
+
+    // Ensure the data is ready (8-byte aligned)
+    let data_addr = addr + 8;
+    let aligned_len = (len + 7) & !0x7;
+    crate::zisklib::fcall_input_ready(&((data_addr + aligned_len - 1) as u64));
+
+    // Update input position: move past length (8 bytes) + data (8-byte aligned)
+    unsafe { INPUT_POS = input_pos + 8 + aligned_len };
+
+    let data_slice = unsafe { core::slice::from_raw_parts(data_addr as *const u8, len) };
+
+    #[cfg(zisk_hints_debug)]
+    {
+        let start_bytes = &data_slice[..data_slice.len().min(64)];
+        let ellipsis = if data_slice.len() > 64 { "..." } else { "" };
+        hint_log(format!(
+            "hint_input_data (input_data: {:x?}{} , input_data_len: {}",
+            start_bytes,
+            ellipsis,
+            data_slice.len()
+        ));
+    }
+
+    data_slice
+}
+
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+pub(crate) fn read_input() -> Vec<u8> {
+    read_slice_zerocopy().to_vec()
 }
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-pub fn read_input() -> Vec<u8> {
-    use std::{fs::File, io::Read};
+pub(crate) fn read_input() -> Vec<u8> {
+    use std::{
+        fs::File,
+        io::{Read, Seek, SeekFrom},
+    };
+
+    let input_pos = unsafe { INPUT_POS };
 
     let mut file =
         File::open("build/input.bin").expect("Error opening input file at: build/input.bin");
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).unwrap();
-    buffer
+
+    // Seek to the current position
+    file.seek(SeekFrom::Start(input_pos as u64)).expect("Failed to seek in input file");
+
+    // Read the 8-byte length prefix
+    let mut len_bytes = [0u8; 8];
+    file.read_exact(&mut len_bytes).expect("Failed to read length prefix from input file");
+    let len = u64::from_le_bytes(len_bytes) as usize;
+
+    // Read the actual data
+    let mut data = vec![0u8; len];
+    file.read_exact(&mut data).expect("Failed to read data from input file");
+
+    // Advance INPUT_POS: 8 bytes for length + 8-byte aligned data
+    let aligned_len = (len + 7) & !0x7;
+    unsafe {
+        INPUT_POS = input_pos + 8 + aligned_len;
+    }
+
+    #[cfg(zisk_hints)]
+    unsafe {
+        hint_input_data(data.as_ptr(), data.len());
+    }
+
+    #[cfg(zisk_hints_debug)]
+    {
+        let start_bytes = &data[..data.len().min(64)];
+        let ellipsis = if data.len() > 64 { "..." } else { "" };
+        hint_log(format!(
+            "hint_input_data (input_data: {:x?}{} , input_data_len: {})",
+            start_bytes,
+            ellipsis,
+            data.len()
+        ));
+    }
+
+    data
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-pub fn read_input_slice<'a>() -> &'a [u8] {
-    // Create a slice of the first 8 bytes to get the size
-    let bytes = unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), 8) };
-    // Convert the slice to a u64 (little-endian)
-    let size: u64 = u64::from_le_bytes(bytes.try_into().unwrap());
-
-    unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(16), size as usize) }
-}
-
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-pub fn read_input_slice() -> Box<[u8]> {
-    read_input().into_boxed_slice()
-}
-
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-pub fn set_output(id: usize, value: u32) {
+pub(crate) fn set_output(id: usize, value: u32) {
     use std::arch::asm;
-    let addr_n: *mut u32;
     let addr_v: *mut u32;
     let arch_id_zisk: usize;
 
@@ -88,33 +209,21 @@ pub fn set_output(id: usize, value: u32) {
     assert!(id < 64, "Maximum number of public outputs: 64");
 
     if arch_id_zisk == ARCH_ID_ZISK as usize {
-        addr_n = OUTPUT_ADDR as *mut u32;
-        addr_v = (OUTPUT_ADDR + 4 + 4 * (id as u64)) as *mut u32;
+        addr_v = (OUTPUT_ADDR + 4 * (id as u64)) as *mut u32;
     } else {
-        addr_n = 0x1000_0000 as *mut u32;
-        addr_v = (0x1000_0000 + 4 + 4 * (id as u64)) as *mut u32;
-    }
-
-    let n;
-
-    unsafe {
-        n = core::ptr::read(addr_n) as usize;
-    }
-
-    if id + 1 > n {
-        unsafe { core::ptr::write_volatile(addr_n, (id + 1) as u32) };
+        addr_v = (0x1000_0000 + 4 * (id as u64)) as *mut u32;
     }
 
     unsafe { core::ptr::write_volatile(addr_v, value) };
 }
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-pub fn set_output(id: usize, value: u32) {
+pub(crate) fn set_output(id: usize, value: u32) {
     println!("public {id}: {value:#010x}");
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-mod ziskos {
+pub mod ziskos {
     use crate::ziskos_definitions::ziskos_config::*;
     use core::arch::asm;
 
@@ -174,12 +283,27 @@ mod ziskos {
             extern "C" {
                 fn main();
             }
+            #[cfg(any(
+                feature = "zisk-embedded-alloc",
+                feature = "zisk-embedded-dlmalloc-alloc",
+                feature = "zisk-embedded-talc-alloc",
+                feature = "zisk-embedded-tlfs-alloc"
+            ))]
+            crate::alloc::embedded::init();
+            #[cfg(all(
+                not(feature = "zisk-embedded-alloc"),
+                not(feature = "zisk-embedded-dlmalloc-alloc"),
+                not(feature = "zisk-embedded-talc-alloc"),
+                not(feature = "zisk-embedded-tlfs-alloc")
+            ))]
+            crate::alloc::init_sys_alloc();
+
             main()
         }
     }
 
     #[no_mangle]
-    extern "C" fn sys_write(_fd: u32, write_ptr: *const u8, nbytes: usize) {
+    pub extern "C" fn sys_write(_fd: u32, write_ptr: *const u8, nbytes: usize) {
         let arch_id_zisk: usize;
         let mut addr: *mut u8 = 0x1000_0000 as *mut u8;
 
@@ -244,46 +368,26 @@ mod ziskos {
         unimplemented!("sys_argv");
     }
 
-    #[no_mangle]
-    pub unsafe extern "C" fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u8 {
-        use core::arch::asm;
-        let heap_bottom: usize;
-        // UNSAFE: This is fine, just loading some constants.
-        unsafe {
-            // using inline assembly is easier to access linker constants
-            asm!(
-              "la {heap_bottom}, _kernel_heap_bottom",
-              heap_bottom = out(reg) heap_bottom,
-              options(nomem)
-            )
-        };
-
-        // Pointer to next heap address to use, or 0 if the heap has not yet been
-        // initialized.
-        static mut HEAP_POS: usize = 0;
-
-        // SAFETY: Single threaded, so nothing else can touch this while we're working.
-        let mut heap_pos = unsafe { HEAP_POS };
-
-        if heap_pos == 0 {
-            heap_pos = heap_bottom;
+    pub extern "C" fn sys_print_hex(val: usize, ln: bool) {
+        let mut buf = [0u8; 19]; // "0x" + 16 hex + \n — stack, no heap
+        buf[0] = b'0';
+        buf[1] = b'x';
+        let mut v = val;
+        for i in (2..18).rev() {
+            buf[i] = b"0123456789abcdef"[v & 0xF];
+            v >>= 4;
         }
-
-        let offset = heap_pos & (align - 1);
-        if offset != 0 {
-            heap_pos += align - offset;
+        if ln {
+            buf[18] = b'\n';
+            sys_write(1, buf.as_ptr(), buf.len());
+        } else {
+            sys_write(1, buf.as_ptr(), buf.len() - 1);
         }
-
-        let ptr = heap_pos as *mut u8;
-        heap_pos += bytes;
-
-        // Check to make sure heap doesn't collide with SYSTEM memory.
-        //if SYSTEM_START < heap_pos {
-        //    panic!();
-        // }
-
-        unsafe { HEAP_POS = heap_pos };
-
-        ptr
     }
+
+    core::arch::global_asm!(include_str!("dma/memcpy.s"));
+    core::arch::global_asm!(include_str!("dma/memmove.s"));
+    core::arch::global_asm!(include_str!("dma/memcmp.s"));
+    //core::arch::global_asm!(include_str!("dma/inputcpy.s"));
+    core::arch::global_asm!(include_str!("dma/memset.s"));
 }

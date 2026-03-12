@@ -1,30 +1,27 @@
-use tracing::error;
-use zisk_common::ExecutorStatsHandle;
-
-use crate::{AsmRHData, AsmRHHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
-use anyhow::{Context, Result};
+use crate::{
+    sem_chunk_done_name, shmem_output_name, AsmRHData, AsmRHHeader, AsmRunError, AsmService,
+    AsmServices, AsmSharedMemory, SEM_CHUNK_DONE_WAIT_DURATION,
+};
 use named_sem::NamedSemaphore;
 use std::sync::atomic::{fence, Ordering};
-use std::time::Duration;
+use tracing::error;
+use zisk_common::{stats_begin, stats_end, ExecutorStatsHandle};
 
-pub struct PreloadedRH {
+use anyhow::{Context, Result};
+
+pub struct RHShMemReader {
     pub output_shmem: AsmSharedMemory<AsmRHHeader>,
 }
 
-impl PreloadedRH {
+impl RHShMemReader {
     pub fn new(
         local_rank: i32,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Result<Self> {
-        let port = if let Some(base_port) = base_port {
-            AsmServices::port_for(&AsmService::RH, base_port, local_rank)
-        } else {
-            AsmServices::default_port(&AsmService::RH, local_rank)
-        };
+        let port = AsmServices::port_base_for(base_port, local_rank);
 
-        let output_name =
-            AsmSharedMemory::<AsmRHHeader>::shmem_output_name(port, AsmService::RH, local_rank);
+        let output_name = shmem_output_name(port, AsmService::RH, local_rank, Some(0));
 
         let output_shared_memory =
             AsmSharedMemory::<AsmRHHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
@@ -32,9 +29,6 @@ impl PreloadedRH {
         Ok(Self { output_shmem: output_shared_memory })
     }
 }
-
-#[cfg(feature = "stats")]
-use zisk_common::ExecutorStatsEvent;
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
@@ -54,7 +48,7 @@ impl AsmRunnerRH {
     }
 
     pub fn run(
-        asm_shared_memory: &mut Option<PreloadedRH>,
+        asm_shared_memory: &mut Option<RHShMemReader>,
         max_steps: u64,
         world_rank: i32,
         local_rank: i32,
@@ -62,21 +56,11 @@ impl AsmRunnerRH {
         unlock_mapped_memory: bool,
         _stats: ExecutorStatsHandle,
     ) -> Result<AsmRunnerRH> {
-        let __stats = _stats.clone();
+        stats_begin!(_stats, 0, _runner_scope, "ASM_RH_RUNNER", 0);
 
-        #[cfg(feature = "stats")]
-        let parent_stats_id = __stats.next_id();
-        #[cfg(feature = "stats")]
-        _stats.add_stat(0, parent_stats_id, "ASM_RH_RUNNER", 0, ExecutorStatsEvent::Begin);
+        let port = AsmServices::port_base_for(base_port, local_rank);
 
-        let port = if let Some(base_port) = base_port {
-            AsmServices::port_for(&AsmService::RH, base_port, local_rank)
-        } else {
-            AsmServices::default_port(&AsmService::RH, local_rank)
-        };
-
-        let sem_chunk_done_name =
-            AsmSharedMemory::<AsmRHHeader>::shmem_chunk_done_name(port, AsmService::RH, local_rank);
+        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::RH, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -85,7 +69,7 @@ impl AsmRunnerRH {
         asm_services.send_rom_histogram_request(max_steps)?;
 
         loop {
-            match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
+            match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
@@ -107,16 +91,13 @@ impl AsmRunnerRH {
 
         if asm_shared_memory.is_none() {
             *asm_shared_memory =
-                Some(PreloadedRH::new(local_rank, base_port, unlock_mapped_memory)?);
+                Some(RHShMemReader::new(local_rank, base_port, unlock_mapped_memory)?);
         }
 
         let asm_rowh_output =
             AsmRHData::from_shared_memory(&asm_shared_memory.as_ref().unwrap().output_shmem);
 
-        // Add to executor stats
-        #[cfg(feature = "stats")]
-        _stats.add_stat(0, parent_stats_id, "ASM_RH_RUNNER", 0, ExecutorStatsEvent::End);
-
+        stats_end!(_stats, &_runner_scope);
         Ok(AsmRunnerRH::new(asm_rowh_output))
     }
 }

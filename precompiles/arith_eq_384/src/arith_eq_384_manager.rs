@@ -2,11 +2,8 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use zisk_common::{BusDevice, PayloadType};
 
-use zisk_common::{
-    BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner,
-};
+use zisk_common::{BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner};
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithEq384Trace;
 
@@ -31,8 +28,11 @@ impl<F: PrimeField64> ArithEq384Manager<F> {
         Arc::new(Self { arith_eq_384_sm })
     }
 
-    pub fn build_arith_eq_384_counter(&self) -> ArithEq384CounterInputGen {
-        ArithEq384CounterInputGen::new(BusDeviceMode::Counter)
+    pub fn build_arith_eq_384_counter(&self, asm_execution: bool) -> ArithEq384CounterInputGen {
+        match asm_execution {
+            true => ArithEq384CounterInputGen::new(BusDeviceMode::CounterAsm),
+            false => ArithEq384CounterInputGen::new(BusDeviceMode::Counter),
+        }
     }
 
     pub fn build_arith_eq_384_input_generator(&self) -> ArithEq384CounterInputGen {
@@ -41,14 +41,6 @@ impl<F: PrimeField64> ArithEq384Manager<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for ArithEq384Manager<F> {
-    /// Builds and returns a new counter for monitoring arith256 operations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RegularCounters` configured for arith256 operations.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        Some(Box::new(ArithEq384CounterInputGen::new(BusDeviceMode::Counter)))
-    }
-
     /// Builds a planner to plan arith256-related instances.
     ///
     /// # Returns
@@ -88,9 +80,5 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEq384Manager<F> {
                 )
             }
         }
-    }
-
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(ArithEq384CounterInputGen::new(BusDeviceMode::InputGenerator)))
     }
 }

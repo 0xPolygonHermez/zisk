@@ -2,27 +2,33 @@ mod builder;
 mod client;
 mod prover;
 mod utils;
-mod zisk_lib_loader;
+mod verifier;
+mod ziskemu;
 
 pub use builder::*;
 pub use client::ProverClient;
 pub use prover::*;
 pub use utils::*;
-pub use zisk_lib_loader::*;
+pub use verifier::*;
 
-pub struct RankInfo {
-    pub world_rank: i32,
-    pub local_rank: i32,
-}
+pub use ziskemu::*;
 
-pub struct Proof {
-    pub id: Option<String>,
-    pub proof: Option<Vec<u64>>,
-}
+pub use proofman_common::VerboseMode;
+
+pub use zisk_common::{io::*, ElfBinary, ElfBinaryFromFile};
+
+pub use zisk_build::*;
 
 #[macro_export]
 macro_rules! include_elf {
-    ($arg:tt) => {{
-        include_bytes!(env!(concat!("ZISK_ELF_", $arg)))
+    ($arg:literal) => {{
+        const WITH_HINTS: bool = option_env!(concat!("ZISK_ELF_", $arg, "_WITH_HINTS")).is_some();
+
+        ElfBinary {
+            elf: include_bytes!(env!(concat!("ZISK_ELF_", $arg))),
+            name: $arg,
+            with_hints: WITH_HINTS,
+            path: Some(env!(concat!("ZISK_ELF_", $arg))),
+        }
     }};
 }

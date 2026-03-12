@@ -5,6 +5,7 @@
 //! communication, and job handling capabilities.
 
 pub mod config;
+mod stream_ordering;
 pub mod worker;
 pub mod worker_node;
 

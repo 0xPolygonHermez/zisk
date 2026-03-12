@@ -1,6 +1,6 @@
 use crate::{worker::ComputationResult, ProverConfig, Worker};
 use anyhow::{anyhow, Result};
-use proofman::{AggProofs, ContributionsInfo};
+use proofman::{AggProofs, ContributionsInfo, WitnessInfo};
 use std::path::Path;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
@@ -8,8 +8,10 @@ use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info};
+use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{
-    AggProofData, AggregationParams, DataCtx, InputSourceDto, WorkerState,
+    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, StreamDataDto,
+    WorkerState,
 };
 use zisk_distributed_common::{DataId, JobId};
 use zisk_distributed_grpc_api::contribution_params::InputSource;
@@ -237,8 +239,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         match result {
-            ComputationResult::Challenge { job_id, success, result } => {
-                self.send_partial_contribution(job_id, success, result, message_sender).await
+            ComputationResult::Challenge { job_id, success, result, task_received_time } => {
+                self.send_partial_contribution(
+                    job_id,
+                    success,
+                    result,
+                    message_sender,
+                    task_received_time,
+                )
+                .await
             }
             ComputationResult::Proofs { job_id, success, result } => {
                 self.send_proof(job_id, success, result, message_sender).await
@@ -253,8 +262,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<Vec<ContributionsInfo>>,
+        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>)>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
@@ -275,11 +285,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         "Inconsistent state: operation reported success but returned Err result"
                     ));
                 }
-                (vec![], e.to_string())
+                ((WitnessInfo::default(), ZiskExecutorTime::default(), vec![]), e.to_string())
             }
         };
 
         let challenges: Vec<Challenges> = result_data
+            .2
             .into_iter()
             .map(|cont| Challenges {
                 worker_index: cont.worker_index,
@@ -288,13 +299,36 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             })
             .collect();
 
+        let witness_info = WitnessExecInfo {
+            witness_time: result_data.0.witness_time,
+            publics: result_data.0.publics,
+            proof_values: result_data.0.proof_values,
+            summary_info: result_data.0.summary_info,
+        };
+
+        let zisk_execution_time = ZiskExecuteTime {
+            total_duration: result_data.1.total_duration.as_millis() as f32,
+            execution_duration: result_data.1.execution_duration.as_millis() as f32,
+            count_and_plan_duration: result_data.1.count_and_plan_duration.as_millis() as f32,
+            count_and_plan_mo_duration: result_data.1.count_and_plan_mo_duration.as_millis() as f32,
+            asm_execution_duration: result_data
+                .1
+                .asm_execution_duration
+                .map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz }),
+            task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
+        };
+
         let message = WorkerMessage {
             payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
                 worker_id: self.worker_config.worker.worker_id.as_string(),
                 job_id: job_id.as_string(),
                 task_type: TaskType::PartialContribution as i32,
                 success,
-                result_data: Some(ResultData::Challenges(ChallengesList { challenges })),
+                result_data: Some(ResultData::Challenges(ChallengesList {
+                    challenges,
+                    witness_info: Some(witness_info),
+                    zisk_execution_time: Some(zisk_execution_time),
+                })),
                 error_message,
             })),
         };
@@ -470,6 +504,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     }
                 }
             }
+            coordinator_message::Payload::StreamData(stream_data) => {
+                self.handle_stream_data(stream_data).await?;
+            }
             coordinator_message::Payload::JobCancelled(cancelled) => {
                 info!("Job {} cancelled: {}", cancelled.job_id, cancelled.reason);
 
@@ -504,6 +541,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         request: ExecuteTaskRequest,
         computation_tx: &mpsc::UnboundedSender<ComputationResult>,
     ) -> Result<()> {
+        let task_received_time = chrono::Utc::now();
         info!("Starting Partial Contribution for {}", request.job_id);
 
         // Cancel any existing computation
@@ -516,68 +554,118 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let job_id = JobId::from(request.job_id);
         let input_source = match params.input_source {
-            Some(InputSource::InputPath(ref path)) => {
-                let input_path = self.worker_config.worker.inputs_folder.join(PathBuf::from(path));
+            Some(InputSource::InputPath(ref inputs_uris)) => {
+                // Validate and get the full path
+                let inputs_uri = Self::validate_subdir(
+                    &self.worker_config.worker.inputs_folder,
+                    &PathBuf::from(&inputs_uris),
+                )
+                .await?;
 
-                // Validate that input_path is a subdirectory of inputs_folder
-                Self::validate_subdir(&self.worker_config.worker.inputs_folder, &input_path)?;
-
-                InputSourceDto::InputPath(input_path.display().to_string())
+                InputSourceDto::InputPath(inputs_uri.to_string_lossy().to_string())
             }
             Some(InputSource::InputData(data)) => InputSourceDto::InputData(data),
-            None => {
-                return Err(anyhow!("Input source missing in ContributionParams"));
-            }
+            None => InputSourceDto::InputNull,
         };
 
-        let data_ctx = DataCtx { data_id: DataId::from(params.data_id), input_source };
+        let hints_source = if let Some(hints_path) = &params.hints_path {
+            if params.hints_stream {
+                // Hints will be streamed - use placeholder, will be updated when stream completes
+                HintsSourceDto::HintsStream(hints_path.clone())
+            } else {
+                // Validate and get the full path
+                let hints_uri = Self::validate_subdir(
+                    &self.worker_config.worker.inputs_folder,
+                    &PathBuf::from(hints_path),
+                )
+                .await?;
+
+                HintsSourceDto::HintsPath(hints_uri.to_string_lossy().to_string())
+            }
+        } else {
+            HintsSourceDto::HintsNull
+        };
+
+        let data_ctx =
+            DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
 
         let job = self.worker.new_job(
-            job_id,
+            job_id.clone(),
             data_ctx,
             params.rank_id,
             params.total_workers,
             params.worker_allocation,
             params.job_compute_units,
+            Some(task_received_time),
         );
 
         // Start computation in background task
         self.worker.set_current_computation(
-            self.worker.handle_partial_contribution(job.clone(), computation_tx.clone()).await,
+            self.worker.handle_partial_contribution(job.clone(), computation_tx.clone()).await?,
         );
 
         Ok(())
     }
 
-    fn validate_subdir(base: &Path, candidate: &Path) -> Result<()> {
-        let base = base.canonicalize().map_err(|e| anyhow!("Inputs folder error: {e}"))?;
+    /// Validates that a subpath is within the base directory and waits for it to exist.
+    ///
+    /// This function joins the base directory with the provided subpath, waits for the
+    /// resulting file/directory to appear (up to 60 seconds), and validates that the
+    /// resolved path is within the base directory to prevent path traversal attacks.
+    ///
+    /// # Security Considerations
+    /// - Joins base and subpath before validation
+    /// - Canonicalizes paths to resolve symlinks and relative components (e.g., `..`)
+    /// - Validates that the resolved path is within the base directory
+    /// - Note: There's a small TOCTOU window between file existence check and canonicalization
+    ///   where a file could theoretically be replaced with a malicious symlink
+    ///
+    /// # Arguments
+    /// * `base_dir` - The base directory that must contain the subpath
+    /// * `subpath` - The relative path within base_dir (can include subdirectories)
+    ///
+    /// # Returns
+    /// * `Ok(PathBuf)` - The validated, canonicalized full path
+    /// * `Err` - If the path doesn't appear within timeout or is outside base directory
+    async fn validate_subdir(base_dir: &Path, subpath: &Path) -> Result<PathBuf> {
+        let base_canonical =
+            base_dir.canonicalize().map_err(|e| anyhow!("Inputs folder error: {e}"))?;
 
-        // Timeout 60 seconds
+        // Join base with subpath to get full path
+        let full_path = base_dir.join(subpath);
+
+        // Wait for file to appear (timeout: 60 seconds)
         let timeout = Duration::from_secs(60);
         let start = std::time::Instant::now();
+        let poll_interval = Duration::from_millis(500); // Poll every 500ms
 
-        while !candidate.exists() {
+        while !full_path.exists() {
             if start.elapsed() > timeout {
                 return Err(anyhow!(
-                    "Input path {:?} did not appear within {:?}",
-                    candidate,
+                    "Input path {:?} (subpath: {:?}) did not appear within {:?}",
+                    full_path,
+                    subpath,
                     timeout
                 ));
             }
-            std::thread::sleep(Duration::from_millis(10));
+            tokio::time::sleep(poll_interval).await;
         }
 
-        info!("Found input file {:?} (elapsed: {:?})", candidate, start.elapsed());
+        info!("Found input path {:?} (elapsed: {:?})", full_path, start.elapsed());
 
-        let candidate = candidate.canonicalize().map_err(|e| anyhow!("Input path error: {e}"))?;
+        // Canonicalize immediately after existence check to minimize TOCTOU window
+        let path_canonical =
+            full_path.canonicalize().map_err(|e| anyhow!("Input path error: {e}"))?;
 
-        if candidate.starts_with(&base) {
-            Ok(())
+        // Validate that the canonical path is within the base directory
+        if path_canonical.starts_with(&base_canonical) {
+            Ok(path_canonical)
         } else {
             Err(anyhow!(
-                "Input path {:?} must be a subdirectory of inputs folder {:?}",
-                candidate,
-                base
+                "Input path {:?} (resolved to {:?}) is outside base directory {:?}",
+                subpath,
+                path_canonical,
+                base_canonical
             ))
         }
     }
@@ -617,11 +705,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 worker_index: ch.worker_index,
                 airgroup_id: ch.airgroup_id as usize,
                 challenge: ch.challenge,
+                aggregated: false,
             })
             .collect();
 
         self.worker.set_current_computation(
-            self.worker.handle_prove(job, cont, computation_tx.clone()).await,
+            self.worker.handle_prove(job, cont, computation_tx.clone()).await?,
         );
 
         Ok(())
@@ -666,21 +755,38 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             agg_proofs,
             last_proof: agg_params.last_proof,
             final_proof: agg_params.final_proof,
-            verify_constraints: agg_params.verify_constraints,
-            aggregation: agg_params.aggregation,
-            rma: agg_params.rma,
-            final_snark: agg_params.final_snark,
-            verify_proofs: agg_params.verify_proofs,
-            save_proofs: agg_params.save_proofs,
-            test_mode: agg_params.test_mode,
-            output_dir_path: PathBuf::from(agg_params.output_dir_path),
-            minimal_memory: agg_params.minimal_memory,
+            compressed: agg_params.compressed,
         };
-
-        self.worker.set_current_computation(
-            self.worker.handle_aggregate(job, agg_params, computation_tx.clone()).await,
-        );
+        self.worker.set_current_computation(self.worker.handle_aggregate(
+            job,
+            agg_params,
+            computation_tx.clone(),
+        ));
 
         Ok(())
+    }
+
+    async fn handle_stream_data(&mut self, stream_data: StreamData) -> Result<()> {
+        if self.worker.current_job().is_none() {
+            return Err(anyhow!("Stream data received without current job context"));
+        }
+
+        let job = self.worker.current_job().unwrap();
+        let (current_job_id, is_first_partition) = {
+            let job_guard = job.lock().await;
+            (job_guard.job_id.clone(), job_guard.allocation.contains(&0))
+        };
+
+        let stream_data_dto: StreamDataDto = stream_data.into();
+
+        if current_job_id != stream_data_dto.job_id {
+            return Err(anyhow!(
+                "Job ID mismatch in StreamData: expected {}, got {}",
+                current_job_id.as_string(),
+                stream_data_dto.job_id
+            ));
+        }
+
+        self.worker.route_stream_data(stream_data_dto, is_first_partition).await
     }
 }

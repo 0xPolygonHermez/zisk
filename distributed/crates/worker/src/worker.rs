@@ -1,25 +1,27 @@
 use anyhow::Result;
-use cargo_zisk::commands::{get_proving_key, get_witness_computation_lib};
-use proofman::{AggProofs, ContributionsInfo};
-use rom_setup::{
-    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor_and_arity,
-    DEFAULT_CACHE_PATH,
-};
+use cargo_zisk::commands::get_proving_key;
+use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
+use rom_setup::{get_elf_data_hash, DEFAULT_CACHE_PATH};
 use std::fs;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
-use zisk_common::io::ZiskStdin;
+use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::ElfBinaryFromFile;
+use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
-use zisk_distributed_common::{ComputeCapacity, JobId, WorkerId};
-use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProver};
+use zisk_distributed_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
+use zisk_distributed_common::{ContributionsMessage, ProveMessage, StreamMessage};
+use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
+use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProgramPK, ZiskProver};
 
-use proofman::ProofInfo;
+use crate::stream_ordering::StreamOrderingActor;
+
 use proofman::ProvePhaseInputs;
+use proofman::WitnessInfo;
 use proofman_common::ParamsGPU;
 use proofman_common::ProofOptions;
 use proofman_common::{json_to_debug_instances_map, DebugInfo};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::{error, info};
 
@@ -31,7 +33,8 @@ pub enum ComputationResult {
     Challenge {
         job_id: JobId,
         success: bool,
-        result: Result<Vec<ContributionsInfo>>,
+        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>)>,
+        task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     },
     Proofs {
         job_id: JobId,
@@ -50,17 +53,11 @@ pub struct ProverConfig {
     /// Path to the ELF file
     pub elf: PathBuf,
 
-    /// Path to the witness computation dynamic library
-    pub witness_lib: PathBuf,
-
     /// Path to the ASM file (optional)
     pub asm: Option<PathBuf>,
 
     /// Path to the ASM ROM file (optional)
     pub asm_rom: Option<PathBuf>,
-
-    /// Map of custom commits
-    pub custom_commits_map: HashMap<String, PathBuf>,
 
     /// Flag indicating whether to use the prebuilt emulator
     pub emulator: bool,
@@ -83,17 +80,17 @@ pub struct ProverConfig {
     /// Flag to unlock mapped memory
     pub unlock_mapped_memory: bool,
 
+    /// Flag to redirect ASM emulator output to file
+    pub asm_out_file: bool,
+
     /// Flag to verify constraints
     pub verify_constraints: bool,
 
     /// Flag to enable aggregation
     pub aggregation: bool,
 
-    /// Flag to enable final SNARK
-    pub final_snark: bool,
-
     /// Preallocate resources
-    pub gpu_params: ParamsGPU,
+    pub gpu_params: Option<ParamsGPU>,
 
     /// Whether to use shared tables in the witness library
     pub shared_tables: bool,
@@ -103,6 +100,9 @@ pub struct ProverConfig {
 
     /// Whether to use minimal memory mode
     pub minimal_memory: bool,
+
+    /// Whether to include precompile hints in the assembly generation
+    pub hints: bool,
 }
 
 impl ProverConfig {
@@ -159,9 +159,16 @@ impl ProverConfig {
                         prover_service_config.elf.display()
                     )
                 })?;
+            let elf =
+                ElfBinaryFromFile::new(&prover_service_config.elf, prover_service_config.hints)?;
 
-            let hash = get_elf_data_hash(&prover_service_config.elf)
+            let hash = get_elf_data_hash(&elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
+            let stem = if prover_service_config.hints {
+                format!("{stem}-hints")
+            } else {
+                stem.to_string()
+            };
             let new_filename = format!("{stem}-{hash}-mt.bin");
             let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
             asm_rom = Some(default_cache_path.join(asm_rom_filename));
@@ -178,57 +185,43 @@ impl ProverConfig {
                 return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
             }
         }
-        let (blowup_factor, merkle_tree_arity) = get_rom_blowup_factor_and_arity(&proving_key);
-        let rom_bin_path = get_elf_bin_file_path(
-            &prover_service_config.elf.to_path_buf(),
-            &default_cache_path,
-            blowup_factor,
-            merkle_tree_arity,
-        )?;
-        if !rom_bin_path.exists() {
-            let _ = gen_elf_hash(
-                &prover_service_config.elf.clone(),
-                rom_bin_path.as_path(),
-                blowup_factor,
-                merkle_tree_arity,
-                false,
-            )
-            .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
-        }
-        let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
-        custom_commits_map.insert("rom".to_string(), rom_bin_path);
-        let mut gpu_params = ParamsGPU::new(prover_service_config.preallocate);
-        if prover_service_config.max_streams.is_some() {
-            gpu_params.with_max_number_streams(prover_service_config.max_streams.unwrap());
-        }
-        if prover_service_config.number_threads_witness.is_some() {
-            gpu_params.with_number_threads_pools_witness(
-                prover_service_config.number_threads_witness.unwrap(),
-            );
-        }
-        if prover_service_config.max_witness_stored.is_some() {
-            gpu_params.with_max_witness_stored(prover_service_config.max_witness_stored.unwrap());
+        let mut gpu_params = None;
+        if prover_service_config.preallocate
+            || prover_service_config.max_streams.is_some()
+            || prover_service_config.number_threads_witness.is_some()
+            || prover_service_config.max_witness_stored.is_some()
+        {
+            let mut gpu_params_new = ParamsGPU::new(prover_service_config.preallocate);
+            if let Some(max_streams) = prover_service_config.max_streams {
+                gpu_params_new.with_max_number_streams(max_streams);
+            }
+            if let Some(number_threads_witness) = prover_service_config.number_threads_witness {
+                gpu_params_new.with_number_threads_pools_witness(number_threads_witness);
+            }
+            if let Some(max_witness_stored) = prover_service_config.max_witness_stored {
+                gpu_params_new.with_max_witness_stored(max_witness_stored);
+            }
+            gpu_params = Some(gpu_params_new);
         }
 
         Ok(ProverConfig {
             elf: prover_service_config.elf.clone(),
-            witness_lib: get_witness_computation_lib(prover_service_config.witness_lib.as_ref()),
             asm: prover_service_config.asm.clone(),
             asm_rom,
-            custom_commits_map,
             emulator,
             proving_key,
             verbose: prover_service_config.verbose,
             debug_info,
             asm_port: prover_service_config.asm_port,
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
+            asm_out_file: prover_service_config.asm_out_file,
             verify_constraints: prover_service_config.verify_constraints,
             aggregation: prover_service_config.aggregation,
-            final_snark: prover_service_config.final_snark,
             gpu_params,
             shared_tables: prover_service_config.shared_tables,
             rma: prover_service_config.rma,
             minimal_memory: prover_service_config.minimal_memory,
+            hints: prover_service_config.hints,
         })
     }
 }
@@ -244,6 +237,7 @@ pub struct JobContext {
     pub total_compute_units: u32, // Total compute units for the whole job
     pub phase: JobPhase,
     pub executed_steps: u64,
+    pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub struct Worker<T: ZiskBackend + 'static> {
@@ -255,6 +249,9 @@ pub struct Worker<T: ZiskBackend + 'static> {
 
     prover: Arc<ZiskProver<T>>,
     prover_config: ProverConfig,
+
+    stream_actor: Option<StreamOrderingActor>,
+    pk: Arc<ZiskProgramPK>,
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
@@ -268,16 +265,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .emu()
                 .prove()
                 .aggregation(true)
-                .rma(true)
-                .witness_lib_path(prover_config.witness_lib.clone())
                 .proving_key_path(prover_config.proving_key.clone())
-                .elf_path(prover_config.elf.clone())
                 .verbose(prover_config.verbose)
                 .shared_tables(prover_config.shared_tables)
                 .gpu(prover_config.gpu_params.clone())
-                .print_command_info()
                 .build()?,
         );
+
+        let elf = ElfBinaryFromFile::new(&prover_config.elf, prover_config.hints)?;
+        let (pk, _) = prover.setup(&elf)?;
 
         Ok(Worker::<Emu> {
             _worker_id: worker_id,
@@ -287,6 +283,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_computation: None,
             prover,
             prover_config,
+            pk: Arc::new(pk),
+            stream_actor: None,
         })
     }
 
@@ -300,19 +298,20 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .asm()
                 .prove()
                 .aggregation(true)
-                .rma(true)
-                .witness_lib_path(prover_config.witness_lib.clone())
                 .proving_key_path(prover_config.proving_key.clone())
-                .elf_path(prover_config.elf.clone())
                 .verbose(prover_config.verbose)
                 .shared_tables(prover_config.shared_tables)
                 .asm_path_opt(prover_config.asm.clone())
                 .base_port_opt(prover_config.asm_port)
                 .unlock_mapped_memory(prover_config.unlock_mapped_memory)
+                .asm_out_file(prover_config.asm_out_file)
                 .gpu(prover_config.gpu_params.clone())
-                .print_command_info()
+                .is_distributed(true)
                 .build()?,
         );
+
+        let elf = ElfBinaryFromFile::new(&prover_config.elf, prover_config.hints)?;
+        let (pk, _) = prover.setup(&elf)?;
 
         Ok(Worker::<Asm> {
             _worker_id: worker_id,
@@ -322,6 +321,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_computation: None,
             prover,
             prover_config,
+            pk: Arc::new(pk),
+            stream_actor: None,
         })
     }
 
@@ -369,8 +370,18 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         if let Some(handle) = self.current_computation.take() {
             handle.abort();
         }
+
+        // Drop the actor on a blocking thread: closes the channel, which signals the ordering
+        // thread to exit, without blocking the Tokio runtime worker thread.
+        if let Some(stream_actor) = self.stream_actor.take() {
+            tokio::task::spawn_blocking(move || {
+                drop(stream_actor);
+            });
+        }
     }
 
+    #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     pub fn new_job(
         &mut self,
         job_id: JobId,
@@ -379,6 +390,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         total_workers: u32,
         allocation: Vec<u32>,
         total_compute_units: u32,
+        task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id: job_id.clone(),
@@ -389,6 +401,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             total_compute_units,
             phase: JobPhase::Contributions,
             executed_steps: 0,
+            task_received_time,
         }));
         self.current_job = Some(current_job.clone());
 
@@ -401,35 +414,37 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         &self,
         job: Arc<Mutex<JobContext>>,
         tx: mpsc::UnboundedSender<ComputationResult>,
-    ) -> JoinHandle<()> {
-        self.partial_contribution_mpi_broadcast(&job).await;
-        self.partial_contribution(job, tx).await
+    ) -> Result<JoinHandle<()>> {
+        self.partial_contribution_mpi_broadcast(&job).await?;
+        Ok(self.partial_contribution(job, tx))
     }
 
-    pub async fn partial_contribution_mpi_broadcast(&self, job: &Mutex<JobContext>) {
-        let job = job.lock().await;
-        let job_id = job.job_id.clone();
+    pub async fn partial_contribution_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
+        let mut serialized = {
+            let job = job.lock().await;
 
-        let proof_info = ProofInfo::new(
-            None,
-            job.total_compute_units as usize,
-            job.allocation.clone(),
-            job.rank_id as usize,
-        );
-        let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
+            let phase_inputs = ProvePhaseInputs::Contributions();
 
-        let options = self.get_proof_options_partial_contribution();
+            let options = self.get_proof_options(false);
 
-        let mut serialized = borsh::to_vec(&(
-            JobPhase::Contributions,
-            job_id,
-            phase_inputs,
-            options,
-            job.data_ctx.input_source.clone(),
-        ))
-        .unwrap();
+            let message = ContributionsMessage {
+                job_id: job.job_id.clone(),
+                phase_inputs,
+                options,
+                input_source: job.data_ctx.input_source.clone(),
+                hints_source: job.data_ctx.hints_source.clone(),
+                partition_info: PartitionInfo {
+                    total_compute_units: job.total_compute_units as usize,
+                    allocation: job.allocation.clone(),
+                    worker_idx: job.rank_id as usize,
+                },
+            };
 
-        self.prover.mpi_broadcast(&mut serialized);
+            borsh::to_vec(&(JobPhase::Contributions, message)).unwrap()
+        };
+
+        self.prover.mpi_broadcast(&mut serialized)?;
+        Ok(())
     }
 
     pub async fn handle_prove(
@@ -437,78 +452,92 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         job: Arc<Mutex<JobContext>>,
         challenges: Vec<ContributionsInfo>,
         tx: mpsc::UnboundedSender<ComputationResult>,
-    ) -> JoinHandle<()> {
-        self.prove_mpi_broadcast(&job, challenges.clone()).await;
-        self.prove(job, challenges, tx).await
+    ) -> Result<JoinHandle<()>> {
+        self.prove_mpi_broadcast(&job, challenges.clone()).await?;
+        Ok(self.prove(job, challenges, tx))
     }
 
     pub async fn prove_mpi_broadcast(
         &self,
         job: &Mutex<JobContext>,
         challenges: Vec<ContributionsInfo>,
-    ) {
-        let job = job.lock().await;
-        let job_id = job.job_id.clone();
+    ) -> Result<()> {
+        let mut serialized = {
+            let job = job.lock().await;
 
-        let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
+            let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
 
-        let options = self.get_proof_options_prove();
+            let options = self.get_proof_options(false);
 
-        let mut serialized =
-            borsh::to_vec(&(JobPhase::Prove, job_id, phase_inputs, options)).unwrap();
+            let message = ProveMessage { job_id: job.job_id.clone(), phase_inputs, options };
 
-        self.prover.mpi_broadcast(&mut serialized);
+            borsh::to_vec(&(JobPhase::Prove, message)).unwrap()
+        };
+
+        self.prover.mpi_broadcast(&mut serialized)?;
+        Ok(())
     }
 
-    pub async fn handle_aggregate(
+    pub fn handle_aggregate(
         &self,
         job: Arc<Mutex<JobContext>>,
         agg_params: AggregationParams,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
-        self.aggregate(job, agg_params, tx).await
+        self.aggregate(job, agg_params, tx)
     }
 
-    pub async fn partial_contribution(
+    pub fn partial_contribution(
         &self,
         job: Arc<Mutex<JobContext>>,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
+        let pk = self.pk.clone();
+        let options = self.get_proof_options(false);
 
-        let options = self.get_proof_options_partial_contribution();
-
-        tokio::spawn(async move {
-            let mut job = job.lock().await;
-            let job_id = job.job_id.clone();
+        tokio::task::spawn_blocking(move || {
+            let guard = job.blocking_lock();
+            let job_id = guard.job_id.clone();
 
             info!("Computing Contribution for {job_id}");
 
-            let proof_info = ProofInfo::new(
-                None,
-                job.total_compute_units as usize,
-                job.allocation.clone(),
-                job.rank_id as usize,
-            );
-            let phase_inputs = proofman::ProvePhaseInputs::Contributions(proof_info);
-
+            let phase_inputs = proofman::ProvePhaseInputs::Contributions();
+            let inputs_source = guard.data_ctx.input_source.clone();
+            let hints_source = guard.data_ctx.hints_source.clone();
+            let partition_info = PartitionInfo {
+                total_compute_units: guard.total_compute_units as usize,
+                allocation: guard.allocation.clone(),
+                worker_idx: guard.rank_id as usize,
+            };
+            drop(guard);
             let result = Self::execute_contribution_task(
                 job_id.clone(),
-                prover.as_ref(),
+                &prover,
                 phase_inputs,
-                job.data_ctx.input_source.clone(),
+                inputs_source,
+                hints_source,
+                partition_info,
+                &pk,
                 options,
-            )
-            .await;
+            );
 
-            job.executed_steps = prover.executed_steps();
+            let mut guard = job.blocking_lock();
+            guard.executed_steps = prover.executed_steps();
+            let task_received_time = guard.task_received_time;
+            drop(guard);
+
+            let (witness_info, zisk_execution_time) = prover
+                .get_execution_info()
+                .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Challenge {
                         job_id,
                         success: true,
-                        result: Ok(data),
+                        result: Ok((witness_info, zisk_execution_time, data)),
+                        task_received_time,
                     });
                 }
                 Err(error) => {
@@ -517,34 +546,57 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         job_id,
                         success: false,
                         result: Err(error),
+                        task_received_time,
                     });
                 }
             }
         })
     }
 
-    pub async fn execute_contribution_task(
+    #[allow(clippy::too_many_arguments)]
+    pub fn execute_contribution_task(
         job_id: JobId,
         prover: &ZiskProver<T>,
         phase_inputs: ProvePhaseInputs,
         input_source: InputSourceDto,
+        hints_source: HintsSourceDto,
+        partition_info: PartitionInfo,
+        pk: &ZiskProgramPK,
         options: ProofOptions,
     ) -> Result<Vec<ContributionsInfo>> {
         let phase = proofman::ProvePhase::Contributions;
 
-        match input_source {
-            InputSourceDto::InputPath(input_path) => {
-                let stdin = ZiskStdin::from_file(input_path)?;
-                prover.set_stdin(stdin);
+        let stdin = match input_source {
+            InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
+            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
+            InputSourceDto::InputNull => ZiskStdin::null(),
+        };
+
+        match hints_source {
+            HintsSourceDto::HintsPath(hints_uri) => {
+                let hints_stream = StreamSource::from_uri(hints_uri)?;
+                pk.register_hints_stream(hints_stream)?;
             }
-            InputSourceDto::InputData(input_data) => {
-                let stdin = ZiskStdin::from_vec(input_data);
-                prover.set_stdin(stdin);
+            HintsSourceDto::HintsStream(_hints_uri) => {
+                // For HintsStream, the worker will receive hint data via StreamData gRPC messages
+                // routed through the stream ordering actor into the hints processor.
+                // No need to set hints_stream on prover for this case
             }
-            InputSourceDto::InputNull => {
-                let stdin = ZiskStdin::null();
-                prover.set_stdin(stdin);
+            HintsSourceDto::HintsNull => {
+                // No hints to set
             }
+        }
+
+        prover.set_stdin(stdin)?;
+
+        prover.register_program(pk)?;
+
+        if matches!(phase_inputs, ProvePhaseInputs::Contributions()) {
+            prover.set_partition(
+                partition_info.total_compute_units,
+                partition_info.allocation.clone(),
+                partition_info.worker_idx,
+            )?;
         }
 
         let challenge = match prover.prove_phase(phase_inputs, options, phase) {
@@ -567,27 +619,74 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(challenge)
     }
 
-    pub async fn prove(
+    /// Routes an incoming `StreamData` message to the per-job ordering actor.
+    ///
+    /// - `Start`: initialises the `HintsProcessor` (if needed), resets it, and spawns the actor.
+    /// - `Data` / `End`: enqueues the message into the actor's channel — O(1), non-blocking.
+    ///
+    /// The actor thread owns the reorder buffer and calls `process_hints` in sequence order.
+    pub async fn route_stream_data(
+        &mut self,
+        stream_data: StreamDataDto,
+        is_first_partition: bool,
+    ) -> Result<()> {
+        match &stream_data.stream_type {
+            StreamMessageKind::Start => {
+                let job_id = stream_data.job_id.clone();
+
+                self.pk.reset();
+
+                let processor = self.pk.get_hints_processor().ok_or_else(|| {
+                    anyhow::anyhow!("HintsProcessor not found for job {}", job_id)
+                })?;
+
+                if let Some(r) = self.pk.asm_resources.as_ref() {
+                    r.set_active_services(is_first_partition)?;
+                }
+
+                // Replace any existing actor (handles reconnect / job restart)
+                self.stream_actor = Some(StreamOrderingActor::new(processor, job_id));
+            }
+            StreamMessageKind::Data | StreamMessageKind::End => match &self.stream_actor {
+                Some(actor) => actor.send(stream_data)?,
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "Received stream {:?} without a prior Start for job {}",
+                        stream_data.stream_type,
+                        stream_data.job_id
+                    ));
+                }
+            },
+        }
+        Ok(())
+    }
+
+    pub fn set_partition(
+        &self,
+        total_compute_units: usize,
+        allocation: Vec<u32>,
+        worker_idx: usize,
+    ) -> Result<()> {
+        self.prover.set_partition(total_compute_units, allocation, worker_idx)
+    }
+
+    pub fn prove(
         &self,
         job: Arc<Mutex<JobContext>>,
         challenges: Vec<ContributionsInfo>,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
+        let options = self.get_proof_options(false);
 
-        let options = self.get_proof_options_prove();
-
-        tokio::spawn(async move {
-            let job = job.lock().await;
-            let job_id = job.job_id.clone();
+        tokio::task::spawn_blocking(move || {
+            let job_id = job.blocking_lock().job_id.clone();
 
             info!("Computing Prove for {job_id}");
 
             let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
+            let result = Self::execute_prove_task(job_id.clone(), &prover, phase_inputs, options);
 
-            let result =
-                Self::execute_prove_task(job_id.clone(), prover.as_ref(), phase_inputs, options)
-                    .await;
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Proofs {
@@ -608,7 +707,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
-    pub async fn execute_prove_task(
+    pub fn execute_prove_task(
         job_id: JobId,
         prover: &ZiskProver<T>,
         phase_inputs: ProvePhaseInputs,
@@ -637,17 +736,44 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(proof)
     }
 
-    pub async fn aggregate(
+    pub fn aggregate(
         &self,
         job: Arc<Mutex<JobContext>>,
         agg_params: AggregationParams,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
+        let options = self.get_proof_options(agg_params.compressed);
 
-        tokio::spawn(async move {
-            let job = job.lock().await;
-            let job_id = job.job_id.clone();
+        let agg_proofs_register: Vec<AggProofsRegister> = agg_params
+            .agg_proofs
+            .iter()
+            .map(|v| AggProofsRegister {
+                airgroup_id: v.airgroup_id,
+                worker_indexes: vec![v.worker_idx as usize],
+            })
+            .collect();
+
+        if let Err(error) = prover.register_aggregated_proofs(agg_proofs_register) {
+            let job_guard = job.blocking_lock();
+            let job_id = job_guard.job_id.clone();
+            let executed_steps = job_guard.executed_steps;
+
+            let _ = tx.send(ComputationResult::AggProof {
+                job_id,
+                success: false,
+                result: Err(error),
+                executed_steps,
+            });
+
+            return tokio::spawn(async {});
+        }
+
+        tokio::task::spawn_blocking(move || {
+            let (job_id, executed_steps) = {
+                let guard = job.blocking_lock();
+                (guard.job_id.clone(), guard.executed_steps)
+            };
 
             info!("Starting aggregation step for {job_id}");
 
@@ -660,8 +786,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     worker_indexes: vec![v.worker_idx as usize],
                 })
                 .collect();
-
-            let options = Self::get_proof_options_aggregation(&agg_params);
 
             let result = prover.aggregate_proofs(
                 agg_proofs,
@@ -679,7 +803,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         job_id,
                         success: true,
                         result: Ok(Some(proof)),
-                        executed_steps: job.executed_steps,
+                        executed_steps,
                     });
                 }
                 Err(error) => {
@@ -688,52 +812,24 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         job_id,
                         success: false,
                         result: Err(error),
-                        executed_steps: job.executed_steps,
+                        executed_steps,
                     });
                 }
             }
         })
     }
 
-    fn get_proof_options_partial_contribution(&self) -> ProofOptions {
+    fn get_proof_options(&self, compressed: bool) -> ProofOptions {
         ProofOptions {
-            verify_constraints: false,
-            aggregation: false,
-            final_snark: false,
-            verify_proofs: true,
-            save_proofs: true,
-            test_mode: false,
-            output_dir_path: PathBuf::from("."),
-            rma: self.prover_config.rma,
-            minimal_memory: self.prover_config.minimal_memory,
-        }
-    }
-
-    fn get_proof_options_prove(&self) -> ProofOptions {
-        ProofOptions {
-            verify_constraints: false,
-            aggregation: true,
-            final_snark: false,
+            verify_constraints: self.prover_config.verify_constraints,
+            aggregation: self.prover_config.aggregation,
             verify_proofs: false,
             save_proofs: false,
             test_mode: false,
-            output_dir_path: PathBuf::default(),
+            output_dir_path: None,
             rma: self.prover_config.rma,
             minimal_memory: self.prover_config.minimal_memory,
-        }
-    }
-
-    fn get_proof_options_aggregation(agg_params: &AggregationParams) -> ProofOptions {
-        ProofOptions {
-            verify_constraints: agg_params.verify_constraints,
-            aggregation: agg_params.aggregation,
-            rma: agg_params.rma,
-            final_snark: agg_params.final_snark,
-            verify_proofs: agg_params.verify_proofs,
-            save_proofs: agg_params.save_proofs,
-            test_mode: agg_params.test_mode,
-            output_dir_path: agg_params.output_dir_path.clone(),
-            minimal_memory: agg_params.minimal_memory,
+            compressed,
         }
     }
 
@@ -744,49 +840,89 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub async fn handle_mpi_broadcast_request(&self) -> Result<()> {
         let mut bytes: Vec<u8> = Vec::new();
 
-        self.prover.mpi_broadcast(&mut bytes);
+        self.prover.mpi_broadcast(&mut bytes)?;
 
         // extract byte 0 to decide the option
-        let phase = borsh::from_slice(&bytes[0..1]).unwrap();
+        let phase: JobPhase = borsh::from_slice(&bytes[0..1]).unwrap();
 
-        match phase {
-            JobPhase::Contributions => {
-                let (job_id, phase_inputs, options, input_source_dto): (
-                    JobId,
-                    ProvePhaseInputs,
-                    ProofOptions,
-                    InputSourceDto,
-                ) = borsh::from_slice(&bytes[1..]).unwrap();
+        let prover = self.prover.clone();
+        let pk = self.pk.clone();
+        let options = self.get_proof_options(false);
 
-                let result = Self::execute_contribution_task(
-                    job_id,
-                    self.prover.as_ref(),
-                    phase_inputs,
-                    input_source_dto,
-                    options,
-                )
-                .await;
-                if let Err(e) = result {
-                    error!("Error during Contributions MPI broadcast execution: {}. Waiting for new job...", e);
+        if phase == JobPhase::ContributionsHintsStream {
+            if let Some(r) = pk.asm_resources.as_ref() {
+                let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
+                if let Err(e) = r.submit_hint_direct(&message.data) {
+                    tracing::error!("Failed to submit hints: {}", e);
                 }
+            } else {
+                tracing::error!("Hints sink is not configured for ContributionsHintsStream");
             }
-            JobPhase::Prove => {
-                let (job_id, phase_inputs, options): (JobId, ProvePhaseInputs, ProofOptions) =
-                    borsh::from_slice(&bytes[1..]).unwrap();
+        } else if phase == JobPhase::ContributionsInputsStream {
+            if let Some(inputs_shmem_writer) =
+                pk.asm_resources.as_ref().map(|r| r.inputs_shmem_writer.clone())
+            {
+                let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
+                let reinterpreted_data = unsafe {
+                    std::slice::from_raw_parts(
+                        message.data.as_ptr() as *const u8,
+                        message.data.len() * std::mem::size_of::<u64>(),
+                    )
+                };
+                if let Err(e) = inputs_shmem_writer.append_input(reinterpreted_data) {
+                    tracing::error!("Failed to submit inputs: {}", e);
+                }
+            } else {
+                tracing::error!("Inputs sink is not configured for ContributionsInputsStream");
+            }
+        } else {
+            tokio::task::spawn_blocking(move || match phase {
+                JobPhase::Contributions => {
+                    let message: ContributionsMessage = borsh::from_slice(&bytes[1..]).unwrap();
 
-                let result =
-                    Self::execute_prove_task(job_id, self.prover.as_ref(), phase_inputs, options)
-                        .await;
-                if let Err(e) = result {
-                    error!(
-                        "Error during Prove MPI broadcast execution: {}. Waiting for new job...",
-                        e
+                    let result = Self::execute_contribution_task(
+                        message.job_id,
+                        &prover,
+                        message.phase_inputs,
+                        message.input_source,
+                        message.hints_source,
+                        message.partition_info,
+                        &pk,
+                        message.options,
+                    );
+                    if let Err(e) = result {
+                        tracing::error!(
+                                "Error during Contributions MPI broadcast execution: {}. Waiting for new job...",
+                                e
+                            );
+                    }
+                }
+                JobPhase::Prove => {
+                    let message: ProveMessage = borsh::from_slice(&bytes[1..]).unwrap();
+
+                    let result = Self::execute_prove_task(
+                        message.job_id,
+                        &prover,
+                        message.phase_inputs,
+                        options,
+                    );
+                    if let Err(e) = result {
+                        error!(
+                            "Error during Prove MPI broadcast execution: {}. Waiting for new job...",
+                            e
+                        );
+                    }
+                }
+
+                JobPhase::Aggregate => {
+                    unreachable!("Aggregate phase is not supported in MPI broadcast");
+                }
+                JobPhase::ContributionsHintsStream | JobPhase::ContributionsInputsStream => {
+                    unreachable!(
+                        "Stream phases should be handled separately and not reach this point"
                     );
                 }
-            }
-            JobPhase::Aggregate => {
-                unreachable!("Aggregate phase is not supported in MPI broadcast");
-            }
+            });
         }
         Ok(())
     }

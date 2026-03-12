@@ -4,8 +4,6 @@
 //! These DTOs serve as the canonical data structures for business logic, separate from external
 //! representations like gRPC protobuf types or serialization formats.
 
-use std::{fmt::Display, path::PathBuf};
-
 use crate::{ComputeCapacity, DataId, JobId, JobPhase, JobState, WorkerId, WorkerState};
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
@@ -66,27 +64,31 @@ pub struct SystemStatusDto {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum InputModeDto {
-    InputModeNone = 0,          // No input provided
-    InputModePath(PathBuf) = 1, // Input will be provided as a path
-    InputModeData(PathBuf) = 2, // Input data will be sent directly
+pub enum InputsModeDto {
+    // No inputs are provided
+    InputsNone,
+    /// Inputs are provided as a complete payload referenced by a URI.
+    InputsPath(String),
+    /// Inputs are provided directly as data.
+    InputsData(String),
 }
 
-impl Display for InputModeDto {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InputModeDto::InputModeNone => write!(f, "None"),
-            InputModeDto::InputModePath(path) => write!(f, "Path({})", path.display()),
-            InputModeDto::InputModeData(path) => write!(f, "Data({})", path.display()),
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum HintsModeDto {
+    /// No hints are provided.
+    HintsNone,
+    /// Hints are provided as a complete payload referenced by a URI.
+    HintsPath(String),
+    /// Hints will be streamed from the given URI endpoint.
+    HintsStream(String),
 }
 
 pub struct LaunchProofRequestDto {
     pub data_id: DataId,
     pub compute_capacity: u32,
-    pub input_mode: InputModeDto,
+    pub minimal_compute_capacity: u32,
+    pub inputs_mode: InputsModeDto,
+    pub hints_mode: HintsModeDto,
     pub simulated_node: Option<u32>,
 }
 
@@ -114,6 +116,30 @@ pub enum CoordinatorMessageDto {
     WorkerRegisterResponse(WorkerRegisterResponseDto),
     ExecuteTaskRequest(ExecuteTaskRequestDto),
     JobCancelled(JobCancelledDto),
+    StreamData(StreamDataDto),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum StreamMessageKind {
+    /// Marks the beginning of a stream. No payload is expected.
+    Start,
+    /// Contains a chunk of stream data.
+    Data,
+    /// Marks the end of a stream. No payload is expected.
+    End,
+}
+
+#[derive(Debug, Clone)]
+pub struct StreamDataDto {
+    pub job_id: JobId,
+    pub stream_type: StreamMessageKind,
+    pub stream_payload: Option<StreamPayloadDto>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StreamPayloadDto {
+    pub sequence_number: u32,
+    pub payload: Vec<u8>,
 }
 
 pub struct HeartbeatDto {
@@ -152,6 +178,7 @@ pub enum ExecuteTaskRequestTypeDto {
 pub struct ContributionParamsDto {
     pub data_id: DataId,
     pub input_source: InputSourceDto,
+    pub hints_source: HintsSourceDto,
     pub rank_id: u32,
     pub total_workers: u32,
     pub worker_allocation: Vec<u32>,
@@ -165,8 +192,46 @@ pub enum InputSourceDto {
     InputNull,
 }
 
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub enum HintsSourceDto {
+    HintsPath(String),
+    HintsStream(String),
+    HintsNull,
+}
+
 pub struct ProveParamsDto {
     pub challenges: Vec<ChallengesDto>,
+}
+
+#[derive(Clone)]
+pub struct WitnessInfoDto {
+    /// Witness computation time in milliseconds
+    pub witness_time: f32,
+    pub publics: Vec<u64>,
+    pub proof_values: Vec<u64>,
+    pub summary_info: String,
+}
+
+#[derive(Clone)]
+pub struct ZiskExecutorTimeDto {
+    /// Total duration in milliseconds
+    pub total_duration: f32,
+    /// Execution duration in milliseconds
+    pub execution_duration: f32,
+    /// Count and plan duration in milliseconds
+    pub count_and_plan_duration: f32,
+    /// Count and plan memory operations duration in milliseconds
+    pub count_and_plan_mo_duration: f32,
+    /// ASM execution info (time in milliseconds)
+    pub asm_execution_duration: Option<AsmExecutionInfoDto>,
+    /// Time when task was received by worker (milliseconds since UNIX epoch, f64 for precision)
+    pub task_received_time: f64,
+}
+
+#[derive(Clone)]
+pub struct AsmExecutionInfoDto {
+    pub time: f32,
+    pub mhz: f32,
 }
 
 #[derive(Clone)]
@@ -180,15 +245,7 @@ pub struct AggParamsDto {
     pub agg_proofs: Vec<ProofDto>,
     pub last_proof: bool,
     pub final_proof: bool,
-    pub verify_constraints: bool,
-    pub aggregation: bool,
-    pub rma: bool,
-    pub final_snark: bool,
-    pub verify_proofs: bool,
-    pub save_proofs: bool,
-    pub test_mode: bool,
-    pub output_dir_path: String,
-    pub minimal_memory: bool,
+    pub compressed: bool,
 }
 
 pub struct ProofDto {
@@ -210,8 +267,14 @@ pub struct ExecuteTaskResponseDto {
     pub result_data: ExecuteTaskResponseResultDataDto,
 }
 
+pub struct ContributionsResultDataDto {
+    pub challenges: Vec<ChallengesDto>,
+    pub witness_info: WitnessInfoDto,
+    pub zisk_executor_time: ZiskExecutorTimeDto,
+}
+
 pub enum ExecuteTaskResponseResultDataDto {
-    Challenges(Vec<ChallengesDto>),
+    Challenges(ContributionsResultDataDto),
     Proofs(Vec<ProofDto>),
     FinalProof(FinalProofDto),
 }

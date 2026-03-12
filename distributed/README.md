@@ -41,7 +41,7 @@ cargo run --release --bin zisk-coordinator
 cargo run --release --bin zisk-worker -- --elf <elf-file-path> --inputs-folder <inputs-folder>
 
 # Generate a proof (in another terminal)
-cargo run --release --bin zisk-coordinator prove --input <input-filename> --compute-capacity 10
+cargo run --release --bin zisk-coordinator prove --inputs-uri <input-filename> --compute-capacity 10
 ```
 
 ### Docker Deployment
@@ -92,7 +92,7 @@ docker logs -f zisk-worker-1
 
 # Generate a proof (use filename only, not full path)
 docker exec -it zisk-coordinator \
-  zisk-coordinator prove --input <input-filename> --compute-capacity 10
+  zisk-coordinator prove --inputs-uri <input-filename> --compute-capacity 10
 
 # Stop containers
 docker stop zisk-coordinator zisk-worker-1
@@ -142,7 +142,9 @@ The table below lists the available configuration options for the Coordinator:
 | `service.environment` | - | - | String | development | Service environment (development, staging, production) |
 | `server.host` | - | - | String | 0.0.0.0 | Server host |
 | `server.port` | `--port` | - | Number | 50051 | Server port |
-| `server.proofs_dir` | `--proofs-dir` | - | String | proofs | Directory to save generated proofs |
+| `server.proofs_dir` | `--proofs-dir` | - | String | proofs | Directory to save generated proofs (conflicts with `--no-save-proofs`) |
+| - | `--no-save-proofs` | - | Boolean | false | Disable saving proofs (conflicts with `--proofs-dir`) |
+| - | `-c`, `--compressed-proofs` | - | Boolean | false | Generate compressed proofs |
 | `server.shutdown_timeout_seconds` | - | - | Number | 30 | Graceful shutdown timeout in seconds |
 | `logging.level` | - | RUST_LOG | String | debug | Logging level (error, warn, info, debug, trace) |
 | `logging.format` | - | - | String | pretty | Logging format (pretty, json, compact) |
@@ -234,7 +236,7 @@ When `success` is `false`, the `error` field contains:
 }
 ```
 
-**Successful Proof Generation Example::**
+**Successful Proof Generation Example:**
 
 ```json
 {
@@ -348,7 +350,7 @@ Workers need to know where to find input files for proof generation. The `--inpu
 cargo run --release --bin zisk-worker -- --elf program.elf --inputs-folder /data/inputs/
 
 # Coordinator requests proof for "input.bin" -> Worker looks for "/data/inputs/input.bin"
-cargo run --release --bin zisk-coordinator -- prove --input input.bin --compute-capacity 10
+cargo run --release --bin zisk-coordinator -- prove --inputs-uri input.bin --compute-capacity 10
 ```
 
 The table below lists the available configuration options for the Worker:
@@ -365,7 +367,6 @@ The table below lists the available configuration options for the Worker:
 | `logging.level` | - | RUST_LOG | String | debug | Logging level (error, warn, info, debug, trace) |
 | `logging.format` | - | - | String | pretty | Logging format (pretty, json, compact) |
 | `logging.file_path` | - | - | String | - | *Optional*. Log file path (enables file logging) |
-| - | `--witness-lib` | - | String | ~/.zisk/bin/libzisk_witness.so | Path to witness computation dynamic library |
 | - | `--proving-key` | - | String | ~/.zisk/provingKey | Path to setup folder |
 | - | `--elf` | - | String | - | Path to ELF file |
 | - | `--asm` | - | String | ~/.zisk/cache | Path to ASM file (mutually exclusive with `--emulator`) |
@@ -376,9 +377,11 @@ The table below lists the available configuration options for the Worker:
 | - | `-d`, `--debug` | - | String | - | Enable debug mode with optional component filter |
 | - | `--verify-constraints` | - | Boolean | false | Whether to verify constraints |
 | - | `--unlock-mapped-memory` | - | Boolean | false | Unlock memory map for the ROM file (mutually exclusive with `--emulator`) |
-| - | `-f`, `--final-snark` | - | Boolean | false | Whether to generate the final SNARK |
+| - | `--hints` | - | Boolean | false | Enable precompile hints processing |
+| - | `-m`, `--minimal-memory` | - | Boolean | false | Use minimal memory mode |
+| - | `-r`, `--rma` | - | Boolean | false | Enable RMA mode |
 | - | `-z`, `--preallocate` | - | Boolean | false | GPU preallocation flag |
-| - | `-t`, `--max-streams` | | - | Number | - | Maximum number of GPU streams |
+| - | `-t`, `--max-streams` | - | Number | - | Maximum number of GPU streams |
 | - | `-n`, `--number-threads-witness` | - | Number | - | Number of threads for witness computation |
 | - | `-x`, `--max-witness-stored` | - | Number | - | Maximum number of witnesses to store in memory |
 
@@ -418,15 +421,56 @@ format = "pretty"
 file_path = "/var/log/distributed/worker-001.log"
 ```
 
-## Launching a proof
+## Launching a Proof
 
-To launch a proof generation request, use the `prove` command of the `zisk-coordinator` binary, specifying the input filename and desired compute capacity.
+To launch a proof generation request, use the `prove` subcommand of the `zisk-coordinator` binary. This sends an RPC request to a running coordinator instance.
 
 ```bash
-cargo run --release --bin zisk-coordinator -- prove --input <input_filename> --compute-capacity 10
+cargo run --release --bin zisk-coordinator -- prove --inputs-uri <input_filename> --compute-capacity 10
 ```
 
 The `--compute-capacity` flag indicates the total compute units required to generate a proof. The coordinator will assign one or more workers to meet this capacity, distributing the workload if multiple workers are needed. Requests exceeding the combined capacity of available workers will not be processed and an error will be returned.
+
+### Prove Subcommand Arguments
+
+| CLI Argument | Short | Type | Default | Description |
+|---|---|---|---|---|
+| `--inputs-uri` | - | String | - | Path to the input file for proof generation |
+| `--compute-capacity` | `-c` | Number | *required* | Total compute units required for the proof |
+| `--coordinator-url` | - | String | http://127.0.0.1:50051 | URL of the coordinator to send the request to |
+| `--data-id` | - | String | Auto (from filename or UUID) | Custom identifier for the proof job |
+| `--hints-uri` | - | String | - | Path/URI to the precompile hints source |
+| `--stream-hints` | - | Boolean | false | Stream hints from the coordinator to workers via gRPC (see [Hints Stream](../book/getting_started/hints_stream.md)) |
+| `--direct-inputs` | `-x` | Boolean | false | Send input data inline via gRPC instead of as a file path |
+| `--minimal-compute-capacity` | `-m` | Number | Same as `--compute-capacity` | Minimum acceptable compute capacity (allows partial worker allocation) |
+| `--simulated-node` | - | Number | - | Simulated node ID (for testing) |
+
+### Input and Hints Modes
+
+The `prove` subcommand supports two modes for delivering inputs and hints to workers:
+
+**Input modes** (controlled by `--inputs-uri` and `--direct-inputs`):
+- **Path mode** (default): The coordinator sends the input file path to workers. Workers must have access to the file at the specified path.
+- **Data mode** (`--direct-inputs`): The coordinator reads the input file and sends its contents inline via gRPC. Workers do not need local access to the file.
+
+**Hints modes** (controlled by `--hints-uri` and `--stream-hints`):
+- **Path mode** (default): The coordinator sends the hints URI to workers. Each worker loads hints from the specified path independently.
+- **Streaming mode** (`--stream-hints`): The coordinator reads hints from the URI and broadcasts them to all workers in real-time via gRPC. See the [Hints Stream documentation](../book/getting_started/hints_stream.md) for details.
+
+**Examples:**
+```bash
+# Basic proof with file path inputs
+zisk-coordinator prove --inputs-uri /data/inputs/my_input.bin --compute-capacity 10
+
+# Send input data directly (workers don't need local file access)
+zisk-coordinator prove --inputs-uri /data/inputs/my_input.bin -x --compute-capacity 10
+
+# With precompile hints in path mode (workers load hints locally)
+zisk-coordinator prove --inputs-uri input.bin --hints-uri /data/hints/hints.bin --compute-capacity 10
+
+# With precompile hints in streaming mode (coordinator broadcasts to workers)
+zisk-coordinator prove --inputs-uri input.bin --hints-uri unix:///tmp/hints.sock --stream-hints --compute-capacity 10
+```
 
 ## Administrative Operations
 

@@ -6,12 +6,22 @@
 //! This legacy interface is maintained for backward compatibility.
 
 use crate::ProverClientBuilder;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static PROVER_CLIENT_CREATED: AtomicBool = AtomicBool::new(false);
 
 pub struct ProverClient;
 
 impl ProverClient {
     #[must_use]
     pub fn builder() -> ProverClientBuilder {
+        if PROVER_CLIENT_CREATED.swap(true, Ordering::SeqCst) {
+            panic!(
+                "ProverClient::builder() can only be called once! \
+                Multiple ProverClient instances are not supported. \
+                Reuse the existing client for all operations."
+            );
+        }
         ProverClientBuilder::new()
     }
 }

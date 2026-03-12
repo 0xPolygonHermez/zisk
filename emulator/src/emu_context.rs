@@ -1,9 +1,6 @@
-use crate::Stats;
+use crate::{EmuOptions, Stats};
 use zisk_common::EmuTrace;
-use zisk_core::{
-    EmulationMode, FcallInstContext, InstContext, Mem, PrecompiledInstContext, INPUT_ADDR,
-    MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
-};
+use zisk_core::{InstContext, INPUT_ADDR, RAM_ADDR, RAM_SIZE, REGS_IN_MAIN_TOTAL_NUMBER};
 
 /// ZisK emulator context data container, storing the state of the emulation
 pub struct EmuContext {
@@ -24,24 +21,9 @@ pub struct EmuContext {
 /// RisK emulator context implementation
 impl EmuContext {
     /// RisK emulator context constructor
-    pub fn new(input: Vec<u8>) -> EmuContext {
+    pub fn new(input: Vec<u8>, options: &EmuOptions) -> EmuContext {
         let mut ctx = EmuContext {
-            inst_ctx: InstContext {
-                mem: Mem::default(),
-                a: 0,
-                b: 0,
-                c: 0,
-                flag: false,
-                sp: 0,
-                pc: ROM_ENTRY,
-                step: 0,
-                end: false,
-                error: false,
-                regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
-                emulation_mode: EmulationMode::default(),
-                precompiled: PrecompiledInstContext::default(),
-                fcall: FcallInstContext::default(),
-            },
+            inst_ctx: InstContext::default(),
             tracerv: Vec::new(),
             tracerv_step: 0,
             tracerv_current_regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
@@ -55,16 +37,17 @@ impl EmuContext {
         };
 
         // Check the input data size is inside the proper range
-        if input.len() > (MAX_INPUT_SIZE - 16) as usize {
+        if input.len() > (options.max_input_mem - 8) as usize {
             panic!("EmuContext::new() input size too big size={}", input.len());
         }
+        if input.len() & 7 != 0 {
+            panic!("EmuContext::new() input size must be a multiple of 8 size={}", input.len());
+        }
 
-        // Add the length and input data read sections
-        let input_len = input.len() as u64;
+        ctx.inst_ctx.input_len = input.len() as u64;
         let free_input = 0u64;
         ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &free_input.to_le_bytes());
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &input_len.to_le_bytes());
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 16, &input);
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &input);
 
         // Add the write section
         ctx.inst_ctx.mem.add_write_section(RAM_ADDR, RAM_SIZE);
@@ -75,6 +58,6 @@ impl EmuContext {
 
 impl Default for EmuContext {
     fn default() -> Self {
-        Self::new(Vec::new())
+        Self::new(Vec::new(), &EmuOptions::default())
     }
 }

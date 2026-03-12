@@ -1,6 +1,6 @@
 use crate::add256_constants::*;
 use zisk_common::OperationAdd256Data;
-use zisk_common::{A, B, OPERATION_BUS_DATA_SIZE};
+use zisk_common::{B, OPERATION_PRECOMPILED_BUS_DATA_SIZE, STEP};
 
 #[derive(Debug)]
 pub struct Add256Input {
@@ -17,12 +17,12 @@ pub struct Add256Input {
 impl Add256Input {
     pub fn from(values: &OperationAdd256Data<u64>) -> Self {
         Self {
-            step_main: values[A],
+            step_main: values[STEP],
             addr_main: values[B] as u32,
-            addr_a: values[OPERATION_BUS_DATA_SIZE] as u32,
-            addr_b: values[OPERATION_BUS_DATA_SIZE + 1] as u32,
-            addr_c: values[OPERATION_BUS_DATA_SIZE + READ_PARAMS + DIRECT_READ_PARAMS] as u32,
-            cin: values[OPERATION_BUS_DATA_SIZE + READ_PARAMS],
+            addr_a: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE] as u32,
+            addr_b: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1] as u32,
+            cin: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2],
+            addr_c: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 3] as u32,
             a: values[START_READ_PARAMS..START_READ_PARAMS + PARAM_CHUNKS].try_into().unwrap(),
             b: values[START_READ_PARAMS + PARAM_CHUNKS..START_READ_PARAMS + 2 * PARAM_CHUNKS]
                 .try_into()

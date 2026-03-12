@@ -12,11 +12,7 @@ name = "cargo-zisk"
 path = "src/bin/cargo-zisk.rs"
 
 [build-dependencies]
-vergen = { version = "8", default-features = false, features = [
-    "build",
-    "git",
-    "git2",
-] }
+vergen-git2.workspace = true
 
 [dependencies]
 zisk-common = { workspace = true }
@@ -26,24 +22,19 @@ rom-setup = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
 asm-runner = { workspace = true }
-server = { workspace = true }
 
 colored = { workspace = true }
 fields = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-proofman-verifier = { workspace = true }
 proofman-util = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
-libloading = { workspace = true }
 zisk-sdk = { workspace = true }
 
-zstd = { workspace = true }
-bytemuck = { workspace = true }
 clap = { workspace = true }
 dirs = "6"
 rand = "0.9"
@@ -60,9 +51,11 @@ mpi = { workspace = true }
 
 [features]
 default = []
-disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
-gpu = ["proofman-common/gpu", "proofman/gpu", "packed"]
-packed = ["proofman-common/packed"]
+disable_distributed = ["zisk-sdk/disable_distributed"]
+diagnostic = ["zisk-sdk/diagnostic"]
+custom_rust_llvm = []
+gpu = ["zisk-sdk/gpu"]
+packed = ["zisk-sdk/packed"]
 stats = []
 verify = ["fields/verify"]
 

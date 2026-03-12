@@ -85,6 +85,11 @@ To update ZisK to the latest version, simply run:
 
 You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the installation setup and skip the selection prompt.
 
+To install the PLONK proving key (provingKeySnark), run:
+    ```bash
+    ziskup setup_snark
+    ```
+
 
 ### Option 2: Building from Source
 
@@ -123,8 +128,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
 3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
-    LIB_EXT=$([[ "$(uname)" == "Darwin" ]] && echo "dylib" || echo "so")
-    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/zisk-coordinator target/release/zisk-worker target/release/libzisk_witness.$LIB_EXT target/release/libziskclib.a $HOME/.zisk/bin
+    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/zisk-coordinator target/release/zisk-worker target/release/libziskclib.a $HOME/.zisk/bin
     ```
 
 4. Copy required files for assembly rom setup:
@@ -199,27 +203,31 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
 5. Compile ZisK PIL:
     ```bash
-    node ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
+    node --max-old-space-size=16384 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
     ```
 
     This command will create the `pil/zisk.pilout` file
 
 6. Generate setup data: (this step may take 30-45 minutes):
     ```bash
-    node ../pil2-proofman-js/src/main_setup.js --stack-size=8192 -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r -s ./state-machines/starkstructs.json
+    node --max-old-space-size=16384 --stack-size=8192 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r -s ./state-machines/starkstructs.json
     ```
 
     This command generates the `build/provingKey` directory.
+
+    Additionally, to generate the snark wrapper:
+
+    ```bash
+    node  ../pil2-proofman-js/src/main_setup_snark.js -b build -t ../pil2-proofman/pil2-components/lib/std/pil -f -w ../powersOfTau28_hez_final_27.ptau -p ./state-machines/publics.json -n plonk
+    ```
+
+    It is stored under the `build/provingKeySnark` directory.
+    
 
 7. Copy (or move) the `build/provingKey` directory to `$HOME/.zisk` directory:
 
     ```bash
     cp -R build/provingKey $HOME/.zisk
-    ```
-
-8. Generate constant tree files:
-    ```bash
-    cargo-zisk check-setup -a
     ```
 
 ## Uninstall Zisk

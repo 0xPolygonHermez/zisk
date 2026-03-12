@@ -4,9 +4,7 @@
 
 use std::sync::Arc;
 
-use crate::{
-    binary_constants::*, BinaryBasicFrops, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput,
-};
+use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
@@ -39,9 +37,6 @@ pub struct BinaryBasicSM<F: PrimeField64> {
 
     /// The table ID for the Binary Basic State Machine
     table_id: usize,
-
-    /// The table ID for the FROPS
-    frops_table_id: usize,
 }
 
 impl<F: PrimeField64> BinaryBasicSM<F> {
@@ -57,12 +52,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         let table_id =
             std.get_virtual_table_id(BinaryBasicTableSM::TABLE_ID).expect("Failed to get range ID");
 
-        // Get the FROPS table ID
-        let frops_table_id = std
-            .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
-            .expect("Failed to get FROPS table ID");
-
-        Arc::new(Self { std, table_id, frops_table_id })
+        Arc::new(Self { std, table_id })
     }
 
     /// Determines if an opcode corresponds to a 32-bit operation.
@@ -957,10 +947,5 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         Ok(AirInstance::new_from_trace(
             FromTrace::new(&mut binary_trace).with_air_values(&mut air_values),
         ))
-    }
-    pub fn compute_frops(&self, frops_inputs: &Vec<u32>) {
-        for row in frops_inputs {
-            self.std.inc_virtual_row(self.frops_table_id, *row as u64, 1);
-        }
     }
 }

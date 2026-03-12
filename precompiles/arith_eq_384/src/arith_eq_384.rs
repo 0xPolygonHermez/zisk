@@ -397,10 +397,11 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         let num_available_ops = self.num_available_ops;
 
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
+        let all_ops_used = total_inputs == num_available_ops;
         let num_rows_filled = total_inputs * ARITH_EQ_384_ROWS_BY_OP;
         let num_rows_needed = if total_inputs < num_available_ops {
             total_inputs * ARITH_EQ_384_ROWS_BY_OP
-        } else if total_inputs == num_available_ops {
+        } else if all_ops_used {
             num_rows
         } else {
             panic!(
@@ -468,7 +469,16 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         self.std.range_check(self.chunk_range_id, 0, chunk_range_mult);
         self.std.range_check(self.carry_range_id, 0, carry_range_mult);
 
-        let padding_row = ArithEq384TraceRowType::default();
+        let mut padding_row = ArithEq384TraceRowType::default();
+
+        // In the no-op rows, the first x_are_different val should be the same as the previous one
+        // To make the constraint `x_are_different === 'x_are_different * (1 - CLK_0) + x_chunk_different;`
+        // be satisfied
+        if all_ops_used {
+            let prev_x_are_different = trace.buffer[num_rows_filled - 1].get_x_are_different();
+
+            padding_row.set_x_are_different(prev_x_are_different);
+        }
 
         trace.buffer[num_rows_filled..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 

@@ -11,11 +11,7 @@ name = "zisk-worker"
 path = "src/cli/main.rs"
 
 [build-dependencies]
-vergen = { version = "8", default-features = false, features = [
-    "build",
-    "git",
-    "git2",
-] }
+vergen-git2.workspace = true
 
 [dependencies]
 zisk-distributed-common = { workspace = true }
@@ -32,6 +28,9 @@ witness = { workspace = true }
 rom-setup = { workspace = true }
 zisk-pil = { workspace = true }
 zisk-sdk = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+
+precompiles-hints = { workspace = true }
 
 tonic = { workspace = true }
 tokio = { workspace = true }
@@ -39,7 +38,6 @@ tokio-stream = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
-libloading = { workspace = true }
 borsh = { workspace = true }
 clap = { workspace = true }
 colored = { workspace = true }

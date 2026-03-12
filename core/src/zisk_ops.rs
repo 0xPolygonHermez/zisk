@@ -9,8 +9,15 @@
 
 #![allow(unused)]
 
-use ziskos::zisklib::fcall_proxy;
+use precompiles_helpers::DmaInfo;
+use ziskos_hints::zisklib::fcall_proxy;
 
+use crate::{
+    blake2br, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation,
+    EXTRA_PARAMS_ADDR, INPUT_ADDR, M64, MAX_INPUT_SIZE, REG_A0, SYS_ADDR,
+};
+use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
+use paste::paste;
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
@@ -18,11 +25,7 @@ use std::{
     str::FromStr,
 };
 use tiny_keccak::keccakf;
-
-use crate::{
-    sha256f, EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64,
-    REG_A0, SYS_ADDR,
-};
+use ziskos_hints::zisklib::FCALL_INPUT_READY_ID;
 
 use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c, Fcall, FcallContext};
 
@@ -46,11 +49,14 @@ pub enum OpType {
     BinaryE,
     Keccak,
     Sha256,
+    Poseidon2,
     PubOut,
     ArithEq,
     Fcall,
     ArithEq384,
     BigInt,
+    Dma,
+    Blake2,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -62,11 +68,14 @@ impl From<OpType> for ZiskOperationType {
             OpType::BinaryE => ZiskOperationType::BinaryE,
             OpType::Keccak => ZiskOperationType::Keccak,
             OpType::Sha256 => ZiskOperationType::Sha256,
+            OpType::Poseidon2 => ZiskOperationType::Poseidon2,
             OpType::PubOut => ZiskOperationType::PubOut,
             OpType::ArithEq => ZiskOperationType::ArithEq,
             OpType::Fcall => ZiskOperationType::Fcall,
             OpType::ArithEq384 => ZiskOperationType::ArithEq384,
             OpType::BigInt => ZiskOperationType::BigInt,
+            OpType::Dma => ZiskOperationType::Dma,
+            OpType::Blake2 => ZiskOperationType::Blake2,
         }
     }
 }
@@ -82,11 +91,14 @@ impl Display for OpType {
             Self::BinaryE => write!(f, "BinaryE"),
             Self::Keccak => write!(f, "Keccak"),
             Self::Sha256 => write!(f, "Sha256"),
+            Self::Poseidon2 => write!(f, "Poseidon2"),
             Self::PubOut => write!(f, "PubOut"),
             Self::ArithEq => write!(f, "Arith256"),
             Self::Fcall => write!(f, "Fcall"),
             Self::ArithEq384 => write!(f, "Arith384"),
             Self::BigInt => write!(f, "BigInt"),
+            Self::Dma => write!(f, "Dma"),
+            Self::Blake2 => write!(f, "Blake2"),
         }
     }
 }
@@ -104,10 +116,13 @@ impl FromStr for OpType {
             "be" => Ok(Self::BinaryE),
             "k" => Ok(Self::Keccak),
             "s" => Ok(Self::Sha256),
+            "p" => Ok(Self::Poseidon2),
             "aeq" => Ok(Self::ArithEq),
             "fcall" => Ok(Self::Fcall),
             "aeq384" => Ok(Self::ArithEq384),
             "bint" => Ok(Self::BigInt),
+            "dma" => Ok(Self::Dma),
+            "bl" => Ok(Self::Blake2),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -143,12 +158,28 @@ impl Display for InvalidCodeError {
 pub trait OpStats {
     fn mem_align_read(&mut self, addr: u64, count: usize);
     fn mem_align_write(&mut self, addr: u64, count: usize);
+    fn add_extras(&mut self, extras: &[(u8, usize)]);
 }
 
 /// Stats gathering function that does nothing (used as default)
 #[inline(always)]
 pub fn ops_none(_ctx: &InstContext, _stats: &mut dyn OpStats) {
     // No-op implementation
+}
+
+#[inline(always)]
+pub fn opc_virtual(ctx: &mut InstContext) {
+    unimplemented!("opc_virtual: virtual operation")
+}
+
+#[inline(always)]
+pub fn op_virtual(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_virtual: virtual operation")
+}
+
+#[inline(always)]
+pub fn ops_virtual(_ctx: &InstContext, _stats: &mut dyn OpStats) {
+    unimplemented!("ops_virtual: virtual operation")
 }
 
 /// Internal macro used to define all ops in the [`ZiskOp`] enum
@@ -167,6 +198,11 @@ macro_rules! define_ops {
         }
 
         impl ZiskOp {
+            $(
+                paste! {
+                    pub const [<$str_name:upper>]: u8 = $code;
+                }
+            )*
 			/// Returns the (string) name of the operation
             pub const fn name(&self) -> &'static str {
                 match self {
@@ -309,19 +345,34 @@ macro_rules! define_ops {
     };
 }
 
+const DMA_64_ALIGNED_OPS_BY_ROW: usize = 4;
+
 // Cost definitions: Area x Op
 const INTERNAL_COST: u64 = 0;
-const BINARY_COST: u64 = 75;
-const BINARY_ADD_COST: u64 = 26;
-const BINARY_E_COST: u64 = 54;
+const BINARY_COST: u64 = 60;
+const BINARY_ADD_COST: u64 = 25;
+const BINARY_E_COST: u64 = 53;
 const ARITHA32_COST: u64 = 95;
 const ARITHAM32_COST: u64 = 95;
-const KECCAK_COST: u64 = (((93846 * 86) - 1) / 63) + 1;
+const KECCAK_COST: u64 = 25 * 3022;
 const SHA256_COST: u64 = 72 * 121;
-const ARITH_EQ_COST: u64 = 85 * 16;
+const POSEIDON2_COST: u64 = 14 * 75;
+const ARITH_EQ_COST: u64 = 89 * 16;
 const FCALL_COST: u64 = INTERNAL_COST;
 const ARITH_EQ_384_COST: u64 = 79 * 24;
 const ADD256_COST: u64 = 104;
+const DMA_COST: u64 = 42;
+const BLAKE2_COST: u64 = 24 * 205;
+
+const DMA_64_ALIGNED_COST: u64 = 40;
+const DMA_UNALIGNED_COST: u64 = 42;
+const DMA_PRE_POST_COST: u64 = 88;
+
+// const OP_DMA_64_ALIGNED: u8 = 0xda;
+// const OP_DMA_UNALIGNED: u8 = 0xdb;
+// const OP_DMA_PRE: u8 = 0xdc;
+// const OP_DMA_POST: u8 = 0xdd;
+// const OP_DMA_CMP_BYTE: u8 = 0xde;
 
 /// Table of Zisk opcode definitions: enum, name, type, cost, code and implementation functions
 /// This table is the backbone of the Zisk processor, it determines what functionality is supported,
@@ -384,6 +435,20 @@ define_ops! {
     (RemuW, "remu_w", ArithA32, ARITHA32_COST, 0xbd, 0, 0, opc_remu_w, op_remu_w, ops_none),
     (DivW, "div_w", ArithA32, ARITHA32_COST, 0xbe, 0, 0, opc_div_w, op_div_w, ops_none),
     (RemW, "rem_w", ArithA32, ARITHA32_COST, 0xbf, 0, 0, opc_rem_w, op_rem_w, ops_none),
+    // opcpdes 0xc0-0xcf are available
+    (DmaMemCpy, "dma_memcpy", Dma, DMA_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
+    (DmaMemCmp, "dma_memcmp", Dma, DMA_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
+    (DmaInputCpy, "dma_inputcpy", Dma, DMA_COST, 0xd2, 8, 0, opc_dma_inputcpy, op_dma_inputcpy, ops_dma_inputcpy),
+    (DmaXMemCpy, "dma_xmemcpy", Dma, DMA_COST, 0xd6, 8, 0, opc_dma_xmemcpy, op_dma_xmemcpy, ops_dma_xmemcpy),
+    (DmaXMemCmp, "dma_xmemcmp", Dma, DMA_COST, 0xd7, 16, 0, opc_dma_xmemcmp, op_dma_xmemcmp, ops_dma_xmemcmp),
+    (DmaXMemSet, "dma_xmemset", Dma, DMA_COST, 0xd9, 8, 0, opc_dma_xmemset, op_dma_xmemset, ops_dma_xmemset),
+    // opcodes 0xd2-0xd9 future reserved for dma operations (memset, memcpy256, memcmp256)
+    (Dma64Aligned, "_dma_64_aligned", Dma, DMA_64_ALIGNED_COST, 0xda, 8, 0, opc_virtual, op_virtual, ops_virtual),
+    (DmaUnaligned, "_dma_unaligned", Dma, DMA_UNALIGNED_COST, 0xdb, 8, 0, opc_virtual, op_virtual, ops_virtual),
+    (DmaPre, "_dma_pre", Dma, DMA_PRE_POST_COST, 0xdc, 8, 0, opc_virtual, op_virtual, ops_virtual),
+    (DmaPost, "_dma_post", Dma, DMA_PRE_POST_COST, 0xdd, 8, 0, opc_virtual, op_virtual, ops_virtual),
+    // opcodes 0xda-0xdf reserved for dma extra operations (costs)
+    // opcodes 0xe0 is available
     (Arith384Mod, "arith384_mod", ArithEq384, ARITH_EQ_384_COST, 0xe2, 232, 48, opc_arith384_mod, op_arith384_mod, ops_arith384_mod),
     (Bls12_381CurveAdd, "bls12_381_curve_add", ArithEq384, ARITH_EQ_384_COST, 0xe3, 208, 96, opc_bls12_381_curve_add, op_bls12_381_curve_add, ops_bls12_381_curve_add),
     (Bls12_381CurveDbl, "bls12_381_curve_dbl", ArithEq384, ARITH_EQ_384_COST, 0xe4, 96, 96, opc_bls12_381_curve_dbl, op_bls12_381_curve_dbl, ops_bls12_381_curve_dbl),
@@ -395,11 +460,15 @@ define_ops! {
     (Arith256, "arith256", ArithEq, ARITH_EQ_COST, 0xf2, 136, 64, opc_arith256, op_arith256, ops_arith256),
     (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
     (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xf4, 144, 64, opc_secp256k1_add, op_secp256k1_add, ops_secp256k1_add),
-    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, 64, opc_secp256k1_dbl, op_secp256k1_add, ops_secp256k1_dbl),
+    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, 64, opc_secp256k1_dbl, op_secp256k1_dbl, ops_secp256k1_dbl),
+    (Secp256r1Add, "secp256r1_add", ArithEq, ARITH_EQ_COST, 0xe8, 144, 64, opc_secp256r1_add, op_secp256r1_add, ops_secp256r1_add),
+    (Secp256r1Dbl, "secp256r1_dbl", ArithEq, ARITH_EQ_COST, 0xe9, 64, 64, opc_secp256r1_dbl, op_secp256r1_dbl, ops_secp256r1_dbl),
+    (Blake2, "blake2", Blake2, BLAKE2_COST, 0xea, 280 , 128, opc_blake2, op_blake2, ops_blake2),
     (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, 0, opc_fcall_param, op_fcall_param, ops_none),
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, 0, opc_fcall, op_fcall, ops_none),
     (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, 0, opc_fcall_get, op_fcall_get, ops_none),
     (Sha256, "sha256", Sha256, SHA256_COST, 0xf9, 112, 112, opc_sha256, op_sha256, ops_sha256),
+    (Poseidon2, "poseidon2", Poseidon2, POSEIDON2_COST, 0xe1, 128, 128, opc_poseidon2, op_poseidon2, ops_poseidon2),
     (Bn254CurveAdd, "bn254_curve_add", ArithEq, ARITH_EQ_COST, 0xfa, 144, 64, opc_bn254_curve_add, op_bn254_curve_add, ops_bn254_curve_add),
     (Bn254CurveDbl, "bn254_curve_dbl", ArithEq, ARITH_EQ_COST, 0xfb, 64, 64, opc_bn254_curve_dbl, op_bn254_curve_dbl, ops_bn254_curve_dbl),
     (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, 64, opc_bn254_complex_add, op_bn254_complex_add, ops_bn254_complex_add),
@@ -1259,7 +1328,7 @@ pub fn opc_sha256(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 4 + 4;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 4, 4, &mut data, "sha256");
+    precompiled_load_data(ctx, 2, 2, 4, 4, None, &mut data, "sha256");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // Get the state and input slices
@@ -1292,6 +1361,142 @@ pub fn ops_sha256(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[4, 8], &[], 1);
 }
 
+/// Performs a Poseidon2 hash over a 16 elements stored in memory at the address
+/// specified by register A0, and stores the output state in the same memory address
+#[inline(always)]
+pub fn opc_poseidon2(ctx: &mut InstContext) {
+    // Get address from b (a = step)
+    let address = ctx.b;
+    if address & 0x7 != 0 {
+        panic!("opc_poseidon2() found address not aligned to 8 bytes");
+    }
+
+    // Allocate room for 16 u64 = 128 bytes = 1024 bits
+    const WORDS: usize = 16;
+    let mut data = [0u64; WORDS];
+
+    // Get input data from memory or from the precompiled context
+    match ctx.emulation_mode {
+        EmulationMode::Mem => {
+            // Read data from the memory address
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = ctx.mem.read(address + (8 * i as u64), 8);
+            }
+
+            // Call poseidon2
+            let data_gl = data.map(Goldilocks::new);
+            let res_gl = poseidon2_hash::<Goldilocks, Poseidon16, 16>(&data_gl);
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = res_gl[i].as_canonical_u64();
+            }
+
+            // Write data to the memory address
+            for (i, d) in data.iter().enumerate() {
+                ctx.mem.write(address + (8 * i as u64), *d, 8);
+            }
+        }
+        EmulationMode::GenerateMemReads => {
+            // Read data from the memory address
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = ctx.mem.read(address + (8 * i as u64), 8);
+            }
+
+            // Copy data to the precompiled context
+            ctx.precompiled.input_data.clear();
+            for (i, d) in data.iter_mut().enumerate() {
+                ctx.precompiled.input_data.push(*d);
+            }
+
+            // Call poseidon2
+            let data_gl = data.map(Goldilocks::new);
+            let res_gl = poseidon2_hash::<Goldilocks, Poseidon16, 16>(&data_gl);
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = res_gl[i].as_canonical_u64();
+            }
+
+            // Write data to the memory address
+            for (i, d) in data.iter().enumerate() {
+                ctx.mem.write(address + (8 * i as u64), *d, 8);
+            }
+
+            // Write data to the precompiled context
+            ctx.precompiled.output_data.clear();
+            for (i, d) in data.iter_mut().enumerate() {
+                ctx.precompiled.output_data.push(*d);
+            }
+        }
+        EmulationMode::ConsumeMemReads => {
+            // Check input data has the expected length
+            if ctx.precompiled.input_data.len() != WORDS {
+                panic!(
+                    "opc_poseidon2() found ctx.precompiled.input_data.len={} != {}",
+                    ctx.precompiled.input_data.len(),
+                    WORDS
+                );
+            }
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Poseidon2 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_poseidon2(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_poseidon2() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_poseidon2(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_direct_data(ctx, stats, 16, 16);
+}
+
+#[inline(always)]
+pub fn opc_blake2(ctx: &mut InstContext) {
+    const WORDS: usize = 3 + 2 * 16; // index,addr_state,addr_input,state[16],input[16]
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 3, 2, 16, 0, Some(0), &mut data, "blake2");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // Get the state and input slices
+        // 0 - index
+        // 1 - addr_state
+        // 2 - addr_input
+        let index = data[0];
+        let (params, rest) = data.split_at_mut(3);
+        let (state_slice, input_slice) = rest.split_at_mut(16);
+        let state: &mut [u64; 16] = state_slice.try_into().unwrap();
+        let input: &[u64; 16] = input_slice[..16].try_into().unwrap();
+
+        // Compute the blake2br output with the fastest implementation available
+        blake2br(index, state, input);
+
+        let state_addr = params[1];
+        for (i, d) in state.iter().enumerate() {
+            ctx.mem.write(state_addr + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Blake2 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_blake2(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_blake2() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_blake2(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[4, 8], &[], 1);
+}
+
+#[allow(clippy::too_many_arguments)]
 #[inline(always)]
 pub fn precompiled_load_data(
     ctx: &mut InstContext,
@@ -1299,6 +1504,7 @@ pub fn precompiled_load_data(
     load_indirections: usize,
     load_chunks: usize,
     load_rem: usize,
+    direct_load_param_idx: Option<usize>,
     data: &mut [u64],
     title: &str,
 ) {
@@ -1309,11 +1515,13 @@ pub fn precompiled_load_data(
         load_chunks,
         load_rem,
         0,
+        direct_load_param_idx,
         data,
         title,
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 #[inline(always)]
 pub fn precompiled_load_data_with_result(
     ctx: &mut InstContext,
@@ -1321,6 +1529,7 @@ pub fn precompiled_load_data_with_result(
     load_indirections: usize,
     load_chunks: usize,
     load_rem: usize,
+    direct_load_param_idx: Option<usize>,
     data: &mut [u64],
     title: &str,
 ) {
@@ -1331,6 +1540,7 @@ pub fn precompiled_load_data_with_result(
         load_chunks,
         load_rem,
         1,
+        direct_load_param_idx,
         data,
         title,
     );
@@ -1345,20 +1555,26 @@ fn internal_precompiled_load_data(
     load_chunks: usize,
     load_rem: usize,
     result: usize,
+    direct_load_param_idx: Option<usize>, // Index of the load parameters that isn't an indirection
     data: &mut [u64],
     title: &str,
 ) {
     let address = ctx.b;
     if address & 0x7 != 0 {
-        panic!("precompiled_check_address() found address not aligned to 8 bytes");
+        panic!(
+            "[{title}] precompiled_check_address() found address 0x{address:08X} not aligned \
+               to 8 bytes at PC:0x{:08X} STEP:{}",
+            ctx.pc, ctx.step
+        );
     }
     if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
         // Check input data has the expected length
         let expected_len = params_count + load_indirections * load_chunks + load_rem + result;
         if ctx.precompiled.input_data.len() != expected_len {
             panic!(
-                "[{title}] ctx.precompiled.input_data.len={} != {expected_len} [{params_count}+{load_indirections}*{load_chunks}+{load_rem}+{result}]",
-                ctx.precompiled.input_data.len(),
+                "[{title}] ctx.precompiled.input_data.len={} != {expected_len} \
+                [{params_count}+{load_indirections}*{load_chunks}+{load_rem}+{result}] at PC:0x{:08X} STEP:{}",
+                ctx.precompiled.input_data.len(), ctx.pc, ctx.step,
             );
         }
         // Read data from the precompiled context
@@ -1370,20 +1586,36 @@ fn internal_precompiled_load_data(
         return;
     }
 
-    // Write the indirections to data
+    // Write the indirections/direct_params to data
     for (i, data) in data.iter_mut().enumerate().take(params_count) {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
-        if address & 0x7 != 0 {
-            panic!("precompiled_check_address() found address[{i}] not aligned to 8 bytes");
+        if indirection & 0x7 != 0 && Some(i) != direct_load_param_idx {
+            panic!(
+                "[{title}] precompiled_check_address() found address_{i} [0x{address:08X}]=0x{indirection:08X} \
+                not aligned to 8 bytes at PC:0x{:08X} STEP:{}",
+                ctx.pc, ctx.step
+            );
         }
         *data = indirection;
     }
 
+    // Write the data
     let mut data_offset = params_count;
     for i in 0..load_indirections {
+        let param_idx = if let Some(direct_idx) = direct_load_param_idx {
+            if i >= direct_idx {
+                i + 1
+            } else {
+                i
+            }
+        } else {
+            i
+        };
+
         let data_offset = i * load_chunks + data_offset;
         // if there aren't indirections, take directly from the address
-        let param_address = if params_count == 0 { address + data_offset as u64 } else { data[i] };
+        let param_address =
+            if params_count == 0 { address + data_offset as u64 } else { data[param_idx] };
         for j in 0..load_chunks {
             let addr = param_address + (8 * j as u64);
             data[data_offset + j] = ctx.mem.read(addr, 8);
@@ -1461,7 +1693,7 @@ pub fn opc_add256(ctx: &mut InstContext) {
     const WORDS: usize = 4 + 1 + 2 * 4;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data_with_result(ctx, 4, 2, 4, 0, &mut data, "add256");
+    precompiled_load_data_with_result(ctx, 4, 2, 4, 0, Some(2), &mut data, "add256");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 3 indirections
@@ -1487,11 +1719,11 @@ pub fn opc_add256(ctx: &mut InstContext) {
             ctx.precompiled.input_data[4 + 2 * 4] = cout;
         }
         ctx.c = cout;
-        ctx.flag = cout != 0;
+        ctx.flag = false;
     } else {
         assert!(data[4 + 2 * 4] <= 1, "opc_add256: cout > 1");
         ctx.c = data[4 + 2 * 4];
-        ctx.flag = data[4 + 2 * 4] != 0;
+        ctx.flag = false;
     }
 }
 
@@ -1512,7 +1744,7 @@ pub fn opc_arith256(ctx: &mut InstContext) {
     const WORDS: usize = 5 + 3 * 4;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 5, 3, 4, 0, &mut data, "arith256");
+    precompiled_load_data(ctx, 5, 3, 4, 0, None, &mut data, "arith256");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 5 indirections
@@ -1559,7 +1791,7 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
     const WORDS: usize = 5 + 4 * 4;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 5, 4, 4, 0, &mut data, "arith256_mod");
+    precompiled_load_data(ctx, 5, 4, 4, 0, None, &mut data, "arith256_mod");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 5 indirections
@@ -1605,7 +1837,7 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "secp256k1_add");
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "secp256k1_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -1644,7 +1876,7 @@ pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "secp256k1_dbl");
+    precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "secp256k1_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         let p1: &[u64; 8] = &data;
@@ -1674,11 +1906,84 @@ pub fn ops_secp256k1_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
 }
 
 #[inline(always)]
+pub fn opc_secp256r1_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "secp256r1_add");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (p1, p2) = rest.split_at(8);
+
+        let p1: &[u64; 8] = p1.try_into().expect("opc_secp256r1_add: p1.len != 8");
+        let p2: &[u64; 8] = p2.try_into().expect("opc_secp256r1_add: p2.len != 8");
+        let mut p3 = [0u64; 8];
+
+        precompiles_helpers::secp256r1_add(p1, p2, &mut p3);
+
+        // [0:p1,p2]
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Secp256r1Add can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256r1_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256r1_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_secp256r1_add(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
+}
+
+#[inline(always)]
+pub fn opc_secp256r1_dbl(ctx: &mut InstContext) {
+    const WORDS: usize = 8; // one input of 8 64-bit words
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "secp256r1_dbl");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        let p1: &[u64; 8] = &data;
+        let mut p3 = [0u64; 8];
+
+        precompiles_helpers::secp256r1_dbl(p1, &mut p3);
+
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Secp256r1Dbl can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256r1_dbl(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256r1_dbl() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_secp256r1_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_direct_data(ctx, stats, 8, 8);
+}
+
+#[inline(always)]
 pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_curve_add");
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_curve_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -1718,7 +2023,7 @@ pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "bn254_curve_dbl");
+    precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "bn254_curve_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         let p1: &[u64; 8] = &data;
@@ -1752,7 +2057,7 @@ pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_add");
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_complex_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -1792,7 +2097,7 @@ pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_sub");
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_complex_sub");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -1832,7 +2137,7 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_mul");
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "bn254_complex_mul");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -1872,7 +2177,7 @@ pub fn opc_arith384_mod(ctx: &mut InstContext) {
     const WORDS: usize = 5 + 4 * 6;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 5, 4, 6, 0, &mut data, "arith384_mod");
+    precompiled_load_data(ctx, 5, 4, 6, 0, None, &mut data, "arith384_mod");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 5 indirections
@@ -1918,7 +2223,7 @@ pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_curve_add");
+    precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_curve_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -1958,7 +2263,7 @@ pub fn opc_bls12_381_curve_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 12;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 0, 1, 12, 0, &mut data, "bls12_381_curve_dbl");
+    precompiled_load_data(ctx, 0, 1, 12, 0, None, &mut data, "bls12_381_curve_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         let p1: &[u64; 12] = &data;
@@ -1992,7 +2297,7 @@ pub fn opc_bls12_381_complex_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_add");
+    precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_complex_add");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -2032,7 +2337,7 @@ pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_sub");
+    precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_complex_sub");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -2072,7 +2377,7 @@ pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 12, 0, &mut data, "bls12_381_complex_mul");
+    precompiled_load_data(ctx, 2, 2, 12, 0, None, &mut data, "bls12_381_complex_mul");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
         // ignore 2 indirections
@@ -2195,7 +2500,35 @@ pub fn opc_fcall(ctx: &mut InstContext) {
     // Get function id from a
     let function_id = ctx.a;
 
-    let iresult = fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result);
+    let iresult = if function_id == FCALL_INPUT_READY_ID as u64 {
+        let required_address = ctx.fcall.parameters[0];
+        if required_address < INPUT_ADDR {
+            panic!(
+                "opc_fcall() FCALL_INPUT_READY_ID called with required_address {:#x} < {:#x}",
+                required_address, INPUT_ADDR
+            );
+        }
+        if required_address >= INPUT_ADDR + MAX_INPUT_SIZE - 1 {
+            panic!(
+                "opc_fcall() FCALL_INPUT_READY_ID called with required_address {:#x} > {:#x}",
+                required_address,
+                INPUT_ADDR + MAX_INPUT_SIZE - 1
+            );
+        }
+
+        let required_bytes = required_address - INPUT_ADDR - 8 + 1; // + 1 because required_address is the address of the last required byte
+        if required_bytes > ctx.input_len {
+            panic!(
+                "opc_fcall() FCALL_INPUT_READY_ID called with required_address {:#x} requiring {} bytes, but only {} bytes available",
+                required_address,
+                required_bytes,
+                ctx.input_len
+            );
+        }
+        0
+    } else {
+        fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result)
+    };
 
     if iresult < 0 {
         panic!("opc_fcall() failed calling Fcall() function_id={function_id} iresult={iresult}");
@@ -2265,4 +2598,751 @@ pub fn opc_halt(ctx: &mut InstContext) {
     ctx.error = true;
     ctx.c = 0;
     ctx.flag = false;
+}
+
+pub fn opc_dma_memcpy(ctx: &mut InstContext) {
+    opc_dma_memcpys(ctx, false)
+}
+pub fn opc_dma_xmemcpy(ctx: &mut InstContext) {
+    opc_dma_memcpys(ctx, true)
+}
+fn opc_dma_memcpys(ctx: &mut InstContext, extended: bool) {
+    let dst = ctx.a;
+    let src = ctx.b;
+
+    match ctx.emulation_mode {
+        EmulationMode::Mem => {
+            let count =
+                if extended { ctx.extended_arg as u64 } else { ctx.mem.read(EXTRA_PARAMS_ADDR, 8) };
+            ctx.mem.memcpy(dst, src, count);
+        }
+        EmulationMode::GenerateMemReads => {
+            // In generate mode we need to populate precompiled.input_data with
+            // information needed
+            let count =
+                if extended { ctx.extended_arg as u64 } else { ctx.mem.read(EXTRA_PARAMS_ADDR, 8) };
+            ctx.precompiled.input_data.clear();
+
+            #[cfg(feature = "log_dma_ops")]
+            println!("opc_dma_memcpy 0x{dst:08X} 0x{src:08X} {count} GMR STEP:{}", ctx.step);
+
+            let encoded = DmaInfo::encode_memcpy(dst, src, count as usize);
+            ctx.precompiled.input_data.push(encoded);
+
+            if count > 0 {
+                // read first dst unaligned part for dma-pre
+                let mut data_len = 0;
+                let dst64 = dst & !0x07;
+                // if dst64 != dst {
+                if DmaInfo::get_pre_count(encoded) > 0 {
+                    let pre_data = ctx.mem.read(dst64, 8);
+                    data_len += 1;
+                    ctx.precompiled.input_data.push(pre_data);
+                }
+
+                // read last dst unaligned part for dma-post
+                let to_dst = dst + count - 1;
+                // if to_dst & 0x07 != 0x07 {
+                if DmaInfo::get_post_count(encoded) > 0 {
+                    let post_data = ctx.mem.read(to_dst & !0x07, 8);
+                    data_len += 1;
+                    // println!("ADDING_POST_DATA 0x{:08X} 0x{post_data:016X}", to_dst & !0x07);
+                    ctx.precompiled.input_data.push(post_data);
+                }
+
+                // read all source 64-words
+                let src64 = src & !0x07;
+                let to_src64 = (src + count - 1) & !0x07;
+
+                let src64_count = (to_src64 - src64 + 8) >> 3;
+                ctx.mem.push_from_mem(&mut ctx.precompiled.input_data, src64, src64_count * 8);
+                data_len += src64_count;
+                #[cfg(feature = "debug_dma")]
+                println!(
+                    "PRECOMPILED.MEMCPY.INPUT_DATA: [{}] data_len:{data_len}",
+                    ctx.precompiled
+                        .input_data
+                        .iter()
+                        .map(|x| format!("0x{x:016X}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+                assert_eq!(data_len as usize, DmaInfo::get_data_size(encoded));
+
+                ctx.mem.memcpy(dst, src, count);
+            }
+            ctx.precompiled.output_data.clear();
+
+            ctx.precompiled.step = ctx.step;
+        }
+        EmulationMode::ConsumeMemReads => {
+            let encoded = ctx.precompiled.input_data[0];
+            let count = DmaInfo::get_count(encoded);
+            #[cfg(feature = "debug_dma")]
+            println!(
+                "opc_dma_memcpy 0x{dst:08X} 0x{src:08X} {count} CMR STEP:{} DATA_EXT_LEN:{}",
+                ctx.step,
+                DmaInfo::get_data_size(encoded)
+            );
+            ctx.data_ext_len = DmaInfo::get_data_size(encoded);
+        }
+    }
+    ctx.c = dst;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Arith256 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_dma_memcpy(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_dma_memcpy() is not implemented");
+}
+#[inline(always)]
+pub fn op_dma_xmemcpy(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_dma_xmemcpy() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_dma_memcpy(ctx: &InstContext, stats: &mut dyn OpStats) {
+    ops_dma_memcpys(ctx, stats, false)
+}
+#[inline(always)]
+pub fn ops_dma_xmemcpy(ctx: &InstContext, stats: &mut dyn OpStats) {
+    ops_dma_memcpys(ctx, stats, true)
+}
+#[inline(always)]
+fn ops_dma_memcpys(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
+    let addr_a = ctx.a;
+    let addr_b = ctx.b;
+    let count = if extended { ctx.extended_arg as u64 } else { ctx.mem.read(EXTRA_PARAMS_ADDR, 8) };
+    // pre, post, dma_align, dma_unalign
+    if count == 0 {
+        return;
+    }
+
+    let offset_a = addr_a & 0x07;
+    let offset_b = addr_b & 0x07;
+    let addr64_a = addr_a - offset_a;
+    let addr64_b = addr_b - offset_b;
+    let pre_count = std::cmp::min((8 - offset_a) & 0x07, count);
+
+    if pre_count > 0 {
+        stats.mem_align_read(addr64_a, 1);
+        stats.mem_align_read(addr64_b, 1 + ((offset_b + pre_count) > 8) as usize);
+        stats.mem_align_write(addr64_a, 1);
+    }
+
+    let post_count = (count - pre_count) & 0x07;
+    let remain_b = (16 - offset_a - pre_count) & 0x07;
+    let addr64_a_end = (addr_a + count - 1) & !0x07;
+    let addr64_b_end = (addr_b + count - 1) & !0x07;
+    if post_count > 0 {
+        let extra_b = (remain_b < post_count) as u64;
+        stats.mem_align_read(addr64_a_end, 1);
+        stats.mem_align_read(addr64_b_end - extra_b * 8, 1 + extra_b as usize);
+        stats.mem_align_write(addr64_a_end, 1);
+    }
+
+    let loop_count = ((count - pre_count - post_count) >> 32) as usize;
+    if loop_count == 0 {
+        // with count < 8, there aren't 64-bits loops.
+        stats.add_extras(&[
+            (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
+            (ZiskOp::_DMA_POST, (post_count > 0) as usize),
+        ]);
+    } else {
+        // calculate the resources used by 64-bits loop.
+        // count used are number of bytes read to demostrate memcmp(), usually count_eq + 1,
+        // but if all bytes are equal count = count_eq, no need extra reads
+        let first_loop_dst64 = (addr_a + pre_count) >> 3;
+        let first_loop_src64 = (addr_b + pre_count) >> 3;
+
+        // same alignment
+        if addr_a & 0x07 == addr_b & 0x07 {
+            stats.mem_align_read(first_loop_src64, loop_count);
+            stats.mem_align_write(first_loop_dst64, loop_count);
+            // add information about other machines to demostrate operation
+            let units = loop_count.div_ceil(DMA_64_ALIGNED_OPS_BY_ROW);
+            stats.add_extras(&[
+                (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
+                (ZiskOp::_DMA_POST, (post_count > 0) as usize),
+                (ZiskOp::_DMA_64_ALIGNED, loop_count),
+            ]);
+        } else {
+            stats.mem_align_read(first_loop_src64, loop_count + 1);
+            stats.mem_align_write(first_loop_dst64, loop_count);
+            // add information about other machines to demostrate operation
+            stats.add_extras(&[
+                (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
+                (ZiskOp::_DMA_POST, (post_count > 0) as usize),
+                (ZiskOp::_DMA_UNALIGNED, loop_count + 1),
+            ]);
+        }
+    }
+}
+
+#[inline(always)]
+pub fn opc_dma_memcmp(ctx: &mut InstContext) {
+    opc_dma_memcmps(ctx, false)
+}
+#[inline(always)]
+pub fn opc_dma_xmemcmp(ctx: &mut InstContext) {
+    opc_dma_memcmps(ctx, true)
+}
+
+fn opc_dma_memcmps(ctx: &mut InstContext, extended: bool) {
+    let dst = ctx.a;
+    let src = ctx.b;
+    let step = ctx.step;
+
+    match ctx.emulation_mode {
+        EmulationMode::Mem => {
+            let count =
+                if extended { ctx.extended_arg as u64 } else { ctx.mem.read(EXTRA_PARAMS_ADDR, 8) };
+            let (result, effective_count) = ctx.mem.memcmp(dst, src, count);
+            ctx.stats_hint = effective_count as u64;
+            ctx.c = result;
+        }
+        EmulationMode::GenerateMemReads => {
+            // In generate mode we need to populate precompiled.input_data with
+            // information needed
+            let count =
+                if extended { ctx.extended_arg as u64 } else { ctx.mem.read(EXTRA_PARAMS_ADDR, 8) };
+            ctx.precompiled.input_data.clear();
+
+            #[cfg(feature = "log_dma_ops")]
+            println!("opc_dma_memcmp 0x{dst:08X} 0x{src:08X} {count} GMR STEP:{step}");
+            let (result, effective_count) = ctx.mem.memcmp(dst, src, count);
+
+            let encoded = DmaInfo::encode_memcmp(dst, src, effective_count, result);
+            ctx.precompiled.input_data.push(encoded);
+            ctx.precompiled.input_data.push(count);
+
+            if count > 0 {
+                // read first dst unaligned part for dma-pre
+                let mut data_len = 0;
+                let dst64 = dst & !0x07;
+                // if dst64 != dst {
+                if DmaInfo::get_pre_count(encoded) > 0 {
+                    let pre_data = ctx.mem.read(dst64, 8);
+                    data_len += 1;
+                    ctx.precompiled.input_data.push(pre_data);
+                }
+
+                let effective_count = effective_count as u64;
+                // read last dst unaligned part for dma-post
+                let to_dst = dst + effective_count - 1;
+                // if to_dst & 0x07 != 0x07 {
+                if DmaInfo::get_post_count(encoded) > 0 {
+                    let post_data = ctx.mem.read(to_dst & !0x07, 8);
+                    data_len += 1;
+                    // println!("ADDING_POST_DATA 0x{:08X} 0x{post_data:016X}", to_dst & !0x07);
+                    ctx.precompiled.input_data.push(post_data);
+                }
+
+                // read all source 64-words
+                let src64 = src & !0x07;
+                let to_src64 = (src + effective_count - 1) & !0x07;
+
+                let src64_count = (to_src64 - src64 + 8) >> 3;
+                ctx.mem.push_from_mem(&mut ctx.precompiled.input_data, src64, src64_count * 8);
+                data_len += src64_count;
+                #[cfg(feature = "debug_dma")]
+                println!(
+                    "PRECOMPILED.MEMCMP.INPUT_DATA: [{}] data_len:{data_len}",
+                    ctx.precompiled
+                        .input_data
+                        .iter()
+                        .map(|x| format!("0x{x:016X}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+                assert_eq!(data_len as usize, DmaInfo::get_data_size(encoded));
+            }
+
+            ctx.precompiled.output_data.clear();
+            ctx.precompiled.step = step;
+            ctx.c = result;
+        }
+        EmulationMode::ConsumeMemReads => {
+            let encoded = ctx.precompiled.input_data[0];
+            let count = DmaInfo::get_count(encoded);
+            ctx.data_ext_len = DmaInfo::get_data_size(encoded);
+            ctx.c = DmaInfo::get_memcmp_res_as_u64(encoded);
+            #[cfg(feature = "debug_dma")]
+            println!(
+                "opc_dma_memcmp 0x{dst:08X} 0x{src:08X} {count} CMR 0x{:016X} STEP:{} DATA_EXT_LEN:{}",
+                ctx.c,
+                ctx.step,
+                ctx.data_ext_len
+            );
+        }
+    }
+    ctx.flag = false;
+}
+
+/// Unimplemented. DmaMemCmp and DmaXºMemCmp can only be called from the system call context
+/// via InstContext. This is provided just for completeness.
+#[inline(always)]
+pub fn op_dma_memcmp(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_dma_memcmp() is not implemented");
+}
+
+#[inline(always)]
+pub fn op_dma_xmemcmp(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_dma_xmemcmp() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_dma_memcmp(ctx: &InstContext, stats: &mut dyn OpStats) {
+    ops_dma_memcmps(ctx, stats, false)
+}
+#[inline(always)]
+pub fn ops_dma_xmemcmp(ctx: &InstContext, stats: &mut dyn OpStats) {
+    ops_dma_memcmps(ctx, stats, true)
+}
+
+#[inline(always)]
+fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
+    let addr_a = ctx.a;
+    let addr_b = ctx.b;
+    // let _bus_count = if extended { ctx.extended_arg as u64 } else { ctx.mem.read(EXTRA_PARAMS_ADDR, 8) };
+    let count = ctx.stats_hint;
+
+    // pre, post, dma_align, dma_unalign
+    if count == 0 {
+        return;
+    }
+
+    let (res, count_eq) = ctx.mem.memcmp(addr_a, addr_b, count);
+    let count = if count_eq as u64 == count { count } else { count_eq as u64 + 1 };
+    let offset_a = addr_a & 0x07;
+    let offset_b = addr_b & 0x07;
+    let addr64_a = addr_a - offset_a;
+    let addr64_b = addr_b - offset_b;
+    let pre_count = std::cmp::min((8 - offset_a) & 0x07, count);
+
+    if pre_count > 0 {
+        stats.mem_align_read(addr64_a, 1);
+        stats.mem_align_read(addr64_b, 1 + ((offset_b + pre_count) > 8) as usize);
+        stats.mem_align_read(addr64_a, 1);
+    }
+
+    let post_count = (count - pre_count) & 0x07;
+    let remain_b = (16 - offset_a - pre_count) & 0x07;
+    let addr64_a_end = (addr_a + count - 1) & !0x07;
+    let addr64_b_end = (addr_b + count - 1) & !0x07;
+    if post_count > 0 {
+        let extra_b = (remain_b < post_count) as u64;
+        stats.mem_align_read(addr64_a_end, 1);
+        stats.mem_align_read(addr64_b_end - extra_b * 8, 1 + extra_b as usize);
+        stats.mem_align_read(addr64_a_end, 1);
+    }
+
+    let loop_count = ((count - pre_count - post_count) >> 32) as usize;
+    if loop_count == 0 {
+        // with count < 8, there aren't 64-bits loops.
+        stats.add_extras(&[
+            (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
+            (ZiskOp::_DMA_POST, (post_count > 0) as usize),
+        ]);
+    } else {
+        // calculate the resources used by 64-bits loop.
+        // count used are number of bytes read to demostrate memcmp(), usually count_eq + 1,
+        // but if all bytes are equal count = count_eq, no need extra reads
+        let first_loop_dst64 = (addr_a + pre_count) >> 3;
+        let first_loop_src64 = (addr_b + pre_count) >> 3;
+
+        // same alignment
+        if addr_a & 0x07 == addr_b & 0x07 {
+            stats.mem_align_read(first_loop_src64, loop_count);
+            stats.mem_align_read(first_loop_dst64, loop_count);
+            // add information about other machines to demostrate operation
+            let units = loop_count.div_ceil(DMA_64_ALIGNED_OPS_BY_ROW);
+            stats.add_extras(&[
+                (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
+                (ZiskOp::_DMA_POST, (post_count > 0) as usize),
+                (ZiskOp::_DMA_64_ALIGNED, loop_count),
+            ]);
+        } else {
+            stats.mem_align_read(first_loop_src64, loop_count + 1);
+            stats.mem_align_read(first_loop_dst64, loop_count);
+            // add information about other machines to demostrate operation
+            stats.add_extras(&[
+                (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
+                (ZiskOp::_DMA_POST, (post_count > 0) as usize),
+                (ZiskOp::_DMA_UNALIGNED, loop_count + 1),
+            ]);
+        }
+    }
+}
+
+fn read_from_input(ctx: &mut InstContext, dst: u64, count: u64) {
+    // Check for consistency
+    if count % 8 != 0 {
+        panic!("opc_dma_inputcpy() called without invalid count {count}");
+    }
+    let count64 = count >> 3;
+    if ctx.fcall.result_size == 0 {
+        panic!("opc_dma_inputcpy() called with ctx.fcall.result_size==0");
+    }
+    if ctx.fcall.result_size as usize > FCALL_RESULT_MAX_SIZE {
+        panic!(
+            "opc_dma_inputcpy() called with ctx.fcall.result_size=={}>32",
+            ctx.fcall.result_size
+        );
+    }
+    if (ctx.fcall.result_got - 1 + count64) > ctx.fcall.result_size {
+        panic!(
+            "opc_dma_inputcpy() called with ctx.fcall.result_got({}) + {count64} >= ctx.fcall.result_size {}",
+            ctx.fcall.result_got, ctx.fcall.result_size
+        );
+    }
+    ctx.mem.memcpy_from_data(
+        dst,
+        count,
+        &ctx.fcall.result,
+        (ctx.fcall.result_got - 1) as usize * 8,
+    );
+    ctx.fcall.result_got += count64;
+    if ctx.fcall.result_got > ctx.fcall.result_size {
+        ctx.mem.free_input = 0;
+    } else {
+        ctx.mem.free_input = ctx.fcall.result[ctx.fcall.result_got as usize - 1];
+    }
+}
+
+fn read_and_get_from_input(ctx: &mut InstContext, dst: u64, count: u64) -> Vec<u64> {
+    // Check for consistency
+    if count % 8 != 0 {
+        panic!("opc_dma_inputcpy() called at 0x{:08x} without invalid count {count}", ctx.pc);
+    }
+    let count64 = count >> 3;
+    if ctx.fcall.result_size == 0 {
+        panic!("opc_dma_inputcpy() called at 0x{:08x} with ctx.fcall.result_size==0", ctx.pc);
+    }
+    if ctx.fcall.result_size as usize > FCALL_RESULT_MAX_SIZE {
+        panic!(
+            "opc_dma_inputcpy() called at 0x{:08x} with ctx.fcall.result_size=={}>32",
+            ctx.pc, ctx.fcall.result_size
+        );
+    }
+    if (ctx.fcall.result_got - 1 + count64) > ctx.fcall.result_size {
+        panic!(
+            "opc_dma_inputcpy() called at 0x{:08x} with ctx.fcall.result_got({}) + {count64} >= ctx.fcall.result_size {}",
+            ctx.pc, ctx.fcall.result_got, ctx.fcall.result_size
+        );
+    }
+
+    ctx.mem.memcpy_from_data(
+        dst,
+        count,
+        &ctx.fcall.result,
+        (ctx.fcall.result_got - 1) as usize * 8,
+    );
+
+    let offset = (dst & 0x07) as usize;
+    let start_index = (ctx.fcall.result_got - 1) as usize;
+    let mut qwords_added = 0;
+    let mut input_data = Vec::new();
+
+    if offset == 0 {
+        // Fast path: aligned, direct copy
+        for i in 0..count64 as usize {
+            input_data.push(ctx.fcall.result[start_index + i]);
+            qwords_added += 1;
+        }
+    } else {
+        // Slow path: unaligned, need to shift and merge words
+        // When unaligned, we need count64 + 1 output words
+        let shift_bits = (offset * 8) as u32;
+        let shift_bits_comp = 64 - shift_bits;
+
+        // First word: padding zeros in lower bytes, first data bytes in upper bytes
+        let first_word = ctx.fcall.result[start_index] << shift_bits;
+        input_data.push(first_word);
+        qwords_added += 1;
+
+        // Middle words: merge parts of consecutive data words
+        for i in 0..(count64 as usize - 1) {
+            let low_part = ctx.fcall.result[start_index + i] >> shift_bits_comp;
+            let high_part = ctx.fcall.result[start_index + i + 1] << shift_bits;
+            input_data.push(low_part | high_part);
+            qwords_added += 1;
+        }
+
+        // Last word: remaining bytes from last data word
+        if count64 > 0 {
+            let last_word = ctx.fcall.result[start_index + count64 as usize - 1] >> shift_bits_comp;
+            input_data.push(last_word);
+            qwords_added += 1;
+        }
+    }
+
+    ctx.fcall.result_got += count64;
+    if ctx.fcall.result_got > ctx.fcall.result_size {
+        ctx.mem.free_input = 0;
+    } else {
+        ctx.mem.free_input = ctx.fcall.result[ctx.fcall.result_got as usize - 1];
+    }
+
+    input_data
+}
+
+#[inline(always)]
+fn opc_dma_inputcpy(ctx: &mut InstContext) {
+    let dst: u64 = ctx.a;
+    let count = ctx.b;
+
+    match ctx.emulation_mode {
+        EmulationMode::Mem => {
+            read_from_input(ctx, dst, count);
+        }
+        EmulationMode::GenerateMemReads => {
+            // In generate mode we need to populate precompiled.input_data with
+            // information needed
+            ctx.precompiled.input_data.clear();
+
+            #[cfg(feature = "log_dma_ops")]
+            println!("opc_dma_inputcpy 0x{dst:08X} {count} GMR STEP:{}", ctx.step);
+
+            let encoded = DmaInfo::encode_inputcpy(dst, count as usize);
+            ctx.precompiled.input_data.push(encoded);
+
+            if count > 0 {
+                // read first dst unaligned part for dma-pre
+                let mut data_len = 0;
+                let dst64 = dst & !0x07;
+                // if dst64 != dst {
+                if DmaInfo::get_pre_count(encoded) > 0 {
+                    let pre_data = ctx.mem.read(dst64, 8);
+                    data_len += 1;
+                    ctx.precompiled.input_data.push(pre_data);
+                }
+
+                // read last dst unaligned part for dma-post
+                let to_dst = dst + count - 1;
+                // if to_dst & 0x07 != 0x07 {
+                if DmaInfo::get_post_count(encoded) > 0 {
+                    let post_data = ctx.mem.read(to_dst & !0x07, 8);
+                    data_len += 1;
+                    ctx.precompiled.input_data.push(post_data);
+                }
+                #[cfg(feature = "debug_dma")]
+                println!(
+                    "PRECOMPILED.INPUTCPY.INPUT_DATA: [{}] data_len:{data_len}",
+                    ctx.precompiled
+                        .input_data
+                        .iter()
+                        .map(|x| format!("0x{x:016X}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+
+                let input_data = read_and_get_from_input(ctx, dst, count);
+                data_len += input_data.len();
+
+                assert_eq!(data_len, DmaInfo::get_data_size(encoded));
+
+                ctx.precompiled.input_data.extend(input_data);
+            }
+            ctx.precompiled.output_data.clear();
+            ctx.precompiled.step = ctx.step;
+        }
+        EmulationMode::ConsumeMemReads => {
+            let encoded = ctx.precompiled.input_data[0];
+            let count = DmaInfo::get_count(encoded);
+            #[cfg(feature = "debug_dma")]
+            println!(
+                "opc_dma_inputcpy 0x{dst:08X} {count} CMR STEP:{} DATA_EXT_LEN:{}",
+                ctx.step,
+                DmaInfo::get_data_size(encoded)
+            );
+            ctx.data_ext_len = DmaInfo::get_data_size(encoded);
+        }
+    }
+    ctx.c = dst;
+    ctx.flag = false;
+}
+
+#[inline(always)]
+pub fn op_dma_inputcpy(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_dma_inputcpy() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_dma_inputcpy(ctx: &InstContext, stats: &mut dyn OpStats) {
+    let addr_a = ctx.a;
+    let count = ctx.b;
+
+    // pre, post, dma_align, dma_unalign
+    if count == 0 {
+        return;
+    }
+
+    let offset_a = addr_a & 0x07;
+    let addr64_a = addr_a - offset_a;
+    let pre_count = (8 - offset_a) & 0x07;
+
+    if pre_count > 0 {
+        stats.mem_align_read(addr64_a, 1);
+        stats.mem_align_write(addr64_a, 1);
+    }
+
+    let post_count = (count - pre_count) & 0x07;
+    let addr64_a_end = (addr_a + count - 1) & !0x07;
+    if post_count > 0 {
+        stats.mem_align_read(addr64_a_end, 1);
+        stats.mem_align_write(addr64_a_end, 1);
+    }
+
+    let loop_count = ((count - pre_count - post_count) >> 32) as usize;
+    if loop_count == 0 {
+        // with count < 8, there aren't 64-bits loops.
+        stats.add_extras(&[
+            (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
+            (ZiskOp::_DMA_POST, (post_count > 0) as usize),
+        ]);
+    } else {
+        // calculate the resources used by 64-bits loop.
+        // count used are number of bytes read to demostrate memcmp(), usually count_eq + 1,
+        // but if all bytes are equal count = count_eq, no need extra reads
+        let first_loop_dst64 = (addr_a + pre_count) >> 3;
+
+        stats.mem_align_write(first_loop_dst64, loop_count);
+        stats.add_extras(&[
+            (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
+            (ZiskOp::_DMA_POST, (post_count > 0) as usize),
+            (ZiskOp::_DMA_64_ALIGNED, loop_count),
+        ]);
+    }
+}
+
+#[inline(always)]
+pub fn opc_dma_xmemset(ctx: &mut InstContext) {
+    let dst = ctx.a;
+    let count = ctx.b;
+    let fill_byte = ctx.extended_arg as u8;
+
+    match ctx.emulation_mode {
+        EmulationMode::Mem => {
+            ctx.mem.memset(dst, count, fill_byte);
+        }
+        EmulationMode::GenerateMemReads => {
+            // In generate mode we need to populate precompiled.input_data with
+            // information needed
+            ctx.precompiled.input_data.clear();
+
+            #[cfg(feature = "log_dma_ops")]
+            println!(
+                "opc_dma_memset 0x{dst:08X} 0x{fill_byte:02X} {count} GMR STEP:{} PC:0x{:08x}",
+                ctx.step, ctx.pc
+            );
+
+            let encoded = DmaInfo::encode_memset(dst, count as usize, fill_byte);
+            ctx.precompiled.input_data.push(encoded);
+
+            if count > 0 {
+                // read first dst unaligned part for dma-pre
+                let mut data_len = 0;
+                let dst64 = dst & !0x07;
+                // if dst64 != dst {
+                if DmaInfo::get_pre_count(encoded) > 0 {
+                    let pre_data = ctx.mem.read(dst64, 8);
+                    data_len += 1;
+                    ctx.precompiled.input_data.push(pre_data);
+                }
+
+                // read last dst unaligned part for dma-post
+                let to_dst = dst + count - 1;
+                // if to_dst & 0x07 != 0x07 {
+                if DmaInfo::get_post_count(encoded) > 0 {
+                    let post_data = ctx.mem.read(to_dst & !0x07, 8);
+                    data_len += 1;
+                    ctx.precompiled.input_data.push(post_data);
+                }
+                #[cfg(feature = "log_dma_ops")]
+                println!(
+                    "PRECOMPILED.MEMSET.INPUT_DATA: [{}] data_len:{data_len}",
+                    ctx.precompiled
+                        .input_data
+                        .iter()
+                        .map(|x| format!("0x{x:016X}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+                assert_eq!(data_len as usize, DmaInfo::get_pre_writes(encoded));
+                ctx.mem.memset(dst, count, fill_byte);
+            }
+            ctx.precompiled.output_data.clear();
+            ctx.precompiled.step = ctx.step;
+        }
+        EmulationMode::ConsumeMemReads => {
+            let encoded = ctx.precompiled.input_data[0];
+            let count = DmaInfo::get_count(encoded);
+            #[cfg(feature = "debug_dma")]
+            println!(
+                "opc_dma_memset 0x{dst:08X} 0x{fill_byte:02X} {count} CMR STEP:{} DATA_EXT_LEN:{}",
+                ctx.step,
+                DmaInfo::get_data_size(encoded)
+            );
+            ctx.data_ext_len = DmaInfo::get_pre_writes(encoded);
+        }
+    }
+    ctx.c = dst;
+    ctx.flag = false;
+}
+
+#[inline(always)]
+pub fn op_dma_xmemset(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_dma_memset() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_dma_xmemset(ctx: &InstContext, stats: &mut dyn OpStats) {
+    let addr_a = ctx.a;
+    let count = ctx.b;
+
+    // pre, post, dma_align, dma_unalign
+    if count == 0 {
+        return;
+    }
+
+    let offset_a = addr_a & 0x07;
+    let addr64_a = addr_a - offset_a;
+    let pre_count = std::cmp::min((8 - offset_a) & 0x07, count);
+
+    if pre_count > 0 {
+        stats.mem_align_read(addr64_a, 1);
+        stats.mem_align_write(addr64_a, 1);
+    }
+
+    let post_count = (count - pre_count) & 0x07;
+    let addr64_a_end = (addr_a + count - 1) & !0x07;
+    if post_count > 0 {
+        stats.mem_align_read(addr64_a_end, 1);
+        stats.mem_align_write(addr64_a_end, 1);
+    }
+
+    let loop_count = ((count - pre_count - post_count) >> 32) as usize;
+    if loop_count == 0 {
+        // with count < 8, there aren't 64-bits loops.
+        stats.add_extras(&[
+            (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
+            (ZiskOp::_DMA_POST, (post_count > 0) as usize),
+        ]);
+    } else {
+        // calculate the resources used by 64-bits loop.
+        // count used are number of bytes read to demostrate memcmp(), usually count_eq + 1,
+        // but if all bytes are equal count = count_eq, no need extra reads
+        let first_loop_dst64 = (addr_a + pre_count) >> 3;
+
+        stats.mem_align_write(first_loop_dst64, loop_count);
+        // add information about other machines to demostrate operation
+        stats.add_extras(&[
+            (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
+            (ZiskOp::_DMA_POST, (post_count > 0) as usize),
+            (ZiskOp::_DMA_64_ALIGNED, loop_count),
+        ]);
+    }
 }

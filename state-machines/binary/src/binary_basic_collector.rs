@@ -2,21 +2,21 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use std::collections::VecDeque;
-
 use crate::{BinaryBasicFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, MemCollectorInfo, OperationBusData, A, B,
-    OP, OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
+    OPERATION_BUS_ID,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
+use fields::PrimeField64;
+use pil_std_lib::Std;
+use std::sync::Arc;
+
 /// The `BinaryBasicCollector` struct represents an input collector for binary-related operations.
-pub struct BinaryBasicCollector {
+pub struct BinaryBasicCollector<F: PrimeField64> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
-    /// Collected rows for FROPS
-    pub frops_inputs: Vec<u32>,
 
     pub num_operations: usize,
 
@@ -27,9 +27,15 @@ pub struct BinaryBasicCollector {
 
     /// Flag to indicate that force to execute to end of chunk
     force_execute_to_end: bool,
+
+    /// The table ID for the Binary FROPS
+    frops_table_id: usize,
+
+    /// Standard library instance, providing common functionalities.
+    std: Arc<Std<F>>,
 }
 
-impl BinaryBasicCollector {
+impl<F: PrimeField64> BinaryBasicCollector<F> {
     /// Creates a new `BinaryBasicCollector`.
     ///
     /// # Arguments
@@ -40,23 +46,26 @@ impl BinaryBasicCollector {
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
     pub fn new(
         num_operations: usize,
-        num_freq_ops: usize,
         collect_skipper: CollectSkipper,
         with_adds: bool,
         force_execute_to_end: bool,
+        std: Arc<Std<F>>,
     ) -> Self {
+        let frops_table_id = std
+            .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
+            .expect("Failed to get FROPS table ID");
+
         Self {
             inputs: Vec::with_capacity(num_operations),
             num_operations,
             collect_skipper,
             with_adds,
-            frops_inputs: Vec::with_capacity(num_freq_ops),
             force_execute_to_end,
+            frops_table_id,
+            std,
         }
     }
-}
 
-impl BusDevice<u64> for BinaryBasicCollector {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -68,13 +77,7 @@ impl BusDevice<u64> for BinaryBasicCollector {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
         let instance_complete = self.inputs.len() == self.num_operations;
 
@@ -102,7 +105,7 @@ impl BusDevice<u64> for BinaryBasicCollector {
         }
 
         if frops_row != BinaryBasicFrops::NO_FROPS {
-            self.frops_inputs.push(frops_row as u32);
+            self.std.inc_virtual_row(self.frops_table_id, frops_row as u64, 1);
             return true;
         }
 
@@ -114,15 +117,9 @@ impl BusDevice<u64> for BinaryBasicCollector {
 
         self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
+}
 
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
+impl<F: PrimeField64> BusDevice<u64> for BinaryBasicCollector<F> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

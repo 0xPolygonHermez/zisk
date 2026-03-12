@@ -6,7 +6,7 @@ use std::{
     any::Any,
     fmt::Debug,
     ops::{Add, AddAssign},
-    sync::{atomic::AtomicU32, Arc},
+    sync::{atomic::AtomicU64, Arc},
 };
 
 use zisk_core::{ROM_ADDR, ROM_ENTRY};
@@ -94,10 +94,10 @@ impl AddAssign<&Counter> for Counter {
 #[derive(Debug)]
 pub struct CounterStats {
     /// Shared biod instruction counter for monitoring ROM operations.
-    pub bios_inst_count: Arc<Vec<AtomicU32>>,
+    pub bios_inst_count: Arc<Vec<AtomicU64>>,
 
     /// Shared program instruction counter for monitoring ROM operations.
-    pub prog_inst_count: Arc<Vec<AtomicU32>>,
+    pub prog_inst_count: Arc<Vec<AtomicU64>>,
 
     /// The PC of the last executed instruction.
     pub end_pc: u64,
@@ -107,7 +107,7 @@ pub struct CounterStats {
 }
 
 impl CounterStats {
-    pub fn new(entry_inst_count: Arc<Vec<AtomicU32>>, inst_count: Arc<Vec<AtomicU32>>) -> Self {
+    pub fn new(entry_inst_count: Arc<Vec<AtomicU64>>, inst_count: Arc<Vec<AtomicU64>>) -> Self {
         CounterStats {
             bios_inst_count: entry_inst_count,
             prog_inst_count: inst_count,
@@ -124,7 +124,7 @@ impl CounterStats {
     /// * `num` - The number of instructions executed at the given PC.
     /// * `end` - A flag indicating if this is the final instruction in the execution.
     #[inline(always)]
-    pub fn update(&mut self, pc: u64, step: u64, num: u32, end: bool) {
+    pub fn update(&mut self, pc: u64, step: u64, num: u64, end: bool) {
         if pc < ROM_ADDR {
             let addr = ((pc - ROM_ENTRY) as usize) >> 2;
             self.bios_inst_count[addr].fetch_add(num, std::sync::atomic::Ordering::Relaxed);

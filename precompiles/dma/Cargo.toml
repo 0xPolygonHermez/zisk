@@ -1,0 +1,39 @@
+[package]
+name = "precomp-dma"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
+zisk-pil = { workspace = true }
+precompiles-common = { workspace = true }
+precompiles-helpers = { workspace = true }
+sm-mem = { workspace = true }
+mem-common = { workspace = true }
+lib-c = { workspace = true }
+
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+proofman-macros = { workspace = true }
+proofman-util = { workspace = true }
+pil-std-lib = { workspace = true }
+fields = { workspace=true }
+tracing = { workspace = true }
+rayon = { workspace = true }
+generic-array = "0.14"
+
+[features]
+default = []
+dma_memcmp = []
+debug_dma = []
+save_dma_collectors = []
+save_dma_inputs = []
+save_dma_plans = []
+debug_dma_gen_mem_inputs = []
+gpu = ["packed"]
+packed = []

@@ -1,23 +1,10 @@
-use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
+use zisk_common::{EmuTrace, ExecutorStatsHandle};
 
 use std::ffi::c_void;
 use std::fmt::Debug;
 use std::sync::Arc;
 
 use anyhow::Result;
-pub trait Task: Send + Sync + 'static {
-    type Output: Send + 'static;
-    fn execute(self) -> Self::Output;
-}
-
-pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, Arc<EmuTrace>) -> T + Send + Sync + 'a>;
-
-#[derive(Debug)]
-pub enum MinimalTraces {
-    None,
-    EmuTrace(Vec<EmuTrace>),
-    AsmEmuTrace(AsmRunnerMT),
-}
 
 pub struct PreloadedMT {}
 
@@ -38,16 +25,16 @@ impl AsmRunnerMT {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn run_and_count<T: Task>(
+    pub fn run_and_count<F: FnMut(usize, Arc<EmuTrace>)>(
         _: &mut PreloadedMT,
         _: u64,
         _: u64,
-        _: TaskFactory<T>,
+        _: F,
         _: i32,
         _: i32,
         _: Option<u16>,
         _: ExecutorStatsHandle,
-    ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
+    ) -> Result<Vec<Arc<EmuTrace>>> {
         Err(anyhow::anyhow!("AsmRunnerMT::run_and_count() is not supported on this platform. Only Linux x86_64 is supported."))
     }
 }

@@ -6,17 +6,18 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
-use proofman::ContributionsInfo;
+use proofman::{ContributionsInfo, ProvePhaseInputs, WitnessInfo};
+use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Display},
     ops::Range,
-    path::PathBuf,
 };
 use tracing::error;
+use zisk_common::ZiskExecutorTime;
 
-use crate::{InputModeDto, InputSourceDto};
+use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto};
 
 /// Job ID wrapper for type safety
 #[derive(
@@ -240,27 +241,34 @@ impl Debug for JobStats {
 pub struct Job {
     pub job_id: JobId,
     pub start_times: HashMap<JobPhase, DateTime<Utc>>,
+    pub task_received_time: Option<DateTime<Utc>>,
     pub duration_ms: Option<u64>,
     pub state: JobState,
     pub data_id: DataId,
-    pub input_mode: InputModeDto,
+    pub inputs_mode: InputsModeDto,
+    pub hints_mode: HintsModeDto,
     pub compute_capacity: ComputeCapacity,
+    pub minimal_compute_capacity: ComputeCapacity,
     pub workers: Vec<WorkerId>,
     pub agg_worker_id: Option<WorkerId>,
     pub partitions: Vec<Vec<u32>>,
     pub results: HashMap<JobPhase, HashMap<WorkerId, JobResult>>,
     pub stats: HashMap<JobPhase, JobStats>,
     pub challenges: Option<Vec<ContributionsInfo>>,
+    pub witness_info: Option<WitnessInfo>,
     pub execution_mode: JobExecutionMode,
     pub final_proof: Option<Vec<u64>>,
     pub executed_steps: Option<u64>,
 }
 
 impl Job {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         data_id: DataId,
-        input_mode: InputModeDto,
+        inputs_mode: InputsModeDto,
+        hints_mode: HintsModeDto,
         compute_capacity: ComputeCapacity,
+        minimal_compute_capacity: ComputeCapacity,
         selected_workers: Vec<WorkerId>,
         partitions: Vec<Vec<u32>>,
         execution_mode: JobExecutionMode,
@@ -271,14 +279,18 @@ impl Job {
             duration_ms: None,
             state: JobState::Created,
             data_id,
-            input_mode,
+            inputs_mode,
+            hints_mode,
             compute_capacity,
+            minimal_compute_capacity,
             workers: selected_workers,
             agg_worker_id: None,
             partitions,
             results: HashMap::new(),
             stats: HashMap::new(),
+            task_received_time: None,
             challenges: None,
+            witness_info: None,
             execution_mode,
             final_proof: None,
             executed_steps: None,
@@ -379,8 +391,16 @@ pub struct AggProofData {
 }
 
 #[derive(Debug, Clone)]
+pub struct ContributionsResult {
+    pub challenges: Vec<ContributionsInfo>,
+    pub witness_info: WitnessInfo,
+    pub zisk_executor_time: ZiskExecutorTime,
+    pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Clone)]
 pub enum JobResultData {
-    Challenges(Vec<ContributionsInfo>),
+    Challenges(ContributionsResult),
     AggProofs(Vec<AggProofData>),
 }
 
@@ -395,6 +415,7 @@ pub struct JobResult {
 pub struct DataCtx {
     pub data_id: DataId,
     pub input_source: InputSourceDto,
+    pub hints_source: HintsSourceDto,
 }
 
 #[repr(u8)]
@@ -403,6 +424,8 @@ pub enum JobPhase {
     Contributions,
     Prove,
     Aggregate,
+    ContributionsInputsStream,
+    ContributionsHintsStream,
 }
 
 impl TryFrom<u8> for JobPhase {
@@ -413,6 +436,8 @@ impl TryFrom<u8> for JobPhase {
             0 => Ok(JobPhase::Contributions),
             1 => Ok(JobPhase::Prove),
             2 => Ok(JobPhase::Aggregate),
+            3 => Ok(JobPhase::ContributionsInputsStream),
+            4 => Ok(JobPhase::ContributionsHintsStream),
             _ => Err(anyhow::anyhow!("Invalid JobPhase byte: {}", value)),
         }
     }
@@ -424,6 +449,8 @@ impl fmt::Display for JobPhase {
             JobPhase::Contributions => write!(f, "Contributions"),
             JobPhase::Prove => write!(f, "Prove"),
             JobPhase::Aggregate => write!(f, "Aggregate"),
+            JobPhase::ContributionsInputsStream => write!(f, "ContributionsInputsStream"),
+            JobPhase::ContributionsHintsStream => write!(f, "ContributionsHintsStream"),
         }
     }
 }
@@ -438,13 +465,35 @@ pub struct AggregationParams {
     pub agg_proofs: Vec<AggProofData>,
     pub last_proof: bool,
     pub final_proof: bool,
-    pub verify_constraints: bool,
-    pub aggregation: bool,
-    pub rma: bool,
-    pub final_snark: bool,
-    pub verify_proofs: bool,
-    pub save_proofs: bool,
-    pub test_mode: bool,
-    pub output_dir_path: PathBuf,
-    pub minimal_memory: bool,
+    pub compressed: bool,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct PartitionInfo {
+    pub total_compute_units: usize,
+    pub allocation: Vec<u32>,
+    pub worker_idx: usize,
+}
+
+/// Message structures for MPI broadcast to ensure type safety
+#[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
+pub struct ContributionsMessage {
+    pub job_id: JobId,
+    pub phase_inputs: ProvePhaseInputs,
+    pub options: ProofOptions,
+    pub input_source: InputSourceDto,
+    pub hints_source: HintsSourceDto,
+    pub partition_info: PartitionInfo,
+}
+
+#[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
+pub struct ProveMessage {
+    pub job_id: JobId,
+    pub phase_inputs: ProvePhaseInputs,
+    pub options: ProofOptions,
+}
+
+#[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
+pub struct StreamMessage {
+    pub data: Vec<u64>,
 }

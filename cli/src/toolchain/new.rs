@@ -19,14 +19,20 @@ impl NewCmd {
         }
 
         // Clone the repository.
-        let output = Command::new("git")
-            .arg("clone")
+        let mut cmd = Command::new("git");
+        cmd.arg("clone")
             .arg(repo_url)
             .arg(root.as_os_str())
             .arg("--recurse-submodules")
-            .arg("--depth=1")
-            .output()
-            .expect("failed to execute command");
+            .arg("--depth=1");
+
+        // Check if ZISK_TEMPLATE_BRANCH environment variable is set, and if so, use it as the branch to clone.
+        if let Ok(branch) = std::env::var("ZISK_TEMPLATE_BRANCH") {
+            cmd.arg("--branch").arg(&branch);
+        }
+
+        let output = cmd.output().expect("failed to execute command");
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(anyhow::anyhow!("failed to clone repository: {}", stderr));

@@ -6,7 +6,19 @@ use zisk_build::RUSTUP_TOOLCHAIN_NAME;
 
 #[derive(Parser)]
 #[command(name = "build-toolchain", about = "Build the cargo-zisk toolchain.")]
-pub struct BuildToolchainCmd {}
+pub struct BuildToolchainCmd {
+    /// Name for the toolchain in rustup
+    #[arg(short, long)]
+    name: Option<String>,
+
+    /// Git branch to checkout (default: zisk)
+    #[arg(short, long)]
+    branch: Option<String>,
+
+    /// Git tag to checkout (takes precedence over branch)
+    #[arg(short, long)]
+    tag: Option<String>,
+}
 
 impl BuildToolchainCmd {
     pub fn run(&self) -> Result<()> {
@@ -26,7 +38,15 @@ impl BuildToolchainCmd {
                 }
 
                 println!("No ZISK_BUILD_DIR detected, cloning rust.");
-                let repo_url = "https://{}@github.com/0xPolygonHermez/rust";
+                let repo_url = "https://github.com/0xPolygonHermez/rust";
+
+                // Determine the ref to checkout: tag takes precedence over branch
+                let git_ref = self
+                    .tag
+                    .as_ref()
+                    .or(self.branch.as_ref())
+                    .map(|s| s.as_str())
+                    .unwrap_or("zisk");
 
                 Command::new("git")
                     .args([
@@ -34,12 +54,50 @@ impl BuildToolchainCmd {
                         repo_url,
                         "--depth=1",
                         "--single-branch",
-                        "--branch=zisk",
+                        &format!("--branch={}", git_ref),
                         "zisk-rust",
                     ])
                     .current_dir(&temp_dir)
                     .run()?;
                 Command::new("git").args(["reset", "--hard"]).current_dir(&dir).run()?;
+
+                #[cfg(feature = "custom_rust_llvm")]
+                // Initialize submodules EXCEPT llvm-project
+                // llvm-project will be initialized by the bootstrap system which will also
+                // apply patches from src/llvm-patches/ automatically
+                let submodules_to_init = [
+                    "library/backtrace",
+                    "library/stdarch",
+                    "src/doc/book",
+                    "src/doc/edition-guide",
+                    "src/doc/embedded-book",
+                    "src/doc/nomicon",
+                    "src/doc/reference",
+                    "src/doc/rust-by-example",
+                    "src/gcc",
+                    "src/tools/cargo",
+                    "src/tools/enzyme",
+                    "src/tools/rustc-perf",
+                ];
+
+                #[cfg(feature = "custom_rust_llvm")]
+                for submodule in &submodules_to_init {
+                    println!("Initializing submodule: {}", submodule);
+                    Command::new("git")
+                        .args([
+                            "submodule",
+                            "update",
+                            "--init",
+                            "--recursive",
+                            "--progress",
+                            "--",
+                            submodule,
+                        ])
+                        .current_dir(&dir)
+                        .run()
+                        .ok(); // Ignore errors for optional submodules
+                }
+                #[cfg(not(feature = "custom_rust_llvm"))]
                 Command::new("git")
                     .args(["submodule", "update", "--init", "--recursive", "--progress"])
                     .current_dir(&dir)
@@ -65,6 +123,10 @@ impl BuildToolchainCmd {
             || format!("while creating file {temp_dir:?}/riscv64ima-zisk-zkvm-elf.json"),
         )?;
 
+        // Note: LLVM patches are applied automatically by the bootstrap system
+        // (see src/bootstrap/src/core/build_steps/llvm.rs::apply_llvm_patches)
+        // The patches are located in src/llvm-patches/*.patch
+
         // Build the toolchain.
         Command::new("python3")
             .env("RUST_TARGET_PATH", &temp_dir)
@@ -83,8 +145,9 @@ impl BuildToolchainCmd {
             .run()
             .with_context(|| "while building the Rust toolchain")?;
 
+        let rustup_toolchain_name = self.name.as_deref().unwrap_or(RUSTUP_TOOLCHAIN_NAME);
         // Remove the existing toolchain from rustup, if it exists.
-        match Command::new("rustup").args(["toolchain", "remove", RUSTUP_TOOLCHAIN_NAME]).run() {
+        match Command::new("rustup").args(["toolchain", "remove", rustup_toolchain_name]).run() {
             Ok(_) => println!("Successfully removed existing toolchain."),
             Err(_) => println!("No existing toolchain to remove."),
         }
@@ -107,7 +170,7 @@ impl BuildToolchainCmd {
 
         // Link the toolchain to rustup.
         Command::new("rustup")
-            .args(["toolchain", "link", RUSTUP_TOOLCHAIN_NAME])
+            .args(["toolchain", "link", rustup_toolchain_name])
             .arg(&toolchain_dir)
             .run()
             .with_context(|| "while linking the toolchain to rustup")?;

@@ -68,7 +68,7 @@ x    in2[x]    out[x][0]     out[x][1]
 Result:        0xFFFF8abc    0xFFFFFFFF
 */
 
-airtemplate BinaryExtension(const int N = 2**18, const int bits = 64, const int operation_bus_id = OPERATION_BUS_ID) {
+airtemplate BinaryExtension(const int N = 2**18, const int bits = 64) {
     if (bits != 64) {
         error(`Currently only bits=64 is supported, got bits=${bits}`);
     }
@@ -115,20 +115,10 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64, const int 
 
     // if op_is_shift == 1 => [op, a[0],  a[1], free_in_b + 256 * b[0], b[1], sum(free_in_c[*][0]), sum(free_in_c[*][1]), 0]
     // if op_is_shift == 0 => [op, b[0],  b[1], a[0],                   a[1], sum(free_in_c[*][0]), sum(free_in_c[*][1]), 0]
-    lookup_proves(
-        operation_bus_id,
-        [
-            op,
-            op_is_shift * (a[0] - b[0]) + b[0],
-            op_is_shift * (a[1] - b[1]) + b[1],
-            op_is_shift * (free_in_b + BYTE_BASE * b[0] - a[0]) + a[0],
-            op_is_shift * (b[1] - a[1]) + a[1],
-            c[0],
-            c[1],
-            0
-        ]
-    );
+    proves_operation(op:, a: [op_is_shift * (a[0] - b[0]) + b[0],  op_is_shift * (a[1] - b[1]) + b[1]],
+                          b: [op_is_shift * (free_in_b + BYTE_BASE * b[0] - a[0]) + a[0], op_is_shift * (b[1] - a[1]) + a[1]],
+                          c:);
 
     airval padding_size;
-    direct_update_assumes(operation_bus_id, [OP_SEXT_B, 0, 0, 0, 0, 0, 0, 0], sel: padding_size);
+    assumes_padding_operation(op: OP_SEXT_B, padding_size:);
 }

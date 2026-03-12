@@ -2,6 +2,7 @@ use libc::{
     c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, S_IRUSR,
     S_IWUSR,
 };
+use proofman_common::format_bytes;
 use std::{
     ffi::CString,
     fmt::Debug,
@@ -10,13 +11,9 @@ use std::{
     ptr,
     sync::atomic::{fence, Ordering},
 };
-use tracing::debug;
-use zisk_common::io::{ZiskIO, ZiskStdin};
+use tracing::info;
 
-use anyhow::anyhow;
-use anyhow::Result;
-
-use crate::{AsmInputC2, AsmService, AsmServices, SharedMemoryWriter};
+use anyhow::{anyhow, Result};
 
 pub enum AsmSharedMemoryMode {
     ReadOnly,
@@ -216,7 +213,12 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
             return Ok(false);
         }
 
-        debug!("Remapping shared memory {} to new size: {}", self.shmem_name, read_mapped_size);
+        info!(
+            "Remapping shared memory {}: {} => {}",
+            self.shmem_name,
+            format_bytes(self.mapped_size as f64),
+            format_bytes(read_mapped_size as f64)
+        );
 
         let offset = (*current_read_ptr as usize).wrapping_sub(self.mapped_ptr as usize);
 
@@ -271,26 +273,10 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         // Skip the header size to get the data pointer
         unsafe { self.mapped_ptr.add(size_of::<H>()) }
     }
-
-    pub fn shmem_input_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-        format!("{}_{}_input", AsmServices::shmem_prefix(port, local_rank), asm_service.as_str())
-    }
-
-    pub fn shmem_output_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-        format!("{}_{}_output", AsmServices::shmem_prefix(port, local_rank), asm_service.as_str())
-    }
-
-    pub fn shmem_chunk_done_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-        format!(
-            "/{}_{}_chunk_done",
-            AsmServices::shmem_prefix(port, local_rank),
-            asm_service.as_str()
-        )
-    }
 }
 
 pub fn open_shmem(name: &str, flags: i32, mode: u32) -> Result<i32> {
-    let c_name = CString::new(name).expect("CString::new failed");
+    let c_name = CString::new(name)?;
     let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
 
     if fd == -1 {
@@ -343,19 +329,4 @@ pub unsafe fn unmap(ptr: *mut c_void, size: usize) {
     if munmap(ptr, size) != 0 {
         tracing::error!("munmap failed: {:?}", io::Error::last_os_error());
     }
-}
-
-pub fn write_input(stdin: &mut ZiskStdin, shmem_input_writer: &SharedMemoryWriter) {
-    let inputs = stdin.read();
-    let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
-    let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
-
-    let mut full_input = Vec::with_capacity(shmem_input_size);
-    full_input.extend_from_slice(&asm_input.to_bytes());
-    full_input.extend_from_slice(&inputs);
-    while full_input.len() < shmem_input_size {
-        full_input.push(0);
-    }
-
-    shmem_input_writer.write_input(&full_input).expect("Failed to write input to shared memory");
 }

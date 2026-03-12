@@ -24,6 +24,7 @@ SECTIONS
         *(.text)
     } > ROM
     
+    . = ALIGN(8);
     .rodata : {
         *(.rodata)
     } > ROM

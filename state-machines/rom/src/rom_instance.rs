@@ -2,23 +2,17 @@
 //!
 //! It is responsible for computing witnesses for ROM-related execution plans,
 
-use std::{
-    collections::VecDeque,
-    sync::{
-        atomic::{AtomicBool, AtomicU32},
-        Arc,
-    },
-    thread::JoinHandle,
-};
+use std::sync::{atomic::AtomicU64, Arc};
 
 use crate::{rom_counter::RomCounter, RomSM};
 use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::sync::Mutex;
+use zisk_common::StatsType;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
-    InstanceType, MemCollectorInfo, Metrics, PayloadType, ROM_BUS_ID,
+    InstanceType, Metrics, PayloadType, ROM_BUS_ID,
 };
 use zisk_core::ZiskRom;
 
@@ -35,21 +29,19 @@ pub struct RomInstance {
     ictx: InstanceCtx,
 
     /// Shared biod instruction counter for monitoring ROM operations.
-    bios_inst_count: Mutex<Arc<Vec<AtomicU32>>>,
+    bios_inst_count: Mutex<Arc<Vec<AtomicU64>>>,
 
     /// Shared program instruction counter for monitoring ROM operations.
-    prog_inst_count: Mutex<Arc<Vec<AtomicU32>>>,
+    prog_inst_count: Mutex<Arc<Vec<AtomicU64>>>,
 
     /// Execution statistics counter for ROM instructions.
     counter_stats: Mutex<Option<CounterStats>>,
 
-    /// Optional handle for the ROM assembly runner thread.
-    handle_rh: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
+    /// Rom Histogram data from the assembly runner thread.
+    rh_data: Mutex<Option<AsmRunnerRH>>,
 
     /// Cached result from the assembly runner thread.
     asm_result: Mutex<Option<AsmRunnerRH>>,
-
-    calculated: AtomicBool,
 }
 
 impl RomInstance {
@@ -64,9 +56,9 @@ impl RomInstance {
     pub fn new(
         zisk_rom: Arc<ZiskRom>,
         ictx: InstanceCtx,
-        bios_inst_count: Arc<Vec<AtomicU32>>,
-        prog_inst_count: Arc<Vec<AtomicU32>>,
-        handle_rh: Option<JoinHandle<AsmRunnerRH>>,
+        bios_inst_count: Arc<Vec<AtomicU64>>,
+        prog_inst_count: Arc<Vec<AtomicU64>>,
+        rh_data: Option<AsmRunnerRH>,
     ) -> Self {
         Self {
             zisk_rom,
@@ -74,9 +66,8 @@ impl RomInstance {
             bios_inst_count: Mutex::new(bios_inst_count),
             prog_inst_count: Mutex::new(prog_inst_count),
             counter_stats: Mutex::new(None),
-            handle_rh: Mutex::new(handle_rh),
+            rh_data: Mutex::new(rh_data),
             asm_result: Mutex::new(None),
-            calculated: AtomicBool::new(false),
         }
     }
 
@@ -85,7 +76,7 @@ impl RomInstance {
     }
 
     pub fn is_asm_execution(&self) -> bool {
-        self.handle_rh.lock().unwrap().is_some() || self.asm_result.lock().unwrap().is_some()
+        self.rh_data.lock().unwrap().is_some() || self.asm_result.lock().unwrap().is_some()
     }
 
     pub fn build_rom_collector(&self, _chunk_id: ChunkId) -> Option<RomCollector> {
@@ -126,11 +117,9 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         if self.is_asm_execution() {
             // Check if we already have the result cached
             if self.asm_result.lock().unwrap().is_none() {
-                // Join the thread and cache the result
-                let handle_rh = self.handle_rh.lock().unwrap().take().unwrap();
-                let result_rh =
-                    handle_rh.join().expect("Error during Rom Histogram thread execution");
-                *self.asm_result.lock().unwrap() = Some(result_rh);
+                // Retrieve the data from the assembly runner
+                let rh_data = self.rh_data.lock().unwrap().take().unwrap();
+                *self.asm_result.lock().unwrap() = Some(rh_data);
             }
 
             // Use the cached result
@@ -172,17 +161,32 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         let air_instance = Some(RomSM::compute_witness(
             &self.zisk_rom,
             self.counter_stats.lock().unwrap().as_ref().unwrap(),
-            &self.calculated,
             trace_buffer,
         )?);
-        self.calculated.store(true, std::sync::atomic::Ordering::Relaxed);
         Ok(air_instance)
     }
 
     fn reset(&self) {
         *self.counter_stats.lock().unwrap() = None;
         *self.asm_result.lock().unwrap() = None;
-        self.calculated.store(false, std::sync::atomic::Ordering::Relaxed);
+
+        let bios_counts = self.bios_inst_count.lock().unwrap().clone();
+        let prog_counts = self.prog_inst_count.lock().unwrap().clone();
+
+        rayon::join(
+            || {
+                use rayon::prelude::*;
+                bios_counts
+                    .par_iter()
+                    .for_each(|i| i.store(0, std::sync::atomic::Ordering::Relaxed));
+            },
+            || {
+                use rayon::prelude::*;
+                prog_counts
+                    .par_iter()
+                    .for_each(|i| i.store(0, std::sync::atomic::Ordering::Relaxed));
+            },
+        );
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -199,6 +203,10 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
     /// An `InstanceType` representing the type of this instance (`InstanceType::Instance`).
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
+    }
+
+    fn stats_type(&self) -> StatsType {
+        StatsType::Memory
     }
 
     /// Builds an input collector for the instance.
@@ -240,15 +248,13 @@ impl RomCollector {
     /// A new `RomCounter` instance.
     pub fn new(
         computed: bool,
-        bios_inst_count: Arc<Vec<AtomicU32>>,
-        prog_inst_count: Arc<Vec<AtomicU32>>,
+        bios_inst_count: Arc<Vec<AtomicU64>>,
+        prog_inst_count: Arc<Vec<AtomicU64>>,
     ) -> Self {
         let rom_counter = RomCounter::new(bios_inst_count, prog_inst_count);
         Self { already_computed: computed, rom_counter }
     }
-}
 
-impl BusDevice<u64> for RomCollector {
     /// Processes data received on the bus, updating ROM metrics.
     ///
     /// # Arguments
@@ -260,13 +266,7 @@ impl BusDevice<u64> for RomCollector {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[u64],
-        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-        _mem_collector_info: Option<&[MemCollectorInfo]>,
-    ) -> bool {
+    pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == ROM_BUS_ID);
 
         if !self.already_computed {
@@ -275,15 +275,9 @@ impl BusDevice<u64> for RomCollector {
 
         true
     }
+}
 
-    /// Returns the bus IDs associated with this counter.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![ROM_BUS_ID]
-    }
-
+impl BusDevice<u64> for RomCollector {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

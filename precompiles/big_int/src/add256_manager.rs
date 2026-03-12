@@ -2,10 +2,7 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use zisk_common::{
-    BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    InstanceInfo, PayloadType, Planner,
-};
+use zisk_common::{BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner};
 use zisk_core::ZiskOperationType;
 #[cfg(not(feature = "packed"))]
 use zisk_pil::Add256Trace;
@@ -38,8 +35,11 @@ impl<F: PrimeField64> Add256Manager<F> {
         Arc::new(Self { add256_sm })
     }
 
-    pub fn build_add256_counter(&self) -> Add256CounterInputGen {
-        Add256CounterInputGen::new(BusDeviceMode::Counter)
+    pub fn build_add256_counter(&self, asm_execution: bool) -> Add256CounterInputGen {
+        match asm_execution {
+            true => Add256CounterInputGen::new(BusDeviceMode::CounterAsm),
+            false => Add256CounterInputGen::new(BusDeviceMode::Counter),
+        }
     }
 
     pub fn build_add256_input_generator(&self) -> Add256CounterInputGen {
@@ -48,14 +48,6 @@ impl<F: PrimeField64> Add256Manager<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for Add256Manager<F> {
-    /// Builds and returns a new counter for monitoring Add256 operations.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RegularCounters` configured for Add256 operations.
-    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
-        Some(Box::new(Add256CounterInputGen::new(BusDeviceMode::Counter)))
-    }
-
     /// Builds a planner to plan Add256-related instances.
     ///
     /// # Returns
@@ -92,9 +84,5 @@ impl<F: PrimeField64> ComponentBuilder<F> for Add256Manager<F> {
                 panic!("Add256Builder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)
             }
         }
-    }
-
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(Add256CounterInputGen::new(BusDeviceMode::InputGenerator)))
     }
 }

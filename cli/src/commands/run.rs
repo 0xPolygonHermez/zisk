@@ -38,6 +38,9 @@ pub struct ZiskRun {
     #[clap(long, short = 'm')]
     metrics: bool,
 
+    #[clap(short = 'f', long)]
+    riscof: bool,
+
     #[clap(last = true)]
     args: Vec<String>,
 }
@@ -72,12 +75,15 @@ impl ZiskRun {
             if self.metrics {
                 extra_command += " -m ";
             }
-            if self.input.is_some() {
-                let path = Path::new(self.input.as_ref().unwrap());
+            if let Some(input) = &self.input {
+                let path = Path::new(input);
                 if !path.exists() {
                     return Err(anyhow!("Input file does not exist at path: {}", path.display()));
                 }
-                input_command = format!("-i {}", self.input.as_ref().unwrap());
+                input_command = format!("-i {}", input);
+            }
+            if self.riscof {
+                extra_command += " -f ";
             }
             runner_command = format!("ziskemu {input_command} {extra_command} -e");
         } else {
@@ -118,8 +124,8 @@ impl ZiskRun {
             qemu-system-riscv64 \
             -cpu rv64 \
             -machine virt \
-            -device loader,file=./{},addr=0x90000000 \
-            -device loader,file=./{},addr=0x90000008 \
+            -device loader,file=./{},addr=0x40000000 \
+            -device loader,file=./{},addr=0x40000008 \
             -m 1G \
             -s \
             {}  \

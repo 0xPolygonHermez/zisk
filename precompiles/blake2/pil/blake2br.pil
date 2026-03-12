@@ -1,0 +1,722 @@
+require "std_constants.pil"
+require "std_lookup.pil"
+require "std_permutation.pil"
+require "std_range_check.pil"
+require "operations.pil"
+require "opids.pil"
+
+// Precompile in charge of performing the BLAKE2b round function. 
+// For reference: https://datatracker.ietf.org/doc/html/rfc7693 or https://www.blake2.net/
+
+// We use little-endian representation
+
+airtemplate Blake2br(const int N = 2**20) {
+    /*
+       ═══════════════════════════════════════════════════════════════════════════
+       BLAKE2B ROUND FUNCTION SPECIFICATION
+       ═══════════════════════════════════════════════════════════════════════════
+       
+       BLAKE2BR(v: [u64; 16], m: [u64; 16], round_idx: u32) -> [u64; 16]
+       
+       Each round consists of 8 G function calls:
+            • 4 Column steps  (G0-G3): Mix columns independently
+            • 4 Diagonal steps (G0-G3): Mix diagonals independently
+
+       Each G function performs 8 sequential operations on 4 u64 values:
+            v[a] := (v[a] + v[b] + x) mod 2⁶⁴
+            v[d] := (v[d] ^ v[a]) >>> 32
+            v[c] := (v[c] + v[d]) mod 2⁶⁴
+            v[b] := (v[b] ^ v[c]) >>> 24
+            v[a] := (v[a] + v[b] + y) mod 2⁶⁴
+            v[d] := (v[d] ^ v[a]) >>> 16
+            v[c] := (v[c] + v[d]) mod 2⁶⁴
+            v[b] := (v[b] ^ v[c]) >>> 63
+
+       Message words x,y selected by SIGMA[round_idx % 10]
+
+       ═══════════════════════════════════════════════════════════════════════════
+       EXECUTION TRACE LAYOUT (24 clocks per round)
+       ═══════════════════════════════════════════════════════════════════════════
+
+       Each G function uses 3 rows:
+            Row 0: Initial state + first message word  (input)
+            Row 1: Intermediate state + second message (intermediate)
+            Row 2: Final state                         (output)
+
+           ROW     va[2]    vb[2][32]    vc[2]    vd[2][32]   ms0[2]        STAGE              
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  0   |  v[0]    |  v[4]    |  v[8]    |  v[12]   | m[s[0]]  |  G1 - COL MIX  | <-- V/M IN
+        |  1   |  v[0]i   |  v[4]i   |  v[8]i   |  v[12]i  | m[s[1]]  |  G1 - COL MIX  | <-- M IN
+        |  2   |  v[0]o   |  v[4]o   |  v[8]o   |  v[12]o  | XXXXXXX  |  G1 - COL MIX  |
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  3   |  v[1]    |  v[5]    |  v[9]    |  v[13]   | m[s[2]]  |  G2 - COL MIX  | <-- V/M IN
+        |  4   |  v[1]i   |  v[5]i   |  v[9]i   |  v[13]i  | m[s[3]]  |  G2 - COL MIX  | <-- M IN
+        |  5   |  v[1]o   |  v[5]o   |  v[9]o   |  v[13]o  | XXXXXXX  |  G2 - COL MIX  |
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  6   |  v[2]    |  v[6]    |  v[10]   |  v[14]   | m[s[4]]  |  G3 - COL MIX  | <-- V/M IN
+        |  7   |  v[2]i   |  v[6]i   |  v[10]i  |  v[14]i  | m[s[5]]  |  G3 - COL MIX  | <-- M IN
+        |  8   |  v[2]o   |  v[6]o   |  v[10]o  |  v[14]o  | XXXXXXX  |  G3 - COL MIX  |
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  9   |  v[3]    |  v[7]    |  v[11]   |  v[15]   | m[s[6]]  |  G4 - COL MIX  | <-- V/M IN
+        |  10  |  v[3]i   |  v[7]i   |  v[11]i  |  v[15]i  | m[s[7]]  |  G4 - COL MIX  | <-- M IN
+        |  11  |  v[3]o   |  v[7]o   |  v[11]o  |  v[15]o  | XXXXXXX  |  G4 - COL MIX  |
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  12  |  v[0]    |  v[5]    |  v[10]   |  v[15]   | m[s[8]]  |  G1 - DIA MIX  | <-- M IN
+        |  13  |  v[0]i   |  v[5]i   |  v[10]i  |  v[15]i  | m[s[9]]  |  G1 - DIA MIX  | <-- M IN
+        |  14  |  v[0]o   |  v[5]o   |  v[10]o  |  v[15]o  | XXXXXXX  |  G1 - DIA MIX  | <-- V OUT
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  15  |  v[1]    |  v[6]    |  v[11]   |  v[12]   | m[s[10]] |  G2 - DIA MIX  | <-- M IN
+        |  16  |  v[1]i   |  v[6]i   |  v[11]i  |  v[12]i  | m[s[11]] |  G2 - DIA MIX  | <-- M IN
+        |  17  |  v[1]o   |  v[6]o   |  v[11]o  |  v[12]o  | XXXXXXXX |  G2 - DIA MIX  | <-- V OUT
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  18  |  v[2]    |  v[7]    |  v[8]    |  v[13]   | m[s[12]] |  G3 - DIA MIX  | <-- M IN
+        |  19  |  v[2]i   |  v[7]i   |  v[8]i   |  v[13]i  | m[s[13]] |  G3 - DIA MIX  | <-- M IN
+        |  20  |  v[2]o   |  v[7]o   |  v[8]o   |  v[13]o  | XXXXXXXX |  G3 - DIA MIX  | <-- V OUT
+        |------|----------|----------|----------|----------|----------|----------------|
+        |  21  |  v[3]    |  v[4]    |  v[9]    |  v[14]   | m[s[14]] |  G4 - DIA MIX  | <-- M IN
+        |  22  |  v[3]i   |  v[4]i   |  v[9]i   |  v[14]i  | m[s[15]] |  G4 - DIA MIX  | <-- M IN
+        |  23  |  v[3]o   |  v[4]o   |  v[9]o   |  v[14]o  | XXXXXXXX |  G4 - DIA MIX  | <-- V OUT
+        |------|----------|----------|----------|----------|----------|----------------|
+    */
+
+    const int CLOCKS_PER_G = 3;
+    const int NUM_G_FUNCTIONS = 8;
+    const int CLOCKS = CLOCKS_PER_G * NUM_G_FUNCTIONS;
+
+    /// Message word permutation schedule
+    const int SIGMA[10][16];
+    SIGMA[0] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    SIGMA[1] = [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3];
+    SIGMA[2] = [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4];
+    SIGMA[3] = [7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8];
+    SIGMA[4] = [9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13];
+    SIGMA[5] = [2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9];
+    SIGMA[6] = [12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11];
+    SIGMA[7] = [13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10];
+    SIGMA[8] = [6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5];
+    SIGMA[9] = [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0];
+
+    // Ensure that the Blake2br fits
+    if (N < 2*CLOCKS) {
+        error(`Blake2br requires N >= ${2*CLOCKS}, got N=${N}`);
+    }
+
+    // Calculate usable capacity
+    const int NUM_NON_USABLE_ROWS = N % CLOCKS;
+    const int NUM_BLAKE2BR;
+    if (NUM_NON_USABLE_ROWS == 0) {
+        NUM_BLAKE2BR = N / CLOCKS;
+    } else {
+        NUM_BLAKE2BR = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1; // The -1 is because CLOCKS is not a divisor of N
+    }
+    println(`Blake2br capacity: ${NUM_BLAKE2BR} rounds (N=${N})`);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CLOCK SELECTORS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Base clock: 1 at row 0, 0 elsewhere within each 24-row cycle
+    col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_BLAKE2BR, 0...];
+
+    // Clock selectors for each row in the cycle
+    const expr CLK[CLOCKS];
+    for (int i = 0; i < CLOCKS; i++) {
+        CLK[i] = (i)'CLK_0;
+    }
+
+    col witness bits(1) in_use;
+
+    in_use * (1 - in_use) === 0;
+
+    // Selector latching: once activated, stays active for full cycle
+    const expr in_use_latched = clock_set(start: 1, end: CLOCKS);
+    in_use_latched * (in_use - 'in_use) === 0;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ROUND INDEX AND SIGMA PERMUTATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // 1] Start by deriving m[SIGMA[round_idx][off + 2*i]], m[SIGMA[round_idx][off + 2*i + 1]]
+
+    // Round index (0-9, determines which SIGMA row to use)
+    col witness bits(4) round_idx;
+    
+    // Round index is constant within a round
+    (1 - CLK_0) * (round_idx - 'round_idx) === 0;
+
+    // One-hot encoding for round index selection
+    col witness bits(1) round_idx_sel[10];
+
+    expr sum_sel = 0;
+    expr sum_weighted_sel = 0;
+    for (int i = 0; i < 10; i++) {
+        // Selectors are bits
+        round_idx_sel[i] * (round_idx_sel[i] - 1) === 0;
+
+        // Add all selectors
+        sum_sel += round_idx_sel[i];
+
+        // Add weighted selectors to compute round_idx
+        sum_weighted_sel += round_idx_sel[i] * i;
+    }
+    sum_sel * (sum_sel - 1) === 0;  // At most one of the round_idx_sel is active
+    round_idx === sum_weighted_sel; // Check that round_idx is the index of the active round_idx_sel
+                                    // Moreover, this ensures that round_idx is in [0,10)
+                                    // Since round_idx is fixed within the cycle, all round_idx_sel are fixed as well
+
+    // Compute permuted message index: SIGMA[round_idx] = ∑ᵢ round_idx_sel[i]·SIGMA[i]
+    col witness bits(4) sigma_idx;
+    expr sigma_idx_expr = 0;
+    for (int j = 0; j < 10; j++) {
+        expr sigma_sum = 0;
+        int msg_pos = 0;
+        for (int k = 0; k < CLOCKS; k++) {
+            // Skip output rows (no message word needed)
+            if (k > 0 && k % CLOCKS_PER_G == (CLOCKS_PER_G - 1)) {
+                continue;
+            }
+            sigma_sum += CLK[k] * SIGMA[j][msg_pos];
+            msg_pos++;
+        }
+        sigma_idx_expr += round_idx_sel[j] * sigma_sum;
+    }
+    sigma_idx <== sigma_idx_expr;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MESSAGE WORDS (m and ms)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Message index for permutation
+    col fixed MSG_IDX = [0, 1, 0, 2, 3, 0, 4, 5, 0, 6, 7, 0,
+                         8, 9, 0, 10, 11, 0, 12, 13, 0, 14, 15, 0]...;
+
+    // Original message words (16-bit limbs for range checking)
+    col witness bits(16) m_limbs[2][2];
+    const expr m[2] = [m_limbs[0][0] + P2_16 * m_limbs[0][1], m_limbs[1][0] + P2_16 * m_limbs[1][1]];
+
+    // Range check message limbs
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            range_check(expression: m_limbs[i][j], min: 0, max: P2_16 - 1);
+        }
+    }
+
+    // Permuted message words (selected by sigma_idx)
+    col witness bits(32) ms[2];
+
+    // Permutation: map message index -> permuted message
+    // Perform the permutation
+    col witness bits(1) perm_active;
+    const expr perm_active_expr = clock_set(in_use, start: 0, end: CLOCKS - NUM_G_FUNCTIONS, step: 2, skip: 1);
+    perm_active <== perm_active_expr;
+
+    permutation_assumes(opid: BLAKE2BR_PERMUTATION_ID, expressions: [MSG_IDX, m[0], m[1]], sel: perm_active);
+    permutation_proves(opid: BLAKE2BR_PERMUTATION_ID, expressions: [sigma_idx, ms[0], ms[1]], sel: perm_active);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // G-FUNCTION STATE VARIABLES
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // G-function active selector (every 3 rows, skipping output rows)
+    col witness bits(1) g_active;
+    const expr g_active_expr = clock_set(in_use, start: 0, end: CLOCKS / CLOCKS_PER_G, step: 1, skip: 2);
+    g_active <== g_active_expr;
+
+    // State variables: va, vb, vc, vd (each 64-bit)
+    // va, vc stored as 16-bit limbs for range checking
+    // vb, vd stored as individual bits for rotation operations
+    col witness bits(16) va_limbs[2][2];
+    col witness bits(16) vc_limbs[2][2];
+    col witness bits(1)  vb[2][32];
+    col witness bits(1)  vd[2][32];
+
+    // Reconstructed 32-bit values
+    const expr va[2] = [va_limbs[0][0] + P2_16 * va_limbs[0][1], va_limbs[1][0] + P2_16 * va_limbs[1][1]];
+    const expr vc[2] = [vc_limbs[0][0] + P2_16 * vc_limbs[0][1], vc_limbs[1][0] + P2_16 * vc_limbs[1][1]];
+
+    // Range check va and vc limbs
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            range_check(expression: va_limbs[i][j], min: 0, max: P2_16 - 1);
+            range_check(expression: vc_limbs[i][j], min: 0, max: P2_16 - 1);
+        }
+    }
+
+    // Bit constraints for vb and vd
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 32; j++) {
+            vb[i][j] * (1 - vb[i][j]) === 0;
+            vd[i][j] * (1 - vd[i][j]) === 0;
+        }
+    }
+
+    // Packed bit representations
+    const expr vb_packed[2] = [pack_bits(vb[0]), pack_bits(vb[1])];
+    const expr vd_packed[2] = [pack_bits(vd[0]), pack_bits(vd[1])];
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // G-FUNCTION INTERMEDIATE AND OUTPUT VALUES
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Intermediate values
+    const expr va_im[2] = [va[0]', va[1]'];
+    const expr vc_im[2] = [vc[0]', vc[1]'];
+    const expr vb_im[2][32];
+    const expr vd_im[2][32];
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 32; j++) {
+            vb_im[i][j] = vb[i][j]';
+            vd_im[i][j] = vd[i][j]';
+        }
+    }
+
+    const expr vb_im_packed[2] = [pack_bits(vb_im[0]), pack_bits(vb_im[1])];
+    const expr vd_im_packed[2] = [pack_bits(vd_im[0]), pack_bits(vd_im[1])];
+
+    // Output values
+    const expr va_out[2] = [va[0]'2, va[1]'2];
+    const expr vc_out[2] = [vc[0]'2, vc[1]'2];
+    const expr vb_out[2][32];
+    const expr vd_out[2][32];
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 32; j++) {
+            vb_out[i][j] = vb[i][j]'2;
+            vd_out[i][j] = vd[i][j]'2;
+        }
+    }
+
+    const expr vd_out_packed[2] = [pack_bits(vd_out[0]), pack_bits(vd_out[1])];
+
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // G-FUNCTION CONSTRAINTS (First Half)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Operations: va' = va + vb + m[0]
+    //             vd' = (vd ^ va') >>> 32 [iff va' == (vd' <<< 32) ^ vd]
+    //             vc' = vc + vd'
+    //             vb' = (vb ^ vc') >>> 24 [iff vc' == (vb' <<< 24) ^ vb]
+
+    add3_check(va_im, va, vb_packed, ms);
+    rotl_xor_check(va_im, vd_im, vd, 32);
+    add2_check(vc_im, vc, vd_im_packed);
+    rotl_xor_check(vc_im, vb_im, vb, 24);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // G-FUNCTION CONSTRAINTS (Second Half)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Operations: va'' = va' + vb' + m[1]
+    //             vd'' = (vd' ^ va'') >>> 16 [va'' == (vd'' <<< 16) ^ vd']
+    //             vc'' = vc' + vd''
+    //             vb'' = (vb' ^ vc'') >>> 63 [vc'' == (vb'' <<< 63) ^ vb']
+
+    const expr ms_next[2] = [ms[0]', ms[1]'];
+    add3_check(va_out, va_im, vb_im_packed, ms_next);
+    rotl_xor_check(va_out, vd_out, vd_im, 16);
+    add2_check(vc_out, vc_im, vd_out_packed);
+    rotl_xor_check(vc_out, vb_out, vb_im, 63);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // COLUMN-TO-DIAGONAL TRANSITION CONSTRAINTS
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Ensure diagonal mixing inputs match column mixing outputs
+
+    // va: diagonal inputs come from column outputs at specific offsets
+    (CLK[12] + CLK[15] + CLK[18] + CLK[21]) * (va[0] - 10'va[0]) === 0;
+
+    // vb: different routing for each diagonal
+    (CLK[12] + CLK[15] + CLK[18]) * (vb_packed[0] - 7'vb_packed[0]) === 0;
+    CLK[21] * (vb_packed[0] - 19'vb_packed[0]) === 0;
+
+    // vc: pairs have same routing
+    (CLK[12] + CLK[15]) * (vc[0] - 4'vc[0]) === 0;
+    (CLK[18] + CLK[21]) * (vc[0] - 16'vc[0]) === 0;
+
+    // vd: first diagonal different from rest
+    (CLK[12]) * (vd_packed[0] - 'vd_packed[0]) === 0;
+    (CLK[15] + CLK[18] + CLK[21]) * (vd_packed[0] - 13'vd_packed[0]) === 0;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MEMORY INTERFACE
+    // ═══════════════════════════════════════════════════════════════════════════
+    //
+    // MEMORY ACCESS MAP
+    // =========================================================
+    //   0 | STEP_MAIN     | R | ADDR_STATE       |  state[0]
+    //     | ...           |   | ...              |  ...      
+    //  15 | STEP_MAIN     | R | ADDR_STATE + 120 |  state[15] 
+    //  16 | STEP_MAIN     | R | ADDR_INPUT       |  input[0]
+    //     | ...           |   | ...              |  ...    
+    //  31 | STEP_MAIN     | R | ADDR_INPUT + 120 |  input[15] 
+    //  32 | STEP_MAIN + 1 | W | ADDR_STATE       |  state[0]
+    //     | ...           |   | ...              |  ...    
+    //  47 | STEP_MAIN + 1 | W | ADDR_STATE + 120 |  state[15]
+    //  48 | STEP_MAIN     | R | ADDR_OP          |  index
+    //  49 | STEP_MAIN     | R | ADDR_OP + 8      |  ADDR_IND_0
+    //  50 | STEP_MAIN     | R | ADDR_OP + 16     |  ADDR_IND_1
+    // =========================================================
+    // 
+    // Memory Access Schedule (51 total operations, 4 in parallel):
+    //   Slots 0-3:  Read state[0..15]     (16 ops)
+    //   Slots 4-7:  Read input[0..15]     (16 ops)
+    //   Slots 8-11: Write state'[0..15]   (16 ops)
+    //   Slot 12:    Read index, addr_ind_0, addr_ind_1 (3 ops)
+    //
+    // Address indirection:
+    //   - addr_state is read from addr_op + 8
+    //   - addr_input is read from addr_op + 16
+    //   - Both must match the actual memory addresses used
+
+    col witness bits(40) step_addr;
+
+    const int STEP_MAIN = 0;
+    const int ADDR_OP = STEP_MAIN + 1;
+    const int ADDR_STATE = ADDR_OP + 1;
+    const int ADDR_INPUT = ADDR_STATE + 1;
+    const int ADDR_IND_0 = ADDR_INPUT + 1;
+    const int ADDR_IND_1 = ADDR_IND_0 + 1;
+
+    // Verify address indirections match
+    clock_eq(step_addr, ADDR_STATE, ADDR_IND_0) === 0;
+    clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
+
+    // Memory operation counts
+    const int NUM_STATE_WORDS = 16;
+    const int NUM_INPUT_WORDS = 16;
+    const int NUM_PARALLEL_MEM_OPS = 4;
+    const int WORD_SIZE = 8; // bytes per u64
+    
+    const int CLOCKS_READ_STATE = NUM_STATE_WORDS / NUM_PARALLEL_MEM_OPS;
+    const int CLOCKS_READ_INPUT = NUM_INPUT_WORDS / NUM_PARALLEL_MEM_OPS;
+    const int CLOCKS_WRITE_STATE = NUM_STATE_WORDS / NUM_PARALLEL_MEM_OPS;
+
+    // Memory operation configuration
+    const int CLK_SEQ_READ_PARAMS[1] = [2];
+    const int CLK_SEQ_READ_STATE[4] = [0, 3, 6, 9];
+    const int CLK_SEQ_READ_INPUT[4] = [1, 7, 13, 19];
+    const int CLK_SEQ_WRITE_STATE[4] = [14, 17, 20, 23];
+    const int CLK_SEQ_ALL_MEM_OPS[13] = [2, 0, 3, 6, 9, 1, 7, 13, 19, 14, 17, 20, 23]; // All the previous
+
+    expr mem_sel = clock_set_with_seq(in_use, seq: CLK_SEQ_ALL_MEM_OPS);
+    const expr mem_is_write = clock_set_with_seq(seq: CLK_SEQ_WRITE_STATE);
+    const expr main_step = clock_shift_with_seq(step_addr, STEP_MAIN, seq: CLK_SEQ_ALL_MEM_OPS);
+
+    // Generate 4 parallel memory ports
+    const expr clk_read_params = clock_set_with_seq(seq: CLK_SEQ_READ_PARAMS);
+    const expr clk_read_state = clock_set_with_seq(seq: CLK_SEQ_READ_STATE);
+    const expr clk_read_input = clock_set_with_seq(seq: CLK_SEQ_READ_INPUT);
+    const expr clk_write_state = clock_set_with_seq(seq: CLK_SEQ_WRITE_STATE);
+    for (int port = 0; port < NUM_PARALLEL_MEM_OPS; port++) {
+        const expr mem_addr = 
+            // Op structure access: round_idx, ADDR_STATE ptr, ADDR_INPUT ptr
+            clock_shift(step_addr, ADDR_OP,
+                        start: 2,
+                        offset: WORD_SIZE * port,
+                        delta: WORD_SIZE) + 
+            // Read state: ports read state[port], state[port+4], state[port+8], state[port+12]
+            clock_shift(step_addr, ADDR_STATE,
+                        start: 0, end: CLOCKS_READ_STATE,
+                        step: 1, skip: 2,
+                        offset: WORD_SIZE * NUM_PARALLEL_MEM_OPS * port,
+                        delta: WORD_SIZE) +
+            // Read input: ports read input[port*4+0..3] across 4 clocks
+            clock_shift(step_addr, ADDR_INPUT,
+                        start: 1, end: 1 + CLOCKS_READ_INPUT,
+                        step: 1, skip: 5,
+                        offset: WORD_SIZE * port,
+                        delta: WORD_SIZE * NUM_PARALLEL_MEM_OPS) +
+            // Write state: ports write state'[port], state'[port+4], etc.
+            clock_shift(step_addr, ADDR_STATE,  
+                        start: 14, end: 14 + CLOCKS_WRITE_STATE,
+                        step: 1, skip: 2,
+                        offset_shift: port,
+                        offset: WORD_SIZE * NUM_PARALLEL_MEM_OPS * port,
+                        delta: WORD_SIZE);
+
+        // Value calculation for each port
+        expr mem_value[2] = [0, 0];
+        switch (port) {
+            case 0:
+                // Input index
+                mem_value[0] += clk_read_params * round_idx;
+
+                // Input v
+                mem_value[0] += clk_read_state * va[0];
+                mem_value[1] += clk_read_state * va[1];
+
+                // Input m
+                mem_value[0] += clk_read_input * 'm[0];
+                mem_value[1] += clk_read_input * 'm[1];
+
+                // Output v
+                mem_value[0] += clk_write_state * va[0];
+                mem_value[1] += clk_write_state * va[1];
+
+            case 1:
+                // Input addr_ind_0
+                mem_value[0] += clock_shift(step_addr, ADDR_IND_0, 2);
+
+                // Input v
+                mem_value[0] += clk_read_state * vb_packed[0];
+                mem_value[1] += clk_read_state * vb_packed[1];
+
+                // Input m
+                mem_value[0] += clk_read_input * m[0];
+                mem_value[1] += clk_read_input * m[1];
+
+                // Output v
+                mem_value[0] += clk_write_state * vb_packed[0];
+                mem_value[1] += clk_write_state * vb_packed[1];
+
+            case 2:
+                // Input addr_ind_1
+                mem_value[0] += clock_shift(step_addr, ADDR_IND_1, 2);
+
+                // Input v
+                mem_value[0] += clk_read_state * vc[0];
+                mem_value[1] += clk_read_state * vc[1];
+
+                // Input m
+                mem_value[0] += clk_read_input * m[0]'2;
+                mem_value[1] += clk_read_input * m[1]'2;
+
+                // Output v
+                mem_value[0] += clk_write_state * vc[0];
+                mem_value[1] += clk_write_state * vc[1];
+
+            case 3:
+                // Input v
+                mem_value[0] += clk_read_state * vd_packed[0];
+                mem_value[1] += clk_read_state * vd_packed[1];
+
+                // Input m
+                mem_value[0] += clk_read_input * m[0]'3;
+                mem_value[1] += clk_read_input * m[1]'3;
+
+                // Output v
+                mem_value[0] += clk_write_state * vd_packed[0];
+                mem_value[1] += clk_write_state * vd_packed[1];
+
+            default:
+                error(`Unexpected port index: ${port}`);
+        }
+
+        // Port 3 is unused at clock 2 (only 3 ops: round_idx, ADDR_STATE, ADDR_INPUT)
+        if (port == NUM_PARALLEL_MEM_OPS - 1) {
+            mem_sel -= CLK[2] * in_use;
+        }
+
+        precompiled_mem_op(
+            is_write: mem_is_write,
+            sel: mem_sel,
+            main_step: main_step,
+            addr: mem_addr,
+            value: mem_value
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MAIN PROCESSOR INTEGRATION
+    // ═══════════════════════════════════════════════════════════════════════════
+    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Blake2br operation, 0 otherwise
+    in_use_clk_0 <== CLK_0 * in_use;
+
+    proves_operation(op: OP_BLAKE2BR, b: [step_addr'(ADDR_OP), 0], main_step: step_addr'(STEP_MAIN), 
+                     mul: in_use_clk_0);
+
+    function pack_bits(const expr a[]): expr {
+        const int len = length(a);
+        expr packed = 0;
+        for (int j = 0; j < len; j++) {
+            packed += a[j] * 2**j;
+        }
+        return packed;
+    }
+
+    // Checks a == (b + c + d) mod 2⁶⁴
+    // Assumes a,b,c,d are all given as 2 limbs of 32-bits each, i.e., a = a0 + 2³²·a1 < 2⁶⁴
+    // It also assumes that p > 3·2³²
+    //
+    // Adapted on https://github.com/Plonky3/Plonky3/blob/main/air/src/utils.rs#L82
+    function add3_check(const expr a[], const expr b[], const expr c[], const expr d[]): expr[] {
+        assert(length(a) == 2 && length(b) == 2 && length(c) == 2 && length(d) == 2);
+        // a == (b + c + d) mod 2⁶⁴ iff a - b - c - d = 0, -2⁶⁴, -2·2⁶⁴ (over the integers)
+
+        // Since we work over a finite field, we instead check that
+        //   (1) a0 - b0 - c0 - d0 = 0, -2³², -2·2³² (mod p)
+        //   (2) a - b - c - d = 0, -2⁶⁴, -2·2⁶⁴ (mod p)
+
+        // Notice that since p > 2·2³² we have that (1) holds over the integers
+        // Now since a - b - c - d = (a0 - b0 - c0 - d0) + 2³²·(a1 - b1 - c1 - d1),
+        // we have that a - b - c - d = 0 (mod 2³²) (3)
+
+        // Using CRT with (2) and (3) we obtain:
+        //   a - b - c - d = 0, -2⁶⁴, -2·2⁶⁴ (mod 2³²·p) (4)
+        // Now, since a,b,c,d < 2⁶⁴ and 2³²·p > 3·2⁶⁴, we have that (4) holds over the integers
+
+        expr sum_0 = a[0] - b[0] - c[0] - d[0];
+        expr sum_1 = a[1] - b[1] - c[1] - d[1];
+        expr sum = sum_0 + P2_32*sum_1;
+
+        air.g_active * (sum_0 * (sum_0 + P2_32) * (sum_0 + 2*P2_32)) === 0;
+        air.g_active * (sum * (sum + P2_64) * (sum + 2*P2_64)) === 0;
+    }
+
+    // Checks a == (b + c) mod 2⁶⁴
+    // Assumes a,b,c are all given as 2 limbs of 32-bits each, i.e., a = a0 + 2³²·a1 < 2⁶⁴
+    // It also assumes that p > 2·2³²
+    function add2_check(const expr a[], const expr b[], const expr c[]): expr[] {
+        assert(length(a) == 2 && length(b) == 2 && length(c) == 2);
+
+        // a == (b + c) mod 2⁶⁴ iff a - b - c = 0, -2⁶⁴ (over the integers)
+
+        // Since we work over a finite field, we instead check that
+        //   (1) a0 - b0 - c0 = 0, -2³² (mod p)
+        //   (2) a - b - c = 0, -2⁶⁴ (mod p)
+
+        // Notice that since p > 2³² we have that (1) holds over the integers
+        // Now since a - b - c = (a0 - b0 - c0) + 2³²·(a1 - b1 - c1),
+        // we have that a - b - c = 0 (mod 2³²) (3)
+
+        // Using CRT with (2) and (3) we obtain:
+        //   a - b - c = 0, -2⁶⁴ (mod 2³²·p) (4)
+        // Now, since a,b,c < 2⁶⁴ and 2³²·p > 2·2⁶⁴, we have that (4) holds over the integers
+
+        expr sum_0 = a[0] - b[0] - c[0];
+        expr sum_1 = a[1] - b[1] - c[1];
+        expr sum = sum_0 + P2_32*sum_1;
+
+        air.g_active * (sum_0 * (sum_0 + P2_32)) === 0;
+        air.g_active * (sum * (sum + P2_64)) === 0;
+    }
+
+    // Checks a == (b <<< n) ^ c
+    // Assumes a is given as 2 limbs of 32-bits each, i.e., a = a0 + 2³²·a1
+    // Assumes b,c are both given unpacked as 64 bits, i.e., b = b0 + 2·b1 + ... + 2⁶³·b63
+    function rotl_xor_check(const expr a[], const expr b[][], const expr c[][], const int n) {
+        assert(length(a) == 2 && length(b) == 2 && length(c) == 2);
+        assert(length(b[0]) == 32 && length(b[1]) == 32 && length(c[0]) == 32 && length(c[1]) == 32);
+
+        // Unpack b and c into 64-bit arrays
+        expr b_unpacked[64];
+        expr c_unpacked[64];
+        for (int i = 0; i < 32; i++) {
+            b_unpacked[i] = b[0][i];
+            b_unpacked[32 + i] = b[1][i];
+            c_unpacked[i] = c[0][i];
+            c_unpacked[32 + i] = c[1][i];
+        }
+
+        // Rotate
+        expr b_rot[64];
+        for (int i = 0; i < 64; i++) {
+            b_rot[i] = b_unpacked[(i + 64 - n) % 64];
+        }
+
+        // XOR
+        expr xor_result[64];
+        for (int i = 0; i < 64; i++) {
+            xor_result[i] = b_rot[i] + c_unpacked[i] - 2 * b_rot[i] * c_unpacked[i];
+        }
+
+        // Pack into two 32-bit limbs
+        expr packed_low = 0;
+        expr packed_high = 0;
+        for (int i = 0; i < 32; i++) {
+            packed_low += xor_result[i] * 2**i;
+            packed_high += xor_result[32 + i] * 2**i;
+        }
+        
+        // Check equality
+        air.g_active * (a[0] - packed_low) === 0;
+        air.g_active * (a[1] - packed_high) === 0;
+
+        // Notice that these equalities also ensure that a[0], a[1] are range checked
+    }
+
+    function clock_eq(const expr mvcol, int pos1, int pos2): const expr {
+        return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2));
+    }
+
+    function clock_set(const expr mvcol = 1, int start = 0, int end = -1, const int step = 1, const int skip = 0): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start + 1;
+        }
+        
+        int clock_idx = start;
+        int count = 0;
+        int in_group = 0;
+        while (count < end - start) {
+            result += air.CLK[clock_idx];
+            count++;
+            in_group++;
+            clock_idx++;
+            
+            // After 'step' consecutive clocks, skip 'skip' clocks
+            if (skip > 0 && in_group == step) {
+                clock_idx += skip;
+                in_group = 0;
+            }
+        }
+        return result * mvcol;
+    }
+
+    function clock_set_with_seq(const expr mvcol = 1, const int seq[]): const expr {
+        const int len = length(seq);
+        assert(len > 0);
+        
+        expr result = 0;
+        for (int i = 0; i < len; i++) {
+            result += air.CLK[seq[i]];
+        }
+        return result * mvcol;
+    }
+
+    function clock_shift(const expr mvcol, const int pos, const int start = 0, int end = -1, const int step = 1, const int skip = 0, int offset = 0, const int delta = 0, const int offset_shift = 0): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start + 1;
+        }
+        
+        const int num_clocks = end - start;
+
+        int clock_idx = start;
+        int count = 0;
+        int in_group = 0;
+        while (count < num_clocks) {
+            const int col_idx = (pos - clock_idx) % air.CLOCKS;
+            // Compute the shifted offset index: (count + offset_shift) mod num_clocks
+            const int shifted_count = (count + offset_shift) % num_clocks;
+            const int current_offset = offset + delta * shifted_count;
+            
+            if (current_offset != 0) {
+                result += air.CLK[clock_idx] * (mvcol'(col_idx) + current_offset);
+            } else {
+                result += air.CLK[clock_idx] * mvcol'(col_idx);
+            }
+            
+            count++;
+            in_group++;
+            clock_idx++;
+            
+            // After 'step' consecutive clocks, skip 'skip' clocks
+            if (skip > 0 && in_group == step) {
+                clock_idx += skip;
+                in_group = 0;
+            }
+        }
+        return result;
+    }
+
+    function clock_shift_with_seq(const expr mvcol, const int pos, const int seq[]): const expr {
+        const int len = length(seq);
+        assert(len > 0);
+        
+        expr result = 0;
+        for (int i = 0; i < len; i++) {
+            const int col_idx = (pos - seq[i]) % air.CLOCKS;
+            result += air.CLK[seq[i]] * mvcol'(col_idx);
+        }
+        return result;
+    }
+}

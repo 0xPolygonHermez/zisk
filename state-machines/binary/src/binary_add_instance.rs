@@ -6,8 +6,10 @@
 
 use crate::{BinaryAddCollector, BinaryAddSM};
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
+use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
     PayloadType,
@@ -23,10 +25,13 @@ pub struct BinaryAddInstance<F: PrimeField64> {
     binary_add_sm: Arc<BinaryAddSM<F>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>,
+    collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
 
     /// Instance context.
     ictx: InstanceCtx,
+
+    /// Standard library instance, providing common functionalities.
+    std: Arc<Std<F>>,
 }
 
 impl<F: PrimeField64> BinaryAddInstance<F> {
@@ -39,7 +44,11 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
     /// # Returns
     /// A new `BinaryAddInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(binary_add_sm: Arc<BinaryAddSM<F>>, mut ictx: InstanceCtx) -> Self {
+    pub fn new(
+        binary_add_sm: Arc<BinaryAddSM<F>>,
+        mut ictx: InstanceCtx,
+        std: Arc<Std<F>>,
+    ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
             BinaryAddTrace::<F>::AIR_ID,
@@ -50,26 +59,25 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, u64, bool, CollectSkipper)>>()
+            .downcast::<HashMap<ChunkId, (u64, bool, CollectSkipper)>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        Self { binary_add_sm, collect_info, ictx }
+        Self { binary_add_sm, collect_info, ictx, std }
     }
 
-    pub fn build_binary_add_collector(&self, chunk_id: ChunkId) -> BinaryAddCollector {
+    pub fn build_binary_add_collector(&self, chunk_id: ChunkId) -> BinaryAddCollector<F> {
         assert_eq!(
             self.ictx.plan.air_id,
             BinaryAddTrace::<F>::AIR_ID,
             "BinaryAddInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
-        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
-            self.collect_info[&chunk_id];
+        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         BinaryAddCollector::new(
             num_ops as usize,
-            num_freq_ops as usize,
             collect_skipper,
             force_execute_to_end,
+            self.std.clone(),
         )
     }
 }
@@ -97,8 +105,7 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| {
-                let _collector = collector.as_any().downcast::<BinaryAddCollector>().unwrap();
-                self.binary_add_sm.compute_frops(&_collector.frops_inputs);
+                let _collector = collector.as_any().downcast::<BinaryAddCollector<F>>().unwrap();
                 _collector.inputs
             })
             .collect();
@@ -122,6 +129,10 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
         InstanceType::Instance
     }
 
+    fn stats_type(&self) -> StatsType {
+        StatsType::Opcodes
+    }
+
     /// Builds an input collector for the instance.
     ///
     /// # Arguments
@@ -136,13 +147,12 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
             "BinaryAddInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
-        let (num_ops, num_freq_ops, force_execute_to_end, collect_skipper) =
-            self.collect_info[&chunk_id];
+        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryAddCollector::new(
             num_ops as usize,
-            num_freq_ops as usize,
             collect_skipper,
             force_execute_to_end,
+            self.std.clone(),
         )))
     }
 

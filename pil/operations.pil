@@ -8,8 +8,10 @@
         - 0x21-0x29
       - Arithmetic Operations:
         - 0xB0-0xBF
+      - DMA Operations:
+        - 0xDA-0xDF
       - Precompiles:
-        - 0xE2-0xE7
+        - 0xE1-0xEA
         - 0xF0-0xF5
         - 0xF9-0xFE
       - Misc:
@@ -83,12 +85,33 @@ const int OP_REMU_W = 0xBD;
 const int OP_DIV_W = 0xBE;
 const int OP_REM_W = 0xBF;
 
+const int OP_DMA_MEMCPY = 0xD0;
+const int OP_DMA_MEMCMP = 0xD1;
+const int OP_DMA_INPUTCPY = 0xD2;
+const int __OP_DMA_MEMSET__ = 0xD3;   // not implemented, unsual and too expensive
+const int __OP_DMA_MEMEQ__ = 0xD4;    // main don't known in compilation time
+
+const int OP_DMA_X_OFFSET = 6;
+
+const int OP_DMA_XMEMCPY = OP_DMA_MEMCPY + OP_DMA_X_OFFSET;     // 0xD6
+const int OP_DMA_XMEMCMP = OP_DMA_MEMCMP + OP_DMA_X_OFFSET;     // 0xD7
+const int OP_DMA_XMEMSET = __OP_DMA_MEMSET__ + OP_DMA_X_OFFSET; // 0xD9
+const int OP_DMA_XMEMEQ = __OP_DMA_MEMEQ__ + OP_DMA_X_OFFSET;   // 0xDA
+
+
+const int OP_POSEIDON2 = 0xE1;
+
 const int OP_ARITH_384_MOD = 0xE2;
 const int OP_EC_ADD_BLS12_381 = 0xE3;
 const int OP_EC_DBL_BLS12_381 = 0xE4;
 const int OP_COMPLEX_ADD_BLS12_381 = 0xE5;
 const int OP_COMPLEX_SUB_BLS12_381 = 0xE6;
 const int OP_COMPLEX_MUL_BLS12_381 = 0xE7;
+
+const int OP_EC_ADD_SECP256R1 = 0xE8;
+const int OP_EC_DBL_SECP256R1 = 0xE9;
+
+const int OP_BLAKE2BR = 0xEA;
 
 const int OP_ADD256 = 0xF0;
 const int OP_KECCAKF = 0xF1;
@@ -110,3 +133,36 @@ const int OP_COMPLEX_SUB_BN254 = 0xFD;
 const int OP_COMPLEX_MUL_BN254 = 0xFE;
 
 const int OP_HALT = 0xFF;
+
+function assumes_operation (const expr op, const expr a[] = [0,0], const expr b[] = [0,0], const expr c[] = [0,0], 
+                            const expr flag = 0, const expr main_step = 0,
+                            const expr extended_arg = 0,
+                            const expr sel = 1,
+                            const expr extra_args[] = [0]) 
+{
+    assert(length(extra_args) == 1);
+    lookup_assumes(OPERATION_BUS_ID, [op, ...a, ...b, ...c, flag, main_step, extended_arg, ...extra_args], 
+                   sel:);
+}                              
+
+function proves_operation (const expr op, const expr a[] = [0, 0], const expr b[] = [0, 0], const expr c[] = [0, 0], 
+                           const expr flag = 0, const expr main_step = 0,
+                           const expr extended_arg = 0,
+                           const expr mul = 1,
+                           const expr extra_args[] = [0],
+                           const int table_id = -1)
+{
+    assert(length(extra_args) == 1);
+    lookup_proves(OPERATION_BUS_ID, [op, ...a, ...b, ...c, flag, main_step, extended_arg, ...extra_args], table_id:, mul:);
+}                              
+
+
+function assumes_padding_operation (const expr op, const expr a[] = [0,0], const expr b[] = [0,0], const expr c[] = [0,0], 
+                               const expr flag = 0, const expr main_step = 0,
+                               const expr extended_arg = 0,
+                               const expr extra_args[] = [0],
+                               const expr padding_size = 1)
+{
+    assert(length(extra_args) == 1);
+    direct_update_assumes(OPERATION_BUS_ID, [op, ...a, ...b, ...c, flag, main_step, extended_arg, ...extra_args], sel:padding_size);
+}                              

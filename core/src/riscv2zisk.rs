@@ -62,15 +62,15 @@ pub enum AsmGenerationMethod {
     AsmChunkPlayerMemReadsCollectMain,
 }
 /// RISCV-to-ZisK struct containing the input ELF RISCV file name and the output ZISK ASM file name
-pub struct Riscv2zisk {
-    /// ELF RISC-V file name (input)
-    pub elf_file: PathBuf,
+pub struct Riscv2zisk<'a> {
+    /// ELF RISC-V file bytes (input)
+    pub elf: &'a [u8],
 }
 
-impl Riscv2zisk {
-    /// Creates a new Riscv2zisk struct with the provided input and output file names
-    pub fn new<P: Into<PathBuf>>(elf_file: P) -> Riscv2zisk {
-        Riscv2zisk { elf_file: elf_file.into() }
+impl<'a> Riscv2zisk<'a> {
+    /// Creates a new Riscv2zisk struct with the provided ELF bytes
+    pub fn new(elf: &'a [u8]) -> Riscv2zisk<'a> {
+        Riscv2zisk { elf }
     }
 
     /// Executes the file conversion process by calling elf2romfile()
@@ -80,13 +80,14 @@ impl Riscv2zisk {
         generation_method: AsmGenerationMethod,
         log_output: bool,
         comments: bool,
+        hints: bool,
     ) -> Result<(), Box<dyn Error>> {
-        elf2romfile(&self.elf_file, &asm_file.into(), generation_method, log_output, comments)
+        elf2romfile(self.elf, &asm_file.into(), generation_method, log_output, comments, hints)
             .map_err(|e| format!("Error converting elf to assembly: {e}").into())
     }
 
     /// Executes the file conversion process by calling elf2rom()
     pub fn run(&self) -> Result<ZiskRom, Box<dyn Error>> {
-        elf2rom(&self.elf_file)
+        elf2rom(self.elf)
     }
 }

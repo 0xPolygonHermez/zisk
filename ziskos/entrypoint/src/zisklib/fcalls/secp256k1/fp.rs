@@ -1,0 +1,163 @@
+use std::{ffi::c_void, mem::MaybeUninit};
+
+use cfg_if::cfg_if;
+
+cfg_if! {
+    if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
+        use core::arch::asm;
+        use crate::{
+            ziskos_fcall, ziskos_fcall_param,
+            zisklib::{FCALL_SECP256K1_FP_INV_ID, FCALL_SECP256K1_FP_SQRT_ID}
+        };
+        #[cfg(not(feature = "inputcpy"))]
+        use crate::ziskos_fcall_get;
+        #[cfg(feature = "inputcpy")]
+        use crate::ziskos_inputcpy;
+    } else {
+        use lib_c::{secp256k1_fp_inv_c};
+        use crate::zisklib::fcalls_impl::secp256k1::secp256k1_fp_sqrt;
+    }
+
+}
+
+/// Executes the multiplicative inverse computation over the base field of the `secp256k1` curve.
+///
+/// Both `fcall_secp256k1_fp_inv` and `fcall2_secp256k1_fp_inv` perform an inversion of a 256-bit field element,
+/// represented as an array of four `u64` values.
+///
+/// - `fcall_secp256k1_fp_inv` performs the inversion and **returns the result directly**.
+/// - `fcall2_secp256k1_fp_inv` performs the inversion but does **not return the result immediately**.
+///   You must explicitly retrieve the result using four (4) `fcall_get` instructions.
+///
+/// ### Safety
+///
+/// The caller must ensure that the input pointer (`p_value`) is valid and aligned to an 8-byte boundary.
+///
+/// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
+/// of the result. It is the caller's responsibility to ensure it.
+#[allow(unused_variables)]
+pub fn fcall_secp256k1_fp_inv(
+    p_value: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 4] {
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    {
+        let mut result: [u64; 4] = [0; 4];
+        secp256k1_fp_inv_c(p_value, &mut result);
+        #[cfg(feature = "hints")]
+        {
+            hints.push(result.len() as u64);
+            hints.extend_from_slice(&result);
+        }
+        result
+    }
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    {
+        ziskos_fcall_param!(p_value, 4);
+        ziskos_fcall!(FCALL_SECP256K1_FP_INV_ID);
+        #[cfg(not(feature = "inputcpy"))]
+        {
+            [ziskos_fcall_get(), ziskos_fcall_get(), ziskos_fcall_get(), ziskos_fcall_get()]
+        }
+        #[cfg(feature = "inputcpy")]
+        {
+            let mut res: MaybeUninit<[u64; 4]> = MaybeUninit::uninit();
+            ziskos_inputcpy!(res, 32);
+            unsafe { res.assume_init() }
+        }
+    }
+}
+
+#[allow(unused_variables)]
+pub fn fcall_secp256k1_fp_inv_in_place(
+    p_value: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    {
+        let mut result: [u64; 4] = [0; 4];
+        secp256k1_fp_inv_c(p_value, &mut result);
+        #[cfg(feature = "hints")]
+        {
+            hints.push(result.len() as u64);
+            hints.extend_from_slice(&result);
+        }
+    }
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    {
+        ziskos_fcall_param!(p_value, 4);
+        ziskos_fcall!(FCALL_SECP256K1_FP_INV_ID);
+    }
+}
+
+/// Executes the square root computation over the base field of the `secp256k1` curve.
+///
+/// Both `fcall_secp256k1_fp_inv` and `fcall2_secp256k1_fp_inv` perform an square root of a 256-bit
+/// field element, represented as an array of four `u64` values.
+///
+/// - `fcall_secp256k1_fp_inv` performs the sqrt and **returns the result directly**.
+/// - `fcall2_secp256k1_fp_inv` performs the sqrt but does **not return the result immediately**.
+///   You must explicitly retrieve the result using four (4) `fcall_get` instructions.
+///
+/// ### Safety
+///
+/// The caller must ensure that the input pointer (`p_value`) is valid and aligned to an 8-byte boundary.
+///
+/// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
+/// of the result. It is the caller's responsibility to ensure it.
+#[allow(unused_variables)]
+pub fn fcall_secp256k1_fp_sqrt(
+    p_value: &[u64; 4],
+    parity: u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 5] {
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    {
+        let mut result: [u64; 5] = [0; 5];
+        secp256k1_fp_sqrt(p_value, parity, &mut result);
+        #[cfg(feature = "hints")]
+        {
+            hints.push(result.len() as u64);
+            hints.extend_from_slice(&result);
+        }
+        result
+    }
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    {
+        ziskos_fcall_param!(p_value, 4);
+        ziskos_fcall_param!(parity, 1);
+        ziskos_fcall!(FCALL_SECP256K1_FP_SQRT_ID);
+        #[cfg(not(feature = "inputcpy"))]
+        {
+            [
+                ziskos_fcall_get(),
+                ziskos_fcall_get(),
+                ziskos_fcall_get(),
+                ziskos_fcall_get(),
+                ziskos_fcall_get(),
+            ]
+        }
+        #[cfg(feature = "inputcpy")]
+        {
+            use core::mem::MaybeUninit;
+            let mut res: MaybeUninit<[u64; 5]> = MaybeUninit::uninit();
+            ziskos_inputcpy!(res, 40);
+            unsafe { res.assume_init() }
+        }
+    }
+}
+
+#[cfg(feature = "inputcpy")]
+#[allow(unused_variables)]
+#[inline(always)]
+pub fn fcall_secp256k1_fp_sqrt_p(p_value: &[u64; 4], parity: u64, res: &mut [u64; 5]) {
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    unreachable!();
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    {
+        ziskos_fcall_param!(p_value, 4);
+        ziskos_fcall_param!(parity, 1);
+        ziskos_fcall!(FCALL_SECP256K1_FP_SQRT_ID);
+        ziskos_inputcpy!(res, 40);
+    }
+}

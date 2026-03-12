@@ -47,9 +47,17 @@ public:
 #endif
     void clear ();
 #ifdef MEM_CONTEXT_SEM
+#ifdef CHUNK_STATS
     const MemChunk *get_chunk(uint32_t thread_id, uint32_t chunk_id, int64_t &elapsed_us);
 #else
+    const MemChunk *get_chunk(uint32_t thread_id, uint32_t chunk_id);
+#endif
+#else
+#ifdef CHUNK_STATS
     const MemChunk *get_chunk(uint32_t chunk_id, int64_t &elapsed_us);
+#else
+    const MemChunk *get_chunk(uint32_t chunk_id);
+#endif
 #endif
     MemContext();
     ~MemContext();
