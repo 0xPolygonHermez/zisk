@@ -26,27 +26,29 @@ else
     NUM_GPUS=0
 fi
 
-if [ "$NUM_GPUS" -eq 0 ]; then
-    echo "Error: No GPUs detected" >&2
-    exit 1
-fi
-
 # Detect total available threads
 TOTAL_THREADS=$(nproc)
 
-# Calculate GPUs per socket
-GPUS_PER_SOCKET=$((NUM_GPUS / NUM_SOCKETS))
-
-# Determine processes per socket based on GPU grouping strategy:
-# - Prefer groups of 2 GPUs per process
-# - Otherwise groups of 3 GPUs per process
-# - Otherwise 1 process per socket
-if [ "$GPUS_PER_SOCKET" -gt 0 ] && [ $((GPUS_PER_SOCKET % 2)) -eq 0 ]; then
-    PROCS_PER_SOCKET=$((GPUS_PER_SOCKET / 2))
-elif [ "$GPUS_PER_SOCKET" -gt 0 ] && [ $((GPUS_PER_SOCKET % 3)) -eq 0 ]; then
-    PROCS_PER_SOCKET=$((GPUS_PER_SOCKET / 3))
-else
+# Calculate processes per socket based on GPU grouping strategy
+if [ "$NUM_GPUS" -eq 0 ]; then
+    # No GPUs: 1 process per socket
+    GPUS_PER_SOCKET=0
     PROCS_PER_SOCKET=1
+else
+    # Calculate GPUs per socket
+    GPUS_PER_SOCKET=$((NUM_GPUS / NUM_SOCKETS))
+    
+    # Determine processes per socket based on GPU grouping strategy:
+    # - Prefer groups of 2 GPUs per process
+    # - Otherwise groups of 3 GPUs per process
+    # - Otherwise 1 process per socket
+    if [ "$GPUS_PER_SOCKET" -gt 0 ] && [ $((GPUS_PER_SOCKET % 2)) -eq 0 ]; then
+        PROCS_PER_SOCKET=$((GPUS_PER_SOCKET / 2))
+    elif [ "$GPUS_PER_SOCKET" -gt 0 ] && [ $((GPUS_PER_SOCKET % 3)) -eq 0 ]; then
+        PROCS_PER_SOCKET=$((GPUS_PER_SOCKET / 3))
+    else
+        PROCS_PER_SOCKET=1
+    fi
 fi
 
 # Calculate total processes (X)
