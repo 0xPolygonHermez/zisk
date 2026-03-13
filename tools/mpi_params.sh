@@ -35,16 +35,25 @@ if [ "$NUM_GPUS" -eq 0 ]; then
     GPUS_PER_SOCKET=0
     PROCS_PER_SOCKET=1
 else
+    # Warn if GPUs don't divide evenly across sockets
+    if [ $((NUM_GPUS % NUM_SOCKETS)) -ne 0 ]; then
+        echo "Warning: GPUs ($NUM_GPUS) don't divide evenly across sockets ($NUM_SOCKETS)" >&2
+    fi
+    
     # Calculate GPUs per socket
     GPUS_PER_SOCKET=$((NUM_GPUS / NUM_SOCKETS))
     
+    # Handle edge case: more sockets than GPUs
+    if [ "$GPUS_PER_SOCKET" -eq 0 ]; then
+        echo "Warning: Fewer GPUs ($NUM_GPUS) than sockets ($NUM_SOCKETS), using 1 process total" >&2
+        PROCS_PER_SOCKET=0
     # Determine processes per socket based on GPU grouping strategy:
     # - Prefer groups of 2 GPUs per process
     # - Otherwise groups of 3 GPUs per process
     # - Otherwise 1 process per socket
-    if [ "$GPUS_PER_SOCKET" -gt 0 ] && [ $((GPUS_PER_SOCKET % 2)) -eq 0 ]; then
+    elif [ $((GPUS_PER_SOCKET % 2)) -eq 0 ]; then
         PROCS_PER_SOCKET=$((GPUS_PER_SOCKET / 2))
-    elif [ "$GPUS_PER_SOCKET" -gt 0 ] && [ $((GPUS_PER_SOCKET % 3)) -eq 0 ]; then
+    elif [ $((GPUS_PER_SOCKET % 3)) -eq 0 ]; then
         PROCS_PER_SOCKET=$((GPUS_PER_SOCKET / 3))
     else
         PROCS_PER_SOCKET=1
@@ -52,13 +61,29 @@ else
 fi
 
 # Calculate total processes (X)
-NP=$((NUM_SOCKETS * PROCS_PER_SOCKET))
+if [ "$PROCS_PER_SOCKET" -eq 0 ]; then
+    # Edge case: fewer GPUs than sockets, use 1 process total
+    NP=1
+    PPR=1
+else
+    NP=$((NUM_SOCKETS * PROCS_PER_SOCKET))
+    PPR=$PROCS_PER_SOCKET
+fi
 
-# PPR value (Y) - processes per NUMA
-PPR=$PROCS_PER_SOCKET
+# Calculate GPUs per process
+if [ "$NUM_GPUS" -gt 0 ] && [ "$NP" -gt 0 ]; then
+    GPUS_PER_PROCESS=$((NUM_GPUS / NP))
+else
+    GPUS_PER_PROCESS=0
+fi
 
 # RAYON_NUM_THREADS (Z) - threads per process
 RAYON_NUM_THREADS=$((TOTAL_THREADS / NP))
+
+# Ensure at least 1 thread per process
+if [ "$RAYON_NUM_THREADS" -lt 1 ]; then
+    RAYON_NUM_THREADS=1
+fi
 
 # Output results
 echo "============================================"
@@ -67,6 +92,7 @@ echo "============================================"
 echo "  Sockets (NUMA nodes): $NUM_SOCKETS"
 echo "  GPUs:                 $NUM_GPUS"
 echo "  GPUs per socket:      $GPUS_PER_SOCKET"
+echo "  GPUs per process:     $GPUS_PER_PROCESS"
 echo "  Total threads:        $TOTAL_THREADS"
 echo ""
 echo "============================================"
@@ -85,7 +111,7 @@ echo "  --bind-to numa \\"
 echo "  -x RAYON_NUM_THREADS=$RAYON_NUM_THREADS"
 echo ""
 
-# Export variables for use in other scripts
+# Export variables for use in other scripts (requires sourcing: . mpi_params.sh)
 export MPI_NP=$NP
 export MPI_PPR=$PPR
 export MPI_RAYON_NUM_THREADS=$RAYON_NUM_THREADS
