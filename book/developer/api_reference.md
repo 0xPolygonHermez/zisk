@@ -16,6 +16,7 @@ Proof request methods stream events back to the caller:
 | [`GetNodeInfo`](#getnodeinfo) | Node | Admin | Query node version and proof capabilities |
 | [`Clean`](#clean) | Node | Admin | Reset all ZisK state on this node |
 | [`ListSetups`](#listsetups) | Setup | Admin | List all setups available on this node |
+| [`GetSetup`](#getsetup) | Setup | Admin | Get details of a single setup |
 | [`AddSetup`](#addsetup) | Setup | Admin | Download and install a new setup |
 | [`UpdateSetup`](#updatesetup) | Setup | Admin | Update mutable fields of an existing setup |
 | [`DeleteSetup`](#deletesetup) | Setup | Admin | Remove a setup from this node |
@@ -104,6 +105,22 @@ struct SetupSummary {
 
 ---
 
+### `GetSetup`
+
+Get details of a single setup by its ID.
+
+```
+GetSetupRequest → SetupSummary
+```
+
+```rust
+struct GetSetupRequest {
+    id: String,
+}
+```
+
+---
+
 ### `AddSetup`
 
 Download and install a new setup on this node.
@@ -133,7 +150,7 @@ Update mutable fields of an existing setup. Setting `is_default: true` atomicall
 previous default and marks this setup as the new one.
 
 ```
-UpdateSetupRequest → OpResult
+UpdateSetupRequest → UpdateSetupResponse
 ```
 
 ```rust
@@ -141,6 +158,12 @@ struct UpdateSetupRequest {
     id:          String,
     description: Option<String>,
     is_default:  Option<bool>,
+}
+
+struct UpdateSetupResponse {
+    id:          String,
+    description: String,
+    is_default:  bool,
 }
 ```
 
@@ -200,7 +223,7 @@ struct GuestProgramSummary {
 
 ### `GetGuestProgram`
 
-Get full details of a single program, including its ELF binaries.
+Get details of a single program. Supports lookup by `id`, `hash_id`, or `name`.
 
 ```
 GetGuestProgramRequest → GuestProgramSummary
@@ -328,10 +351,33 @@ enum JobKind {
 }
 
 enum JobEvent {
-    Started   { job_id: String, timestamp: DateTime<Utc> },
-    Progress  { job_id: String, phase: JobPhase, timestamp: DateTime<Utc> },
-    Completed { job_id: String, result: JobResult, timestamp: DateTime<Utc> },
-    Failed    { job_id: String, error: String, timestamp: DateTime<Utc> },
+    Started(JobEventStarted),
+    Progress(JobEventProgress),
+    Completed(JobEventCompleted),
+    Failed(JobEventFailed),
+}
+
+struct JobEventStarted {
+    job_id: String,
+    timestamp: DateTime<Utc>,
+}
+
+struct JobEventProgress {
+    job_id: String,
+    phase: JobPhase,
+    timestamp: DateTime<Utc>,
+}
+
+struct JobEventCompleted {
+    job_id: String,
+    result: JobResult,
+    timestamp: DateTime<Utc>,
+}
+
+struct JobEventFailed {
+    job_id: String,
+    error: String,
+    timestamp: DateTime<Utc>,
 }
 
 enum JobPhase {
@@ -352,7 +398,7 @@ struct Proof {
     proof_id:      String,         // unique proof identifier (UUID)
     program_id:    String,         // GuestProgram ID used to generate this proof
     setup_id:      Option<String>, // Setup ID used for this proof
-    job_kind:      JobKind,
+    proof_kind:    ProofKind,
     data:          Vec<u8>,        // serialized proof
     public_inputs: Vec<u8>,
     started_at:    DateTime<Utc>,
@@ -378,7 +424,7 @@ struct VerifyRequest {
 }
 
 struct VerifyResult {
-    valid: bool,
+    valid:       bool,
     verified_at: DateTime<Utc>,
 }
 ```
@@ -439,9 +485,9 @@ struct JobInfo {
     program_id:   String,
     kind:         JobKind,
     status:       JobStatus,
+    error:        Option<String>,
     created_at:   DateTime<Utc>,
     completed_at: Option<DateTime<Utc>>,
-    error:        Option<String>,
 }
 ```
 
@@ -461,8 +507,7 @@ struct CancelJobRequest {
 }
 
 struct CancelJobResponse {
-    id: String,
-    success: bool,
+    id:         String,
     job_status: JobStatus,
 }
 ```
