@@ -54,6 +54,13 @@ struct SetupCapabilities {
     setup_id:    String,
     proof_kinds: Vec<ProofKind>,
 }
+
+enum ProofKind {
+    Basic,
+    Compressed,
+    Plonk,
+    Fflonk,
+}
 ```
 
 ---
@@ -320,13 +327,6 @@ enum JobKind {
     Prove(ProofKind),  // generate a proof
 }
 
-enum ProofKind {
-    Basic,
-    Compressed,
-    Plonk,
-    Fflonk,
-}
-
 enum JobEvent {
     Started   { job_id: String, timestamp: DateTime<Utc> },
     Progress  { job_id: String, phase: JobPhase, timestamp: DateTime<Utc> },
@@ -342,10 +342,10 @@ enum JobPhase {
 
 // result payload varies by JobKind
 enum JobResult {
-    ExecutionInfo(ExecutionInfo),
-    Stats(ExecutionStats),
-    ConstraintsVerified,
-    Proof(Proof),
+    Execute(ExecutionResult),
+    Stats(ExecutionStatsResult),
+    VerifyConstraints(VerifyConstraintsResult),
+    Prove(Proof),
 }
 
 struct Proof {
