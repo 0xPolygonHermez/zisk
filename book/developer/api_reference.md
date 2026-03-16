@@ -1,4 +1,4 @@
-# ZisK API — Reference
+# ZisK user API — Reference
 
 All methods are exposed on every `zisk node`. Access is governed by two key types:
 - **Admin key** — full control over the deployment (cluster topology, hardware, all processes).
@@ -11,25 +11,18 @@ Proof request methods stream events back to the caller:
 
 ## Summary
 
-| Method | Category | Access | Description |
-|--------|----------|--------|-------------|
-| [`GetNodeInfo`](#getnodeinfo) | Node | Admin | Query node version and proof capabilities |
-| [`Clean`](#clean) | Node | Admin | Reset all ZisK state on this node |
-| [`ListSetups`](#listsetups) | Setup | Admin | List all setups available on this node |
-| [`GetSetup`](#getsetup) | Setup | Admin | Get details of a single setup |
-| [`AddSetup`](#addsetup) | Setup | Admin | Download and install a new setup |
-| [`UpdateSetup`](#updatesetup) | Setup | Admin | Update mutable fields of an existing setup |
-| [`DeleteSetup`](#deletesetup) | Setup | Admin | Remove a setup from this node |
-| [`ListGuestPrograms`](#listguestprograms) | Program | Cluster | List all programs registered in the cluster |
-| [`GetGuestProgram`](#getguestprogram) | Program | Cluster | Get full details of a single program |
-| [`AddGuestProgram`](#addguestprogram) | Program | Cluster | Register a new program |
-| [`UpdateGuestProgram`](#updateguestprogram) | Program | Cluster | Update mutable fields of an existing program |
-| [`DeleteGuestProgram`](#deleteguestprogram) | Program | Cluster | Remove a program from the cluster |
-| [`Prove`](#prove) | Proof | Cluster | Submit a job (execute, stats, verify constraints, or prove) |
-| [`Verify`](#verify) | Proof | Cluster | Verify a previously generated proof |
-| [`ListJobs`](#listjobs) | Runtime | Cluster | List jobs with optional filters |
-| [`GetJob`](#getjob) | Runtime | Cluster | Get full details and current status of a job |
-| [`CancelJob`](#canceljob) | Runtime | Cluster | Cancel a queued or running job |
+| Method | Category | Description |
+|--------|----------|-------------|
+| [`GetNodeInfo`](#getnodeinfo) | Node | Query node version and proof capabilities |
+| [`ListGuestPrograms`](#listguestprograms) | Program | List all programs registered in the cluster |
+| [`GetGuestProgram`](#getguestprogram) | Program | Get full details of a single program |
+| [`AddGuestProgram`](#addguestprogram) | Program | Register a new program |
+| [`UpdateGuestProgram`](#updateguestprogram) | Program | Update mutable fields of an existing program |
+| [`DeleteGuestProgram`](#deleteguestprogram) | Program | Remove a program from the cluster |
+| [`Prove`](#prove) | Proof | Submit a job (execute, stats, verify constraints, or prove) |
+| [`ListJobs`](#listjobs) | Runtime | List jobs with optional filters |
+| [`GetJob`](#getjob) | Runtime | Get full details and current status of a job |
+| [`CancelJob`](#canceljob) | Runtime | Cancel a queued or running job |
 
 ---
 
@@ -53,136 +46,14 @@ struct NodeInfo {
 
 struct SetupCapabilities {
     setup_id:    String,
+    verifier_id: String, // hash of the setup's verification key
     proof_kinds: Vec<ProofKind>,
 }
 
 enum ProofKind {
-    Basic,
-    Compressed,
+    Stark,
+    StarkMinimal,
     Plonk,
-    Fflonk,
-}
-```
-
----
-
-### `Clean`
-
-Reset all ZisK state on this node: installed setups, registered programs, and any cached files.
-
-```
-CleanRequest → ()
-```
-
-```rust
-struct CleanRequest {}
-```
-
----
-
-## Setup Management
-
-### `ListSetups`
-
-List all setups currently installed on this node.
-
-```
-ListSetupsRequest → Page<SetupSummary>
-```
-
-```rust
-struct ListSetupsRequest {
-    limit:  Option<u32>,    // max items per page; server default applies if omitted
-    cursor: Option<String>, // continuation token from a previous Page response
-}
-
-struct SetupSummary {
-    id:          String,
-    version:     String,
-    description: Option<String>,
-    proof_kinds: Vec<ProofKind>,
-    is_default:  bool,
-    created_at:  DateTime<Utc>,
-}
-```
-
----
-
-### `GetSetup`
-
-Get details of a single setup by its ID.
-
-```
-GetSetupRequest → SetupSummary
-```
-
-```rust
-struct GetSetupRequest {
-    id: String,
-}
-```
-
----
-
-### `AddSetup`
-
-Download and install a new setup on this node.
-
-```
-AddSetupRequest → AddSetupResponse
-```
-
-```rust
-struct AddSetupRequest {
-    version:     String,
-    description: Option<String>,
-    uri:         String,  // where to download the setup archive
-    proof_kinds: Vec<ProofKind>,
-}
-
-struct AddSetupResponse {
-    id: String,
-}
-```
-
----
-
-### `UpdateSetup`
-
-Update mutable fields of an existing setup. Setting `is_default: true` atomically clears the
-previous default and marks this setup as the new one.
-
-```
-UpdateSetupRequest → UpdateSetupResponse
-```
-
-```rust
-struct UpdateSetupRequest {
-    id:          String,
-    description: Option<String>,
-    is_default:  Option<bool>,
-}
-
-struct UpdateSetupResponse {
-    id:          String,
-    description: String,
-    is_default:  bool,
-}
-```
-
----
-
-### `DeleteSetup`
-
-Remove an installed setup from this node.
-
-```
-DeleteSetupRequest → ()
-```
-
-```rust
-struct DeleteSetupRequest {
-    id: String,
 }
 ```
 
@@ -213,7 +84,7 @@ struct ListGuestProgramsRequest {
 
 // lightweight — no binary fields
 struct GuestProgramSummary {
-    id:          String,
+    program_id:  String,          // program id (UUID); immutable, opaque identifier
     hash_id:     String,          // derived from zisk_elf; content-addressed
     name:        String,
     description: Option<String>,
@@ -236,9 +107,9 @@ GetGuestProgramRequest → GuestProgramSummary
 
 ```rust
 struct GetGuestProgramRequest {
-    id: Option<String>,
-    hash_id: Option<String>,
-    name: Option<String>,    // substring match; may return multiple results if not unique
+    program_id: Option<String>,
+    hash_id:    Option<String>,
+    name:       Option<String>, // substring match; may return multiple results if not unique
 } // one of id, hash_id, or name must be supplied
 ```
 
@@ -268,8 +139,8 @@ enum ElfKind {
 }
 
 struct AddGuestProgramResponse {
-    id: String,      // program id (UUID)
-    hash_id: String, // derived from zisk_elf
+    program_id: String, // program id (UUID)
+    hash_id:    String, // derived from zisk_elf
 }
 ```
 
@@ -286,7 +157,7 @@ UpdateGuestProgramRequest → UpdateGuestProgramResponse
 
 ```rust
 struct UpdateGuestProgramRequest {
-    id:          String,          // program UUID
+    program_id:  String,          // program UUID
     name:        Option<String>,
     description: Option<String>,
     author:      Option<String>,
@@ -296,8 +167,8 @@ struct UpdateGuestProgramRequest {
 }
 
 struct UpdateGuestProgramResponse {
-    id: String,      // program UUID
-    hash_id: String, // derived from zisk_elf (updated if zisk_elf was supplied)
+    program_id: String, // program UUID
+    hash_id:    String, // derived from zisk_elf (updated if zisk_elf was supplied)
 }
 ```
 
@@ -313,9 +184,9 @@ DeleteGuestProgramRequest → ()
 
 ```rust
 struct DeleteGuestProgramRequest {
-    id: Option<String>,
-    hash_id: Option<String>,
-} // one of id or hash_id must be supplied
+    program_id: Option<String>,
+    hash_id:    Option<String>,
+} // one of program_id or hash_id must be supplied
 ```
 
 ---
@@ -334,14 +205,20 @@ ProveRequest → stream JobEvent
 
 ```rust
 struct ProveRequest {
-    program_id:  String,          // GuestProgram ID
-    setup_id:    Option<String>,  // Setup ID to use for this job
-    input:       InputKind,
-    job_kind:    JobKind,
-    timeout:     Option<u64>,     // seconds; uses cluster default if omitted
-    webhook_url: Option<String>,  // if set, POST JobEvent::Completed / JobEvent::Failed here
+    program_id:    String,           // GuestProgram ID
+    setup_id:      Option<String>,   // Setup ID to use for this job
+    input:         InputKind,
+    job_kind:      JobKind,
+    blocking_time: Option<Duration>, // duration to block the job status requests until the job completes; server default applies if omitted or less than the default
+    webhook_url:   Option<String>,   // if set, POST JobEvent::Completed / JobEvent::Failed here
 }
 
+enum ProveSetup {
+    SetupId(String),
+    VerifierId(String),   // hash of the setup's verification key
+    VerifierKey(Vec<u8>), // raw verification key
+
+}
 enum InputKind {
     Raw(Vec<u8>),
     Inputs(String), // file path or http:// URL
@@ -349,9 +226,6 @@ enum InputKind {
 }
 
 enum JobKind {
-    Execute,           // run the program and return execution info/stats
-    Stats,             // run the program and return detailed execution statistics
-    VerifyConstraints, // run the program and verify all constraints are satisfied
     Prove(ProofKind),  // generate a proof
 }
 
@@ -393,43 +267,18 @@ enum JobPhase {
 
 // result payload varies by JobKind
 enum JobResult {
-    Execute(ExecutionResult),
-    Stats(ExecutionStatsResult),
-    VerifyConstraints(VerifyConstraintsResult),
     Prove(Proof),
 }
 
 struct Proof {
     proof_id:      String,         // unique proof identifier (UUID)
     program_id:    String,         // GuestProgram ID used to generate this proof
-    setup_id:      Option<String>, // Setup ID used for this proof
+    verification_key: Vec<u8>,     // raw verification key
     proof_kind:    ProofKind,
     data:          Vec<u8>,        // serialized proof
     public_inputs: Vec<u8>,
     started_at:    DateTime<Utc>,
     completed_at:  DateTime<Utc>,
-}
-```
-
----
-
-### `Verify`
-
-Verify a previously generated proof.
-
-```
-VerifyRequest → VerifyResult
-```
-
-```rust
-struct VerifyRequest {
-    proof: Proof,
-    // verification key is derived server-side from proof.setup_id + proof.proof_kind
-}
-
-struct VerifyResult {
-    valid:       bool,
-    verified_at: DateTime<Utc>,
 }
 ```
 
