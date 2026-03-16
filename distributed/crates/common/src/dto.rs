@@ -90,6 +90,7 @@ pub struct LaunchProofRequestDto {
     pub inputs_mode: InputsModeDto,
     pub hints_mode: HintsModeDto,
     pub simulated_node: Option<u32>,
+    pub metadata: std::collections::BTreeMap<String, String>,
 }
 
 pub struct LaunchProofResponseDto {

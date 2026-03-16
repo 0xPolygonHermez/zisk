@@ -175,6 +175,7 @@ impl From<LaunchProofRequestDto> for LaunchProofRequest {
             hints_mode: hints_mode.into(),
             hints_uri,
             simulated_node: dto.simulated_node,
+            metadata: dto.metadata.into_iter().collect(),
         }
     }
 }
@@ -220,6 +221,7 @@ impl TryFrom<LaunchProofRequest> for LaunchProofRequestDto {
                 }
             },
             simulated_node: req.simulated_node,
+            metadata: req.metadata.into_iter().collect(),
         })
     }
 }

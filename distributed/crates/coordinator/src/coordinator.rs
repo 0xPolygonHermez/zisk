@@ -353,6 +353,7 @@ impl Coordinator {
                 request.inputs_mode,
                 request.hints_mode,
                 request.simulated_node,
+                request.metadata.clone(),
             )
             .await?;
 
@@ -557,6 +558,7 @@ impl Coordinator {
         inputs_mode: InputsModeDto,
         hints_mode: HintsModeDto,
         simulated_node: Option<u32>,
+        metadata: std::collections::BTreeMap<String, String>,
     ) -> CoordinatorResult<Job> {
         let execution_mode = if let Some(node) = simulated_node {
             JobExecutionMode::Simulating(node)
@@ -586,6 +588,7 @@ impl Coordinator {
             selected_workers,
             partitions,
             execution_mode,
+            metadata,
         ))
     }
 
@@ -2052,14 +2055,14 @@ impl Coordinator {
             "Steps: N/A".to_string().red().bold()
         };
         info!(
-            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} Inputs: {:?}, Capacity: {} ",
+            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} Metadata: {:?}, Capacity: {} ",
             header,
             duration_str,
             phase1_duration.as_seconds_f32(),
             phase2_duration.as_seconds_f32(),
             phase3_duration.as_seconds_f32(),
             steps_str,
-            job.inputs_mode,
+            job.metadata,
             job.compute_capacity,
         );
 
@@ -2095,8 +2098,9 @@ impl Coordinator {
                             };
 
                             info!(
-                                "[Job] {:?} Performance - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                                "[Job] {:?} Performance for {} - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
                                 phase,
+                                job_id,
                                 avg_duration / 1000.0,
                                 best_worker,
                                 *best_duration as f64 / 1000.0,
@@ -2140,7 +2144,8 @@ impl Coordinator {
                                 };
 
                                 info!(
-                                    "[Job] Contributions Delay - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                                    "[Job] Contributions Delay for {} - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                                    job_id,
                                     avg_delay / 1000.0,
                                     best_delay_worker,
                                     *best_delay as f64 / 1000.0,
@@ -2181,7 +2186,8 @@ impl Coordinator {
                                 };
 
                                 info!(
-                                    "[Job] Contributions Witness - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                                    "[Job] Contributions Witness for {} - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                                    job_id,
                                     avg_witness / 1000.0,
                                     best_witness_worker,
                                     *best_witness as f64 / 1000.0,
@@ -2225,7 +2231,8 @@ impl Coordinator {
                                 };
 
                                 info!(
-                                    "[Job] Contributions ASM - Avg: {:.3}s, Best: {} ({:.3}s @ {:.1}MHz), Worst: {} ({:.3}s @ {:.1}MHz), Diff: {:.1}%",
+                                    "[Job] Contributions ASM for {} - Avg: {:.3}s, Best: {} ({:.3}s @ {:.1}MHz), Worst: {} ({:.3}s @ {:.1}MHz), Diff: {:.1}%",
+                                    job_id,
                                     avg_asm,
                                     best_asm_worker,
                                     *best_asm,

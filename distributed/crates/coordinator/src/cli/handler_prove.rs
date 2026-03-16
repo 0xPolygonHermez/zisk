@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -72,6 +73,7 @@ pub async fn handle(
         hints_mode: hints_mode.into(),
         hints_uri,
         simulated_node,
+        metadata: HashMap::new(),
     };
 
     // Make the RPC call

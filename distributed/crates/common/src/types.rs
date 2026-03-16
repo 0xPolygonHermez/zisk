@@ -10,7 +10,7 @@ use proofman::{ContributionsInfo, ProvePhaseInputs, WitnessInfo};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::{self, Debug, Display},
     ops::Range,
 };
@@ -259,6 +259,7 @@ pub struct Job {
     pub execution_mode: JobExecutionMode,
     pub final_proof: Option<Vec<u64>>,
     pub executed_steps: Option<u64>,
+    pub metadata: BTreeMap<String, String>,
 }
 
 impl Job {
@@ -272,6 +273,7 @@ impl Job {
         selected_workers: Vec<WorkerId>,
         partitions: Vec<Vec<u32>>,
         execution_mode: JobExecutionMode,
+        metadata: BTreeMap<String, String>,
     ) -> Self {
         Self {
             job_id: JobId::new(),
@@ -294,6 +296,7 @@ impl Job {
             execution_mode,
             final_proof: None,
             executed_steps: None,
+            metadata,
         }
     }
 
