@@ -252,8 +252,16 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ComputationResult::Proofs { job_id, success, result } => {
                 self.send_proof(job_id, success, result, message_sender).await
             }
-            ComputationResult::AggProof { job_id, success, result, executed_steps } => {
-                self.send_aggregation(job_id, success, result, message_sender, executed_steps).await
+            ComputationResult::AggProof { job_id, success, result, executed_steps, instances } => {
+                self.send_aggregation(
+                    job_id,
+                    success,
+                    result,
+                    message_sender,
+                    executed_steps,
+                    instances,
+                )
+                .await
             }
         }
     }
@@ -262,7 +270,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>)>,
+        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64)>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<()> {
@@ -285,7 +293,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         "Inconsistent state: operation reported success but returned Err result"
                     ));
                 }
-                ((WitnessInfo::default(), ZiskExecutorTime::default(), vec![]), e.to_string())
+                ((WitnessInfo::default(), ZiskExecutorTime::default(), vec![], 0), e.to_string())
             }
         };
 
@@ -304,6 +312,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             publics: result_data.0.publics,
             proof_values: result_data.0.proof_values,
             summary_info: result_data.0.summary_info,
+            total_instances: result_data.0.total_instances as u64,
         };
 
         let zisk_execution_time = ZiskExecuteTime {
@@ -410,6 +419,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         result: Result<Option<Vec<Vec<u64>>>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         executed_steps: u64,
+        instances: u64,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
@@ -429,9 +439,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     Some(ResultData::FinalProof(FinalProof {
                         values: final_proof.into_iter().flatten().collect(),
                         executed_steps,
+                        instances,
                     }))
                 } else {
-                    Some(ResultData::FinalProof(FinalProof { values: vec![], executed_steps }))
+                    Some(ResultData::FinalProof(FinalProof {
+                        values: vec![],
+                        executed_steps,
+                        instances,
+                    }))
                 }
             }
             Err(e) => {
@@ -439,7 +454,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     return Err(anyhow!("Aggregation returned Err but reported success"));
                 }
                 error_message = e.to_string();
-                Some(ResultData::FinalProof(FinalProof { values: vec![], executed_steps }))
+                Some(ResultData::FinalProof(FinalProof {
+                    values: vec![],
+                    executed_steps,
+                    instances,
+                }))
             }
         };
 

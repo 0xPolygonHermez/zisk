@@ -259,6 +259,7 @@ pub struct Job {
     pub execution_mode: JobExecutionMode,
     pub final_proof: Option<Vec<u64>>,
     pub executed_steps: Option<u64>,
+    pub instances: Option<u64>,
     pub metadata: BTreeMap<String, String>,
     pub execution_only: bool,
 }
@@ -298,6 +299,7 @@ impl Job {
             execution_mode,
             final_proof: None,
             executed_steps: None,
+            instances: None,
             metadata,
             execution_only,
         }
@@ -402,6 +404,7 @@ pub struct ContributionsResult {
     pub witness_info: WitnessInfo,
     pub zisk_executor_time: ZiskExecutorTime,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub instances: u64,
 }
 
 #[derive(Debug, Clone)]

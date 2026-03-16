@@ -33,7 +33,7 @@ pub enum ComputationResult {
     Challenge {
         job_id: JobId,
         success: bool,
-        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>)>,
+        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64)>,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     },
     Proofs {
@@ -46,6 +46,7 @@ pub enum ComputationResult {
         success: bool,
         result: Result<Option<Vec<Vec<u64>>>>,
         executed_steps: u64,
+        instances: u64,
     },
 }
 
@@ -237,6 +238,7 @@ pub struct JobContext {
     pub total_compute_units: u32, // Total compute units for the whole job
     pub phase: JobPhase,
     pub executed_steps: u64,
+    pub instances: u64,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -402,6 +404,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             phase: JobPhase::Contributions,
             executed_steps: 0,
             task_received_time,
+            instances: 0,
         }));
         self.current_job = Some(current_job.clone());
 
@@ -568,12 +571,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .get_execution_info()
                 .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
+            let instances = witness_info.total_instances as u64;
+
             match result {
                 Ok(data) => {
                     let _ = tx.send(ComputationResult::Challenge {
                         job_id,
                         success: true,
-                        result: Ok((witness_info, zisk_execution_time, data)),
+                        result: Ok((witness_info, zisk_execution_time, data, instances)),
                         task_received_time,
                     });
                 }
@@ -631,13 +636,18 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .get_execution_info()
                 .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
+            let instances = witness_info.total_instances as u64;
+            guard = job.blocking_lock();
+            guard.instances = instances;
+            drop(guard);
+
             match result {
                 Ok(_challenges) => {
                     // For execution-only, return empty challenges (we only care about timing)
                     let _ = tx.send(ComputationResult::Challenge {
                         job_id,
                         success: true,
-                        result: Ok((witness_info, zisk_execution_time, vec![])),
+                        result: Ok((witness_info, zisk_execution_time, vec![], instances)),
                         task_received_time,
                     });
                 }
@@ -903,21 +913,23 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let job_guard = job.blocking_lock();
             let job_id = job_guard.job_id.clone();
             let executed_steps = job_guard.executed_steps;
+            let instances = job_guard.instances;
 
             let _ = tx.send(ComputationResult::AggProof {
                 job_id,
                 success: false,
                 result: Err(error),
                 executed_steps,
+                instances,
             });
 
             return tokio::spawn(async {});
         }
 
         tokio::task::spawn_blocking(move || {
-            let (job_id, executed_steps) = {
+            let (job_id, executed_steps, instances) = {
                 let guard = job.blocking_lock();
-                (guard.job_id.clone(), guard.executed_steps)
+                (guard.job_id.clone(), guard.executed_steps, guard.instances)
             };
 
             info!("Starting aggregation step for {job_id}");
@@ -949,6 +961,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         success: true,
                         result: Ok(Some(proof)),
                         executed_steps,
+                        instances,
                     });
                 }
                 Err(error) => {
@@ -958,6 +971,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         success: false,
                         result: Err(error),
                         executed_steps,
+                        instances,
                     });
                 }
             }

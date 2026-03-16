@@ -306,6 +306,7 @@ message WitnessExecInfo {
   repeated uint64 publics = 2;
   repeated uint64 proof_values = 3;
   string summary_info = 4;
+  uint64 total_instances = 5;
 }
 
 message AsmExecuteInfo {
@@ -351,6 +352,7 @@ message Proof {
 message FinalProof {
   repeated uint64 values = 1;
   uint64 executed_steps = 2;
+  uint64 instances = 3;
 }
 
 message WorkerError {
