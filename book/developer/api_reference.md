@@ -322,9 +322,15 @@ struct JobInfo {
 
 ### `WaitJobResult`
 
-Blocks until the job reaches a terminal state (Completed, Failed, or Cancelled) or the
-2-second server-side timeout expires. If the timeout elapses first, returns JobInfo with the
-current status (e.g., Running). Intended as the primitive for result polling.
+The intended primitive for polling a proof to completion. The server holds the response for
+up to 5 seconds: if the job reaches a terminal state (Completed, Failed, or Cancelled)
+within that window, it returns immediately with the final `JobInfo`; if the 5 seconds elapse
+first, it returns with the current status (e.g. Running) and the client could re-issue.
+
+This design means the caller can loop on `WaitJobResult` without any sleep or rate-limiting
+logic — the server-side hold ensures at most 12 requests per minute per job regardless of
+how tight the loop is. Completion is detected with 0–5 s latency (on average ~2.5 s), which
+is imperceptible for jobs that take tens of seconds to minutes.
 
 ```
 WaitJobResultRequest → JobInfo
