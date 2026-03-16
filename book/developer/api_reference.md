@@ -71,7 +71,7 @@ enum ProofKind {
 Reset all ZisK state on this node: installed setups, registered programs, and any cached files.
 
 ```
-CleanRequest → OpResult
+CleanRequest → ()
 ```
 
 ```rust
@@ -174,7 +174,7 @@ struct UpdateSetupResponse {
 Remove an installed setup from this node.
 
 ```
-DeleteSetupRequest → OpResult
+DeleteSetupRequest → ()
 ```
 
 ```rust
@@ -303,7 +303,7 @@ struct UpdateGuestProgramResponse {
 Remove a program from the cluster.
 
 ```
-DeleteGuestProgramRequest → OpResult
+DeleteGuestProgramRequest → ()
 ```
 
 ```rust
@@ -418,9 +418,8 @@ VerifyRequest → VerifyResult
 
 ```rust
 struct VerifyRequest {
-    proof:            Proof,
-    proof_kind:       ProofKind,
-    verification_key: String, // TODO! How we know currently which vk use to verify a proof?
+    proof: Proof,
+    // verification key is derived server-side from proof.setup_id + proof.proof_kind
 }
 
 struct VerifyResult {
@@ -485,7 +484,8 @@ struct JobInfo {
     program_id:   String,
     kind:         JobKind,
     status:       JobStatus,
-    error:        Option<String>,
+    result:       Option<JobResult>,       // present when status is Completed
+    error:        Option<String>,          // present when status is Failed
     created_at:   DateTime<Utc>,
     completed_at: Option<DateTime<Utc>>,
 }
