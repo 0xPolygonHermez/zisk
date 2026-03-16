@@ -2272,6 +2272,21 @@ impl Coordinator {
         Ok(())
     }
 
+    /// Formats a number with dots as thousand separators (e.g., 12.345.567).
+    fn format_number_with_dots(n: u64) -> String {
+        let s = n.to_string();
+        let mut result = String::new();
+        let len = s.len();
+        
+        for (i, c) in s.chars().enumerate() {
+            if i > 0 && (len - i) % 3 == 0 {
+                result.push('.');
+            }
+            result.push(c);
+        }
+        result
+    }
+
     /// Handles aggregation completion, finalizes the job if all steps are done.
     ///    
     /// # Parameters
@@ -2368,7 +2383,7 @@ impl Coordinator {
         let header = format!("[Job] Finished {} successfully ✔", job_id).green();
         let duration_str = format!("Duration: {:.3}s", duration.as_secs_f32()).bold();
         let steps_str = if let Some(executed_steps) = job.executed_steps {
-            format!("Steps: {}", executed_steps).bold()
+            format!("Steps: {}", Self::format_number_with_dots(executed_steps)).bold()
         } else {
             "Steps: N/A".to_string().red().bold()
         };
