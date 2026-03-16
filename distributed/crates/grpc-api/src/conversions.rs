@@ -452,17 +452,24 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                     zisk_executor_time,
                 }))
             }
-            Some(execute_task_response::ResultData::Execution(exec_time)) => {
-                let zisk_execution_time = exec_time.zisk_execution_time.unwrap();
-                Some(ExecuteTaskResponseResultDataDto::Execution(ZiskExecutorTimeDto {
-                    task_received_time: zisk_execution_time.task_received_time,
-                    total_duration: zisk_execution_time.total_duration,
-                    execution_duration: zisk_execution_time.execution_duration,
-                    count_and_plan_duration: zisk_execution_time.count_and_plan_duration,
-                    count_and_plan_mo_duration: zisk_execution_time.count_and_plan_mo_duration,
-                    asm_execution_duration: zisk_execution_time.asm_execution_duration.map(
-                        |asm_info| AsmExecutionInfoDto { time: asm_info.time, mhz: asm_info.mhz },
-                    ),
+            Some(execute_task_response::ResultData::Execution(exec_data)) => {
+                let zisk_execution_time = exec_data.zisk_execution_time.unwrap();
+
+                Some(ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
+                    instances: exec_data.instances,
+                    zisk_executor_time: ZiskExecutorTimeDto {
+                        task_received_time: zisk_execution_time.task_received_time,
+                        total_duration: zisk_execution_time.total_duration,
+                        execution_duration: zisk_execution_time.execution_duration,
+                        count_and_plan_duration: zisk_execution_time.count_and_plan_duration,
+                        count_and_plan_mo_duration: zisk_execution_time.count_and_plan_mo_duration,
+                        asm_execution_duration: zisk_execution_time.asm_execution_duration.map(
+                            |asm_info| AsmExecutionInfoDto {
+                                time: asm_info.time,
+                                mhz: asm_info.mhz,
+                            },
+                        ),
+                    },
                 }))
             }
             Some(execute_task_response::ResultData::Proofs(proof_list)) => {

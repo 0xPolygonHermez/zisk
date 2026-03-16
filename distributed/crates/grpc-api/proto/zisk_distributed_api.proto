@@ -330,6 +330,7 @@ message ChallengesList {
 }
 
 message Execution {
+  uint64 instances = 1;
   ZiskExecuteTime zisk_execution_time = 3;
 }
 
