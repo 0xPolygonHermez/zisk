@@ -1189,8 +1189,9 @@ impl Coordinator {
             return Ok(());
         }
 
-        // Store Contributions response
-        self.store_contribution_response(&mut job, execute_task_response).await?;
+        // Store Contributions response and extract instances
+        let instances = self.store_contribution_response(&mut job, execute_task_response).await?;
+        job.instances = Some(instances);
 
         // Check if all contributions are complete
         if !self.check_phase1_completion(&job, &worker_id) {
@@ -1383,7 +1384,7 @@ impl Coordinator {
         &self,
         job: &mut Job,
         execute_task_response: ExecuteTaskResponseDto,
-    ) -> CoordinatorResult<()> {
+    ) -> CoordinatorResult<u64> {
         let contributions_results = job.results.entry(JobPhase::Contributions).or_default();
 
         let worker_id = execute_task_response.worker_id.clone();
@@ -1401,13 +1402,15 @@ impl Coordinator {
         }
 
         let data = self.extract_challenges_data(execute_task_response.result_data)?;
+        let instances =
+            if let JobResultData::Challenges(ref contrib) = data { contrib.instances } else { 0 };
 
         contributions_results.insert(
             worker_id.clone(),
             JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
         );
 
-        Ok(())
+        Ok(instances)
     }
 
     /// Stores a single worker's Execution-only response in the job state.
@@ -1477,6 +1480,7 @@ impl Coordinator {
                     publics: ch_list.witness_info.publics,
                     proof_values: ch_list.witness_info.proof_values,
                     witness_time: ch_list.witness_info.witness_time,
+                    total_instances: ch_list.witness_info.total_instances as usize,
                 };
 
                 let zisk_executor_time = Self::extract_execution_info(&ch_list.zisk_executor_time);
@@ -1490,6 +1494,7 @@ impl Coordinator {
                         ((ch_list.zisk_executor_time.task_received_time % 1000.0) * 1_000_000.0)
                             as u32,
                     ),
+                    instances: ch_list.witness_info.total_instances,
                 }))
             }
             _ => Err(CoordinatorError::InvalidRequest(
@@ -1517,6 +1522,7 @@ impl Coordinator {
                         publics: Vec::new(),
                         proof_values: Vec::new(),
                         witness_time: 0.0,
+                        total_instances: 0,
                     },
                     challenges: Vec::new(),
                     zisk_executor_time,
@@ -1524,6 +1530,7 @@ impl Coordinator {
                         (exec_time.task_received_time / 1000.0) as i64,
                         ((exec_time.task_received_time % 1000.0) * 1_000_000.0) as u32,
                     ),
+                    instances: 0,
                 }))
             }
             _ => {
@@ -2326,6 +2333,7 @@ impl Coordinator {
         // Finalize completed job
         job.final_proof = Some(proof_data.values);
         job.executed_steps = Some(proof_data.executed_steps);
+        job.instances = Some(proof_data.instances);
 
         job.change_state(JobState::Completed);
 
@@ -2364,14 +2372,20 @@ impl Coordinator {
         } else {
             "Steps: N/A".to_string().red().bold()
         };
+        let instances_str = if let Some(instances) = job.instances {
+            format!("Instances: {}", instances).bold()
+        } else {
+            "Instances: N/A".to_string().red().bold()
+        };
         info!(
-            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} Metadata: {:?}, Capacity: {} ",
+            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} {} Metadata: {:?}, Capacity: {} ",
             header,
             duration_str,
             phase1_duration.as_seconds_f32(),
             phase2_duration.as_seconds_f32(),
             phase3_duration.as_seconds_f32(),
             steps_str,
+            instances_str,
             job.metadata,
             job.compute_capacity,
         );

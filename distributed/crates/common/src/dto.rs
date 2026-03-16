@@ -213,6 +213,7 @@ pub struct WitnessInfoDto {
     pub publics: Vec<u64>,
     pub proof_values: Vec<u64>,
     pub summary_info: String,
+    pub total_instances: u64,
 }
 
 #[derive(Clone)]
@@ -260,6 +261,7 @@ pub struct ProofDto {
 pub struct FinalProofDto {
     pub values: Vec<u64>,
     pub executed_steps: u64,
+    pub instances: u64,
 }
 
 pub struct ExecuteTaskResponseDto {

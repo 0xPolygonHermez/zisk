@@ -432,6 +432,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                     publics: witness_info.publics,
                     proof_values: witness_info.proof_values,
                     summary_info: witness_info.summary_info,
+                    total_instances: witness_info.total_instances,
                 };
                 let exec_time = challenges_list.zisk_execution_time.unwrap();
                 let zisk_executor_time = ZiskExecutorTimeDto {
@@ -480,6 +481,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                 Some(ExecuteTaskResponseResultDataDto::FinalProof(FinalProofDto {
                     values: final_proof.values,
                     executed_steps: final_proof.executed_steps,
+                    instances: final_proof.instances,
                 }))
             }
             None => None,
