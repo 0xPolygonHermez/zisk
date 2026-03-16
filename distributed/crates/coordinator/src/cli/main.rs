@@ -101,6 +101,10 @@ enum ZiskCoordinatorCommands {
 
         #[arg(long, help = "Simulated node ID")]
         simulated_node: Option<u32>,
+
+        /// If true, only execute without generating proofs
+        #[arg(long, default_value_t = false)]
+        execution_only: bool,
     },
 }
 
@@ -120,6 +124,7 @@ async fn main() -> Result<()> {
             compute_capacity,
             minimal_compute_capacity,
             simulated_node,
+            execution_only,
         }) => {
             // Run the "prove" subcommand
             handler_prove::handle(
@@ -132,6 +137,7 @@ async fn main() -> Result<()> {
                 compute_capacity,
                 minimal_compute_capacity,
                 simulated_node,
+                execution_only,
             )
             .await
         }

@@ -318,17 +318,32 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
         };
 
-        let message = WorkerMessage {
-            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
-                worker_id: self.worker_config.worker.worker_id.as_string(),
-                job_id: job_id.as_string(),
-                task_type: TaskType::PartialContribution as i32,
-                success,
-                result_data: Some(ResultData::Challenges(ChallengesList {
+        // If challenges are empty, this is execution-only mode
+        let (task_type, result_data_msg) = if challenges.is_empty() {
+            (
+                TaskType::Execution as i32,
+                Some(ResultData::Execution(Execution {
+                    zisk_execution_time: Some(zisk_execution_time),
+                })),
+            )
+        } else {
+            (
+                TaskType::PartialContribution as i32,
+                Some(ResultData::Challenges(ChallengesList {
                     challenges,
                     witness_info: Some(witness_info),
                     zisk_execution_time: Some(zisk_execution_time),
                 })),
+            )
+        };
+
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                worker_id: self.worker_config.worker.worker_id.as_string(),
+                job_id: job_id.as_string(),
+                task_type,
+                success,
+                result_data: result_data_msg,
                 error_message,
             })),
         };
@@ -489,6 +504,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             }
             coordinator_message::Payload::ExecuteTask(request) => {
                 match TaskType::try_from(request.task_type) {
+                    Ok(TaskType::Execution) => {
+                        self.execute_only(request, computation_tx).await?;
+                    }
                     Ok(TaskType::PartialContribution) => {
                         self.partial_contribution(request, computation_tx).await?;
                     }
@@ -602,6 +620,77 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // Start computation in background task
         self.worker.set_current_computation(
             self.worker.handle_partial_contribution(job.clone(), computation_tx.clone()).await?,
+        );
+
+        Ok(())
+    }
+
+    pub async fn execute_only(
+        &mut self,
+        request: ExecuteTaskRequest,
+        computation_tx: &mpsc::UnboundedSender<ComputationResult>,
+    ) -> Result<()> {
+        let task_received_time = chrono::Utc::now();
+        info!("Starting Execution-only for {}", request.job_id);
+
+        // Cancel any existing computation
+        self.worker.cancel_current_computation();
+
+        // Extract the ExecutionParams (reuses ContributionParams structure)
+        let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
+            return Err(anyhow!("Expected ExecutionParams for Execution-only task"));
+        };
+
+        let job_id = JobId::from(request.job_id);
+        let input_source = match params.input_source {
+            Some(InputSource::InputPath(ref inputs_uris)) => {
+                // Validate and get the full path
+                let inputs_uri = Self::validate_subdir(
+                    &self.worker_config.worker.inputs_folder,
+                    &PathBuf::from(&inputs_uris),
+                )
+                .await?;
+
+                InputSourceDto::InputPath(inputs_uri.to_string_lossy().to_string())
+            }
+            Some(InputSource::InputData(data)) => InputSourceDto::InputData(data),
+            None => InputSourceDto::InputNull,
+        };
+
+        let hints_source = if let Some(hints_path) = &params.hints_path {
+            if params.hints_stream {
+                // Hints will be streamed - use placeholder, will be updated when stream completes
+                HintsSourceDto::HintsStream(hints_path.clone())
+            } else {
+                // Validate and get the full path
+                let hints_uri = Self::validate_subdir(
+                    &self.worker_config.worker.inputs_folder,
+                    &PathBuf::from(hints_path),
+                )
+                .await?;
+
+                HintsSourceDto::HintsPath(hints_uri.to_string_lossy().to_string())
+            }
+        } else {
+            HintsSourceDto::HintsNull
+        };
+
+        let data_ctx =
+            DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
+
+        let job = self.worker.new_job(
+            job_id.clone(),
+            data_ctx,
+            params.rank_id,
+            params.total_workers,
+            params.worker_allocation,
+            params.job_compute_units,
+            Some(task_received_time),
+        );
+
+        // Start execution-only computation in background task
+        self.worker.set_current_computation(
+            self.worker.handle_execution_only(job.clone(), computation_tx.clone()).await?,
         );
 
         Ok(())

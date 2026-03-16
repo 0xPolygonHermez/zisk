@@ -63,6 +63,7 @@ use zisk_distributed_common::{
     JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
     ProveParamsDto, StatusInfoDto, StreamMessageKind, SystemStatusDto, WorkerErrorDto, WorkerId,
     WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
+    ZiskExecutorTimeDto,
 };
 
 use zisk_sdk::ZiskProofWithPublicValues;
@@ -354,6 +355,7 @@ impl Coordinator {
                 request.hints_mode,
                 request.simulated_node,
                 request.metadata.clone(),
+                request.execution_only,
             )
             .await?;
 
@@ -550,6 +552,7 @@ impl Coordinator {
     /// # Returns
     ///
     /// On success, returns a fully initialized job ready to start proof generation
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_job(
         &self,
         data_id: DataId,
@@ -559,6 +562,7 @@ impl Coordinator {
         hints_mode: HintsModeDto,
         simulated_node: Option<u32>,
         metadata: std::collections::BTreeMap<String, String>,
+        execution_only: bool,
     ) -> CoordinatorResult<Job> {
         let execution_mode = if let Some(node) = simulated_node {
             JobExecutionMode::Simulating(node)
@@ -589,6 +593,7 @@ impl Coordinator {
             partitions,
             execution_mode,
             metadata,
+            execution_only,
         ))
     }
 
@@ -671,6 +676,7 @@ impl Coordinator {
         let total_workers = active_workers.len() as u32;
 
         let cloned_active_workers = active_workers.clone();
+        let execution_only = job.execution_only;
         let tasks = active_workers.into_iter().enumerate().map(|(rank_id, worker_id)| {
             let job_id = job.job_id.clone();
             let data_id = job.data_id.clone();
@@ -681,18 +687,26 @@ impl Coordinator {
             let workers_pool = &self.workers_pool;
 
             async move {
+                let contribution_params = ContributionParamsDto {
+                    data_id,
+                    input_source,
+                    hints_source,
+                    rank_id: rank_id as u32,
+                    total_workers,
+                    worker_allocation,
+                    job_compute_units: job_compute_capacity,
+                };
+
+                let params = if execution_only {
+                    ExecuteTaskRequestTypeDto::ExecutionParams(contribution_params)
+                } else {
+                    ExecuteTaskRequestTypeDto::ContributionParams(contribution_params)
+                };
+
                 let req = ExecuteTaskRequestDto {
                     worker_id: worker_id.clone(),
                     job_id: job_id.clone(),
-                    params: ExecuteTaskRequestTypeDto::ContributionParams(ContributionParamsDto {
-                        data_id,
-                        input_source,
-                        hints_source,
-                        rank_id: rank_id as u32,
-                        total_workers,
-                        worker_allocation,
-                        job_compute_units: job_compute_capacity,
-                    }),
+                    params,
                 };
                 let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 
@@ -1092,6 +1106,9 @@ impl Coordinator {
         }
 
         match message.result_data {
+            ExecuteTaskResponseResultDataDto::Execution(_) => {
+                self.handle_execution_completion(message).await
+            }
             ExecuteTaskResponseResultDataDto::Challenges(_) => {
                 self.handle_contributions_completion(message).await
             }
@@ -1204,6 +1221,158 @@ impl Coordinator {
         Ok(())
     }
 
+    pub async fn handle_execution_completion(
+        &self,
+        execute_task_response: ExecuteTaskResponseDto,
+    ) -> CoordinatorResult<()> {
+        let job_id = execute_task_response.job_id.clone();
+
+        let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+
+        let mut job = job_entry.write().await;
+
+        let worker_id = execute_task_response.worker_id.clone();
+
+        // If job has Failed, mark worker as Idle and return early
+        if matches!(job.state(), JobState::Failed) {
+            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await?;
+            return Ok(());
+        }
+
+        // Store Execution response
+        self.store_execution_response(&mut job, execute_task_response).await?;
+
+        // Check if all execution results are complete
+        if !self.check_execution_completion(&job, &worker_id) {
+            return Ok(());
+        }
+
+        // Print execution summary
+        self.print_execution_summary(&job);
+
+        // Mark job as completed (execution-only, no proof generation)
+        job.change_state(JobState::Completed);
+
+        // Calculate total execution time
+        let end_time = Utc::now();
+        let start_time = job.start_times.get(&JobPhase::Contributions).unwrap_or(&end_time);
+        let total_duration = end_time.signed_duration_since(start_time);
+        let duration = Duration::from_millis(total_duration.num_milliseconds() as u64);
+
+        let header = format!("[Execution] Job {} completed successfully ✔", job_id).green();
+        let duration_str = format!("Duration: {:.3}s", duration.as_secs_f32()).bold();
+        info!(
+            "{} {} Metadata: {:?}, Capacity: {}",
+            header, duration_str, job.metadata, job.compute_capacity,
+        );
+
+        // Print ASM execution statistics if multiple workers
+        let workers = job.workers.clone();
+        if workers.len() > 1 {
+            if let Some(results) = job.results.get(&JobPhase::Contributions) {
+                // Extract overall execution times (phase duration from task received to completion)
+                let mut execution_durations: Vec<(WorkerId, i64)> = results
+                    .iter()
+                    .filter_map(|(worker_id, result)| {
+                        if let JobResultData::Challenges(contrib) = &result.data {
+                            contrib.task_received_time.map(|task_received| {
+                                let duration = result.end_time.signed_duration_since(task_received);
+                                (worker_id.clone(), duration.num_milliseconds())
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                if execution_durations.len() > 1 {
+                    execution_durations.sort_by_key(|(_, duration)| *duration);
+                    let (best_worker, best_duration) = &execution_durations[0];
+                    let (worst_worker, worst_duration) = execution_durations.last().unwrap();
+                    let avg_duration = execution_durations.iter().map(|(_, d)| d).sum::<i64>()
+                        as f64
+                        / execution_durations.len() as f64;
+
+                    let diff_percentage = if *best_duration > 0 {
+                        ((*worst_duration - *best_duration) as f64 / *best_duration as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+
+                    info!(
+                        "[Execution] Performance for {} - Avg: {:.3}s, Best: {} ({:.3}s), Worst: {} ({:.3}s), Diff: {:.1}%",
+                        job_id,
+                        avg_duration / 1000.0,
+                        best_worker,
+                        *best_duration as f64 / 1000.0,
+                        worst_worker,
+                        *worst_duration as f64 / 1000.0,
+                        diff_percentage
+                    );
+                }
+
+                // Extract ASM execution times
+                let mut asm_times: Vec<(WorkerId, f32, f32)> = results
+                    .iter()
+                    .filter_map(|(worker_id, result)| {
+                        if let JobResultData::Challenges(contrib) = &result.data {
+                            contrib
+                                .zisk_executor_time
+                                .asm_execution_duration
+                                .as_ref()
+                                .map(|asm| (worker_id.clone(), asm.time, asm.mhz))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                if !asm_times.is_empty() {
+                    asm_times.sort_by(|(_, a, _), (_, b, _)| {
+                        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                    let (best_asm_worker, best_asm, best_mhz) = &asm_times[0];
+                    let (worst_asm_worker, worst_asm, worst_mhz) = asm_times.last().unwrap();
+                    let avg_asm = asm_times.iter().map(|(_, t, _)| *t as f64).sum::<f64>()
+                        / asm_times.len() as f64;
+
+                    let asm_diff_percentage = if *best_asm > 0.0 {
+                        ((*worst_asm - *best_asm) as f64 / *best_asm as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+
+                    info!(
+                        "[Execution] ASM for {} - Avg: {:.3}s, Best: {} ({:.3}s @ {:.1}MHz), Worst: {} ({:.3}s @ {:.1}MHz), Diff: {:.1}%",
+                        job_id,
+                        avg_asm,
+                        best_asm_worker,
+                        *best_asm,
+                        *best_mhz,
+                        worst_asm_worker,
+                        *worst_asm,
+                        *worst_mhz,
+                        asm_diff_percentage
+                    );
+                }
+            }
+        }
+
+        // Mark all workers as idle
+        for worker_id in &job.workers {
+            self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Idle).await?;
+        }
+
+        // Release job lock before cleanup
+        drop(job);
+        let mut job = job_entry.write().await;
+
+        // Clean up process data for the job (no webhook for execution-only)
+        job.cleanup();
+
+        Ok(())
+    }
+
     /// Stores a single worker's Contribution response in the job state.
     ///
     /// # Parameters
@@ -1234,6 +1403,40 @@ impl Coordinator {
         let data = self.extract_challenges_data(execute_task_response.result_data)?;
 
         contributions_results.insert(
+            worker_id.clone(),
+            JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
+        );
+
+        Ok(())
+    }
+
+    /// Stores a single worker's Execution-only response in the job state.
+    ///
+    /// # Parameters
+    ///
+    /// * `job` - Reference to the job to update
+    /// * `execute_task_response` - The response from the worker containing execution data
+    async fn store_execution_response(
+        &self,
+        job: &mut Job,
+        execute_task_response: ExecuteTaskResponseDto,
+    ) -> CoordinatorResult<()> {
+        let execution_results = job.results.entry(JobPhase::Contributions).or_default();
+
+        let worker_id = execute_task_response.worker_id.clone();
+
+        // Check for duplicate results
+        if execution_results.contains_key(&worker_id) {
+            warn!("Received duplicate Execution result from worker {worker_id} for {}", job.job_id);
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Duplicate Execution result from worker {worker_id} for {}",
+                job.job_id
+            )));
+        }
+
+        let data = self.extract_execution_data(execute_task_response.result_data)?;
+
+        execution_results.insert(
             worker_id.clone(),
             JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
         );
@@ -1277,23 +1480,7 @@ impl Coordinator {
                     total_instances: 0,
                 };
 
-                let zisk_executor_time = ZiskExecutorTime {
-                    total_duration: Duration::from_secs_f32(
-                        ch_list.zisk_executor_time.total_duration / 1000.0,
-                    ),
-                    execution_duration: Duration::from_secs_f32(
-                        ch_list.zisk_executor_time.execution_duration / 1000.0,
-                    ),
-                    count_and_plan_duration: Duration::from_secs_f32(
-                        ch_list.zisk_executor_time.count_and_plan_duration / 1000.0,
-                    ),
-                    count_and_plan_mo_duration: Duration::from_secs_f32(
-                        ch_list.zisk_executor_time.count_and_plan_mo_duration / 1000.0,
-                    ),
-                    asm_execution_duration: ch_list.zisk_executor_time.asm_execution_duration.map(
-                        |asm_info| AsmExecutionInfo { time: asm_info.time, mhz: asm_info.mhz },
-                    ),
-                };
+                let zisk_executor_time = Self::extract_execution_info(&ch_list.zisk_executor_time);
 
                 Ok(JobResultData::Challenges(ContributionsResult {
                     witness_info,
@@ -1309,6 +1496,62 @@ impl Coordinator {
             _ => Err(CoordinatorError::InvalidRequest(
                 "Expected Challenges result data for Phase1".to_string(),
             )),
+        }
+    }
+
+    /// Extracts execution-only data from the worker's result response.
+    ///
+    /// # Parameters
+    ///
+    /// * `result_data` - The result data from the worker's response
+    fn extract_execution_data(
+        &self,
+        result_data: ExecuteTaskResponseResultDataDto,
+    ) -> CoordinatorResult<JobResultData> {
+        match result_data {
+            ExecuteTaskResponseResultDataDto::Execution(exec_time) => {
+                let zisk_executor_time = Self::extract_execution_info(&exec_time);
+
+                Ok(JobResultData::Challenges(ContributionsResult {
+                    witness_info: WitnessInfo {
+                        summary_info: String::new(),
+                        publics: Vec::new(),
+                        proof_values: Vec::new(),
+                        witness_time: 0.0,
+                    },
+                    challenges: Vec::new(),
+                    zisk_executor_time,
+                    task_received_time: chrono::DateTime::<Utc>::from_timestamp(
+                        (exec_time.task_received_time / 1000.0) as i64,
+                        ((exec_time.task_received_time % 1000.0) * 1_000_000.0) as u32,
+                    ),
+                }))
+            }
+            _ => {
+                Err(CoordinatorError::InvalidRequest("Expected Execution result data".to_string()))
+            }
+        }
+    }
+
+    /// Extracts and converts execution timing information from DTO to internal representation.
+    ///
+    /// # Parameters
+    ///
+    /// * `exec_time_dto` - The execution time DTO from the worker's response
+    fn extract_execution_info(exec_time_dto: &ZiskExecutorTimeDto) -> ZiskExecutorTime {
+        ZiskExecutorTime {
+            total_duration: Duration::from_secs_f32(exec_time_dto.total_duration / 1000.0),
+            execution_duration: Duration::from_secs_f32(exec_time_dto.execution_duration / 1000.0),
+            count_and_plan_duration: Duration::from_secs_f32(
+                exec_time_dto.count_and_plan_duration / 1000.0,
+            ),
+            count_and_plan_mo_duration: Duration::from_secs_f32(
+                exec_time_dto.count_and_plan_mo_duration / 1000.0,
+            ),
+            asm_execution_duration: exec_time_dto
+                .asm_execution_duration
+                .as_ref()
+                .map(|asm_info| AsmExecutionInfo { time: asm_info.time, mhz: asm_info.mhz }),
         }
     }
 
@@ -1406,6 +1649,73 @@ impl Coordinator {
         // If not all workers have responded (and we're not in simulation mode),
         // return early and wait for more results.
         job.execution_mode.is_simulating() || phase1_results_len >= job.workers.len()
+    }
+
+    /// Checks if all workers have completed Execution phase (execution-only, no proofs).
+    ///
+    /// # Parameters
+    ///
+    /// * `job` - Reference to the job to check
+    fn check_execution_completion(&self, job: &Job, worker_id: &WorkerId) -> bool {
+        let execution_results_len =
+            job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
+
+        let end_time = Utc::now();
+        let phase_start_time = job.start_times.get(&JobPhase::Contributions).unwrap_or_else(|| {
+            error!("Missing start time for Execution phase in job {}", job.job_id);
+            &end_time
+        });
+        let duration = end_time.signed_duration_since(phase_start_time);
+        let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
+
+        // Get execution info from the worker's result
+        let worker_result =
+            job.results.get(&JobPhase::Contributions).and_then(|results| results.get(worker_id));
+
+        let (asm_info_str, delay_time_str) = if let Some(job_result) = worker_result {
+            match &job_result.data {
+                JobResultData::Challenges(execution_result) => {
+                    // Calculate delay: time from coordinator sending job to worker receiving task
+                    let delay_duration = execution_result
+                        .task_received_time
+                        .map(|task_received| task_received.signed_duration_since(*phase_start_time))
+                        .unwrap_or_else(chrono::Duration::zero);
+                    let delay_ms = delay_duration.num_milliseconds().max(0) as f32;
+                    let delay_str = format!(", Delay: {:.3}s", delay_ms / 1000.0);
+
+                    let asm_str = execution_result
+                        .zisk_executor_time
+                        .asm_execution_duration
+                        .as_ref()
+                        .map(|asm_info| {
+                            format!(
+                                ", Asm Execution: {:.3}s at {} MHz",
+                                asm_info.time, asm_info.mhz
+                            )
+                        })
+                        .unwrap_or_default();
+
+                    (asm_str, delay_str)
+                }
+                _ => (String::new(), String::new()),
+            }
+        } else {
+            (String::new(), String::new())
+        };
+
+        info!(
+            "[Execution] {} finished execution for {} ({}/{} workers done, Phase: {:.3}s{}{})",
+            worker_id,
+            job.job_id,
+            execution_results_len,
+            job.workers.len(),
+            duration_ms.as_secs_f32(),
+            delay_time_str,
+            asm_info_str,
+        );
+
+        // Ensure we have results from all assigned workers before proceeding.
+        job.execution_mode.is_simulating() || execution_results_len >= job.workers.len()
     }
 
     /// Validates Phase 1 results and extracts challenge data with simulation mode handling.
