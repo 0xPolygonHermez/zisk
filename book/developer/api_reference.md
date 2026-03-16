@@ -1,12 +1,5 @@
 # ZisK user API — Reference
 
-All methods are exposed on every `zisk node`. Access is governed by two key types:
-- **Admin key** — full control over the deployment (cluster topology, hardware, all processes).
-- **Cluster key** — scoped to one cluster (job execution, that cluster's process operations).
-
-Proof request methods stream events back to the caller:
-`Started` | `Progress` | `Completed { result }` | `Failed { error }`
-
 ---
 
 ## Summary
