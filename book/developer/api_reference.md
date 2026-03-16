@@ -14,6 +14,7 @@
 | [`ListJobs`](#listjobs) | Runtime | List jobs with optional filters |
 | [`GetJob`](#getjob) | Runtime | Get full details and current status of a job |
 | [`WaitJobResult`](#waitjobresult) | Runtime | Block until a job reaches a terminal state and return the result |
+| [`PushJobInput`](#pushjobinput) | Runtime | Push the next input chunk to a job waiting for input |
 | [`CancelJob`](#canceljob) | Runtime | Cancel a queued or running job |
 
 ## Node Management
@@ -269,7 +270,6 @@ ListJobsRequest → Vec<JobSummary>
 
 ```rust
 struct ListJobsRequest {
-    status: Option<JobStatus>,
     since:  Option<DateTime<Utc>>,
     until:  Option<DateTime<Utc>>,
 }
@@ -284,7 +284,8 @@ struct JobSummary {
 
 enum JobStatus {
     Queued,
-    Running,
+    Running(JobPhase), // running includes the current phase
+    WaitingForInput,   // waiting for input
     Completed,
     Failed,
     Cancelled,
@@ -335,6 +336,24 @@ WaitJobResultRequest → JobInfo
 ```rust
 struct WaitJobResultRequest {
     job_id: String,
+}
+```
+
+### `PushJobInput`
+
+Push the next chunk of raw input to a job that is in `WaitingForInput` status. Only valid
+for jobs submitted with `InputKind::Raw`. Set `is_last` to `true` on the final chunk to
+signal end of input.
+
+```
+PushJobInputRequest → ()
+```
+
+```rust
+struct PushJobInputRequest {
+    job_id:  String,
+    data:    Vec<u8>,
+    is_last: bool,   // true on the final chunk;
 }
 ```
 
