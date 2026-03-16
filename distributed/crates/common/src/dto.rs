@@ -247,6 +247,7 @@ pub struct ChallengesDto {
 
 pub struct ExecutionResultDataDto {
     pub instances: u64,
+    pub executed_steps: u64,
     pub zisk_executor_time: ZiskExecutorTimeDto,
 }
 

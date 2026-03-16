@@ -331,6 +331,7 @@ message ChallengesList {
 
 message Execution {
   uint64 instances = 1;
+  uint64 executed_steps = 2;
   ZiskExecuteTime zisk_execution_time = 3;
 }
 

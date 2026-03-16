@@ -457,6 +457,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
 
                 Some(ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
                     instances: exec_data.instances,
+                    executed_steps: exec_data.executed_steps,
                     zisk_executor_time: ZiskExecutorTimeDto {
                         task_received_time: zisk_execution_time.task_received_time,
                         total_duration: zisk_execution_time.total_duration,

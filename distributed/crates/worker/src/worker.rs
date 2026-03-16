@@ -336,6 +336,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.world_rank()
     }
 
+    pub fn get_executed_steps(&self) -> u64 {
+        self.prover.executed_steps()
+    }
+
     pub fn state(&self) -> &WorkerState {
         &self.state
     }
