@@ -245,6 +245,11 @@ pub struct ChallengesDto {
     pub challenge: Vec<u64>,
 }
 
+pub struct ExecutionResultDataDto {
+    pub instances: u64,
+    pub zisk_executor_time: ZiskExecutorTimeDto,
+}
+
 pub struct AggParamsDto {
     pub agg_proofs: Vec<ProofDto>,
     pub last_proof: bool,
@@ -279,7 +284,7 @@ pub struct ContributionsResultDataDto {
 }
 
 pub enum ExecuteTaskResponseResultDataDto {
-    Execution(ZiskExecutorTimeDto),
+    Execution(ExecutionResultDataDto),
     Challenges(ContributionsResultDataDto),
     Proofs(Vec<ProofDto>),
     FinalProof(FinalProofDto),

@@ -1240,8 +1240,9 @@ impl Coordinator {
             return Ok(());
         }
 
-        // Store Execution response
-        self.store_execution_response(&mut job, execute_task_response).await?;
+        // Store Execution response and extract instances
+        let instances = self.store_execution_response(&mut job, execute_task_response).await?;
+        job.instances = Some(instances);
 
         // Check if all execution results are complete
         if !self.check_execution_completion(&job, &worker_id) {
@@ -1262,9 +1263,23 @@ impl Coordinator {
 
         let header = format!("[Execution] Job {} completed successfully ✔", job_id).green();
         let duration_str = format!("Duration: {:.3}s", duration.as_secs_f32()).bold();
+        let instances_str = if let Some(instances) = job.instances {
+            format!("Instances: {}", Self::format_number_with_dots(instances)).bold()
+        } else {
+            "Instances: N/A".to_string().red().bold()
+        };
+
+        let metadata_str = if job.metadata.is_empty() {
+            String::new()
+        } else {
+            let pairs: Vec<String> =
+                job.metadata.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+            format!(" {}", pairs.join(", "))
+        };
+
         info!(
-            "{} {} Metadata: {:?}, Capacity: {}",
-            header, duration_str, job.metadata, job.compute_capacity,
+            "{} {} {} Capacity: {}{}",
+            header, duration_str, instances_str, job.compute_capacity, metadata_str
         );
 
         // Print ASM execution statistics if multiple workers
@@ -1423,7 +1438,7 @@ impl Coordinator {
         &self,
         job: &mut Job,
         execute_task_response: ExecuteTaskResponseDto,
-    ) -> CoordinatorResult<()> {
+    ) -> CoordinatorResult<u64> {
         let execution_results = job.results.entry(JobPhase::Contributions).or_default();
 
         let worker_id = execute_task_response.worker_id.clone();
@@ -1438,13 +1453,15 @@ impl Coordinator {
         }
 
         let data = self.extract_execution_data(execute_task_response.result_data)?;
+        let instances =
+            if let JobResultData::Challenges(ref contrib) = data { contrib.instances } else { 0 };
 
         execution_results.insert(
             worker_id.clone(),
             JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
         );
 
-        Ok(())
+        Ok(instances)
     }
 
     /// Extracts challenge data from the worker's result response.
@@ -1513,8 +1530,10 @@ impl Coordinator {
         result_data: ExecuteTaskResponseResultDataDto,
     ) -> CoordinatorResult<JobResultData> {
         match result_data {
-            ExecuteTaskResponseResultDataDto::Execution(exec_time) => {
-                let zisk_executor_time = Self::extract_execution_info(&exec_time);
+            ExecuteTaskResponseResultDataDto::Execution(exec_data) => {
+                let zisk_executor_time =
+                    Self::extract_execution_info(&exec_data.zisk_executor_time);
+                let instances = exec_data.instances;
 
                 Ok(JobResultData::Challenges(ContributionsResult {
                     witness_info: WitnessInfo {
@@ -1522,15 +1541,16 @@ impl Coordinator {
                         publics: Vec::new(),
                         proof_values: Vec::new(),
                         witness_time: 0.0,
-                        total_instances: 0,
+                        total_instances: instances as usize,
                     },
                     challenges: Vec::new(),
                     zisk_executor_time,
                     task_received_time: chrono::DateTime::<Utc>::from_timestamp(
-                        (exec_time.task_received_time / 1000.0) as i64,
-                        ((exec_time.task_received_time % 1000.0) * 1_000_000.0) as u32,
+                        (exec_data.zisk_executor_time.task_received_time / 1000.0) as i64,
+                        ((exec_data.zisk_executor_time.task_received_time % 1000.0) * 1_000_000.0)
+                            as u32,
                     ),
-                    instances: 0,
+                    instances,
                 }))
             }
             _ => {
@@ -2388,12 +2408,21 @@ impl Coordinator {
             "Steps: N/A".to_string().red().bold()
         };
         let instances_str = if let Some(instances) = job.instances {
-            format!("Instances: {}", instances).bold()
+            format!("Instances: {}", Self::format_number_with_dots(instances)).bold()
         } else {
             "Instances: N/A".to_string().red().bold()
         };
+
+        let metadata_str = if job.metadata.is_empty() {
+            String::new()
+        } else {
+            let pairs: Vec<String> =
+                job.metadata.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+            format!(" {}", pairs.join(", "))
+        };
+
         info!(
-            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} {} Metadata: {:?}, Capacity: {} ",
+            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} {} Capacity: {}{}",
             header,
             duration_str,
             phase1_duration.as_seconds_f32(),
@@ -2401,8 +2430,8 @@ impl Coordinator {
             phase3_duration.as_seconds_f32(),
             steps_str,
             instances_str,
-            job.metadata,
             job.compute_capacity,
+            metadata_str,
         );
 
         let workers = job.workers.clone();

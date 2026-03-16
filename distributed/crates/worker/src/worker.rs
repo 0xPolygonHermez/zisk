@@ -636,14 +636,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .get_execution_info()
                 .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
-            let instances = witness_info.total_instances as u64;
-            guard = job.blocking_lock();
-            guard.instances = instances;
-            drop(guard);
-
             match result {
-                Ok(_challenges) => {
-                    // For execution-only, return empty challenges (we only care about timing)
+                Ok(num_instances) => {
+                    let instances = num_instances as u64;
+                    guard = job.blocking_lock();
+                    guard.instances = instances;
+                    drop(guard);
+
+                    // For execution-only, return empty challenges (we only care about timing and instances)
                     let _ = tx.send(ComputationResult::Challenge {
                         job_id,
                         success: true,
@@ -737,7 +737,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         hints_source: HintsSourceDto,
         partition_info: PartitionInfo,
         pk: &ZiskProgramPK,
-    ) -> Result<()> {
+    ) -> Result<usize> {
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
             InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
@@ -769,9 +769,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             partition_info.worker_idx,
         )?;
 
-        prover.execute(pk, stdin)?;
+        let result = prover.execute(pk, stdin)?;
 
-        Ok(())
+        let num_instances = result.planning_info.num_instances;
+
+        Ok(num_instances)
     }
 
     /// Routes an incoming `StreamData` message to the per-job ordering actor.

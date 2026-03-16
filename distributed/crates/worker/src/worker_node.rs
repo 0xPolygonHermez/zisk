@@ -332,6 +332,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             (
                 TaskType::Execution as i32,
                 Some(ResultData::Execution(Execution {
+                    instances: result_data.3,
                     zisk_execution_time: Some(zisk_execution_time),
                 })),
             )
