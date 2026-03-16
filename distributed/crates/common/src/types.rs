@@ -260,6 +260,7 @@ pub struct Job {
     pub final_proof: Option<Vec<u64>>,
     pub executed_steps: Option<u64>,
     pub metadata: BTreeMap<String, String>,
+    pub execution_only: bool,
 }
 
 impl Job {
@@ -274,6 +275,7 @@ impl Job {
         partitions: Vec<Vec<u32>>,
         execution_mode: JobExecutionMode,
         metadata: BTreeMap<String, String>,
+        execution_only: bool,
     ) -> Self {
         Self {
             job_id: JobId::new(),
@@ -297,6 +299,7 @@ impl Job {
             final_proof: None,
             executed_steps: None,
             metadata,
+            execution_only,
         }
     }
 
@@ -402,7 +405,14 @@ pub struct ContributionsResult {
 }
 
 #[derive(Debug, Clone)]
+pub struct ExecutionResult {
+    pub zisk_executor_time: ZiskExecutorTime,
+    pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Clone)]
 pub enum JobResultData {
+    Execution(ExecutionResult),
     Challenges(ContributionsResult),
     AggProofs(Vec<AggProofData>),
 }
@@ -424,6 +434,7 @@ pub struct DataCtx {
 #[repr(u8)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, BorshSerialize, BorshDeserialize)]
 pub enum JobPhase {
+    Execution,
     Contributions,
     Prove,
     Aggregate,
@@ -436,11 +447,12 @@ impl TryFrom<u8> for JobPhase {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(JobPhase::Contributions),
-            1 => Ok(JobPhase::Prove),
-            2 => Ok(JobPhase::Aggregate),
-            3 => Ok(JobPhase::ContributionsInputsStream),
-            4 => Ok(JobPhase::ContributionsHintsStream),
+            0 => Ok(JobPhase::Execution),
+            1 => Ok(JobPhase::Contributions),
+            2 => Ok(JobPhase::Prove),
+            3 => Ok(JobPhase::Aggregate),
+            4 => Ok(JobPhase::ContributionsInputsStream),
+            5 => Ok(JobPhase::ContributionsHintsStream),
             _ => Err(anyhow::anyhow!("Invalid JobPhase byte: {}", value)),
         }
     }
@@ -449,6 +461,7 @@ impl TryFrom<u8> for JobPhase {
 impl fmt::Display for JobPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            JobPhase::Execution => write!(f, "Execution"),
             JobPhase::Contributions => write!(f, "Contributions"),
             JobPhase::Prove => write!(f, "Prove"),
             JobPhase::Aggregate => write!(f, "Aggregate"),

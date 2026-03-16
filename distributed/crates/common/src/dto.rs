@@ -91,6 +91,7 @@ pub struct LaunchProofRequestDto {
     pub hints_mode: HintsModeDto,
     pub simulated_node: Option<u32>,
     pub metadata: std::collections::BTreeMap<String, String>,
+    pub execution_only: bool,
 }
 
 pub struct LaunchProofResponseDto {
@@ -174,6 +175,7 @@ pub enum ExecuteTaskRequestTypeDto {
     ContributionParams(ContributionParamsDto),
     ProveParams(ProveParamsDto),
     AggParams(AggParamsDto),
+    ExecutionParams(ContributionParamsDto),
 }
 
 pub struct ContributionParamsDto {
@@ -275,6 +277,7 @@ pub struct ContributionsResultDataDto {
 }
 
 pub enum ExecuteTaskResponseResultDataDto {
+    Execution(ZiskExecutorTimeDto),
     Challenges(ContributionsResultDataDto),
     Proofs(Vec<ProofDto>),
     FinalProof(FinalProofDto),

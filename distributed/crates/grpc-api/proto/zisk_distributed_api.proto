@@ -62,6 +62,7 @@ message LaunchProofRequest {
   optional string hints_uri = 7;
   optional uint32 simulated_node = 8; // If set, indicates this is a simulated worker
   map<string, string> metadata = 9; // Optional metadata for extensibility and logging
+  bool execution_only = 10; // If true, only execute without generating proofs
 }
 
 enum InputMode {
@@ -231,6 +232,7 @@ message ExecuteTaskRequest {
     ContributionParams contribution_params = 4;
     ProveParams prove_params = 5;
     AggParams agg_params = 6;
+    ContributionParams execution_params = 7; // Same params as contribution, but only executes without proof generation
   }
 }
 
@@ -238,6 +240,7 @@ enum TaskType {
   PARTIAL_CONTRIBUTION = 0;
   PROVE = 1;
   AGGREGATE = 2;
+  EXECUTION = 3; // Execute-only mode without proof generation
 }
 
 message ContributionParams {
@@ -291,9 +294,10 @@ message ExecuteTaskResponse {
   bool success = 4;
   string error_message = 5; // Optional error message if success is false
   oneof result_data {
-    ChallengesList challenges = 6;
-    ProofList proofs = 7;
-    FinalProof final_proof = 8;
+    Execution execution = 6;
+    ChallengesList challenges = 7;
+    ProofList proofs = 8;
+    FinalProof final_proof = 9;
   }
 }
 
@@ -321,6 +325,10 @@ message ZiskExecuteTime {
 message ChallengesList {
   repeated Challenges challenges = 1;
   WitnessExecInfo witness_info = 2;
+  ZiskExecuteTime zisk_execution_time = 3;
+}
+
+message Execution {
   ZiskExecuteTime zisk_execution_time = 3;
 }
 
