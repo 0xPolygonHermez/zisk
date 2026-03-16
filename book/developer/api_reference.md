@@ -1,7 +1,5 @@
 # ZisK user API — Reference
 
----
-
 ## Summary
 
 | Method | Category | Description |
@@ -16,8 +14,6 @@
 | [`ListJobs`](#listjobs) | Runtime | List jobs with optional filters |
 | [`GetJob`](#getjob) | Runtime | Get full details and current status of a job |
 | [`CancelJob`](#canceljob) | Runtime | Cancel a queued or running job |
-
----
 
 ## Node Management
 
@@ -49,8 +45,6 @@ enum ProofKind {
     Plonk,
 }
 ```
-
----
 
 ## Program Management
 
@@ -88,8 +82,6 @@ struct GuestProgramSummary {
 }
 ```
 
----
-
 ### `GetGuestProgram`
 
 Get details of a single program. Supports lookup by `program_id`, `hash_id`, or `name`.
@@ -105,8 +97,6 @@ struct GetGuestProgramRequest {
     name:       Option<String>, // substring match; may return multiple results if not unique
 } // one of program_id, hash_id, or name must be supplied
 ```
-
----
 
 ### `AddGuestProgram`
 
@@ -137,8 +127,6 @@ struct AddGuestProgramResponse {
 }
 ```
 
----
-
 ### `UpdateGuestProgram`
 
 Update mutable fields of an existing program. Supplying a new `zisk_elf` triggers recomputation
@@ -165,8 +153,6 @@ struct UpdateGuestProgramResponse {
 }
 ```
 
----
-
 ### `DeleteGuestProgram`
 
 Remove a program from the cluster.
@@ -181,8 +167,6 @@ struct DeleteGuestProgramRequest {
     hash_id:    Option<String>,
 } // one of program_id or hash_id must be supplied
 ```
-
----
 
 ## Proof Requests
 
@@ -274,8 +258,6 @@ struct Proof {
 }
 ```
 
----
-
 ## Runtime Management
 
 ### `ListJobs`
@@ -312,8 +294,6 @@ enum JobStatus {
 }
 ```
 
----
-
 ### `GetJob`
 
 Get full details and current status of a job.
@@ -340,8 +320,6 @@ struct JobInfo {
 }
 ```
 
----
-
 ### `CancelJob`
 
 Cancel a queued or running job.
@@ -361,8 +339,6 @@ struct CancelJobResponse {
 }
 ```
 
---- 
-
 ## Common Types
 
 Paginated list wrapper — used by all List methods.
@@ -374,8 +350,6 @@ struct Page<T> {
     total:       u64,            // total count
 }
 ```
-
----
 
 ## Admin Management
 
@@ -405,8 +379,6 @@ struct Page<T> {
 | [`DeleteWorker`](#deleteworker) | Process | Stop and remove a worker process |
 | [`AssignGPUs`](#assigngpus) | Process | Update the GPU subset assigned to a worker |
 
----
-
 ### `Clean`
 
 Reset all ZisK state on this node: installed setups, registered programs, and any cached files.
@@ -418,8 +390,6 @@ CleanRequest → ()
 ```rust
 struct CleanRequest {}
 ```
-
----
 
 ## Setup Management
 
@@ -447,8 +417,6 @@ struct SetupSummary {
 }
 ```
 
----
-
 ### `GetSetup`
 
 Get details of a single setup by its ID.
@@ -462,8 +430,6 @@ struct GetSetupRequest {
     id: String,
 }
 ```
-
----
 
 ### `AddSetup`
 
@@ -485,8 +451,6 @@ struct AddSetupResponse {
     id: String,
 }
 ```
-
----
 
 ### `UpdateSetup`
 
@@ -511,8 +475,6 @@ struct UpdateSetupResponse {
 }
 ```
 
----
-
 ### `DeleteSetup`
 
 Remove an installed setup from this node.
@@ -526,8 +488,6 @@ struct DeleteSetupRequest {
     id: String,
 }
 ```
-
---- 
 
 ### `ListClusters`
 
@@ -555,8 +515,6 @@ enum ProcessStatus {
 }
 ```
 
----
-
 ### `CreateCluster`
 
 Create a new cluster and issue its cluster key. The cluster key must be stored securely by the
@@ -578,8 +536,6 @@ struct CreateClusterResponse {
 }
 ```
 
----
-
 ### `GetCluster`
 
 Get full details of a cluster, including its coordinator and all assigned workers.
@@ -600,8 +556,6 @@ struct ClusterInfo {
 }
 ```
 
----
-
 ### `DeleteCluster`
 
 Delete a cluster and stop all its processes.
@@ -616,8 +570,6 @@ struct DeleteClusterRequest {
 }
 ```
 
----
-
 ### `ListClusterWorkers`
 
 List all workers assigned to a specific cluster.
@@ -631,8 +583,6 @@ struct ListClusterWorkersRequest {
     cluster_id: String,
 }
 ```
-
----
 
 ### `AssignWorker`
 
@@ -649,8 +599,6 @@ struct AssignWorkerRequest {
 }
 ```
 
----
-
 ### `UnassignWorker`
 
 Remove a worker from a cluster without stopping it.
@@ -665,8 +613,6 @@ struct UnassignWorkerRequest {
     instance:   String,
 }
 ```
-
----
 
 ### `MoveWorker`
 
@@ -683,8 +629,6 @@ struct MoveWorkerRequest {
     to_cluster_id:   String,
 }
 ```
-
----
 
 ### `ListCoordinators`
 
@@ -707,8 +651,6 @@ struct CoordinatorSummary {
     status:     ProcessStatus,
 }
 ```
-
----
 
 ### `CreateCoordinator`
 
@@ -736,8 +678,6 @@ struct CoordinatorInfo {
 }
 ```
 
----
-
 ### `GetCoordinator`
 
 Get status and details of a coordinator process.
@@ -752,8 +692,6 @@ struct GetCoordinatorRequest {
 }
 ```
 
----
-
 ### `DeleteCoordinator`
 
 Stop and remove a coordinator process.
@@ -767,8 +705,6 @@ struct DeleteCoordinatorRequest {
     instance: String,
 }
 ```
-
----
 
 ### `ListWorkers`
 
@@ -793,8 +729,6 @@ struct WorkerSummary {
     status:     ProcessStatus,
 }
 ```
-
----
 
 ### `CreateWorker`
 
@@ -823,8 +757,6 @@ struct WorkerInfo {
 }
 ```
 
----
-
 ### `GetWorker`
 
 Get status and details of a worker process.
@@ -839,8 +771,6 @@ struct GetWorkerRequest {
 }
 ```
 
----
-
 ### `DeleteWorker`
 
 Stop and remove a worker process.
@@ -854,8 +784,6 @@ struct DeleteWorkerRequest {
     instance: String,
 }
 ```
-
----
 
 ### `AssignGPUs`
 
