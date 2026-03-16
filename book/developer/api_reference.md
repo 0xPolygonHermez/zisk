@@ -87,11 +87,14 @@ struct CleanRequest {}
 List all setups currently installed on this node.
 
 ```
-ListSetupsRequest → Vec<SetupSummary>
+ListSetupsRequest → Page<SetupSummary>
 ```
 
 ```rust
-struct ListSetupsRequest {}
+struct ListSetupsRequest {
+    limit:  Option<u32>,    // max items per page; server default applies if omitted
+    cursor: Option<String>, // continuation token from a previous Page response
+}
 
 struct SetupSummary {
     id:          String,
@@ -197,13 +200,15 @@ List all programs registered in the cluster, with optional filters. Returns ligh
 without binary fields.
 
 ```
-ListGuestProgramsRequest → Vec<GuestProgramSummary>
+ListGuestProgramsRequest → Page<GuestProgramSummary>
 ```
 
 ```rust
 struct ListGuestProgramsRequest {
     name:   Option<String>,  // filter by name (substring match)
     author: Option<String>,  // filter by author
+    limit:  Option<u32>,     // max items per page; server default applies if omitted
+    cursor: Option<String>,  // continuation token from a previous Page response
 }
 
 // lightweight — no binary fields
@@ -437,7 +442,7 @@ struct VerifyResult {
 List jobs with optional filters on status and time range.
 
 ```
-ListJobsRequest → Vec<JobSummary>
+ListJobsRequest → Page<JobSummary>
 ```
 
 ```rust
@@ -445,6 +450,8 @@ struct ListJobsRequest {
     status: Option<JobStatus>,
     since:  Option<DateTime<Utc>>,
     until:  Option<DateTime<Utc>>,
+    limit:  Option<u32>,    // max items per page; server default applies if omitted
+    cursor: Option<String>, // continuation token from a previous Page response
 }
 
 struct JobSummary {
@@ -509,6 +516,20 @@ struct CancelJobRequest {
 struct CancelJobResponse {
     id:         String,
     job_status: JobStatus,
+}
+```
+
+--- 
+
+## Common Types
+
+Paginated list wrapper — used by all List methods.
+
+```rust
+struct Page<T> {
+    items:       Vec<T>,
+    next_cursor: Option<String>, // absent when no further pages exist
+    total:       u64,            // total count
 }
 ```
 
@@ -616,7 +637,7 @@ struct ClusterInfo {
 Delete a cluster and stop all its processes.
 
 ```
-DeleteClusterRequest → OpResult
+DeleteClusterRequest → ()
 ```
 
 ```rust
@@ -648,7 +669,7 @@ struct ListClusterWorkersRequest {
 Assign an existing worker process to a cluster.
 
 ```
-AssignWorkerRequest → OpResult
+AssignWorkerRequest → ()
 ```
 
 ```rust
@@ -665,7 +686,7 @@ struct AssignWorkerRequest {
 Remove a worker from a cluster without stopping it.
 
 ```
-UnassignWorkerRequest → OpResult
+UnassignWorkerRequest → ()
 ```
 
 ```rust
@@ -682,7 +703,7 @@ struct UnassignWorkerRequest {
 Atomically move a worker from one cluster to another.
 
 ```
-MoveWorkerRequest → OpResult
+MoveWorkerRequest → ()
 ```
 
 ```rust
@@ -768,7 +789,7 @@ struct GetCoordinatorRequest {
 Stop and remove a coordinator process.
 
 ```
-DeleteCoordinatorRequest → OpResult
+DeleteCoordinatorRequest → ()
 ```
 
 ```rust
@@ -855,7 +876,7 @@ struct GetWorkerRequest {
 Stop and remove a worker process.
 
 ```
-DeleteWorkerRequest → OpResult
+DeleteWorkerRequest → ()
 ```
 
 ```rust
