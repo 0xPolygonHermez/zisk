@@ -193,8 +193,8 @@ enum ProveSetup {
     SetupId(String),
     VerifierId(String),   // hash of the setup's verification key
     VerifierKey(Vec<u8>), // raw verification key
-
 }
+
 enum InputKind {
     Raw(Vec<u8>),
     Inputs(String), // file path or http:// URL
