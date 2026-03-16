@@ -13,6 +13,7 @@
 | [`Prove`](#prove) | Proof | Submit a `prove` job |
 | [`ListJobs`](#listjobs) | Runtime | List jobs with optional filters |
 | [`GetJob`](#getjob) | Runtime | Get full details and current status of a job |
+| [`WaitJobResult`](#waitjobresult) | Runtime | Block until a job reaches a terminal state and return the result |
 | [`CancelJob`](#canceljob) | Runtime | Cancel a queued or running job |
 
 ## Node Management
@@ -296,7 +297,7 @@ enum JobStatus {
 
 ### `GetJob`
 
-Get full details and current status of a job.
+Get full details and current status of a job. Returns immediately with the current state.
 
 ```
 GetJobRequest → JobInfo
@@ -304,8 +305,7 @@ GetJobRequest → JobInfo
 
 ```rust
 struct GetJobRequest {
-    id:            String,
-    blocking_time: Option<Duration>, // if set, hold connection until status changes or timeout elapses
+    id: String,
 }
 
 struct JobInfo {
@@ -317,6 +317,23 @@ struct JobInfo {
     error:        Option<String>,          // present when status is Failed
     created_at:   DateTime<Utc>,
     completed_at: Option<DateTime<Utc>>,
+}
+```
+
+### `WaitJobResult`
+
+Block until a job reaches a terminal state (Completed, Failed, or Cancelled) or
+`blocking_time` elapses. Returns the final `JobInfo`. Prefer this over a `GetJob` polling
+loop when the client can hold an open connection.
+
+```
+WaitJobResultRequest → JobInfo
+```
+
+```rust
+struct WaitJobResultRequest {
+    id:            String,
+    blocking_time: Option<Duration>, // max wait for terminal state; server default applies if omitted, server cap applies if exceeded
 }
 ```
 
