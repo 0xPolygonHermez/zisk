@@ -329,10 +329,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         // If challenges are empty, this is execution-only mode
         let (task_type, result_data_msg) = if challenges.is_empty() {
+            let executed_steps = self.worker.get_executed_steps();
             (
                 TaskType::Execution as i32,
                 Some(ResultData::Execution(Execution {
                     instances: result_data.3,
+                    executed_steps,
                     zisk_execution_time: Some(zisk_execution_time),
                 })),
             )
