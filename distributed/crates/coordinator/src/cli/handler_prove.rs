@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -21,6 +20,7 @@ pub async fn handle(
     compute_capacity: u32,
     minimal_compute_capacity: Option<u32>,
     simulated_node: Option<u32>,
+    metadata: Vec<(String, String)>,
     execution_only: bool,
 ) -> Result<()> {
     // Initialize tracing - keep guard alive for application lifetime
@@ -74,7 +74,7 @@ pub async fn handle(
         hints_mode: hints_mode.into(),
         hints_uri,
         simulated_node,
-        metadata: HashMap::new(),
+        metadata: metadata.into_iter().collect(),
         execution_only,
     };
 
