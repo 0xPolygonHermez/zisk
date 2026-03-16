@@ -12,7 +12,7 @@
 | [`AddGuestProgram`](#addguestprogram) | Program | Register a new program |
 | [`UpdateGuestProgram`](#updateguestprogram) | Program | Update mutable fields of an existing program |
 | [`DeleteGuestProgram`](#deleteguestprogram) | Program | Remove a program from the cluster |
-| [`Prove`](#prove) | Proof | Submit a job (execute, stats, verify constraints, or prove) |
+| [`Prove`](#prove) | Proof | Submit a `prove` job |
 | [`ListJobs`](#listjobs) | Runtime | List jobs with optional filters |
 | [`GetJob`](#getjob) | Runtime | Get full details and current status of a job |
 | [`CancelJob`](#canceljob) | Runtime | Cancel a queued or running job |
@@ -55,7 +55,7 @@ enum ProofKind {
 ## Program Management
 
 A **GuestProgram** is a ZisK program registered in the cluster. It holds the ELF binaries and
-metadata needed to execute, prove, and verify. The `hash_id` is derived from `zisk_elf` at
+metadata needed to execute and prove. The `hash_id` is derived from `zisk_elf` at
 registration time and serves as the content-addressed identifier.
 
 ### `ListGuestPrograms`
