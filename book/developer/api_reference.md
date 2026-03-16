@@ -341,9 +341,8 @@ struct WaitJobResultRequest {
 
 ### `PushJobInput`
 
-Push the next chunk of raw input to a job that is in `WaitingForInput` status. Only valid
-for jobs submitted with `InputKind::Raw`. Set `is_last` to `true` on the final chunk to
-signal end of input.
+Push the next chunk of raw input to a job that is in `WaitingForInput` status. Only valid for jobs 
+submitted with `InputKind::Raw`. Set `is_last` to `true` on the final chunk to signal end of input.
 
 ```
 PushJobInputRequest → ()
