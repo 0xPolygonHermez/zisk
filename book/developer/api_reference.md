@@ -214,25 +214,25 @@ enum JobEvent {
 }
 
 struct JobEventStarted {
-    job_id: String,
+    job_id:    String,
     timestamp: DateTime<Utc>,
 }
 
 struct JobEventProgress {
-    job_id: String,
-    phase: JobPhase,
+    job_id:    String,
+    phase:     JobPhase,
     timestamp: DateTime<Utc>,
 }
 
 struct JobEventCompleted {
-    job_id: String,
-    result: JobResult,
+    job_id:    String,
+    result:    JobResult,
     timestamp: DateTime<Utc>,
 }
 
 struct JobEventFailed {
-    job_id: String,
-    error: String,
+    job_id:    String,
+    error:     String,
     timestamp: DateTime<Utc>,
 }
 
@@ -248,14 +248,14 @@ enum JobResult {
 }
 
 struct Proof {
-    proof_id:      String,         // unique proof identifier (UUID)
-    program_id:    String,         // GuestProgram ID used to generate this proof
-    verification_key: Vec<u8>,     // raw verification key
-    proof_kind:    ProofKind,
-    data:          Vec<u8>,        // serialized proof
-    public_inputs: Vec<u8>,
-    started_at:    DateTime<Utc>,
-    completed_at:  DateTime<Utc>,
+    proof_id:         String,        // unique proof identifier (UUID)
+    program_id:       String,        // GuestProgram ID used to generate this proof
+    verification_key: Vec<u8>,       // raw verification key
+    proof_kind:       ProofKind,
+    data:             Vec<u8>,       // serialized proof
+    public_inputs:    Vec<u8>,
+    started_at:       DateTime<Utc>,
+    completed_at:     DateTime<Utc>,
 }
 ```
 
@@ -279,7 +279,7 @@ struct ListJobsRequest {
 }
 
 struct JobSummary {
-    id:         String,
+    job_id:     String,
     program_id: String,
     kind:       JobKind,
     status:     JobStatus,
@@ -309,7 +309,7 @@ struct GetJobRequest {
 }
 
 struct JobInfo {
-    id:           String,
+    job_id:       String,
     program_id:   String,
     kind:         JobKind,
     status:       JobStatus,
@@ -322,9 +322,9 @@ struct JobInfo {
 
 ### `WaitJobResult`
 
-Block until a job reaches a terminal state (Completed, Failed, or Cancelled) or
-`blocking_time` elapses. Returns the final `JobInfo`. Prefer this over a `GetJob` polling
-loop when the client can hold an open connection.
+Blocks until the job reaches a terminal state (Completed, Failed, or Cancelled) or the
+2-second server-side timeout expires. If the timeout elapses first, returns JobInfo with the
+current status (e.g., Running). Intended as the primitive for result polling.
 
 ```
 WaitJobResultRequest → JobInfo
@@ -332,8 +332,7 @@ WaitJobResultRequest → JobInfo
 
 ```rust
 struct WaitJobResultRequest {
-    id:            String,
-    blocking_time: Option<Duration>, // max wait for terminal state; server default applies if omitted, server cap applies if exceeded
+    job_id: String,
 }
 ```
 
@@ -347,11 +346,11 @@ CancelJobRequest → CancelJobResponse
 
 ```rust
 struct CancelJobRequest {
-    id: String,
+    job_id: String,
 }
 
 struct CancelJobResponse {
-    id:         String,
+    job_id:     String,
     job_status: JobStatus,
 }
 ```
