@@ -99,7 +99,7 @@ struct GuestProgramSummary {
 
 ### `GetGuestProgram`
 
-Get details of a single program. Supports lookup by `id`, `hash_id`, or `name`.
+Get details of a single program. Supports lookup by `program_id`, `hash_id`, or `name`.
 
 ```
 GetGuestProgramRequest → GuestProgramSummary
@@ -110,7 +110,7 @@ struct GetGuestProgramRequest {
     program_id: Option<String>,
     hash_id:    Option<String>,
     name:       Option<String>, // substring match; may return multiple results if not unique
-} // one of id, hash_id, or name must be supplied
+} // one of program_id, hash_id, or name must be supplied
 ```
 
 ---
@@ -195,9 +195,8 @@ struct DeleteGuestProgramRequest {
 
 ### `Prove`
 
-Submit a job against a registered program. `job_kind` controls what is computed: a plain
-execution trace, detailed stats, constraint verification, or a full proof. Streams `JobEvent`
-values back to the caller until the job reaches a terminal state.
+Submit a proof job against a registered program. Streams `JobEvent` values back to the caller
+until the job reaches a terminal state.
 
 ```
 ProveRequest → stream JobEvent
@@ -205,12 +204,12 @@ ProveRequest → stream JobEvent
 
 ```rust
 struct ProveRequest {
-    program_id:    String,           // GuestProgram ID
-    setup_id:      Option<String>,   // Setup ID to use for this job
+    program_id:    String,             // GuestProgram ID
+    setup_id:      Option<ProveSetup>, // Setup ID to use for this job
     input:         InputKind,
     job_kind:      JobKind,
-    blocking_time: Option<Duration>, // duration to block the job status requests until the job completes; server default applies if omitted or less than the default
-    webhook_url:   Option<String>,   // if set, POST JobEvent::Completed / JobEvent::Failed here
+    webhook_url:   Option<String>,     // if set, POST JobEvent::Completed / JobEvent::Failed here
+    proof_timeout: Option<Duration>,   // max duration to generate the proof; server default applies if omitted
 }
 
 enum ProveSetup {
@@ -332,7 +331,8 @@ GetJobRequest → JobInfo
 
 ```rust
 struct GetJobRequest {
-    id: String,
+    id:            String,
+    blocking_time: Option<Duration>, // if set, hold connection until status changes or timeout elapses
 }
 
 struct JobInfo {
@@ -384,29 +384,157 @@ struct Page<T> {
 
 ---
 
-## Cluster Management
+## Admin Management
 
-| Method | Access | Description |
-|--------|--------|-------------|
-| [`ListClusters`](#listclusters) | Admin | List all clusters with status and member counts |
-| [`CreateCluster`](#createcluster) | Admin | Create a new cluster and issue its cluster key |
-| [`GetCluster`](#getcluster) | Admin | Get full details of a cluster |
-| [`DeleteCluster`](#deletecluster) | Admin | Delete a cluster and stop all its processes |
-| [`ListClusterWorkers`](#listclusterworkers) | Admin | List workers assigned to a specific cluster |
-| [`AssignWorker`](#assignworker) | Admin | Assign an existing worker to a cluster |
-| [`UnassignWorker`](#unassignworker) | Admin | Remove a worker from a cluster |
-| [`MoveWorker`](#moveworker) | Admin | Move a worker from one cluster to another |
-| [`ListCoordinators`](#listcoordinators) | Admin | List all coordinator processes across the deployment |
-| [`CreateCoordinator`](#createcoordinator) | Admin | Create and start a new coordinator process |
-| [`GetCoordinator`](#getcoordinator) | Admin | Get status and details of a coordinator |
-| [`DeleteCoordinator`](#deletecoordinator) | Admin | Stop and remove a coordinator process |
-| [`ListWorkers`](#listworkers) | Admin | List all worker processes across the deployment |
-| [`CreateWorker`](#createworker) | Admin | Create and start a new worker process on a node |
-| [`GetWorker`](#getworker) | Admin | Get status and details of a worker |
-| [`DeleteWorker`](#deleteworker) | Admin | Stop and remove a worker process |
-| [`AssignGPUs`](#assigngpus) | Admin | Update the GPU subset assigned to a worker |
+| Method | Category | Description |
+|--------|----------|-------------|
+| [`Clean`](#clean) | Node | Reset all ZisK state on this node |
+| [`ListSetups`](#listsetups) | Setup | List all setups available on this node |
+| [`GetSetup`](#getsetup) | Setup | Get details of a single setup |
+| [`AddSetup`](#addsetup) | Setup | Download and install a new setup |
+| [`UpdateSetup`](#updatesetup) | Setup | Update mutable fields of an existing setup |
+| [`DeleteSetup`](#deletesetup) | Setup | Remove a setup from this node |
+| [`ListClusters`](#listclusters) | Cluster | List all clusters with status and member counts |
+| [`CreateCluster`](#createcluster) | Cluster | Create a new cluster and issue its cluster key |
+| [`GetCluster`](#getcluster) | Cluster | Get full details of a cluster |
+| [`DeleteCluster`](#deletecluster) | Cluster | Delete a cluster and stop all its processes |
+| [`ListClusterWorkers`](#listclusterworkers) | Cluster | List workers assigned to a specific cluster |
+| [`AssignWorker`](#assignworker) | Cluster | Assign an existing worker to a cluster |
+| [`UnassignWorker`](#unassignworker) | Cluster | Remove a worker from a cluster |
+| [`MoveWorker`](#moveworker) | Cluster | Move a worker from one cluster to another |
+| [`ListCoordinators`](#listcoordinators) | Process | List all coordinator processes across the deployment |
+| [`CreateCoordinator`](#createcoordinator) | Process | Create and start a new coordinator process |
+| [`GetCoordinator`](#getcoordinator) | Process | Get status and details of a coordinator |
+| [`DeleteCoordinator`](#deletecoordinator) | Process | Stop and remove a coordinator process |
+| [`ListWorkers`](#listworkers) | Process | List all worker processes across the deployment |
+| [`CreateWorker`](#createworker) | Process | Create and start a new worker process on a node |
+| [`GetWorker`](#getworker) | Process | Get status and details of a worker |
+| [`DeleteWorker`](#deleteworker) | Process | Stop and remove a worker process |
+| [`AssignGPUs`](#assigngpus) | Process | Update the GPU subset assigned to a worker |
 
 ---
+
+### `Clean`
+
+Reset all ZisK state on this node: installed setups, registered programs, and any cached files.
+
+```
+CleanRequest → ()
+```
+
+```rust
+struct CleanRequest {}
+```
+
+---
+
+## Setup Management
+
+### `ListSetups`
+
+List all setups currently installed on this node.
+
+```
+ListSetupsRequest → Page<SetupSummary>
+```
+
+```rust
+struct ListSetupsRequest {
+    limit:  Option<u32>,    // max items per page; server default applies if omitted
+    cursor: Option<String>, // continuation token from a previous Page response
+}
+
+struct SetupSummary {
+    id:          String,
+    version:     String,
+    description: Option<String>,
+    proof_kinds: Vec<ProofKind>,
+    is_default:  bool,
+    created_at:  DateTime<Utc>,
+}
+```
+
+---
+
+### `GetSetup`
+
+Get details of a single setup by its ID.
+
+```
+GetSetupRequest → SetupSummary
+```
+
+```rust
+struct GetSetupRequest {
+    id: String,
+}
+```
+
+---
+
+### `AddSetup`
+
+Download and install a new setup on this node.
+
+```
+AddSetupRequest → AddSetupResponse
+```
+
+```rust
+struct AddSetupRequest {
+    version:     String,
+    description: Option<String>,
+    uri:         String,  // where to download the setup archive
+    proof_kinds: Vec<ProofKind>,
+}
+
+struct AddSetupResponse {
+    id: String,
+}
+```
+
+---
+
+### `UpdateSetup`
+
+Update mutable fields of an existing setup. Setting `is_default: true` atomically clears the
+previous default and marks this setup as the new one.
+
+```
+UpdateSetupRequest → UpdateSetupResponse
+```
+
+```rust
+struct UpdateSetupRequest {
+    id:          String,
+    description: Option<String>,
+    is_default:  Option<bool>,
+}
+
+struct UpdateSetupResponse {
+    id:          String,
+    description: String,
+    is_default:  bool,
+}
+```
+
+---
+
+### `DeleteSetup`
+
+Remove an installed setup from this node.
+
+```
+DeleteSetupRequest → ()
+```
+
+```rust
+struct DeleteSetupRequest {
+    id: String,
+}
+```
+
+--- 
 
 ### `ListClusters`
 
@@ -754,17 +882,3 @@ struct AssignGPUsRequest {
 
 ---
 
-## Common Types
-
-```rust
-struct OpResult {
-    success: bool,
-    message: Option<String>,
-}
-```
-
----
-
-## Monitor (TO DO)
-
-## Store (TO DO)
