@@ -353,5 +353,5 @@ message CancelJobRequest {
 
 message CancelJobResponse {
   string    job_id     = 1;
-  JobStatus job_status = 2; // status of the job after the cancellation request was processed
+  JobStatus job_status = 2;
 }
