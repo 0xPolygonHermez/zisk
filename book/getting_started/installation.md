@@ -125,6 +125,35 @@ To install the PLONK proving key (provingKeySnark), run:
         ```
     3. Try building again
 
+#### GPU Build (optional)
+
+To build with GPU acceleration, the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) must be installed. Then build with the `gpu` feature:
+
+```bash
+cargo build --release --features gpu
+```
+
+By default, the build auto-detects the GPU architecture of the host machine. Use the `CUDA_ARCHS` environment variable to control which architectures are compiled:
+
+```bash
+# Single architecture (faster build — e.g. Ada Lovelace sm_89 / RTX 4090)
+CUDA_ARCHS="89" cargo build --release --features gpu
+
+# Multiple architectures (e.g. Ada + Hopper)
+CUDA_ARCHS="89,90" cargo build --release --features gpu
+
+# All major architectures — portable binary for distribution
+# (sm_80, sm_86, sm_89, sm_90, sm_100, sm_120 + PTX forward compatibility)
+# Note: this takes significantly longer to compile
+CUDA_ARCHS="major" cargo build --release --features gpu
+```
+
+To verify which GPU architectures are embedded in the compiled library:
+
+```bash
+cuobjdump -all ../pil2-proofman/pil2-stark/lib-gpu/libstarksgpu.a 2>/dev/null | grep "arch ="
+```
+
 3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
