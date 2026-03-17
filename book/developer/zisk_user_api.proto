@@ -1,0 +1,357 @@
+syntax = "proto3";
+
+package zisk.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// ─── Service ──────────────────────────────────────────────────────────────────
+
+// ZiskUserApi is the user-facing API for submitting proof jobs and managing
+// guest programs on a ZisK cluster.
+service ZiskUserApi {
+
+  // Query the node's ZisK version and proof capabilities.
+  rpc GetNodeInfo        (GetNodeInfoRequest)         returns (NodeInfo);
+
+  // List all programs registered in the cluster.
+  rpc ListGuestPrograms  (ListGuestProgramsRequest)   returns (ListGuestProgramsResponse);
+
+  // Get full details of a single program.
+  rpc GetGuestProgram    (GetGuestProgramRequest)     returns (GuestProgramSummary);
+
+  // Register a new program in the cluster.
+  rpc AddGuestProgram    (AddGuestProgramRequest)     returns (AddGuestProgramResponse);
+
+  // Update mutable fields of an existing program.
+  rpc UpdateGuestProgram (UpdateGuestProgramRequest)  returns (UpdateGuestProgramResponse);
+
+  // Remove a program from the cluster.
+  rpc DeleteGuestProgram (DeleteGuestProgramRequest)  returns (google.protobuf.Empty);
+
+  // Submit a proof job against a registered program.
+  //
+  // Bidirectional streaming: the client sends a ProveClientMessage stream;
+  // the server sends a JobEvent stream back on the same connection.
+  //   - The first client message must be ProveRequest.
+  //   - If InputKind is Raw, subsequent client messages carry InputChunk
+  //     until is_last=true.
+  //   - The server emits JobEventStarted, then JobEventProgress as phases
+  //     advance, and finally one of JobEventCompleted, JobEventCancelled,
+  //     or JobEventFailed. The stream is closed after the terminal event.
+  //
+  // Proof generation runs independently on workers regardless of client
+  // connectivity. If the client disconnects the proof continues; use GetJob,
+  // WaitJobResult, or CancelJob to reconnect and interact with the job.
+  rpc Prove              (stream ProveClientMessage)  returns (stream JobEvent);
+
+  // List jobs.
+  rpc ListJobs           (ListJobsRequest)            returns (ListJobsResponse);
+
+  // Get full details and current status of a job. Returns immediately with
+  // the current state.
+  rpc GetJob             (GetJobRequest)              returns (JobInfo);
+
+  // Long-poll: the server holds the response for up to 5 seconds. If the job
+  // reaches a terminal state (Completed, Failed, or Cancelled) within that
+  // window it returns immediately with the final JobInfo; otherwise it returns
+  // the current status after 5 seconds and the client can re-issue.
+  //
+  // This lets callers loop on WaitJobResult without sleep or rate-limiting
+  // logic: the server-side hold caps requests at ~12 per minute per job.
+  // Completion is detected with 0–5 s latency (avg ~2.5 s), imperceptible
+  // for jobs that run for tens of seconds to minutes.
+  //
+  // Clients MUST set a gRPC deadline > 5 s (recommended: 30 s).
+  rpc WaitJobResult      (WaitJobResultRequest)       returns (JobInfo);
+
+  // Push input data to a job that is in WaitingForInput status. Only valid
+  // for jobs submitted with InputKind::Raw.
+  //
+  // Client streaming: for a single chunk send one message with is_last=true;
+  // for larger inputs stream multiple messages until is_last=true.
+  rpc PushJobInput       (stream PushJobInputRequest) returns (google.protobuf.Empty);
+
+  // Cancel a queued or running job.
+  rpc CancelJob          (CancelJobRequest)           returns (CancelJobResponse);
+}
+
+// ─── Node ─────────────────────────────────────────────────────────────────────
+
+message GetNodeInfoRequest {}
+
+message NodeInfo {
+  string                     zisk_version     = 1;
+  repeated SetupCapabilities supported_proofs = 2;
+}
+
+message SetupCapabilities {
+  string             setup_id    = 1;
+  string             verifier_id = 2; // hash of the setup's verification key
+  repeated ProofKind proof_kinds = 3;
+}
+
+enum ProofKind {
+  STARK         = 0;
+  STARK_MINIMAL = 1;
+  PLONK         = 2;
+}
+
+// ─── Programs ─────────────────────────────────────────────────────────────────
+
+// A GuestProgram is a ZisK program registered in the cluster. It holds the
+// ELF binary and metadata needed to generate a proof. The hash_id is
+// derived from zisk_elf at registration time and serves as the
+// content-addressed identifier.
+
+message ListGuestProgramsRequest {
+  optional string name   = 1; // filter by name (substring match)
+  optional string author = 2; // filter by author
+}
+
+message ListGuestProgramsResponse {
+  // binary fields are omitted.
+  repeated GuestProgramSummary programs = 1;
+}
+
+message GuestProgramSummary {
+  string                    program_id  = 1; // UUID
+  string                    hash_id     = 2; // derived from zisk_elf; content-addressed
+  string                    name        = 3;
+  optional string           description = 4;
+  optional string           author      = 5;
+  optional string           metadata    = 6; // JSON
+  google.protobuf.Timestamp created_at  = 7;
+  google.protobuf.Timestamp updated_at  = 8;
+}
+
+message GetGuestProgramRequest {
+  oneof lookup {
+    string program_id = 1;
+    string hash_id    = 2;
+    string name       = 3;
+  }
+}
+
+message AddGuestProgramRequest {
+  string          name        = 1;
+  optional string description = 2;
+  optional string author      = 3;
+  bytes           zisk_elf    = 4;
+  optional string metadata    = 5; // JSON
+}
+
+message AddGuestProgramResponse {
+  string program_id = 1; // UUID
+  string hash_id    = 2; // derived from zisk_elf; content-addressed
+}
+
+message UpdateGuestProgramRequest {
+  string          program_id  = 1; // UUID
+  optional string name        = 2;
+  optional string description = 3;
+  optional string author      = 4;
+  optional bytes  zisk_elf    = 5; // triggers hash_id recomputation
+  optional string metadata    = 6; // JSON
+}
+
+message UpdateGuestProgramResponse {
+  string program_id = 1;
+  string hash_id    = 2;
+}
+
+message DeleteGuestProgramRequest {
+  oneof lookup {
+    string program_id = 1;
+    string hash_id    = 2;
+  }
+}
+
+// ─── Proof ────────────────────────────────────────────────────────────────────
+
+// Multiplexed client message for the Prove bidirectional stream.
+// The first message sent by the client must be ProveRequest.
+// Subsequent messages may only be InputChunk, and only when InputKind is Raw.
+message ProveClientMessage {
+  oneof message {
+    ProveRequest request     = 1;
+    InputChunk   input_chunk = 2;
+  }
+}
+
+// A chunk of raw input data streamed via the Prove bidi stream.
+// Send chunks sequentially; set is_last=true on the final chunk to signal
+// end of input.
+message InputChunk {
+  bytes data    = 1;
+  bool  is_last = 2; // set true on the final chunk
+}
+
+message ProveRequest {
+  string              program_id    = 1; // GuestProgram ID
+  optional ProveSetup setup         = 2; // setup to use; if not provided, the server uses its default
+  InputKind           input         = 3;
+  JobKind             job_kind      = 4;
+  optional string     webhook_url   = 5; // if set, the server POSTs JobEventCompleted, JobEventFailed, or JobEventCancelled
+                                         // to this URL when the job reaches a terminal state
+  optional uint64     proof_timeout = 6; // max duration to generate the proof; server default applies if omitted
+}
+
+message ProveSetup {
+  oneof setup {
+    string setup_id     = 1;
+    string verifier_id  = 2; // hash of the setup's verification key
+    bytes  verifier_key = 3; // raw verification key
+  }
+}
+
+message InputKind {
+  oneof input {
+    bytes  raw    = 1; // first chunk of raw input; stream subsequent InputChunk messages until is_last=true
+    string inputs = 2; // file path or http:// URL
+    string stream = 3; // file:// socket:// quic://
+  }
+}
+
+message JobKind {
+  oneof kind {
+    ProofKind prove = 1; // generate a proof
+  }
+}
+
+// Server-to-client event stream for the Prove RPC.
+// Events are emitted in order: Started → Progress* → (Completed | Cancelled | Failed).
+// The server closes the stream after the terminal event.
+message JobEvent {
+  oneof event {
+    JobEventStarted   started   = 1;
+    JobEventProgress  progress  = 2;
+    JobEventCompleted completed = 3;
+    JobEventCancelled cancelled = 4;
+    JobEventFailed    failed    = 5;
+  }
+}
+
+message JobEventStarted {
+  string                    job_id    = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+// Emitted when the job transitions to a new execution phase.
+message JobEventProgress {
+  string                    job_id    = 1;
+  JobPhase                  phase     = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message JobEventCompleted {
+  string                    job_id    = 1;
+  JobResult                 result    = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message JobEventCancelled {
+  string                    job_id    = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message JobEventFailed {
+  string                    job_id    = 1;
+  string                    error     = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+enum JobPhase {
+  CONTRIBUTIONS = 0;
+  PROVE         = 1;
+  AGGREGATE     = 2;
+}
+
+message JobResult {
+  oneof result {
+    Proof prove = 1;
+  }
+}
+
+message Proof {
+  string                    proof_id         = 1; // unique proof identifier (UUID)
+  string                    program_id       = 2; // GuestProgram ID used to generate this proof
+  bytes                     verification_key = 3; // raw verification key
+  ProofKind                 proof_kind       = 4;
+  bytes                     data             = 5; // serialized proof bytes
+  bytes                     public_inputs    = 6;
+  google.protobuf.Timestamp started_at       = 7;
+  google.protobuf.Timestamp completed_at     = 8;
+}
+
+// ─── Runtime ──────────────────────────────────────────────────────────────────
+
+message ListJobsRequest {
+  optional google.protobuf.Timestamp since = 1; // only return jobs created at or after this time
+  optional google.protobuf.Timestamp until = 2; // only return jobs created before this time
+}
+
+message ListJobsResponse {
+  repeated JobSummary jobs = 1;
+}
+
+message JobSummary {
+  string                    job_id     = 1;
+  string                    program_id = 2;
+  JobKind                   kind       = 3;
+  JobStatus                 status     = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+// Running(JobPhase) cannot be expressed as a proto enum with a payload.
+// phase is only meaningful when code == RUNNING.
+message JobStatus {
+  JobStatusCode code  = 1;
+  JobPhase      phase = 2; // only meaningful when code == RUNNING
+}
+
+enum JobStatusCode {
+  JOB_STATUS_UNSPECIFIED = 0;
+  QUEUED                 = 1;
+  RUNNING                = 2;
+  WAITING_FOR_INPUT      = 3;
+  COMPLETED              = 4;
+  FAILED                 = 5;
+  CANCELLED              = 6;
+}
+
+message GetJobRequest {
+  string job_id = 1;
+}
+
+message JobInfo {
+  string                             job_id       = 1;
+  string                             program_id   = 2;
+  JobKind                            kind         = 3;
+  JobStatus                          status       = 4;
+  optional JobResult                 result       = 5; // populated when status.code == COMPLETED
+  optional string                    error        = 6; // populated when status.code == FAILED
+  google.protobuf.Timestamp          created_at   = 7;
+  optional google.protobuf.Timestamp completed_at = 8;
+}
+
+message WaitJobResultRequest {
+  string job_id = 1;
+}
+
+// A chunk of raw input pushed to a waiting job via the PushJobInput RPC.
+// Only valid for jobs submitted with InputKind::Raw in WaitingForInput status.
+message PushJobInputRequest {
+  string job_id  = 1;
+  bytes  data    = 2;
+  bool   is_last = 3; // true on the final chunk
+}
+
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobResponse {
+  string    job_id     = 1;
+  JobStatus job_status = 2; // status of the job after the cancellation request was processed
+}

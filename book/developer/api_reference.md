@@ -1,6 +1,10 @@
-# ZisK user API — Reference
+# ZisK User API — Reference
+
+*Version 1.0 · Creation date: 17-03-2026 · Last update: 17-03-2026*
 
 ## Summary
+
+gRPC protocol buffer definition: [`zisk_user_api.proto`](./zisk_user_api.proto)
 
 | Method | Category | Description |
 |--------|----------|-------------|
@@ -65,18 +69,18 @@ ListGuestProgramsRequest → Vec<GuestProgramSummary>
 
 ```rust
 struct ListGuestProgramsRequest {
-    name:   Option<String>,  // filter by name (substring match)
-    author: Option<String>,  // filter by author
+    name:   Option<String>, // filter by name (substring match)
+    author: Option<String>, // filter by author
 }
 
-// lightweight — no binary fields
+// binary fields are omitted
 struct GuestProgramSummary {
-    program_id:  String,          // program id (UUID); immutable, opaque identifier
-    hash_id:     String,          // derived from zisk_elf; content-addressed
+    program_id:  String,         // UUID
+    hash_id:     String,         // derived from zisk_elf; content-addressed
     name:        String,
     description: Option<String>,
     author:      Option<String>,
-    metadata:    Option<String>,  // JSON
+    metadata:    Option<String>, // JSON
     created_at:  DateTime<Utc>,
     updated_at:  DateTime<Utc>,
 }
@@ -84,7 +88,7 @@ struct GuestProgramSummary {
 
 ### `GetGuestProgram`
 
-Get details of a single program. Supports lookup by `program_id`, `hash_id`, or `name`.
+Get details of a single program. Supports exact-match lookup by `program_id`, `hash_id`, or `name`.
 
 ```
 GetGuestProgramRequest → GuestProgramSummary
@@ -94,7 +98,7 @@ GetGuestProgramRequest → GuestProgramSummary
 struct GetGuestProgramRequest {
     program_id: Option<String>,
     hash_id:    Option<String>,
-    name:       Option<String>, // substring match; may return multiple results if not unique
+    name:       Option<String>,
 } // one of program_id, hash_id, or name must be supplied
 ```
 
@@ -112,18 +116,12 @@ struct AddGuestProgramRequest {
     description: Option<String>,
     author:      Option<String>,
     zisk_elf:    Vec<u8>,
-    native_elf:  HashMap<ElfKind, Vec<u8>>,
-    metadata:    Option<String>,
-}
-
-enum ElfKind {
-    X86_64,
-    Arm,
+    metadata:    Option<String>, // JSON
 }
 
 struct AddGuestProgramResponse {
-    program_id: String, // program id (UUID)
-    hash_id:    String, // derived from zisk_elf
+    program_id: String, // UUID
+    hash_id:    String, // derived from zisk_elf; content-addressed
 }
 ```
 
@@ -138,18 +136,17 @@ UpdateGuestProgramRequest → UpdateGuestProgramResponse
 
 ```rust
 struct UpdateGuestProgramRequest {
-    program_id:  String,          // program UUID
+    program_id:  String,          // UUID
     name:        Option<String>,
     description: Option<String>,
     author:      Option<String>,
     zisk_elf:    Option<Vec<u8>>, // triggers hash_id recomputation
-    native_elf:  Option<HashMap<ElfKind, Vec<u8>>>,
     metadata:    Option<String>,
 }
 
 struct UpdateGuestProgramResponse {
-    program_id: String, // program UUID
-    hash_id:    String, // derived from zisk_elf (updated if zisk_elf was supplied)
+    program_id: String,
+    hash_id:    String,
 }
 ```
 
@@ -185,7 +182,8 @@ struct ProveRequest {
     setup_id:      Option<ProveSetup>, // Setup ID to use for this job
     input:         InputKind,
     job_kind:      JobKind,
-    webhook_url:   Option<String>,     // if set, POST JobEvent::Completed / JobEvent::Failed here
+    webhook_url:   Option<String>,     // if set, the server POST JobEventCompleted, JobEventFailed or JobEventCancelled
+                                       // to this URL when the job reaches a terminal state.
     proof_timeout: Option<Duration>,   // max duration to generate the proof; server default applies if omitted
 }
 
@@ -196,7 +194,7 @@ enum ProveSetup {
 }
 
 enum InputKind {
-    Raw(Vec<u8>),
+    Raw(Vec<u8>),   // first chunk of raw input; stream subsequent `InputChunk` messages until `is_last=true`
     Inputs(String), // file path or http:// URL
     Stream(String), // file:// socket:// quic://
 }
@@ -209,6 +207,7 @@ enum JobEvent {
     Started(JobEventStarted),
     Progress(JobEventProgress),
     Completed(JobEventCompleted),
+    Cancelled(JobEventCancelled),
     Failed(JobEventFailed),
 }
 
@@ -229,6 +228,11 @@ struct JobEventCompleted {
     timestamp: DateTime<Utc>,
 }
 
+struct JobEventCancelled {
+    job_id:    String,
+    timestamp: DateTime<Utc>,
+}
+
 struct JobEventFailed {
     job_id:    String,
     error:     String,
@@ -241,7 +245,6 @@ enum JobPhase {
     Aggregate
 }
 
-// result payload varies by JobKind
 enum JobResult {
     Prove(Proof),
 }
@@ -262,7 +265,7 @@ struct Proof {
 
 ### `ListJobs`
 
-List jobs with optional filters on status and time range.
+List jobs with optional filters on time range.
 
 ```
 ListJobsRequest → Vec<JobSummary>
@@ -302,7 +305,7 @@ GetJobRequest → JobInfo
 
 ```rust
 struct GetJobRequest {
-    id: String,
+    job_id: String,
 }
 
 struct JobInfo {
@@ -352,7 +355,7 @@ PushJobInputRequest → ()
 struct PushJobInputRequest {
     job_id:  String,
     data:    Vec<u8>,
-    is_last: bool,   // true on the final chunk;
+    is_last: bool,   // true on the final chunk
 }
 ```
 
@@ -374,3 +377,4 @@ struct CancelJobResponse {
     job_status: JobStatus,
 }
 ```
+
