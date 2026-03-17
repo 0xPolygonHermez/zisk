@@ -148,12 +148,6 @@ CUDA_ARCHS="89,90" cargo build --release --features gpu
 CUDA_ARCHS="major" cargo build --release --features gpu
 ```
 
-To verify which GPU architectures are embedded in the compiled library:
-
-```bash
-cuobjdump -all ../pil2-proofman/pil2-stark/lib-gpu/libstarksgpu.a 2>/dev/null | grep "arch ="
-```
-
 3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
