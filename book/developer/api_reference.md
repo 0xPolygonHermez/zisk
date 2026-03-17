@@ -10,7 +10,7 @@ gRPC protocol buffer definition: [`zisk_user_api.proto`](./zisk_user_api.proto)
 |--------|----------|-------------|
 | [`GetNodeInfo`](#getnodeinfo) | Node | Query node version and proof capabilities |
 | [`ListGuestPrograms`](#listguestprograms) | Program | List all programs registered in the cluster |
-| [`GetGuestProgram`](#getguestprogram) | Program | Get full details of a single program |
+| [`GetGuestProgram`](#getguestprogram) | Program | Get details of a single program (binary fields excluded) |
 | [`AddGuestProgram`](#addguestprogram) | Program | Register a new program |
 | [`UpdateGuestProgram`](#updateguestprogram) | Program | Update mutable fields of an existing program |
 | [`DeleteGuestProgram`](#deleteguestprogram) | Program | Remove a program from the cluster |
@@ -88,7 +88,7 @@ struct GuestProgramSummary {
 
 ### `GetGuestProgram`
 
-Get details of a single program. Supports exact-match lookup by `program_id`, `hash_id`, or `name`.
+Get details of a single program (binary fields excluded). Supports exact-match lookup by `program_id`, `hash_id`, or `name`.
 
 ```
 GetGuestProgramRequest → GuestProgramSummary
@@ -179,7 +179,7 @@ ProveRequest → stream JobEvent
 ```rust
 struct ProveRequest {
     program_id:    String,             // GuestProgram ID
-    setup_id:      Option<ProveSetup>, // Setup ID to use for this job
+    setup:         Option<ProveSetup>, // setup to use; if omitted the server uses its default
     input:         InputKind,
     job_kind:      JobKind,
     webhook_url:   Option<String>,     // if set, the server POST JobEventCompleted, JobEventFailed or JobEventCancelled
@@ -195,7 +195,7 @@ enum ProveSetup {
 
 enum InputKind {
     Inline(InputChunk), // first chunk; if is_last=true no further PushJobInput calls needed
-    Inputs(String), // file path or http:// URL
+    Inputs(String), // file path or http(s):// URL
     Stream(String), // file:// socket:// quic://
 }
 

@@ -17,7 +17,7 @@ service ZiskUserApi {
   // List all programs registered in the cluster.
   rpc ListGuestPrograms  (ListGuestProgramsRequest)   returns (ListGuestProgramsResponse);
 
-  // Get full details of a single program.
+  // Get details of a single program (binary fields excluded).
   rpc GetGuestProgram    (GetGuestProgramRequest)     returns (GuestProgramSummary);
 
   // Register a new program in the cluster.
@@ -208,7 +208,7 @@ message ProveSetup {
 message InputKind {
   oneof input {
     InputChunk inline = 1; // first chunk; if is_last=true no further PushJobInput calls needed
-    string     inputs = 2; // file path or http:// URL
+    string     inputs = 2; // file path or http(s):// URL
     string     stream = 3; // file:// socket:// quic://
   }
 }
