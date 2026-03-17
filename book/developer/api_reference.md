@@ -194,9 +194,14 @@ enum ProveSetup {
 }
 
 enum InputKind {
-    Raw(Vec<u8>),   // first chunk of raw input; stream subsequent `InputChunk` messages until `is_last=true`
+    Inline(InputChunk), // first chunk; if is_last=true no further PushJobInput calls needed
     Inputs(String), // file path or http:// URL
     Stream(String), // file:// socket:// quic://
+}
+
+struct InputChunk {
+    data:    Vec<u8>,
+    is_last: bool,  // true on the final chunk
 }
 
 enum JobKind {
@@ -345,7 +350,7 @@ struct WaitJobResultRequest {
 ### `PushJobInput`
 
 Push the next chunk of raw input to a job that is in `WaitingForInput` status. Only valid for jobs 
-submitted with `InputKind::Raw`. Set `is_last` to `true` on the final chunk to signal end of input.
+submitted with `InputKind::Inline`. Set `is_last` to `true` on the final chunk to signal end of input.
 
 ```
 PushJobInputRequest → ()
@@ -353,9 +358,8 @@ PushJobInputRequest → ()
 
 ```rust
 struct PushJobInputRequest {
-    job_id:  String,
-    data:    Vec<u8>,
-    is_last: bool,   // true on the final chunk
+    job_id: String,
+    chunk:  InputChunk,
 }
 ```
 

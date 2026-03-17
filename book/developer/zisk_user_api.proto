@@ -34,7 +34,7 @@ service ZiskUserApi {
   // Bidirectional streaming: the client sends a ProveClientMessage stream;
   // the server sends a JobEvent stream back on the same connection.
   //   - The first client message must be ProveRequest.
-  //   - If InputKind is Raw, subsequent client messages carry InputChunk
+  //   - If InputKind is Inline, subsequent client messages carry InputChunk
   //     until is_last=true.
   //   - The server emits JobEventStarted, then JobEventProgress as phases
   //     advance, and finally one of JobEventCompleted, JobEventCancelled,
@@ -66,7 +66,7 @@ service ZiskUserApi {
   rpc WaitJobResult      (WaitJobResultRequest)       returns (JobInfo);
 
   // Push input data to a job that is in WaitingForInput status. Only valid
-  // for jobs submitted with InputKind::Raw.
+  // for jobs submitted with InputKind::Inline.
   //
   // Client streaming: for a single chunk send one message with is_last=true;
   // for larger inputs stream multiple messages until is_last=true.
@@ -171,7 +171,7 @@ message DeleteGuestProgramRequest {
 
 // Multiplexed client message for the Prove bidirectional stream.
 // The first message sent by the client must be ProveRequest.
-// Subsequent messages may only be InputChunk, and only when InputKind is Raw.
+// Subsequent messages may only be InputChunk, and only when InputKind is Inline.
 message ProveClientMessage {
   oneof message {
     ProveRequest request     = 1;
@@ -207,9 +207,9 @@ message ProveSetup {
 
 message InputKind {
   oneof input {
-    bytes  raw    = 1; // first chunk of raw input; stream subsequent InputChunk messages until is_last=true
-    string inputs = 2; // file path or http:// URL
-    string stream = 3; // file:// socket:// quic://
+    InputChunk inline = 1; // first chunk; if is_last=true no further PushJobInput calls needed
+    string     inputs = 2; // file path or http:// URL
+    string     stream = 3; // file:// socket:// quic://
   }
 }
 
@@ -340,11 +340,10 @@ message WaitJobResultRequest {
 }
 
 // A chunk of raw input pushed to a waiting job via the PushJobInput RPC.
-// Only valid for jobs submitted with InputKind::Raw in WaitingForInput status.
+// Only valid for jobs submitted with InputKind::Inline in WaitingForInput status.
 message PushJobInputRequest {
-  string job_id  = 1;
-  bytes  data    = 2;
-  bool   is_last = 3; // true on the final chunk
+  string     job_id = 1;
+  InputChunk chunk  = 2;
 }
 
 message CancelJobRequest {
