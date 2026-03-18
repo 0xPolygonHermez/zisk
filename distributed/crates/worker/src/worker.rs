@@ -30,7 +30,15 @@ use crate::config::ProverServiceConfigDto;
 /// Result from computation tasks
 #[derive(Debug)]
 pub enum ComputationResult {
-    Challenge {
+    /// Execution-only task (no proof generation)
+    Execution {
+        job_id: JobId,
+        success: bool,
+        result: Result<(WitnessInfo, ZiskExecutorTime, u64, u64)>, // (witness_info, exec_time, instances, executed_steps)
+        task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    },
+    /// Partial contribution with challenges
+    Contribution {
         job_id: JobId,
         success: bool,
         result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64)>,
@@ -580,7 +588,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             match result {
                 Ok(data) => {
-                    let _ = tx.send(ComputationResult::Challenge {
+                    let _ = tx.send(ComputationResult::Contribution {
                         job_id,
                         success: true,
                         result: Ok((witness_info, zisk_execution_time, data, instances)),
@@ -589,7 +597,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 }
                 Err(error) => {
                     error!("Contribution computation failed for {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::Challenge {
+                    let _ = tx.send(ComputationResult::Contribution {
                         job_id,
                         success: false,
                         result: Err(error),
@@ -644,21 +652,21 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             match result {
                 Ok(num_instances) => {
                     let instances = num_instances as u64;
+                    let executed_steps = prover.executed_steps();
                     guard = job.blocking_lock();
                     guard.instances = instances;
                     drop(guard);
 
-                    // For execution-only, return empty challenges (we only care about timing and instances)
-                    let _ = tx.send(ComputationResult::Challenge {
+                    let _ = tx.send(ComputationResult::Execution {
                         job_id,
                         success: true,
-                        result: Ok((witness_info, zisk_execution_time, vec![], instances)),
+                        result: Ok((witness_info, zisk_execution_time, instances, executed_steps)),
                         task_received_time,
                     });
                 }
                 Err(error) => {
                     error!("Execution-only computation failed for {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::Challenge {
+                    let _ = tx.send(ComputationResult::Execution {
                         job_id,
                         success: false,
                         result: Err(error),
