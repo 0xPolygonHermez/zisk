@@ -1,0 +1,50 @@
+[package]
+name = "zisk-distributed-node"
+description = "ZisK node daemon (zisklet) — API gateway for proof submission and cluster management"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "zisklet"
+path = "src/bin/zisklet.rs"
+
+[dependencies]
+zisk-distributed-common = { workspace = true }
+
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+async-trait = "0.1"
+
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+tonic-health = { workspace = true }
+tonic-reflection = { workspace = true }
+tower = { workspace = true }
+http = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+
+config = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+clap = { workspace = true }
+
+signal-hook = "0.3"
+signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
+
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }

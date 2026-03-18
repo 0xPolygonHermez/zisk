@@ -1,0 +1,16 @@
+[profile.default]
+# Run tests using all available CPUs.
+test-threads = "num-cpus"
+# No retries in local development — failures should be investigated immediately.
+retries = 0
+# Tests that hang for more than 60s are considered failed.
+slow-timeout = { period = "60s", terminate-after = 1 }
+
+[profile.ci]
+# Fixed thread count for reproducible CI timing.
+test-threads = 4
+# Retry once on CI to reduce flakiness from transient network/timing issues.
+retries = 1
+# Stop on first failure to keep CI output readable.
+fail-fast = true
+slow-timeout = { period = "30s", terminate-after = 1 }

@@ -1,0 +1,16 @@
+[service]
+name = "ZisK Node"
+
+[server]
+host = "0.0.0.0"
+port = 7000
+shutdown_timeout_seconds = 30
+
+[logging]
+level = "info"   # trace | debug | info | warn | error
+format = "pretty"
+
+[node]
+clusters_file = "/etc/zisk/clusters.yml"
+# advertise_addr = "192.168.1.10:7000"
+work_dir = "/var/lib/zisk"

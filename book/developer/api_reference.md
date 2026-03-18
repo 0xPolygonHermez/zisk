@@ -4,7 +4,7 @@
 
 ## Summary
 
-gRPC protocol buffer definition: [`zisk_user_api.proto`](./zisk_user_api.proto)
+gRPC protocol buffer definition: [`zisk_user_api.proto`](../../distributed/crates/node/proto/zisk_user_api.proto)
 
 | Method | Category | Description |
 |--------|----------|-------------|

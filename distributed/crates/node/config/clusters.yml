@@ -1,0 +1,26 @@
+# clusters.yml — sample cluster topology for local development.
+#
+# host.docker.internal resolves to the Docker host, so coordinator and
+# workers can run directly on your machine while zisklet runs in a container.
+#
+# Exactly one cluster must be defined.
+
+machines:
+  local:
+    node: "host.docker.internal"
+    port: 7000
+    gpus:
+      - id: 0
+        memory_gb: 40
+
+clusters:
+  default:
+    coordinator:
+      machine: local
+      instance: coordinator-0
+      port: 50000
+    workers:
+      - machine: local
+        instance: worker-0
+        port: 50001
+        gpus: [0]

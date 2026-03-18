@@ -1,0 +1,43 @@
+# docker-compose.yml — local development / single-node deployment.
+#
+# Run from the workspace root:
+#   docker compose -f distributed/crates/node/docker-compose.yml up
+#
+# Mount your own configs by editing the volumes section, or use the
+# samples provided in config/ as a starting point.
+
+services:
+  zisklet:
+    build:
+      # Build context is the workspace root so Cargo.toml / Cargo.lock are available.
+      context: ../../../
+      dockerfile: distributed/crates/node/Dockerfile
+    image: zisklet:latest
+    container_name: zisklet
+    ports:
+      - "7000:7000"
+    volumes:
+      # Mount config files into the container (read-only).
+      # Edit config/node.toml and config/clusters.yml before starting.
+      - ./config/node.toml:/etc/zisk/node.toml:ro
+      - ./config/clusters.yml:/etc/zisk/clusters.yml:ro
+      # Persistent working directory for the node.
+      - zisklet-data:/var/lib/zisk
+    environment:
+      # Override log level without editing node.toml.
+      RUST_LOG: info
+    restart: unless-stopped
+    # Allows the container to resolve host.docker.internal (used in sample clusters.yml).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      # grpc_health_probe checks grpc.health.v1.Health — install from:
+      # https://github.com/grpc-ecosystem/grpc-health-probe/releases
+      test: ["CMD", "grpc_health_probe", "-addr=:7000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  zisklet-data:
