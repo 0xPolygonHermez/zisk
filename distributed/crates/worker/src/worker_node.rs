@@ -312,7 +312,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             publics: result_data.0.publics,
             proof_values: result_data.0.proof_values,
             summary_info: result_data.0.summary_info,
-            total_instances: result_data.0.total_instances as u64,
+            total_instances: result_data.3,
         };
 
         let zisk_execution_time = ZiskExecuteTime {

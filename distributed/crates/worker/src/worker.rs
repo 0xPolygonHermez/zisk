@@ -566,16 +566,23 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 options,
             );
 
-            let mut guard = job.blocking_lock();
-            guard.executed_steps = prover.executed_steps();
-            let task_received_time = guard.task_received_time;
-            drop(guard);
+            let (witness_info, zisk_execution_time) = prover
+                .get_execution_info()
+                .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
+
+            let instances = witness_info.total_instances as u64;
 
             let (witness_info, zisk_execution_time) = prover
                 .get_execution_info()
                 .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
             let instances = witness_info.total_instances as u64;
+
+            let mut guard = job.blocking_lock();
+            guard.instances = instances;
+            guard.executed_steps = prover.executed_steps();
+            let task_received_time = guard.task_received_time;
+            drop(guard);
 
             match result {
                 Ok(data) => {
