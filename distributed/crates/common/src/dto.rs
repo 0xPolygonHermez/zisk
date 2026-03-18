@@ -258,6 +258,16 @@ pub struct StreamTimingStatsDto {
     pub avg_broadcast_delay: f64,
     /// Maximum delay observed for any single message (milliseconds)
     pub max_broadcast_delay: f64,
+    /// Timestamp when the first message was received (milliseconds since epoch)
+    pub first_received_at: Option<f64>,
+    /// Timestamp when the last message was received (milliseconds since epoch)
+    pub last_received_at: Option<f64>,
+    /// Total accumulated inter-arrival time between consecutive messages (milliseconds)
+    pub total_interarrival_time: f64,
+    /// Average time between consecutive messages (milliseconds)
+    pub avg_interarrival_time: f64,
+    /// Maximum time between any two consecutive messages (milliseconds)
+    pub max_interarrival_time: f64,
 }
 
 #[derive(Clone)]

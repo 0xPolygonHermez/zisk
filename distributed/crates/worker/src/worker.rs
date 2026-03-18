@@ -235,6 +235,18 @@ impl ProverConfig {
     }
 }
 
+/// Stream timing metrics for tracking message delivery and inter-arrival times
+#[derive(Debug, Clone, Default)]
+pub struct StreamTimingMetrics {
+    pub messages_count: u32,
+    pub total_delay: f64,
+    pub max_delay: f64,
+    pub first_received_at: Option<f64>,
+    pub last_received_at: Option<f64>,
+    pub total_interarrival: f64,
+    pub max_interarrival: f64,
+}
+
 /// Current job context
 #[derive(Debug, Clone)]
 pub struct JobContext {
@@ -249,16 +261,9 @@ pub struct JobContext {
     pub instances: u64,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     // Stream timing metrics
-    pub stream_messages_count: u32,
-    pub stream_total_delay: f64,
-    pub stream_max_delay: f64,
-    // Stream timing per hint type
-    pub inputs_messages_count: u32,
-    pub inputs_total_delay: f64,
-    pub inputs_max_delay: f64,
-    pub hints_messages_count: u32,
-    pub hints_total_delay: f64,
-    pub hints_max_delay: f64,
+    pub stream_timing: StreamTimingMetrics,
+    pub inputs_timing: StreamTimingMetrics,
+    pub hints_timing: StreamTimingMetrics,
 }
 
 pub struct Worker<T: ZiskBackend + 'static> {
@@ -428,15 +433,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             executed_steps: 0,
             task_received_time,
             instances: 0,
-            stream_messages_count: 0,
-            stream_total_delay: 0.0,
-            stream_max_delay: 0.0,
-            inputs_messages_count: 0,
-            inputs_total_delay: 0.0,
-            inputs_max_delay: 0.0,
-            hints_messages_count: 0,
-            hints_total_delay: 0.0,
-            hints_max_delay: 0.0,
+            stream_timing: StreamTimingMetrics::default(),
+            inputs_timing: StreamTimingMetrics::default(),
+            hints_timing: StreamTimingMetrics::default(),
         }));
         self.current_job = Some(current_job.clone());
 

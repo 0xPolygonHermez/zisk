@@ -1628,46 +1628,151 @@ impl Coordinator {
     /// Prints aggregate stream timing statistics across all workers
     fn print_stream_timing_summary(&self, job: &Job) {
         if let Some(contributions_results) = job.results.get(&JobPhase::Contributions) {
-            let mut inputs_avg_stats: Vec<f64> = Vec::new();
-            let mut inputs_max_stats: Vec<f64> = Vec::new();
-            let mut hints_avg_stats: Vec<f64> = Vec::new();
-            let mut hints_max_stats: Vec<f64> = Vec::new();
+            let mut inputs_avg_delay: Vec<f64> = Vec::new();
+            let mut inputs_max_delay: Vec<f64> = Vec::new();
+            let mut inputs_avg_interarrival: Vec<f64> = Vec::new();
+            let mut inputs_max_interarrival: Vec<f64> = Vec::new();
+            let mut inputs_first_received: Vec<f64> = Vec::new();
+            let mut inputs_last_received: Vec<f64> = Vec::new();
+            let mut inputs_msg_count: Vec<u32> = Vec::new();
+
+            let mut hints_avg_delay: Vec<f64> = Vec::new();
+            let mut hints_max_delay: Vec<f64> = Vec::new();
+            let mut hints_avg_interarrival: Vec<f64> = Vec::new();
+            let mut hints_max_interarrival: Vec<f64> = Vec::new();
+            let mut hints_first_received: Vec<f64> = Vec::new();
+            let mut hints_last_received: Vec<f64> = Vec::new();
+            let mut hints_msg_count: Vec<u32> = Vec::new();
+
+            // Collect task start times to make timestamps relative
+            let mut task_start_times: Vec<f64> = Vec::new();
 
             for (_worker_id, job_result) in contributions_results.iter() {
                 if let JobResultData::Challenges(result) = &job_result.data {
+                    let task_start_ms = result
+                        .task_received_time
+                        .map(|t| t.timestamp_millis() as f64)
+                        .unwrap_or(0.0);
+                    task_start_times.push(task_start_ms);
+
                     if let Some(stream_timing) = &result.stream_timing {
                         if let Some(inputs) = &stream_timing.inputs_timing {
-                            inputs_avg_stats.push(inputs.avg_broadcast_delay);
-                            inputs_max_stats.push(inputs.max_broadcast_delay);
+                            inputs_avg_delay.push(inputs.avg_broadcast_delay);
+                            inputs_max_delay.push(inputs.max_broadcast_delay);
+                            inputs_avg_interarrival.push(inputs.avg_interarrival_time);
+                            inputs_max_interarrival.push(inputs.max_interarrival_time);
+                            inputs_msg_count.push(inputs.messages_received);
+                            if let Some(first) = inputs.first_received_at {
+                                inputs_first_received.push(first - task_start_ms);
+                            }
+                            if let Some(last) = inputs.last_received_at {
+                                inputs_last_received.push(last - task_start_ms);
+                            }
                         }
                         if let Some(hints) = &stream_timing.hints_timing {
-                            hints_avg_stats.push(hints.avg_broadcast_delay);
-                            hints_max_stats.push(hints.max_broadcast_delay);
+                            hints_avg_delay.push(hints.avg_broadcast_delay);
+                            hints_max_delay.push(hints.max_broadcast_delay);
+                            hints_avg_interarrival.push(hints.avg_interarrival_time);
+                            hints_max_interarrival.push(hints.max_interarrival_time);
+                            hints_msg_count.push(hints.messages_received);
+                            if let Some(first) = hints.first_received_at {
+                                hints_first_received.push(first - task_start_ms);
+                            }
+                            if let Some(last) = hints.last_received_at {
+                                hints_last_received.push(last - task_start_ms);
+                            }
                         }
                     }
                 }
             }
 
-            // Print worker-side receive delays
-            if !inputs_avg_stats.is_empty() {
-                let min_avg = inputs_avg_stats.iter().cloned().fold(f64::INFINITY, f64::min);
-                let max_avg = inputs_avg_stats.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                let avg = inputs_avg_stats.iter().sum::<f64>() / inputs_avg_stats.len() as f64;
-                let abs_max = inputs_max_stats.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            // Print worker-side receive delays and inter-arrival times
+            if !inputs_avg_delay.is_empty() {
+                let min_avg_delay = inputs_avg_delay.iter().cloned().fold(f64::INFINITY, f64::min);
+                let max_avg_delay =
+                    inputs_avg_delay.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                let avg_delay =
+                    inputs_avg_delay.iter().sum::<f64>() / inputs_avg_delay.len() as f64;
+                let abs_max_delay =
+                    inputs_max_delay.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+                let min_avg_interarrival =
+                    inputs_avg_interarrival.iter().cloned().fold(f64::INFINITY, f64::min);
+                let max_avg_interarrival =
+                    inputs_avg_interarrival.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                let avg_interarrival = inputs_avg_interarrival.iter().sum::<f64>()
+                    / inputs_avg_interarrival.len() as f64;
+                let abs_max_interarrival =
+                    inputs_max_interarrival.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+                let total_msgs: u32 = inputs_msg_count.iter().sum();
+
+                let timing_str =
+                    if !inputs_first_received.is_empty() && !inputs_last_received.is_empty() {
+                        let earliest_first =
+                            inputs_first_received.iter().cloned().fold(f64::INFINITY, f64::min);
+                        let latest_last =
+                            inputs_last_received.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                        format!(
+                            " | Total msgs: {}, First: +{:.2}ms, Last: +{:.2}ms, Span: {:.2}ms",
+                            total_msgs,
+                            earliest_first,
+                            latest_last,
+                            latest_last - earliest_first
+                        )
+                    } else {
+                        format!(" | Total msgs: {}", total_msgs)
+                    };
+
                 info!(
-                    "[Stream Summary] Inputs - Worker Avg Delay: {:.2}ms (Best: {:.2}ms, Worst: {:.2}ms) | Absolute Max Delay: {:.2}ms ({} workers)",
-                    avg, min_avg, max_avg, abs_max, inputs_avg_stats.len()
+                    "[Stream Summary] Inputs ({} workers) - Broadcast Delay: Avg {:.2}ms (Best: {:.2}ms, Worst: {:.2}ms, Max: {:.2}ms) | Inter-arrival: Avg {:.2}ms (Best: {:.2}ms, Worst: {:.2}ms, Max: {:.2}ms){}",
+                    inputs_avg_delay.len(), avg_delay, min_avg_delay, max_avg_delay, abs_max_delay,
+                    avg_interarrival, min_avg_interarrival, max_avg_interarrival, abs_max_interarrival,
+                    timing_str
                 );
             }
 
-            if !hints_avg_stats.is_empty() {
-                let min_avg = hints_avg_stats.iter().cloned().fold(f64::INFINITY, f64::min);
-                let max_avg = hints_avg_stats.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                let avg = hints_avg_stats.iter().sum::<f64>() / hints_avg_stats.len() as f64;
-                let abs_max = hints_max_stats.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            if !hints_avg_delay.is_empty() {
+                let min_avg_delay = hints_avg_delay.iter().cloned().fold(f64::INFINITY, f64::min);
+                let max_avg_delay =
+                    hints_avg_delay.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                let avg_delay = hints_avg_delay.iter().sum::<f64>() / hints_avg_delay.len() as f64;
+                let abs_max_delay =
+                    hints_max_delay.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+                let min_avg_interarrival =
+                    hints_avg_interarrival.iter().cloned().fold(f64::INFINITY, f64::min);
+                let max_avg_interarrival =
+                    hints_avg_interarrival.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                let avg_interarrival = hints_avg_interarrival.iter().sum::<f64>()
+                    / hints_avg_interarrival.len() as f64;
+                let abs_max_interarrival =
+                    hints_max_interarrival.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+                let total_msgs: u32 = hints_msg_count.iter().sum();
+
+                let timing_str =
+                    if !hints_first_received.is_empty() && !hints_last_received.is_empty() {
+                        let earliest_first =
+                            hints_first_received.iter().cloned().fold(f64::INFINITY, f64::min);
+                        let latest_last =
+                            hints_last_received.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                        format!(
+                            " | Total msgs: {}, First: +{:.2}ms, Last: +{:.2}ms, Span: {:.2}ms",
+                            total_msgs,
+                            earliest_first,
+                            latest_last,
+                            latest_last - earliest_first
+                        )
+                    } else {
+                        format!(" | Total msgs: {}", total_msgs)
+                    };
+
                 info!(
-                    "[Stream Summary] Hints - Worker Avg Delay: {:.2}ms (Best: {:.2}ms, Worst: {:.2}ms) | Absolute Max Delay: {:.2}ms ({} workers)",
-                    avg, min_avg, max_avg, abs_max, hints_avg_stats.len()
+                    "[Stream Summary] Hints ({} workers) - Broadcast Delay: Avg {:.2}ms (Best: {:.2}ms, Worst: {:.2}ms, Max: {:.2}ms) | Inter-arrival: Avg {:.2}ms (Best: {:.2}ms, Worst: {:.2}ms, Max: {:.2}ms){}",
+                    hints_avg_delay.len(), avg_delay, min_avg_delay, max_avg_delay, abs_max_delay,
+                    avg_interarrival, min_avg_interarrival, max_avg_interarrival, abs_max_interarrival,
+                    timing_str
                 );
             }
         }
@@ -1705,22 +1810,19 @@ impl Coordinator {
                         .map(|task_received| task_received.signed_duration_since(*phase_start_time))
                         .unwrap_or_else(chrono::Duration::zero);
                     let delay_ms = delay_duration.num_milliseconds().max(0) as f32;
-                    let delay_str = format!(", Delay: {:.3}s", delay_ms / 1000.0);
+                    let delay_str = format!("Delay: {:.3}s", delay_ms / 1000.0);
 
                     let asm_str = contributions_result
                         .zisk_executor_time
                         .asm_execution_duration
                         .as_ref()
                         .map(|asm_info| {
-                            format!(
-                                ", Asm Execution: {:.3}s at {} MHz",
-                                asm_info.time, asm_info.mhz
-                            )
+                            format!("Asm: {:.3}s @ {} MHz", asm_info.time, asm_info.mhz)
                         })
                         .unwrap_or_default();
 
                     let witness_str = format!(
-                        ", Witness: {:.3}s",
+                        "Witness: {:.3}s",
                         contributions_result.witness_info.witness_time / 1000.0
                     );
 
@@ -1731,25 +1833,54 @@ impl Coordinator {
                             let mut parts = Vec::new();
 
                             if let Some(inputs) = &st.inputs_timing {
+                                let task_start_ms = contributions_result
+                                    .task_received_time
+                                    .map(|t| t.timestamp_millis() as f64)
+                                    .unwrap_or(0.0);
+                                let timing_str = if let (Some(first), Some(last)) = (inputs.first_received_at, inputs.last_received_at) {
+                                    let first_offset = first - task_start_ms;
+                                    let last_offset = last - task_start_ms;
+                                    format!(" First: +{:.2}ms, Last: +{:.2}ms, Duration: {:.2}ms", first_offset, last_offset, last - first)
+                                } else {
+                                    String::new()
+                                };
                                 parts.push(format!(
-                                    "Inputs: {} msgs, Avg delay: {:.2}ms, Max: {:.2}ms",
+                                    "Inputs: {} msgs{} (Delay avg: {:.2}ms, max: {:.2}ms | Inter-arrival avg: {:.2}ms, max: {:.2}ms)",
                                     inputs.messages_received,
+                                    timing_str,
                                     inputs.avg_broadcast_delay,
-                                    inputs.max_broadcast_delay
+                                    inputs.max_broadcast_delay,
+                                    inputs.avg_interarrival_time,
+                                    inputs.max_interarrival_time
                                 ));
                             }
 
                             if let Some(hints) = &st.hints_timing {
+                                let task_start_ms = contributions_result
+                                    .task_received_time
+                                    .map(|t| t.timestamp_millis() as f64)
+                                    .unwrap_or(0.0);
+
+                                let timing_str = if let (Some(first), Some(last)) = (hints.first_received_at, hints.last_received_at) {
+                                    let first_offset = first - task_start_ms;
+                                    let last_offset = last - task_start_ms;
+                                    format!(" First: +{:.2}ms, Last: +{:.2}ms, Duration: {:.2}ms", first_offset, last_offset, last - first)
+                                } else {
+                                    String::new()
+                                };
                                 parts.push(format!(
-                                    "Hints: {} msgs, Avg delay: {:.2}ms, Max: {:.2}ms",
+                                    "Hints: {} msgs{} (Delay avg: {:.2}ms, max: {:.2}ms | Inter-arrival avg: {:.2}ms, max: {:.2}ms)",
                                     hints.messages_received,
+                                    timing_str,
                                     hints.avg_broadcast_delay,
-                                    hints.max_broadcast_delay
+                                    hints.max_broadcast_delay,
+                                    hints.avg_interarrival_time,
+                                    hints.max_interarrival_time
                                 ));
                             }
 
                             if !parts.is_empty() {
-                                format!(", Stream [{}]", parts.join("; "))
+                                parts.join(" | ")
                             } else {
                                 String::new()
                             }
@@ -1765,17 +1896,29 @@ impl Coordinator {
         };
 
         info!(
-            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, Phase: {:.3}s{}{}{}{})",
+            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, Phase: {:.3}s)",
             worker_id,
             job.job_id,
             phase1_results_len,
             job.workers.len(),
             duration_ms.as_secs_f32(),
-            delay_time_str,
-            witness_time_str,
-            asm_info_str,
-            stream_str,
         );
+
+        // Print timing details on a second line for better readability
+        if !delay_time_str.is_empty() || !witness_time_str.is_empty() || !asm_info_str.is_empty() {
+            let timing_parts: Vec<String> = vec![delay_time_str, witness_time_str, asm_info_str]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !timing_parts.is_empty() {
+                info!("[Phase1]   └─ Timing: {}", timing_parts.join(", "));
+            }
+        }
+
+        // Print stream statistics on a third line if available
+        if !stream_str.is_empty() {
+            info!("[Phase1]   └─ Stream: {}", stream_str);
+        }
 
         // Ensure we have results from all assigned workers before proceeding.
         // If not all workers have responded (and we're not in simulation mode),
@@ -1813,17 +1956,14 @@ impl Coordinator {
                         .map(|task_received| task_received.signed_duration_since(*phase_start_time))
                         .unwrap_or_else(chrono::Duration::zero);
                     let delay_ms = delay_duration.num_milliseconds().max(0) as f32;
-                    let delay_str = format!(", Delay: {:.3}s", delay_ms / 1000.0);
+                    let delay_str = format!("Delay: {:.3}s", delay_ms / 1000.0);
 
                     let asm_str = execution_result
                         .zisk_executor_time
                         .asm_execution_duration
                         .as_ref()
                         .map(|asm_info| {
-                            format!(
-                                ", Asm Execution: {:.3}s at {} MHz",
-                                asm_info.time, asm_info.mhz
-                            )
+                            format!("Asm: {:.3}s @ {} MHz", asm_info.time, asm_info.mhz)
                         })
                         .unwrap_or_default();
 
@@ -1834,25 +1974,53 @@ impl Coordinator {
                             let mut parts = Vec::new();
 
                             if let Some(inputs) = &st.inputs_timing {
+                                let task_start_ms = execution_result
+                                    .task_received_time
+                                    .map(|t| t.timestamp_millis() as f64)
+                                    .unwrap_or(0.0);
+                                let timing_str = if let (Some(first), Some(last)) = (inputs.first_received_at, inputs.last_received_at) {
+                                    let first_offset = first - task_start_ms;
+                                    let last_offset = last - task_start_ms;
+                                    format!(" First: +{:.2}ms, Last: +{:.2}ms, Duration: {:.2}ms", first_offset, last_offset, last - first)
+                                } else {
+                                    String::new()
+                                };
                                 parts.push(format!(
-                                    "Inputs: {} msgs, Avg delay: {:.2}ms, Max: {:.2}ms",
+                                    "Inputs: {} msgs{} (Delay avg: {:.2}ms, max: {:.2}ms | Inter-arrival avg: {:.2}ms, max: {:.2}ms)",
                                     inputs.messages_received,
+                                    timing_str,
                                     inputs.avg_broadcast_delay,
-                                    inputs.max_broadcast_delay
+                                    inputs.max_broadcast_delay,
+                                    inputs.avg_interarrival_time,
+                                    inputs.max_interarrival_time
                                 ));
                             }
 
                             if let Some(hints) = &st.hints_timing {
+                                let task_start_ms = execution_result
+                                    .task_received_time
+                                    .map(|t| t.timestamp_millis() as f64)
+                                    .unwrap_or(0.0);
+                                let timing_str = if let (Some(first), Some(last)) = (hints.first_received_at, hints.last_received_at) {
+                                    let first_offset = first - task_start_ms;
+                                    let last_offset = last - task_start_ms;
+                                    format!(" First: +{:.2}ms, Last: +{:.2}ms, Duration: {:.2}ms", first_offset, last_offset, last - first)
+                                } else {
+                                    String::new()
+                                };
                                 parts.push(format!(
-                                    "Hints: {} msgs, Avg delay: {:.2}ms, Max: {:.2}ms",
+                                    "Hints: {} msgs{} (Delay avg: {:.2}ms, max: {:.2}ms | Inter-arrival avg: {:.2}ms, max: {:.2}ms)",
                                     hints.messages_received,
+                                    timing_str,
                                     hints.avg_broadcast_delay,
-                                    hints.max_broadcast_delay
+                                    hints.max_broadcast_delay,
+                                    hints.avg_interarrival_time,
+                                    hints.max_interarrival_time
                                 ));
                             }
 
                             if !parts.is_empty() {
-                                format!(", Stream [{}]", parts.join("; "))
+                                parts.join(" | ")
                             } else {
                                 String::new()
                             }
@@ -1868,16 +2036,27 @@ impl Coordinator {
         };
 
         info!(
-            "[Execution] {} finished execution for {} ({}/{} workers done, Phase: {:.3}s{}{}{})",
+            "[Execution] {} finished execution for {} ({}/{} workers done, Phase: {:.3}s)",
             worker_id,
             job.job_id,
             execution_results_len,
             job.workers.len(),
             duration_ms.as_secs_f32(),
-            delay_time_str,
-            asm_info_str,
-            stream_str,
         );
+
+        // Print timing details on a second line for better readability
+        if !delay_time_str.is_empty() || !asm_info_str.is_empty() {
+            let timing_parts: Vec<String> =
+                vec![delay_time_str, asm_info_str].into_iter().filter(|s| !s.is_empty()).collect();
+            if !timing_parts.is_empty() {
+                info!("[Execution]   └─ Timing: {}", timing_parts.join(", "));
+            }
+        }
+
+        // Print stream statistics on a third line if available
+        if !stream_str.is_empty() {
+            info!("[Execution]   └─ Stream: {}", stream_str);
+        }
 
         // Ensure we have results from all assigned workers before proceeding.
         job.execution_mode.is_simulating() || execution_results_len >= job.workers.len()

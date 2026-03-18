@@ -349,6 +349,12 @@ message StreamTimingStats {
   double total_broadcast_delay = 2; // milliseconds
   double avg_broadcast_delay = 3;   // milliseconds
   double max_broadcast_delay = 4;   // milliseconds
+  double total_interarrival_time = 5; // milliseconds
+  double avg_interarrival_time = 6;   // milliseconds
+  double max_interarrival_time = 7;   // milliseconds
+  optional double first_received_at = 8; // milliseconds since epoch
+  optional double last_received_at = 9;  // milliseconds since epoch
+  
 }
 
 message Challenges {

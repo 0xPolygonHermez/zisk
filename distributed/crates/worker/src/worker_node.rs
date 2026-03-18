@@ -335,25 +335,45 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let stream_timing = if let Some(job) = self.worker.current_job() {
             let job_guard = job.lock().await;
 
-            let inputs_timing = if job_guard.inputs_messages_count > 0 {
+            let inputs_timing = if job_guard.inputs_timing.messages_count > 0 {
                 Some(StreamTimingStats {
-                    messages_received: job_guard.inputs_messages_count,
-                    total_broadcast_delay: job_guard.inputs_total_delay,
-                    avg_broadcast_delay: job_guard.inputs_total_delay
-                        / job_guard.inputs_messages_count as f64,
-                    max_broadcast_delay: job_guard.inputs_max_delay,
+                    messages_received: job_guard.inputs_timing.messages_count,
+                    total_broadcast_delay: job_guard.inputs_timing.total_delay,
+                    avg_broadcast_delay: job_guard.inputs_timing.total_delay
+                        / job_guard.inputs_timing.messages_count as f64,
+                    max_broadcast_delay: job_guard.inputs_timing.max_delay,
+                    total_interarrival_time: job_guard.inputs_timing.total_interarrival,
+                    avg_interarrival_time: if job_guard.inputs_timing.messages_count > 1 {
+                        job_guard.inputs_timing.total_interarrival
+                            / (job_guard.inputs_timing.messages_count - 1) as f64
+                    } else {
+                        0.0
+                    },
+                    first_received_at: job_guard.inputs_timing.first_received_at,
+                    last_received_at: job_guard.inputs_timing.last_received_at,
+                    max_interarrival_time: job_guard.inputs_timing.max_interarrival,
                 })
             } else {
                 None
             };
 
-            let hints_timing = if job_guard.hints_messages_count > 0 {
+            let hints_timing = if job_guard.hints_timing.messages_count > 0 {
                 Some(StreamTimingStats {
-                    messages_received: job_guard.hints_messages_count,
-                    total_broadcast_delay: job_guard.hints_total_delay,
-                    avg_broadcast_delay: job_guard.hints_total_delay
-                        / job_guard.hints_messages_count as f64,
-                    max_broadcast_delay: job_guard.hints_max_delay,
+                    messages_received: job_guard.hints_timing.messages_count,
+                    total_broadcast_delay: job_guard.hints_timing.total_delay,
+                    avg_broadcast_delay: job_guard.hints_timing.total_delay
+                        / job_guard.hints_timing.messages_count as f64,
+                    max_broadcast_delay: job_guard.hints_timing.max_delay,
+                    total_interarrival_time: job_guard.hints_timing.total_interarrival,
+                    avg_interarrival_time: if job_guard.hints_timing.messages_count > 1 {
+                        job_guard.hints_timing.total_interarrival
+                            / (job_guard.hints_timing.messages_count - 1) as f64
+                    } else {
+                        0.0
+                    },
+                    first_received_at: job_guard.hints_timing.first_received_at,
+                    last_received_at: job_guard.hints_timing.last_received_at,
+                    max_interarrival_time: job_guard.hints_timing.max_interarrival,
                 })
             } else {
                 None
@@ -441,25 +461,45 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let stream_timing = if let Some(job) = self.worker.current_job() {
             let job_guard = job.lock().await;
 
-            let inputs_timing = if job_guard.inputs_messages_count > 0 {
+            let inputs_timing = if job_guard.inputs_timing.messages_count > 0 {
                 Some(StreamTimingStats {
-                    messages_received: job_guard.inputs_messages_count,
-                    total_broadcast_delay: job_guard.inputs_total_delay,
-                    avg_broadcast_delay: job_guard.inputs_total_delay
-                        / job_guard.inputs_messages_count as f64,
-                    max_broadcast_delay: job_guard.inputs_max_delay,
+                    messages_received: job_guard.inputs_timing.messages_count,
+                    total_broadcast_delay: job_guard.inputs_timing.total_delay,
+                    avg_broadcast_delay: job_guard.inputs_timing.total_delay
+                        / job_guard.inputs_timing.messages_count as f64,
+                    max_broadcast_delay: job_guard.inputs_timing.max_delay,
+                    first_received_at: job_guard.inputs_timing.first_received_at,
+                    last_received_at: job_guard.inputs_timing.last_received_at,
+                    total_interarrival_time: job_guard.inputs_timing.total_interarrival,
+                    avg_interarrival_time: if job_guard.inputs_timing.messages_count > 1 {
+                        job_guard.inputs_timing.total_interarrival
+                            / (job_guard.inputs_timing.messages_count - 1) as f64
+                    } else {
+                        0.0
+                    },
+                    max_interarrival_time: job_guard.inputs_timing.max_interarrival,
                 })
             } else {
                 None
             };
 
-            let hints_timing = if job_guard.hints_messages_count > 0 {
+            let hints_timing = if job_guard.hints_timing.messages_count > 0 {
                 Some(StreamTimingStats {
-                    messages_received: job_guard.hints_messages_count,
-                    total_broadcast_delay: job_guard.hints_total_delay,
-                    avg_broadcast_delay: job_guard.hints_total_delay
-                        / job_guard.hints_messages_count as f64,
-                    max_broadcast_delay: job_guard.hints_max_delay,
+                    messages_received: job_guard.hints_timing.messages_count,
+                    total_broadcast_delay: job_guard.hints_timing.total_delay,
+                    avg_broadcast_delay: job_guard.hints_timing.total_delay
+                        / job_guard.hints_timing.messages_count as f64,
+                    max_broadcast_delay: job_guard.hints_timing.max_delay,
+                    first_received_at: job_guard.hints_timing.first_received_at,
+                    last_received_at: job_guard.hints_timing.last_received_at,
+                    total_interarrival_time: job_guard.hints_timing.total_interarrival,
+                    avg_interarrival_time: if job_guard.hints_timing.messages_count > 1 {
+                        job_guard.hints_timing.total_interarrival
+                            / (job_guard.hints_timing.messages_count - 1) as f64
+                    } else {
+                        0.0
+                    },
+                    max_interarrival_time: job_guard.hints_timing.max_interarrival,
                 })
             } else {
                 None
@@ -1053,25 +1093,69 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         if matches!(stream_data_dto.stream_type, zisk_distributed_common::StreamMessageKind::Data) {
-            let delay = received_at - stream_data_dto.broadcast_at;
+            let delay = received_at - stream_data_dto.sent_at;
             let mut job_guard = job.lock().await;
 
-            // Always track overall stream metrics
-            job_guard.stream_messages_count += 1;
-            job_guard.stream_total_delay += delay;
-            job_guard.stream_max_delay = job_guard.stream_max_delay.max(delay);
+            // Track overall stream metrics (broadcast delay and inter-arrival time)
+            job_guard.stream_timing.messages_count += 1;
+            job_guard.stream_timing.total_delay += delay;
+            job_guard.stream_timing.max_delay = job_guard.stream_timing.max_delay.max(delay);
+
+            // Set first message time if not set
+            if job_guard.stream_timing.first_received_at.is_none() {
+                job_guard.stream_timing.first_received_at = Some(received_at);
+            }
+
+            // Track inter-arrival time (time between consecutive messages)
+            if let Some(last_received) = job_guard.stream_timing.last_received_at {
+                let interarrival = received_at - last_received;
+                job_guard.stream_timing.total_interarrival += interarrival;
+                job_guard.stream_timing.max_interarrival =
+                    job_guard.stream_timing.max_interarrival.max(interarrival);
+            }
+            job_guard.stream_timing.last_received_at = Some(received_at);
 
             // Determine hint type from payload and track separately
             if let Some(ref payload_data) = stream_data_dto.stream_payload {
                 if let Some(is_input) = Self::is_input_hint(&payload_data.payload) {
                     if is_input {
-                        job_guard.inputs_messages_count += 1;
-                        job_guard.inputs_total_delay += delay;
-                        job_guard.inputs_max_delay = job_guard.inputs_max_delay.max(delay);
+                        job_guard.inputs_timing.messages_count += 1;
+                        job_guard.inputs_timing.total_delay += delay;
+                        job_guard.inputs_timing.max_delay =
+                            job_guard.inputs_timing.max_delay.max(delay);
+
+                        // Set first input message time if not set
+                        if job_guard.inputs_timing.first_received_at.is_none() {
+                            job_guard.inputs_timing.first_received_at = Some(received_at);
+                        }
+
+                        // Track input inter-arrival time
+                        if let Some(last_received) = job_guard.inputs_timing.last_received_at {
+                            let interarrival = received_at - last_received;
+                            job_guard.inputs_timing.total_interarrival += interarrival;
+                            job_guard.inputs_timing.max_interarrival =
+                                job_guard.inputs_timing.max_interarrival.max(interarrival);
+                        }
+                        job_guard.inputs_timing.last_received_at = Some(received_at);
                     } else {
-                        job_guard.hints_messages_count += 1;
-                        job_guard.hints_total_delay += delay;
-                        job_guard.hints_max_delay = job_guard.hints_max_delay.max(delay);
+                        job_guard.hints_timing.messages_count += 1;
+                        job_guard.hints_timing.total_delay += delay;
+                        job_guard.hints_timing.max_delay =
+                            job_guard.hints_timing.max_delay.max(delay);
+
+                        // Set first hint message time if not set
+                        if job_guard.hints_timing.first_received_at.is_none() {
+                            job_guard.hints_timing.first_received_at = Some(received_at);
+                        }
+
+                        // Track hints inter-arrival time
+                        if let Some(last_received) = job_guard.hints_timing.last_received_at {
+                            let interarrival = received_at - last_received;
+                            job_guard.hints_timing.total_interarrival += interarrival;
+                            job_guard.hints_timing.max_interarrival =
+                                job_guard.hints_timing.max_interarrival.max(interarrival);
+                        }
+                        job_guard.hints_timing.last_received_at = Some(received_at);
                     }
                 }
             }
