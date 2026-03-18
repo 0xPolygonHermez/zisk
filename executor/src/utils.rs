@@ -10,7 +10,7 @@ use precomp_keccakf::KeccakfManager;
 use precomp_poseidon2::Poseidon2Manager;
 use precomp_sha256f::Sha256fManager;
 use proofman::register_std;
-use proofman_common::PackedInfo;
+use proofman_common::{AirsInfo, PackedInfo};
 use proofman_common::VerboseMode;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
@@ -36,18 +36,21 @@ use zisk_pil::{
 
 use anyhow::Result;
 
-pub fn get_packed_info() -> HashMap<(usize, usize), PackedInfo> {
+pub fn get_packed_info() -> HashMap<(usize, usize), AirsInfo> {
     let mut _packed_info = HashMap::new();
     #[cfg(feature = "packed")]
     {
         for packed_info in PACKED_INFO.iter() {
             _packed_info.insert(
                 (packed_info.0, packed_info.1),
-                PackedInfo::new(
-                    packed_info.2.is_packed,
-                    packed_info.2.num_packed_words,
-                    packed_info.2.unpack_info.to_vec(),
-                ),
+                AirsInfo {
+                    is_priority: packed_info.0 == ZISK_AIRGROUP_ID && packed_info.1 == KECCAKF_AIR_IDS[0],
+                    packed_info: PackedInfo::new(
+                        packed_info.2.is_packed,
+                        packed_info.2.num_packed_words,
+                        packed_info.2.unpack_info.to_vec(),
+                    ),
+                }
             );
         }
     }
