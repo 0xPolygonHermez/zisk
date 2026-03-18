@@ -41,7 +41,7 @@ async fn start_test_server() -> (SocketAddr, oneshot::Sender<()>) {
             .unwrap();
 
         let user_svc =
-            ZiskUserApiServer::new(UserApiService::new(Arc::new(UserApiState::new(None))));
+            ZiskUserApiServer::new(UserApiService::new(Arc::new(UserApiState::new(None, None))));
         let node_svc = ZiskNodeApiServer::new(NodeApiService::new());
 
         let shutdown = async move {
@@ -96,19 +96,22 @@ async fn user_api_get_node_info_returns_version() {
 }
 
 #[tokio::test]
-async fn user_api_list_jobs_returns_empty() {
+async fn user_api_list_jobs_returns_unavailable_without_coordinator() {
     use zisk_distributed_node::grpc::user::ListJobsRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
 
-    let response = client.list_jobs(ListJobsRequest { since: None, until: None }).await.unwrap();
+    let err = client
+        .list_jobs(ListJobsRequest { since: None, until: None })
+        .await
+        .unwrap_err();
 
-    assert!(response.into_inner().jobs.is_empty());
+    assert_eq!(err.code(), tonic::Code::Unavailable);
 }
 
 #[tokio::test]
-async fn user_api_get_job_returns_not_found() {
+async fn user_api_get_job_returns_unavailable_without_coordinator() {
     use zisk_distributed_node::grpc::user::GetJobRequest;
 
     let (addr, _shutdown) = start_test_server().await;
@@ -119,7 +122,7 @@ async fn user_api_get_job_returns_not_found() {
         .await
         .unwrap_err();
 
-    assert_eq!(err.code(), tonic::Code::NotFound);
+    assert_eq!(err.code(), tonic::Code::Unavailable);
 }
 
 // ── Unimplemented stubs ───────────────────────────────────────────────────────
@@ -178,7 +181,7 @@ async fn user_api_get_guest_program_is_unimplemented() {
 }
 
 #[tokio::test]
-async fn user_api_cancel_job_returns_not_found() {
+async fn user_api_cancel_job_returns_unavailable_without_coordinator() {
     use zisk_distributed_node::grpc::user::CancelJobRequest;
 
     let (addr, _shutdown) = start_test_server().await;
@@ -189,7 +192,7 @@ async fn user_api_cancel_job_returns_not_found() {
         .await
         .unwrap_err();
 
-    assert_eq!(err.code(), tonic::Code::NotFound);
+    assert_eq!(err.code(), tonic::Code::Unavailable);
 }
 
 // ── Health service ────────────────────────────────────────────────────────────

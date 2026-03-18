@@ -152,7 +152,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let channel =
             Channel::from_shared(self.worker_config.coordinator.url.clone())?.connect().await?;
-        let mut client = zisk_distributed_api_client::ZiskDistributedApiClient::new(channel)
+        let mut client = zisk_cluster_api_client::ZiskClusterApiClient::new(channel)
             .max_decoding_message_size(MAX_MESSAGE_SIZE)
             .max_encoding_message_size(MAX_MESSAGE_SIZE);
 

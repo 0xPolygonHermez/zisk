@@ -1,5 +1,6 @@
 use crate::cluster::ClusterRegistry;
 use crate::config::NodeConfig;
+use crate::coordinator::CoordinatorClient;
 use crate::daemon::shutdown::wait_for_shutdown;
 use crate::grpc::logging::GrpcLoggingLayer;
 use crate::grpc::node_api::NodeApiService;
@@ -32,9 +33,19 @@ impl NodeServer {
         let addr: SocketAddr =
             format!("{}:{}", self.config.server.host, self.config.server.port).parse()?;
 
-        if let Some(ref reg) = self.cluster_registry {
-            info!("Active cluster: '{}'", reg.cluster_name());
-        }
+        let coordinator_client = self.cluster_registry.as_ref().and_then(|reg| {
+            info!("Loaded cluster '{}'", reg.cluster_name());
+            match reg.coordinator_url() {
+                Ok(url) => {
+                    info!("Coordinator at {url}");
+                    Some(CoordinatorClient::connect(url))
+                }
+                Err(e) => {
+                    tracing::warn!("Could not resolve coordinator URL: {e}. Running without coordinator.");
+                    None
+                }
+            }
+        });
 
         // ── Health ────────────────────────────────────────────────────────────
         let (health_reporter, health_service) = health_reporter();
@@ -48,9 +59,12 @@ impl NodeServer {
 
         // ── Services ──────────────────────────────────────────────────────────
         let user_svc =
-            ZiskUserApiServer::new(UserApiService::new(Arc::new(UserApiState::new(self.cluster_registry))))
-                .max_decoding_message_size(MAX_MESSAGE_SIZE)
-                .max_encoding_message_size(MAX_MESSAGE_SIZE);
+            ZiskUserApiServer::new(UserApiService::new(Arc::new(UserApiState::new(
+                self.cluster_registry,
+                coordinator_client,
+            ))))
+            .max_decoding_message_size(MAX_MESSAGE_SIZE)
+            .max_encoding_message_size(MAX_MESSAGE_SIZE);
 
         let node_svc = ZiskNodeApiServer::new(NodeApiService::new())
             .max_decoding_message_size(MAX_MESSAGE_SIZE)

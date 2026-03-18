@@ -1,27 +1,31 @@
 use crate::cluster::ClusterRegistry;
+use crate::coordinator::CoordinatorClient;
 use crate::grpc::user::zisk_user_api_server::ZiskUserApi;
 use crate::grpc::user::*;
 use std::pin::Pin;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status, Streaming};
+use zisk_distributed_grpc_api as coord;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
 
 pub struct UserApiState {
     pub cluster_registry: Option<Arc<ClusterRegistry>>,
-    // TODO: job_registry: Arc<JobRegistry>,
-    // TODO: program_store: Arc<ProgramStore>,
+    pub coordinator: Option<Mutex<CoordinatorClient>>,
 }
 
 impl UserApiState {
-    pub fn new(cluster_registry: Option<Arc<ClusterRegistry>>) -> Self {
-        Self { cluster_registry }
+    pub fn new(
+        cluster_registry: Option<Arc<ClusterRegistry>>,
+        coordinator: Option<CoordinatorClient>,
+    ) -> Self {
+        Self { cluster_registry, coordinator: coordinator.map(Mutex::new) }
     }
 }
 
 pub struct UserApiService {
-    #[allow(dead_code)]
     state: Arc<UserApiState>,
 }
 
@@ -29,7 +33,83 @@ impl UserApiService {
     pub fn new(state: Arc<UserApiState>) -> Self {
         Self { state }
     }
+
+    fn coordinator_unavailable() -> Status {
+        Status::unavailable("no coordinator configured")
+    }
 }
+
+// ── Type mapping helpers ──────────────────────────────────────────────────────
+
+fn map_coordinator_job_status(state: &str, phase: &str) -> JobStatus {
+    let code = match state {
+        "Created" => JobStatusCode::Queued,
+        s if s.starts_with("Running") => JobStatusCode::Running,
+        "Completed" => JobStatusCode::Completed,
+        "Failed" => JobStatusCode::Failed,
+        "Cancelled" => JobStatusCode::Cancelled,
+        _ => JobStatusCode::JobStatusUnspecified,
+    } as i32;
+
+    let phase_val = match phase {
+        "Contributions" => JobPhase::Contributions,
+        "Prove" => JobPhase::Prove,
+        "Aggregate" => JobPhase::Aggregate,
+        _ => JobPhase::Contributions,
+    } as i32;
+
+    JobStatus { code, phase: phase_val }
+}
+
+fn ms_to_timestamp(ms: u64) -> prost_types::Timestamp {
+    prost_types::Timestamp {
+        seconds: (ms / 1000) as i64,
+        nanos: ((ms % 1000) * 1_000_000) as i32,
+    }
+}
+
+fn coordinator_job_to_summary(j: coord::JobStatus) -> JobSummary {
+    JobSummary {
+        job_id: j.job_id,
+        program_id: j.data_id,
+        kind: Some(JobKind { kind: Some(job_kind::Kind::Prove(ProofKind::Stark as i32)) }),
+        status: Some(map_coordinator_job_status(&j.state, &j.phase)),
+        created_at: Some(ms_to_timestamp(j.start_time)),
+    }
+}
+
+fn coordinator_job_to_info(j: coord::JobStatus) -> JobInfo {
+    let status = map_coordinator_job_status(&j.state, &j.phase);
+    let completed_at = if matches!(
+        JobStatusCode::try_from(status.code).unwrap_or(JobStatusCode::JobStatusUnspecified),
+        JobStatusCode::Completed | JobStatusCode::Failed | JobStatusCode::Cancelled
+    ) {
+        Some(ms_to_timestamp(j.start_time + j.duration_ms))
+    } else {
+        None
+    };
+
+    JobInfo {
+        job_id: j.job_id,
+        program_id: j.data_id,
+        kind: Some(JobKind { kind: Some(job_kind::Kind::Prove(ProofKind::Stark as i32)) }),
+        status: Some(status),
+        result: None,
+        error: None,
+        created_at: Some(ms_to_timestamp(j.start_time)),
+        completed_at,
+    }
+}
+
+fn map_coordinator_error(e: coord::ErrorResponse) -> Status {
+    match e.code.as_str() {
+        "NOT_FOUND" => Status::not_found(e.message),
+        "INVALID_ARGUMENT" => Status::invalid_argument(e.message),
+        _ => Status::internal(e.message),
+    }
+}
+
+// ── ZiskUserApi implementation ────────────────────────────────────────────────
 
 #[tonic::async_trait]
 impl ZiskUserApi for UserApiService {
@@ -97,15 +177,48 @@ impl ZiskUserApi for UserApiService {
         &self,
         _request: Request<ListJobsRequest>,
     ) -> Result<Response<ListJobsResponse>, Status> {
-        Ok(Response::new(ListJobsResponse { jobs: vec![] }))
+        let coordinator = self.state.coordinator.as_ref().ok_or_else(Self::coordinator_unavailable)?;
+        let mut client = coordinator.lock().await;
+
+        let resp = client
+            .inner
+            .jobs_list(coord::JobsListRequest { active_only: false })
+            .await
+            .map_err(|e| Status::internal(e.message()))?
+            .into_inner();
+
+        match resp.result {
+            Some(coord::jobs_list_response::Result::JobsList(list)) => {
+                let jobs = list.jobs.into_iter().map(coordinator_job_to_summary).collect();
+                Ok(Response::new(ListJobsResponse { jobs }))
+            }
+            Some(coord::jobs_list_response::Result::Error(e)) => Err(map_coordinator_error(e)),
+            None => Ok(Response::new(ListJobsResponse { jobs: vec![] })),
+        }
     }
 
     async fn get_job(
         &self,
         request: Request<GetJobRequest>,
     ) -> Result<Response<JobInfo>, Status> {
-        let id = request.into_inner().job_id;
-        Err(Status::not_found(format!("job '{id}' not found")))
+        let coordinator = self.state.coordinator.as_ref().ok_or_else(Self::coordinator_unavailable)?;
+        let mut client = coordinator.lock().await;
+        let job_id = request.into_inner().job_id;
+
+        let resp = client
+            .inner
+            .job_status(coord::JobStatusRequest { job_id })
+            .await
+            .map_err(|e| Status::internal(e.message()))?
+            .into_inner();
+
+        match resp.result {
+            Some(coord::job_status_response::Result::Job(j)) => {
+                Ok(Response::new(coordinator_job_to_info(j)))
+            }
+            Some(coord::job_status_response::Result::Error(e)) => Err(map_coordinator_error(e)),
+            None => Err(Status::internal("empty response from coordinator")),
+        }
     }
 
     async fn wait_job_result(
@@ -113,7 +226,7 @@ impl ZiskUserApi for UserApiService {
         request: Request<WaitJobResultRequest>,
     ) -> Result<Response<JobInfo>, Status> {
         let id = request.into_inner().job_id;
-        Err(Status::not_found(format!("job '{id}' not found")))
+        Err(Status::unimplemented(format!("wait_job_result not yet implemented (job '{id}')")))
     }
 
     async fn push_job_input(
@@ -127,7 +240,27 @@ impl ZiskUserApi for UserApiService {
         &self,
         request: Request<CancelJobRequest>,
     ) -> Result<Response<CancelJobResponse>, Status> {
-        let id = request.into_inner().job_id;
-        Err(Status::not_found(format!("job '{id}' not found")))
+        let coordinator = self.state.coordinator.as_ref().ok_or_else(Self::coordinator_unavailable)?;
+        let mut client = coordinator.lock().await;
+        let job_id = request.into_inner().job_id;
+
+        let resp = client
+            .inner
+            .cancel_job(coord::CancelJobRequest { job_id: job_id.clone(), reason: None })
+            .await
+            .map_err(|e| Status::internal(e.message()))?
+            .into_inner();
+
+        match resp.result {
+            Some(coord::cancel_job_response::Result::JobId(id)) => Ok(Response::new(CancelJobResponse {
+                job_id: id,
+                job_status: Some(JobStatus {
+                    code: JobStatusCode::Cancelled as i32,
+                    phase: JobPhase::Contributions as i32,
+                }),
+            })),
+            Some(coord::cancel_job_response::Result::Error(e)) => Err(map_coordinator_error(e)),
+            None => Err(Status::internal("empty response from coordinator")),
+        }
     }
 }

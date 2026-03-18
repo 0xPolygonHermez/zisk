@@ -319,7 +319,7 @@ impl Job {
                     error!("Start time for phase {:?} was already set", phase);
                 }
             }
-            JobState::Completed | JobState::Failed => {
+            JobState::Completed | JobState::Failed | JobState::Cancelled => {
                 let end_time = Utc::now();
                 if let Some(start_time) = self.start_times.get(&JobPhase::Contributions) {
                     let duration = end_time.signed_duration_since(*start_time);
@@ -370,6 +370,13 @@ pub enum JobState {
     Running(JobPhase),
     Completed,
     Failed,
+    Cancelled,
+}
+
+impl JobState {
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, JobState::Completed | JobState::Failed | JobState::Cancelled)
+    }
 }
 
 impl fmt::Display for JobState {
@@ -379,6 +386,7 @@ impl fmt::Display for JobState {
             JobState::Running(phase) => write!(f, "Running ({:?})", phase),
             JobState::Completed => write!(f, "Completed"),
             JobState::Failed => write!(f, "Failed"),
+            JobState::Cancelled => write!(f, "Cancelled"),
         }
     }
 }

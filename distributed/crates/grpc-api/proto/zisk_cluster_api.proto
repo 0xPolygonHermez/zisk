@@ -1,0 +1,217 @@
+syntax = "proto3";
+
+package zisk.cluster.v1;
+
+import "google/protobuf/timestamp.proto";
+import "zisk_common.proto";
+
+// ============================================================================
+// Internal cluster API — coordinator ↔ worker bidirectional communication.
+// Not exposed to external callers.
+// ============================================================================
+
+service ZiskClusterApi {
+  // Bidirectional stream between a worker and the coordinator.
+  rpc WorkerStream(stream WorkerMessage) returns (stream CoordinatorMessage);
+}
+
+// ── Envelope messages ─────────────────────────────────────────────────────────
+
+// Messages sent from worker to coordinator.
+message WorkerMessage {
+  oneof payload {
+    HeartbeatAck heartbeat_ack = 1;
+    WorkerError error = 2;
+    WorkerRegisterRequest register = 3;
+    WorkerReconnectRequest reconnect = 4;
+    ExecuteTaskResponse execute_task_response = 5;
+  }
+}
+
+// Messages sent from coordinator to worker.
+message CoordinatorMessage {
+  oneof payload {
+    Heartbeat heartbeat = 1;
+    Shutdown shutdown = 2;
+    WorkerRegisterResponse register_response = 3;
+    ExecuteTaskRequest execute_task = 4;
+    JobCancelled job_cancelled = 5;
+    StreamData stream_data = 6;
+  }
+}
+
+// ── Handshake ─────────────────────────────────────────────────────────────────
+
+message WorkerRegisterRequest {
+  string worker_id = 1;
+  zisk.common.v1.ComputeCapacity compute_capacity = 2;
+}
+
+message WorkerReconnectRequest {
+  string worker_id = 1;
+  zisk.common.v1.ComputeCapacity compute_capacity = 2;
+  string last_known_job_id = 3;
+}
+
+message WorkerRegisterResponse {
+  string worker_id = 1;
+  bool accepted = 2;
+  string message = 3;
+  google.protobuf.Timestamp registered_at = 4;
+}
+
+// ── Heartbeat ─────────────────────────────────────────────────────────────────
+
+message Heartbeat {
+  google.protobuf.Timestamp timestamp = 1;
+}
+
+message HeartbeatAck {
+  string worker_id = 1;
+}
+
+// ── Control ───────────────────────────────────────────────────────────────────
+
+message Shutdown {
+  string reason = 1;
+  uint32 grace_period_seconds = 2;
+}
+
+message JobCancelled {
+  string job_id = 1;
+  string reason = 2;
+}
+
+// ── Task execution ────────────────────────────────────────────────────────────
+
+message ExecuteTaskRequest {
+  string worker_id = 1;
+  string job_id = 2;
+  TaskType task_type = 3;
+  oneof params {
+    ContributionParams contribution_params = 4;
+    ProveParams prove_params = 5;
+    AggParams agg_params = 6;
+  }
+}
+
+enum TaskType {
+  PARTIAL_CONTRIBUTION = 0;
+  PROVE = 1;
+  AGGREGATE = 2;
+}
+
+message ContributionParams {
+  string data_id = 1;
+  oneof input_source {
+    string input_path = 2;
+    bytes input_data = 3;
+  }
+  optional string hints_path = 4;
+  bool hints_stream = 5;
+  uint32 rank_id = 6;
+  uint32 total_workers = 7;
+  repeated uint32 worker_allocation = 8;
+  uint32 job_compute_units = 9;
+}
+
+message ProveParams {
+  repeated Challenges challenges = 1;
+}
+
+message AggParams {
+  ProofList agg_proofs = 1;
+  bool last_proof = 2;
+  bool final_proof = 3;
+  bool compressed = 4;
+}
+
+// ── Task results ─────────────────────────────────────────────────────────────
+
+message ExecuteTaskResponse {
+  string job_id = 1;
+  string worker_id = 2;
+  TaskType task_type = 3;
+  bool success = 4;
+  string error_message = 5;
+  oneof result_data {
+    ChallengesList challenges = 6;
+    ProofList proofs = 7;
+    FinalProof final_proof = 8;
+  }
+}
+
+message ChallengesList {
+  repeated Challenges challenges = 1;
+  WitnessExecInfo witness_info = 2;
+  ZiskExecuteTime zisk_execution_time = 3;
+}
+
+message Challenges {
+  uint32 worker_index = 1;
+  uint32 airgroup_id = 2;
+  repeated uint64 challenge = 3;
+}
+
+message ProofList {
+  repeated Proof proofs = 1;
+}
+
+message Proof {
+  uint32 worker_idx = 1;
+  uint64 airgroup_id = 2;
+  repeated uint64 values = 3;
+}
+
+message FinalProof {
+  repeated uint64 values = 1;
+  uint64 executed_steps = 2;
+}
+
+// ── Streaming ────────────────────────────────────────────────────────────────
+
+message StreamData {
+  string job_id = 1;
+  StreamType stream_type = 2;
+  optional StreamPayload payload = 3;
+}
+
+enum StreamType {
+  STREAM_TYPE_START = 0;
+  STREAM_TYPE_DATA = 1;
+  STREAM_TYPE_END = 2;
+}
+
+message StreamPayload {
+  uint32 sequence_number = 3;
+  bytes payload = 4;
+}
+
+// ── Diagnostics ──────────────────────────────────────────────────────────────
+
+message WorkerError {
+  string worker_id = 1;
+  string job_id = 2;
+  string error_message = 3;
+}
+
+message WitnessExecInfo {
+  float witness_time = 1;
+  repeated uint64 publics = 2;
+  repeated uint64 proof_values = 3;
+  string summary_info = 4;
+}
+
+message AsmExecuteInfo {
+  float time = 1;
+  float mhz = 2;
+}
+
+message ZiskExecuteTime {
+  float total_duration = 1;
+  float execution_duration = 2;
+  float count_and_plan_duration = 3;
+  float count_and_plan_mo_duration = 4;
+  optional AsmExecuteInfo asm_execution_duration = 5;
+  double task_received_time = 6;
+}

@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package zisk.common.v1;
+
+// Compute capacity of a worker node.
+message ComputeCapacity {
+  uint32 compute_units = 1;
+}

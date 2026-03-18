@@ -485,13 +485,13 @@ impl Coordinator {
             let mut attempt = 0;
 
             while attempt < MAX_RETRIES {
-                let result = if job_state == JobState::Failed {
+                let result = if job_state.is_terminal() && job_state != JobState::Completed {
                     hooks::send_failure_webhook(
                         webhook_url.clone(),
                         job_id.clone(),
                         duration_ms,
-                        "JOB_FAILED".to_string(),
-                        "The job has failed during execution.".to_string(),
+                        job_state.to_string().to_uppercase(),
+                        format!("The job has {}.", job_state.to_string().to_lowercase()),
                     )
                     .await
                 } else {
@@ -833,6 +833,44 @@ impl Coordinator {
         Ok(())
     }
 
+    /// Cancels a running or pending job, notifies assigned workers, and marks them idle.
+    pub async fn cancel_job(&self, job_id: &JobId, reason: impl AsRef<str>) -> CoordinatorResult<()> {
+        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+
+        let mut job = job_entry.write().await;
+
+        if job.state().is_terminal() {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Job {job_id} is already in terminal state '{}'",
+                job.state()
+            )));
+        }
+
+        let previous_state = job.state().clone();
+        job.change_state(JobState::Cancelled);
+
+        // Notify all assigned workers
+        let worker_ids = job.workers.clone();
+        drop(job);
+        drop(job_entry);
+
+        let reason_str = reason.as_ref().to_string();
+        for worker_id in &worker_ids {
+            let msg = CoordinatorMessageDto::JobCancelled(zisk_distributed_common::JobCancelledDto {
+                job_id: job_id.clone(),
+                reason: reason_str.clone(),
+            });
+            if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
+                tracing::warn!("Could not notify worker {worker_id} of cancellation: {e}");
+            }
+        }
+
+        self.ensure_workers_idle_by_ids(&worker_ids, &previous_state).await;
+
+        info!("Cancelled job {job_id} (reason: {})", reason.as_ref());
+        Ok(())
+    }
+
     /// Updates all workers of a failed job, marking those that have finished their computation
     /// or partial computation as idle.
     ///
@@ -870,6 +908,21 @@ impl Coordinator {
         }
 
         Ok(())
+    }
+
+    /// Marks all provided workers as idle if they are currently in Computing state.
+    /// Used by cancel_job where we free all assigned workers regardless of phase results.
+    async fn ensure_workers_idle_by_ids(&self, worker_ids: &[WorkerId], previous_state: &JobState) {
+        if !matches!(previous_state, JobState::Running(_)) {
+            return;
+        }
+        for worker_id in worker_ids {
+            if let Some(WorkerState::Computing(_)) = self.workers_pool.worker_state(worker_id).await {
+                if let Err(e) = self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Idle).await {
+                    tracing::warn!("Could not mark worker {worker_id} idle on cancel: {e}");
+                }
+            }
+        }
     }
 
     /// Handles new worker registration requests in streaming context.
@@ -1164,7 +1217,7 @@ impl Coordinator {
         let worker_id = execute_task_response.worker_id.clone();
 
         // If job has Failed, mark worker as Idle and return early
-        if matches!(job.state(), JobState::Failed) {
+        if job.state().is_terminal() {
             self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await?;
             return Ok(());
         }
@@ -1616,7 +1669,7 @@ impl Coordinator {
         }
 
         // If job has Failed, mark worker as Idle and return early
-        if matches!(job.state(), JobState::Failed) {
+        if job.state().is_terminal() {
             self.workers_pool
                 .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
                 .await?;
@@ -1967,7 +2020,7 @@ impl Coordinator {
         let job = job_entry.write().await;
 
         // If job has Failed, mark worker as Idle and return early
-        if matches!(job.state(), JobState::Failed) {
+        if job.state().is_terminal() {
             self.workers_pool
                 .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
                 .await?;

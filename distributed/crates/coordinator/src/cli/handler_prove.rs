@@ -5,7 +5,7 @@ use tonic::transport::Channel;
 use tracing::{error, info};
 use zisk_distributed_coordinator::Config;
 use zisk_distributed_grpc_api::{
-    zisk_distributed_api_client::ZiskDistributedApiClient, HintsMode, InputMode, LaunchProofRequest,
+    zisk_coordinator_api_client::ZiskCoordinatorApiClient, HintsMode, InputMode, LaunchProofRequest,
 };
 
 /// Handle the prove subcommand - makes RPC request to coordinator
@@ -30,7 +30,7 @@ pub async fn handle(
     info!("Connecting to ZisK Coordinator gRPC service on {}", coordinator_url);
 
     let channel = Channel::from_shared(coordinator_url)?.connect().await?;
-    let mut client = ZiskDistributedApiClient::new(channel);
+    let mut client = ZiskCoordinatorApiClient::new(channel);
 
     let inputs_mode = match inputs_uri {
         None => InputMode::None,

@@ -6,7 +6,9 @@ use tonic::transport::Server;
 use tracing::{error, info};
 use zisk_distributed_coordinator::{create_shutdown_signal, Config, CoordinatorGrpc};
 use zisk_distributed_grpc_api::{
-    zisk_distributed_api_server::ZiskDistributedApiServer, MAX_MESSAGE_SIZE,
+    zisk_cluster_api_server::ZiskClusterApiServer,
+    zisk_coordinator_api_server::ZiskCoordinatorApiServer,
+    MAX_MESSAGE_SIZE,
 };
 
 pub async fn handle(
@@ -64,7 +66,10 @@ pub async fn handle(
     // Run the gRPC server with shutdown signal
     tokio::select! {
         result = Server::builder()
-            .add_service(ZiskDistributedApiServer::new(coordinator_service)
+            .add_service(ZiskCoordinatorApiServer::new(coordinator_service.clone())
+                .max_decoding_message_size(MAX_MESSAGE_SIZE)
+                .max_encoding_message_size(MAX_MESSAGE_SIZE))
+            .add_service(ZiskClusterApiServer::new(coordinator_service)
                 .max_decoding_message_size(MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(MAX_MESSAGE_SIZE))
             .serve(grpc_addr) => {

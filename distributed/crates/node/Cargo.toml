@@ -12,6 +12,7 @@ path = "src/bin/zisklet.rs"
 
 [dependencies]
 zisk-distributed-common = { workspace = true }
+zisk-distributed-grpc-api = { workspace = true }
 
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
