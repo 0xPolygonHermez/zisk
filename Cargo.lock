@@ -6209,6 +6209,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "zisk-distributed-common",
+ "zisk-distributed-grpc-api",
 ]
 
 [[package]]
