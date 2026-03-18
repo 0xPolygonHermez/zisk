@@ -81,11 +81,11 @@ service ZiskUserApi {
 message GetNodeInfoRequest {}
 
 message NodeInfo {
-  string                     zisk_version     = 1;
-  repeated SetupCapabilities supported_proofs = 2;
+  string             zisk_version     = 1;
+  repeated SetupInfo available_setups = 2;
 }
 
-message SetupCapabilities {
+message SetupInfo {
   string             setup_id    = 1;
   string             verifier_id = 2; // hash of the setup's verification key
   repeated ProofKind proof_kinds = 3;

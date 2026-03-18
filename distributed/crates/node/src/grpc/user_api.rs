@@ -121,7 +121,7 @@ impl ZiskUserApi for UserApiService {
     ) -> Result<Response<NodeInfo>, Status> {
         Ok(Response::new(NodeInfo {
             zisk_version: env!("CARGO_PKG_VERSION").to_string(),
-            supported_proofs: vec![],
+            available_setups: vec![],
         }))
     }
 

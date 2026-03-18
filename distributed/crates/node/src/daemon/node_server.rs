@@ -71,10 +71,6 @@ impl NodeServer {
             .max_encoding_message_size(MAX_MESSAGE_SIZE);
 
         info!("zisklet listening on {addr}");
-        info!("  ZiskUserApi  — user-facing proof gateway  (zisk.user.v1)");
-        info!("  ZiskNodeApi  — operator API               (zisk.node.v1)");
-        info!("  Health       — grpc.health.v1.Health");
-        info!("  Reflection   — grpc.reflection.v1.ServerReflection");
 
         // ── Graceful shutdown ─────────────────────────────────────────────────
         // Mark both services NOT_SERVING before the server stops accepting
