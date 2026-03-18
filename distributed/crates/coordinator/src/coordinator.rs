@@ -775,6 +775,12 @@ impl Coordinator {
                 let pool = Arc::clone(&workers_pool);
 
                 Box::pin(async move {
+                    let broadcast_at = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs_f64()
+                        * 1000.0;
+
                     let sends = workers.iter().map(|worker_id| {
                         let job_id = job_id.clone();
                         let worker_id = worker_id.clone();
@@ -783,10 +789,18 @@ impl Coordinator {
                         let stream_type = stream_type.clone();
 
                         async move {
+                            let sent_at = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs_f64()
+                                * 1000.0;
+
                             let msg = CoordinatorMessageDto::StreamData(StreamDataDto {
                                 job_id: job_id.clone(),
                                 stream_type,
                                 stream_payload: Some(StreamPayloadDto { sequence_number, payload }),
+                                broadcast_at,
+                                sent_at,
                             });
 
                             if let Err(e) = pool.send_message(&worker_id, msg).await {
@@ -1522,6 +1536,7 @@ impl Coordinator {
                             as u32,
                     ),
                     instances: ch_list.witness_info.total_instances,
+                    stream_timing: ch_list.stream_timing,
                 }))
             }
             _ => Err(CoordinatorError::InvalidRequest(
@@ -1557,6 +1572,7 @@ impl Coordinator {
                     executed_steps,
                     zisk_executor_time,
                     task_received_time,
+                    stream_timing: exec_data.stream_timing,
                 }))
             }
             _ => {
@@ -1604,6 +1620,57 @@ impl Coordinator {
                 }
             }
         }
+
+        // Print stream timing statistics if available
+        self.print_stream_timing_summary(job);
+    }
+
+    /// Prints aggregate stream timing statistics across all workers
+    fn print_stream_timing_summary(&self, job: &Job) {
+        if let Some(contributions_results) = job.results.get(&JobPhase::Contributions) {
+            let mut inputs_avg_stats: Vec<f64> = Vec::new();
+            let mut inputs_max_stats: Vec<f64> = Vec::new();
+            let mut hints_avg_stats: Vec<f64> = Vec::new();
+            let mut hints_max_stats: Vec<f64> = Vec::new();
+
+            for (_worker_id, job_result) in contributions_results.iter() {
+                if let JobResultData::Challenges(result) = &job_result.data {
+                    if let Some(stream_timing) = &result.stream_timing {
+                        if let Some(inputs) = &stream_timing.inputs_timing {
+                            inputs_avg_stats.push(inputs.avg_broadcast_delay);
+                            inputs_max_stats.push(inputs.max_broadcast_delay);
+                        }
+                        if let Some(hints) = &stream_timing.hints_timing {
+                            hints_avg_stats.push(hints.avg_broadcast_delay);
+                            hints_max_stats.push(hints.max_broadcast_delay);
+                        }
+                    }
+                }
+            }
+
+            // Print worker-side receive delays
+            if !inputs_avg_stats.is_empty() {
+                let min_avg = inputs_avg_stats.iter().cloned().fold(f64::INFINITY, f64::min);
+                let max_avg = inputs_avg_stats.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                let avg = inputs_avg_stats.iter().sum::<f64>() / inputs_avg_stats.len() as f64;
+                let abs_max = inputs_max_stats.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                info!(
+                    "[Stream Summary] Inputs - Worker Avg Delay: {:.2}ms (Best: {:.2}ms, Worst: {:.2}ms) | Absolute Max Delay: {:.2}ms ({} workers)",
+                    avg, min_avg, max_avg, abs_max, inputs_avg_stats.len()
+                );
+            }
+
+            if !hints_avg_stats.is_empty() {
+                let min_avg = hints_avg_stats.iter().cloned().fold(f64::INFINITY, f64::min);
+                let max_avg = hints_avg_stats.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                let avg = hints_avg_stats.iter().sum::<f64>() / hints_avg_stats.len() as f64;
+                let abs_max = hints_max_stats.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                info!(
+                    "[Stream Summary] Hints - Worker Avg Delay: {:.2}ms (Best: {:.2}ms, Worst: {:.2}ms) | Absolute Max Delay: {:.2}ms ({} workers)",
+                    avg, min_avg, max_avg, abs_max, hints_avg_stats.len()
+                );
+            }
+        }
     }
 
     /// Checks if all workers have completed Phase 1 contributions.
@@ -1627,7 +1694,7 @@ impl Coordinator {
         let worker_result =
             job.results.get(&JobPhase::Contributions).and_then(|results| results.get(worker_id));
 
-        let (asm_info_str, witness_time_str, delay_time_str) = if let Some(job_result) =
+        let (asm_info_str, witness_time_str, delay_time_str, stream_str) = if let Some(job_result) =
             worker_result
         {
             match &job_result.data {
@@ -1657,16 +1724,48 @@ impl Coordinator {
                         contributions_result.witness_info.witness_time / 1000.0
                     );
 
-                    (asm_str, witness_str, delay_str)
+                    let stream_str = contributions_result
+                        .stream_timing
+                        .as_ref()
+                        .map(|st| {
+                            let mut parts = Vec::new();
+
+                            if let Some(inputs) = &st.inputs_timing {
+                                parts.push(format!(
+                                    "Inputs: {} msgs, Avg delay: {:.2}ms, Max: {:.2}ms",
+                                    inputs.messages_received,
+                                    inputs.avg_broadcast_delay,
+                                    inputs.max_broadcast_delay
+                                ));
+                            }
+
+                            if let Some(hints) = &st.hints_timing {
+                                parts.push(format!(
+                                    "Hints: {} msgs, Avg delay: {:.2}ms, Max: {:.2}ms",
+                                    hints.messages_received,
+                                    hints.avg_broadcast_delay,
+                                    hints.max_broadcast_delay
+                                ));
+                            }
+
+                            if !parts.is_empty() {
+                                format!(", Stream [{}]", parts.join("; "))
+                            } else {
+                                String::new()
+                            }
+                        })
+                        .unwrap_or_default();
+
+                    (asm_str, witness_str, delay_str, stream_str)
                 }
-                _ => (String::new(), String::new(), String::new()),
+                _ => (String::new(), String::new(), String::new(), String::new()),
             }
         } else {
-            (String::new(), String::new(), String::new())
+            (String::new(), String::new(), String::new(), String::new())
         };
 
         info!(
-            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, Phase: {:.3}s{}{}{})",
+            "[Phase1] {} finished phase 1 for {} ({}/{} workers done, Phase: {:.3}s{}{}{}{})",
             worker_id,
             job.job_id,
             phase1_results_len,
@@ -1675,6 +1774,7 @@ impl Coordinator {
             delay_time_str,
             witness_time_str,
             asm_info_str,
+            stream_str,
         );
 
         // Ensure we have results from all assigned workers before proceeding.
@@ -1704,7 +1804,7 @@ impl Coordinator {
         let worker_result =
             job.results.get(&JobPhase::Execution).and_then(|results| results.get(worker_id));
 
-        let (asm_info_str, delay_time_str) = if let Some(job_result) = worker_result {
+        let (asm_info_str, delay_time_str, stream_str) = if let Some(job_result) = worker_result {
             match &job_result.data {
                 JobResultData::Execution(execution_result) => {
                     // Calculate delay: time from coordinator sending job to worker receiving task
@@ -1727,16 +1827,48 @@ impl Coordinator {
                         })
                         .unwrap_or_default();
 
-                    (asm_str, delay_str)
+                    let stream_str = execution_result
+                        .stream_timing
+                        .as_ref()
+                        .map(|st| {
+                            let mut parts = Vec::new();
+
+                            if let Some(inputs) = &st.inputs_timing {
+                                parts.push(format!(
+                                    "Inputs: {} msgs, Avg delay: {:.2}ms, Max: {:.2}ms",
+                                    inputs.messages_received,
+                                    inputs.avg_broadcast_delay,
+                                    inputs.max_broadcast_delay
+                                ));
+                            }
+
+                            if let Some(hints) = &st.hints_timing {
+                                parts.push(format!(
+                                    "Hints: {} msgs, Avg delay: {:.2}ms, Max: {:.2}ms",
+                                    hints.messages_received,
+                                    hints.avg_broadcast_delay,
+                                    hints.max_broadcast_delay
+                                ));
+                            }
+
+                            if !parts.is_empty() {
+                                format!(", Stream [{}]", parts.join("; "))
+                            } else {
+                                String::new()
+                            }
+                        })
+                        .unwrap_or_default();
+
+                    (asm_str, delay_str, stream_str)
                 }
-                _ => (String::new(), String::new()),
+                _ => (String::new(), String::new(), String::new()),
             }
         } else {
-            (String::new(), String::new())
+            (String::new(), String::new(), String::new())
         };
 
         info!(
-            "[Execution] {} finished execution for {} ({}/{} workers done, Phase: {:.3}s{}{})",
+            "[Execution] {} finished execution for {} ({}/{} workers done, Phase: {:.3}s{}{}{})",
             worker_id,
             job.job_id,
             execution_results_len,
@@ -1744,6 +1876,7 @@ impl Coordinator {
             duration_ms.as_secs_f32(),
             delay_time_str,
             asm_info_str,
+            stream_str,
         );
 
         // Ensure we have results from all assigned workers before proceeding.

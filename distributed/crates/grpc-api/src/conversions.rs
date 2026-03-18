@@ -446,14 +446,45 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                     }),
                 };
 
+                let stream_timing = challenges_list.stream_timing.map(|st| StreamTimingDto {
+                    inputs_timing: st.inputs_timing.map(|it| StreamTimingStatsDto {
+                        messages_received: it.messages_received,
+                        total_broadcast_delay: it.total_broadcast_delay,
+                        avg_broadcast_delay: it.avg_broadcast_delay,
+                        max_broadcast_delay: it.max_broadcast_delay,
+                    }),
+                    hints_timing: st.hints_timing.map(|ht| StreamTimingStatsDto {
+                        messages_received: ht.messages_received,
+                        total_broadcast_delay: ht.total_broadcast_delay,
+                        avg_broadcast_delay: ht.avg_broadcast_delay,
+                        max_broadcast_delay: ht.max_broadcast_delay,
+                    }),
+                });
+
                 Some(ExecuteTaskResponseResultDataDto::Challenges(ContributionsResultDataDto {
                     witness_info,
                     challenges,
                     zisk_executor_time,
+                    stream_timing,
                 }))
             }
             Some(execute_task_response::ResultData::Execution(exec_data)) => {
                 let zisk_execution_time = exec_data.zisk_execution_time.unwrap();
+
+                let stream_timing = exec_data.stream_timing.map(|st| StreamTimingDto {
+                    inputs_timing: st.inputs_timing.map(|it| StreamTimingStatsDto {
+                        messages_received: it.messages_received,
+                        total_broadcast_delay: it.total_broadcast_delay,
+                        avg_broadcast_delay: it.avg_broadcast_delay,
+                        max_broadcast_delay: it.max_broadcast_delay,
+                    }),
+                    hints_timing: st.hints_timing.map(|ht| StreamTimingStatsDto {
+                        messages_received: ht.messages_received,
+                        total_broadcast_delay: ht.total_broadcast_delay,
+                        avg_broadcast_delay: ht.avg_broadcast_delay,
+                        max_broadcast_delay: ht.max_broadcast_delay,
+                    }),
+                });
 
                 Some(ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
                     instances: exec_data.instances,
@@ -471,6 +502,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                             },
                         ),
                     },
+                    stream_timing,
                 }))
             }
             Some(execute_task_response::ResultData::Proofs(proof_list)) => {
@@ -541,6 +573,8 @@ impl From<StreamDataDto> for StreamData {
             job_id: dto.job_id.as_string(),
             stream_type: StreamType::from(dto.stream_type) as i32,
             payload: dto.stream_payload.map(Into::into),
+            broadcast_at: dto.broadcast_at,
+            sent_at: dto.sent_at,
         }
     }
 }
@@ -553,6 +587,8 @@ impl From<StreamData> for StreamDataDto {
                 .map(StreamMessageKind::from)
                 .unwrap_or(StreamMessageKind::Data),
             stream_payload: data.payload.map(Into::into),
+            broadcast_at: data.broadcast_at,
+            sent_at: data.sent_at,
         }
     }
 }

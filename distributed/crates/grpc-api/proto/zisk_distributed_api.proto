@@ -280,6 +280,8 @@ message StreamData {
   string job_id = 1;
   StreamType stream_type = 2;
   optional StreamPayload payload = 3;
+  double broadcast_at = 4; // when coordinator initiated broadcast (milliseconds since UNIX epoch)
+  double sent_at = 5; // when message was sent to this specific worker (milliseconds since UNIX epoch)
 }
 
 message StreamPayload {
@@ -327,12 +329,26 @@ message ChallengesList {
   repeated Challenges challenges = 1;
   WitnessExecInfo witness_info = 2;
   ZiskExecuteTime zisk_execution_time = 3;
+  optional StreamTiming stream_timing = 4;
 }
 
 message Execution {
   uint64 instances = 1;
   uint64 executed_steps = 2;
   ZiskExecuteTime zisk_execution_time = 3;
+  optional StreamTiming stream_timing = 4;
+}
+
+message StreamTiming {
+  optional StreamTimingStats inputs_timing = 1;
+  optional StreamTimingStats hints_timing = 2;
+}
+
+message StreamTimingStats {
+  uint32 messages_received = 1;
+  double total_broadcast_delay = 2; // milliseconds
+  double avg_broadcast_delay = 3;   // milliseconds
+  double max_broadcast_delay = 4;   // milliseconds
 }
 
 message Challenges {

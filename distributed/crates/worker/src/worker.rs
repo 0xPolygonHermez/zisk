@@ -248,6 +248,17 @@ pub struct JobContext {
     pub executed_steps: u64,
     pub instances: u64,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    // Stream timing metrics
+    pub stream_messages_count: u32,
+    pub stream_total_delay: f64,
+    pub stream_max_delay: f64,
+    // Stream timing per hint type
+    pub inputs_messages_count: u32,
+    pub inputs_total_delay: f64,
+    pub inputs_max_delay: f64,
+    pub hints_messages_count: u32,
+    pub hints_total_delay: f64,
+    pub hints_max_delay: f64,
 }
 
 pub struct Worker<T: ZiskBackend + 'static> {
@@ -417,6 +428,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             executed_steps: 0,
             task_received_time,
             instances: 0,
+            stream_messages_count: 0,
+            stream_total_delay: 0.0,
+            stream_max_delay: 0.0,
+            inputs_messages_count: 0,
+            inputs_total_delay: 0.0,
+            inputs_max_delay: 0.0,
+            hints_messages_count: 0,
+            hints_total_delay: 0.0,
+            hints_max_delay: 0.0,
         }));
         self.current_job = Some(current_job.clone());
 

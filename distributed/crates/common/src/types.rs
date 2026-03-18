@@ -405,6 +405,7 @@ pub struct ContributionsResult {
     pub zisk_executor_time: ZiskExecutorTime,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     pub instances: u64,
+    pub stream_timing: Option<crate::StreamTimingDto>,
 }
 
 #[derive(Debug, Clone)]
@@ -413,6 +414,7 @@ pub struct ExecutionResult {
     pub executed_steps: u64,
     pub zisk_executor_time: ZiskExecutorTime,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub stream_timing: Option<crate::StreamTimingDto>,
 }
 
 #[derive(Debug, Clone)]

@@ -136,6 +136,8 @@ pub struct StreamDataDto {
     pub job_id: JobId,
     pub stream_type: StreamMessageKind,
     pub stream_payload: Option<StreamPayloadDto>,
+    pub broadcast_at: f64,
+    pub sent_at: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -238,6 +240,26 @@ pub struct AsmExecutionInfoDto {
     pub mhz: f32,
 }
 
+#[derive(Clone, Debug)]
+pub struct StreamTimingDto {
+    /// Inputs stream timing (if applicable)
+    pub inputs_timing: Option<StreamTimingStatsDto>,
+    /// Hints stream timing (if applicable)
+    pub hints_timing: Option<StreamTimingStatsDto>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StreamTimingStatsDto {
+    /// Total number of stream messages received
+    pub messages_received: u32,
+    /// Total accumulated delay from broadcast_at to message receipt (milliseconds)
+    pub total_broadcast_delay: f64,
+    /// Average delay per message (milliseconds)
+    pub avg_broadcast_delay: f64,
+    /// Maximum delay observed for any single message (milliseconds)
+    pub max_broadcast_delay: f64,
+}
+
 #[derive(Clone)]
 pub struct ChallengesDto {
     pub worker_index: u32,
@@ -249,6 +271,7 @@ pub struct ExecutionResultDataDto {
     pub instances: u64,
     pub executed_steps: u64,
     pub zisk_executor_time: ZiskExecutorTimeDto,
+    pub stream_timing: Option<StreamTimingDto>,
 }
 
 pub struct AggParamsDto {
@@ -282,6 +305,7 @@ pub struct ContributionsResultDataDto {
     pub challenges: Vec<ChallengesDto>,
     pub witness_info: WitnessInfoDto,
     pub zisk_executor_time: ZiskExecutorTimeDto,
+    pub stream_timing: Option<StreamTimingDto>,
 }
 
 pub enum ExecuteTaskResponseResultDataDto {

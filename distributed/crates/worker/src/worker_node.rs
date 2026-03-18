@@ -331,11 +331,49 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
         };
 
+        // Extract stream timing from job context
+        let stream_timing = if let Some(job) = self.worker.current_job() {
+            let job_guard = job.lock().await;
+
+            let inputs_timing = if job_guard.inputs_messages_count > 0 {
+                Some(StreamTimingStats {
+                    messages_received: job_guard.inputs_messages_count,
+                    total_broadcast_delay: job_guard.inputs_total_delay,
+                    avg_broadcast_delay: job_guard.inputs_total_delay
+                        / job_guard.inputs_messages_count as f64,
+                    max_broadcast_delay: job_guard.inputs_max_delay,
+                })
+            } else {
+                None
+            };
+
+            let hints_timing = if job_guard.hints_messages_count > 0 {
+                Some(StreamTimingStats {
+                    messages_received: job_guard.hints_messages_count,
+                    total_broadcast_delay: job_guard.hints_total_delay,
+                    avg_broadcast_delay: job_guard.hints_total_delay
+                        / job_guard.hints_messages_count as f64,
+                    max_broadcast_delay: job_guard.hints_max_delay,
+                })
+            } else {
+                None
+            };
+
+            if inputs_timing.is_some() || hints_timing.is_some() {
+                Some(StreamTiming { inputs_timing, hints_timing })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let task_type = TaskType::PartialContribution as i32;
         let result_data_msg = Some(ResultData::Challenges(ChallengesList {
             challenges,
             witness_info: Some(witness_info),
             zisk_execution_time: Some(zisk_execution_time),
+            stream_timing,
         }));
 
         let message = WorkerMessage {
@@ -399,11 +437,49 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
         };
 
+        // Extract stream timing from job context
+        let stream_timing = if let Some(job) = self.worker.current_job() {
+            let job_guard = job.lock().await;
+
+            let inputs_timing = if job_guard.inputs_messages_count > 0 {
+                Some(StreamTimingStats {
+                    messages_received: job_guard.inputs_messages_count,
+                    total_broadcast_delay: job_guard.inputs_total_delay,
+                    avg_broadcast_delay: job_guard.inputs_total_delay
+                        / job_guard.inputs_messages_count as f64,
+                    max_broadcast_delay: job_guard.inputs_max_delay,
+                })
+            } else {
+                None
+            };
+
+            let hints_timing = if job_guard.hints_messages_count > 0 {
+                Some(StreamTimingStats {
+                    messages_received: job_guard.hints_messages_count,
+                    total_broadcast_delay: job_guard.hints_total_delay,
+                    avg_broadcast_delay: job_guard.hints_total_delay
+                        / job_guard.hints_messages_count as f64,
+                    max_broadcast_delay: job_guard.hints_max_delay,
+                })
+            } else {
+                None
+            };
+
+            if inputs_timing.is_some() || hints_timing.is_some() {
+                Some(StreamTiming { inputs_timing, hints_timing })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let task_type = TaskType::Execution as i32;
         let result_data_msg = Some(ResultData::Execution(Execution {
             instances,
             executed_steps,
             zisk_execution_time: Some(zisk_execution_time),
+            stream_timing,
         }));
 
         let message = WorkerMessage {
@@ -934,10 +1010,31 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    fn is_input_hint(payload: &[u8]) -> Option<bool> {
+        if payload.len() < 8 {
+            return None;
+        }
+
+        let header = u64::from_le_bytes([
+            payload[0], payload[1], payload[2], payload[3], payload[4], payload[5], payload[6],
+            payload[7],
+        ]);
+
+        let hint_code = (header >> 32) as u32;
+
+        Some(hint_code == zisk_common::HINT_INPUT)
+    }
+
     async fn handle_stream_data(&mut self, stream_data: StreamData) -> Result<()> {
         if self.worker.current_job().is_none() {
             return Err(anyhow!("Stream data received without current job context"));
         }
+
+        let received_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64()
+            * 1000.0;
 
         let job = self.worker.current_job().unwrap();
         let (current_job_id, is_first_partition) = {
@@ -953,6 +1050,31 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 current_job_id.as_string(),
                 stream_data_dto.job_id
             ));
+        }
+
+        if matches!(stream_data_dto.stream_type, zisk_distributed_common::StreamMessageKind::Data) {
+            let delay = received_at - stream_data_dto.broadcast_at;
+            let mut job_guard = job.lock().await;
+
+            // Always track overall stream metrics
+            job_guard.stream_messages_count += 1;
+            job_guard.stream_total_delay += delay;
+            job_guard.stream_max_delay = job_guard.stream_max_delay.max(delay);
+
+            // Determine hint type from payload and track separately
+            if let Some(ref payload_data) = stream_data_dto.stream_payload {
+                if let Some(is_input) = Self::is_input_hint(&payload_data.payload) {
+                    if is_input {
+                        job_guard.inputs_messages_count += 1;
+                        job_guard.inputs_total_delay += delay;
+                        job_guard.inputs_max_delay = job_guard.inputs_max_delay.max(delay);
+                    } else {
+                        job_guard.hints_messages_count += 1;
+                        job_guard.hints_total_delay += delay;
+                        job_guard.hints_max_delay = job_guard.hints_max_delay.max(delay);
+                    }
+                }
+            }
         }
 
         self.worker.route_stream_data(stream_data_dto, is_first_partition).await
