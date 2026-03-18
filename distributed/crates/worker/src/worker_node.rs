@@ -239,7 +239,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         match result {
-            ComputationResult::Challenge { job_id, success, result, task_received_time } => {
+            ComputationResult::Execution { job_id, success, result, task_received_time } => {
+                self.send_execution(job_id, success, result, message_sender, task_received_time)
+                    .await
+            }
+            ComputationResult::Contribution { job_id, success, result, task_received_time } => {
                 self.send_partial_contribution(
                     job_id,
                     success,
@@ -327,27 +331,80 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
         };
 
-        // If challenges are empty, this is execution-only mode
-        let (task_type, result_data_msg) = if challenges.is_empty() {
-            let executed_steps = self.worker.get_executed_steps();
-            (
-                TaskType::Execution as i32,
-                Some(ResultData::Execution(Execution {
-                    instances: result_data.3,
-                    executed_steps,
-                    zisk_execution_time: Some(zisk_execution_time),
-                })),
-            )
-        } else {
-            (
-                TaskType::PartialContribution as i32,
-                Some(ResultData::Challenges(ChallengesList {
-                    challenges,
-                    witness_info: Some(witness_info),
-                    zisk_execution_time: Some(zisk_execution_time),
-                })),
-            )
+        let task_type = TaskType::PartialContribution as i32;
+        let result_data_msg = Some(ResultData::Challenges(ChallengesList {
+            challenges,
+            witness_info: Some(witness_info),
+            zisk_execution_time: Some(zisk_execution_time),
+        }));
+
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                worker_id: self.worker_config.worker.worker_id.as_string(),
+                job_id: job_id.as_string(),
+                task_type,
+                success,
+                result_data: result_data_msg,
+                error_message,
+            })),
         };
+
+        message_sender.send(message)?;
+
+        Ok(())
+    }
+
+    async fn send_execution(
+        &mut self,
+        job_id: JobId,
+        success: bool,
+        result: Result<(WitnessInfo, ZiskExecutorTime, u64, u64)>,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<()> {
+        if let Some(handle) = self.worker.take_current_computation() {
+            handle.await?;
+        }
+
+        let (result_data, error_message) = match result {
+            Ok(data) => {
+                if !success {
+                    return Err(anyhow!(
+                        "Inconsistent state: operation reported failure but returned Ok result"
+                    ));
+                }
+                (data, String::new())
+            }
+            Err(e) => {
+                if success {
+                    return Err(anyhow!(
+                        "Inconsistent state: operation reported success but returned Err result"
+                    ));
+                }
+                ((WitnessInfo::default(), ZiskExecutorTime::default(), 0, 0), e.to_string())
+            }
+        };
+
+        let (_, zisk_exec_time, instances, executed_steps) = result_data;
+
+        let zisk_execution_time = ZiskExecuteTime {
+            total_duration: zisk_exec_time.total_duration.as_millis() as f32,
+            execution_duration: zisk_exec_time.execution_duration.as_millis() as f32,
+            count_and_plan_duration: zisk_exec_time.count_and_plan_duration.as_millis() as f32,
+            count_and_plan_mo_duration: zisk_exec_time.count_and_plan_mo_duration.as_millis()
+                as f32,
+            asm_execution_duration: zisk_exec_time
+                .asm_execution_duration
+                .map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz }),
+            task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
+        };
+
+        let task_type = TaskType::Execution as i32;
+        let result_data_msg = Some(ResultData::Execution(Execution {
+            instances,
+            executed_steps,
+            zisk_execution_time: Some(zisk_execution_time),
+        }));
 
         let message = WorkerMessage {
             payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {

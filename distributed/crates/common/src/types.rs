@@ -409,6 +409,8 @@ pub struct ContributionsResult {
 
 #[derive(Debug, Clone)]
 pub struct ExecutionResult {
+    pub instances: u64,
+    pub executed_steps: u64,
     pub zisk_executor_time: ZiskExecutorTime,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
 }

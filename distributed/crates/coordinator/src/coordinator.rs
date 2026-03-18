@@ -58,8 +58,8 @@ use zisk_distributed_common::{
     AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
     ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
-    HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, Job,
-    JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
+    ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto,
+    Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
     JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
     ProveParamsDto, StatusInfoDto, StreamMessageKind, SystemStatusDto, WorkerErrorDto, WorkerId,
     WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
@@ -1259,7 +1259,7 @@ impl Coordinator {
 
         // Calculate total execution time
         let end_time = Utc::now();
-        let start_time = job.start_times.get(&JobPhase::Contributions).unwrap_or(&end_time);
+        let start_time = job.start_times.get(&JobPhase::Execution).unwrap_or(&end_time);
         let total_duration = end_time.signed_duration_since(start_time);
         let duration = Duration::from_millis(total_duration.num_milliseconds() as u64);
 
@@ -1292,13 +1292,13 @@ impl Coordinator {
         // Print ASM execution statistics if multiple workers
         let workers = job.workers.clone();
         if workers.len() > 1 {
-            if let Some(results) = job.results.get(&JobPhase::Contributions) {
+            if let Some(results) = job.results.get(&JobPhase::Execution) {
                 // Extract overall execution times (phase duration from task received to completion)
                 let mut execution_durations: Vec<(WorkerId, i64)> = results
                     .iter()
                     .filter_map(|(worker_id, result)| {
-                        if let JobResultData::Challenges(contrib) = &result.data {
-                            contrib.task_received_time.map(|task_received| {
+                        if let JobResultData::Execution(exec_result) = &result.data {
+                            exec_result.task_received_time.map(|task_received| {
                                 let duration = result.end_time.signed_duration_since(task_received);
                                 (worker_id.clone(), duration.num_milliseconds())
                             })
@@ -1338,8 +1338,8 @@ impl Coordinator {
                 let mut asm_times: Vec<(WorkerId, f32, f32)> = results
                     .iter()
                     .filter_map(|(worker_id, result)| {
-                        if let JobResultData::Challenges(contrib) = &result.data {
-                            contrib
+                        if let JobResultData::Execution(exec_result) = &result.data {
+                            exec_result
                                 .zisk_executor_time
                                 .asm_execution_duration
                                 .as_ref()
@@ -1446,7 +1446,7 @@ impl Coordinator {
         job: &mut Job,
         execute_task_response: ExecuteTaskResponseDto,
     ) -> CoordinatorResult<(u64, u64)> {
-        let execution_results = job.results.entry(JobPhase::Contributions).or_default();
+        let execution_results = job.results.entry(JobPhase::Execution).or_default();
 
         let worker_id = execute_task_response.worker_id.clone();
 
@@ -1460,8 +1460,8 @@ impl Coordinator {
         }
 
         let data = self.extract_execution_data(execute_task_response.result_data)?;
-        let (instances, executed_steps) = if let JobResultData::Challenges(ref contrib) = data {
-            (contrib.instances, contrib.witness_info.total_instances as u64)
+        let (instances, executed_steps) = if let JobResultData::Execution(ref exec_result) = data {
+            (exec_result.instances, exec_result.executed_steps)
         } else {
             (0, 0)
         };
@@ -1546,22 +1546,17 @@ impl Coordinator {
                 let instances = exec_data.instances;
                 let executed_steps = exec_data.executed_steps;
 
-                Ok(JobResultData::Challenges(ContributionsResult {
-                    witness_info: WitnessInfo {
-                        summary_info: String::new(),
-                        publics: Vec::new(),
-                        proof_values: Vec::new(),
-                        witness_time: 0.0,
-                        total_instances: executed_steps as usize,
-                    },
-                    challenges: Vec::new(),
-                    zisk_executor_time,
-                    task_received_time: chrono::DateTime::<Utc>::from_timestamp(
-                        (exec_data.zisk_executor_time.task_received_time / 1000.0) as i64,
-                        ((exec_data.zisk_executor_time.task_received_time % 1000.0) * 1_000_000.0)
-                            as u32,
-                    ),
+                let task_received_time = chrono::DateTime::<Utc>::from_timestamp(
+                    (exec_data.zisk_executor_time.task_received_time / 1000.0) as i64,
+                    ((exec_data.zisk_executor_time.task_received_time % 1000.0) * 1_000_000.0)
+                        as u32,
+                );
+
+                Ok(JobResultData::Execution(ExecutionResult {
                     instances,
+                    executed_steps,
+                    zisk_executor_time,
+                    task_received_time,
                 }))
             }
             _ => {
@@ -1695,10 +1690,10 @@ impl Coordinator {
     /// * `job` - Reference to the job to check
     fn check_execution_completion(&self, job: &Job, worker_id: &WorkerId) -> bool {
         let execution_results_len =
-            job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
+            job.results.get(&JobPhase::Execution).map(|r| r.len()).unwrap_or(0);
 
         let end_time = Utc::now();
-        let phase_start_time = job.start_times.get(&JobPhase::Contributions).unwrap_or_else(|| {
+        let phase_start_time = job.start_times.get(&JobPhase::Execution).unwrap_or_else(|| {
             error!("Missing start time for Execution phase in job {}", job.job_id);
             &end_time
         });
@@ -1707,11 +1702,11 @@ impl Coordinator {
 
         // Get execution info from the worker's result
         let worker_result =
-            job.results.get(&JobPhase::Contributions).and_then(|results| results.get(worker_id));
+            job.results.get(&JobPhase::Execution).and_then(|results| results.get(worker_id));
 
         let (asm_info_str, delay_time_str) = if let Some(job_result) = worker_result {
             match &job_result.data {
-                JobResultData::Challenges(execution_result) => {
+                JobResultData::Execution(execution_result) => {
                     // Calculate delay: time from coordinator sending job to worker receiving task
                     let delay_duration = execution_result
                         .task_received_time
