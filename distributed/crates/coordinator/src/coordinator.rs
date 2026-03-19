@@ -2052,13 +2052,14 @@ impl Coordinator {
             "Steps: N/A".to_string().red().bold()
         };
         info!(
-            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} Inputs: {:?}, Capacity: {} ",
+            "{} {} ({:.3}s+{:.3}s+{:.3}s) {} Data Id: {:?}, Inputs: {:?}, Capacity: {} ",
             header,
             duration_str,
             phase1_duration.as_seconds_f32(),
             phase2_duration.as_seconds_f32(),
             phase3_duration.as_seconds_f32(),
             steps_str,
+            job.data_id,
             job.inputs_mode,
             job.compute_capacity,
         );
