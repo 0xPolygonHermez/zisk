@@ -10,8 +10,9 @@ use std::{pin::Pin, sync::Arc};
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
-use zisk_distributed_common::{CoordinatorMessageDto, JobId, WorkerId};
+use zisk_distributed_common::{CoordinatorMessageDto, JobId, ProgramLookupDto, ProgramStatusDto, WorkerId};
 use zisk_distributed_grpc_api::{
+    delete_program_request, get_program_request,
     zisk_cluster_api_server::ZiskClusterApi,
     zisk_coordinator_api_server::ZiskCoordinatorApi,
     *,
@@ -219,6 +220,10 @@ impl CoordinatorGrpc {
                         .handle_stream_execute_task_response(execute_task_response.into())
                         .await
                 }
+                worker_message::Payload::ProgramSetupAck(ack) => {
+                    coordinator.handle_program_setup_ack(worker_id, ack.into()).await;
+                    Ok(())
+                }
             },
             None => Err(CoordinatorError::InvalidRequest("Invalid message format".to_string())),
         }
@@ -400,6 +405,125 @@ impl ZiskCoordinatorApi for CoordinatorGrpc {
                     result: Some(cancel_job_response::Result::JobId(job_id.as_string())),
                 })
             })
+            .map_err(Status::from)
+    }
+
+    async fn register_program(
+        &self,
+        request: Request<RegisterProgramRequest>,
+    ) -> Result<Response<RegisterProgramResponse>, Status> {
+        self.validate_admin_request(&request)?;
+        let dto = request.into_inner().into();
+        self.coordinator
+            .register_program(dto)
+            .await
+            .map(|r| Response::new(r.into()))
+            .map_err(Status::from)
+    }
+
+    async fn list_programs(
+        &self,
+        request: Request<ListProgramsRequest>,
+    ) -> Result<Response<ListProgramsResponse>, Status> {
+        self.validate_admin_request(&request)?;
+        let programs =
+            self.coordinator.program_registry.list().await.into_iter().map(|p| p.into()).collect();
+        Ok(Response::new(ListProgramsResponse { programs }))
+    }
+
+    async fn get_program(
+        &self,
+        request: Request<GetProgramRequest>,
+    ) -> Result<Response<GetProgramResponse>, Status> {
+        self.validate_admin_request(&request)?;
+        let lookup = match request.into_inner().lookup {
+            Some(get_program_request::Lookup::HashId(h)) => ProgramLookupDto::HashId(h),
+            Some(get_program_request::Lookup::ProgramId(p)) => ProgramLookupDto::ProgramId(p),
+            Some(get_program_request::Lookup::Name(n)) => ProgramLookupDto::Name(n),
+            None => return Err(Status::invalid_argument("lookup field is required")),
+        };
+        match self.coordinator.program_registry.get(&lookup).await {
+            Some(p) => Ok(Response::new(GetProgramResponse { program: Some(p.into()) })),
+            None => Err(Status::not_found("program not found")),
+        }
+    }
+
+    async fn update_program(
+        &self,
+        request: Request<UpdateProgramRequest>,
+    ) -> Result<Response<UpdateProgramResponse>, Status> {
+        self.validate_admin_request(&request)?;
+        let dto = request.into_inner().into();
+        self.coordinator
+            .update_program(dto)
+            .await
+            .map(|r| Response::new(r.into()))
+            .map_err(Status::from)
+    }
+
+    async fn delete_program(
+        &self,
+        request: Request<DeleteProgramRequest>,
+    ) -> Result<Response<DeleteProgramResponse>, Status> {
+        self.validate_admin_request(&request)?;
+        let lookup = match request.into_inner().lookup {
+            Some(delete_program_request::Lookup::HashId(h)) => ProgramLookupDto::HashId(h),
+            Some(delete_program_request::Lookup::ProgramId(p)) => ProgramLookupDto::ProgramId(p),
+            None => return Err(Status::invalid_argument("lookup field is required")),
+        };
+        self.coordinator
+            .delete_program(lookup)
+            .await
+            .map(|_| Response::new(DeleteProgramResponse {}))
+            .map_err(Status::from)
+    }
+
+    async fn wait_program(
+        &self,
+        request: Request<WaitProgramRequest>,
+    ) -> Result<Response<GetProgramResponse>, Status> {
+        self.validate_admin_request(&request)?;
+        let program_id = request.into_inner().program_id;
+
+        let mut rx = self.coordinator
+            .program_registry
+            .subscribe_status(&program_id)
+            .await
+            .ok_or_else(|| Status::not_found("program not found"))?;
+
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            rx.wait_for(|s| matches!(s, ProgramStatusDto::Ready | ProgramStatusDto::Failed)),
+        )
+        .await;
+
+        match self.coordinator.program_registry.get(&ProgramLookupDto::ProgramId(program_id)).await {
+            Some(p) => Ok(Response::new(GetProgramResponse { program: Some(p.into()) })),
+            None => Err(Status::not_found("program not found")),
+        }
+    }
+
+    async fn wait_job(
+        &self,
+        request: Request<WaitJobRequest>,
+    ) -> Result<Response<JobStatusResponse>, Status> {
+        self.validate_admin_request(&request)?;
+        let job_id = JobId::from(request.into_inner().job_id);
+
+        let mut rx = self.coordinator
+            .subscribe_job_status(&job_id)
+            .ok_or_else(|| Status::not_found("job not found"))?;
+
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            rx.wait_for(|s| s.is_terminal()),
+        )
+        .await;
+
+        self.coordinator
+            .handle_job_status(&job_id)
+            .await
+            .map(|dto| Response::new(dto.into()))
             .map_err(Status::from)
     }
 }

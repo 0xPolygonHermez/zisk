@@ -33,6 +33,34 @@ service ZiskCoordinatorApi {
 
   // Cancel a running or pending job.
   rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+
+  // Register a new guest program. Returns immediately; workers run rom-setup async.
+  rpc RegisterProgram(RegisterProgramRequest) returns (RegisterProgramResponse);
+
+  // List all registered programs.
+  rpc ListPrograms(ListProgramsRequest) returns (ListProgramsResponse);
+
+  // Get a registered program by program_id, hash_id, or name.
+  rpc GetProgram(GetProgramRequest) returns (GetProgramResponse);
+
+  // Update mutable fields of an existing program. Supplying a new zisk_elf
+  // recomputes hash_id and re-triggers rom-setup on all workers.
+  rpc UpdateProgram(UpdateProgramRequest) returns (UpdateProgramResponse);
+
+  // Delete a registered program by program_id or hash_id.
+  rpc DeleteProgram(DeleteProgramRequest) returns (DeleteProgramResponse);
+
+  // Long-poll: holds the response for up to 5 seconds. Returns immediately when
+  // the program reaches a terminal state (Ready or Failed); otherwise returns
+  // after 5 seconds with the current status so the caller can re-issue.
+  // Clients MUST set a gRPC deadline > 5 s (recommended: 30 s).
+  rpc WaitProgram(WaitProgramRequest) returns (GetProgramResponse);
+
+  // Long-poll: holds the response for up to 5 seconds. Returns immediately when
+  // the job reaches a terminal state (Completed, Failed, or Cancelled); otherwise
+  // returns after 5 seconds with the current status so the caller can re-issue.
+  // Clients MUST set a gRPC deadline > 5 s (recommended: 30 s).
+  rpc WaitJob(WaitJobRequest) returns (JobStatusResponse);
 }
 
 // ── Requests ─────────────────────────────────────────────────────────────────
@@ -177,6 +205,89 @@ enum HintsMode {
   HINTS_MODE_NONE = 0;
   HINTS_MODE_PATH = 1;
   HINTS_MODE_STREAM = 2;
+}
+
+// ── Programs ──────────────────────────────────────────────────────────────────
+
+enum ProgramStatus {
+  PROVISIONING = 0; // ELF received; workers are running rom-setup
+  READY        = 1; // all workers have completed rom-setup
+  FAILED       = 2; // one or more workers failed rom-setup
+}
+
+message ProgramInfo {
+  string                    hash_id     = 1; // hash of zisk_elf
+  string                    name        = 2;
+  optional string           description = 3;
+  optional string           author      = 4;
+  ProgramStatus             status      = 5;
+  string                    program_id  = 6; // UUID; stable across ELF updates
+  optional string           metadata    = 7; // JSON
+  google.protobuf.Timestamp created_at  = 8;
+}
+
+message RegisterProgramRequest {
+  string          name        = 1;
+  optional string description = 2;
+  optional string author      = 3;
+  bytes           zisk_elf    = 4;
+  optional string metadata    = 5; // JSON
+}
+
+message RegisterProgramResponse {
+  string        program_id = 1; // UUID
+  string        hash_id    = 2;
+  ProgramStatus status     = 3;
+}
+
+message ListProgramsRequest {}
+
+message ListProgramsResponse {
+  repeated ProgramInfo programs = 1;
+}
+
+message GetProgramRequest {
+  oneof lookup {
+    string hash_id    = 1;
+    string program_id = 2;
+    string name       = 3;
+  }
+}
+
+message GetProgramResponse {
+  ProgramInfo program = 1;
+}
+
+message UpdateProgramRequest {
+  string          program_id  = 1; // UUID; identifies the program to update
+  optional string name        = 2;
+  optional string description = 3;
+  optional string author      = 4;
+  optional bytes  zisk_elf    = 5; // if set: recomputes hash_id, re-triggers rom-setup
+  optional string metadata    = 6;
+}
+
+message UpdateProgramResponse {
+  string        program_id = 1;
+  string        hash_id    = 2; // new hash_id if zisk_elf was updated, otherwise unchanged
+  ProgramStatus status     = 3;
+}
+
+message DeleteProgramRequest {
+  oneof lookup {
+    string hash_id    = 1;
+    string program_id = 2;
+  }
+}
+
+message DeleteProgramResponse {}
+
+message WaitProgramRequest {
+  string program_id = 1;
+}
+
+message WaitJobRequest {
+  string job_id = 1;
 }
 
 // ── Error ─────────────────────────────────────────────────────────────────────

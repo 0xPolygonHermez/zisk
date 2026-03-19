@@ -15,10 +15,12 @@ use crate::{
     ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage,
     ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, HintsMode, InputMode,
     JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, LaunchProofRequest,
-    LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, Shutdown, StatusInfoResponse,
-    StreamData, StreamPayload, StreamType, SystemStatus, SystemStatusResponse, TaskType,
-    WorkerError, WorkerInfo, WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
-    WorkersList, WorkersListResponse,
+    LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, ProgramInfo, ProgramStatus,
+    DeleteProgram, ProgramSetupAck, RegisterProgram, RegisterProgramRequest, RegisterProgramResponse,
+    UpdateProgramRequest, UpdateProgramResponse,
+    Shutdown, StatusInfoResponse, StreamData, StreamPayload, StreamType, SystemStatus,
+    SystemStatusResponse, TaskType, WorkerError, WorkerInfo, WorkerReconnectRequest,
+    WorkerRegisterRequest, WorkerRegisterResponse, WorkersList, WorkersListResponse,
 };
 use zisk_distributed_common::*;
 
@@ -180,6 +182,7 @@ impl From<LaunchProofRequestDto> for LaunchProofRequest {
 }
 
 use std::convert::TryFrom;
+use std::sync::Arc;
 
 impl TryFrom<LaunchProofRequest> for LaunchProofRequestDto {
     type Error = anyhow::Error;
@@ -276,6 +279,12 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
             }
             CoordinatorMessageDto::StreamData(data) => {
                 CoordinatorMessage { payload: Some(Payload::StreamData(data.into())) }
+            }
+            CoordinatorMessageDto::RegisterProgram(msg) => {
+                CoordinatorMessage { payload: Some(Payload::RegisterProgram(msg.into())) }
+            }
+            CoordinatorMessageDto::DeleteProgram(msg) => {
+                CoordinatorMessage { payload: Some(Payload::DeleteProgram(msg.into())) }
             }
         }
     }
@@ -545,6 +554,211 @@ impl From<WorkerError> for WorkerErrorDto {
             worker_id: WorkerId::from(error.worker_id),
             job_id: JobId::from(error.job_id),
             error_message: error.error_message,
+        }
+    }
+}
+
+// ── Program conversions ───────────────────────────────────────────────────────
+
+fn program_status_to_i32(status: ProgramStatusDto) -> i32 {
+    match status {
+        ProgramStatusDto::Provisioning => ProgramStatus::Provisioning as i32,
+        ProgramStatusDto::Ready => ProgramStatus::Ready as i32,
+        ProgramStatusDto::Failed => ProgramStatus::Failed as i32,
+    }
+}
+
+fn i32_to_program_status(value: i32) -> ProgramStatusDto {
+    match ProgramStatus::try_from(value).unwrap_or(ProgramStatus::Provisioning) {
+        ProgramStatus::Provisioning => ProgramStatusDto::Provisioning,
+        ProgramStatus::Ready => ProgramStatusDto::Ready,
+        ProgramStatus::Failed => ProgramStatusDto::Failed,
+    }
+}
+
+impl From<RegisterProgramRequestDto> for RegisterProgramRequest {
+    fn from(dto: RegisterProgramRequestDto) -> Self {
+        RegisterProgramRequest {
+            name: dto.name,
+            description: dto.description,
+            author: dto.author,
+            zisk_elf: dto.zisk_elf,
+            metadata: dto.metadata,
+        }
+    }
+}
+
+impl From<RegisterProgramRequest> for RegisterProgramRequestDto {
+    fn from(req: RegisterProgramRequest) -> Self {
+        RegisterProgramRequestDto {
+            name: req.name,
+            description: req.description,
+            author: req.author,
+            zisk_elf: req.zisk_elf,
+            metadata: req.metadata,
+        }
+    }
+}
+
+impl From<RegisterProgramResponseDto> for RegisterProgramResponse {
+    fn from(dto: RegisterProgramResponseDto) -> Self {
+        RegisterProgramResponse {
+            hash_id: dto.hash_id,
+            program_id: dto.program_id,
+            status: program_status_to_i32(dto.status),
+        }
+    }
+}
+
+impl From<RegisterProgramResponse> for RegisterProgramResponseDto {
+    fn from(resp: RegisterProgramResponse) -> Self {
+        RegisterProgramResponseDto {
+            hash_id: resp.hash_id,
+            program_id: resp.program_id,
+            status: i32_to_program_status(resp.status),
+        }
+    }
+}
+
+impl From<ProgramInfoDto> for ProgramInfo {
+    fn from(dto: ProgramInfoDto) -> Self {
+        ProgramInfo {
+            program_id: dto.program_id,
+            hash_id: dto.hash_id,
+            name: dto.name,
+            description: dto.description,
+            author: dto.author,
+            status: program_status_to_i32(dto.status),
+            metadata: dto.metadata,
+            created_at: Some(prost_types::Timestamp {
+                seconds: dto.created_at.timestamp(),
+                nanos: dto.created_at.timestamp_subsec_nanos() as i32,
+            }),
+        }
+    }
+}
+
+impl From<ProgramInfo> for ProgramInfoDto {
+    fn from(info: ProgramInfo) -> Self {
+        let created_at = info
+            .created_at
+            .map(|ts| {
+                chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32)
+                    .unwrap_or_else(chrono::Utc::now)
+            })
+            .unwrap_or_else(chrono::Utc::now);
+        ProgramInfoDto {
+            program_id: info.program_id,
+            hash_id: info.hash_id,
+            name: info.name,
+            description: info.description,
+            author: info.author,
+            status: i32_to_program_status(info.status),
+            metadata: info.metadata,
+            created_at,
+        }
+    }
+}
+
+impl From<UpdateProgramRequestDto> for UpdateProgramRequest {
+    fn from(dto: UpdateProgramRequestDto) -> Self {
+        UpdateProgramRequest {
+            program_id: dto.program_id,
+            name: dto.name,
+            description: dto.description,
+            author: dto.author,
+            metadata: dto.metadata,
+            zisk_elf: dto.zisk_elf,
+        }
+    }
+}
+
+impl From<UpdateProgramRequest> for UpdateProgramRequestDto {
+    fn from(req: UpdateProgramRequest) -> Self {
+        UpdateProgramRequestDto {
+            program_id: req.program_id,
+            name: req.name,
+            description: req.description,
+            author: req.author,
+            metadata: req.metadata,
+            zisk_elf: req.zisk_elf,
+        }
+    }
+}
+
+impl From<UpdateProgramResponseDto> for UpdateProgramResponse {
+    fn from(dto: UpdateProgramResponseDto) -> Self {
+        UpdateProgramResponse {
+            program_id: dto.program_id,
+            hash_id: dto.hash_id,
+            status: program_status_to_i32(dto.status),
+        }
+    }
+}
+
+impl From<UpdateProgramResponse> for UpdateProgramResponseDto {
+    fn from(resp: UpdateProgramResponse) -> Self {
+        UpdateProgramResponseDto {
+            program_id: resp.program_id,
+            hash_id: resp.hash_id,
+            status: i32_to_program_status(resp.status),
+        }
+    }
+}
+
+// Cluster stream: coordinator → worker
+impl From<RegisterProgramMessageDto> for RegisterProgram {
+    fn from(dto: RegisterProgramMessageDto) -> Self {
+        RegisterProgram {
+            name: dto.name,
+            program_id: dto.program_id,
+            hash_id: dto.hash_id,
+            zisk_elf: (*dto.zisk_elf).clone(),
+        }
+    }
+}
+
+impl From<RegisterProgram> for RegisterProgramMessageDto {
+    fn from(msg: RegisterProgram) -> Self {
+        RegisterProgramMessageDto {
+            name: msg.name,
+            program_id: msg.program_id,
+            hash_id: msg.hash_id,
+            zisk_elf: Arc::new(msg.zisk_elf),
+        }
+    }
+}
+
+// Cluster stream: coordinator → worker (program delete)
+impl From<DeleteProgramMessageDto> for DeleteProgram {
+    fn from(dto: DeleteProgramMessageDto) -> Self {
+        DeleteProgram { name: dto.name, program_id: dto.program_id, hash_id: dto.hash_id }
+    }
+}
+
+impl From<DeleteProgram> for DeleteProgramMessageDto {
+    fn from(msg: DeleteProgram) -> Self {
+        DeleteProgramMessageDto { name: msg.name, program_id: msg.program_id, hash_id: msg.hash_id }
+    }
+}
+
+// Cluster stream: worker → coordinator
+impl From<ProgramSetupAckDto> for ProgramSetupAck {
+    fn from(dto: ProgramSetupAckDto) -> Self {
+        ProgramSetupAck {
+            hash_id: dto.hash_id,
+            success: dto.success,
+            error: dto.error.unwrap_or_default(),
+        }
+    }
+}
+
+impl From<ProgramSetupAck> for ProgramSetupAckDto {
+    fn from(ack: ProgramSetupAck) -> Self {
+        ProgramSetupAckDto {
+            hash_id: ack.hash_id,
+            success: ack.success,
+            error: if ack.error.is_empty() { None } else { Some(ack.error) },
         }
     }
 }

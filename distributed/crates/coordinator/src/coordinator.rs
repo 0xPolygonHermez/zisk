@@ -33,7 +33,9 @@
 use crate::{
     config::Config,
     coordinator_errors::{CoordinatorError, CoordinatorResult},
-    hooks, PrecompileHintsRelay, WorkersPool,
+    hooks,
+    program_registry::{ProgramRegistry, RegisterProgramParams, UpdateProgramParams},
+    PrecompileHintsRelay, WorkersPool,
 };
 
 use chrono::{DateTime, Utc};
@@ -61,8 +63,12 @@ use zisk_distributed_common::{
     HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, Job,
     JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
     JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
-    ProveParamsDto, StatusInfoDto, StreamMessageKind, SystemStatusDto, WorkerErrorDto, WorkerId,
-    WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
+    DeleteProgramMessageDto, ProveParamsDto, ProgramLookupDto, ProgramSetupAckDto, ProgramStatusDto,
+    RegisterProgramMessageDto,
+    RegisterProgramRequestDto, RegisterProgramResponseDto, StatusInfoDto, StreamMessageKind,
+    UpdateProgramRequestDto, UpdateProgramResponseDto,
+    SystemStatusDto, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto,
+    WorkerRegisterRequestDto, WorkerState, WorkersListDto,
 };
 
 use zisk_sdk::ZiskProofWithPublicValues;
@@ -117,11 +123,17 @@ pub struct Coordinator {
     /// Concurrent storage for active jobs with fine-grained locking.
     jobs: DashMap<JobId, Arc<RwLock<Job>>>,
 
+    /// Per-job watch channels for push-notification of state changes.
+    job_watchers: DashMap<JobId, tokio::sync::watch::Sender<JobState>>,
+
     /// Number of registrations accumulated.
     registrations: AtomicU64,
 
     /// Number of reconnections accumulated.
     reconnections: AtomicU64,
+
+    /// Registry of guest programs registered for proof generation.
+    pub(crate) program_registry: ProgramRegistry,
 }
 
 impl Coordinator {
@@ -133,13 +145,19 @@ impl Coordinator {
     pub fn new(config: Config) -> Self {
         let start_time_utc = Utc::now();
 
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let programs_dir =
+            std::path::PathBuf::from(home).join(rom_setup::DEFAULT_CACHE_PATH).join("programs");
+
         Self {
             config,
             start_time_utc,
             workers_pool: Arc::new(WorkersPool::new()),
             jobs: DashMap::new(),
+            job_watchers: DashMap::new(),
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
+            program_registry: ProgramRegistry::new(programs_dir),
         }
     }
 
@@ -162,6 +180,19 @@ impl Coordinator {
             self.start_time_utc,
             metrics,
         )
+    }
+
+    /// Notifies any subscribers of a job state change.
+    fn notify_job_state(&self, job: &Job) {
+        if let Some(tx) = self.job_watchers.get(&job.job_id) {
+            tx.send_replace(job.state().clone());
+        }
+    }
+
+    /// Returns a watch receiver that fires whenever the job's state changes.
+    /// Returns None if no job with the given job_id exists.
+    pub fn subscribe_job_status(&self, job_id: &JobId) -> Option<tokio::sync::watch::Receiver<JobState>> {
+        self.job_watchers.get(job_id).map(|tx| tx.subscribe())
     }
 
     /// Retrieves a list of currently running proof generation jobs.
@@ -371,7 +402,9 @@ impl Coordinator {
         let job_id = job.job_id.clone();
         let active_workers = self.select_workers_for_execution(&job)?;
 
-        // Store job in jobs map with RwLock
+        // Store job in jobs map with RwLock; create state watcher for push-notification.
+        let (state_tx, _) = tokio::sync::watch::channel(JobState::Running(JobPhase::Contributions));
+        self.job_watchers.insert(job_id.clone(), state_tx);
         self.jobs.insert(job_id.clone(), Arc::new(RwLock::new(job)));
 
         // Send Phase1 tasks to selected workers
@@ -819,6 +852,7 @@ impl Coordinator {
         let mut job = job_entry.write().await;
         let previous_state = job.state().clone();
         job.change_state(JobState::Failed);
+        self.notify_job_state(&job);
 
         self.ensure_workers_idle(&job, previous_state).await?;
 
@@ -848,6 +882,7 @@ impl Coordinator {
 
         let previous_state = job.state().clone();
         job.change_state(JobState::Cancelled);
+        self.notify_job_state(&job);
 
         // Notify all assigned workers
         let worker_ids = job.workers.clone();
@@ -971,10 +1006,13 @@ impl Coordinator {
 
         match self
             .workers_pool
-            .register_worker(req.worker_id, req.compute_capacity, msg_sender)
+            .register_worker(req.worker_id.clone(), req.compute_capacity, msg_sender)
             .await
         {
-            Ok(()) => (true, "Registration successful".to_string()),
+            Ok(()) => {
+                self.push_programs_to_worker(&req.worker_id).await;
+                (true, "Registration successful".to_string())
+            }
             Err(e) => (false, format!("Registration failed: {e}")),
         }
     }
@@ -1026,12 +1064,328 @@ impl Coordinator {
         self.reconnections.fetch_add(1, Ordering::Relaxed);
         match self
             .workers_pool
-            .register_worker(req.worker_id, req.compute_capacity, msg_sender)
+            .register_worker(req.worker_id.clone(), req.compute_capacity, msg_sender)
             .await
         {
-            Ok(()) => (true, "Reconnection successful".to_string()),
+            Ok(()) => {
+                self.push_programs_to_worker(&req.worker_id).await;
+                (true, "Reconnection successful".to_string())
+            }
             Err(e) => (false, format!("Reconnection failed: {e}")),
         }
+    }
+
+    // ── Guest program management ──────────────────────────────────────────────
+
+    /// Registers a new guest program. Saves the ELF to disk, stores in-memory state,
+    /// then fire-and-forgets a broadcast to all connected workers. Returns immediately.
+    pub async fn register_program(
+        &self,
+        req: RegisterProgramRequestDto,
+    ) -> CoordinatorResult<RegisterProgramResponseDto> {
+        let hash_id = blake3::hash(&req.zisk_elf).to_hex().to_string();
+
+        // Idempotent: if a program with the same ELF (hash_id) already exists, return it.
+        if let Some(existing) =
+            self.program_registry.get(&ProgramLookupDto::HashId(hash_id.clone())).await
+        {
+            info!("Program {} ({}) already registered — skipping", req.name, &hash_id[..8]);
+            return Ok(RegisterProgramResponseDto {
+                program_id: existing.program_id,
+                hash_id,
+                status: existing.status,
+            });
+        }
+
+        let program_id = uuid::Uuid::new_v4().to_string();
+        let elf_path = self.program_registry.elf_path(&req.name, &program_id, &hash_id);
+
+        // Persist ELF.
+        if let Some(parent) = elf_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                CoordinatorError::Internal(format!("Failed to create programs dir: {e}"))
+            })?;
+        }
+        fs::write(&elf_path, &req.zisk_elf).map_err(|e| {
+            CoordinatorError::Internal(format!("Failed to write ELF for {}: {e}", req.name))
+        })?;
+
+        // Snapshot connected workers.
+        let connected = self.workers_pool.connected_worker_ids().await;
+        let expected_acks = connected.len();
+
+        self.program_registry
+            .register(RegisterProgramParams {
+                program_id: program_id.clone(),
+                hash_id: hash_id.clone(),
+                name: req.name.clone(),
+                description: req.description.clone(),
+                author: req.author.clone(),
+                metadata: req.metadata.clone(),
+                expected_acks,
+            })
+            .await?;
+
+        // Fire-and-forget broadcast to connected workers.
+        Self::broadcast_program(
+            &self.workers_pool,
+            connected,
+            req.name.clone(),
+            program_id.clone(),
+            hash_id.clone(),
+            Arc::new(req.zisk_elf),
+        );
+
+        Ok(RegisterProgramResponseDto { program_id, hash_id, status: ProgramStatusDto::Provisioning })
+    }
+
+    /// Updates mutable fields of an existing program. If a new ELF is provided, recomputes
+    /// hash_id and re-triggers rom-setup broadcast on all connected workers.
+    pub async fn update_program(
+        &self,
+        req: UpdateProgramRequestDto,
+    ) -> CoordinatorResult<UpdateProgramResponseDto> {
+        let new_hash_id = req.zisk_elf.as_ref().map(|elf| blake3::hash(elf).to_hex().to_string());
+
+        // Always fetch current state — needed for file paths and broadcast name.
+        let current = self
+            .program_registry
+            .get(&ProgramLookupDto::ProgramId(req.program_id.clone()))
+            .await
+            .ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+
+        // Effective name after update (used for ELF paths and broadcast).
+        let effective_name = req.name.as_deref().unwrap_or(&current.name).to_string();
+
+        // For ELF update: write new file before updating the registry so the
+        // registry never points to a non-existent file.
+        let (new_elf_path, old_elf_path) = if let Some(new_hash) = new_hash_id.as_ref() {
+            let elf = req.zisk_elf.as_ref().expect("zisk_elf is Some when new_hash_id is Some");
+            let new_path =
+                self.program_registry.elf_path(&effective_name, &req.program_id, new_hash);
+            let old_path =
+                self.program_registry.elf_path(&current.name, &req.program_id, &current.hash_id);
+
+            if let Some(parent) = new_path.parent() {
+                fs::create_dir_all(parent).map_err(|e| {
+                    CoordinatorError::Internal(format!("Failed to create programs dir: {e}"))
+                })?;
+            }
+            fs::write(&new_path, elf).map_err(|e| {
+                CoordinatorError::Internal(format!(
+                    "Failed to write ELF for {}: {e}",
+                    req.program_id
+                ))
+            })?;
+
+            (Some(new_path), Some(old_path))
+        } else {
+            (None, None)
+        };
+
+        let connected = if new_hash_id.is_some() {
+            self.workers_pool.connected_worker_ids().await
+        } else {
+            vec![]
+        };
+        let expected_acks = if new_hash_id.is_some() { Some(connected.len()) } else { None };
+
+        let (program_id, old_hash, final_hash) = self
+            .program_registry
+            .update(UpdateProgramParams {
+                program_id: req.program_id.clone(),
+                name: req.name.clone(),
+                description: req.description.clone(),
+                author: req.author.clone(),
+                metadata: req.metadata.clone(),
+                new_hash_id: new_hash_id.clone(),
+                new_expected_acks: expected_acks,
+            })
+            .await?;
+
+        // Post-registry file operations (registry update succeeded).
+
+        // 1. ELF update: delete old file if the path changed.
+        if let (Some(old), Some(new)) = (old_elf_path, new_elf_path) {
+            if old != new && old.exists() {
+                if let Err(e) = fs::remove_file(&old) {
+                    warn!("Failed to remove old ELF {:?}: {}", old, e);
+                }
+            }
+        }
+
+        // 2. Name-only rename: rename the disk file so the name survives restarts.
+        if new_hash_id.is_none() && req.name.as_deref().map(|n| n != current.name.as_str()).unwrap_or(false) {
+            let old_path =
+                self.program_registry.elf_path(&current.name, &req.program_id, &current.hash_id);
+            let new_path =
+                self.program_registry.elf_path(&effective_name, &req.program_id, &current.hash_id);
+            if old_path.exists() {
+                if let Err(e) = fs::rename(&old_path, &new_path) {
+                    warn!("Failed to rename ELF {:?} → {:?}: {}", old_path, new_path, e);
+                }
+            }
+        }
+
+        // 3. Fire-and-forget broadcasts if ELF changed: delete old cache, then register new.
+        if let Some(elf) = req.zisk_elf {
+            // Delete old ELF cache on workers before sending the new one.
+            Self::broadcast_delete(
+                &self.workers_pool,
+                connected.clone(),
+                current.name.clone(),
+                program_id.clone(),
+                old_hash.clone(),
+            );
+            Self::broadcast_program(
+                &self.workers_pool,
+                connected,
+                effective_name,
+                program_id.clone(),
+                final_hash.clone(),
+                Arc::new(elf),
+            );
+        }
+
+        info!("Updated program {} (hash {} → {})", &program_id[..8], &old_hash[..8], &final_hash[..8]);
+        let status =
+            if new_hash_id.is_some() { ProgramStatusDto::Provisioning } else { current.status };
+        Ok(UpdateProgramResponseDto { program_id, hash_id: final_hash, status })
+    }
+
+    /// Deletes a program from the registry and broadcasts the deletion to all connected workers
+    /// so they can clean up their local ELF cache.
+    pub async fn delete_program(
+        &self,
+        lookup: ProgramLookupDto,
+    ) -> CoordinatorResult<()> {
+        // Fetch current state before deleting — need name + hash_id for the broadcast.
+        let current = self
+            .program_registry
+            .get(&lookup)
+            .await
+            .ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+
+        self.program_registry.delete(&lookup).await?;
+
+        // Fire-and-forget broadcast so workers delete their local ELF cache.
+        let connected = self.workers_pool.connected_worker_ids().await;
+        Self::broadcast_delete(
+            &self.workers_pool,
+            connected,
+            current.name,
+            current.program_id,
+            current.hash_id,
+        );
+
+        Ok(())
+    }
+
+    /// Records a rom-setup ack from a worker for a registered program.
+    pub async fn handle_program_setup_ack(&self, worker_id: &WorkerId, ack: ProgramSetupAckDto) {
+        self.program_registry.ack_worker(&ack, worker_id).await;
+    }
+
+    /// Pushes all known programs to a newly connected/reconnected worker.
+    /// The worker will check its local cache and ack immediately if already set up.
+    pub async fn push_programs_to_worker(&self, worker_id: &WorkerId) {
+        let entries = self.program_registry.all_entries().await;
+        if entries.is_empty() {
+            return;
+        }
+        let programs_dir = self.program_registry.programs_dir().to_path_buf();
+        let workers_pool = Arc::clone(&self.workers_pool);
+        let worker_id = worker_id.clone();
+
+        tokio::spawn(async move {
+            for (hash_id, name, program_id) in entries {
+                let elf_path =
+                    programs_dir.join(format!("{name}-{program_id}-{hash_id}.elf"));
+                let elf = match tokio::fs::read(&elf_path).await {
+                    Ok(b) => b,
+                    Err(e) => {
+                        warn!("push_programs_to_worker: failed to read {:?}: {}", elf_path, e);
+                        continue;
+                    }
+                };
+                let msg = CoordinatorMessageDto::RegisterProgram(RegisterProgramMessageDto {
+                    name: name.clone(),
+                    program_id: program_id.clone(),
+                    hash_id: hash_id.clone(),
+                    zisk_elf: Arc::new(elf),
+                });
+                if let Err(e) = workers_pool.send_message(&worker_id, msg).await {
+                    warn!(
+                        "push_programs_to_worker: failed to send {} to {}: {}",
+                        name, worker_id, e
+                    );
+                }
+            }
+        });
+    }
+
+    /// Broadcasts a RegisterProgram message to a set of workers. Fire-and-forget.
+    fn broadcast_program(
+        workers_pool: &Arc<WorkersPool>,
+        connected: Vec<WorkerId>,
+        name: String,
+        program_id: String,
+        hash_id: String,
+        zisk_elf: Arc<Vec<u8>>,
+    ) {
+        if connected.is_empty() {
+            return;
+        }
+        let workers_pool = Arc::clone(workers_pool);
+        tokio::spawn(async move {
+            use futures::future::join_all;
+            let sends = connected.into_iter().map(|worker_id| {
+                let pool = Arc::clone(&workers_pool);
+                let msg = CoordinatorMessageDto::RegisterProgram(RegisterProgramMessageDto {
+                    name: name.clone(),
+                    program_id: program_id.clone(),
+                    hash_id: hash_id.clone(),
+                    zisk_elf: Arc::clone(&zisk_elf),
+                });
+                async move {
+                    if let Err(e) = pool.send_message(&worker_id, msg).await {
+                        warn!("Failed to send RegisterProgram to {}: {}", worker_id, e);
+                    }
+                }
+            });
+            join_all(sends).await;
+        });
+    }
+
+    /// Broadcasts a DeleteProgram message to a set of workers. Fire-and-forget.
+    fn broadcast_delete(
+        workers_pool: &Arc<WorkersPool>,
+        connected: Vec<WorkerId>,
+        name: String,
+        program_id: String,
+        hash_id: String,
+    ) {
+        if connected.is_empty() {
+            return;
+        }
+        let workers_pool = Arc::clone(workers_pool);
+        tokio::spawn(async move {
+            use futures::future::join_all;
+            let sends = connected.into_iter().map(|worker_id| {
+                let pool = Arc::clone(&workers_pool);
+                let msg = CoordinatorMessageDto::DeleteProgram(DeleteProgramMessageDto {
+                    name: name.clone(),
+                    program_id: program_id.clone(),
+                    hash_id: hash_id.clone(),
+                });
+                async move {
+                    if let Err(e) = pool.send_message(&worker_id, msg).await {
+                        warn!("Failed to send DeleteProgram to {}: {}", worker_id, e);
+                    }
+                }
+            });
+            join_all(sends).await;
+        });
     }
 
     /// Removes a worker from the active pool and cleans up associated resources.
@@ -1239,6 +1593,7 @@ impl Coordinator {
         // Update job state to Phase2
         job.challenges = Some(challenges);
         job.change_state(JobState::Running(JobPhase::Prove));
+        self.notify_job_state(&job);
 
         let challenges_dto = self.collect_challenges_dto(&job);
 
@@ -1760,6 +2115,7 @@ impl Coordinator {
         worker_id: &WorkerId,
     ) -> CoordinatorResult<()> {
         job.change_state(JobState::Completed);
+        self.notify_job_state(job);
 
         let assigned_workers = job.workers.clone();
 
@@ -1829,6 +2185,7 @@ impl Coordinator {
                 // This represents the first worker to complete Phase 2, implementing "first-wins" selection
                 job.agg_worker_id = Some(candidate_worker_id.clone());
                 job.change_state(JobState::Running(JobPhase::Aggregate));
+                self.notify_job_state(&job);
 
                 // Update worker state
                 self.workers_pool
@@ -2068,6 +2425,7 @@ impl Coordinator {
         job.executed_steps = Some(proof_data.executed_steps);
 
         job.change_state(JobState::Completed);
+        self.notify_job_state(&job);
 
         let end_time = Utc::now();
 

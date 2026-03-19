@@ -25,6 +25,7 @@ message WorkerMessage {
     WorkerRegisterRequest register = 3;
     WorkerReconnectRequest reconnect = 4;
     ExecuteTaskResponse execute_task_response = 5;
+    ProgramSetupAck program_setup_ack = 6;
   }
 }
 
@@ -37,6 +38,8 @@ message CoordinatorMessage {
     ExecuteTaskRequest execute_task = 4;
     JobCancelled job_cancelled = 5;
     StreamData stream_data = 6;
+    RegisterProgram register_program = 7;
+    DeleteProgram  delete_program   = 8;
   }
 }
 
@@ -214,4 +217,29 @@ message ZiskExecuteTime {
   float count_and_plan_mo_duration = 4;
   optional AsmExecuteInfo asm_execution_duration = 5;
   double task_received_time = 6;
+}
+
+// ── Program registration ──────────────────────────────────────────────────────
+
+// Coordinator → Worker: distribute a guest program ELF for rom-setup.
+message RegisterProgram {
+  string name       = 1; // stem component: {name}-{program_id}-{hash_id}
+  string program_id = 2; // UUID; stable across ELF updates
+  string hash_id    = 3; // blake3 of zisk_elf
+  bytes  zisk_elf   = 4;
+}
+
+// Coordinator → Worker: notify a worker that a program has been removed.
+// The worker should delete its local ELF cache for this program.
+message DeleteProgram {
+  string name       = 1;
+  string program_id = 2;
+  string hash_id    = 3;
+}
+
+// Worker → Coordinator: result of running rom-setup for a guest program.
+message ProgramSetupAck {
+  string hash_id = 1;
+  bool   success = 2;
+  string error   = 3; // populated when success == false
 }

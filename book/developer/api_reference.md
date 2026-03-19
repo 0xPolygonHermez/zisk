@@ -11,7 +11,8 @@ gRPC protocol buffer definition: [`zisk_user_api.proto`](../../distributed/crate
 | [`GetNodeInfo`](#getnodeinfo) | Node | Query node version and proof capabilities |
 | [`ListGuestPrograms`](#listguestprograms) | Program | List all programs registered in the cluster |
 | [`GetGuestProgram`](#getguestprogram) | Program | Get details of a single program (binary fields excluded) |
-| [`AddGuestProgram`](#addguestprogram) | Program | Register a new program |
+| [`RegisterGuestProgram`](#registerguestprogram) | Program | Register a new program |
+| [`WaitGuestProgram`](#waitguestprogram) | Program | Block until a program reaches a terminal state and return the result |
 | [`UpdateGuestProgram`](#updateguestprogram) | Program | Update mutable fields of an existing program |
 | [`DeleteGuestProgram`](#deleteguestprogram) | Program | Remove a program from the cluster |
 | [`Prove`](#prove) | Proof | Submit a `prove` job |
@@ -36,10 +37,10 @@ struct GetNodeInfoRequest {}
 
 struct NodeInfo {
     zisk_version:     String,
-    supported_proofs: Vec<SetupCapabilities>,
+    available_setups: Vec<SetupInfo>,
 }
 
-struct SetupCapabilities {
+struct SetupInfo {
     setup_id:    String,
     verifier_id: String, // hash of the setup's verification key
     proof_kinds: Vec<ProofKind>,
@@ -54,9 +55,11 @@ enum ProofKind {
 
 ## Program Management
 
-A **GuestProgram** is a ZisK program registered in the cluster. It holds the ELF binaries and
-metadata needed to execute and prove. The `hash_id` is derived from `zisk_elf` at
-registration time and serves as the content-addressed identifier.
+A **GuestProgram** is a ZisK program registered in the cluster. It holds the ELF binary
+needed to execute and prove. Each program has a stable `program_id` (UUID) assigned at
+registration time, and a `hash_id` (hash of `zisk_elf`) that changes when the ELF is
+updated. Use `program_id` as your long-lived handle; `hash_id` identifies a specific ELF
+version.
 
 ### `ListGuestPrograms`
 
@@ -76,19 +79,26 @@ struct ListGuestProgramsRequest {
 // binary fields are omitted
 struct GuestProgramSummary {
     program_id:  String,         // UUID
-    hash_id:     String,         // derived from zisk_elf; content-addressed
+    hash_id:     String,         // hash of zisk_elf; changes when ELF is updated
     name:        String,
     description: Option<String>,
     author:      Option<String>,
+    status:      ProgramStatus,
     metadata:    Option<String>, // JSON
     created_at:  DateTime<Utc>,
-    updated_at:  DateTime<Utc>,
+}
+
+enum ProgramStatus {
+    Provisioning, // program is being prepared; not yet available for proving
+    Ready,        // program is ready to accept proof jobs
+    Failed,       // program preparation failed; cannot be used for proving
 }
 ```
 
 ### `GetGuestProgram`
 
-Get details of a single program (binary fields excluded). Supports exact-match lookup by `program_id`, `hash_id`, or `name`.
+Get details of a single program (binary fields excluded). Supports exact-match lookup by
+`program_id`, `hash_id`, or `name`.
 
 ```
 GetGuestProgramRequest → GuestProgramSummary
@@ -96,22 +106,28 @@ GetGuestProgramRequest → GuestProgramSummary
 
 ```rust
 struct GetGuestProgramRequest {
+    // exactly one of program_id, hash_id, or name must be supplied
     program_id: Option<String>,
     hash_id:    Option<String>,
     name:       Option<String>,
-} // one of program_id, hash_id, or name must be supplied
+}
 ```
 
-### `AddGuestProgram`
+### `RegisterGuestProgram`
 
-Register a new program in the cluster. `hash_id` is computed from `zisk_elf` at registration time.
+Register a new program in the cluster. A UUID `program_id` is assigned at registration time
+and a `hash_id` is derived from `zisk_elf`. The call returns immediately with status
+`Provisioning` while the cluster prepares the program in the background; once ready, status
+transitions to `Ready` and the program can be used for proving. Registration is idempotent —
+re-uploading the same ELF returns the existing `program_id` and `hash_id` without
+re-triggering preparation.
 
 ```
-AddGuestProgramRequest → AddGuestProgramResponse
+RegisterGuestProgramRequest → RegisterGuestProgramResponse
 ```
 
 ```rust
-struct AddGuestProgramRequest {
+struct RegisterGuestProgramRequest {
     name:        String,
     description: Option<String>,
     author:      Option<String>,
@@ -119,16 +135,38 @@ struct AddGuestProgramRequest {
     metadata:    Option<String>, // JSON
 }
 
-struct AddGuestProgramResponse {
-    program_id: String, // UUID
-    hash_id:    String, // derived from zisk_elf; content-addressed
+struct RegisterGuestProgramResponse {
+    program_id: String,        // UUID
+    hash_id:    String,        // hash of zisk_elf
+    status:     ProgramStatus,
+}
+```
+
+### `WaitGuestProgram`
+
+The intended primitive for polling a program to readiness. The server holds the response for
+up to 5 seconds: if the program reaches a terminal state (`Ready` or `Failed`) within that
+window, it returns immediately; if the 5 seconds elapse first, it returns with the current
+status and the client can re-issue.
+
+This design means the caller can loop on `WaitGuestProgram` without any sleep or rate-limiting
+logic.
+
+```
+WaitGuestProgramRequest → GuestProgramSummary
+```
+
+```rust
+struct WaitGuestProgramRequest {
+    program_id: String,
 }
 ```
 
 ### `UpdateGuestProgram`
 
-Update mutable fields of an existing program. Supplying a new `zisk_elf` triggers recomputation
-of `hash_id`.
+Update mutable fields of an existing program. Supplying a new `zisk_elf` recomputes `hash_id`
+and re-prepares the program on the cluster; status returns to `Provisioning` until complete.
+The `program_id` is unchanged.
 
 ```
 UpdateGuestProgramRequest → UpdateGuestProgramResponse
@@ -140,13 +178,14 @@ struct UpdateGuestProgramRequest {
     name:        Option<String>,
     description: Option<String>,
     author:      Option<String>,
-    zisk_elf:    Option<Vec<u8>>, // triggers hash_id recomputation
+    zisk_elf:    Option<Vec<u8>>, // if set: recomputes hash_id and re-prepares the program
     metadata:    Option<String>,
 }
 
 struct UpdateGuestProgramResponse {
     program_id: String,
-    hash_id:    String,
+    hash_id:    String,        // new hash_id if zisk_elf was updated, otherwise unchanged
+    status:     ProgramStatus,
 }
 ```
 
@@ -160,9 +199,10 @@ DeleteGuestProgramRequest → ()
 
 ```rust
 struct DeleteGuestProgramRequest {
+    // exactly one of program_id or hash_id must be supplied
     program_id: Option<String>,
     hash_id:    Option<String>,
-} // one of program_id or hash_id must be supplied
+}
 ```
 
 ## Proof Requests
@@ -170,7 +210,8 @@ struct DeleteGuestProgramRequest {
 ### `Prove`
 
 Submit a proof job against a registered program. Streams `JobEvent` values back to the caller
-until the job reaches a terminal state.
+until the job reaches a terminal state: `Completed`,
+  `Cancelled`, or `Failed`.
 
 ```
 ProveRequest → stream JobEvent
@@ -179,10 +220,10 @@ ProveRequest → stream JobEvent
 ```rust
 struct ProveRequest {
     program_id:    String,             // GuestProgram ID
-    setup:         Option<ProveSetup>, // setup to use; if omitted the server uses its default
+    setup:         Option<ProveSetup>, // setup to use; if not provided, the server uses its default
     input:         InputKind,
     job_kind:      JobKind,
-    webhook_url:   Option<String>,     // if set, the server POST JobEventCompleted, JobEventFailed or JobEventCancelled
+    webhook_url:   Option<String>,     // if set, the server POSTs JobEventCompleted, JobEventFailed, or JobEventCancelled
                                        // to this URL when the job reaches a terminal state.
     proof_timeout: Option<Duration>,   // max duration to generate the proof; server default applies if omitted
 }
@@ -330,12 +371,10 @@ struct JobInfo {
 The intended primitive for polling a proof to completion. The server holds the response for
 up to 5 seconds: if the job reaches a terminal state (Completed, Failed, or Cancelled)
 within that window, it returns immediately with the final `JobInfo`; if the 5 seconds elapse
-first, it returns with the current status (e.g. Running) and the client could re-issue.
+first, it returns with the current status (e.g. Running) and the client can re-issue.
 
 This design means the caller can loop on `WaitJobResult` without any sleep or rate-limiting
-logic — the server-side hold ensures at most 12 requests per minute per job regardless of
-how tight the loop is. Completion is detected with 0–5 s latency (on average ~2.5 s), which
-is imperceptible for jobs that take tens of seconds to minutes.
+logic.
 
 ```
 WaitJobResultRequest → JobInfo
@@ -349,7 +388,7 @@ struct WaitJobResultRequest {
 
 ### `PushJobInput`
 
-Push the next chunk of raw input to a job that is in `WaitingForInput` status. Only valid for jobs 
+Push the next chunk of raw input data to a job that is in `WaitingForInput` status. Only valid for jobs 
 submitted with `InputKind::Inline`. Set `is_last` to `true` on the final chunk to signal end of input.
 
 ```

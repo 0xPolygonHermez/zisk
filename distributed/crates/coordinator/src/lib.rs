@@ -4,6 +4,7 @@ mod coordinator_errors;
 mod coordinator_grpc;
 mod hints_relay;
 mod hooks;
+mod program_registry;
 mod shutdown;
 mod workers_pool;
 

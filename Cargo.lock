@@ -6131,6 +6131,7 @@ version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-stream",
+ "blake3",
  "cargo-zisk",
  "chrono",
  "clap",
@@ -6144,6 +6145,7 @@ dependencies = [
  "proofman-util",
  "prost-types",
  "reqwest",
+ "rom-setup",
  "serde",
  "serde_json",
  "signal-hook",

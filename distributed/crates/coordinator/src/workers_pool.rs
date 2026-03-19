@@ -128,6 +128,17 @@ impl WorkersPool {
         ComputeCapacity::from(total_capacity)
     }
 
+    /// Returns the IDs of all currently connected (non-Disconnected) workers.
+    pub async fn connected_worker_ids(&self) -> Vec<WorkerId> {
+        self.workers
+            .read()
+            .await
+            .values()
+            .filter(|w| w.state != WorkerState::Disconnected)
+            .map(|w| w.worker_id.clone())
+            .collect()
+    }
+
     /// Returns detailed information about all registered workers.
     pub async fn workers_list(&self) -> WorkersListDto {
         let workers = self

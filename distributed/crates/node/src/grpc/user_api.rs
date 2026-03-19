@@ -109,6 +109,19 @@ fn map_coordinator_error(e: coord::ErrorResponse) -> Status {
     }
 }
 
+fn coordinator_program_to_summary(p: coord::ProgramInfo) -> GuestProgramSummary {
+    GuestProgramSummary {
+        program_id: p.program_id,
+        hash_id: p.hash_id,
+        name: p.name,
+        description: p.description,
+        author: p.author,
+        metadata: p.metadata,
+        created_at: p.created_at,
+        status: p.status,
+    }
+}
+
 // ── ZiskUserApi implementation ────────────────────────────────────────────────
 
 #[tonic::async_trait]
@@ -131,35 +144,139 @@ impl ZiskUserApi for UserApiService {
         &self,
         _request: Request<ListGuestProgramsRequest>,
     ) -> Result<Response<ListGuestProgramsResponse>, Status> {
-        Err(Status::unimplemented("list_guest_programs not yet implemented"))
+        let coordinator = self.state.coordinator.as_ref().ok_or_else(Self::coordinator_unavailable)?;
+        let mut client = coordinator.lock().await;
+
+        let resp = client
+            .list_programs(coord::ListProgramsRequest {})
+            .await?
+            .into_inner();
+
+        let programs = resp.programs.into_iter().map(coordinator_program_to_summary).collect();
+        Ok(Response::new(ListGuestProgramsResponse { programs }))
     }
 
     async fn get_guest_program(
         &self,
-        _request: Request<GetGuestProgramRequest>,
+        request: Request<GetGuestProgramRequest>,
     ) -> Result<Response<GuestProgramSummary>, Status> {
-        Err(Status::unimplemented("get_guest_program not yet implemented"))
+        use crate::grpc::user::get_guest_program_request::Lookup as UserLookup;
+        use coord::get_program_request::Lookup as CoordLookup;
+
+        let coordinator = self.state.coordinator.as_ref().ok_or_else(Self::coordinator_unavailable)?;
+        let mut client = coordinator.lock().await;
+
+        let lookup = match request.into_inner().lookup {
+            Some(UserLookup::ProgramId(v)) => CoordLookup::ProgramId(v),
+            Some(UserLookup::HashId(v)) => CoordLookup::HashId(v),
+            Some(UserLookup::Name(v)) => CoordLookup::Name(v),
+            None => return Err(Status::invalid_argument("lookup field is required")),
+        };
+
+        let resp = client
+            .get_program(coord::GetProgramRequest { lookup: Some(lookup) })
+            .await?
+            .into_inner();
+
+        match resp.program {
+            Some(p) => Ok(Response::new(coordinator_program_to_summary(p))),
+            None => Err(Status::not_found("program not found")),
+        }
     }
 
-    async fn add_guest_program(
+    async fn wait_guest_program(
         &self,
-        _request: Request<AddGuestProgramRequest>,
-    ) -> Result<Response<AddGuestProgramResponse>, Status> {
-        Err(Status::unimplemented("add_guest_program not yet implemented"))
+        request: Request<WaitGuestProgramRequest>,
+    ) -> Result<Response<GuestProgramSummary>, Status> {
+        let coordinator = self.state.coordinator.as_ref().ok_or_else(Self::coordinator_unavailable)?;
+        let mut client = coordinator.lock().await;
+        let program_id = request.into_inner().program_id;
+
+        let resp = client
+            .wait_program(coord::WaitProgramRequest { program_id })
+            .await?
+            .into_inner();
+
+        match resp.program {
+            Some(p) => Ok(Response::new(coordinator_program_to_summary(p))),
+            None => Err(Status::not_found("program not found")),
+        }
+    }
+
+    async fn register_guest_program(
+        &self,
+        request: Request<RegisterGuestProgramRequest>,
+    ) -> Result<Response<RegisterGuestProgramResponse>, Status> {
+        let coordinator = self.state.coordinator.as_ref().ok_or_else(Self::coordinator_unavailable)?;
+        let mut client = coordinator.lock().await;
+        let req = request.into_inner();
+
+        let resp = client
+            .register_program(coord::RegisterProgramRequest {
+                name: req.name,
+                description: req.description,
+                author: req.author,
+                zisk_elf: req.zisk_elf,
+                metadata: req.metadata,
+            })
+            .await?
+            .into_inner();
+
+        Ok(Response::new(RegisterGuestProgramResponse {
+            hash_id: resp.hash_id,
+            program_id: resp.program_id,
+            status: resp.status,
+        }))
     }
 
     async fn update_guest_program(
         &self,
-        _request: Request<UpdateGuestProgramRequest>,
+        request: Request<UpdateGuestProgramRequest>,
     ) -> Result<Response<UpdateGuestProgramResponse>, Status> {
-        Err(Status::unimplemented("update_guest_program not yet implemented"))
+        let coordinator = self.state.coordinator.as_ref().ok_or_else(Self::coordinator_unavailable)?;
+        let mut client = coordinator.lock().await;
+        let req = request.into_inner();
+
+        let resp = client
+            .update_program(coord::UpdateProgramRequest {
+                program_id: req.program_id,
+                name: req.name,
+                description: req.description,
+                author: req.author,
+                metadata: req.metadata,
+                zisk_elf: req.zisk_elf,
+            })
+            .await?
+            .into_inner();
+
+        Ok(Response::new(UpdateGuestProgramResponse {
+            program_id: resp.program_id,
+            hash_id: resp.hash_id,
+            status: resp.status,
+        }))
     }
 
     async fn delete_guest_program(
         &self,
-        _request: Request<DeleteGuestProgramRequest>,
+        request: Request<DeleteGuestProgramRequest>,
     ) -> Result<Response<()>, Status> {
-        Err(Status::unimplemented("delete_guest_program not yet implemented"))
+        use crate::grpc::user::delete_guest_program_request::Lookup as UserLookup;
+        use coord::delete_program_request::Lookup as CoordLookup;
+
+        let coordinator = self.state.coordinator.as_ref().ok_or_else(Self::coordinator_unavailable)?;
+        let mut client = coordinator.lock().await;
+
+        let lookup = match request.into_inner().lookup {
+            Some(UserLookup::ProgramId(v)) => CoordLookup::ProgramId(v),
+            Some(UserLookup::HashId(v)) => CoordLookup::HashId(v),
+            None => return Err(Status::invalid_argument("lookup field is required")),
+        };
+
+        client
+            .delete_program(coord::DeleteProgramRequest { lookup: Some(lookup) })
+            .await?;
+
+        Ok(Response::new(()))
     }
 
     // ── Proof jobs ────────────────────────────────────────────────────────────
@@ -225,8 +342,21 @@ impl ZiskUserApi for UserApiService {
         &self,
         request: Request<WaitJobResultRequest>,
     ) -> Result<Response<JobInfo>, Status> {
-        let id = request.into_inner().job_id;
-        Err(Status::unimplemented(format!("wait_job_result not yet implemented (job '{id}')")))
+        let coordinator = self.state.coordinator.as_ref().ok_or_else(Self::coordinator_unavailable)?;
+        let mut client = coordinator.lock().await;
+        let job_id = request.into_inner().job_id;
+
+        let resp = client
+            .wait_job(coord::WaitJobRequest { job_id })
+            .await
+            .map_err(|e| Status::internal(e.message()))?
+            .into_inner();
+
+        match resp.result {
+            Some(coord::job_status_response::Result::Job(j)) => Ok(Response::new(coordinator_job_to_info(j))),
+            Some(coord::job_status_response::Result::Error(e)) => Err(map_coordinator_error(e)),
+            None => Err(Status::internal("empty response from coordinator")),
+        }
     }
 
     async fn push_job_input(

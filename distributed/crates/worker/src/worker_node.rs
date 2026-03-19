@@ -1,17 +1,19 @@
 use crate::{worker::ComputationResult, ProverConfig, Worker};
 use anyhow::{anyhow, Result};
 use proofman::{AggProofs, ContributionsInfo, WitnessInfo};
+use rom_setup::{assembly_files_exist, generate_assembly, DEFAULT_CACHE_PATH};
 use std::path::Path;
+use std::sync::Arc;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{
-    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, StreamDataDto,
-    WorkerState,
+    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto,
+    DeleteProgramMessageDto, RegisterProgramMessageDto, StreamDataDto, WorkerState,
 };
 use zisk_distributed_common::{DataId, JobId};
 use zisk_distributed_grpc_api::contribution_params::InputSource;
@@ -466,6 +468,130 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    async fn handle_program_registration(
+        &self,
+        msg: RegisterProgramMessageDto,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+    ) -> Result<()> {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let cache_dir = PathBuf::from(&home).join(DEFAULT_CACHE_PATH);
+        let programs_dir = cache_dir.join("programs");
+
+        if let Err(e) = std::fs::create_dir_all(&programs_dir) {
+            let err_msg = format!("Failed to create programs dir {}: {}", programs_dir.display(), e);
+            error!("{}", err_msg);
+            return self.send_program_setup_ack(&msg.hash_id, false, err_msg, message_sender);
+        }
+
+        let elf_path = programs_dir.join(format!("{}-{}-{}.elf", msg.name, msg.program_id, msg.hash_id));
+        let stem = format!("{}-{}-{}", msg.name, msg.program_id, msg.hash_id);
+
+        // If cache files already exist the worker has already set up this program — ack immediately.
+        if elf_path.exists() {
+            match assembly_files_exist(&elf_path, &cache_dir, false) {
+                Ok(true) => {
+                    info!("Program {} already set up, skipping rom-setup", stem);
+                    return self.send_program_setup_ack(
+                        &msg.hash_id,
+                        true,
+                        String::new(),
+                        message_sender,
+                    );
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    error!("Failed to check assembly files for {}: {}", stem, e);
+                }
+            }
+        }
+
+        // Write ELF to disk (idempotent — overwrite is fine since content is content-addressed).
+        if let Err(e) = std::fs::write(&elf_path, &*msg.zisk_elf) {
+            let err_msg = format!("Failed to write ELF for {}: {}", stem, e);
+            error!("{}", err_msg);
+            return self.send_program_setup_ack(&msg.hash_id, false, err_msg, message_sender);
+        }
+
+        info!("Running rom-setup for program {}", stem);
+
+        let elf_arc = Arc::clone(&msg.zisk_elf);
+        let stem_clone = stem.clone();
+        let cache_dir_clone = cache_dir.clone();
+        let result =
+            tokio::task::spawn_blocking(move || {
+                generate_assembly(&elf_arc, &stem_clone, &cache_dir_clone, false, false)
+            })
+            .await;
+
+        let (success, error_msg) = match result {
+            Ok(Ok(())) => {
+                info!("rom-setup completed for program {}", stem);
+                (true, String::new())
+            }
+            Ok(Err(e)) => {
+                let msg = format!("rom-setup failed for {}: {}", stem, e);
+                error!("{}", msg);
+                (false, msg)
+            }
+            Err(e) => {
+                let msg = format!("rom-setup task panicked for {}: {}", stem, e);
+                error!("{}", msg);
+                (false, msg)
+            }
+        };
+
+        self.send_program_setup_ack(&msg.hash_id, success, error_msg, message_sender)
+    }
+
+    fn send_program_setup_ack(
+        &self,
+        hash_id: &str,
+        success: bool,
+        error: String,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+    ) -> Result<()> {
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ProgramSetupAck(ProgramSetupAck {
+                hash_id: hash_id.to_string(),
+                success,
+                error,
+            })),
+        };
+        message_sender.send(message)?;
+        Ok(())
+    }
+
+    fn handle_program_deletion(&self, msg: DeleteProgramMessageDto) {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let cache_dir = PathBuf::from(&home).join(DEFAULT_CACHE_PATH);
+        let stem = format!("{}-{}-{}", msg.name, msg.program_id, msg.hash_id);
+        let elf_path = cache_dir.join("programs").join(format!("{stem}.elf"));
+
+        if !elf_path.exists() {
+            return;
+        }
+
+        // Cache file paths follow the rom-setup naming convention:
+        //   {cache_dir}/{stem}-{elf_hash}-{suffix}
+        // hash_id is blake3(elf_bytes) which is identical to what rom-setup computes
+        // as elf_hash, so we can derive the paths without reading the ELF file.
+        let cache_stem = format!("{stem}-{}", msg.hash_id);
+        for suffix in ["-mt.bin", "-rh.bin", "-mo.bin"] {
+            let f = cache_dir.join(format!("{cache_stem}{suffix}"));
+            if let Err(e) = std::fs::remove_file(&f) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    warn!("Failed to delete cache file {:?}: {}", f, e);
+                }
+            }
+        }
+
+        if let Err(e) = std::fs::remove_file(&elf_path) {
+            warn!("Failed to delete ELF {:?}: {}", elf_path, e);
+        } else {
+            info!("Deleted program {} ({})", msg.name, &msg.hash_id[..8.min(msg.hash_id.len())]);
+        }
+    }
+
     async fn handle_coordinator_message(
         &mut self,
         message: CoordinatorMessage,
@@ -530,6 +656,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 );
                 tokio::time::sleep(Duration::from_secs(shutdown.grace_period_seconds as u64)).await;
                 return Err(anyhow!("Coordinator requested shutdown: {}", shutdown.reason));
+            }
+            coordinator_message::Payload::RegisterProgram(msg) => {
+                self.handle_program_registration(msg.into(), message_sender).await?;
+            }
+            coordinator_message::Payload::DeleteProgram(msg) => {
+                self.handle_program_deletion(msg.into());
             }
         }
 

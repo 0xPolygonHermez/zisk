@@ -5,6 +5,7 @@
 //! representations like gRPC protobuf types or serialization formats.
 
 use crate::{ComputeCapacity, DataId, JobId, JobPhase, JobState, WorkerId, WorkerState};
+use std::sync::Arc;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -117,6 +118,8 @@ pub enum CoordinatorMessageDto {
     ExecuteTaskRequest(ExecuteTaskRequestDto),
     JobCancelled(JobCancelledDto),
     StreamData(StreamDataDto),
+    RegisterProgram(RegisterProgramMessageDto),
+    DeleteProgram(DeleteProgramMessageDto),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -294,6 +297,82 @@ pub struct WorkerErrorDto {
 pub struct WebhookErrorDto {
     pub code: String,
     pub message: String,
+}
+
+// ── Program DTOs ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProgramStatusDto {
+    Provisioning,
+    Ready,
+    Failed,
+}
+
+pub struct RegisterProgramRequestDto {
+    pub name: String,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub zisk_elf: Vec<u8>,
+    pub metadata: Option<String>,
+}
+
+pub struct RegisterProgramResponseDto {
+    pub program_id: String,
+    pub hash_id: String,
+    pub status: ProgramStatusDto,
+}
+
+pub struct ProgramInfoDto {
+    pub program_id: String,
+    pub hash_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub status: ProgramStatusDto,
+    pub created_at: DateTime<Utc>,
+    pub metadata: Option<String>,
+}
+
+pub enum ProgramLookupDto {
+    ProgramId(String),
+    HashId(String),
+    Name(String),
+}
+
+pub struct UpdateProgramRequestDto {
+    pub program_id: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub metadata: Option<String>,
+    pub zisk_elf: Option<Vec<u8>>,
+}
+
+pub struct UpdateProgramResponseDto {
+    pub program_id: String,
+    pub hash_id: String,
+    pub status: ProgramStatusDto,
+}
+
+// ── Cluster stream program DTOs ───────────────────────────────────────────────
+
+pub struct RegisterProgramMessageDto {
+    pub name: String,
+    pub program_id: String,
+    pub hash_id: String,
+    pub zisk_elf: Arc<Vec<u8>>, // shared across worker broadcasts — cheap to clone
+}
+
+pub struct DeleteProgramMessageDto {
+    pub name: String,
+    pub program_id: String,
+    pub hash_id: String,
+}
+
+pub struct ProgramSetupAckDto {
+    pub hash_id: String,
+    pub success: bool,
+    pub error: Option<String>, // populated when success == false
 }
 
 /// Webhook payload for job completion notifications

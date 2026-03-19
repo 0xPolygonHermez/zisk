@@ -20,14 +20,24 @@ service ZiskUserApi {
   // Get details of a single program (binary fields excluded).
   rpc GetGuestProgram    (GetGuestProgramRequest)     returns (GuestProgramSummary);
 
-  // Register a new program in the cluster.
-  rpc AddGuestProgram    (AddGuestProgramRequest)     returns (AddGuestProgramResponse);
+  // Long-poll: the server holds the response for up to 5 seconds. If the
+  // program reaches a terminal state (Ready or Failed) within that window it
+  // returns immediately; otherwise it returns the current status after 5
+  // seconds and the client can re-issue.
+  //
+  // Clients MUST set a gRPC deadline > 5 s (recommended: 30 s).
+  rpc WaitGuestProgram   (WaitGuestProgramRequest)    returns (GuestProgramSummary);
 
-  // Update mutable fields of an existing program.
-  rpc UpdateGuestProgram (UpdateGuestProgramRequest)  returns (UpdateGuestProgramResponse);
+  // Register a new program in the cluster. Returns immediately; status is
+  // PROVISIONING until all workers complete rom-setup.
+  rpc RegisterGuestProgram (RegisterGuestProgramRequest) returns (RegisterGuestProgramResponse);
+
+  // Update mutable fields of an existing program. Supplying a new zisk_elf
+  // recomputes hash_id and re-triggers rom-setup on all workers.
+  rpc UpdateGuestProgram   (UpdateGuestProgramRequest)   returns (UpdateGuestProgramResponse);
 
   // Remove a program from the cluster.
-  rpc DeleteGuestProgram (DeleteGuestProgramRequest)  returns (google.protobuf.Empty);
+  rpc DeleteGuestProgram   (DeleteGuestProgramRequest)   returns (google.protobuf.Empty);
 
   // Submit a proof job against a registered program.
   //
@@ -100,9 +110,15 @@ enum ProofKind {
 // ─── Programs ─────────────────────────────────────────────────────────────────
 
 // A GuestProgram is a ZisK program registered in the cluster. It holds the
-// ELF binary and metadata needed to generate a proof. The hash_id is
-// derived from zisk_elf at registration time and serves as the
-// content-addressed identifier.
+// ELF binary and metadata needed to generate a proof. program_id is a stable
+// UUID assigned at registration; hash_id is the blake3 hash of zisk_elf and
+// changes whenever the ELF is updated.
+
+enum ProgramStatus {
+  PROGRAM_STATUS_PROVISIONING = 0; // ELF received; workers are running rom-setup
+  PROGRAM_STATUS_READY        = 1; // All workers have completed rom-setup
+  PROGRAM_STATUS_FAILED       = 2; // One or more workers failed rom-setup
+}
 
 message ListGuestProgramsRequest {
   optional string name   = 1; // filter by name (substring match)
@@ -116,13 +132,13 @@ message ListGuestProgramsResponse {
 
 message GuestProgramSummary {
   string                    program_id  = 1; // UUID
-  string                    hash_id     = 2; // derived from zisk_elf; content-addressed
+  string                    hash_id     = 2; // hash of zisk_elf
   string                    name        = 3;
   optional string           description = 4;
   optional string           author      = 5;
-  optional string           metadata    = 6; // JSON
-  google.protobuf.Timestamp created_at  = 7;
-  google.protobuf.Timestamp updated_at  = 8;
+  ProgramStatus             status      = 6;
+  optional string           metadata    = 7; // JSON
+  google.protobuf.Timestamp created_at  = 8;
 }
 
 message GetGuestProgramRequest {
@@ -133,7 +149,11 @@ message GetGuestProgramRequest {
   }
 }
 
-message AddGuestProgramRequest {
+message WaitGuestProgramRequest {
+  string program_id = 1;
+}
+
+message RegisterGuestProgramRequest {
   string          name        = 1;
   optional string description = 2;
   optional string author      = 3;
@@ -141,9 +161,10 @@ message AddGuestProgramRequest {
   optional string metadata    = 5; // JSON
 }
 
-message AddGuestProgramResponse {
-  string program_id = 1; // UUID
-  string hash_id    = 2; // derived from zisk_elf; content-addressed
+message RegisterGuestProgramResponse {
+  string        program_id = 1; // UUID
+  string        hash_id    = 2; // hash of zisk_elf
+  ProgramStatus status     = 3;
 }
 
 message UpdateGuestProgramRequest {
@@ -151,13 +172,14 @@ message UpdateGuestProgramRequest {
   optional string name        = 2;
   optional string description = 3;
   optional string author      = 4;
-  optional bytes  zisk_elf    = 5; // triggers hash_id recomputation
-  optional string metadata    = 6; // JSON
+  optional bytes  zisk_elf    = 5; // if set: recomputes hash_id and re-prepares the program
+  optional string metadata    = 6;
 }
 
 message UpdateGuestProgramResponse {
-  string program_id = 1;
-  string hash_id    = 2;
+  string        program_id = 1;
+  string        hash_id    = 2; // new hash_id if zisk_elf was updated, otherwise unchanged
+  ProgramStatus status     = 3;
 }
 
 message DeleteGuestProgramRequest {
@@ -329,8 +351,8 @@ message JobInfo {
   string                             program_id   = 2;
   JobKind                            kind         = 3;
   JobStatus                          status       = 4;
-  optional JobResult                 result       = 5; // populated when status.code == COMPLETED
-  optional string                    error        = 6; // populated when status.code == FAILED
+  optional JobResult                 result       = 5; // present when status is Completed
+  optional string                    error        = 6; // present when status is Failed
   google.protobuf.Timestamp          created_at   = 7;
   optional google.protobuf.Timestamp completed_at = 8;
 }

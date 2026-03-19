@@ -125,10 +125,10 @@ async fn user_api_get_job_returns_unavailable_without_coordinator() {
     assert_eq!(err.code(), tonic::Code::Unavailable);
 }
 
-// ── Unimplemented stubs ───────────────────────────────────────────────────────
+// ── Program RPCs (proxy to coordinator) ──────────────────────────────────────
 
 #[tokio::test]
-async fn user_api_list_guest_programs_is_unimplemented() {
+async fn user_api_list_guest_programs_returns_unavailable_without_coordinator() {
     use zisk_distributed_node::grpc::user::ListGuestProgramsRequest;
 
     let (addr, _shutdown) = start_test_server().await;
@@ -139,18 +139,33 @@ async fn user_api_list_guest_programs_is_unimplemented() {
         .await
         .unwrap_err();
 
-    assert_eq!(err.code(), tonic::Code::Unimplemented);
+    assert_eq!(err.code(), tonic::Code::Unavailable);
 }
 
 #[tokio::test]
-async fn user_api_add_guest_program_is_unimplemented() {
-    use zisk_distributed_node::grpc::user::AddGuestProgramRequest;
+async fn user_api_wait_guest_program_returns_unavailable_without_coordinator() {
+    use zisk_distributed_node::grpc::user::WaitGuestProgramRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
 
     let err = client
-        .add_guest_program(AddGuestProgramRequest {
+        .wait_guest_program(WaitGuestProgramRequest { program_id: "test-uuid".to_string() })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code(), tonic::Code::Unavailable);
+}
+
+#[tokio::test]
+async fn user_api_register_guest_program_returns_unavailable_without_coordinator() {
+    use zisk_distributed_node::grpc::user::RegisterGuestProgramRequest;
+
+    let (addr, _shutdown) = start_test_server().await;
+    let mut client = ZiskUserApiClient::new(channel(addr));
+
+    let err = client
+        .register_guest_program(RegisterGuestProgramRequest {
             name: "test".to_string(),
             description: None,
             author: None,
@@ -160,24 +175,80 @@ async fn user_api_add_guest_program_is_unimplemented() {
         .await
         .unwrap_err();
 
-    assert_eq!(err.code(), tonic::Code::Unimplemented);
+    assert_eq!(err.code(), tonic::Code::Unavailable);
 }
 
 #[tokio::test]
-async fn user_api_get_guest_program_is_unimplemented() {
-    use zisk_distributed_node::grpc::user::{get_guest_program_request::Lookup, GetGuestProgramRequest};
+async fn user_api_get_guest_program_returns_unavailable_without_coordinator() {
+    use zisk_distributed_node::grpc::user::GetGuestProgramRequest;
+
+    let (addr, _shutdown) = start_test_server().await;
+    let mut client = ZiskUserApiClient::new(channel(addr));
+
+    use zisk_distributed_node::grpc::user::get_guest_program_request::Lookup;
+    let err = client
+        .get_guest_program(GetGuestProgramRequest {
+            lookup: Some(Lookup::HashId("abc123".to_string())),
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code(), tonic::Code::Unavailable);
+}
+
+#[tokio::test]
+async fn user_api_update_guest_program_returns_unavailable_without_coordinator() {
+    use zisk_distributed_node::grpc::user::UpdateGuestProgramRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
 
     let err = client
-        .get_guest_program(GetGuestProgramRequest {
-            lookup: Some(Lookup::Name("test".to_string())),
+        .update_guest_program(UpdateGuestProgramRequest {
+            program_id: "test-uuid".to_string(),
+            name: None,
+            description: None,
+            author: None,
+            metadata: None,
+            zisk_elf: None,
         })
         .await
         .unwrap_err();
 
-    assert_eq!(err.code(), tonic::Code::Unimplemented);
+    assert_eq!(err.code(), tonic::Code::Unavailable);
+}
+
+#[tokio::test]
+async fn user_api_delete_guest_program_returns_unavailable_without_coordinator() {
+    use zisk_distributed_node::grpc::user::DeleteGuestProgramRequest;
+
+    let (addr, _shutdown) = start_test_server().await;
+    let mut client = ZiskUserApiClient::new(channel(addr));
+
+    use zisk_distributed_node::grpc::user::delete_guest_program_request::Lookup;
+    let err = client
+        .delete_guest_program(DeleteGuestProgramRequest {
+            lookup: Some(Lookup::HashId("abc123".to_string())),
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code(), tonic::Code::Unavailable);
+}
+
+#[tokio::test]
+async fn user_api_wait_job_result_returns_unavailable_without_coordinator() {
+    use zisk_distributed_node::grpc::user::WaitJobResultRequest;
+
+    let (addr, _shutdown) = start_test_server().await;
+    let mut client = ZiskUserApiClient::new(channel(addr));
+
+    let err = client
+        .wait_job_result(WaitJobResultRequest { job_id: "nonexistent".to_string() })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code(), tonic::Code::Unavailable);
 }
 
 #[tokio::test]
