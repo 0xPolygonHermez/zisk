@@ -281,7 +281,6 @@ message StreamData {
   StreamType stream_type = 2;
   optional StreamPayload payload = 3;
   double broadcast_at = 4; // when coordinator initiated broadcast (milliseconds since UNIX epoch)
-  double sent_at = 5; // when message was sent to this specific worker (milliseconds since UNIX epoch)
 }
 
 message StreamPayload {

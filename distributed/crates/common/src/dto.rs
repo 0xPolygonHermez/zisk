@@ -137,7 +137,6 @@ pub struct StreamDataDto {
     pub stream_type: StreamMessageKind,
     pub stream_payload: Option<StreamPayloadDto>,
     pub broadcast_at: f64,
-    pub sent_at: f64,
 }
 
 #[derive(Debug, Clone)]

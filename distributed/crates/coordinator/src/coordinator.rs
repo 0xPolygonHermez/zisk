@@ -789,18 +789,11 @@ impl Coordinator {
                         let stream_type = stream_type.clone();
 
                         async move {
-                            let sent_at = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs_f64()
-                                * 1000.0;
-
                             let msg = CoordinatorMessageDto::StreamData(StreamDataDto {
                                 job_id: job_id.clone(),
                                 stream_type,
                                 stream_payload: Some(StreamPayloadDto { sequence_number, payload }),
                                 broadcast_at,
-                                sent_at,
                             });
 
                             if let Err(e) = pool.send_message(&worker_id, msg).await {

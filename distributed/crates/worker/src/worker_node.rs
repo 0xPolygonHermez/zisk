@@ -1093,7 +1093,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         if matches!(stream_data_dto.stream_type, zisk_distributed_common::StreamMessageKind::Data) {
-            let delay = received_at - stream_data_dto.sent_at;
+            let delay = received_at - stream_data_dto.broadcast_at;
             let mut job_guard = job.lock().await;
 
             // Track overall stream metrics (broadcast delay and inter-arrival time)

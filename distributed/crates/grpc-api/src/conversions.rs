@@ -594,7 +594,6 @@ impl From<StreamDataDto> for StreamData {
             stream_type: StreamType::from(dto.stream_type) as i32,
             payload: dto.stream_payload.map(Into::into),
             broadcast_at: dto.broadcast_at,
-            sent_at: dto.sent_at,
         }
     }
 }
@@ -608,7 +607,6 @@ impl From<StreamData> for StreamDataDto {
                 .unwrap_or(StreamMessageKind::Data),
             stream_payload: data.payload.map(Into::into),
             broadcast_at: data.broadcast_at,
-            sent_at: data.sent_at,
         }
     }
 }
