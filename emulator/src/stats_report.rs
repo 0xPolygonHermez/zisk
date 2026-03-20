@@ -170,24 +170,23 @@ impl StatsReport {
         );
     }
 
-    pub fn add_top_cost_calls_perc(&mut self, label: &str, cost: u64, calls: usize) {
+    pub fn add_top_calls_perc(&mut self, label: &str, value: u64, calls: usize, total: f64) {
         self.output += &format!(
-            "{}{:>15} {:6.2}% {:>10} {label}\n",
+            "{}{:>15} {:6.2}% {:>10} {:>15} {label}\n",
             self.identation,
-            self.format_number(cost),
-            cost as f64 / self.cost_divisor,
-            self.format_number(calls as u64)
+            self.format_number(value),
+            value as f64 / total,
+            self.format_number(calls as u64),
+            self.format_number(value / calls as u64)
         );
     }
 
+    pub fn add_top_cost_calls_perc(&mut self, label: &str, cost: u64, calls: usize) {
+        self.add_top_calls_perc(label, cost, calls, self.cost_divisor)
+    }
+
     pub fn add_top_step_calls_perc(&mut self, label: &str, steps: u64, calls: usize) {
-        self.output += &format!(
-            "{}{:>15} {:6.2}% {:>10} {label}\n",
-            self.identation,
-            self.format_number(steps),
-            steps as f64 / self.step_divisor,
-            self.format_number(calls as u64)
-        );
+        self.add_top_calls_perc(label, steps, calls, self.step_divisor)
     }
 
     pub fn add_top_step_perc(&mut self, label: &str, cost: u64) {

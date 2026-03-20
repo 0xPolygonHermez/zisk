@@ -28,7 +28,9 @@ impl NewCmd {
 
         // Check if ZISK_TEMPLATE_BRANCH environment variable is set, and if so, use it as the branch to clone.
         if let Ok(branch) = std::env::var("ZISK_TEMPLATE_BRANCH") {
-            cmd.arg("--branch").arg(&branch);
+            if !branch.is_empty() {
+                cmd.arg("--branch").arg(&branch);
+            }
         }
 
         let output = cmd.output().expect("failed to execute command");

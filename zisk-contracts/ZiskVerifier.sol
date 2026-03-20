@@ -10,12 +10,12 @@ import {PlonkVerifier} from "./PlonkVerifier.sol";
 contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
     /// @notice Thrown when the verifier selector from this proof does not match the one in this
     /// verifier. This indicates that this proof was sent to the wrong verifier.
-    
+
     /// @notice Thrown when the proof is invalid.
     error InvalidProof();
 
     function VERSION() external pure returns (string memory) {
-        return "v0.16.0";
+        return "v0.16.1";
     }
 
     function getRootCVadcopFinal() external pure returns (uint64[4] memory) {
@@ -29,7 +29,7 @@ contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
     /// @notice Hashes the public values to a field elements inside Bn254.
     /// @param publicValues The public values.
     function hashPublicValues(
-        uint64[4] calldata programVK, 
+        uint64[4] calldata programVK,
         uint64[4] calldata rootCVadcopFinal,
         bytes calldata publicValues
     ) public pure returns (uint256) {
@@ -42,7 +42,7 @@ contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
     /// @param publicValues The public values encoded as bytes.
     /// @param proofBytes The proof of the program execution the Zisk zkVM encoded as bytes.
     function verifySnarkProof(
-        uint64[4] calldata programVK, 
+        uint64[4] calldata programVK,
         uint64[4] calldata rootCVadcopFinal,
         bytes calldata publicValues,
         bytes calldata proofBytes

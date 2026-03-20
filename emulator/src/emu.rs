@@ -22,6 +22,7 @@ use zisk_core::{
 };
 
 pub const ZISK_PUBLICS: usize = 64;
+const HEAP_SYMBOLS: [&str; 3] = ["_kernel_heap_bottom", "_kernel_heap_top", "ZISK_BUMP_HEAP_POS"];
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -1580,7 +1581,9 @@ impl<'a> Emu<'a> {
         self.ctx = self.create_emu_context(inputs.clone(), options);
 
         let mut elf = ElfSymbolReader::new();
-        println!("READ SYMBOLS={}", options.read_symbols);
+        let mut heap_top = 0u64;
+        let mut heap_bottom = 0u64;
+        let mut heap_pos_address = 0u64;
         if options.read_symbols {
             if let Some(elf_file) = &options.elf {
                 println!("Loading symbols from ELF file: {elf_file}");
@@ -1593,7 +1596,11 @@ impl<'a> Emu<'a> {
                     }
                 }
 
-                elf.load_from_file(elf_file).unwrap();
+                if let Ok(address) = elf.load_from_file(elf_file, &HEAP_SYMBOLS) {
+                    heap_bottom = address[0];
+                    heap_top = address[1];
+                    heap_pos_address = address[2];
+                }
                 let mut count = 0;
                 let mut roi_count = 0;
 
@@ -1658,6 +1665,14 @@ impl<'a> Emu<'a> {
                 self.ctx.stats.set_main_name(options.main_name.clone());
                 self.ctx.stats.set_use_thousands_sep(!options.no_thousands_sep);
                 self.ctx.stats.set_top_rois_filter(options.top_roi_filter);
+            }
+        } else if !options.is_fast() {
+            if let Some(elf_file) = &options.elf {
+                if let Ok(address) = elf.get_symbols_from_file(elf_file, &HEAP_SYMBOLS) {
+                    heap_bottom = address[0];
+                    heap_top = address[1];
+                    heap_pos_address = address[2];
+                }
             }
         }
         if options.coverage && !options.stats {
@@ -1815,6 +1830,12 @@ impl<'a> Emu<'a> {
 
         // Print stats report
         if self.ctx.do_stats {
+            if heap_pos_address != 0 {
+                let heap_pos = self.ctx.inst_ctx.mem.read(heap_pos_address, 8);
+                let heap_size = heap_top - heap_bottom;
+                let heap_used = heap_pos - heap_bottom;
+                self.ctx.stats.set_ram_usage(heap_size, heap_used);
+            }
             self.ctx.stats.update_costs();
             let report = self.ctx.stats.report(self.rom);
             println!("{report}");
@@ -1832,7 +1853,7 @@ impl<'a> Emu<'a> {
                         if let Some(roi_filter) = &options.roi_filter {
                             let _ = elf.set_roi_filter(roi_filter);
                         }
-                        elf.load_from_file(elf_file).ok();
+                        elf.load_from_file(elf_file, &[]).ok();
                         Some(elf)
                     } else {
                         None
