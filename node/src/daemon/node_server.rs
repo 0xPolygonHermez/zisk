@@ -3,10 +3,9 @@ use crate::config::NodeConfig;
 use crate::coordinator::CoordinatorClient;
 use crate::daemon::shutdown::wait_for_shutdown;
 use crate::grpc::logging::GrpcLoggingLayer;
-use crate::grpc::node_api::NodeApiService;
 use crate::grpc::user::zisk_user_api_server::ZiskUserApiServer;
-use crate::grpc::user_api::{UserApiService, UserApiState};
-use crate::grpc::zisk_node_api_server::ZiskNodeApiServer;
+use crate::grpc::user_api::UserApiService;
+use crate::service::NodeService;
 use crate::grpc::MAX_MESSAGE_SIZE;
 use anyhow::Result;
 use std::net::SocketAddr;
@@ -38,7 +37,13 @@ impl NodeServer {
             match reg.coordinator_url() {
                 Ok(url) => {
                     info!("Coordinator at {url}");
-                    Some(CoordinatorClient::connect(url))
+                    match CoordinatorClient::connect(url) {
+                        Ok(client) => Some(client),
+                        Err(e) => {
+                            tracing::warn!("Invalid coordinator URL: {e}. Running without coordinator.");
+                            None
+                        }
+                    }
                 }
                 Err(e) => {
                     tracing::warn!("Could not resolve coordinator URL: {e}. Running without coordinator.");
@@ -50,7 +55,6 @@ impl NodeServer {
         // ── Health ────────────────────────────────────────────────────────────
         let (health_reporter, health_service) = health_reporter();
         health_reporter.set_serving::<ZiskUserApiServer<UserApiService>>().await;
-        health_reporter.set_serving::<ZiskNodeApiServer<NodeApiService>>().await;
 
         // ── Reflection ────────────────────────────────────────────────────────
         let reflection_service = ReflectionBuilder::configure()
@@ -58,15 +62,9 @@ impl NodeServer {
             .build_v1()?;
 
         // ── Services ──────────────────────────────────────────────────────────
-        let user_svc =
-            ZiskUserApiServer::new(UserApiService::new(Arc::new(UserApiState::new(
-                self.cluster_registry,
-                coordinator_client,
-            ))))
-            .max_decoding_message_size(MAX_MESSAGE_SIZE)
-            .max_encoding_message_size(MAX_MESSAGE_SIZE);
+        let node_service = Arc::new(NodeService::new(self.cluster_registry, coordinator_client));
 
-        let node_svc = ZiskNodeApiServer::new(NodeApiService::new())
+        let user_svc = ZiskUserApiServer::new(UserApiService::new(node_service))
             .max_decoding_message_size(MAX_MESSAGE_SIZE)
             .max_encoding_message_size(MAX_MESSAGE_SIZE);
 
@@ -78,7 +76,6 @@ impl NodeServer {
         let shutdown = async move {
             wait_for_shutdown().await;
             info!("Shutdown signal received — draining traffic");
-            health_reporter.set_not_serving::<ZiskNodeApiServer<NodeApiService>>().await;
             health_reporter.set_not_serving::<ZiskUserApiServer<UserApiService>>().await;
         };
 
@@ -87,7 +84,6 @@ impl NodeServer {
             .add_service(health_service)
             .add_service(reflection_service)
             .add_service(user_svc)
-            .add_service(node_svc)
             .serve_with_shutdown(addr, shutdown)
             .await?;
 

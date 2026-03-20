@@ -47,7 +47,7 @@ members = [
     "distributed/crates/grpc-api",
     "distributed/crates/common",
     "distributed/crates/worker",
-    "distributed/crates/node",
+    "node",
     "sdk",
     "ziskbuild",
 	"definitions",
@@ -111,7 +111,8 @@ zisk-distributed-common = { path = "distributed/crates/common" }
 zisk-distributed-coordinator = { path = "distributed/crates/coordinator" }
 zisk-distributed-grpc-api = { path = "distributed/crates/grpc-api" }
 zisk-distributed-prover = { path = "distributed/crates/worker" }
-zisk-distributed-node = { path = "distributed/crates/node" }
+
+zisk-node = { path = "node" }
 
 # Proofman
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.0" }

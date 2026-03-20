@@ -8,16 +8,13 @@ use tonic_health::pb::health_check_response::ServingStatus;
 use tonic_health::pb::HealthCheckRequest;
 use tonic_health::server::health_reporter;
 use tonic_reflection::server::Builder as ReflectionBuilder;
-use zisk_distributed_node::daemon::node_server::FILE_DESCRIPTOR_SET;
-use zisk_distributed_node::grpc::logging::GrpcLoggingLayer;
-use zisk_distributed_node::grpc::node_api::NodeApiService;
-use zisk_distributed_node::grpc::user::zisk_user_api_client::ZiskUserApiClient;
-use zisk_distributed_node::grpc::user::zisk_user_api_server::ZiskUserApiServer;
-use zisk_distributed_node::grpc::user::GetNodeInfoRequest as UserGetNodeInfoRequest;
-use zisk_distributed_node::grpc::user_api::{UserApiService, UserApiState};
-use zisk_distributed_node::grpc::zisk_node_api_client::ZiskNodeApiClient;
-use zisk_distributed_node::grpc::zisk_node_api_server::ZiskNodeApiServer;
-use zisk_distributed_node::grpc::GetNodeInfoRequest as NodeGetNodeInfoRequest;
+use zisk_node::daemon::node_server::FILE_DESCRIPTOR_SET;
+use zisk_node::grpc::logging::GrpcLoggingLayer;
+use zisk_node::grpc::user::zisk_user_api_client::ZiskUserApiClient;
+use zisk_node::grpc::user::zisk_user_api_server::ZiskUserApiServer;
+use zisk_node::grpc::user::GetNodeInfoRequest as UserGetNodeInfoRequest;
+use zisk_node::grpc::user_api::UserApiService;
+use zisk_node::service::NodeService;
 
 // ── Test server ───────────────────────────────────────────────────────────────
 
@@ -33,7 +30,6 @@ async fn start_test_server() -> (SocketAddr, oneshot::Sender<()>) {
     tokio::spawn(async move {
         let (health_reporter, health_svc) = health_reporter();
         health_reporter.set_serving::<ZiskUserApiServer<UserApiService>>().await;
-        health_reporter.set_serving::<ZiskNodeApiServer<NodeApiService>>().await;
 
         let reflection_svc = ReflectionBuilder::configure()
             .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
@@ -41,12 +37,10 @@ async fn start_test_server() -> (SocketAddr, oneshot::Sender<()>) {
             .unwrap();
 
         let user_svc =
-            ZiskUserApiServer::new(UserApiService::new(Arc::new(UserApiState::new(None, None))));
-        let node_svc = ZiskNodeApiServer::new(NodeApiService::new());
+            ZiskUserApiServer::new(UserApiService::new(Arc::new(NodeService::new(None, None))));
 
         let shutdown = async move {
             shutdown_rx.await.ok();
-            health_reporter.set_not_serving::<ZiskNodeApiServer<NodeApiService>>().await;
             health_reporter.set_not_serving::<ZiskUserApiServer<UserApiService>>().await;
         };
 
@@ -55,7 +49,6 @@ async fn start_test_server() -> (SocketAddr, oneshot::Sender<()>) {
             .add_service(health_svc)
             .add_service(reflection_svc)
             .add_service(user_svc)
-            .add_service(node_svc)
             .serve_with_shutdown(addr, shutdown)
             .await
             .unwrap();
@@ -68,19 +61,6 @@ async fn start_test_server() -> (SocketAddr, oneshot::Sender<()>) {
 
 fn channel(addr: SocketAddr) -> Channel {
     Channel::from_shared(format!("http://{addr}")).unwrap().connect_lazy()
-}
-
-// ── ZiskNodeApi ───────────────────────────────────────────────────────────────
-
-#[tokio::test]
-async fn node_api_get_node_info_returns_version_and_status() {
-    let (addr, _shutdown) = start_test_server().await;
-    let mut client = ZiskNodeApiClient::new(channel(addr));
-
-    let info = client.get_node_info(NodeGetNodeInfoRequest {}).await.unwrap().into_inner();
-
-    assert!(!info.version.is_empty(), "version should not be empty");
-    assert_eq!(info.status, "ready");
 }
 
 // ── ZiskUserApi ───────────────────────────────────────────────────────────────
@@ -97,7 +77,7 @@ async fn user_api_get_node_info_returns_version() {
 
 #[tokio::test]
 async fn user_api_list_jobs_returns_unavailable_without_coordinator() {
-    use zisk_distributed_node::grpc::user::ListJobsRequest;
+    use zisk_node::grpc::user::ListJobsRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
@@ -112,7 +92,7 @@ async fn user_api_list_jobs_returns_unavailable_without_coordinator() {
 
 #[tokio::test]
 async fn user_api_get_job_returns_unavailable_without_coordinator() {
-    use zisk_distributed_node::grpc::user::GetJobRequest;
+    use zisk_node::grpc::user::GetJobRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
@@ -129,7 +109,7 @@ async fn user_api_get_job_returns_unavailable_without_coordinator() {
 
 #[tokio::test]
 async fn user_api_list_guest_programs_returns_unavailable_without_coordinator() {
-    use zisk_distributed_node::grpc::user::ListGuestProgramsRequest;
+    use zisk_node::grpc::user::ListGuestProgramsRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
@@ -144,7 +124,7 @@ async fn user_api_list_guest_programs_returns_unavailable_without_coordinator() 
 
 #[tokio::test]
 async fn user_api_wait_guest_program_returns_unavailable_without_coordinator() {
-    use zisk_distributed_node::grpc::user::WaitGuestProgramRequest;
+    use zisk_node::grpc::user::WaitGuestProgramRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
@@ -159,7 +139,7 @@ async fn user_api_wait_guest_program_returns_unavailable_without_coordinator() {
 
 #[tokio::test]
 async fn user_api_register_guest_program_returns_unavailable_without_coordinator() {
-    use zisk_distributed_node::grpc::user::RegisterGuestProgramRequest;
+    use zisk_node::grpc::user::RegisterGuestProgramRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
@@ -180,12 +160,12 @@ async fn user_api_register_guest_program_returns_unavailable_without_coordinator
 
 #[tokio::test]
 async fn user_api_get_guest_program_returns_unavailable_without_coordinator() {
-    use zisk_distributed_node::grpc::user::GetGuestProgramRequest;
+    use zisk_node::grpc::user::GetGuestProgramRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
 
-    use zisk_distributed_node::grpc::user::get_guest_program_request::Lookup;
+    use zisk_node::grpc::user::get_guest_program_request::Lookup;
     let err = client
         .get_guest_program(GetGuestProgramRequest {
             lookup: Some(Lookup::HashId("abc123".to_string())),
@@ -198,7 +178,7 @@ async fn user_api_get_guest_program_returns_unavailable_without_coordinator() {
 
 #[tokio::test]
 async fn user_api_update_guest_program_returns_unavailable_without_coordinator() {
-    use zisk_distributed_node::grpc::user::UpdateGuestProgramRequest;
+    use zisk_node::grpc::user::UpdateGuestProgramRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
@@ -220,12 +200,12 @@ async fn user_api_update_guest_program_returns_unavailable_without_coordinator()
 
 #[tokio::test]
 async fn user_api_delete_guest_program_returns_unavailable_without_coordinator() {
-    use zisk_distributed_node::grpc::user::DeleteGuestProgramRequest;
+    use zisk_node::grpc::user::DeleteGuestProgramRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
 
-    use zisk_distributed_node::grpc::user::delete_guest_program_request::Lookup;
+    use zisk_node::grpc::user::delete_guest_program_request::Lookup;
     let err = client
         .delete_guest_program(DeleteGuestProgramRequest {
             lookup: Some(Lookup::HashId("abc123".to_string())),
@@ -238,7 +218,7 @@ async fn user_api_delete_guest_program_returns_unavailable_without_coordinator()
 
 #[tokio::test]
 async fn user_api_wait_job_result_returns_unavailable_without_coordinator() {
-    use zisk_distributed_node::grpc::user::WaitJobResultRequest;
+    use zisk_node::grpc::user::WaitJobResultRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
@@ -253,7 +233,7 @@ async fn user_api_wait_job_result_returns_unavailable_without_coordinator() {
 
 #[tokio::test]
 async fn user_api_cancel_job_returns_unavailable_without_coordinator() {
-    use zisk_distributed_node::grpc::user::CancelJobRequest;
+    use zisk_node::grpc::user::CancelJobRequest;
 
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
@@ -290,20 +270,6 @@ async fn health_reports_serving_for_user_api() {
 
     let resp = client
         .check(HealthCheckRequest { service: "zisk.user.v1.ZiskUserApi".to_string() })
-        .await
-        .unwrap()
-        .into_inner();
-
-    assert_eq!(resp.status(), ServingStatus::Serving);
-}
-
-#[tokio::test]
-async fn health_reports_serving_for_node_api() {
-    let (addr, _shutdown) = start_test_server().await;
-    let mut client = HealthClient::new(channel(addr));
-
-    let resp = client
-        .check(HealthCheckRequest { service: "zisk.node.v1.ZiskNodeApi".to_string() })
         .await
         .unwrap()
         .into_inner();

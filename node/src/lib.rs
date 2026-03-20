@@ -7,5 +7,6 @@ pub mod daemon;
 pub mod errors;
 pub mod grpc;
 pub mod logging;
+pub mod service;
 
 pub use errors::{NodeError, NodeResult};

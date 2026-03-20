@@ -1,5 +1,5 @@
 [package]
-name = "zisk-distributed-node"
+name = "zisk-node"
 description = "ZisK node daemon (zisklet) — API gateway for proof submission and cluster management"
 version.workspace = true
 edition.workspace = true

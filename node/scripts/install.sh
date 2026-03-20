@@ -79,7 +79,7 @@ if [[ -z "$BINARY_SRC" ]]; then
   CRATE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
   WORKSPACE_DIR="$(cd "$CRATE_DIR/../../../.." && pwd)"
 
-  cargo build --release -p zisk-distributed-node \
+  cargo build --release -p zisk-node \
     --manifest-path "$WORKSPACE_DIR/Cargo.toml"
 
   BINARY_SRC="$WORKSPACE_DIR/target/release/zisklet"

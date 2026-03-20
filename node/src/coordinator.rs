@@ -2,8 +2,9 @@ use tonic::transport::Channel;
 use tonic::Response;
 use zisk_distributed_grpc_api::zisk_coordinator_api_client::ZiskCoordinatorApiClient;
 use zisk_distributed_grpc_api::{
-    DeleteProgramRequest, DeleteProgramResponse, GetProgramRequest, GetProgramResponse,
-    JobStatusResponse, ListProgramsRequest, ListProgramsResponse, RegisterProgramRequest,
+    CancelJobRequest, CancelJobResponse, DeleteProgramRequest, DeleteProgramResponse,
+    GetProgramRequest, GetProgramResponse, JobStatusRequest, JobStatusResponse, JobsListRequest,
+    JobsListResponse, ListProgramsRequest, ListProgramsResponse, RegisterProgramRequest,
     RegisterProgramResponse, UpdateProgramRequest, UpdateProgramResponse, WaitJobRequest,
     WaitProgramRequest,
 };
@@ -15,13 +16,13 @@ use zisk_distributed_grpc_api::{
 /// temporarily unreachable.
 #[derive(Clone)]
 pub struct CoordinatorClient {
-    pub(crate) inner: ZiskCoordinatorApiClient<Channel>,
+    inner: ZiskCoordinatorApiClient<Channel>,
 }
 
 impl CoordinatorClient {
-    pub fn connect(url: String) -> Self {
-        let channel = Channel::from_shared(url).expect("valid coordinator URL").connect_lazy();
-        Self { inner: ZiskCoordinatorApiClient::new(channel) }
+    pub fn connect(url: String) -> anyhow::Result<Self> {
+        let channel = Channel::from_shared(url)?.connect_lazy();
+        Ok(Self { inner: ZiskCoordinatorApiClient::new(channel) })
     }
 
     pub async fn register_program(
@@ -71,5 +72,26 @@ impl CoordinatorClient {
         req: WaitJobRequest,
     ) -> Result<Response<JobStatusResponse>, tonic::Status> {
         self.inner.wait_job(req).await
+    }
+
+    pub async fn jobs_list(
+        &mut self,
+        req: JobsListRequest,
+    ) -> Result<Response<JobsListResponse>, tonic::Status> {
+        self.inner.jobs_list(req).await
+    }
+
+    pub async fn job_status(
+        &mut self,
+        req: JobStatusRequest,
+    ) -> Result<Response<JobStatusResponse>, tonic::Status> {
+        self.inner.job_status(req).await
+    }
+
+    pub async fn cancel_job(
+        &mut self,
+        req: CancelJobRequest,
+    ) -> Result<Response<CancelJobResponse>, tonic::Status> {
+        self.inner.cancel_job(req).await
     }
 }

@@ -14,11 +14,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .extern_path(".google.protobuf.Timestamp", "::prost_types::Timestamp")
         .protoc_arg("--experimental_allow_proto3_optional")
         .compile_protos(
-            &["proto/zisk_node_api.proto", "proto/zisk_user_api.proto"],
+            &["proto/zisk_user_api.proto"],
             &["proto/"],
         )?;
 
-    println!("cargo:rerun-if-changed=proto/zisk_node_api.proto");
     println!("cargo:rerun-if-changed=proto/zisk_user_api.proto");
 
     Ok(())

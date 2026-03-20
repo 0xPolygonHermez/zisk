@@ -1,15 +1,10 @@
-# zisk-distributed-node
+# zisk-node
 
 The ZisK node daemon (`zisklet`) — an API gateway that exposes the ZisK proof submission API to clients and routes requests to the configured coordinator.
 
 ## Overview
 
-`zisklet` serves two gRPC APIs on the same port:
-
-| API | Package | Audience |
-|-----|---------|----------|
-| `ZiskUserApi` | `zisk.user.v1` | Client applications submitting proof jobs |
-| `ZiskNodeApi` | `zisk.node.v1` | Operators querying node status |
+`zisklet` serves `ZiskUserApi` (`zisk.user.v1`) on the configured port — a gRPC API for client applications submitting proof jobs and managing guest programs.
 
 The cluster topology (coordinator address, workers) is loaded from `clusters.yml` at startup. Exactly one cluster is supported.
 
@@ -22,7 +17,7 @@ The cluster topology (coordinator address, workers) is loaded from `clusters.yml
 ## Building
 
 ```bash
-cargo build --release -p zisk-distributed-node
+cargo build --release -p zisk-node
 # binary at: target/release/zisklet
 ```
 
@@ -53,7 +48,7 @@ The config file path can be overridden with `--config` or `ZISK_NODE_CONFIG`. Th
 
 #### Logging
 
-`logging.level` sets the minimum log level (`trace` | `debug` | `info` | `warn` | `error`). The `RUST_LOG` environment variable takes precedence over the config file value and supports per-module filters (e.g. `RUST_LOG=zisk_distributed_node=debug,info`).
+`logging.level` sets the minimum log level (`trace` | `debug` | `info` | `warn` | `error`). The `RUST_LOG` environment variable takes precedence over the config file value and supports per-module filters (e.g. `RUST_LOG=zisk_node=debug,info`).
 
 `logging.format` controls output format:
 
@@ -106,7 +101,7 @@ clusters:
 
 ```bash
 # From the workspace root:
-docker compose -f distributed/crates/node/docker-compose.yml up
+docker compose -f node/docker-compose.yml up
 ```
 
 This builds the image from source, mounts `config/node.toml` and `config/clusters.yml`, and starts `zisklet` on port `7000`. Edit those files before starting to match your environment.
@@ -115,14 +110,14 @@ This builds the image from source, mounts `config/node.toml` and `config/cluster
 
 ```bash
 # From the workspace root:
-docker build -f distributed/crates/node/Dockerfile -t zisklet .
+docker build -f node/Dockerfile -t zisklet .
 ```
 
 ### Run the container manually
 
 ```bash
 docker run \
-  -v ./distributed/crates/node/config:/etc/zisk:ro \
+  -v ./node/config:/etc/zisk:ro \
   -p 7000:7000 \
   zisklet
 ```
@@ -240,13 +235,13 @@ sudo ./scripts/install.sh --uninstall
 
 ```bash
 # Standard runner
-cargo test -p zisk-distributed-node
+cargo test -p zisk-node
 
 # cargo-nextest (faster, better output — recommended)
-cargo nextest run -p zisk-distributed-node
+cargo nextest run -p zisk-node
 
 # CI profile (4 threads, 1 retry, fail-fast)
-cargo nextest run -p zisk-distributed-node --profile ci
+cargo nextest run -p zisk-node --profile ci
 ```
 
 Install nextest once with:

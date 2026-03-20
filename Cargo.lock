@@ -6181,40 +6181,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zisk-distributed-node"
-version = "0.17.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "clap",
- "config",
- "futures",
- "http",
- "prost",
- "prost-types",
- "serde",
- "serde_json",
- "serde_yaml",
- "signal-hook",
- "signal-hook-tokio",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-health",
- "tonic-prost",
- "tonic-prost-build",
- "tonic-reflection",
- "tower",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "zisk-distributed-common",
- "zisk-distributed-grpc-api",
-]
-
-[[package]]
 name = "zisk-distributed-worker"
 version = "0.17.0"
 dependencies = [
@@ -6246,6 +6212,40 @@ dependencies = [
  "zisk-distributed-grpc-api",
  "zisk-pil",
  "zisk-sdk",
+]
+
+[[package]]
+name = "zisk-node"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "clap",
+ "config",
+ "futures",
+ "http",
+ "prost",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "signal-hook",
+ "signal-hook-tokio",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-health",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tonic-reflection",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "zisk-distributed-common",
+ "zisk-distributed-grpc-api",
 ]
 
 [[package]]

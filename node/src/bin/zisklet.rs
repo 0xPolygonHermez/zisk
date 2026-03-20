@@ -1,6 +1,6 @@
 use clap::Parser;
 use tracing::info;
-use zisk_distributed_node::{
+use zisk_node::{
     cluster::ClusterRegistry,
     config::NodeConfig,
     daemon::NodeServer,
