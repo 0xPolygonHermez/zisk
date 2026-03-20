@@ -3,7 +3,7 @@ use crate::zisklib::{eq, is_zero, lt};
 use super::{
     constants::{
         COFACTOR_G1, ISO_A_G1, ISO_A_G2, ISO_B_G1, ISO_B_G2, ISO_X_DEN_G1, ISO_X_DEN_G2,
-        ISO_X_NUM_G1, ISO_X_NUM_G2, ISO_Y_DEN_G1, ISO_Y_DEN_G2, ISO_Y_NUM_G1, ISO_Y_NUM_G2,
+        ISO_X_NUM_G1, ISO_X_NUM_G2, ISO_Y_DEN_G1, ISO_Y_DEN_G2, ISO_Y_NUM_G1, ISO_Y_NUM_G2, P,
         SWU_Z2_G1, SWU_Z_G1, SWU_Z_G2,
     },
     curve::{g1_u64_le_to_bytes_be_bls12_381, scalar_mul_bls12_381},
@@ -20,11 +20,24 @@ use super::{
     },
 };
 
+// G1 map to curve result codes
+const G1_MAP_TO_CURVE_SUCCESS: u8 = 0;
+const G1_MAP_TO_CURVE_ERR_NOT_IN_FIELD: u8 = 1;
+
+// G2 map to curve result codes
+const G2_MAP_TO_CURVE_SUCCESS: u8 = 0;
+const G2_MAP_TO_CURVE_ERR_NOT_IN_FIELD: u8 = 1;
+
 /// Maps a field element to a point on the BLS12-381 G1 curve
 pub fn map_to_curve_g1_bls12_381(
     u: &[u64; 6],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 12] {
+) -> Result<[u64; 12], u8> {
+    // Verify input is in field
+    if !lt(u, &P) {
+        return Err(G1_MAP_TO_CURVE_ERR_NOT_IN_FIELD);
+    }
+
     // Step 1: Map to isogenous curve E' using simplified SWU
     let p_prime = map_to_curve_simple_swu_g1_bls12_381(
         u,
@@ -40,19 +53,26 @@ pub fn map_to_curve_g1_bls12_381(
     );
 
     // Step 3: Clear cofactor
-    scalar_mul_bls12_381(
+    Ok(scalar_mul_bls12_381(
         &p,
         &COFACTOR_G1,
         #[cfg(feature = "hints")]
         hints,
-    )
+    ))
 }
 
 /// Maps a field element in Fp2 to a point on the BLS12-381 G2 curve
 pub fn map_to_curve_g2_bls12_381(
     u: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 24] {
+) -> Result<[u64; 24], u8> {
+    // Verify input is in field
+    let u_0: [u64; 6] = u[0..6].try_into().unwrap();
+    let u_1: [u64; 6] = u[6..12].try_into().unwrap();
+    if !lt(&u_0, &P) || !lt(&u_1, &P) {
+        return Err(G2_MAP_TO_CURVE_ERR_NOT_IN_FIELD);
+    }
+
     // Step 1: Map to isogenous curve E' using simplified SWU
     let p_prime = map_to_curve_simple_swu_g2_bls12_381(
         u,
@@ -68,11 +88,11 @@ pub fn map_to_curve_g2_bls12_381(
     );
 
     // Step 3: Clear cofactor
-    clear_cofactor_twist_bls12_381(
+    Ok(clear_cofactor_twist_bls12_381(
         &p,
         #[cfg(feature = "hints")]
         hints,
-    )
+    ))
 }
 
 /// Maps a field element u ∈ Fp to a point on the isogenous curve E'
@@ -662,15 +682,18 @@ pub unsafe extern "C" fn bls12_381_fp_to_g1_c(
     let u = bytes_be_to_u64_le_fp_bls12_381(fp_bytes);
 
     // Map to curve
-    let result = map_to_curve_g1_bls12_381(
+    let result = match map_to_curve_g1_bls12_381(
         &u,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ) {
+        Ok(p) => p,
+        Err(code) => return code,
+    };
 
     // Encode result
     g1_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
-    0
+    G1_MAP_TO_CURVE_SUCCESS
 }
 
 /// BLS12-381 map Fp2 field element to G2 point
@@ -699,13 +722,16 @@ pub unsafe extern "C" fn bls12_381_fp2_to_g2_c(
     let u = bytes_be_to_u64_le_fp2_bls12_381(fp2_bytes);
 
     // Map to curve
-    let result = map_to_curve_g2_bls12_381(
+    let result = match map_to_curve_g2_bls12_381(
         &u,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ) {
+        Ok(p) => p,
+        Err(code) => return code,
+    };
 
     // Encode result
     g2_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
-    0
+    G2_MAP_TO_CURVE_SUCCESS
 }

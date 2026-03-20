@@ -13,9 +13,9 @@ use super::{
 /// Pairing check result codes
 const PAIRING_CHECK_SUCCESS: u8 = 0;
 const PAIRING_CHECK_FAILED: u8 = 1;
-const PAIRING_CHECK_ERR_G1_INVALID: u8 = 2;
+const PAIRING_CHECK_ERR_G1_NOT_IN_FIELD: u8 = 2;
 const PAIRING_CHECK_ERR_G1_NOT_ON_CURVE: u8 = 3;
-const PAIRING_CHECK_ERR_G2_INVALID: u8 = 4;
+const PAIRING_CHECK_ERR_G2_NOT_IN_FIELD: u8 = 4;
 const PAIRING_CHECK_ERR_G2_NOT_ON_CURVE: u8 = 5;
 const PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP: u8 = 6;
 
@@ -120,9 +120,9 @@ pub fn pairing_batch_bn254(
 /// # Returns
 /// * `Ok(true)` - Pairing check passed (product of pairings == 1)
 /// * `Ok(false)` - Pairing check failed (product of pairings != 1)
-/// * `Err(PAIRING_CHECK_ERR_G1_INVALID)` - G1 field element not canonical (>= P)
+/// * `Err(PAIRING_CHECK_ERR_G1_NOT_IN_FIELD)` - G1 field element not canonical (>= P)
 /// * `Err(PAIRING_CHECK_ERR_G1_NOT_ON_CURVE)` - G1 point not on curve
-/// * `Err(PAIRING_CHECK_ERR_G2_INVALID)` - G2 field element not canonical (>= P)
+/// * `Err(PAIRING_CHECK_ERR_G2_NOT_IN_FIELD)` - G2 field element not canonical (>= P)
 /// * `Err(PAIRING_CHECK_ERR_G2_NOT_ON_CURVE)` - G2 point not on twist curve
 /// * `Err(PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP)` - G2 point not in subgroup
 pub fn pairing_check_bn254(
@@ -175,7 +175,7 @@ pub fn pairing_check_bn254(
         let x1: [u64; 4] = g1[0..4].try_into().unwrap();
         let y1: [u64; 4] = g1[4..8].try_into().unwrap();
         if !lt(&x1, &P) || !lt(&y1, &P) {
-            return Err(PAIRING_CHECK_ERR_G1_INVALID);
+            return Err(PAIRING_CHECK_ERR_G1_NOT_IN_FIELD);
         }
 
         // Verify G1 point is on curve
@@ -193,7 +193,7 @@ pub fn pairing_check_bn254(
         let y2_r: [u64; 4] = g2[8..12].try_into().unwrap();
         let y2_i: [u64; 4] = g2[12..16].try_into().unwrap();
         if !lt(&x2_r, &P) || !lt(&x2_i, &P) || !lt(&y2_r, &P) || !lt(&y2_i, &P) {
-            return Err(PAIRING_CHECK_ERR_G2_INVALID);
+            return Err(PAIRING_CHECK_ERR_G2_NOT_IN_FIELD);
         }
 
         // Verify G2 point is on twist curve

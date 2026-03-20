@@ -36,15 +36,29 @@ impl ElfSymbolReader {
         Ok(())
     }
 
-    pub fn load_from_file(&mut self, path: &str) -> Result<()> {
+    pub fn load_from_file(&mut self, path: &str, symbols: &[&str]) -> Result<Vec<u64>> {
         let file = File::open(path)?;
         let mmap = unsafe { Mmap::map(&file)? };
 
         match object::File::parse(&*mmap) {
             Ok(obj) => {
                 self.parse_symbols(&obj);
-                Ok(())
+                if symbols.is_empty() {
+                    Ok(vec![])
+                } else {
+                    Ok(self.get_symbols(&obj, symbols))
+                }
             }
+            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
+        }
+    }
+
+    pub fn get_symbols_from_file(&mut self, path: &str, symbols: &[&str]) -> Result<Vec<u64>> {
+        let file = File::open(path)?;
+        let mmap = unsafe { Mmap::map(&file)? };
+
+        match object::File::parse(&*mmap) {
+            Ok(obj) => Ok(self.get_symbols(&obj, symbols)),
             Err(e) => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
         }
     }
@@ -99,6 +113,23 @@ impl ElfSymbolReader {
             self.parse_function_symbol(&symbol);
             self.parse_cost_tag_symbol(&symbol);
         }
+    }
+
+    fn get_symbols(&mut self, obj: &object::File, symbols_to_load: &[&str]) -> Vec<u64> {
+        let mut count = symbols_to_load.len();
+        let mut result = vec![0u64; symbols_to_load.len()];
+        for symbol in obj.symbols() {
+            if count == 0 {
+                break;
+            }
+            if let Ok(name) = symbol.name() {
+                if let Some(idx) = symbols_to_load.iter().position(|&x| x == name) {
+                    result[idx] = symbol.address();
+                    count -= 1;
+                }
+            }
+        }
+        result
     }
 
     fn parse_cost_tag_symbol(&mut self, symbol: &Symbol<'_, '_>) {

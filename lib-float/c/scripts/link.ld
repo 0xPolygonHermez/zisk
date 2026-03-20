@@ -4,7 +4,7 @@ ENTRY(_zisk_float)
 
 MEMORY {
   rom   (xa) : ORIGIN = 0x87F00000, LENGTH = 0x100000
-  ram   (wxa) : ORIGIN = 0xafff0000, LENGTH = 0x10000
+  ram   (wxa) : ORIGIN = 0xBFFF0000, LENGTH = 0x10000
 }
 
 PHDRS {

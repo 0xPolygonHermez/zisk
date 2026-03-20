@@ -86,8 +86,6 @@ jobs:
           ./build_setup.sh
 
       - name: Test sha_hasher
-        env:
-          ZISK_TEMPLATE_BRANCH: pre-develop-0.16.0
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
@@ -142,8 +140,6 @@ jobs:
           ./build_zisk.sh
 
       - name: Test sha_hasher
-        env:
-          ZISK_TEMPLATE_BRANCH: pre-develop-0.16.0
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh

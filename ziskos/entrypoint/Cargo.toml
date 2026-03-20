@@ -32,7 +32,7 @@ talc = { version = "4.4.3", features = ["lock_api"], optional = true }
 dlmalloc = { version = "0.2", default-features = false, optional = true }
 
 sha2 = { workspace = true }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.16.0", features = [
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.16.1", features = [
     "verify",
 ] }
 

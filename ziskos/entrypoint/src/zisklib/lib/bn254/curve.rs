@@ -19,7 +19,7 @@ use super::{
 /// G1 add result codes
 const G1_ADD_SUCCESS: u8 = 0;
 const G1_ADD_SUCCESS_INFINITY: u8 = 1;
-const G1_ADD_ERR_INVALID: u8 = 2;
+const G1_ADD_ERR_NOT_IN_FIELD: u8 = 2;
 const G1_ADD_ERR_NOT_ON_CURVE: u8 = 3;
 
 /// G1 mul result codes
@@ -125,7 +125,7 @@ pub fn add_complete_bn254(
         let x2: [u64; 4] = p2[0..4].try_into().unwrap();
         let y2: [u64; 4] = p2[4..8].try_into().unwrap();
         if !lt(&x2, &P) || !lt(&y2, &P) {
-            return Err(G1_ADD_ERR_INVALID);
+            return Err(G1_ADD_ERR_NOT_IN_FIELD);
         }
         if !is_on_curve_bn254(
             p2,
@@ -142,7 +142,7 @@ pub fn add_complete_bn254(
         let x1: [u64; 4] = p1[0..4].try_into().unwrap();
         let y1: [u64; 4] = p1[4..8].try_into().unwrap();
         if !lt(&x1, &P) || !lt(&y1, &P) {
-            return Err(G1_ADD_ERR_INVALID);
+            return Err(G1_ADD_ERR_NOT_IN_FIELD);
         }
         if !is_on_curve_bn254(
             p1,
@@ -158,7 +158,7 @@ pub fn add_complete_bn254(
     let x1: [u64; 4] = p1[0..4].try_into().unwrap();
     let y1: [u64; 4] = p1[4..8].try_into().unwrap();
     if !lt(&x1, &P) || !lt(&y1, &P) {
-        return Err(G1_ADD_ERR_INVALID);
+        return Err(G1_ADD_ERR_NOT_IN_FIELD);
     }
     if !is_on_curve_bn254(
         p1,
@@ -171,7 +171,7 @@ pub fn add_complete_bn254(
     let x2: [u64; 4] = p2[0..4].try_into().unwrap();
     let y2: [u64; 4] = p2[4..8].try_into().unwrap();
     if !lt(&x2, &P) || !lt(&y2, &P) {
-        return Err(G1_ADD_ERR_INVALID);
+        return Err(G1_ADD_ERR_NOT_IN_FIELD);
     }
     if !is_on_curve_bn254(
         p2,

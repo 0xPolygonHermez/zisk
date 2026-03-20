@@ -29,10 +29,7 @@ pub struct MemoryZoneStatsData {
     mread_byte: u64,
     /// Counter of byte writes where value was a byte (value & 0xFFFF_FFFF_FFFF_FF00 == 0)
     mwrite_byte: u64,
-    max_addr_read: u64,
-    max_addr_write: u64,
 }
-
 #[derive(Default, Debug, Clone)]
 pub struct MemoryOperationsStats {
     rom: MemoryZoneStatsData,
@@ -89,9 +86,6 @@ impl MemoryOperationsStats {
     pub fn get_cost(&self) -> u64 {
         self.rom.get_cost() + self.ram.get_cost() + self.input.get_cost()
     }
-    pub fn get_max_ram_address(&self) -> u64 {
-        self.ram.max_addr_read.max(self.ram.max_addr_write)
-    }
     pub fn add_delta(
         &mut self,
         reference: &MemoryOperationsStats,
@@ -123,7 +117,7 @@ impl MemoryZoneStatsData {
     pub fn memory_write(&mut self, address: u64, width: u64, value: u64) {
         // If the memory is alligned to 8 bytes, i.e. last 3 bits are zero, then increase the
         // aligned memory read counter
-        self.max_addr_write = self.max_addr_write.max(address + width - 1);
+
         if ((address & 0x07) == 0) && (width == 8) {
             self.mwrite_a += 1;
         } else {
@@ -148,7 +142,6 @@ impl MemoryZoneStatsData {
     pub fn memory_read(&mut self, address: u64, width: u64) {
         // If the memory is alligned to 8 bytes, i.e. last 3 bits are zero, then increase the
         // aligned memory read counter
-        self.max_addr_read = self.max_addr_read.max(address + width - 1);
         if ((address & 0x07) == 0) && (width == 8) {
             self.mread_a += 1;
         } else {
@@ -186,7 +179,5 @@ impl MemoryZoneStatsData {
         self.mwrite_na2 += current.mwrite_na2 - reference.mwrite_na2;
         self.mread_byte += current.mread_byte - reference.mread_byte;
         self.mwrite_byte += current.mwrite_byte - reference.mwrite_byte;
-        self.max_addr_read = self.max_addr_read.max(current.max_addr_read);
-        self.max_addr_write = self.max_addr_write.max(current.max_addr_write);
     }
 }
