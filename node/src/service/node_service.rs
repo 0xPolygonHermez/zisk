@@ -2,17 +2,17 @@ use std::sync::Arc;
 use zisk_distributed_grpc_api as coord;
 
 use crate::cluster::ClusterRegistry;
-use crate::coordinator::CoordinatorClient;
+use crate::coordinator_client::CoordinatorClient;
 use crate::errors::{NodeError, NodeResult};
 use crate::service::types::*;
 
-pub struct NodeService {
+pub struct ZiskNodeService {
     coordinator: Option<CoordinatorClient>,
     #[allow(dead_code)]
     cluster_registry: Option<Arc<ClusterRegistry>>,
 }
 
-impl NodeService {
+impl ZiskNodeService {
     pub fn new(
         cluster_registry: Option<Arc<ClusterRegistry>>,
         coordinator: Option<CoordinatorClient>,
@@ -81,7 +81,7 @@ fn coord_job_to_info(j: coord::JobStatus) -> JobInfo {
     JobInfo {
         job_id: j.job_id,
         program_id: j.data_id,
-        kind: None,   // coordinator JobStatus does not carry job kind
+        kind: None, // coordinator JobStatus does not carry job kind
         status_code,
         phase: map_job_phase(&j.phase),
         created_at_ms: j.start_time,
@@ -118,7 +118,7 @@ fn handle_job_status_response(resp: coord::JobStatusResponse) -> NodeResult<JobI
 
 // ── Public service API ────────────────────────────────────────────────────────
 
-impl NodeService {
+impl ZiskNodeService {
     pub async fn get_node_info(&self) -> NodeResult<NodeVersionInfo> {
         Ok(NodeVersionInfo {
             zisk_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -154,10 +154,8 @@ impl NodeService {
 
     pub async fn wait_program(&self, program_id: String) -> NodeResult<ProgramSummary> {
         let mut client = self.coordinator()?;
-        let resp = client
-            .wait_program(coord::WaitProgramRequest { program_id })
-            .await?
-            .into_inner();
+        let resp =
+            client.wait_program(coord::WaitProgramRequest { program_id }).await?.into_inner();
 
         resp.program
             .map(coord_program_to_summary)
@@ -220,18 +218,14 @@ impl NodeService {
         };
 
         let mut client = self.coordinator()?;
-        client
-            .delete_program(coord::DeleteProgramRequest { lookup: Some(coord_lookup) })
-            .await?;
+        client.delete_program(coord::DeleteProgramRequest { lookup: Some(coord_lookup) }).await?;
         Ok(())
     }
 
     pub async fn list_jobs(&self) -> NodeResult<Vec<JobSummary>> {
         let mut client = self.coordinator()?;
-        let resp = client
-            .jobs_list(coord::JobsListRequest { active_only: false })
-            .await?
-            .into_inner();
+        let resp =
+            client.jobs_list(coord::JobsListRequest { active_only: false }).await?.into_inner();
 
         match resp.result {
             Some(coord::jobs_list_response::Result::JobsList(list)) => {
@@ -256,10 +250,8 @@ impl NodeService {
 
     pub async fn cancel_job(&self, job_id: String) -> NodeResult<CancelJobResult> {
         let mut client = self.coordinator()?;
-        let resp = client
-            .cancel_job(coord::CancelJobRequest { job_id, reason: None })
-            .await?
-            .into_inner();
+        let resp =
+            client.cancel_job(coord::CancelJobRequest { job_id, reason: None }).await?.into_inner();
 
         match resp.result {
             Some(coord::cancel_job_response::Result::JobId(id)) => Ok(CancelJobResult {

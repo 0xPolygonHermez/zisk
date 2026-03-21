@@ -2,8 +2,8 @@
 
 pub mod cluster;
 pub mod config;
-pub mod coordinator;
-pub mod daemon;
+pub mod coordinator_client;
+pub mod server;
 pub mod errors;
 pub mod grpc;
 pub mod logging;

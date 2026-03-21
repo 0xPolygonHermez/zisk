@@ -1,10 +1,10 @@
 mod node_service;
 pub mod types;
 
-pub use node_service::NodeService;
+pub use node_service::ZiskNodeService;
 pub use types::{
-    CancelJobResult, JobInfo, JobKind, JobPhase, JobStatusCode, JobSummary, NodeVersionInfo, Proof,
-    ProofKind, ProgramLookup, ProgramOrHashLookup, ProgramStatus, ProgramSummary,
+    CancelJobResult, JobInfo, JobKind, JobPhase, JobStatusCode, JobSummary, NodeVersionInfo,
+    ProgramLookup, ProgramOrHashLookup, ProgramStatus, ProgramSummary, Proof, ProofKind,
     RegisterProgramParams, RegisterProgramResult, SetupInfo, UpdateProgramParams,
     UpdateProgramResult,
 };

@@ -1,6 +1,6 @@
 use crate::grpc::user::zisk_user_api_server::ZiskUserApi;
 use crate::grpc::user::*;
-use crate::service::{NodeService, ProgramLookup, ProgramOrHashLookup};
+use crate::service::{ProgramLookup, ProgramOrHashLookup, ZiskNodeService};
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio_stream::Stream;
@@ -9,11 +9,11 @@ use tonic::{Request, Response, Status, Streaming};
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
 
 pub struct UserApiService {
-    node_service: Arc<NodeService>,
+    node_service: Arc<ZiskNodeService>,
 }
 
 impl UserApiService {
-    pub fn new(node_service: Arc<NodeService>) -> Self {
+    pub fn new(node_service: Arc<ZiskNodeService>) -> Self {
         Self { node_service }
     }
 }
@@ -124,10 +124,7 @@ impl ZiskUserApi for UserApiService {
         Ok(Response::new(ListJobsResponse { jobs: jobs.into_iter().map(Into::into).collect() }))
     }
 
-    async fn get_job(
-        &self,
-        request: Request<GetJobRequest>,
-    ) -> Result<Response<JobInfo>, Status> {
+    async fn get_job(&self, request: Request<GetJobRequest>) -> Result<Response<JobInfo>, Status> {
         let job_id = request.into_inner().job_id;
         let info = self.node_service.get_job(job_id).await.map_err(Status::from)?;
         Ok(Response::new(info.into()))

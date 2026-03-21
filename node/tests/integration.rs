@@ -8,13 +8,13 @@ use tonic_health::pb::health_check_response::ServingStatus;
 use tonic_health::pb::HealthCheckRequest;
 use tonic_health::server::health_reporter;
 use tonic_reflection::server::Builder as ReflectionBuilder;
-use zisk_node::daemon::node_server::FILE_DESCRIPTOR_SET;
+use zisk_node::server::node_server::FILE_DESCRIPTOR_SET;
 use zisk_node::grpc::logging::GrpcLoggingLayer;
 use zisk_node::grpc::user::zisk_user_api_client::ZiskUserApiClient;
 use zisk_node::grpc::user::zisk_user_api_server::ZiskUserApiServer;
 use zisk_node::grpc::user::GetNodeInfoRequest as UserGetNodeInfoRequest;
 use zisk_node::grpc::user_api::UserApiService;
-use zisk_node::service::NodeService;
+use zisk_node::service::ZiskNodeService;
 
 // ── Test server ───────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ async fn start_test_server() -> (SocketAddr, oneshot::Sender<()>) {
             .unwrap();
 
         let user_svc =
-            ZiskUserApiServer::new(UserApiService::new(Arc::new(NodeService::new(None, None))));
+            ZiskUserApiServer::new(UserApiService::new(Arc::new(ZiskNodeService::new(None, None))));
 
         let shutdown = async move {
             shutdown_rx.await.ok();

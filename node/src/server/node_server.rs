@@ -1,12 +1,12 @@
 use crate::cluster::ClusterRegistry;
 use crate::config::NodeConfig;
-use crate::coordinator::CoordinatorClient;
-use crate::daemon::shutdown::wait_for_shutdown;
+use crate::coordinator_client::CoordinatorClient;
 use crate::grpc::logging::GrpcLoggingLayer;
 use crate::grpc::user::zisk_user_api_server::ZiskUserApiServer;
 use crate::grpc::user_api::UserApiService;
-use crate::service::NodeService;
 use crate::grpc::MAX_MESSAGE_SIZE;
+use crate::server::shutdown::wait_for_shutdown;
+use crate::service::ZiskNodeService;
 use anyhow::Result;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -18,12 +18,12 @@ use tracing::info;
 pub const FILE_DESCRIPTOR_SET: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/zisk_descriptor.bin"));
 
-pub struct NodeServer {
+pub struct ZiskNodeServer {
     config: NodeConfig,
     cluster_registry: Option<Arc<ClusterRegistry>>,
 }
 
-impl NodeServer {
+impl ZiskNodeServer {
     pub fn new(config: NodeConfig, cluster_registry: Option<Arc<ClusterRegistry>>) -> Self {
         Self { config, cluster_registry }
     }
@@ -40,13 +40,17 @@ impl NodeServer {
                     match CoordinatorClient::connect(url) {
                         Ok(client) => Some(client),
                         Err(e) => {
-                            tracing::warn!("Invalid coordinator URL: {e}. Running without coordinator.");
+                            tracing::warn!(
+                                "Invalid coordinator URL: {e}. Running without coordinator."
+                            );
                             None
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Could not resolve coordinator URL: {e}. Running without coordinator.");
+                    tracing::warn!(
+                        "Could not resolve coordinator URL: {e}. Running without coordinator."
+                    );
                     None
                 }
             }
@@ -62,7 +66,8 @@ impl NodeServer {
             .build_v1()?;
 
         // ── Services ──────────────────────────────────────────────────────────
-        let node_service = Arc::new(NodeService::new(self.cluster_registry, coordinator_client));
+        let node_service =
+            Arc::new(ZiskNodeService::new(self.cluster_registry, coordinator_client));
 
         let user_svc = ZiskUserApiServer::new(UserApiService::new(node_service))
             .max_decoding_message_size(MAX_MESSAGE_SIZE)

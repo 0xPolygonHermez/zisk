@@ -3,7 +3,7 @@ use tracing::info;
 use zisk_node::{
     cluster::ClusterRegistry,
     config::NodeConfig,
-    daemon::NodeServer,
+    server::ZiskNodeServer,
     logging,
 };
 
@@ -46,6 +46,6 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    NodeServer::new(config, cluster_registry).run().await?;
+    ZiskNodeServer::new(config, cluster_registry).run().await?;
     Ok(())
 }
