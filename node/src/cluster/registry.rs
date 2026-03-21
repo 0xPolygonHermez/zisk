@@ -1,4 +1,4 @@
-use crate::config::clusters_yml::{ClusterEntry, MachineEntry};
+use crate::config::clusters_yml::{ClusterEntry, NodeEntry};
 use crate::errors::{NodeError, NodeResult};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -9,7 +9,7 @@ use tracing::info;
 pub struct ClusterRegistry {
     name: String,
     cluster: ClusterEntry,
-    machines: HashMap<String, MachineEntry>,
+    nodes: HashMap<String, NodeEntry>,
 }
 
 impl ClusterRegistry {
@@ -25,7 +25,7 @@ impl ClusterRegistry {
         }
         let (name, cluster) = file.clusters.into_iter().next().unwrap();
         info!("Loaded cluster '{name}'");
-        Ok(Arc::new(Self { name, cluster, machines: file.machines }))
+        Ok(Arc::new(Self { name, cluster, nodes: file.nodes }))
     }
 
     pub fn cluster_name(&self) -> &str {
@@ -37,15 +37,15 @@ impl ClusterRegistry {
     }
 
     /// Resolves the coordinator gRPC URL from the cluster config.
-    /// Format: `http://{machine.node}:{coordinator.port}`
+    /// Format: `http://{node.address}:{coordinator.port}`
     pub fn coordinator_url(&self) -> NodeResult<String> {
         let coord = &self.cluster.coordinator;
-        let machine = self.machines.get(&coord.machine).ok_or_else(|| {
+        let node = self.nodes.get(&coord.node).ok_or_else(|| {
             NodeError::Validation(format!(
-                "coordinator machine '{}' not found in machines",
-                coord.machine
+                "coordinator node '{}' not found in nodes",
+                coord.node
             ))
         })?;
-        Ok(format!("http://{}:{}", machine.node, coord.port))
+        Ok(format!("http://{}:{}", node.address, coord.port))
     }
 }

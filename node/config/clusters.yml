@@ -5,9 +5,9 @@
 #
 # Exactly one cluster must be defined.
 
-machines:
+nodes:
   local:
-    node: "host.docker.internal"
+    address: "host.docker.internal"
     port: 7000
     gpus:
       - id: 0
@@ -16,11 +16,11 @@ machines:
 clusters:
   default:
     coordinator:
-      machine: local
+      node: local
       instance: coordinator-0
       port: 50000
     workers:
-      - machine: local
+      - node: local
         instance: worker-0
         port: 50001
         gpus: [0]

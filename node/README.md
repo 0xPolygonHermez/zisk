@@ -8,12 +8,6 @@ The ZisK node daemon (`zisklet`) — an API gateway that exposes the ZisK proof 
 
 The cluster topology (coordinator address, workers) is loaded from `clusters.yml` at startup. Exactly one cluster is supported.
 
-## Prerequisites
-
-- Linux with systemd
-- Rust toolchain (if building from source)
-- `protoc` (Protocol Buffers compiler, required at build time)
-
 ## Building
 
 ```bash
@@ -61,18 +55,18 @@ Every gRPC call is logged at `INFO` with method, status code, and latency. Reque
 
 ### `clusters.yml`
 
-Exactly one cluster must be defined. Each cluster has one coordinator and zero or more workers. Machines listed under `machines` are used to resolve coordinator and worker addresses.
+Exactly one cluster must be defined. Each cluster has one coordinator and zero or more workers. Nodes listed under `nodes` are used to resolve coordinator and worker addresses.
 
 ```yaml
-machines:
-  machine-a:
-    node: "10.0.0.1"
+nodes:
+  node-0:
+    address: "10.0.0.1"
     port: 7000
     gpus:
       - id: 0
         memory_gb: 40
-  machine-b:
-    node: "10.0.0.2"
+  node-1:
+    address: "10.0.0.2"
     port: 7000
     gpus:
       - id: 0
@@ -81,15 +75,15 @@ machines:
 clusters:
   default:
     coordinator:
-      machine: machine-a
+      node: node-0
       instance: coordinator-0
       port: 50000
     workers:
-      - machine: machine-a
+      - node: node-0
         instance: worker-0
         port: 50001
         gpus: [0]
-      - machine: machine-b
+      - node: node-1
         instance: worker-1
         port: 50001
         gpus: [0]
