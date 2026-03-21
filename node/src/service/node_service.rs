@@ -2,12 +2,12 @@ use std::sync::Arc;
 use zisk_distributed_grpc_api as coord;
 
 use crate::cluster::ClusterRegistry;
-use crate::coordinator_client::CoordinatorClient;
+use crate::coordinator_client::ZiskCoordinatorClient;
 use crate::errors::{NodeError, NodeResult};
 use crate::service::types::*;
 
 pub struct ZiskNodeService {
-    coordinator: Option<CoordinatorClient>,
+    coordinator: Option<ZiskCoordinatorClient>,
     #[allow(dead_code)]
     cluster_registry: Option<Arc<ClusterRegistry>>,
 }
@@ -15,12 +15,12 @@ pub struct ZiskNodeService {
 impl ZiskNodeService {
     pub fn new(
         cluster_registry: Option<Arc<ClusterRegistry>>,
-        coordinator: Option<CoordinatorClient>,
+        coordinator: Option<ZiskCoordinatorClient>,
     ) -> Self {
         Self { coordinator, cluster_registry }
     }
 
-    fn coordinator(&self) -> NodeResult<CoordinatorClient> {
+    fn coordinator(&self) -> NodeResult<ZiskCoordinatorClient> {
         self.coordinator.clone().ok_or(NodeError::NoCoordinator)
     }
 }

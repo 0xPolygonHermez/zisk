@@ -1,6 +1,6 @@
 use crate::cluster::ClusterRegistry;
 use crate::config::NodeConfig;
-use crate::coordinator_client::CoordinatorClient;
+use crate::coordinator_client::ZiskCoordinatorClient;
 use crate::grpc::logging::GrpcLoggingLayer;
 use crate::grpc::user::zisk_user_api_server::ZiskUserApiServer;
 use crate::grpc::user_api::UserApiService;
@@ -37,7 +37,7 @@ impl ZiskNodeServer {
             match reg.coordinator_url() {
                 Ok(url) => {
                     info!("Coordinator at {url}");
-                    match CoordinatorClient::connect(url) {
+                    match ZiskCoordinatorClient::connect(url) {
                         Ok(client) => Some(client),
                         Err(e) => {
                             tracing::warn!(
