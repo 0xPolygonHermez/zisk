@@ -95,23 +95,23 @@ clusters:
 
 ```bash
 # From the workspace root:
-docker compose -f node/docker-compose.yml up
+docker compose -f node/docker/docker-compose.yml up
 ```
 
-This builds the image from source, mounts `config/node.toml` and `config/clusters.yml`, and starts `zisklet` on port `7000`. Edit those files before starting to match your environment.
+This builds the image from source, mounts `docker/config/node.toml` and `docker/config/clusters.yml`, and starts `zisklet` on port `7000`. Edit those files before starting to match your environment.
 
 ### Build the image manually
 
 ```bash
 # From the workspace root:
-docker build -f node/Dockerfile -t zisklet .
+docker build -f node/docker/Dockerfile -t zisklet .
 ```
 
 ### Run the container manually
 
 ```bash
 docker run \
-  -v ./node/config:/etc/zisk:ro \
+  -v ./node/docker/config:/etc/zisk:ro \
   -p 7000:7000 \
   zisklet
 ```
@@ -119,7 +119,7 @@ docker run \
 ### Notes
 
 - The build context is the **workspace root**, not the crate directory — this is required so `cargo` can resolve the full workspace.
-- The `config/` directory contains sample files for local development. In production, supply your own `node.toml` and `clusters.yml` via volume mounts or a secret manager.
+- The `docker/config/` directory contains sample files for local development. In production, supply your own `node.toml` and `clusters.yml` via volume mounts or a secret manager.
 - The container runs as an unprivileged `zisklet` system user.
 
 ---

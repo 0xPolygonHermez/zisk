@@ -1,7 +1,7 @@
 # docker-compose.yml — local development / single-node deployment.
 #
 # Run from the workspace root:
-#   docker compose -f distributed/crates/node/docker-compose.yml up
+#   docker compose -f node/docker/docker-compose.yml up
 #
 # Mount your own configs by editing the volumes section, or use the
 # samples provided in config/ as a starting point.
@@ -10,8 +10,8 @@ services:
   zisklet:
     build:
       # Build context is the workspace root so Cargo.toml / Cargo.lock are available.
-      context: ../../../
-      dockerfile: distributed/crates/node/Dockerfile
+      context: ../../..
+      dockerfile: node/docker/Dockerfile
     image: zisklet:latest
     container_name: zisklet
     ports:

@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 #
 # Build context: workspace root
-#   docker build -f distributed/crates/node/Dockerfile -t zisklet .
-#   docker run -v ./config:/etc/zisk:ro -p 7000:7000 zisklet
+#   docker build -f node/docker/Dockerfile -t zisklet .
+#   docker run -v ./node/docker/config:/etc/zisk:ro -p 7000:7000 zisklet
 
 ARG HEALTH_PROBE_VERSION=v0.4.34
 
