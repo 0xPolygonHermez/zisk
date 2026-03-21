@@ -13,10 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .disable_comments(["."])
         .extern_path(".google.protobuf.Timestamp", "::prost_types::Timestamp")
         .protoc_arg("--experimental_allow_proto3_optional")
-        .compile_protos(
-            &["proto/zisk_user_api.proto"],
-            &["proto/"],
-        )?;
+        .compile_protos(&["proto/zisk_user_api.proto"], &["proto/"])?;
 
     println!("cargo:rerun-if-changed=proto/zisk_user_api.proto");
 

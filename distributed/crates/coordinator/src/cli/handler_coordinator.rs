@@ -7,8 +7,7 @@ use tracing::{error, info};
 use zisk_distributed_coordinator::{create_shutdown_signal, Config, CoordinatorGrpc};
 use zisk_distributed_grpc_api::{
     zisk_cluster_api_server::ZiskClusterApiServer,
-    zisk_coordinator_api_server::ZiskCoordinatorApiServer,
-    MAX_MESSAGE_SIZE,
+    zisk_coordinator_api_server::ZiskCoordinatorApiServer, MAX_MESSAGE_SIZE,
 };
 
 pub async fn handle(

@@ -1,11 +1,6 @@
 use clap::Parser;
 use tracing::info;
-use zisk_node::{
-    cluster::ClusterRegistry,
-    config::NodeConfig,
-    server::ZiskNodeServer,
-    logging,
-};
+use zisk_node::{cluster::ClusterRegistry, config::NodeConfig, logging, server::ZiskNodeServer};
 
 /// ZisK node daemon — manages coordinator/worker processes and exposes ZiskNodeApi.
 #[derive(Parser, Debug)]
@@ -38,7 +33,10 @@ async fn main() -> anyhow::Result<()> {
                 Some(reg)
             }
             Err(e) => {
-                tracing::warn!("Could not load clusters file '{}': {e}. Running without cluster management.", path.display());
+                tracing::warn!(
+                    "Could not load clusters file '{}': {e}. Running without cluster management.",
+                    path.display()
+                );
                 None
             }
         }

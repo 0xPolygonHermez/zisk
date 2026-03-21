@@ -10,12 +10,12 @@ use std::{pin::Pin, sync::Arc};
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
-use zisk_distributed_common::{CoordinatorMessageDto, JobId, ProgramLookupDto, ProgramStatusDto, WorkerId};
+use zisk_distributed_common::{
+    CoordinatorMessageDto, JobId, ProgramLookupDto, ProgramStatusDto, WorkerId,
+};
 use zisk_distributed_grpc_api::{
-    delete_program_request, get_program_request,
-    zisk_cluster_api_server::ZiskClusterApi,
-    zisk_coordinator_api_server::ZiskCoordinatorApi,
-    *,
+    delete_program_request, get_program_request, zisk_cluster_api_server::ZiskClusterApi,
+    zisk_coordinator_api_server::ZiskCoordinatorApi, *,
 };
 
 use crate::config::Config;
@@ -386,7 +386,6 @@ impl ZiskCoordinatorApi for CoordinatorGrpc {
         result.map(|response_dto| Response::new(response_dto.into())).map_err(Status::from)
     }
 
-
     async fn cancel_job(
         &self,
         request: Request<CancelJobRequest>,
@@ -485,7 +484,8 @@ impl ZiskCoordinatorApi for CoordinatorGrpc {
         self.validate_admin_request(&request)?;
         let program_id = request.into_inner().program_id;
 
-        let mut rx = self.coordinator
+        let mut rx = self
+            .coordinator
             .program_registry
             .subscribe_status(&program_id)
             .await
@@ -497,7 +497,8 @@ impl ZiskCoordinatorApi for CoordinatorGrpc {
         )
         .await;
 
-        match self.coordinator.program_registry.get(&ProgramLookupDto::ProgramId(program_id)).await {
+        match self.coordinator.program_registry.get(&ProgramLookupDto::ProgramId(program_id)).await
+        {
             Some(p) => Ok(Response::new(GetProgramResponse { program: Some(p.into()) })),
             None => Err(Status::not_found("program not found")),
         }
@@ -510,7 +511,8 @@ impl ZiskCoordinatorApi for CoordinatorGrpc {
         self.validate_admin_request(&request)?;
         let job_id = JobId::from(request.into_inner().job_id);
 
-        let mut rx = self.coordinator
+        let mut rx = self
+            .coordinator
             .subscribe_job_status(&job_id)
             .ok_or_else(|| Status::not_found("job not found"))?;
 

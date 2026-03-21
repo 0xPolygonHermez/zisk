@@ -58,17 +58,16 @@ use zisk_common::AsmExecutionInfo;
 use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{
     AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
-    ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
-    ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
-    HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, Job,
-    JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
-    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
-    DeleteProgramMessageDto, ProveParamsDto, ProgramLookupDto, ProgramSetupAckDto, ProgramStatusDto,
-    RegisterProgramMessageDto,
-    RegisterProgramRequestDto, RegisterProgramResponseDto, StatusInfoDto, StreamMessageKind,
-    UpdateProgramRequestDto, UpdateProgramResponseDto,
-    SystemStatusDto, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto,
-    WorkerRegisterRequestDto, WorkerState, WorkersListDto,
+    ContributionsResult, CoordinatorMessageDto, DataId, DeleteProgramMessageDto,
+    ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto,
+    ExecuteTaskResponseResultDataDto, HeartbeatAckDto, HintsModeDto, HintsSourceDto,
+    InputSourceDto, InputsModeDto, Job, JobExecutionMode, JobId, JobPhase, JobResult,
+    JobResultData, JobState, JobStatusDto, JobsListDto, LaunchProofRequestDto,
+    LaunchProofResponseDto, MetricsDto, ProgramLookupDto, ProgramSetupAckDto, ProgramStatusDto,
+    ProofDto, ProveParamsDto, RegisterProgramMessageDto, RegisterProgramRequestDto,
+    RegisterProgramResponseDto, StatusInfoDto, StreamMessageKind, SystemStatusDto,
+    UpdateProgramRequestDto, UpdateProgramResponseDto, WorkerErrorDto, WorkerId,
+    WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
 };
 
 use zisk_sdk::ZiskProofWithPublicValues;
@@ -191,7 +190,10 @@ impl Coordinator {
 
     /// Returns a watch receiver that fires whenever the job's state changes.
     /// Returns None if no job with the given job_id exists.
-    pub fn subscribe_job_status(&self, job_id: &JobId) -> Option<tokio::sync::watch::Receiver<JobState>> {
+    pub fn subscribe_job_status(
+        &self,
+        job_id: &JobId,
+    ) -> Option<tokio::sync::watch::Receiver<JobState>> {
         self.job_watchers.get(job_id).map(|tx| tx.subscribe())
     }
 
@@ -868,7 +870,11 @@ impl Coordinator {
     }
 
     /// Cancels a running or pending job, notifies assigned workers, and marks them idle.
-    pub async fn cancel_job(&self, job_id: &JobId, reason: impl AsRef<str>) -> CoordinatorResult<()> {
+    pub async fn cancel_job(
+        &self,
+        job_id: &JobId,
+        reason: impl AsRef<str>,
+    ) -> CoordinatorResult<()> {
         let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
@@ -891,10 +897,11 @@ impl Coordinator {
 
         let reason_str = reason.as_ref().to_string();
         for worker_id in &worker_ids {
-            let msg = CoordinatorMessageDto::JobCancelled(zisk_distributed_common::JobCancelledDto {
-                job_id: job_id.clone(),
-                reason: reason_str.clone(),
-            });
+            let msg =
+                CoordinatorMessageDto::JobCancelled(zisk_distributed_common::JobCancelledDto {
+                    job_id: job_id.clone(),
+                    reason: reason_str.clone(),
+                });
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 tracing::warn!("Could not notify worker {worker_id} of cancellation: {e}");
             }
@@ -952,8 +959,11 @@ impl Coordinator {
             return;
         }
         for worker_id in worker_ids {
-            if let Some(WorkerState::Computing(_)) = self.workers_pool.worker_state(worker_id).await {
-                if let Err(e) = self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Idle).await {
+            if let Some(WorkerState::Computing(_)) = self.workers_pool.worker_state(worker_id).await
+            {
+                if let Err(e) =
+                    self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Idle).await
+                {
                     tracing::warn!("Could not mark worker {worker_id} idle on cancel: {e}");
                 }
             }
@@ -1136,7 +1146,11 @@ impl Coordinator {
             Arc::new(req.zisk_elf),
         );
 
-        Ok(RegisterProgramResponseDto { program_id, hash_id, status: ProgramStatusDto::Provisioning })
+        Ok(RegisterProgramResponseDto {
+            program_id,
+            hash_id,
+            status: ProgramStatusDto::Provisioning,
+        })
     }
 
     /// Updates mutable fields of an existing program. If a new ELF is provided, recomputes
@@ -1215,7 +1229,9 @@ impl Coordinator {
         }
 
         // 2. Name-only rename: rename the disk file so the name survives restarts.
-        if new_hash_id.is_none() && req.name.as_deref().map(|n| n != current.name.as_str()).unwrap_or(false) {
+        if new_hash_id.is_none()
+            && req.name.as_deref().map(|n| n != current.name.as_str()).unwrap_or(false)
+        {
             let old_path =
                 self.program_registry.elf_path(&current.name, &req.program_id, &current.hash_id);
             let new_path =
@@ -1247,7 +1263,12 @@ impl Coordinator {
             );
         }
 
-        info!("Updated program {} (hash {} → {})", &program_id[..8], &old_hash[..8], &final_hash[..8]);
+        info!(
+            "Updated program {} (hash {} → {})",
+            &program_id[..8],
+            &old_hash[..8],
+            &final_hash[..8]
+        );
         let status =
             if new_hash_id.is_some() { ProgramStatusDto::Provisioning } else { current.status };
         Ok(UpdateProgramResponseDto { program_id, hash_id: final_hash, status })
@@ -1255,10 +1276,7 @@ impl Coordinator {
 
     /// Deletes a program from the registry and broadcasts the deletion to all connected workers
     /// so they can clean up their local ELF cache.
-    pub async fn delete_program(
-        &self,
-        lookup: ProgramLookupDto,
-    ) -> CoordinatorResult<()> {
+    pub async fn delete_program(&self, lookup: ProgramLookupDto) -> CoordinatorResult<()> {
         // Fetch current state before deleting — need name + hash_id for the broadcast.
         let current = self
             .program_registry
@@ -1299,8 +1317,7 @@ impl Coordinator {
 
         tokio::spawn(async move {
             for (hash_id, name, program_id) in entries {
-                let elf_path =
-                    programs_dir.join(format!("{name}-{program_id}-{hash_id}.elf"));
+                let elf_path = programs_dir.join(format!("{name}-{program_id}-{hash_id}.elf"));
                 let elf = match tokio::fs::read(&elf_path).await {
                     Ok(b) => b,
                     Err(e) => {

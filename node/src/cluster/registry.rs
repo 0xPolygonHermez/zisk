@@ -41,10 +41,7 @@ impl ClusterRegistry {
     pub fn coordinator_url(&self) -> NodeResult<String> {
         let coord = &self.cluster.coordinator;
         let node = self.nodes.get(&coord.node).ok_or_else(|| {
-            NodeError::Validation(format!(
-                "coordinator node '{}' not found in nodes",
-                coord.node
-            ))
+            NodeError::Validation(format!("coordinator node '{}' not found in nodes", coord.node))
         })?;
         Ok(format!("http://{}:{}", node.address, coord.port))
     }

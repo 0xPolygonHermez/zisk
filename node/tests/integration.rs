@@ -3,17 +3,17 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::oneshot;
 use tonic::transport::Channel;
-use tonic_health::pb::health_client::HealthClient;
 use tonic_health::pb::health_check_response::ServingStatus;
+use tonic_health::pb::health_client::HealthClient;
 use tonic_health::pb::HealthCheckRequest;
 use tonic_health::server::health_reporter;
 use tonic_reflection::server::Builder as ReflectionBuilder;
-use zisk_node::server::node_server::FILE_DESCRIPTOR_SET;
 use zisk_node::grpc::logging::GrpcLoggingLayer;
 use zisk_node::grpc::user::zisk_user_api_client::ZiskUserApiClient;
 use zisk_node::grpc::user::zisk_user_api_server::ZiskUserApiServer;
 use zisk_node::grpc::user::GetNodeInfoRequest as UserGetNodeInfoRequest;
 use zisk_node::grpc::user_api::UserApiService;
+use zisk_node::server::node_server::FILE_DESCRIPTOR_SET;
 use zisk_node::service::ZiskNodeService;
 
 // ── Test server ───────────────────────────────────────────────────────────────
@@ -82,10 +82,7 @@ async fn user_api_list_jobs_returns_unavailable_without_coordinator() {
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
 
-    let err = client
-        .list_jobs(ListJobsRequest { since: None, until: None })
-        .await
-        .unwrap_err();
+    let err = client.list_jobs(ListJobsRequest { since: None, until: None }).await.unwrap_err();
 
     assert_eq!(err.code(), tonic::Code::Unavailable);
 }
@@ -97,10 +94,8 @@ async fn user_api_get_job_returns_unavailable_without_coordinator() {
     let (addr, _shutdown) = start_test_server().await;
     let mut client = ZiskUserApiClient::new(channel(addr));
 
-    let err = client
-        .get_job(GetJobRequest { job_id: "nonexistent".to_string() })
-        .await
-        .unwrap_err();
+    let err =
+        client.get_job(GetJobRequest { job_id: "nonexistent".to_string() }).await.unwrap_err();
 
     assert_eq!(err.code(), tonic::Code::Unavailable);
 }
@@ -254,11 +249,8 @@ async fn health_reports_serving_on_startup() {
     let mut client = HealthClient::new(channel(addr));
 
     // Empty service name checks the overall server health.
-    let resp = client
-        .check(HealthCheckRequest { service: String::new() })
-        .await
-        .unwrap()
-        .into_inner();
+    let resp =
+        client.check(HealthCheckRequest { service: String::new() }).await.unwrap().into_inner();
 
     assert_eq!(resp.status(), ServingStatus::Serving);
 }
@@ -285,11 +277,8 @@ async fn health_transitions_to_not_serving_on_shutdown() {
     let mut client = HealthClient::new(channel(addr));
 
     // Confirm SERVING before shutdown.
-    let resp = client
-        .check(HealthCheckRequest { service: String::new() })
-        .await
-        .unwrap()
-        .into_inner();
+    let resp =
+        client.check(HealthCheckRequest { service: String::new() }).await.unwrap().into_inner();
     assert_eq!(resp.status(), ServingStatus::Serving);
 
     // Trigger shutdown. The shutdown future calls set_not_serving on both

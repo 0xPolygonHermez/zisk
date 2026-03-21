@@ -5,10 +5,10 @@
 //! representations like gRPC protobuf types or serialization formats.
 
 use crate::{ComputeCapacity, DataId, JobId, JobPhase, JobState, WorkerId, WorkerState};
-use std::sync::Arc;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 pub struct StatusInfoDto {
     pub service_name: String,

@@ -12,15 +12,15 @@ use crate::{
     contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
     execute_task_response, job_status_response, jobs_list_response, launch_proof_response,
     system_status_response, workers_list_response, AggParams, Challenges,
-    ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage,
+    ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage, DeleteProgram,
     ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, HintsMode, InputMode,
     JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, LaunchProofRequest,
-    LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, ProgramInfo, ProgramStatus,
-    DeleteProgram, ProgramSetupAck, RegisterProgram, RegisterProgramRequest, RegisterProgramResponse,
-    UpdateProgramRequest, UpdateProgramResponse,
-    Shutdown, StatusInfoResponse, StreamData, StreamPayload, StreamType, SystemStatus,
-    SystemStatusResponse, TaskType, WorkerError, WorkerInfo, WorkerReconnectRequest,
-    WorkerRegisterRequest, WorkerRegisterResponse, WorkersList, WorkersListResponse,
+    LaunchProofResponse, Metrics, ProgramInfo, ProgramSetupAck, ProgramStatus, Proof, ProofList,
+    ProveParams, RegisterProgram, RegisterProgramRequest, RegisterProgramResponse, Shutdown,
+    StatusInfoResponse, StreamData, StreamPayload, StreamType, SystemStatus, SystemStatusResponse,
+    TaskType, UpdateProgramRequest, UpdateProgramResponse, WorkerError, WorkerInfo,
+    WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse, WorkersList,
+    WorkersListResponse,
 };
 use zisk_distributed_common::*;
 

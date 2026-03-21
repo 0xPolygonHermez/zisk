@@ -105,8 +105,7 @@ impl ProgramRegistry {
                                 &program_id[..8],
                                 &hash_id[..8]
                             );
-                            let (status_tx, _) =
-                                watch::channel(ProgramStatusDto::Ready);
+                            let (status_tx, _) = watch::channel(ProgramStatusDto::Ready);
                             states.insert(
                                 hash_id.to_string(),
                                 ProgramState {
@@ -139,7 +138,15 @@ impl ProgramRegistry {
     /// Registers a new program. The ELF file must already be written to `elf_path()` before
     /// calling this.
     pub async fn register(&self, params: RegisterProgramParams) -> CoordinatorResult<()> {
-        let RegisterProgramParams { program_id, hash_id, name, description, author, metadata, expected_acks } = params;
+        let RegisterProgramParams {
+            program_id,
+            hash_id,
+            name,
+            description,
+            author,
+            metadata,
+            expected_acks,
+        } = params;
         let mut states = self.states.write().await;
         if states.contains_key(&hash_id) {
             return Err(CoordinatorError::InvalidRequest(format!(
@@ -156,8 +163,11 @@ impl ProgramRegistry {
                 expected_acks
             );
         }
-        let initial_status =
-            if expected_acks == 0 { ProgramStatusDto::Ready } else { ProgramStatusDto::Provisioning };
+        let initial_status = if expected_acks == 0 {
+            ProgramStatusDto::Ready
+        } else {
+            ProgramStatusDto::Provisioning
+        };
         let (status_tx, _) = watch::channel(initial_status);
         states.insert(
             hash_id,
@@ -180,7 +190,10 @@ impl ProgramRegistry {
     pub async fn ack_worker(&self, dto: &ProgramSetupAckDto, worker_id: &WorkerId) {
         let mut states = self.states.write().await;
         let Some(state) = states.get_mut(&dto.hash_id) else {
-            warn!("Received ack for unknown program hash {}", &dto.hash_id[..8.min(dto.hash_id.len())]);
+            warn!(
+                "Received ack for unknown program hash {}",
+                &dto.hash_id[..8.min(dto.hash_id.len())]
+            );
             return;
         };
         state.received_acks.insert(worker_id.clone(), dto.success);
@@ -221,10 +234,9 @@ impl ProgramRegistry {
                 .iter()
                 .find(|(_, s)| &s.program_id == program_id)
                 .map(|(hash_id, s)| to_dto(hash_id, s)),
-            ProgramLookupDto::Name(name) => states
-                .iter()
-                .find(|(_, s)| &s.name == name)
-                .map(|(hash_id, s)| to_dto(hash_id, s)),
+            ProgramLookupDto::Name(name) => {
+                states.iter().find(|(_, s)| &s.name == name).map(|(hash_id, s)| to_dto(hash_id, s))
+            }
         }
     }
 
@@ -237,8 +249,19 @@ impl ProgramRegistry {
     /// Updates mutable fields of an existing program. If `new_hash_id` is supplied, the
     /// entry is re-keyed and the caller is responsible for renaming the ELF file and
     /// re-triggering rom-setup. Returns `(program_id, old_hash_id, new_hash_id)`.
-    pub async fn update(&self, params: UpdateProgramParams) -> CoordinatorResult<(String, String, String)> {
-        let UpdateProgramParams { program_id, name, description, author, metadata, new_hash_id, new_expected_acks } = params;
+    pub async fn update(
+        &self,
+        params: UpdateProgramParams,
+    ) -> CoordinatorResult<(String, String, String)> {
+        let UpdateProgramParams {
+            program_id,
+            name,
+            description,
+            author,
+            metadata,
+            new_hash_id,
+            new_expected_acks,
+        } = params;
         let mut states = self.states.write().await;
 
         let old_hash_id = states
@@ -292,7 +315,9 @@ impl ProgramRegistry {
 
         let hash_id = match lookup {
             ProgramLookupDto::HashId(h) => {
-                if states.contains_key(h.as_str()) { h.clone() } else {
+                if states.contains_key(h.as_str()) {
+                    h.clone()
+                } else {
                     return Err(CoordinatorError::NotFoundOrInaccessible);
                 }
             }
@@ -331,12 +356,12 @@ impl ProgramRegistry {
 
     /// Returns a watch receiver that fires whenever the program's status changes.
     /// Returns None if no program with the given program_id exists.
-    pub async fn subscribe_status(&self, program_id: &str) -> Option<watch::Receiver<ProgramStatusDto>> {
+    pub async fn subscribe_status(
+        &self,
+        program_id: &str,
+    ) -> Option<watch::Receiver<ProgramStatusDto>> {
         let states = self.states.read().await;
-        states
-            .values()
-            .find(|s| s.program_id == program_id)
-            .map(|s| s.status_tx.subscribe())
+        states.values().find(|s| s.program_id == program_id).map(|s| s.status_tx.subscribe())
     }
 
     pub fn programs_dir(&self) -> &Path {

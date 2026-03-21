@@ -1,7 +1,7 @@
 use crate::grpc::user;
 use crate::service::types::{
     CancelJobResult, JobInfo, JobKind, JobPhase, JobStatusCode, JobSummary, NodeVersionInfo,
-    Proof, ProofKind, ProgramLookup, ProgramOrHashLookup, ProgramStatus, ProgramSummary,
+    ProgramLookup, ProgramOrHashLookup, ProgramStatus, ProgramSummary, Proof, ProofKind,
     RegisterProgramParams, RegisterProgramResult, SetupInfo, UpdateProgramParams,
     UpdateProgramResult,
 };
@@ -9,16 +9,10 @@ use crate::service::types::{
 // ── Proto helpers ─────────────────────────────────────────────────────────────
 
 pub(crate) fn ms_to_timestamp(ms: u64) -> prost_types::Timestamp {
-    prost_types::Timestamp {
-        seconds: (ms / 1000) as i64,
-        nanos: ((ms % 1000) * 1_000_000) as i32,
-    }
+    prost_types::Timestamp { seconds: (ms / 1000) as i64, nanos: ((ms % 1000) * 1_000_000) as i32 }
 }
 
-pub(crate) fn job_status_to_proto(
-    code: &JobStatusCode,
-    phase: &JobPhase,
-) -> user::JobStatus {
+pub(crate) fn job_status_to_proto(code: &JobStatusCode, phase: &JobPhase) -> user::JobStatus {
     let code = match code {
         JobStatusCode::Queued => user::JobStatusCode::Queued,
         JobStatusCode::Running => user::JobStatusCode::Running,
@@ -197,9 +191,9 @@ impl From<JobInfo> for user::JobInfo {
     fn from(j: JobInfo) -> Self {
         let status = job_status_to_proto(&j.status_code, &j.phase);
         let completed_at = j.completed_at_ms.map(ms_to_timestamp);
-        let result = j.result.map(|p| user::JobResult {
-            result: Some(user::job_result::Result::Prove(p.into())),
-        });
+        let result = j
+            .result
+            .map(|p| user::JobResult { result: Some(user::job_result::Result::Prove(p.into())) });
 
         Self {
             job_id: j.job_id,
@@ -216,9 +210,6 @@ impl From<JobInfo> for user::JobInfo {
 
 impl From<CancelJobResult> for user::CancelJobResponse {
     fn from(r: CancelJobResult) -> Self {
-        Self {
-            job_id: r.job_id,
-            job_status: Some(job_status_to_proto(&r.status_code, &r.phase)),
-        }
+        Self { job_id: r.job_id, job_status: Some(job_status_to_proto(&r.status_code, &r.phase)) }
     }
 }

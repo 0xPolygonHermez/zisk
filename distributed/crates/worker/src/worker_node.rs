@@ -12,8 +12,8 @@ use tonic::Request;
 use tracing::{error, info, warn};
 use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{
-    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto,
-    DeleteProgramMessageDto, RegisterProgramMessageDto, StreamDataDto, WorkerState,
+    AggProofData, AggregationParams, DataCtx, DeleteProgramMessageDto, HintsSourceDto,
+    InputSourceDto, RegisterProgramMessageDto, StreamDataDto, WorkerState,
 };
 use zisk_distributed_common::{DataId, JobId};
 use zisk_distributed_grpc_api::contribution_params::InputSource;
@@ -478,12 +478,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let programs_dir = cache_dir.join("programs");
 
         if let Err(e) = std::fs::create_dir_all(&programs_dir) {
-            let err_msg = format!("Failed to create programs dir {}: {}", programs_dir.display(), e);
+            let err_msg =
+                format!("Failed to create programs dir {}: {}", programs_dir.display(), e);
             error!("{}", err_msg);
             return self.send_program_setup_ack(&msg.hash_id, false, err_msg, message_sender);
         }
 
-        let elf_path = programs_dir.join(format!("{}-{}-{}.elf", msg.name, msg.program_id, msg.hash_id));
+        let elf_path =
+            programs_dir.join(format!("{}-{}-{}.elf", msg.name, msg.program_id, msg.hash_id));
         let stem = format!("{}-{}-{}", msg.name, msg.program_id, msg.hash_id);
 
         // If cache files already exist the worker has already set up this program — ack immediately.
@@ -517,11 +519,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let elf_arc = Arc::clone(&msg.zisk_elf);
         let stem_clone = stem.clone();
         let cache_dir_clone = cache_dir.clone();
-        let result =
-            tokio::task::spawn_blocking(move || {
-                generate_assembly(&elf_arc, &stem_clone, &cache_dir_clone, false, false)
-            })
-            .await;
+        let result = tokio::task::spawn_blocking(move || {
+            generate_assembly(&elf_arc, &stem_clone, &cache_dir_clone, false, false)
+        })
+        .await;
 
         let (success, error_msg) = match result {
             Ok(Ok(())) => {
