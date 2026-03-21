@@ -87,7 +87,7 @@ impl From<JobStatusDto> for JobStatus {
         JobStatus {
             job_id: dto.job_id.into(),
             data_id: dto.data_id.into(),
-            phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
+            phase: dto.phase.map(|p| p.to_string()).unwrap_or_default(),
             state: dto.state.to_string(),
             assigned_workers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
             start_time: dto.start_time,
@@ -98,16 +98,7 @@ impl From<JobStatusDto> for JobStatus {
 
 impl From<JobStatusDto> for JobStatusResponse {
     fn from(dto: JobStatusDto) -> Self {
-        let job_status = JobStatus {
-            job_id: dto.job_id.into(),
-            data_id: dto.data_id.into(),
-            phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
-            state: dto.state.to_string(),
-            assigned_workers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
-            start_time: dto.start_time,
-            duration_ms: dto.duration_ms,
-        };
-        JobStatusResponse { result: Some(job_status_response::Result::Job(job_status)) }
+        JobStatusResponse { result: Some(job_status_response::Result::Job(dto.into())) }
     }
 }
 

@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
 use zisk_distributed_common::{
-    CoordinatorMessageDto, JobId, ProgramLookupDto, ProgramStatusDto, WorkerId,
+    CoordinatorMessageDto, JobId, JobState, ProgramLookupDto, ProgramStatusDto, WorkerId,
 };
 use zisk_distributed_grpc_api::{
     delete_program_request, get_program_request, zisk_cluster_api_server::ZiskClusterApi,
@@ -399,9 +399,17 @@ impl ZiskCoordinatorApi for CoordinatorGrpc {
         self.coordinator
             .cancel_job(&job_id, &reason)
             .await
-            .map(|_| {
+            .map(|previous_state| {
+                let (previous_state_str, phase) = match &previous_state {
+                    JobState::Running(p) => ("Running".to_string(), Some(p.to_string())),
+                    other => (other.to_string(), None),
+                };
                 Response::new(CancelJobResponse {
-                    result: Some(cancel_job_response::Result::JobId(job_id.as_string())),
+                    result: Some(cancel_job_response::Result::Job(CancelJobSuccess {
+                        job_id: job_id.as_string(),
+                        previous_state: previous_state_str,
+                        phase,
+                    })),
                 })
             })
             .map_err(Status::from)

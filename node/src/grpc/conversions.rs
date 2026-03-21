@@ -1,41 +1,44 @@
 use crate::grpc::user;
+use crate::util::ms_to_timestamp;
 use crate::service::types::{
-    CancelJobResult, JobInfo, JobKind, JobPhase, JobStatusCode, JobSummary, NodeVersionInfo,
+    CancelJobResult, JobInfo, JobKind, JobPhase, JobStatus, JobSummary, NodeVersionInfo,
     ProgramLookup, ProgramOrHashLookup, ProgramStatus, ProgramSummary, Proof, ProofKind,
     RegisterProgramParams, RegisterProgramResult, SetupInfo, UpdateProgramParams,
     UpdateProgramResult,
 };
 
-// ── Proto helpers ─────────────────────────────────────────────────────────────
 
-pub(crate) fn ms_to_timestamp(ms: u64) -> prost_types::Timestamp {
-    prost_types::Timestamp { seconds: (ms / 1000) as i64, nanos: ((ms % 1000) * 1_000_000) as i32 }
+impl From<JobPhase> for user::JobPhase {
+    fn from(p: JobPhase) -> Self {
+        match p {
+            JobPhase::Contributions => Self::Contributions,
+            JobPhase::Prove => Self::Prove,
+            JobPhase::Aggregate => Self::Aggregate,
+        }
+    }
 }
 
-pub(crate) fn job_status_to_proto(code: &JobStatusCode, phase: &JobPhase) -> user::JobStatus {
-    let code = match code {
-        JobStatusCode::Queued => user::JobStatusCode::Queued,
-        JobStatusCode::Running => user::JobStatusCode::Running,
-        JobStatusCode::Completed => user::JobStatusCode::Completed,
-        JobStatusCode::Failed => user::JobStatusCode::Failed,
-        JobStatusCode::Cancelled => user::JobStatusCode::Cancelled,
-        JobStatusCode::Unspecified => user::JobStatusCode::JobStatusUnspecified,
-    } as i32;
-
-    let phase = match phase {
-        JobPhase::Contributions => user::JobPhase::Contributions,
-        JobPhase::Prove => user::JobPhase::Prove,
-        JobPhase::Aggregate => user::JobPhase::Aggregate,
-    } as i32;
-
-    user::JobStatus { code, phase }
+impl From<JobStatus> for user::JobStatus {
+    fn from(status: JobStatus) -> Self {
+        let (code, phase) = match status {
+            JobStatus::Queued => (user::JobStatusCode::Queued, None),
+            JobStatus::Running(p) => (user::JobStatusCode::Running, Some(user::JobPhase::from(p) as i32)),
+            JobStatus::WaitingForInput => (user::JobStatusCode::WaitingForInput, None),
+            JobStatus::Completed => (user::JobStatusCode::Completed, None),
+            JobStatus::Failed => (user::JobStatusCode::Failed, None),
+            JobStatus::Cancelled => (user::JobStatusCode::Cancelled, None),
+        };
+        Self { code: code as i32, phase }
+    }
 }
 
-fn program_status_to_proto(s: &ProgramStatus) -> i32 {
-    match s {
-        ProgramStatus::Provisioning => user::ProgramStatus::Provisioning as i32,
-        ProgramStatus::Ready => user::ProgramStatus::Ready as i32,
-        ProgramStatus::Failed => user::ProgramStatus::Failed as i32,
+impl From<ProgramStatus> for user::ProgramStatus {
+    fn from(s: ProgramStatus) -> Self {
+        match s {
+            ProgramStatus::Provisioning => Self::Provisioning,
+            ProgramStatus::Ready => Self::Ready,
+            ProgramStatus::Failed => Self::Failed,
+        }
     }
 }
 
@@ -87,11 +90,13 @@ impl From<user::delete_guest_program_request::Lookup> for ProgramOrHashLookup {
 
 // ── Response conversions: domain → user proto ─────────────────────────────────
 
-fn proof_kind_to_proto(k: &ProofKind) -> i32 {
-    match k {
-        ProofKind::Stark => user::ProofKind::Stark as i32,
-        ProofKind::StarkMinimal => user::ProofKind::StarkMinimal as i32,
-        ProofKind::Plonk => user::ProofKind::Plonk as i32,
+impl From<ProofKind> for user::ProofKind {
+    fn from(k: ProofKind) -> Self {
+        match k {
+            ProofKind::Stark => Self::Stark,
+            ProofKind::StarkMinimal => Self::StarkMinimal,
+            ProofKind::Plonk => Self::Plonk,
+        }
     }
 }
 
@@ -99,7 +104,7 @@ impl From<JobKind> for user::JobKind {
     fn from(k: JobKind) -> Self {
         let kind = match k {
             JobKind::Prove(proof_kind) => {
-                user::job_kind::Kind::Prove(proof_kind_to_proto(&proof_kind))
+                user::job_kind::Kind::Prove(user::ProofKind::from(proof_kind) as i32)
             }
         };
         Self { kind: Some(kind) }
@@ -112,7 +117,7 @@ impl From<Proof> for user::Proof {
             proof_id: p.proof_id,
             program_id: p.program_id,
             verification_key: p.verification_key,
-            proof_kind: proof_kind_to_proto(&p.proof_kind),
+            proof_kind: user::ProofKind::from(p.proof_kind) as i32,
             data: p.data,
             public_inputs: p.public_inputs,
             started_at: p.started_at_ms.map(ms_to_timestamp),
@@ -126,7 +131,11 @@ impl From<SetupInfo> for user::SetupInfo {
         Self {
             setup_id: s.setup_id,
             verifier_id: s.verifier_id,
-            proof_kinds: s.proof_kinds.iter().map(proof_kind_to_proto).collect(),
+            proof_kinds: s
+                .proof_kinds
+                .into_iter()
+                .map(|k| user::ProofKind::from(k) as i32)
+                .collect(),
         }
     }
 }
@@ -150,7 +159,7 @@ impl From<ProgramSummary> for user::GuestProgramSummary {
             author: p.author,
             metadata: p.metadata,
             created_at: p.created_at_ms.map(ms_to_timestamp),
-            status: program_status_to_proto(&p.status),
+            status: user::ProgramStatus::from(p.status) as i32,
         }
     }
 }
@@ -160,7 +169,7 @@ impl From<RegisterProgramResult> for user::RegisterGuestProgramResponse {
         Self {
             program_id: r.program_id,
             hash_id: r.hash_id,
-            status: program_status_to_proto(&r.status),
+            status: user::ProgramStatus::from(r.status) as i32,
         }
     }
 }
@@ -170,7 +179,7 @@ impl From<UpdateProgramResult> for user::UpdateGuestProgramResponse {
         Self {
             program_id: r.program_id,
             hash_id: r.hash_id,
-            status: program_status_to_proto(&r.status),
+            status: user::ProgramStatus::from(r.status) as i32,
         }
     }
 }
@@ -181,7 +190,7 @@ impl From<JobSummary> for user::JobSummary {
             job_id: j.job_id,
             program_id: j.program_id,
             kind: j.kind.map(Into::into),
-            status: Some(job_status_to_proto(&j.status_code, &j.phase)),
+            status: Some(j.status.into()),
             created_at: Some(ms_to_timestamp(j.created_at_ms)),
         }
     }
@@ -189,7 +198,7 @@ impl From<JobSummary> for user::JobSummary {
 
 impl From<JobInfo> for user::JobInfo {
     fn from(j: JobInfo) -> Self {
-        let status = job_status_to_proto(&j.status_code, &j.phase);
+        let status = j.status.into();
         let completed_at = j.completed_at_ms.map(ms_to_timestamp);
         let result = j
             .result
@@ -210,6 +219,6 @@ impl From<JobInfo> for user::JobInfo {
 
 impl From<CancelJobResult> for user::CancelJobResponse {
     fn from(r: CancelJobResult) -> Self {
-        Self { job_id: r.job_id, job_status: Some(job_status_to_proto(&r.status_code, &r.phase)) }
+        Self { job_id: r.job_id, job_status: Some(r.previous_status.into()) }
     }
 }

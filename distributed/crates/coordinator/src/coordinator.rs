@@ -874,7 +874,7 @@ impl Coordinator {
         &self,
         job_id: &JobId,
         reason: impl AsRef<str>,
-    ) -> CoordinatorResult<()> {
+    ) -> CoordinatorResult<JobState> {
         let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
@@ -910,7 +910,7 @@ impl Coordinator {
         self.ensure_workers_idle_by_ids(&worker_ids, &previous_state).await;
 
         info!("Cancelled job {job_id} (reason: {})", reason.as_ref());
-        Ok(())
+        Ok(previous_state)
     }
 
     /// Updates all workers of a failed job, marking those that have finished their computation
@@ -2202,7 +2202,7 @@ impl Coordinator {
                 // This represents the first worker to complete Phase 2, implementing "first-wins" selection
                 job.agg_worker_id = Some(candidate_worker_id.clone());
                 job.change_state(JobState::Running(JobPhase::Aggregate));
-                self.notify_job_state(&job);
+                self.notify_job_state(job);
 
                 // Update worker state
                 self.workers_pool

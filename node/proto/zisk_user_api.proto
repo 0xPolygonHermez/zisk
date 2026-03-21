@@ -328,8 +328,8 @@ message JobSummary {
 // Running(JobPhase) cannot be expressed as a proto enum with a payload.
 // phase is only meaningful when code == RUNNING.
 message JobStatus {
-  JobStatusCode code  = 1;
-  JobPhase      phase = 2; // only meaningful when code == RUNNING
+  JobStatusCode    code  = 1;
+  optional JobPhase phase = 2; // present only when code == RUNNING
 }
 
 enum JobStatusCode {

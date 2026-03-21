@@ -28,8 +28,8 @@ pub enum NodeError {
     #[error("Coordinator error ({code}): {message}")]
     CoordinatorError { code: String, message: String },
 
-    #[error("Coordinator returned an empty response (protocol error)")]
-    EmptyCoordinatorResponse,
+    #[error("Coordinator returned an invalid response: {0}")]
+    InvalidCoordinatorResponse(String),
 
     /// Propagated transport-level error from a coordinator RPC call.
     #[error("Coordinator RPC error: {0}")]
@@ -37,6 +37,12 @@ pub enum NodeError {
 
     #[error("YAML error: {0}")]
     Yaml(#[from] serde_yaml::Error),
+}
+
+impl From<zisk_distributed_grpc_api::ErrorResponse> for NodeError {
+    fn from(e: zisk_distributed_grpc_api::ErrorResponse) -> Self {
+        NodeError::CoordinatorError { code: e.code, message: e.message }
+    }
 }
 
 impl From<NodeError> for tonic::Status {
@@ -53,7 +59,7 @@ impl From<NodeError> for tonic::Status {
                 _ => tonic::Status::internal(e.to_string()),
             },
             NodeError::CoordinatorRpc(s) => s,
-            NodeError::EmptyCoordinatorResponse => tonic::Status::internal(e.to_string()),
+            NodeError::InvalidCoordinatorResponse(_) => tonic::Status::internal(e.to_string()),
             // Config, Io, Yaml fall through here
             _ => tonic::Status::internal(e.to_string()),
         }

@@ -417,7 +417,7 @@ struct CancelJobRequest {
 
 struct CancelJobResponse {
     job_id:     String,
-    job_status: JobStatus,
+    job_status: JobStatus, // state the job was in before cancellation.
 }
 ```
 

@@ -90,9 +90,17 @@ message CancelJobRequest {
 
 message CancelJobResponse {
   oneof result {
-    string job_id = 1;
+    CancelJobSuccess job = 1;
     ErrorResponse error = 2;
   }
+}
+
+message CancelJobSuccess {
+  string job_id = 1;
+  // State the job was in before cancellation (e.g. "Created", "Running").
+  string previous_state = 2;
+  // Phase within the running state. Absent if previous_state was not "Running".
+  optional string phase = 3;
 }
 
 message LaunchProofRequest {

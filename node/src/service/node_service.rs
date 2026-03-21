@@ -5,6 +5,7 @@ use crate::cluster::ClusterRegistry;
 use crate::coordinator_client::ZiskCoordinatorClient;
 use crate::errors::{NodeError, NodeResult};
 use crate::service::types::*;
+use crate::util::timestamp_to_ms;
 
 pub struct ZiskNodeService {
     coordinator: Option<ZiskCoordinatorClient>,
@@ -27,72 +28,35 @@ impl ZiskNodeService {
 
 // ── Private coordinator → domain type conversions ─────────────────────────────
 
-fn map_program_status(raw: i32) -> ProgramStatus {
-    match coord::ProgramStatus::try_from(raw) {
-        Ok(coord::ProgramStatus::Ready) => ProgramStatus::Ready,
-        Ok(coord::ProgramStatus::Failed) => ProgramStatus::Failed,
-        _ => ProgramStatus::Provisioning,
-    }
-}
-
-fn timestamp_to_ms(ts: Option<prost_types::Timestamp>) -> Option<u64> {
-    ts.map(|t| (t.seconds as u64) * 1000 + (t.nanos as u64) / 1_000_000)
-}
-
-fn map_job_status(state: &str) -> JobStatusCode {
-    match state {
-        "Created" => JobStatusCode::Queued,
-        s if s.starts_with("Running") => JobStatusCode::Running,
-        "Completed" => JobStatusCode::Completed,
-        "Failed" => JobStatusCode::Failed,
-        "Cancelled" => JobStatusCode::Cancelled,
-        _ => JobStatusCode::Unspecified,
-    }
-}
-
-fn map_job_phase(phase: &str) -> JobPhase {
-    match phase {
-        "Prove" => JobPhase::Prove,
-        "Aggregate" => JobPhase::Aggregate,
-        _ => JobPhase::Contributions,
-    }
-}
-
-fn is_terminal(code: &JobStatusCode) -> bool {
-    matches!(code, JobStatusCode::Completed | JobStatusCode::Failed | JobStatusCode::Cancelled)
-}
-
-fn coord_job_to_summary(j: coord::JobStatus) -> JobSummary {
-    JobSummary {
+fn coord_job_to_summary(j: coord::JobStatus) -> NodeResult<JobSummary> {
+    let status = JobStatus::from_coordinator(&j.state, Some(&j.phase))?;
+    Ok(JobSummary {
         job_id: j.job_id,
         program_id: j.data_id,
         kind: None, // coordinator JobStatus does not carry job kind
-        status_code: map_job_status(&j.state),
-        phase: map_job_phase(&j.phase),
+        status,
         created_at_ms: j.start_time,
-    }
+    })
 }
 
-fn coord_job_to_info(j: coord::JobStatus) -> JobInfo {
-    let status_code = map_job_status(&j.state);
+fn coord_job_to_info(j: coord::JobStatus) -> NodeResult<JobInfo> {
+    let status = JobStatus::from_coordinator(&j.state, Some(&j.phase))?;
     let completed_at_ms =
-        if is_terminal(&status_code) { Some(j.start_time + j.duration_ms) } else { None };
-
-    JobInfo {
+        if status.is_terminal() { Some(j.start_time + j.duration_ms) } else { None };
+    Ok(JobInfo {
         job_id: j.job_id,
         program_id: j.data_id,
         kind: None, // coordinator JobStatus does not carry job kind
-        status_code,
-        phase: map_job_phase(&j.phase),
+        status,
         created_at_ms: j.start_time,
         completed_at_ms,
         result: None, // coordinator JobStatus does not carry proof data
         error: None,  // coordinator JobStatus does not carry error details
-    }
+    })
 }
 
-fn coord_program_to_summary(p: coord::ProgramInfo) -> ProgramSummary {
-    ProgramSummary {
+fn coord_program_to_summary(p: coord::ProgramInfo) -> NodeResult<ProgramSummary> {
+    Ok(ProgramSummary {
         program_id: p.program_id,
         hash_id: p.hash_id,
         name: p.name,
@@ -100,19 +64,15 @@ fn coord_program_to_summary(p: coord::ProgramInfo) -> ProgramSummary {
         author: p.author,
         metadata: p.metadata,
         created_at_ms: timestamp_to_ms(p.created_at),
-        status: map_program_status(p.status),
-    }
-}
-
-fn map_coord_error(e: coord::ErrorResponse) -> NodeError {
-    NodeError::CoordinatorError { code: e.code, message: e.message }
+        status: ProgramStatus::try_from(p.status)?,
+    })
 }
 
 fn handle_job_status_response(resp: coord::JobStatusResponse) -> NodeResult<JobInfo> {
     match resp.result {
-        Some(coord::job_status_response::Result::Job(j)) => Ok(coord_job_to_info(j)),
-        Some(coord::job_status_response::Result::Error(e)) => Err(map_coord_error(e)),
-        None => Err(NodeError::EmptyCoordinatorResponse),
+        Some(coord::job_status_response::Result::Job(j)) => coord_job_to_info(j),
+        Some(coord::job_status_response::Result::Error(e)) => Err(NodeError::from(e)),
+        None => Err(NodeError::InvalidCoordinatorResponse("empty response".into())),
     }
 }
 
@@ -129,7 +89,7 @@ impl ZiskNodeService {
     pub async fn list_programs(&self) -> NodeResult<Vec<ProgramSummary>> {
         let mut client = self.coordinator()?;
         let resp = client.list_programs(coord::ListProgramsRequest {}).await?.into_inner();
-        Ok(resp.programs.into_iter().map(coord_program_to_summary).collect())
+        resp.programs.into_iter().map(coord_program_to_summary).collect::<NodeResult<Vec<_>>>()
     }
 
     pub async fn get_program(&self, lookup: ProgramLookup) -> NodeResult<ProgramSummary> {
@@ -149,6 +109,7 @@ impl ZiskNodeService {
 
         resp.program
             .map(coord_program_to_summary)
+            .transpose()?
             .ok_or_else(|| NodeError::NotFound("program not found".to_string()))
     }
 
@@ -159,6 +120,7 @@ impl ZiskNodeService {
 
         resp.program
             .map(coord_program_to_summary)
+            .transpose()?
             .ok_or_else(|| NodeError::NotFound("program not found".to_string()))
     }
 
@@ -181,7 +143,7 @@ impl ZiskNodeService {
         Ok(RegisterProgramResult {
             program_id: resp.program_id,
             hash_id: resp.hash_id,
-            status: map_program_status(resp.status),
+            status: ProgramStatus::try_from(resp.status)?,
         })
     }
 
@@ -205,7 +167,7 @@ impl ZiskNodeService {
         Ok(UpdateProgramResult {
             program_id: resp.program_id,
             hash_id: resp.hash_id,
-            status: map_program_status(resp.status),
+            status: ProgramStatus::try_from(resp.status)?,
         })
     }
 
@@ -229,9 +191,9 @@ impl ZiskNodeService {
 
         match resp.result {
             Some(coord::jobs_list_response::Result::JobsList(list)) => {
-                Ok(list.jobs.into_iter().map(coord_job_to_summary).collect())
+                list.jobs.into_iter().map(coord_job_to_summary).collect::<NodeResult<Vec<_>>>()
             }
-            Some(coord::jobs_list_response::Result::Error(e)) => Err(map_coord_error(e)),
+            Some(coord::jobs_list_response::Result::Error(e)) => Err(NodeError::from(e)),
             None => Ok(vec![]),
         }
     }
@@ -254,13 +216,15 @@ impl ZiskNodeService {
             client.cancel_job(coord::CancelJobRequest { job_id, reason: None }).await?.into_inner();
 
         match resp.result {
-            Some(coord::cancel_job_response::Result::JobId(id)) => Ok(CancelJobResult {
-                job_id: id,
-                status_code: JobStatusCode::Cancelled,
-                phase: JobPhase::Contributions,
+            Some(coord::cancel_job_response::Result::Job(job)) => Ok(CancelJobResult {
+                job_id: job.job_id,
+                previous_status: JobStatus::from_coordinator(
+                    &job.previous_state,
+                    job.phase.as_deref(),
+                )?,
             }),
-            Some(coord::cancel_job_response::Result::Error(e)) => Err(map_coord_error(e)),
-            None => Err(NodeError::EmptyCoordinatorResponse),
+            Some(coord::cancel_job_response::Result::Error(e)) => Err(NodeError::from(e)),
+            None => Err(NodeError::InvalidCoordinatorResponse("empty response".into())),
         }
     }
 }
