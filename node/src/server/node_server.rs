@@ -10,6 +10,7 @@ use crate::service::ZiskNodeService;
 use anyhow::Result;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tonic_health::server::health_reporter;
 use tonic_reflection::server::Builder as ReflectionBuilder;
 use tracing::info;
@@ -84,13 +85,23 @@ impl ZiskNodeServer {
             health_reporter.set_not_serving::<ZiskUserApiServer<UserApiService>>().await;
         };
 
-        tonic::transport::Server::builder()
+        let serve = tonic::transport::Server::builder()
             .layer(GrpcLoggingLayer)
             .add_service(health_service)
             .add_service(reflection_service)
             .add_service(user_svc)
-            .serve_with_shutdown(addr, shutdown)
-            .await?;
+            .serve_with_shutdown(addr, shutdown);
+
+        let timeout = Duration::from_secs(self.config.server.shutdown_timeout_seconds);
+        match tokio::time::timeout(timeout, serve).await {
+            Ok(result) => result?,
+            Err(_) => {
+                tracing::warn!(
+                    timeout_secs = self.config.server.shutdown_timeout_seconds,
+                    "Shutdown timed out — forcing exit"
+                );
+            }
+        }
 
         info!("zisklet shut down cleanly");
         Ok(())
