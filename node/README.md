@@ -19,24 +19,7 @@ cargo build --release -p zisk-node
 
 ### `node.toml`
 
-```toml
-[service]
-name = "ZisK Node"
-
-[server]
-host = "0.0.0.0"
-port = 7000                    # gRPC listen port
-shutdown_timeout_seconds = 30
-
-[logging]
-level = "info"                 # trace | debug | info | warn | error
-format = "pretty"
-
-[node]
-clusters_file = "/etc/zisk/clusters.yml"
-# advertise_addr = "192.168.1.10:7000"   # address peers use to reach this node
-work_dir = "/var/lib/zisk"
-```
+See [`config/node.example.toml`](config/node.example.toml) for a fully annotated example.
 
 The config file path can be overridden with `--config` or `ZISK_NODE_CONFIG`. The port can be overridden with `--port` or `ZISK_NODE_PORT`.
 
@@ -57,37 +40,7 @@ Every gRPC call is logged at `INFO` with method, status code, and latency. Reque
 
 Exactly one cluster must be defined. Each cluster has one coordinator and zero or more workers. Nodes listed under `nodes` are used to resolve coordinator and worker addresses.
 
-```yaml
-nodes:
-  node-0:
-    address: "10.0.0.1"
-    port: 7000
-    gpus:
-      - id: 0
-        memory_gb: 40
-  node-1:
-    address: "10.0.0.2"
-    port: 7000
-    gpus:
-      - id: 0
-        memory_gb: 40
-
-clusters:
-  default:
-    coordinator:
-      node: node-0
-      instance: coordinator-0
-      port: 50000
-    workers:
-      - node: node-0
-        instance: worker-0
-        port: 50001
-        gpus: [0]
-      - node: node-1
-        instance: worker-1
-        port: 50001
-        gpus: [0]
-```
+See [`config/clusters.example.yml`](config/clusters.example.yml) for single-node and multi-node annotated examples.
 
 ## Running with Docker
 

@@ -1,0 +1,74 @@
+# clusters.yml — ZisK cluster topology.
+#
+# Copy this file to /etc/zisk/clusters.yml and edit to match your deployment.
+# Exactly one cluster must be defined.
+#
+# Structure:
+#   nodes    — inventory of all machines running zisklet, keyed by a logical name.
+#   clusters — logical cluster topology: which coordinator and workers run on which nodes.
+#
+# The coordinator and worker entries reference nodes by their logical name.
+# Instance names must be unique within a cluster.
+
+# ── Single-node example ───────────────────────────────────────────────────────
+#
+# Coordinator and one worker running on the same machine.
+
+nodes:
+  node-0:
+    address: "10.0.0.10"   # hostname or IP of the zisklet daemon on this machine
+    port: 7000             # zisklet gRPC port
+    gpus:
+      - id: 0
+        memory_gb: 80
+
+clusters:
+  default:
+    coordinator:
+      node: node-0
+      instance: coordinator-0
+      port: 50000
+    workers:
+      - node: node-0
+        instance: worker-0
+        port: 50001
+        gpus: [0]
+
+# ── Multi-node example ────────────────────────────────────────────────────────
+#
+# Coordinator on node-0, one worker per node, each using all available GPUs.
+# Uncomment and adapt to your topology.
+
+# nodes:
+#   node-0:
+#     address: "10.0.0.10"
+#     port: 7000
+#     gpus:
+#       - id: 0
+#         memory_gb: 80
+#       - id: 1
+#         memory_gb: 80
+#   node-1:
+#     address: "10.0.0.11"
+#     port: 7000
+#     gpus:
+#       - id: 0
+#         memory_gb: 80
+#       - id: 1
+#         memory_gb: 80
+#
+# clusters:
+#   default:
+#     coordinator:
+#       node: node-0
+#       instance: coordinator-0
+#       port: 50000
+#     workers:
+#       - node: node-0
+#         instance: worker-0
+#         port: 50001
+#         gpus: [0, 1]
+#       - node: node-1
+#         instance: worker-1
+#         port: 50001
+#         gpus: [0, 1]

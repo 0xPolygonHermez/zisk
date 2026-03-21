@@ -1,0 +1,40 @@
+# node.toml — ZisK node daemon configuration.
+#
+# Copy this file to /etc/zisk/node.toml and edit to match your environment.
+# All fields shown below are optional — defaults are used when omitted.
+
+[service]
+# Human-readable name for this node (used in logs and status output).
+name = "ZisK Node"
+
+[server]
+# Address to listen on. Use 0.0.0.0 to accept connections on all interfaces.
+host = "0.0.0.0"
+
+# gRPC port. Can be overridden at startup with --port or ZISK_NODE_PORT.
+port = 7000
+
+# Seconds to wait for in-flight requests to complete before forcing shutdown.
+shutdown_timeout_seconds = 30
+
+[logging]
+# Minimum log level: trace | debug | info | warn | error
+# The RUST_LOG environment variable takes precedence and supports per-module
+# filters (e.g. RUST_LOG=zisk_node=debug,info).
+level = "info"
+
+# Output format:
+#   pretty — human-readable, coloured (recommended for development)
+#   json   — one JSON object per line (recommended for production / log aggregators)
+format = "pretty"
+
+[node]
+# Path to clusters.yml. Required on the head node; omit on worker-only nodes.
+clusters_file = "/etc/zisk/clusters.yml"
+
+# Address advertised to other nodes in the deployment so they can reach this
+# node's gRPC port. Defaults to the server listen address if omitted.
+# advertise_addr = "192.168.1.10:7000"
+
+# Working directory for coordinator and worker processes spawned by this node.
+work_dir = "/var/lib/zisk"
