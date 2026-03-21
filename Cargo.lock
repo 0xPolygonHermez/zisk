@@ -6220,7 +6220,6 @@ version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "chrono",
  "clap",
  "config",
  "futures",
@@ -6230,8 +6229,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "signal-hook",
- "signal-hook-tokio",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
@@ -6243,7 +6240,6 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
- "uuid",
  "zisk-distributed-common",
  "zisk-distributed-grpc-api",
 ]
